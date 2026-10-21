@@ -4,9 +4,9 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 75; sections: 18
+Requirements: 124; sections: 19
 
-## Accounts and identity (4)
+## Accounts and identity (5)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -14,8 +14,9 @@ Requirements: 75; sections: 18
 | REQ-012 | Registration and identity layers | foundation | Approved |
 | REQ-013 | Email change and account deletion | feature | Approved |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Approved |
+| REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | Draft |
 
-## Adjustments (4)
+## Adjustments (5)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -23,8 +24,9 @@ Requirements: 75; sections: 18
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | Approved |
 | REQ-047 | Adjustment-relevant data collection | feature | Specified |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | Approved |
+| REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | Draft |
 
-## Broker and execution (8)
+## Broker and execution (16)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -36,8 +38,16 @@ Requirements: 75; sections: 18
 | REQ-058 | Partial execution and no automatic retry | foundation | Approved |
 | REQ-059 | Pre-execution safety checks and validation | foundation | Verified |
 | REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | Approved |
+| REQ-092 | Optional pre-trade check-in - today's count, a 10-second pause and "Have you checked your exit plan?" before an entry | polish | Draft |
+| REQ-100 | A strategy's stop-loss - price-level stops are held at Zerodha as a broker trigger, P&L stops are sent by the platform server, each after one user confirmation | core | Draft |
+| REQ-101 | A broker-held stop-loss stays in step with the strategy, is shown with its read time, can be removed, and its firing is reconciled | core | Draft |
+| REQ-102 | A strategy's entry may use intraday (MIS) or carry-forward (NRML), with Zerodha's auto square-off stated before Execute and recognised by reconciliation | feature | Draft |
+| REQ-103 | An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read time | feature | Draft |
+| REQ-104 | The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user | feature | Draft |
+| REQ-117 | The broker adapter declares named capability flags, and features ask the flag, never the broker's name | foundation | Draft |
+| REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | Draft |
 
-## Calculations and outcome (4)
+## Calculations and outcome (8)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -45,13 +55,18 @@ Requirements: 75; sections: 18
 | REQ-033 | Expiry scenario and live P&L formulas | core | Verified |
 | REQ-034 | Outcome view and scenario levels | foundation | Approved |
 | REQ-035 | Single strategy table | foundation | Verified |
+| REQ-081 | Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted | feature | Draft |
+| REQ-082 | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) | feature | Draft |
+| REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | Draft |
+| REQ-084 | What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples | feature | Draft |
 
-## Delivery (2)
+## Delivery (3)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-067 | Delivery controls | feature | Specified |
 | REQ-075 | Coding standards are checked automatically, at edit time and in CI, without slowing small changes | foundation | Approved |
+| REQ-126 | Production is watched, backed up and restorable, and staging never shares production's data or keys | foundation | Draft |
 
 ## Entitlements and billing (7)
 
@@ -65,7 +80,7 @@ Requirements: 75; sections: 18
 | REQ-022 | Free-eligibility loop | feature | Specified |
 | REQ-023 | Paid Pro and billing | feature | Specified |
 
-## Market data (6)
+## Market data (15)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -75,15 +90,27 @@ Requirements: 75; sections: 18
 | REQ-051 | Historical storage tiers and simulation | feature | Approved |
 | REQ-052 | Market-data sourcing and licensing | core | Approved |
 | REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | Verified |
+| REQ-093 | Instrument watchlists of index, futures and option contracts with live prices and no order buttons | polish | Draft |
+| REQ-105 | Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan and paper-track on them | feature | Draft |
+| REQ-106 | A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed | feature | Draft |
+| REQ-107 | IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, held until display rights are confirmed | feature | Draft |
+| REQ-108 | An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared | feature | Draft |
+| REQ-113 | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds | feature | Draft |
+| REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | Draft |
+| REQ-131 | The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in writing | polish | Draft |
+| REQ-133 | A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data | foundation | Draft |
 
-## Monitoring (2)
+## Monitoring (5)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-043 | Live monitoring and status colours | foundation | Approved |
 | REQ-044 | Strategy control center and Positions screen | feature | Approved |
+| REQ-109 | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch | feature | Draft |
+| REQ-111 | The user can keep private notes on a strategy | polish | Draft |
+| REQ-115 | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order | feature | Draft |
 
-## Navigation and public site (4)
+## Navigation and public site (6)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -91,38 +118,46 @@ Requirements: 75; sections: 18
 | REQ-009 | Primary navigation and account menu | feature | Approved |
 | REQ-010 | Public site and live-data access | feature | Approved |
 | REQ-011 | Learn section | polish | Approved |
+| REQ-095 | In-app help - FAQ, a "What's New" page and support chat (held for the chat tool's cost) | polish | Draft |
+| REQ-096 | Video courses in Learn, with lesson progress and captions (held for content cost and scope) | polish | Draft |
 
-## Notifications (1)
+## Notifications (2)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-062 | Notifications | feature | Approved |
+| REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | Draft |
 
-## Option chain (3)
+## Option chain (4)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-029 | Option Chain display and live data | feature | Approved |
 | REQ-030 | Option Chain leg selection and import | feature | Approved |
 | REQ-031 | Option Chain live strategy preview | feature | Approved |
+| REQ-087 | Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns | feature | Draft |
 
-## Product scope and platform (6)
+## Product scope and platform (9)
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Verified |
+| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Approved |
 | REQ-003 | Public multi-user SaaS | foundation | Approved |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
 | REQ-006 | Three UX levels | feature | Specified |
 | REQ-007 | Strategy information density | polish | Specified |
+| REQ-090 | Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files | foundation | Draft |
+| REQ-094 | Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept | polish | Draft |
+| REQ-132 | Native Android and iOS apps use the same backend and the one engine, and add no rule of their own | polish | Draft |
 
-## Reconciliation (2)
+## Reconciliation (3)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-060 | Reconciliation with Zerodha | foundation | Approved |
 | REQ-061 | Existing positions on connect | feature | Approved |
+| REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | Draft |
 
 ## Rules and automation (2)
 
@@ -131,7 +166,7 @@ Requirements: 75; sections: 18
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | Approved |
 | REQ-042 | Automation: Alert + Prepare Orders | feature | Approved |
 
-## Security, audit and compliance (5)
+## Security, audit and compliance (9)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -140,8 +175,18 @@ Requirements: 75; sections: 18
 | REQ-065 | Error classification and messages | foundation | Testing |
 | REQ-066 | Compliance gates | feature | Specified |
 | REQ-074 | Security incident reporting and log retention | foundation | Specified |
+| REQ-127 | Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report | foundation | Draft |
+| REQ-128 | One retention schedule names how long each kind of data is kept, and a daily job enforces it | foundation | Draft |
+| REQ-129 | Support can look up one user's order trail, read-only, with every lookup audited | feature | Draft |
+| REQ-130 | Product analytics and session replay run only for users who opted in, and stay off until the consent design clears | polish | Draft |
 
-## Strategy building (8)
+## Strategy builder (1)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | Draft |
+
+## Strategy building (15)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -153,8 +198,15 @@ Requirements: 75; sections: 18
 | REQ-068 | Strategy preferences | feature | Approved |
 | REQ-069 | Suggested setups in the Guided Builder | feature | Approved |
 | REQ-070 | Builder history and restore | feature | Approved |
+| REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | Draft |
+| REQ-077 | Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing | feature | Draft |
+| REQ-078 | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server | feature | Draft |
+| REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | Draft |
+| REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | Draft |
+| REQ-085 | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape | feature | Draft |
+| REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | Draft |
 
-## Strategy lifecycle (5)
+## Strategy lifecycle (7)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -163,6 +215,8 @@ Requirements: 75; sections: 18
 | REQ-038 | Strategy definition, live state and versions | core | Verified |
 | REQ-039 | Strategy state machine and exception states | foundation | Approved |
 | REQ-040 | Activity timeline and rule-trigger audit | foundation | Verified |
+| REQ-086 | Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked | feature | Draft |
+| REQ-089 | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills | feature | Draft |
 
 ## Zerodha connection (2)
 

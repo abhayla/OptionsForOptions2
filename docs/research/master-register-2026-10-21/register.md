@@ -34,6 +34,9 @@ opened.
 | OWNER | Goes to the owner: SPEC CHANGE (ADR quoted), Business, Compliance, or Unsure. A recommendation is given where possible. |
 | REJECT | Not for this product. One-line reason. The owner can veto any reject. |
 | TECH | Internal technical design with no user-visible scope. Claude decides later, with a reviewer. |
+| DEFERRED | The owner said to decide it later and ignore it for now; no new decision is recorded (MR-140). |
+
+A class followed by "(held)" means the requirement is written as Draft and not live for users until the named check clears (Q211 legal review, data or display licence, consent, static IP); when it is built is the owner's call (ADR-150 (3)).
 
 ## Owner decisions so far (2026-10-21)
 
@@ -89,6 +92,14 @@ opened.
 - Q-15 (~18:20 IST), rows MR-031, MR-069, MR-138, decision ADR-161: all three as in Sensibull. Manual P&L sits on
   its own labelled line. FII/DII is held for a data source. Native apps are in scope, with timing left to
   prioritisation. SPEC CHANGE to ADR-001 and ADR-102. All three rows are WRITE.
+- Q-16 (~18:40 IST), row MR-112 follow-up, decision ADR-162: price-level stops are held at Zerodha. P&L stops are
+  executed automatically by the platform server after one user confirmation (against the recommendation). Launch
+  dependencies: the static IP (ADR-154), Zerodha's written confirmation of algo standing (F-17, Q258/Q259) and Q211.
+  Until then it runs on replay and paper only.
+- Q-17 (~18:45 IST), ADR-150 (3): "held" means not live; WHEN to build is the owner's call at prioritisation.
+- Q-18 (~18:50 IST), ADR-163: Execute always sends the whole strategy; no "Trade N" of ticked legs (exception a).
+- Q-19 (~18:55 IST), ADR-164: max profit and max loss as % of funds, as in Sensibull. SPEC CHANGE to ADR-055 (1) for
+  that figure, against the recommendation.
 - Owner queue complete at ~18:20 IST. Next: TECH rows decided by Claude with a reviewer, then Draft REQs for every
   WRITE row, then one docs PR.
 - MR-130 (phase order) moved to the prioritisation pass, which the owner said comes later.
@@ -101,35 +112,35 @@ opened.
 |---|---|---|---|---|---|---|
 | MR-001 | Strategy Builder reachable from the menu | A B1, C4 §1.3 | ADR-007, REQ-034, F-49 | Yes: `frontend/src/router/routes.js:11` | BUILT | F-49 fixed |
 | MR-002 | NIFTY and SENSEX underlyings | A B2 | ADR-001, REQ-001 | Yes: `LegPicker.vue` | BUILT | |
-| MR-003 | Other underlyings (BANKNIFTY, FINNIFTY), stock options, stock screener and heatmaps | A B3, A A4 | ADR-001, REQ-001 | No | REJECT | ADR-001: "underlyings NIFTY (NSE) and SENSEX (BSE)". A later scope question, not a V1 gap |
-| MR-004 | Ready-made shapes that load into the builder at strikes placed by a fixed rule from ATM; Learn "Open in Builder" | A B4, A X5, PL S2 item 1, PL D2, MB L7 | ADR-055 (1), ADR-006, REQ-027, REQ-028 | Partial: 21 templates in `backend/ofo/strategy/catalogue.yaml`, shown only on Learn | OWNER | SPEC CHANGE to ADR-055 (1): "no platform-picked strikes, stop-losses, targets or adjustment instructions presented as the platform's view". Rec: yes, labelled "Strikes placed by a fixed rule - change them", after the legal check (Q211/Q261). Asked together with MR-008 and MR-029 |
+| MR-003 | Other underlyings (BANKNIFTY, FINNIFTY), stock options, stock screener and heatmaps | A B3, A A4 | ADR-001, REQ-001 | No | WRITE | ADR-001: "underlyings NIFTY (NSE) and SENSEX (BSE)". A later scope question, not a V1 gap |
+| MR-004 | Ready-made shapes that load into the builder at strikes placed by a fixed rule from ATM; Learn "Open in Builder" | A B4, A X5, PL S2 item 1, PL D2, MB L7 | ADR-055 (1), ADR-006, REQ-027, REQ-028 | Partial: 21 templates in `backend/ofo/strategy/catalogue.yaml`, shown only on Learn | WRITE (held) | SPEC CHANGE to ADR-055 (1): "no platform-picked strikes, stop-losses, targets or adjustment instructions presented as the platform's view". Rec: yes, labelled "Strikes placed by a fixed rule - change them", after the legal check (Q211/Q261). Asked together with MR-008 and MR-029 |
 | MR-005 | Shape name on the leg list ("Iron Condor", "Custom Strategy") and hedge legs marked | A B5, MB B1.5, GAPS G6c, C3 M15 | ADR-006 (Q52: unmatched = "Custom Strategy"), REQ-028 | Partial: `backend/ofo/strategy/matching.py`, not on the screen | DECIDED | REQ-028 has no AC for showing the name in the builder; add one |
 | MR-006 | A different expiry per leg (calendars, diagonals) | A B6, MB L7 | ADR-006, ADR-083, ADR-143 | Partial: per-leg expiry in `LegPicker.vue`; no worst-case loss for mixed expiries (ADR-143) | DECIDED | |
 | MR-007 | Strike -/+ stepper on each leg, over the real strike list | A B7 | none (searched: stepper, strike step; REQ-030 has only a lot stepper) | No | WRITE | (1) no clash; (2) no money; (3) Sensibull study §1 |
-| MR-008 | Shift / Width / Hedge: move, widen or re-hedge every strike in one click, computed on the server | A B8, MB L7, MB B1.6, GAPS G6b, C3 M15, PL S2 item 3, PL proof2 | ADR-055 (1), ADR-008 | No | OWNER | SPEC CHANGE to ADR-055 (1) (same quote as MR-004): the platform picks the new strikes. Rec: may proceed, because it only moves strikes the user chose (plan S2) |
+| MR-008 | Shift / Width / Hedge: move, widen or re-hedge every strike in one click, computed on the server | A B8, MB L7, MB B1.6, GAPS G6b, C3 M15, PL S2 item 3, PL proof2 | ADR-055 (1), ADR-008 | No | WRITE | SPEC CHANGE to ADR-055 (1) (same quote as MR-004): the platform picks the new strikes. Rec: may proceed, because it only moves strikes the user chose (plan S2) |
 | MR-009 | Lots per leg | A B9, MB L7 | REQ-030 | Yes: `LegPicker.vue:34` | BUILT | |
 | MR-010 | Multiplier that scales every leg | A B10 | none (searched: multiplier, scale) | No | WRITE | (1) no clash; (2) no new money figure; (3) Sensibull study §1 |
 | MR-011 | Tick box to leave a leg out of the numbers ("what if I drop the hedge?"), analysis only | A B11, A DF1 | ADR-002, ADR-017 | No | WRITE | (1) no clash if Execute is refused while any leg is left out; (2) no new money figure; (3) Sensibull study §1 |
-| MR-012 | Type my own entry price per leg, with Reset Prices | A B12 | ADR-068 (1), ADR-075 | Partial: captured planned entry only | OWNER | Unsure: ADR-068 (1) "A draft leg's entry price is its planned entry"; a typed price changes what P&L is measured from. Rec: allow, labelled "your price", reset returns to the captured price |
+| MR-012 | Type my own entry price per leg, with Reset Prices | A B12 | ADR-068 (1), ADR-075 | Partial: captured planned entry only | WRITE | Unsure: ADR-068 (1) "A draft leg's entry price is its planned entry"; a typed price changes what P&L is measured from. Rec: allow, labelled "your price", reset returns to the captured price |
 | MR-013 | Market depth popup per leg in the builder | A B13 | ADR-080 (depth used for pricing) | Partial: 5-level depth used on Execute (W-097) | WRITE | (1) no clash; (2) prices only, no money figure; (3) Sensibull study §1 |
-| MR-014 | New money figures on the builder summary: net premium Pay/Get, itemised charges, time and intrinsic value totals, reward/risk ratio | A B14, A B15, A B19, A B21 | ADR-008, ADR-071, ADR-082 | Partial: net premium on Execute (W-102), charges total inside max profit/loss (W-075) | OWNER | Business (new money shown). Rec: yes, every figure from the engine, none in the browser |
-| MR-015 | Probability of profit (POP) | A B20, PL D4 | ADR-008 (Q15 uses "Estimated probability of profit: ~73%" as its precision example), REQ-032, ADR-055 (1) | No | OWNER | Compliance: ADR-055 (1) bars an "expected return ... as a performance claim". Rec: yes, labelled "a model probability from today's prices, not a forecast" |
+| MR-014 | New money figures on the builder summary: net premium Pay/Get, itemised charges, time and intrinsic value totals, reward/risk ratio | A B14, A B15, A B19, A B21 | ADR-008, ADR-071, ADR-082 | Partial: net premium on Execute (W-102), charges total inside max profit/loss (W-075) | WRITE | Business (new money shown). Rec: yes, every figure from the engine, none in the browser |
+| MR-015 | Probability of profit (POP) | A B20, PL D4 | ADR-008 (Q15 uses "Estimated probability of profit: ~73%" as its precision example), REQ-032, ADR-055 (1) | No | WRITE (held) | Compliance: ADR-055 (1) bars an "expected return ... as a performance claim". Rec: yes, labelled "a model probability from today's prices, not a forecast" |
 | MR-016 | Funds, margin needed, margin available, and a shortfall warning in the builder | A B22, A B23, A DF3 | ADR-016, ADR-099 | Yes: `frontend/src/components/strategy/MarginLine.vue` | BUILT | Ahead of Sensibull, which showed no warning |
-| MR-017 | Count existing positions in the margin figure | A B24 | ADR-094, REQ-055, F-39 | No | OWNER | Business (changes the margin figure shown). Rec: yes, later, using Zerodha's own position-aware figure |
+| MR-017 | Count existing positions in the margin figure | A B24 | ADR-094, REQ-055, F-39 | No | WRITE | Business (changes the margin figure shown). Rec: yes, later, using Zerodha's own position-aware figure |
 | MR-018 | Payoff chart at expiry, max profit / max loss tiles, breakevens | A B16, A B17, A B25, C4 §1.4, C4 §4.4, C4 §4.8 | ADR-008, ADR-089, REQ-034 | Yes: `PayoffChart.vue`, `SummaryCards.vue` | BUILT | |
 | MR-019 | "Now" curve drawn over the expiry curve, hover shows both | A B26, A B27 | REQ-034 AC-6, ADR-120 | Partial: the API returns one view per call (`backend/ofo_app/routes/outcome.py:151`) | WRITE | (1) draws only the two ADR-120 modes, no third mode; (2) no new money kind; (3) Sensibull study §1. Add a chart AC to REQ-034 |
-| MR-020 | What-if at a target index level and a target date; breakeven at that date | A B18, A B36, A B37, GAPS G6d, PL S1, PL D3 | ADR-120 (1), REQ-034 AC-6 | No | OWNER | SPEC CHANGE to ADR-120 (1): "No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1". Rec: yes for level and date, no for IV |
-| MR-021 | Edit IV per strike, IV offset | A B38 | ADR-120 (1) | No | REJECT | ADR-120 excludes IV what-if; the plan also recommends keeping it out |
+| MR-020 | What-if at a target index level and a target date; breakeven at that date | A B18, A B36, A B37, GAPS G6d, PL S1, PL D3 | ADR-120 (1), REQ-034 AC-6 | No | WRITE | SPEC CHANGE to ADR-120 (1): "No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1". Rec: yes for level and date, no for IV |
+| MR-021 | Edit IV per strike, IV offset | A B38 | ADR-120 (1) | No | WRITE | ADR-120 excludes IV what-if; the plan also recommends keeping it out |
 | MR-022 | Open-interest bars on the payoff chart | A B28 | none for the chart (searched: OI, open interest); uses live OI only | No | WRITE | (1) live OI, no history, so no ADR-066 clash; (2) no money; (3) Sensibull study §1 |
 | MR-023 | Expected-move (one and two SD) bands on the chart | A B29 | REQ-027 (Q254 formula), REQ-034 AC-4 | No | DECIDED | Formula decided; REQ-034 lacks an AC for drawing it |
 | MR-024 | Per-leg scenario table, range and step, P&L columns, Greeks, TOTAL row | A B30, A B31, A B32, A B33, C4 §1.5, C4 §1.6, C4 §4.5, C4 §4.6, C4 §4.7 | ADR-008, ADR-042, REQ-033, REQ-035 | Yes: `backend/ofo/table/`, `StrategyTable.vue` (unverified) | BUILT | |
 | MR-025 | Greeks totals with rupee examples on hover | A B34 | REQ-035 (Greeks at Advanced) | Partial: TOTAL row sums Greeks (`backend/ofo/table/model.py`) | WRITE | (1) no clash; (2) explains a figure, no new one; (3) Sensibull study §1 |
-| MR-026 | Price history chart of the strategy | A B35, PL S4 | ADR-066 | No | REJECT | ADR-066: "shows users no historical market data"; plan S4 recommends no |
+| MR-026 | Price history chart of the strategy | A B35, PL S4 | ADR-066 | No | WRITE (held) | ADR-066: "shows users no historical market data"; plan S4 recommends no |
 | MR-027 | Show the futures (forward) price per expiry | A B39 | ADR-061 | Internal only | WRITE | (1) no clash; (2) a price, not money; (3) Sensibull study §1. Low value |
 | MR-028 | Leg picker that shows LTP, OI and Greeks per strike, with tabs | A B42 (prices part) | ADR-012 | Partial: one leg at a time, no prices (`LegPicker.vue:2`) | WRITE | (1) prices come from the platform (ADR-012); (2) no money; (3) Sensibull study §1 |
-| MR-029 | Straddle / strangle quick picks 50-200 points from ATM | A B42 (quick-pick part), PL S2 item 2 | ADR-055 (1) | No | OWNER | SPEC CHANGE to ADR-055 (1) (same quote as MR-004). Rec: yes after the legal check |
+| MR-029 | Straddle / strangle quick picks 50-200 points from ATM | A B42 (quick-pick part), PL S2 item 2 | ADR-055 (1) | No | WRITE (held) | SPEC CHANGE to ADR-055 (1) (same quote as MR-004). Rec: yes after the legal check |
 | MR-030 | Pick legs in the option chain (Buy/Sell, lots) and import them | A B43 | REQ-030, ADR-131, ADR-132 | Held: PR #466 (W-120) | DECIDED | |
-| MR-031 | Manual P&L for past adjustments | A B44 | ADR-102 | No | REJECT | ADR-102 builds P&L from real broker fills; value low |
+| MR-031 | Manual P&L for past adjustments | A B44 | ADR-102 | No | WRITE | ADR-102 builds P&L from real broker fills; value low |
 | MR-032 | Save a strategy (draft) and reload it exactly | A B45, A D1, C4 §1.7, C4 §2.4 | ADR-062, ADR-075, REQ-038 AC-5 | Yes: `SaveDraftBar.vue`, `backend/ofo_app/strategy_store.py` | BUILT | A name field is unverified |
 | MR-033 | "My Strategies" page with search | A B46 | REQ-009 AC-2, REQ-038 AC-5 | Held: PR #393 (W-109) | DECIDED | |
 | MR-034 | Share a read-only link to a plan | A B47, PL 1c | REQ-035 (W-073 draft link), ADR-027, ADR-055 (3) | Partial: draft opens from a URL (`frontend/src/lib/draftLink.js`) | WRITE | (1) no clash if the viewer must log in (ADR-027) and nothing is ranked (ADR-055 (3)); (2) no money; (3) Sensibull study §1 |
@@ -141,7 +152,7 @@ opened.
 | MR-040 | Guided / Standard / Advanced levels | A B53 | ADR-004, REQ-006 | Yes: `StrategyBuilderPage.vue:43` | BUILT | |
 | MR-041 | Plain-language outcome sentences | A B54 | ADR-071, REQ-034 AC-7 | Yes: `SummaryCards.vue` | BUILT | |
 | MR-042 | Guided create: "where will NIFTY go?" to a few explained setups | A W1 | ADR-005, ADR-121, ADR-122, ADR-124, REQ-024, REQ-069 | Held: PR #457 (W-119) | DECIDED | F-51 needs a correction (see MR-145) |
-| MR-043 | Risk-labelled variants of one view (Conservative / Balanced / Aggressive) | A W2, PL S2 item 4 | REQ-027 AC-1 (four modes), ADR-055 (1) | No | DECIDED | Modes decided in REQ-027; built only after the legal check that ADR-055 waits on |
+| MR-043 | Risk-labelled variants of one view (Conservative / Balanced / Aggressive) | A W2, PL S2 item 4 | REQ-027 AC-1 (four modes), ADR-055 (1) | No | WRITE (held) | Modes decided in REQ-027; built only after the legal check that ADR-055 waits on |
 | MR-044 | "How this trade works" bullets next to a loaded strategy | A W3 | REQ-011, ADR-003 | Partial: Learn page only | WRITE | (1) no clash; (2) no money; (3) Sensibull study §3 |
 | MR-045 | Wizard that ranks trades by profit; "YOLO" expiry ladder | A W4, A W5, A DF5 | ADR-003, ADR-055 (3) | No | REJECT | ADR-055 (3): "no 'best', 'winning' or ranking wording" |
 | MR-046 | Home dashboard and market overview | A X1, C4 §1.1 | ADR-027, REQ-008 | Yes: `HomeOverviewPage.vue`, `MarketContextPage.vue` | BUILT | |
@@ -162,17 +173,17 @@ opened.
 | MR-056 | Live prices from each user's own Kite feed, normalised on the server and pushed over websockets; the browser never touches the broker | A G10, MB L5, MB B9.1, C4 §3.2, C4 §3.6, C4 §8.4 | ADR-012, ADR-053, REQ-048, REQ-049 | Yes (owner account): `backend/ofo/marketdata/`, `backend/ofo_app/kite_ws.py` | BUILT | |
 | MR-057 | Data health: timestamps, freshness, stale data never used as live, monitoring paused | MB L10 (feed-stale), MB B3.2, C4 §3.5, C4 §3.7, C4 §6.2 | ADR-015, ADR-065, ADR-077, REQ-049, REQ-072 | Yes: `backend/ofo/marketdata/feed_health.py` | BUILT | |
 | MR-058 | Licensed market-data feed as the long-term source; each user's own Kite data until then | MB L5, MB B4.5, C2 D4, C4 §3.1, C4 P3 | ADR-014, ADR-053, REQ-052 | No | DECIDED | Buying the licence is a later owner spend call |
-| MR-059 | Prices before a broker login (delayed data, paper trading on live data), public pages with data, free tools as a funnel | A B55, A G8, MB L5, MB B1.7, MB B7.6, MB B9.1, MB B10.1, GAPS G5 | ADR-027, ADR-053, ADR-014, ADR-034, F-23 | No | OWNER | Business (data licence): ADR-027 "All live data is behind login". Rec: ask Zerodha/a vendor what may be shown; keep ADR-027 until a written answer |
+| MR-059 | Prices before a broker login (delayed data, paper trading on live data), public pages with data, free tools as a funnel | A B55, A G8, MB L5, MB B1.7, MB B7.6, MB B9.1, MB B10.1, GAPS G5 | ADR-027, ADR-053, ADR-014, ADR-034, F-23 | No | WRITE (held) | Business (data licence): ADR-027 "All live data is behind login". Rec: ask Zerodha/a vendor what may be shown; keep ADR-027 until a written answer |
 | MR-060 | Instrument master once a day; one contract identity (segment, exchange token, expiry); token reuse handled | MB L4, MB T7, GAPS AH5, C3 M8, C4 §3.3 | ADR-050, ADR-052, ADR-057, ADR-058, ADR-059, ADR-104, REQ-053 | Yes: `backend/ofo/instruments/` | BUILT | |
 | MR-061 | Live data and broker order updates in their own process with an internal bus, not inside the API process | MB L1, MB L5, MB B8.6, GAPS G2, C2 D6, C4 P1 | ADR-012, ADR-043, ADR-053, REQ-050 | No: in-process `backend/ofo/marketdata/fanout.py` | TECH | Needed before multi-user (200 users = 200 sockets in the API process) |
 | MR-062 | Redis only once there are two or more processes | C2 D5, C4 §8.2 | ADR-043, ADR-012 | No | TECH | |
 | MR-063 | Binary websocket packets | MB B1.10 | none | No | TECH | Verdict Partly; JSON is fine at our size |
 | MR-064 | Freeze limits: weekly manual refresh; automatic NSE fetch parked | C3 M7, GAPS LH3 | ADR-091, ADR-092 | Yes (manual) | TECH | A data-refresh mechanic; #488 waits on an approval for a new external source |
 | MR-065 | Market context strip: ATM IV, PCR, max pain, India VIX | A B40 (part) | ADR-012, ADR-053 | No: `MarketContextPage.vue:2` lists none | WRITE | (1) derived from the user's own feed (ADR-053); (2) no money, no new licence; (3) Sensibull study §1 |
-| MR-066 | IV percentile, IV chart, OI over time, straddle charts | A B40 (IV percentile part), A A1, A A3, A A5 | ADR-066 | No | REJECT | ADR-066: "shows users no historical market data" in V1 |
-| MR-067 | Events calendar and "events that can affect this trade" | A W6, A A6, A B40 (events part) | none (searched: event, calendar) | No | OWNER | Business: needs an outside data source. Rec: later |
-| MR-068 | TradingView chart with OI profile | A B41 | ADR-066, ADR-012 | No | REJECT | Licence plus ADR-066; low value |
-| MR-069 | FII / DII data | A A2 | none | No | REJECT | Outside data source; low value for an index-options planner |
+| MR-066 | IV percentile, IV chart, OI over time, straddle charts | A B40 (IV percentile part), A A1, A A3, A A5 | ADR-066 | No | WRITE (held) | ADR-066: "shows users no historical market data" in V1 |
+| MR-067 | Events calendar and "events that can affect this trade" | A W6, A A6, A B40 (events part) | none (searched: event, calendar) | No | WRITE (held) | Business: needs an outside data source. Rec: later |
+| MR-068 | TradingView chart with OI profile | A B41 | ADR-066, ADR-012 | No | WRITE (held) | Licence plus ADR-066; low value |
+| MR-069 | FII / DII data | A A2 | none | No | WRITE | Outside data source; low value for an index-options planner |
 
 ## 3. Calculation engine
 
@@ -203,9 +214,9 @@ opened.
 | MR-087 | Partial execution is an explicit exception the user resolves; no automatic retry; a timeout is not a failure | MB L8, MB T2, MB B4.1, MB B5.4, MB B7.1, GAPS AH8, C4 §5-p, C4 §6.5, C4 §6.6 | ADR-017, ADR-079, ADR-116, ADR-123, ADR-136, ADR-137, REQ-058 | Yes: `backend/ofo/execution/partial.py` | BUILT | GAPS did not compare the UX with AlgoTest's Halt screen |
 | MR-088 | No freeze slicing: a leg above the freeze limit is blocked | A E7, MB L8, GAPS AH8, C3 M7 | ADR-081, ADR-092 | Yes: `backend/ofo/execution/freeze.py`; PR #420 held | BUILT | |
 | MR-089 | Market protection: depth-based limit price with slippage | A E6 | ADR-080, ADR-095 | Yes: W-078 | BUILT | |
-| MR-090 | Intraday (MIS) product | A E8 | ADR-080 | No | REJECT | ADR-080: every order is NRML, no product choice |
+| MR-090 | Intraday (MIS) product | A E8 | ADR-080 | No | WRITE | ADR-080: every order is NRML, no product choice |
 | MR-091 | Order status after placing (four states) and an Orders screen, one line per strategy order | A E10, A O2, C4 §1.8, C4 §5.3 | ADR-135, ADR-138, REQ-057 | Partial: return check `ReturnCheck.vue`; Orders page not on main (PRs #451/#452) | DECIDED | |
-| MR-092 | Broker's full order book, funds drawer, import of the order book | A O1, A P8, A D5 | ADR-134 | No | REJECT | ADR-134: the app links to the broker, never rebuilds it |
+| MR-092 | Broker's full order book, funds drawer, import of the order book | A O1, A P8, A D5 | ADR-134 | No | WRITE | ADR-134: the app links to the broker, never rebuilds it |
 | MR-093 | Smart order (send a target position size) | MB B2.2 | ADR-002, ADR-019 | No | REJECT | Verdict Not useful; every order belongs to a strategy |
 | MR-094 | Automated strategies, signal webhooks in, AI/script hosting, retail developer API, scalping tools, backtest-style monitoring | MB L7, MB L10, MB B2.6, MB B3.4, MB B7.3, MB B9.2, MB B10.2 | ADR-009, ADR-017, F-17, F-18 | No | REJECT | Auto-trading or algo-provider duties; ADR-009 "assisted, not autonomous" |
 | MR-095 | Order and route rate limits; broker-busy back-pressure | MB L8, MB L12, MB B2.7, C4 §2.5 | REQ-063 | Unverified: "429"/"semaphore" in `kite_client.py` not read | TECH | |
@@ -235,7 +246,7 @@ opened.
 | MR-109 | Positions screen: strategy-linked positions and outside lots | A P1, C4 §1.8, C4 §5.4 | REQ-044, ADR-110, ADR-134 | Branch only: W-111 | DECIDED | |
 | MR-110 | The strategy is the position group; adopt outside positions | A P2 | ADR-002, ADR-084, REQ-061 | Yes by design; adoption blocked (W-083) | BUILT | |
 | MR-111 | Exit a strategy | A P3 | REQ-056, ADR-117 | Yes: `ExecuteStrategyPage.vue:5` | BUILT | |
-| MR-112 | Where stop-loss and conditional exits live: our alert plus a prepared basket, or Zerodha's own GTT/ATO triggers | A P4, A P5, MB L10, GAPS G3 | ADR-009, ADR-053, ADR-100, ADR-134, REQ-042 | No | OWNER | Business (what a beginner's stop-loss is promised to do when our server or the daily token is down). Rec: our alert + prepared basket first (decided), then offer a user-confirmed Zerodha trigger link (ADR-134) |
+| MR-112 | Where stop-loss and conditional exits live: our alert plus a prepared basket, or Zerodha's own GTT/ATO triggers | A P4, A P5, MB L10, GAPS G3 | ADR-009, ADR-053, ADR-100, ADR-134, REQ-042 | No | WRITE | Business (what a beginner's stop-loss is promised to do when our server or the daily token is down). Rec: our alert + prepared basket first (decided), then offer a user-confirmed Zerodha trigger link (ADR-134) |
 | MR-113 | Rule engine: user rules for entry, exit and adjustment, evaluated on live data | A P5, MB L10, C4 §4.10, C4 §7.3, C4 §7-p | ADR-011, ADR-064, ADR-069, REQ-041 | Domain only: `backend/ofo/rules/`; nothing runs it | DECIDED | |
 | MR-114 | Background workers for monitoring, reconciliation, data finalising and alerts, with restart recovery; never for order placement | MB L9, MB B3.3, GAPS G3, C2 D3, C4 §7.1, C4 §8.3, C4 P7 | ADR-009, ADR-112, REQ-043 | No: the lifespan starts only the live market | TECH | |
 | MR-115 | Four health colours per active strategy | A P6, C4 §7.1 | ADR-010, REQ-043 | No: badge only (`LiveStrategyCard.vue`) | DECIDED | |
@@ -247,7 +258,7 @@ opened.
 | MR-121 | Record whether each suggestion was accepted, rejected or completed | C4 §7.5 | REQ-040, REQ-037 (searched accepted/rejected/dismiss in REQ-040..046: 0 hits) | No | DECIDED | Triggers and confirmed changes are recorded; no AC links a suggestion to its outcome. Add one |
 | MR-122 | Orders placed outside the platform are detected | MB L9, MB B6.3, C3 M9 | ADR-018, REQ-060 | Partial: reconciliation | DECIDED | |
 | MR-123 | Daily "does Zerodha agree with us" report to the user | MB L9, MB B8.1, GAPS G8 | REQ-060 (continuous only) | No | WRITE | (1) no clash; (2) reports matches, no new money figure; (3) Tradetron (MB B8) |
-| MR-124 | Paper tracking of a saved plan (P&L since saved, paper exit), per strategy, never a global switch | A D2, MB L8, MB B2.4, MB B8.2, MB B10.1, MB T5 | ADR-002, ADR-062; spec silent (searched: paper trad, virtual, simulated trad) | Partial: Live Strategies follows saved plans | OWNER | Business (new virtual money figures). Rec: yes |
+| MR-124 | Paper tracking of a saved plan (P&L since saved, paper exit), per strategy, never a global switch | A D2, MB L8, MB B2.4, MB B8.2, MB B10.1, MB T5 | ADR-002, ADR-062; spec silent (searched: paper trad, virtual, simulated trad) | Partial: Live Strategies follows saved plans | WRITE | Business (new virtual money figures). Rec: yes |
 | MR-125 | Notes on a strategy | A D4 | none (searched: notes, journal) | No | WRITE | (1) no clash; (2) no money; (3) Sensibull study §4 |
 | MR-126 | Immutable strategy versions for approved executions | C4 P5 | REQ-038 AC-2, AC-3, ADR-019, ADR-105 | Unverified | DECIDED | |
 | MR-127 | Verified P&L sharing, leaderboards, copy-trading marketplace, "Verified Live" badge, live P&L carousel | A P9, A X2, MB B8.4, MB B8.5 | ADR-003, ADR-055 (1), (3) | No | REJECT | ADR-055 (3): no marketplace, no ranking |
@@ -261,19 +272,19 @@ opened.
 | MR-130 | Phase order (builder, then safety, then monitoring, then guided) and where multi-user sign-in fits | PL D5, GAPS G1 | ADR-030, ADR-112, REQ-067 | n/a | OWNER | Business (product sequencing). Rec: approve the order, but build MR-128/MR-129 before any per-user feature |
 | MR-131 | Entitlement engine | C4 §2.3, C4 §6.4, GAPS G10 | ADR-023, REQ-017 | Yes: `backend/ofo/entitlements/`, `entitlement_store.py` | BUILT | |
 | MR-132 | 7-day trial and Limited mode | A G4 | ADR-023, ADR-037, REQ-018 | Engine done (W-007); policy blocked (W-008) | DECIDED | |
-| MR-133 | Paid plan, payments, and which side is paid (planning or monitoring) | A G5, PL S3, PL D1, MB L11, MB B4.6, MB B6.5, GAPS G10, C4 §1.11 | ADR-026, ADR-055 (2), ADR-144, ADR-146, REQ-023, F-26 | Billing shell only (`BillingShellPage.vue`) | OWNER | Business, deferred: ADR-055 (2) holds until Q260/Q211 |
-| MR-134 | Free Pro for Zerodha users; builder free on one broker | A G6, MB B1.9 | ADR-024, ADR-055 (2), REQ-019 | Paused (W-011) | OWNER | Business, deferred with MR-133 |
-| MR-135 | Other revenue lines: white-label, licensable charting, broker-branded sites | MB B1.8, MB B8.7, MB B10.3 | ADR-055 (2) | No | OWNER | Business. Rec: not now |
+| MR-133 | Paid plan, payments, and which side is paid (planning or monitoring) | A G5, PL S3, PL D1, MB L11, MB B4.6, MB B6.5, GAPS G10, C4 §1.11 | ADR-026, ADR-055 (2), ADR-144, ADR-146, REQ-023, F-26 | Billing shell only (`BillingShellPage.vue`) | DECIDED (held) | Business, deferred: ADR-055 (2) holds until Q260/Q211 |
+| MR-134 | Free Pro for Zerodha users; builder free on one broker | A G6, MB B1.9 | ADR-024, ADR-055 (2), REQ-019 | Paused (W-011) | DECIDED (held) | Business, deferred with MR-133 |
+| MR-135 | Other revenue lines: white-label, licensable charting, broker-branded sites | MB B1.8, MB B8.7, MB B10.3 | ADR-055 (2) | No | REJECT | Business. Rec: not now |
 | MR-136 | Account settings, email change, account deletion, DPDP duties | C3 M13, C4 §1.11 | REQ-013, REQ-074, ADR-022, F-27 | No | DECIDED | C3 said "not decided"; REQ-013 and REQ-074 cover it |
-| MR-137 | Read-only access for a mentor or family member | MB B4.2 | REQ-002 | No | OWNER | Business/Compliance. Rec: not in V1 |
-| MR-138 | Native mobile app | A G7 | ADR-001 | No | REJECT | ADR-001: "responsive web from day 1 with no native apps" |
+| MR-137 | Read-only access for a mentor or family member | MB B4.2 | REQ-002 | No | REJECT | Business/Compliance. Rec: not in V1 |
+| MR-138 | Native mobile app | A G7 | ADR-001 | No | WRITE | ADR-001: "responsive web from day 1 with no native apps" |
 
 ## 8. Data, infrastructure and operations
 
 | ID | Item (plain words) | Sources | Spec today | Built? | Class | Reason / owner question |
 |---|---|---|---|---|---|---|
 | MR-139 | PostgreSQL is the durable source of truth; logical modules kept separate | C4 §8.1, C4 §8-p, C4 P2 | ADR-043, ADR-062, ADR-105 | Yes: `backend/ofo/` domain, `backend/ofo_app/` app, Alembic | BUILT | |
-| MR-140 | Hosting, deploy pipeline, hosted staging separate from production | A G12, MB L1, GAPS G9, C3 M12 | ADR-054 (hosting decided when Stage 4b starts), REQ-067 | No hosted staging | OWNER | Business (spend and prod deploy). Rec: decide before MR-061 and MR-114 are built |
+| MR-140 | Hosting, deploy pipeline, hosted staging separate from production | A G12, MB L1, GAPS G9, C3 M12 | ADR-054 (hosting decided when Stage 4b starts), REQ-067 | No hosted staging | DEFERRED | Business (spend and prod deploy). Rec: decide before MR-061 and MR-114 are built |
 | MR-141 | Error tracking, uptime alerts, backups with restore drills | A G11, GAPS G9, C3 M12 | REQ-067, REQ-074 | No | TECH | Free-tier tools; any paid tool goes to the owner |
 | MR-142 | Drop late replies so an old answer never draws over a newer edit | MB B1.3, GAPS G6a | none (searched: request id, stale reply) | No | TECH | |
 | MR-143 | Land the held, reviewed PR stack in the plan's order | PL held list, GAPS LH4 | ADR-106 | n/a | TECH | |
@@ -286,10 +297,10 @@ opened.
 
 | ID | Item (plain words) | Sources | Spec today | Built? | Class | Reason / owner question |
 |---|---|---|---|---|---|---|
-| MR-148 | SEBI retail-algo rules avoided through the basket route; a written plan B if Zerodha calls the basket "algo" | MB L12, MB B4.4, MB B7.2, GAPS G4, C3 M3, C4 P9 | ADR-054, ADR-100, F-06, F-11, F-12, Q258, Q259 | n/a | OWNER | Business (cost per user of a static IP or VM). Rec: write plan B as intent now, no build |
+| MR-148 | SEBI retail-algo rules avoided through the basket route; a written plan B if Zerodha calls the basket "algo" | MB L12, MB B4.4, MB B7.2, GAPS G4, C3 M3, C4 P9 | ADR-054, ADR-100, F-06, F-11, F-12, Q258, Q259 | n/a | DECIDED | Business (cost per user of a static IP or VM). Rec: write plan B as intent now, no build |
 | MR-149 | Live trading and licences are explicit launch dependencies | C4 P9 | REQ-066, ADR-055, Q211 | Specified | DECIDED | |
-| MR-150 | Product analytics and session replay | A G11 | REQ-063, REQ-074 | No | OWNER | Compliance (user data to a third party, DPDP consent). Rec: privacy-safe page counts only |
-| MR-151 | Download the option chain as Excel | A C7 | REQ-052, F-23 | No | OWNER | Compliance (redistributing exchange data). Rec: no for V1 |
+| MR-150 | Product analytics and session replay | A G11 | REQ-063, REQ-074 | No | WRITE (held) | Compliance (user data to a third party, DPDP consent). Rec: privacy-safe page counts only |
+| MR-151 | Download the option chain as Excel | A C7 | REQ-052, F-23 | No | WRITE (held) | Compliance (redistributing exchange data). Rec: no for V1 |
 | MR-152 | Market verdicts, trade ideas, research-analyst algos | A A7, A DF6, MB B7.5 | ADR-003, ADR-055 (1), F-24 | No | REJECT | Advice; needs SEBI Research Analyst registration |
 
 ## 10. Product UX extras
@@ -298,9 +309,9 @@ opened.
 |---|---|---|---|---|---|---|
 | MR-153 | Mindful pre-trade check-in (today's count, a short pause, "Have you checked your exit plan?") | A X3 | none (searched: mindful, check-in, cooling-off) | No | WRITE | (1) no clash; (2) no money; (3) Sensibull study §9 |
 | MR-154 | Instrument watchlist | A X4 | none (legacy map skipped it: "no REQ") | Partial: Live Strategies | WRITE | (1) no clash; (2) no money; (3) Sensibull study §9. Low value |
-| MR-155 | Video courses | A X6 | REQ-011 | No | OWNER | Business (content scope and cost). Rec: later |
+| MR-155 | Video courses | A X6 | REQ-011 | No | WRITE (held) | Business (content scope and cost). Rec: later |
 | MR-156 | Dark theme | A X8 | none (searched: dark) | No | WRITE | (1) no clash; (2) no money; (3) Sensibull study §9 |
-| MR-157 | Support chat, FAQ, "What's New" | A X9 | REQ-010 (FAQ on the public site) | No | OWNER | Business (support channel and its cost). FAQ itself is decided |
+| MR-157 | Support chat, FAQ, "What's New" | A X9 | REQ-010 (FAQ on the public site) | No | WRITE (held) | Business (support channel and its cost). FAQ itself is decided |
 
 ---
 
@@ -317,7 +328,7 @@ Every source item id below is cited by at least one row. A source item cited by 
 | C2 | 6 (D1-D6) | 7 | All 6 found |
 | C3 | 15 (M1-M15) | 20 | All 15 found |
 | C4 | 70 (§1 11, §2 6, §3 7, §4 10 + §4-p, §5 5 + §5-p, §6 7 + §6-p, §7 5 + §7-p, §8 5 + §8-p, P1-P9) | 48 | All 70 found |
-| Total | 343 source items | 157 rows | Rows by class: BUILT 45, DECIDED 31, WRITE 22, OWNER 23, REJECT 18, TECH 18 |
+| Total | 343 source items | 157 rows | Rows by class after triage (the Class column below): BUILT 45, DECIDED 33, WRITE 49, OWNER 1, REJECT 10, TECH 18, DEFERRED 1 |
 
 Source to row map (complete):
 
@@ -371,6 +382,8 @@ PRs (#463, #455), with 0 hits on `main`. C3 M13 calls data protection "not decid
 
 ## OWNER queue (23 rows; ask in this order)
 
+Answered: every row below was decided in "Owner answers during triage" (Q-1 to Q-19); this list is kept as the order in which they were asked. The Class column above shows the result.
+
 Questions that unblock others come first.
 
 1. MR-130: Phase order, and when multi-user sign-in is built. Unblocks every per-user row (MR-128, MR-129, MR-124, MR-112).
@@ -392,3 +405,107 @@ Questions that unblock others come first.
 17. MR-151: Option chain Excel download.
 18. MR-157: Support chat and "What's New".
 19. MR-155: Video courses.
+
+## Requirements written
+
+Every WRITE, DECIDED or TECH row mapped to the requirement and acceptance criteria that carry it (docs batch 2026-10-21,
+REQ-076 to REQ-133 and the amendments for ADR-150 to ADR-164). Rows already covered by an earlier requirement name it;
+rows not written say why. REQ-088 was removed (its content is REQ-109). REQ-133 and REQ-119 both touched MR-142: REQ-119
+is the complete rule, REQ-133 keeps the live-socket and first-price parts.
+
+| Row | Class | Requirement / AC |
+|---|---|---|
+| MR-003 | WRITE | REQ-090 |
+| MR-004 | WRITE (held) | REQ-079 (held for Q211) |
+| MR-005 | DECIDED | REQ-076 (leg stepper, multiplier, leg toggle, shape name); AC-7 whole-strategy Execute is ADR-163 |
+| MR-006 | DECIDED | covered by REQ-028 and ADR-143 |
+| MR-007 | WRITE | REQ-076 (leg stepper, multiplier, leg toggle, shape name); AC-7 whole-strategy Execute is ADR-163 |
+| MR-008 | WRITE | REQ-078 |
+| MR-010 | WRITE | REQ-076 (leg stepper, multiplier, leg toggle, shape name); AC-7 whole-strategy Execute is ADR-163 |
+| MR-011 | WRITE | REQ-076 (leg stepper, multiplier, leg toggle, shape name); AC-7 whole-strategy Execute is ADR-163 |
+| MR-012 | WRITE | REQ-077 |
+| MR-013 | WRITE | REQ-080 |
+| MR-014 | WRITE | REQ-081 AC-1 to AC-8; AC-9 to AC-11 for % of funds (ADR-164) |
+| MR-015 | WRITE (held) | REQ-082 (label held for Q211) |
+| MR-017 | WRITE | REQ-081 AC-1 to AC-8; AC-9 to AC-11 for % of funds (ADR-164) |
+| MR-019 | WRITE | REQ-083 |
+| MR-020 | WRITE | REQ-084 |
+| MR-021 | WRITE | REQ-084 |
+| MR-022 | WRITE | REQ-083 |
+| MR-023 | DECIDED | REQ-083 |
+| MR-025 | WRITE | REQ-084 |
+| MR-026 | WRITE (held) | REQ-091 (held for display rights) |
+| MR-027 | WRITE | REQ-080 |
+| MR-028 | WRITE | REQ-080 |
+| MR-029 | WRITE (held) | REQ-079 (held for Q211) |
+| MR-030 | DECIDED | covered by REQ-030 |
+| MR-031 | WRITE | REQ-089 |
+| MR-033 | DECIDED | covered by REQ-009 and REQ-038 |
+| MR-034 | WRITE | REQ-086 |
+| MR-035 | DECIDED | covered by REQ-070 |
+| MR-036 | DECIDED | covered by REQ-061 |
+| MR-037 | WRITE | REQ-085 |
+| MR-042 | DECIDED | covered by REQ-024 and REQ-069 |
+| MR-043 | WRITE (held) | REQ-027 AC-1, REQ-079 AC-10 (held for Q211) |
+| MR-044 | WRITE | REQ-085 |
+| MR-048 | DECIDED | REQ-087 |
+| MR-049 | DECIDED | covered by REQ-029 |
+| MR-050 | WRITE | REQ-087 |
+| MR-051 | DECIDED | covered by REQ-031 |
+| MR-052 | WRITE | REQ-077 |
+| MR-058 | DECIDED | covered by REQ-052 |
+| MR-059 | WRITE (held) | REQ-105 (held for data permission) |
+| MR-061 | TECH | REQ-113 |
+| MR-062 | TECH | REQ-113 |
+| MR-063 | TECH | not written (TECH: JSON is fine) |
+| MR-064 | TECH | not written (ADR-091 and ADR-092 decide; the fetch waits on #488) |
+| MR-065 | WRITE | REQ-106 |
+| MR-066 | WRITE (held) | REQ-107 (held for display rights) |
+| MR-067 | WRITE (held) | REQ-108 (held for data licence) |
+| MR-068 | WRITE (held) | REQ-107 (held for display rights) |
+| MR-069 | WRITE | REQ-108 (held for data licence) |
+| MR-077 | TECH | not written (TECH: no need now) |
+| MR-078 | TECH | REQ-078 |
+| MR-080 | TECH | REQ-117 |
+| MR-090 | WRITE | REQ-102 |
+| MR-091 | DECIDED | covered by REQ-057 |
+| MR-092 | WRITE | REQ-103, REQ-104 |
+| MR-095 | TECH | REQ-118 |
+| MR-096 | TECH | not written (no inbound API) |
+| MR-098 | TECH | not written (open defect, tracked as an issue) |
+| MR-102 | DECIDED | covered by REQ-056 |
+| MR-103 | DECIDED | covered by REQ-056 |
+| MR-104 | DECIDED | covered by REQ-056 |
+| MR-109 | DECIDED | covered by REQ-044 |
+| MR-112 | WRITE | REQ-100 (AC-1 to AC-10 price-level triggers; AC-11 to AC-16 platform-run P&L stop, ADR-162), REQ-101 (AC-1 to AC-9 triggers; AC-10 to AC-12 platform-run P&L stop); held for static IP, algo standing and Q211 |
+| MR-113 | DECIDED | covered by REQ-041 |
+| MR-114 | TECH | REQ-115 |
+| MR-115 | DECIDED | covered by REQ-043 |
+| MR-116 | DECIDED | covered by REQ-042 |
+| MR-117 | DECIDED | covered by REQ-062 |
+| MR-118 | TECH | REQ-116 |
+| MR-119 | DECIDED | covered by ADR-102 and ADR-103 |
+| MR-120 | DECIDED | covered by REQ-045 and REQ-046 |
+| MR-121 | DECIDED | REQ-112 |
+| MR-122 | DECIDED | covered by REQ-060 |
+| MR-123 | WRITE | REQ-110 |
+| MR-124 | WRITE | REQ-109 |
+| MR-125 | WRITE | REQ-111 |
+| MR-126 | DECIDED | covered by REQ-038 |
+| MR-128 | DECIDED | REQ-125 |
+| MR-129 | WRITE | REQ-125 |
+| MR-136 | DECIDED | REQ-127 |
+| MR-138 | WRITE | REQ-132 |
+| MR-141 | TECH | REQ-126 |
+| MR-142 | TECH | REQ-119 (complete late-reply rule); REQ-133 keeps the socket-version part |
+| MR-144 | TECH | REQ-114 AC-5 and REQ-133 AC-3 (first-price wait) |
+| MR-147 | WRITE | REQ-129 |
+| MR-150 | WRITE (held) | REQ-130 (held for consent check) |
+| MR-151 | WRITE (held) | REQ-131 (held for exchange terms) |
+| MR-153 | WRITE | REQ-092, REQ-093, REQ-094 |
+| MR-154 | WRITE | REQ-092, REQ-093, REQ-094 |
+| MR-155 | WRITE (held) | REQ-096 (held) |
+| MR-156 | WRITE | REQ-092, REQ-093, REQ-094 |
+| MR-157 | WRITE (held) | REQ-095 (held) |
+
+Retention (no register row of its own): REQ-128. Amended existing requirements: REQ-100, REQ-101 (ADR-162), REQ-081 (ADR-164), REQ-076 (ADR-163 cited).

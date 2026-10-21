@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (146)
+## Decisions (161)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -112,21 +112,21 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradabl… [applies ADR-016, ADR-057, ADR-058, REQ-053]
 - ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 A… [applies ADR-050, ADR-054, REQ-073]
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by r… [none — changes process documents (CLAUDE.md Fast…]
-- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-… [refines ADR-106]
-- ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner… [refines ADR-106, ADR-107]
-- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixe… [refines REQ-060, REQ-058; approves REQ-044]
-- ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Pos… [refines REQ-044]
-- ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
-- ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
-- ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
-- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none — a kit upgrade and its merge-command migrat…]
-- ADR-116 2026-10-19: (1) When a contract held by two or more strategies disagrees with Zerodha and Zerodha shows that co… [amends REQ-060]
-- ADR-117 2026-10-19: (1) When any sell leg depends on a protective buy, entry is TWO baskets: basket 1 holds the protect… [amends REQ-056; extends REQ-073]
-- ADR-118 2026-10-19: (1) Only a strategy that never sent a basket (a draft) can be deleted. [extends REQ-070]
-- ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every basket build: entry, two-basket step 2, exit, Complete… [extends REQ-056]
-- ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1;… [none — both owner answers confirm text that alrea…]
-- ADR-121 2026-10-19: (1) In the "Not sure" range flow (REQ-026 AC-1), the platform derives the market view from the expe… [extends REQ-026; extends ADR-119]
-- ADR-122 2026-10-19: The one-line range reading of ADR-121 (1) uses exactly three texts: "Your range leans up" (mildly b… [extends ADR-121]
+- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings b… [refines ADR-106]
+- ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE B… [refines ADR-106, ADR-107]
+- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the re… [refines REQ-060, REQ-058; approves REQ-044]
+- ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite… [refines REQ-044]
+- ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not fi… [refines ADR-108]
+- ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monito… [none — restates the master plan's existing stage…]
+- ADR-114 2026-10-19: (1) Every screen requirement still Specified when… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
+- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1… [none — a kit upgrade and its merge-command migrat…]
+- ADR-116 2026-10-19: (1) When a contract held by two or more strategie… [amends REQ-060]
+- ADR-117 2026-10-19: (1) When any sell leg depends on a protective buy… [amends REQ-056; extends REQ-073]
+- ADR-118 2026-10-19: (1) Only a strategy that never sent a basket (a d… [extends REQ-070]
+- ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every baske… [extends REQ-056]
+- ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility… [none — both owner answers confirm text that alrea…]
+- ADR-121 2026-10-19: (1) In the "Not sure" range flow (REQ-026 AC-1),… [extends REQ-026; extends ADR-119]
+- ADR-122 2026-10-19: The one-line range reading of ADR-121 (1) uses ex… [extends ADR-121]
 - ADR-123 2026-10-19: (1) When a contract held by two or more strategies is blocked by a reconciliation mismatch, and a f… [amends REQ-060; extends ADR-116]
 - ADR-124 2026-10-19: (1) The control that lets the user change the range reading (ADR-121 (1)) offers exactly three choi… [extends ADR-121]
 - ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved because the next-day positions cannot show whether… [extends ADR-109; extends ADR-120]
@@ -152,10 +152,25 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
 - ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073; refines ADR-109]
+- ADR-150 2026-10-21: ADR-055 (1) is read as follows. [refines ADR-055]
+- ADR-151 2026-10-21: SPEC CHANGE to ADR-120 (1). [supersedes ADR-120; refines REQ-034]
+- ADR-152 2026-10-21: For every user-facing feature triaged in the 2026-10-21 master register, the default is to behave t… [refines ADR-033]
+- ADR-153 2026-10-21: SPEC CHANGE to ADR-009 for stop-loss and conditional exits only. [refines ADR-009; refines ADR-053]
+- ADR-154 2026-10-21: Intent, no spend. [refines ADR-100]
+- ADR-155 2026-10-21: SPEC CHANGE to ADR-027. [refines ADR-027]
+- ADR-156 2026-10-21: Following ADR-152, these six user-facing features are specified now as Sensibull has them, and none… [refines ADR-055; refines REQ-063]
+- ADR-157 2026-10-21: SPEC CHANGE to ADR-001. [refines ADR-001]
+- ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
+- ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
+- ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138]
+- ADR-161 2026-10-21: SPEC CHANGE to ADR-001 and ADR-102. [refines ADR-001; refines ADR-102]
+- ADR-162 2026-10-21: Refines ADR-153 and changes ADR-009 for exits. [refines ADR-153; refines ADR-009; refines ADR-017]
+- ADR-163 2026-10-21: An exception to the Sensibull default of ADR-152, under its exception (a). [refines ADR-152]
+- ADR-164 2026-10-21: SPEC CHANGE to ADR-055 (1) for this one figure. [refines ADR-055]
 
-## Requirements (75)
+## Requirements (124)
 
-- REQ-001 [Verified]: V1 scope: underlyings, leg types, broker
+- REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
 - REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
@@ -230,6 +245,55 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Approved]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
+- REQ-076 [Draft]: Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name
+- REQ-077 [Draft]: Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-p…
+- REQ-078 [Draft]: Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server
+- REQ-079 [Draft]: Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (…
+- REQ-080 [Draft]: Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per e…
+- REQ-081 [Draft]: Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk,…
+- REQ-082 [Draft]: Probability of profit, labelled as a model estimate from today's prices (held for the legal check)
+- REQ-083 [Draft]: Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest…
+- REQ-084 [Draft]: What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with…
+- REQ-085 [Draft]: Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched sha…
+- REQ-086 [Draft]: Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked
+- REQ-087 [Draft]: Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time val…
+- REQ-089 [Draft]: Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fi…
+- REQ-090 [Draft]: Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from th…
+- REQ-091 [Draft]: Strategy price history chart in the builder (held for display rights)
+- REQ-092 [Draft]: Optional pre-trade check-in - today's count, a 10-second pause and "Have you checked your exit plan?" before…
+- REQ-093 [Draft]: Instrument watchlists of index, futures and option contracts with live prices and no order buttons
+- REQ-094 [Draft]: Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept
+- REQ-095 [Draft]: In-app help - FAQ, a "What's New" page and support chat (held for the chat tool's cost)
+- REQ-096 [Draft]: Video courses in Learn, with lesson progress and captions (held for content cost and scope)
+- REQ-100 [Draft]: A strategy's stop-loss - price-level stops are held at Zerodha as a broker trigger, P&L stops are sent by the…
+- REQ-101 [Draft]: A broker-held stop-loss stays in step with the strategy, is shown with its read time, can be removed, and its…
+- REQ-102 [Draft]: A strategy's entry may use intraday (MIS) or carry-forward (NRML), with Zerodha's auto square-off stated befo…
+- REQ-103 [Draft]: An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read t…
+- REQ-104 [Draft]: The user can import Zerodha orders and positions into the app and group them into strategies, never attached…
+- REQ-105 [Draft]: Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan a…
+- REQ-106 [Draft]: A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from…
+- REQ-107 [Draft]: IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, he…
+- REQ-108 [Draft]: An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held unti…
+- REQ-109 [Draft]: A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never t…
+- REQ-110 [Draft]: Each trading day the user gets a "does Zerodha agree with us" report for their strategies
+- REQ-111 [Draft]: The user can keep private notes on a strategy
+- REQ-112 [Draft]: Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lap…
+- REQ-113 [Draft]: The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts us…
+- REQ-114 [Draft]: Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with…
+- REQ-115 [Draft]: Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause…
+- REQ-116 [Draft]: Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the ord…
+- REQ-117 [Draft]: The broker adapter declares named capability flags, and features ask the flag, never the broker's name
+- REQ-118 [Draft]: Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead…
+- REQ-119 [Draft]: The builder drops late replies, so an older answer never draws over a newer edit
+- REQ-125 [Draft]: Every request acts for one signed-in user, and no user can read or act on another user's data
+- REQ-126 [Draft]: Production is watched, backed up and restorable, and staging never shares production's data or keys
+- REQ-127 [Draft]: Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report
+- REQ-128 [Draft]: One retention schedule names how long each kind of data is kept, and a daily job enforces it
+- REQ-129 [Draft]: Support can look up one user's order trail, read-only, with every lookup audited
+- REQ-130 [Draft]: Product analytics and session replay run only for users who opted in, and stay off until the consent design c…
+- REQ-131 [Draft]: The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in…
+- REQ-132 [Draft]: Native Android and iOS apps use the same backend and the one engine, and add no rule of their own
+- REQ-133 [Draft]: A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price…
 
 ## Spec sections (216)
 
