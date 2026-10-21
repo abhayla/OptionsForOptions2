@@ -41,12 +41,14 @@ import asyncio
 import contextlib
 import datetime
 import logging
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
 from ofo.errors import render
+from ofo.instruments import eligibility as el
+from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
@@ -78,6 +80,17 @@ SlowValues = dict[str, tuple[int | None, int | None]]
 #: says so and this is None.
 RowsMissing = Literal["SPOT_MISSING", "EXPIRY_UNKNOWN", "CATALOGUE_EMPTY", "CATALOGUE_UNREADABLE"]
 
+#: REQ-030 AC-13/AC-16, ADR-132 (3): what Zerodha permits for one contract, read from the existing eligibility source
+#: (``eligibility_from_zerodha.leg_statuses``, the same list the Execute gate trusts; no new source). A contract is
+#: permitted ONLY when its status says tradable; a missing or unreadable status is "unknown", never permitted.
+Permission = Literal["permitted", "not_listed", "restricted"]
+#: Why a cell is not permitted (None when it is). The screen shows one fixed line per reason (ADR-132 (3)).
+UnavailableReason = Literal["not_listed", "restricted", "unknown"]
+_PERMISSIONS = ("permitted", "not_listed", "restricted")
+#: The list-state reason codes (ADR-104 (a)): not in Zerodha's list today (expired, delisted, retired...).
+_NOT_LISTED_REASONS = frozenset({el.REASON_NOT_IN_LIST, el.REASON_EXPIRED, el.REASON_DELISTED, el.REASON_RETIRED,
+                                 el.REASON_NO_ZERODHA_ROW, el.REASON_INDEX, el.REASON_NO_EXPIRY})
+
 
 class ChainRequest(BaseModel):
     """What the chain socket's client sends (and the REST read's query): one underlying, one expiry, a strike count."""
@@ -99,6 +112,9 @@ class ChainCellOut(ApiModel):
     volume: int | None
     health: HealthCode | None  # the quote's own health; None in the not-live answer
     at: datetime.datetime | None  # the quote's own time (aware)
+    #: REQ-030 AC-16: True only when Zerodha's eligibility says this contract is tradable now (fail closed)
+    permitted: bool
+    unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
 
 
 class ChainRowOut(ApiModel):
@@ -128,9 +144,47 @@ class ChainCatalogue:
     expiries: tuple[datetime.date, ...]
     contracts: tuple[PickableContract, ...]
     unreadable: bool = False
+    #: instrument_id -> permission. A contract ABSENT here is "unknown" (the eligibility read failed): never permitted.
+    permissions: Mapping[str, Permission] = field(default_factory=dict)
 
 
 ChainReader = Callable[[str, datetime.date], Awaitable[ChainCatalogue]]
+
+
+def permission_of(status: EligibilityStatus | None) -> Permission | None:
+    """One contract's permission from its eligibility status. None (no status: no load, no row) -> None = unknown.
+    Tradable -> permitted. Not tradable for a list reason -> not_listed; any other reason (Zerodha's own refusal text,
+    ADR-058/059 restrictions) -> restricted. Anything but an explicit ``tradable is True`` is never permitted."""
+    if status is None:
+        return None
+    if status.tradable is True:
+        return "permitted"
+    return "not_listed" if status.reason in _NOT_LISTED_REASONS else "restricted"
+
+
+def permissions_for(contracts: Sequence[PickableContract],
+                    statuses: Sequence[EligibilityStatus | None]) -> dict[str, Permission]:
+    """instrument_id -> permission for each contract, in order; a contract with no status is left out (unknown)."""
+    out: dict[str, Permission] = {}
+    for contract, status in zip(contracts, statuses, strict=True):
+        permission = permission_of(status)
+        if permission is not None:
+            out[contract.instrument_id] = permission
+    return out
+
+
+async def _read_permissions(session: Any, contracts: Sequence[PickableContract],
+                            today: datetime.date) -> dict[str, Permission]:
+    """The eligibility of the shown contracts, read in the catalogue's own session. A read that fails says nothing
+    (every contract is then "unknown"): never an error and never a guessed "permitted"."""
+    from ofo_app.eligibility_from_zerodha import leg_statuses  # noqa: PLC0415 - late, like the catalogue reader
+
+    try:
+        statuses = await leg_statuses(session, [c.contract_id for c in contracts], today)
+    except (SQLAlchemyError, OSError, RuntimeError) as exc:
+        log.warning("option chain: eligibility could not be read: %s", type(exc).__name__)
+        return {}
+    return permissions_for(contracts, statuses)
 
 
 async def stored_chain(underlying: str, expiry: datetime.date) -> ChainCatalogue:
@@ -145,10 +199,12 @@ async def stored_chain(underlying: str, expiry: datetime.date) -> ChainCatalogue
             today = await picker.database_today(session)
             expiries = tuple(await picker.pickable_expiries(session, underlying, today))
             rows = await picker.pickable_contracts(session, underlying, today, expiry) if expiry in expiries else []
+            options = tuple(r for r in rows if r.instrument_type in _SIDES)
+            permissions = await _read_permissions(session, options, today)
     except (SQLAlchemyError, OSError, RuntimeError) as exc:  # no database, a refused or lost connection
         log.warning("option chain: the catalogue could not be read: %s", type(exc).__name__)
         return ChainCatalogue((), (), unreadable=True)
-    return ChainCatalogue(expiries, tuple(r for r in rows if r.instrument_type in _SIDES))
+    return ChainCatalogue(expiries, options, permissions)
 
 
 def strike_grid(catalogue: ChainCatalogue) -> list[Decimal]:
@@ -223,15 +279,26 @@ def _given_money(value: Decimal | None) -> Decimal | None:
     return value.quantize(PAISE) if value is not None and is_live_price(value) else None
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None) -> ChainCellOut:
+def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[bool, UnavailableReason | None]:
+    """(permitted, reason) of one cell. Permitted only on an explicit "permitted"; a missing or odd value is unknown."""
+    value = catalogue.permissions.get(contract.instrument_id)
+    if value == "permitted":
+        return True, None
+    return False, value if value in _PERMISSIONS else "unknown"  # type: ignore[return-value]
+
+
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,
+          catalogue: ChainCatalogue) -> ChainCellOut:
+    permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
-                            oi_change=None, volume=None, health="unavailable", at=None)
+                            oi_change=None, volume=None, health="unavailable", at=None, permitted=permitted,
+                            unavailable_reason=reason)
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
-                        health=quote.health.value, at=quote.timestamp)
+                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason)
 
 
 def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
@@ -251,8 +318,8 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow),
-                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow)))
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue),
+                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue)))
     return out
 
 
@@ -349,7 +416,7 @@ class ChainPush:
                 self._error_since = self._monotonic()
             self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
             return
-        self._pending = None if req == self._req else req  # the latest wins; the current one again cancels a pending
+        self._pending = req  # the latest wins; the current one again is a refresh (AC-16): re-read
 
     def _may_take(self, interval: float) -> bool:
         since = self._since(self._last_take)
