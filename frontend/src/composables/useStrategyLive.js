@@ -37,9 +37,9 @@ export function isOutcome(msg) {
  * The socket lifecycle, framework-free (tested with a fake socket and fake timers).
  * onPush(outcome): every outcome the server pushed, untouched. onMessage(other): any other message (a catalogue error).
  * onDown(): the socket closed without stop() - the page falls back to REST. onStatus(status): connecting | live | down |
- * off.
+ * off. isAnswer(msg) says which message is the screen's answer (default: the outcome check; the Option Chain passes its own).
  */
-export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {},
+export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {}, isAnswer = isOutcome,
   WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let socket = null
   let body = null // the JSON text last sent or to send
@@ -65,7 +65,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
       } catch {
         return // the server mints every message; anything else is ignored, never shown
       }
-      if (isOutcome(msg)) {
+      if (isAnswer(msg)) {
         attempts = 0 // a real answer arrived: the connection works
         status('live')
         onPush(msg)

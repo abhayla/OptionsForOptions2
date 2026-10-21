@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-070, REQ-072
+Done (10): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -31,7 +31,9 @@ Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: #200 remainder (fix (1) and (2), one bounded round, ADR-074) built on branch fix/200-door-remainder: rebinding + ASGI send-path CI scans, seal recorded in the door send path; awaiting the independent verifier |
 | REQ-075 | Coding standards are checked automatically, at edit time and in CI, without slowing small changes | foundation | normal | next |
+| REQ-008 | Home dashboard | feature | normal | next |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
+| REQ-010 | Public site and live-data access | feature | normal | next |
 | REQ-013 | Email change and account deletion | feature | normal | next |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |
 | REQ-017 | Entitlement engine | feature | normal | next |
@@ -41,6 +43,9 @@ Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-025 | Strategy discovery and preferences | feature | normal | next |
 | REQ-026 | Expected market range input | feature | normal | next |
 | REQ-027 | Strike selection modes | feature | normal | next |
+| REQ-029 | Option Chain display and live data | feature | normal | next |
+| REQ-030 | Option Chain leg selection and import | feature | normal | next |
+| REQ-031 | Option Chain live strategy preview | feature | normal | next |
 | REQ-037 | Strategy modification | feature | normal | next |
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | normal | next |
 | REQ-042 | Automation: Alert + Prepare Orders | feature | normal | next |
@@ -48,12 +53,14 @@ Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
-| REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 waits on owner OQ-7 (build an order-free adopt-into-existing path, or defer it in REQ-061); AC-3 monitoring and the connect screen are later items; minors in #275. |
+| REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
 | REQ-068 | Strategy preferences | feature | normal | next |
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
+| REQ-070 | Builder history and restore | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
+| REQ-011 | Learn section | polish | normal | next |
 
 ## Recorded, not approved to build
 
@@ -62,16 +69,10 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-005 (Specified): Product language and positioning
 - REQ-006 (Specified): Three UX levels
 - REQ-007 (Specified): Strategy information density
-- REQ-008 (Specified): Home dashboard
-- REQ-010 (Specified): Public site and live-data access
-- REQ-011 (Specified): Learn section
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
 - REQ-023 (Specified): Paid Pro and billing
 - REQ-024 (Specified): Guided strategy creation
-- REQ-029 (Specified): Option Chain display and live data
-- REQ-030 (Specified): Option Chain leg selection and import
-- REQ-031 (Specified): Option Chain live strategy preview
 - REQ-047 (Specified): Adjustment-relevant data collection
 - REQ-050 (Specified): Shared computation and scale
 - REQ-066 (Specified): Compliance gates

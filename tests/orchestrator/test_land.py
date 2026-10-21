@@ -10,6 +10,7 @@ import land
 
 GATE = "merge_when_green.py"
 TWICE = 2
+SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 class Fake:
@@ -53,12 +54,46 @@ class Fake:
         return [c for c in self.calls if all(w in " ".join(c) for w in words)]
 
 
-def run(fake, tmp_path, capsys):
+def run(fake, tmp_path, capsys, reviewed_sha=SHA):
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
     env = land.Env(runner=fake, sleep=lambda s: None, tmp_dir=str(tmp_path))
-    rc = land.land("wt", "title", str(body), env)
+    rc = land.land("wt", "title", str(body), env, reviewed_sha=reviewed_sha)
     return rc, capsys.readouterr().out
+
+
+def test_the_gate_gets_the_reviewed_sha(tmp_path, capsys):
+    """Kit 1.8.0 item 5: the merge gate refuses without --reviewed-sha, so every gate call carries it."""
+    fake = Fake([(1, "REFUSED: head branch is not up to date"), (0, "merged")], state="BEHIND")
+    rc, _ = run(fake, tmp_path, capsys)
+    assert rc == 0
+    gates = fake.ran(GATE)
+    assert len(gates) == TWICE
+    assert all(g[-2:] == ["--reviewed-sha", SHA] for g in gates)
+
+
+def test_final_gate_refusals_stop_without_updating_even_when_behind(tmp_path, capsys):
+    """Opus review MAJOR-1: RE-REVIEW NEEDED arrives while the PR is BEHIND and "updates exhausted" contains
+    "behind"; neither may trigger land.py's own update-branch retries, which would hide the cause."""
+    for refusal in ("RE-REVIEW NEEDED: backend/ofo/execution/basket.py",
+                    "REFUSED: PR 77 is still behind its base after 3 updates (updates exhausted)",
+                    "REFUSED: reviewed sha 0123456789ab is not an ancestor of head fedcba987654"):
+        fake = Fake([(1, refusal)], state="BEHIND")
+        rc, out = run(fake, tmp_path, capsys)
+        assert rc == 1
+        assert len(fake.ran(GATE)) == 1
+        assert not fake.ran("update-branch")
+        assert not fake.ran("merge", "--no-edit")
+        assert "not updating the branch again" in out
+
+
+def test_a_missing_or_short_reviewed_sha_stops_before_anything_runs(tmp_path, capsys):
+    for bad in ("", SHA[:12], SHA[:-1] + "g", "HEAD"):
+        fake = Fake([(0, "merged")])
+        rc, out = run(fake, tmp_path, capsys, reviewed_sha=bad)
+        assert rc == 1
+        assert fake.calls == []
+        assert "--reviewed-sha must be the full 40-character sha" in out
 
 
 def test_an_agent_id_resolves_to_its_builder_worktree(tmp_path):
@@ -175,7 +210,7 @@ def make_repo(tmp_path, detach=False):
 
 def test_dry_run_runs_nothing_and_prints_commands(tmp_path, capsys):
     repo, body = make_repo(tmp_path)
-    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run"])
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--reviewed-sha", SHA, "--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "push -u origin feat/y" in out
@@ -185,7 +220,7 @@ def test_dry_run_runs_nothing_and_prints_commands(tmp_path, capsys):
 
 def test_detached_head_without_branch_stops_clearly(tmp_path, capsys):
     repo, body = make_repo(tmp_path, detach=True)
-    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run"])
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--reviewed-sha", SHA, "--dry-run"])
     out = capsys.readouterr().out
     assert rc == 1
     assert "detached HEAD" in out
@@ -194,7 +229,8 @@ def test_detached_head_without_branch_stops_clearly(tmp_path, capsys):
 
 def test_detached_head_with_branch_pushes_head_to_that_branch(tmp_path, capsys):
     repo, body = make_repo(tmp_path, detach=True)
-    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run", "--branch", "feat/z"])
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--reviewed-sha", SHA, "--dry-run",
+                    "--branch", "feat/z"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "push -u origin HEAD:refs/heads/feat/z" in out
