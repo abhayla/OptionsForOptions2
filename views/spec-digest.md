@@ -162,9 +162,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-157 2026-10-21: SPEC CHANGE to ADR-001. [refines ADR-001]
 - ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
 - ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
-- ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138]
+- ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138;…]
 - ADR-161 2026-10-21: SPEC CHANGE to ADR-001 and ADR-102. [refines ADR-001; refines ADR-102]
-- ADR-162 2026-10-21: Refines ADR-153 and changes ADR-009 for exits. [refines ADR-153; refines ADR-009; refines ADR-017]
+- ADR-162 2026-10-21: Refines ADR-153 and changes ADR-009 for exits. [refines ADR-153; refines ADR-009; refines ADR-017…]
 - ADR-163 2026-10-21: An exception to the Sensibull default of ADR-152, under its exception (a). [refines ADR-152]
 - ADR-164 2026-10-21: SPEC CHANGE to ADR-055 (1) for this one figure. [refines ADR-055]
 

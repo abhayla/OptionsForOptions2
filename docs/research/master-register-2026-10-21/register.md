@@ -215,7 +215,7 @@ A class followed by "(held)" means the requirement is written as Draft and not l
 | MR-088 | No freeze slicing: a leg above the freeze limit is blocked | A E7, MB L8, GAPS AH8, C3 M7 | ADR-081, ADR-092 | Yes: `backend/ofo/execution/freeze.py`; PR #420 held | BUILT | |
 | MR-089 | Market protection: depth-based limit price with slippage | A E6 | ADR-080, ADR-095 | Yes: W-078 | BUILT | |
 | MR-090 | Intraday (MIS) product | A E8 | ADR-080 | No | WRITE | ADR-080: every order is NRML, no product choice |
-| MR-091 | Order status after placing (four states) and an Orders screen, one line per strategy order | A E10, A O2, C4 §1.8, C4 §5.3 | ADR-135, ADR-138, REQ-057 | Partial: return check `ReturnCheck.vue`; Orders page not on main (PRs #451/#452) | DECIDED | |
+| MR-091 | Order status after placing (four states) and an Orders screen, one line per strategy order | A E10, A O2, C4 §1.8, C4 §5.3 | ADR-135, ADR-138, REQ-057 | Partial: return check `ReturnCheck.vue`; Orders page not on main (PRs #451/#452) | DECIDED | covered by REQ-103 (Orders page, ADR-160); the per-strategy four states stay ADR-135 |
 | MR-092 | Broker's full order book, funds drawer, import of the order book | A O1, A P8, A D5 | ADR-134 | No | WRITE | ADR-134: the app links to the broker, never rebuilds it |
 | MR-093 | Smart order (send a target position size) | MB B2.2 | ADR-002, ADR-019 | No | REJECT | Verdict Not useful; every order belongs to a strategy |
 | MR-094 | Automated strategies, signal webhooks in, AI/script hosting, retail developer API, scalping tools, backtest-style monitoring | MB L7, MB L10, MB B2.6, MB B3.4, MB B7.3, MB B9.2, MB B10.2 | ADR-009, ADR-017, F-17, F-18 | No | REJECT | Auto-trading or algo-provider duties; ADR-009 "assisted, not autonomous" |
@@ -468,7 +468,7 @@ is the complete rule, REQ-133 keeps the live-socket and first-price parts.
 | MR-078 | TECH | REQ-078 |
 | MR-080 | TECH | REQ-117 |
 | MR-090 | WRITE | REQ-102 |
-| MR-091 | DECIDED | covered by REQ-057 |
+| MR-091 | DECIDED | covered by REQ-103 |
 | MR-092 | WRITE | REQ-103, REQ-104 |
 | MR-095 | TECH | REQ-118 |
 | MR-096 | TECH | not written (no inbound API) |
