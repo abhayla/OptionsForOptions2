@@ -16,7 +16,7 @@ from ofo.broker.kite_endpoints import ALLOWED_CALLS
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.engine import Instrument
 from ofo.execution.basket import TagParts, parse_tag
-from ofo_app import kite_reads
+from ofo_app import broker_sync, kite_reads
 from ofo_app.kite_margin import KiteMarginError
 from ofo_app.kite_reads import Holding, HoldingChange, KiteReadError, KiteReads, holdings_unchanged
 from ofo_app.kite_replies import ContractIndex, fills_from_reply, orders_from_reply, positions_from_reply
@@ -379,3 +379,71 @@ def test_holdings_unchanged_refuses_duplicate_keys() -> None:
         holdings_unchanged((holding(), holding(quantity=1)), ())
     with pytest.raises(ValueError):
         holdings_unchanged((), (holding(), holding(quantity=1)))
+
+
+# ---- W-089: "Last successful sync" is noted only by a read whose reply parsed and passed its shape checks ----------
+
+OK_LIST = '{"status": "success", "data": []}'
+OK_POSITIONS = '{"status": "success", "data": {"net": [], "day": []}}'
+FETCHES = {
+    "orders": (lambda c: c.fetch_orders(), OK_LIST),
+    "trades": (lambda c: c.fetch_trades(), OK_LIST),
+    "positions": (lambda c: c.fetch_positions(), OK_POSITIONS),
+    "holdings": (lambda c: c.fetch_holdings(), OK_LIST),
+    "quote": (lambda c: c.fetch_circuit_bands(["NFO:X"]), '{"status": "success", "data": {}}'),
+}
+
+
+def _failure(kind: str) -> Replay:
+    return {
+        "bad_reply": Replay(status=200, text='{"status": "error", "data": []}'),
+        "403": Replay(status=403, text="{}"),
+        "500": Replay(status=500, text="{}"),
+        "transport_error": Replay(raises=OSError("down")),
+        "bad_json": Replay(status=200, text="not json"),
+        "bad_shape": Replay(status=200, text='{"status": "success", "data": "x"}'),
+    }[kind]
+
+
+@pytest.fixture
+def clean_sync():
+    broker_sync.forget()
+    yield broker_sync
+    broker_sync.forget()
+
+
+@pytest.mark.parametrize("name", sorted(FETCHES))
+def test_a_successful_read_sets_the_last_read(clean_sync, name) -> None:
+    """AC-4 (W-089): every one of the five reads notes the sync once it succeeded."""
+    call, text = FETCHES[name]
+    assert clean_sync.last_read() is None
+    call(client(Replay(status=200, text=text)))
+    assert clean_sync.last_read() is not None
+
+
+@pytest.mark.parametrize("failure", ["bad_reply", "403", "500", "transport_error", "bad_json", "bad_shape"])
+@pytest.mark.parametrize("name", sorted(FETCHES))
+def test_a_failed_read_never_sets_the_last_read(clean_sync, name, failure) -> None:
+    """AC-4 (W-089): bad reply, 403, 500, transport error, bad JSON and a rejected shape are not a sync."""
+    call, _ = FETCHES[name]
+    with pytest.raises(KiteReadError):
+        call(client(_failure(failure)))
+    assert clean_sync.last_read() is None
+
+
+@pytest.mark.parametrize("failure", ["403", "500", "transport_error", "bad_json"])
+def test_a_token_or_unavailable_failure_forgets_the_earlier_sync(clean_sync, failure) -> None:
+    """AC-4 (W-089): the last sync does not age on screen once Zerodha stops answering or refuses the token."""
+    client(Replay(status=200, text=OK_LIST)).fetch_orders()
+    assert clean_sync.last_read() is not None
+    with pytest.raises(KiteReadError):
+        client(_failure(failure)).fetch_orders()
+    assert clean_sync.last_read() is None
+
+
+def test_a_bad_reply_keeps_the_earlier_sync(clean_sync) -> None:
+    """A malformed answer (neither token nor unavailable) neither sets nor forgets: the earlier sync stands."""
+    client(Replay(status=200, text=OK_LIST)).fetch_orders()
+    with pytest.raises(KiteReadError):
+        client(_failure("bad_shape")).fetch_orders()
+    assert clean_sync.last_read() is not None
