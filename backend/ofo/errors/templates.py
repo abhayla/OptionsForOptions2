@@ -841,6 +841,13 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Live prices are not connected.",
           "Tracking did not start and nothing was stored.", "Starting tracking of this strategy.",
           "Connect your Zerodha account and try again."),
+    # W-122 round 3: a leg's stored contract expired, was delisted, or its exchange token now belongs to another
+    # contract (ofo_app.tracked_contracts); it is never priced, so tracking cannot start.
+    _gate("tracking_contract_not_live", _SV, 414,
+          "A leg of this strategy is no longer a live contract (expired, delisted, or its exchange token now belongs "
+          "to another contract).",
+          "Tracking did not start and nothing was stored; a leg is never priced from another contract.",
+          "Starting tracking of this strategy.", "Rebuild the strategy on live contracts and save it again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

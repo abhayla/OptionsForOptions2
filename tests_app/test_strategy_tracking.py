@@ -21,6 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo_app import tracked_contracts  # noqa: E402
 from ofo_app.routes import tracking as tracking_routes  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context  # noqa: E402
 from ofo_app.routes.planned_entry import get_live_feed  # noqa: E402
@@ -254,15 +255,15 @@ async def test_ac2_stale_prices_after_start_pause_paper_pnl_and_drop_detection(d
 
 async def test_ac1_a_tracked_strategy_never_reaches_execute(db):
     """AC-1 (order path off; REQ-109 AC-3 itself is Step 5): Execute on a tracked strategy writes no execution
-    plan, and a request carrying a paper entry is refused
-    by Execute's own closed body (422)."""
+    plan, and a request carrying a paper entry is refused: by W-121's order-path switch, which runs first while the
+    order path is off (409), or else by Execute's own closed body (422)."""
     app, stored, *_ = await _setup(db)
     async with _client(app) as c:
         first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
         assert first.status_code == HTTPStatus.CREATED
         paper_body = await c.post(f"/strategies/{stored.id}/execute",
                                   json={"action": "ENTRY", "paper_entry": {"entry_price": "39.15"}})
-        assert paper_body.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert paper_body.status_code in {HTTPStatus.CONFLICT, HTTPStatus.UNPROCESSABLE_ENTITY}
         plain = await c.post(f"/strategies/{stored.id}/execute", json={"action": "ENTRY"})
     assert plain.status_code >= HTTPStatus.BAD_REQUEST
     async with _same(db) as conn:
@@ -278,3 +279,80 @@ async def test_ac2_a_threshold_setting_outside_0_to_100_fails_closed(db, thresho
     async with _client(app) as c:
         response = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
     assert response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+# --- Round 3 (independent redesign): a stored contract id is priced only while it is live AND still holds its own
+# exchange token (ofo_app.tracked_contracts). The catalogue answer states: live, retired, delisted, token reassigned,
+# contract row missing. Leg 0 is SELL 22800 CE on NSE_FO:44624 (expiry 2026-10-13, before today, so it may retire).
+
+_DELIST = "UPDATE public.catalogue_contracts SET delisted = TRUE, currently_listed = FALSE WHERE id = :id"
+_RETIRE = "UPDATE public.catalogue_contracts SET retired = TRUE, currently_listed = FALSE WHERE id = :id"
+_REUSE = ("INSERT INTO public.catalogue_contracts (exchange_segment, exchange_token, name, expiry, strike, "
+          "instrument_type) VALUES ('NSE_FO', 44624, 'NIFTY', DATE '2026-11-24', 26000, 'CE')")
+
+
+async def _started_then(db, *sqls: str):
+    """Start tracking (entry 39.15 / 12.95 / 82.75 / 35.80), run ``sqls`` on leg 0's contract, move the feed to the
+    core proof's 45.15 / 14.95 / 70.75 / 30.80 (so an unchecked view would answer LIVE +195.00), and view."""
+    app, stored, provider, _clock, last = await _setup(db, threshold=D("100"))
+    async with _client(app) as c:
+        started = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+        assert started.status_code == HTTPStatus.CREATED, started.text
+        for sql in sqls:
+            await db.execute(text(sql), {"id": stored.saved.contract_ids[0]})
+        for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
+            provider.on_frame(_frame(provider, iid, rupees), last)
+        view = await c.get(f"/strategies/{stored.id}/tracking")
+    assert view.status_code == HTTPStatus.OK, view.text
+    return view.json()
+
+
+def _assert_paused_by(view: dict, reason: str) -> None:
+    assert (view["state"], view["pause_reason"], view["paper_pnl"], view["detections"]) == ("PAUSED", reason, None, [])
+    leg0 = view["legs"][0]
+    assert (leg0["price_state"], leg0["current_price"], leg0["strike"], leg0["entry_price"]) == (
+        reason, None, "22800.00", "39.15")
+    assert [leg["price_state"] for leg in view["legs"][1:]] == ["live", "live", "live"]
+
+
+async def test_ac2_a_reused_token_never_prices_the_tracked_leg_token_reassigned(db):
+    """The round-2 verifier's case: leg 0's contract is delisted and a NEW live contract (26000 CE, 2026-11-24) takes
+    its token NSE_FO:44624, whose quote is 45.15. The view is PAUSED for token_reassigned, with no paper P&L figure
+    (never +195.00 from another contract's price) and no detection, though threshold 100 would fire on any level."""
+    _assert_paused_by(await _started_then(db, _DELIST, _REUSE), "token_reassigned")
+
+
+async def test_ac2_a_retired_leg_pauses_the_view_contract_retired(db):
+    """A leg whose contract retired after its expiry (ADR-057): PAUSED contract_retired (settlement is AC-7, Step 5)."""
+    _assert_paused_by(await _started_then(db, _RETIRE), "contract_retired")
+
+
+async def test_ac2_a_delisted_leg_whose_token_is_not_reused_pauses_contract_delisted(db):
+    """A delisted leg (ADR-058) whose token no live contract holds: PAUSED contract_delisted, though the feed still
+    quotes NSE_FO:44624."""
+    _assert_paused_by(await _started_then(db, _DELIST), "contract_delisted")
+
+
+@pytest.mark.parametrize(("sqls", "state"), [((_DELIST, _REUSE), "token_reassigned"), ((_RETIRE,), "contract_retired"),
+                                             ((_DELIST,), "contract_delisted")])
+async def test_ac1_start_is_refused_for_a_leg_not_live_and_nothing_is_written(db, sqls, state):
+    """AC-1: Start tracking refuses the same states (409 tracking_contract_not_live, 0 rows), before any price read."""
+    app, stored, *_ = await _setup(db)
+    for sql in sqls:
+        await db.execute(text(sql), {"id": stored.saved.contract_ids[0]})
+    found = await tracked_contracts.resolve_one(db, stored.saved.contract_ids[0])
+    assert (found.state, found.feed_key) == (state, None)
+    async with _client(app) as c:
+        refused = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+    assert refused.status_code == HTTPStatus.CONFLICT and "no longer a live contract" in refused.text
+    assert await _rows(db, stored.id) == (0, 0)
+
+
+async def test_the_catalogue_answer_states_live_and_contract_row_missing(db):
+    """The helper's other two states: a live contract holding its own token gives its feed key; an id no stored
+    contract has is contract_missing (no key, fails closed)."""
+    _app, stored, *_ = await _setup(db)
+    live = await tracked_contracts.resolve(db, stored.saved.contract_ids)
+    assert [(c.state, c.feed_key) for c in live] == [("live", iid) for iid in IDS]
+    missing = await tracked_contracts.resolve_one(db, 2**62)
+    assert (missing.state, missing.feed_key, missing.stored) == ("contract_missing", None, None)

@@ -14,6 +14,11 @@ Answer states of the market snapshot (standing item d), per leg and for the inde
 - missing: no quote, an unknown/expired/other-underlying contract, or no positive LTP -> no price;
 - the provider not running is the caller's state (no snapshot at all) and never reaches here.
 
+Answer states of the catalogue (the caller's, ofo_app.tracked_contracts): a leg whose stored contract is not live -
+retired, delisted, its token reassigned to another contract, or missing - is never priced, whatever the snapshot holds
+under its old feed key (a reused token quotes ANOTHER contract). Such a leg carries its reason as its state, pauses the
+view with that reason and stops every detection (the strategy priced is no longer the one tracked).
+
 A start with any leg not live is refused (PricesNotLive): a guessed price is never stored. The view pauses paper P&L
 when any leg is not live, and computes no detection when the index is not live. A multi-expiry strategy has no exact
 breakevens (MultiExpiryError): paper P&L and the short-strike condition still run, the breakeven condition does not.
@@ -37,7 +42,11 @@ from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 
 PriceState = Literal["live", "stale", "missing"]
+ContractReason = Literal["contract_retired", "contract_delisted", "token_reassigned", "contract_missing"]
+LegState = PriceState | ContractReason
+PauseReason = Literal["prices_not_live"] | ContractReason
 LIVE: PriceState = "live"
+PRICES_NOT_LIVE: PauseReason = "prices_not_live"
 
 
 @dataclass(frozen=True)
@@ -45,7 +54,7 @@ class Price:
     """One input's price answer: ``price`` is set only when ``state`` is live; ``at`` is the quote time when known."""
 
     instrument_id: str
-    state: PriceState
+    state: LegState
     price: Decimal | None
     at: datetime.datetime | None
 
@@ -133,6 +142,7 @@ def entry_breakevens(legs: Sequence[TrackedLeg]) -> tuple[Decimal, ...] | None:
 @dataclass(frozen=True)
 class TrackingView:
     paused: bool
+    pause_reason: PauseReason | None  # a contract reason (first leg in order) wins over prices_not_live
     paper_pnl: Decimal | None  # None when paused (REQ-109 AC-5)
     as_of: datetime.datetime | None  # paused: the oldest known quote time of a leg not live
     legs: tuple[Price, ...]
@@ -141,15 +151,24 @@ class TrackingView:
     detections: tuple[Detection, ...]  # empty when the index is not live (index.state says why)
 
 
-def tracking_view(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg], threshold_percent: Decimal) -> TrackingView:
-    prices = tuple(leg_price(snapshot, leg.instrument_id) for leg in legs)
+def tracking_view(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg], threshold_percent: Decimal,
+                  contract_reasons: Sequence[ContractReason | None] | None = None) -> TrackingView:
+    """``contract_reasons``: per leg, None when its stored contract is live, else why not (module docstring)."""
+    reasons = tuple(contract_reasons) if contract_reasons is not None else (None,) * len(legs)
+    if len(reasons) != len(legs):
+        raise ValueError("tracking_view needs one contract answer per leg")
+    prices = tuple(leg_price(snapshot, leg.instrument_id) if reason is None else
+                   Price(leg.instrument_id, reason, None, None) for leg, reason in zip(legs, reasons, strict=True))
+    contract_reason = next((r for r in reasons if r is not None), None)
     paused = any(p.state != LIVE for p in prices)
     pnl = None if paused else paper_pnl(legs, [p.price for p in prices])
     known = [p.at for p in prices if p.state != LIVE and p.at is not None]
     index = index_price(snapshot)
     breakevens = entry_breakevens(legs)
     detections: tuple[Detection, ...] = ()
-    if index.state == LIVE:
+    if index.state == LIVE and contract_reason is None:
         detections = detect_near_levels(short_strike_levels=short_strikes(legs), breakevens=breakevens or (),
                                         index_level=index.price, threshold_percent=threshold_percent)
-    return TrackingView(paused, pnl, min(known) if paused and known else None, prices, index, breakevens, detections)
+    reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
+    as_of = min(known) if paused and known else None
+    return TrackingView(paused, reason, pnl, as_of, prices, index, breakevens, detections)

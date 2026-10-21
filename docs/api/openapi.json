@@ -2862,13 +2862,26 @@
             "title": "Price At"
           },
           "price_state": {
-            "enum": [
-              "live",
-              "stale",
-              "missing"
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "stale",
+                  "missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              }
             ],
-            "title": "Price State",
-            "type": "string"
+            "title": "Price State"
           },
           "quantity": {
             "title": "Quantity",
@@ -2971,6 +2984,27 @@
             ],
             "title": "Paper Pnl"
           },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
           "prices_at": {
             "format": "date-time",
             "title": "Prices At",
@@ -3000,6 +3034,7 @@
           "started_at",
           "prices_at",
           "state",
+          "pause_reason",
           "paper_pnl",
           "as_of",
           "answered_at",
