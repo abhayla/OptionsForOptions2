@@ -82,7 +82,7 @@ def test_core_real_far_strike_trim_accepted_by_structural_pass() -> None:
     assert len(events) == 1 and events[0].event_type is EventType.ADMIN_CHANGE_RECORDED
     payload = events[0].payload
     assert payload["action"] == TRIM_ACCEPTED_ACTION
-    assert "234 of 904 live contracts" in payload["reason"] and "ADR-058" in payload["reason"]
+    assert payload["reason"].startswith("ADR-147;dropped=234;live=904;count_guard=") and "ADR-058" in payload["reason"]
     assert len(payload["dropped_instrument_tokens"]) == 234 and len(payload["dropped_tradingsymbols"]) == 234
 
 

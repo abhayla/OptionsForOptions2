@@ -77,6 +77,10 @@ class StructuralPass:
     actor: str
 
 
+class StructuralTrimRefused(ValueError):
+    """ADR-147: why the structural pass kept a refusal (developer detail inside the refusal's ValueError)."""
+
+
 def _anchor(strikes: set[Decimal]) -> Decimal | None:
     """ADR-147: an expiry's anchor level = the midpoint of the stored (previously accepted) option strike ladder. The
     Kite list carries last_price 0 on every row (index and futures rows too) and the catalogue keeps no index level, so
@@ -87,24 +91,25 @@ def _anchor(strikes: set[Decimal]) -> Decimal | None:
 
 
 def _structural_refusal(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], replaced_live: int,
-                        new_rows: list[ListedContract], held: frozenset[InstrumentId] | None) -> str | None:
-    """ADR-147 allow-list: None (accept) only when EVERY condition holds; otherwise the first reason it fails.
+                        new_rows: list[ListedContract], held: frozenset[InstrumentId] | None) -> None:
+    """ADR-147 allow-list: returns (accept) only when EVERY condition holds; otherwise raises the first reason it fails.
 
     1. no live contract's token was reused; 2. every exchange segment with live contracts is in the new list; 3. the held
     contracts are known and none vanishes; 4. every vanishing contract is an option of an expiry whose anchor is
     measurable, outside the band around that anchor, and beyond the ends of the strikes the new list keeps for that
     underlying + expiry + type (a trim cuts the tails; a broken download leaves holes)."""
     if replaced_live:
-        return f"{replaced_live} live contract(s) had their token reused"
+        raise StructuralTrimRefused(f"{replaced_live} live contract(s) had their token reused")
     new_segments = {r.contract.exchange_segment for r in new_rows}
     missing = sorted({e.contract.exchange_segment for e in live} - new_segments)
     if missing:
-        return f"segment(s) {missing} have live contracts but are absent from the list"
+        raise StructuralTrimRefused(f"segment(s) {missing} have live contracts but are absent from the list")
     if held is None:
-        return "the contracts held by open positions, open plans and saved strategies could not be read"
+        raise StructuralTrimRefused("the contracts held by open positions, open plans and saved strategies "
+                                    "could not be read")
     held_gone = sorted(e.id for e in vanishing if e.id in held)
     if held_gone:
-        return f"{len(held_gone)} dropped contract(s) are held, e.g. {held_gone[0]}"
+        raise StructuralTrimRefused(f"{len(held_gone)} dropped contract(s) are held, e.g. {held_gone[0]}")
     ladders: dict[tuple, set[Decimal]] = {}
     for e in live:
         if e.contract.is_option():
@@ -117,18 +122,18 @@ def _structural_refusal(live: list[CatalogueEntry], vanishing: list[CatalogueEnt
     for e in vanishing:
         c = e.contract
         if not c.is_option():
-            return f"{c.name} {c.instrument_type} {c.expiry} ({e.id}) is not an option strike"
+            raise StructuralTrimRefused(f"{c.name} {c.instrument_type} {c.expiry} ({e.id}) is not an option strike")
         anchor = _anchor(ladders.get((c.name, c.expiry), set()))
         if anchor is None:
-            return f"no anchor level is derivable for {c.name} {c.expiry}"
+            raise StructuralTrimRefused(f"no anchor level is derivable for {c.name} {c.expiry}")
         if abs(c.strike - anchor) <= anchor * TRIM_BAND_FRACTION:
-            return (f"{c.name} {c.expiry} {c.strike} {c.instrument_type} is inside the near-the-money band "
+            raise StructuralTrimRefused(f"{c.name} {c.expiry} {c.strike} {c.instrument_type} is inside the near-the-money band "
                     f"({anchor} +/- {TRIM_BAND_FRACTION * 100}%)")
         strikes = kept.get((c.name, c.expiry, c.instrument_type))
         if not strikes:
-            return f"the list keeps no {c.name} {c.expiry} {c.instrument_type} strike"
+            raise StructuralTrimRefused(f"the list keeps no {c.name} {c.expiry} {c.instrument_type} strike")
         if min(strikes) <= c.strike <= max(strikes):
-            return (f"{c.name} {c.expiry} {c.strike} {c.instrument_type} leaves a hole inside the kept strikes "
+            raise StructuralTrimRefused(f"{c.name} {c.expiry} {c.strike} {c.instrument_type} leaves a hole inside the kept strikes "
                     f"{min(strikes)}-{max(strikes)}")
     return None
 
@@ -350,9 +355,10 @@ class Catalogue:
                 # it what it needs. It may ACCEPT; any unmet or unmeasurable condition keeps the refusal.
                 if structural is None:
                     raise
-                why = _structural_refusal(list(live.values()), vanishing, len(leaving_live) - len(vanishing),
-                                          in_scope_new, structural.held)
-                if why is not None:
+                try:
+                    _structural_refusal(list(live.values()), vanishing, len(leaving_live) - len(vanishing),
+                                        in_scope_new, structural.held)
+                except StructuralTrimRefused as why:
                     raise ValueError(f"{refused} The structural trim check (ADR-147) also refused: {why}.") from None
                 trim_accepted = True
                 structural.audit_log.append(
@@ -362,9 +368,8 @@ class Catalogue:
                     correlation_id=f"catalogue-structural-trim-{as_of.isoformat()}",
                     payload={
                         "action": TRIM_ACCEPTED_ACTION,
-                        "reason": (f"ADR-147 structural pass accepted a far-strike trim the count guards refused: "
-                                   f"{len(vanishing)} of {len(live)} live contracts dropped, all outside the "
-                                   f"near-the-money band, none held; count guard said: {refused}"),
+                        # ADR-147 counts; key=value pieces, the count guard's own refusal text last
+                        "reason": f"ADR-147;dropped={len(vanishing)};live={len(live)};count_guard={refused}",
                         "dropped_instrument_tokens": [[e.id.exchange_segment, e.id.exchange_token] for e in vanishing],
                         "dropped_tradingsymbols": [
                             [r.broker, r.broker_symbol] for e in vanishing for r in e.broker_refs.values()
