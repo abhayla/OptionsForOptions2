@@ -868,9 +868,18 @@ _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"available": DisplayRupees, "required": DisplayRupees}),
 )
 
+# --- W-121 (REQ-073 AC-6, ADR-165): the order path is switched off by one server switch (ofo_app.order_path_switch);
+# every route that prepares or checks an order at a broker refuses with this. New: awaiting the owner's read.
+_ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("order_path_off", _UI, 4,
+          "Placing orders from this app is switched off for now.",
+          "No order was prepared and nothing was sent to Zerodha.", "Preparing and checking orders.",
+          "You can build, save and track strategies."),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

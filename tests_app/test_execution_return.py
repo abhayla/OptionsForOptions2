@@ -21,6 +21,8 @@ from ofo_app import return_book as rb
 from ofo_app.execute_replay import recorded_text
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
+pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
+
 SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -327,12 +329,13 @@ def _app_for(conn, user, reads: _Reads, today: datetime.date | None = None):
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, monkeypatch):
+async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, monkeypatch):  # noqa: PLR0915
     """AC-3 core: plan 1 open + 12:21:04 replies -> filled 65 of 65, platform 65 = Zerodha 65, 0 mismatches; plan 2
     open + 15:10:06 replies -> exited, position 0, Zerodha flat, strategy exited, P&L -130.00; a replay changes
     nothing; only GET reads were made. W-103: each order read back by tag -> one ``broker_response_recorded``, each
     trade -> one ``execution_recorded`` (W-017 keys), never twice across returns; the chain verifies."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app import order_book_store as books  # noqa: PLC0415
     from ofo_app.audit_store import load_log  # noqa: PLC0415
     from test_execute_route import _strategy_one, audit_head, audit_since  # noqa: PLC0415
     from test_strategy_store import _user  # noqa: PLC0415
@@ -364,6 +367,12 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
                 0, False, "holding", None)
             (stored,) = await plans.plans_for(conn, user, sid)
             assert (stored.close_reason, stored.orders[0].filled_quantity) == ("filled", 65)
+            # #313b: the return stored the entry's one real trade with the close (trades-122104: 4484194, 65 @ 5.1)
+            # the plan was minted by make_tag and the recording is read through retag_recorded (ADR-105, REQ-073
+            # AC-2), so the trade is stored under the plan's own tag, never the recording's pre-0018 OFS1V1L0
+            entry_tag, exit_tag = make_tag(sid, ENTRY_PLAN, 0), make_tag(sid, EXIT_PLAN, 0)
+            entry_trade = plans.PlanFill(entry_tag, "261016170576173", "4484194", 65, D("5.10"))
+            assert await books.fills_for(conn, user, sid) == {entry_tag: (entry_trade,)}
 
             assert await _store_plan(conn, user, sid, ("EXIT", "SELL", "3.10")) == EXIT_PLAN
             exit_reads = _Reads("151006")
@@ -387,6 +396,10 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             assert {k: v for k, v in again.items() if k != "read_at"} == {
                 k: v for k, v in first.items() if k != "read_at"}
             assert await plans.plans_for(conn, user, sid) == before
+            # #313b: the exit's real trade (trades-151006: 5966618, 65 @ 3.1) stored once; the replay added nothing
+            assert await books.fills_for(conn, user, sid) == {
+                entry_tag: (entry_trade,),
+                exit_tag: (plans.PlanFill(exit_tag, "261016170858845", "5966618", 65, D("3.10")),)}
             assert {m for m, _ in entry.calls + exit_reads.calls} == {"GET"}
         finally:
             await trans.rollback()

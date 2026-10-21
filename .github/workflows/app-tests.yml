@@ -218,6 +218,7 @@ jobs:
         env:
           APP_ENV: test
           EXECUTE_REPLAY: '1'
+          OFO_ORDER_PATH: '1'  # W-121: the order path is off unless APP_ENV=test + this
           TEST_CATALOGUE_DATE: '2026-10-16'
           PYTHONPATH: backend
           EXECUTE_REPLAY_URL: http://127.0.0.1:8011
@@ -534,6 +535,7 @@ jobs:
         env:
           APP_ENV: test
           EXECUTE_REPLAY: '1'
+          OFO_ORDER_PATH: '1'  # W-121: the order path is off unless APP_ENV=test + this
           TEST_CATALOGUE_DATE: '2026-10-16'
           PYTHONPATH: backend
           EXECUTE_REPLAY_URL: http://127.0.0.1:4177
