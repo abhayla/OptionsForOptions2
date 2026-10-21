@@ -69,9 +69,12 @@ async function read(fn) {
   try { return await fn() } catch (e) { errorParts.value = e?.parts ?? NEUTRAL_PARTS; return null }
 }
 
-onMounted(async () => {
-  const list = await read(async () => (await api.get('/strategy-templates')).data?.templates)
-  if (Array.isArray(list)) templates.value = list
+// The template list loads once on mount; Show strategies awaits this same load, so a click before the list arrives
+// waits for it instead of building cards from an empty list ("none listed" for good; main red 2026-10-21).
+let templatesLoad = Promise.resolve()
+onMounted(() => {
+  templatesLoad = read(async () => (await api.get('/strategy-templates')).data?.templates)
+    .then((list) => { if (Array.isArray(list)) templates.value = list })
 })
 
 function choosePath(key) {
@@ -132,6 +135,7 @@ async function showStrategies() {
   step.value = 4
   busy.value = true
   showAll.value = false
+  await templatesLoad
   const fitting = matched.value.list.map((t) => [t, expandTemplate(t, contracts.value, current.value)]).filter(([, legs]) => legs)
   cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs)))
   busy.value = false
