@@ -25,7 +25,13 @@ const REAL_PAGES = {
 
 // Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
 const billingShell = () => import('../pages/BillingShellPage.vue')
-const SETTINGS_PAGES = { 'subscription-billing': billingShell, 'free-eligibility': billingShell, referrals: billingShell }
+// W-089: Broker & Market Data is a real page too.
+const SETTINGS_PAGES = {
+  'subscription-billing': billingShell,
+  'free-eligibility': billingShell,
+  referrals: billingShell,
+  'broker-market-data': () => import('../pages/BrokerSettingsPage.vue'),
+}
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {

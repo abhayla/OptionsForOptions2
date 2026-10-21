@@ -10,8 +10,10 @@ All keys and tokens below are fakes, generated per test run.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import inspect
 import logging
 import os
 import re
@@ -70,33 +72,22 @@ class _Nested:
         return False
 
 
-class FakeEngine:
-    """Hands out its own recording connection: what ran there ran in a separate, committed transaction."""
-
-    def __init__(self) -> None:
-        self.conn = FakeConn()
-        self.begun = 0
-
-    def begin(self):
-        engine = self
-
-        class _Tx:
-            async def __aenter__(self):
-                engine.begun += 1
-                return engine.conn
-
-            async def __aexit__(self, *exc):
-                return False
-
-        return _Tx()
-
-
 class FakeConn:
     """Records every statement; answers the store's four statements as PostgreSQL would for one new session."""
 
     def __init__(self, new_id: int = 41, active_row=None) -> None:
         self.new_id, self.active_row = new_id, active_row
         self.calls: list[tuple[str, dict]] = []
+        self.commits = 0
+        self.order: list[str] = []
+        self.in_tx = False  # does the caller already hold a transaction on this connection?
+
+    def in_transaction(self):
+        return self.in_tx
+
+    async def commit(self):
+        self.commits += 1
+        self.order.append("commit")
 
     def begin_nested(self):
         return _Nested()
@@ -104,6 +95,7 @@ class FakeConn:
     async def execute(self, stmt, params=None):
         sql = str(stmt)
         self.calls.append((sql, dict(params or {})))
+        self.order.append(sql.split(None, 1)[0])
         if sql.startswith("INSERT"):
             return _Result(self.new_id)
         if sql.startswith("SELECT"):
@@ -162,8 +154,8 @@ def test_each_encryption_uses_a_fresh_nonce():
 async def test_access_token_for_decrypts_the_active_row():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    assert await store.access_token_for(FakeConn(active_row=(7, cipher.key_id, blob, False)), "u-1", cipher,
-                                        engine=FakeEngine()) == ACCESS_TOKEN
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, False))
+    assert await store.access_token_for(conn, "u-1", cipher) == ACCESS_TOKEN
 
 
 @pytest.mark.parametrize("case", ["no_row", "other_key", "copied_row", "tampered", "no_ciphertext"])
@@ -178,7 +170,7 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
         "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), False),
         "no_ciphertext": (7, cipher.key_id, None, False),
     }
-    assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher, engine=FakeEngine()) is None
+    assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher) is None
     assert all(ACCESS_TOKEN not in r.getMessage() for r in caplog.records)
 
 
@@ -192,27 +184,94 @@ async def test_a_kite_token_exception_marks_the_session_expired():
         seen.append(token)
         raise KiteTokenException()
 
-    engine = FakeEngine()
     with pytest.raises(KiteTokenException):
-        await store.call_with_token(conn, "u-1", cipher, call, engine=engine)
+        await store.call_with_token(conn, "u-1", cipher, call)
     assert seen == [ACCESS_TOKEN]
-    # the end ran in the engine's own transaction, not in the caller's (whose rollback would undo it)
-    assert not any(sql.startswith("UPDATE") for sql, _ in conn.calls)
-    assert engine.begun == 1
-    ((sql, params),) = engine.conn.calls
-    assert sql.startswith("UPDATE") and params["reason"] == "expired" and "token_ciphertext = NULL" in sql
+    # GC-6: the end ran on the caller's ONE connection (a savepoint, then a commit), never on a second connection
+    ends = [(sql, p) for sql, p in conn.calls if sql.startswith("UPDATE")]
+    ((sql, params),) = ends
+    assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
     assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read  # noqa: PLR2004
+    assert conn.order[-2:] == ["UPDATE", "commit"]  # committed, so the caller's rollback cannot undo it
 
 
 async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn, engine = FakeConn(active_row=(7, cipher.key_id, blob, True)), FakeEngine()
-    assert await store.access_token_for(conn, "u-1", cipher, engine=engine) is None
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, True))
+    assert await store.access_token_for(conn, "u-1", cipher) is None
     assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
-    ((sql, params),) = engine.conn.calls
+    ((sql, params),) = [c for c in conn.calls if c[0].startswith("UPDATE")]
     assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
     assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read  # noqa: PLR2004
+    assert conn.order[-2:] == ["UPDATE", "commit"]
+
+
+@pytest.mark.parametrize("call_it", ["access_token_for", "call_with_token"])
+async def test_a_connection_already_in_a_transaction_is_refused_before_anything_runs(call_it):
+    """GC-6 MAJOR-1: the token end commits, so it would commit the caller's own earlier writes: refused up front."""
+    cipher = _cipher()
+    blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, True))
+    conn.in_tx = True
+
+    async def call(token):
+        raise AssertionError("must not run")
+
+    with pytest.raises(store.BrokerStoreError, match="token_read_needs_fresh_connection"):
+        if call_it == "access_token_for":
+            await store.access_token_for(conn, "u-1", cipher)
+        else:
+            await store.call_with_token(conn, "u-1", cipher, call)
+    assert conn.calls == [] and conn.commits == 0  # nothing read, no UPDATE, no commit
+    conn.in_tx = False  # the same connection, fresh: passes (ends the expired session, commits once)
+    assert await store.access_token_for(conn, "u-1", cipher) is None and conn.commits == 1
+
+
+class _CountingEngine:
+    """GC-6 POOL-BUDGET: hands out connections and records the most that were open at once."""
+
+    def __init__(self, active_row) -> None:
+        self.active_row, self.open, self.peak, self.conns = active_row, 0, 0, []
+
+    def connect(self):
+        engine = self
+
+        class _Ctx:
+            async def __aenter__(self):
+                engine.open += 1
+                engine.peak = max(engine.peak, engine.open)
+                conn = FakeConn(active_row=engine.active_row)
+                engine.conns.append(conn)
+                return conn
+
+            async def __aexit__(self, *exc):
+                engine.open -= 1
+                return False
+
+        return _Ctx()
+
+
+async def test_one_token_read_never_holds_a_second_connection():
+    """GC-6 AC: a request holds ONE role connection, also on the expiry path (limit 5, ADR-048). The store has no way
+    to open another: it is given a connection and no engine; the peak also holds for 3 concurrent reads."""
+    cipher = _cipher()
+    blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
+    for past in (False, True):
+        engine = _CountingEngine((7, cipher.key_id, blob, past))
+
+        async def one(engine=engine):
+            async with engine.connect() as conn:
+                return await store.access_token_for(conn, "u-1", cipher)
+
+        got = await asyncio.gather(*(one() for _ in range(3)))
+        assert got == ([ACCESS_TOKEN] * 3 if not past else [None] * 3)
+        # one connection per call, each used for the read (+ at most the one ending statement): no nested connection
+        assert len(engine.conns) == 3 and all(len(c.calls) <= 2 for c in engine.conns)  # noqa: PLR2004
+
+    assert "engine" not in inspect.signature(store.access_token_for).parameters
+    assert "engine" not in inspect.signature(store.call_with_token).parameters
+
 
 
 def test_cipher_repr_and_key_id_never_show_the_key():
@@ -329,7 +388,7 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
         _no_secret(record.getMessage().encode(), "the outbound Kite client log")
     # the adapter returns the original token
     async with maker() as session:
-        assert await store.access_token_for(session, user, app.state.broker.cipher, engine=app_engine) == ACCESS_TOKEN
+        assert await store.access_token_for(session, user, app.state.broker.cipher) == ACCESS_TOKEN
     # the database's expected expiry agrees with the domain rule
     assert row["expected_expiry"] == expected_expiry(row["started_at"])
 
@@ -360,7 +419,7 @@ async def test_ending_destroys_the_token_keeps_the_row_and_touches_nothing_else(
     assert (row["end_reason"], row["token_ciphertext"]) == (reason.value, None) and row["ended_at"] is not None
     assert await _other_tables(admin_engine) == before
     async with app_engine.connect() as conn:
-        assert await store.access_token_for(conn, user, cipher, engine=app_engine) is None
+        assert await store.access_token_for(conn, user, cipher) is None
 
 
 async def test_a_ciphertext_copied_to_another_row_does_not_decrypt(app_engine):
@@ -374,8 +433,10 @@ async def test_a_ciphertext_copied_to_another_row_does_not_decrypt(app_engine):
                 ).scalar_one()
         await conn.execute(text("UPDATE public.broker_sessions SET token_ciphertext = :c WHERE id = :i"),
                            {"c": blob, "i": b_id})
-        assert await store.access_token_for(conn, b, cipher, engine=app_engine) is None
-        assert await store.access_token_for(conn, a, cipher, engine=app_engine) == ACCESS_TOKEN
+    async with app_engine.connect() as conn:  # the token read needs a connection with no transaction open
+        assert await store.access_token_for(conn, b, cipher) is None
+    async with app_engine.connect() as conn:
+        assert await store.access_token_for(conn, a, cipher) == ACCESS_TOKEN
 
 
 @pytest.mark.parametrize("statement", [
@@ -436,12 +497,12 @@ async def test_a_token_exception_inside_the_callers_transaction_still_ends_the_s
         raise KiteTokenException()
 
     with pytest.raises(KiteTokenException):
-        async with app_engine.begin() as conn:  # this transaction rolls back on the re-raise
-            await store.call_with_token(conn, user, cipher, call, engine=app_engine)
+        async with app_engine.connect() as conn:  # fresh connection; its rollback on the re-raise cannot undo the end
+            await store.call_with_token(conn, user, cipher, call)
     (row,) = await _rows(admin_engine, user)
     assert (row["end_reason"], row["token_ciphertext"]) == ("expired", None) and row["ended_at"] is not None
     async with app_engine.connect() as conn:
-        assert await store.access_token_for(conn, user, cipher, engine=app_engine) is None
+        assert await store.access_token_for(conn, user, cipher) is None
 
 
 async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(app_engine, admin_engine):
@@ -463,29 +524,23 @@ async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(
     assert row["ended_at"] is None and row["token_ciphertext"] is not None
 
 
-class RacingEngine:
-    """The real engine, but a re-login lands (committed) just before the store opens its own ending transaction:
-    the window between reading session 1 and ending it."""
+class RacingConn:
+    """The caller's real connection, but a re-login lands (committed, on another connection) just before the first
+    UPDATE: the window between reading session 1 and ending it."""
 
-    def __init__(self, engine, user_ref: str, cipher: TokenCipher) -> None:
-        self.engine, self.user_ref, self.cipher = engine, user_ref, cipher
+    def __init__(self, conn, engine, user_ref: str, cipher: TokenCipher) -> None:
+        self.conn, self.engine, self.user_ref, self.cipher = conn, engine, user_ref, cipher
         self.raced = 0
 
-    def begin(self):
-        racer = self
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
 
-        class _Tx:
-            async def __aenter__(self):
-                async with racer.engine.begin() as other:
-                    await store.store_session(other, racer.user_ref, "ACtok_fake_second_login", racer.cipher)
-                racer.raced += 1
-                self._ctx = racer.engine.begin()
-                return await self._ctx.__aenter__()
-
-            async def __aexit__(self, *exc):
-                return await self._ctx.__aexit__(*exc)
-
-        return _Tx()
+    async def execute(self, stmt, params=None):
+        if str(stmt).startswith("UPDATE") and not self.raced:
+            async with self.engine.begin() as other:
+                await store.store_session(other, self.user_ref, "ACtok_fake_second_login", self.cipher)
+            self.raced += 1
+        return await self.conn.execute(stmt, params)
 
 
 async def _assert_second_session_survives(admin_engine, app_engine, user: str, cipher: TokenCipher) -> None:
@@ -493,22 +548,22 @@ async def _assert_second_session_survives(admin_engine, app_engine, user: str, c
     assert (first["end_reason"], first["token_ciphertext"]) == ("replaced", None)
     assert second["ended_at"] is None and second["token_ciphertext"] is not None
     async with app_engine.connect() as conn:
-        assert await store.access_token_for(conn, user, cipher, engine=app_engine) == "ACtok_fake_second_login"
+        assert await store.access_token_for(conn, user, cipher) == "ACtok_fake_second_login"
 
 
 async def test_a_late_token_exception_on_session_1_never_ends_session_2(app_engine, admin_engine):
     user, cipher = _user(), _cipher()
     async with app_engine.begin() as conn:
         await store.store_session(conn, user, ACCESS_TOKEN, cipher)
-    racing = RacingEngine(app_engine, user, cipher)
 
     async def call(token):
         assert token == ACCESS_TOKEN
         raise KiteTokenException()
 
     with pytest.raises(KiteTokenException):
-        async with app_engine.connect() as conn:
-            await store.call_with_token(conn, user, cipher, call, engine=racing)
+        async with app_engine.connect() as real:
+            racing = RacingConn(real, app_engine, user, cipher)
+            await store.call_with_token(racing, user, cipher, call)
     assert racing.raced == 1
     await _assert_second_session_survives(admin_engine, app_engine, user, cipher)
 
@@ -524,8 +579,8 @@ async def test_the_expiry_path_ends_only_the_row_it_read(app_engine, admin_engin
         await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() "
                                 "- interval '1 hour' WHERE id = :i"), {"i": session_id})
         await conn.execute(text("ALTER TABLE public.broker_sessions ENABLE TRIGGER broker_sessions_guard"))
-    racing = RacingEngine(app_engine, user, cipher)
-    async with app_engine.connect() as conn:
-        assert await store.access_token_for(conn, user, cipher, engine=racing) is None
+    async with app_engine.connect() as real:
+        racing = RacingConn(real, app_engine, user, cipher)
+        assert await store.access_token_for(racing, user, cipher) is None
     assert racing.raced == 1
     await _assert_second_session_survives(admin_engine, app_engine, user, cipher)
