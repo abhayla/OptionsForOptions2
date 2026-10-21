@@ -37,7 +37,7 @@ async def main():
     cfg = load_broker_config(); engine = get_engine()
     try:
         async with engine.connect() as conn:
-            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key), engine=engine)
+            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
             rates = await rates_in_force(conn)
         spot = call(cfg.api_key, token, "GET", "/quote/ltp?i=NSE:NIFTY%2050")["data"]["NSE:NIFTY 50"]["last_price"]
         atm = int((spot / 50).to_integral_value()) * 50
