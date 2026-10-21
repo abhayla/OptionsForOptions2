@@ -22,9 +22,10 @@ Standard library only; no clock is read here.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal, Sequence
+from typing import Literal
 
 from ofo.adjustment.detection import Detection, detect_near_levels, short_strikes
 from ofo.engine.legs import Action, Instrument, Leg
@@ -68,7 +69,7 @@ class PricesNotLive(ValueError):
 
     def __init__(self, prices: Sequence[Price]) -> None:
         self.prices = tuple(prices)
-        super().__init__("prices are not live for " + ", ".join(f"{p.instrument_id} ({p.state})" for p in prices))
+        super().__init__(tuple((p.instrument_id, p.state) for p in self.prices))
 
 
 def price_of(quote: NormalizedQuote | None, instrument_id: str) -> Price:
@@ -121,7 +122,8 @@ def paper_pnl(legs: Sequence[TrackedLeg], current: Sequence[Decimal]) -> Decimal
 
 
 def entry_breakevens(legs: Sequence[TrackedLeg]) -> tuple[Decimal, ...] | None:
-    """The strategy's at-expiry breakevens on the paper entry prices; None for a multi-expiry strategy (no exact ones)."""
+    """The strategy's at-expiry breakevens on the paper entry prices; None for a multi-expiry strategy (no exact
+    ones)."""
     try:
         return strategy_metrics(Strategy(tuple(_engine_leg(leg, None) for leg in legs))).breakevens
     except MultiExpiryError:

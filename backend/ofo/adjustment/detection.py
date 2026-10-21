@@ -11,8 +11,8 @@ Distance (the spec defines no basis; this module states it):
     distance percent = |index - level| / index x 100, shown rounded half-up to 2 decimals
 
 "Within" is inclusive: a distance EXACTLY equal to the threshold fires. The comparison is exact
-(|index - level| x 100 <= threshold x index), never on the rounded percentage, so 0.504% does not fire at 0.5 even though
-it shows as 0.50.
+(|index - level| x 100 <= threshold x index), never on the rounded percentage, so 0.504% does not fire at 0.5
+even though it shows as 0.50.
 
 Detection runs with or without a user rule (REQ-045 AC-2): its inputs are the legs, the index level, the breakevens and
 the threshold only. It names the condition and its numbers, never a candidate setup (REQ-045 AC-5). Standard library
@@ -20,17 +20,18 @@ and Decimal only; no clock is read here.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Final, Iterable, Literal
+from typing import Final, Literal
 
 from ofo.engine.legs import Action, Instrument
 from ofo.money import HUNDREDTH
 
 #: Q253 condition 1's default, the one home of the number (an admin setting overrides it; the admin screen is Step 6).
 NEAR_LEVEL_THRESHOLD_PERCENT: Final = Decimal("0.5")
-#: REQ-045 AC-1's label for every platform detection.
-PLATFORM_DETECTION_LABEL: Final = "Adjustment opportunity detected"
+#: The closed code of every platform detection; the screen shows REQ-045 AC-1's label for it.
+PLATFORM_DETECTION: Final = "platform_detection"
 NEAR_SHORT_STRIKE: Final = "near_short_strike"
 NEAR_BREAKEVEN: Final = "near_breakeven"
 Condition = Literal["near_short_strike", "near_breakeven"]
@@ -56,8 +57,8 @@ def _decimal(value: object, name: str) -> Decimal:
 
 
 def short_strikes(legs: Iterable[object]) -> tuple[Decimal, ...]:
-    """The strikes of the SELL option legs (a leg is anything with ``action``, ``instrument`` and ``strike``), ascending,
-    each once. A sold future has no strike and is not a short strike."""
+    """The strikes of the SELL option legs (a leg is anything with ``action``, ``instrument`` and ``strike``),
+    ascending, each once. A sold future has no strike and is not a short strike."""
     out = set()
     for leg in legs:
         if leg.action is Action.SELL and leg.instrument is not Instrument.FUT:

@@ -1,7 +1,7 @@
 """Strategy tracking: a paper entry of a saved strategy, one per strategy, insert-only (W-122).
 
-Basis: REQ-109 AC-1 ("It stores a paper entry - each leg's contract, side, quantity and the entry price used ... with the
-time and price health. There is no account-wide paper/live switch"); ADR-048 (the limited application role); ADR-023
+Basis: REQ-109 AC-1 ("It stores a paper entry - each leg's contract, side, quantity and the entry price used ... with
+the time and price health. There is no account-wide paper/live switch"); ADR-048 (the limited application role); ADR-023
 (the database clock); money NUMERIC(14,2) (decimal-money-boundaries). Exits are a later step (builder scope Step 5):
 this revision stores entries only.
 

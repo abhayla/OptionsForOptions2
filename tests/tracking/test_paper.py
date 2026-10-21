@@ -15,12 +15,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-
-from ofo.engine.legs import Action, Instrument  # noqa: E402
-from ofo.outcome import read_snapshot  # noqa: E402
-from ofo.rules.inputs import DataHealth  # noqa: E402
-from ofo.tracking import paper  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.engine.legs import Action, Instrument
+from ofo.outcome import read_snapshot
+from ofo.rules.inputs import DataHealth
+from ofo.tracking import paper
 
 D = Decimal
 EXPIRY = datetime.date(2026, 10, 13)
@@ -125,7 +124,8 @@ def test_ac2_a_stale_or_missing_index_computes_no_detection(replayed, spot_chang
 
 def test_ac2_a_multi_expiry_strategy_has_no_breakeven_condition_but_keeps_paper_pnl():
     """AC-2: legs on two expiries have no exact breakevens (MultiExpiryError): breakevens None, P&L still computed.
-    SELL 24400 CE at 100 now 90 x 65 = +650.00; BUY 24600 CE (next expiry) at 40 now 35 x 65 = -325.00; total +325.00."""
+    SELL 24400 CE at 100 now 90 x 65 = +650.00; BUY 24600 CE (next expiry) at 40 now 35 x 65 = -325.00;
+    total +325.00."""
     at = datetime.datetime(2026, 10, 8, tzinfo=datetime.UTC)
     legs = [paper.TrackedLeg("NSE_FO:1", Action.SELL, Instrument.CE, D("24400"), EXPIRY, 65, D("100"), at),
             paper.TrackedLeg("NSE_FO:2", Action.BUY, Instrument.CE, D("24600"), datetime.date(2026, 10, 20), 65,

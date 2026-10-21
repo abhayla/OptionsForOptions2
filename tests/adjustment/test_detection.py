@@ -7,7 +7,6 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-
 from ofo.adjustment import detection as d
 from ofo.engine.legs import Action, Instrument
 
@@ -29,10 +28,11 @@ def test_ac2_short_strike_24400_at_index_24350_fires_at_half_a_percent_and_not_a
                                 threshold_percent=D("0.2")) == ()
 
 
-def test_ac1_the_label_and_the_default_threshold_are_the_spec_values():
-    """AC-1: platform detections read 'Adjustment opportunity detected'; Q253's default threshold is 0.5%."""
-    assert d.PLATFORM_DETECTION_LABEL == "Adjustment opportunity detected"
-    assert d.NEAR_LEVEL_THRESHOLD_PERCENT == D("0.5")
+def test_ac1_platform_detections_carry_one_closed_code_and_the_default_threshold_is_the_spec_value():
+    """AC-1: a platform detection is the closed code the screen labels 'Adjustment opportunity detected' (never
+    a user-rule code); Q253's default threshold is 0.5%."""
+    assert d.PLATFORM_DETECTION == "platform_detection"
+    assert D("0.5") == d.NEAR_LEVEL_THRESHOLD_PERCENT
 
 
 def test_ac2_a_distance_exactly_at_the_threshold_fires_and_one_paisa_beyond_does_not():

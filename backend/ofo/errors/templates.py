@@ -828,6 +828,19 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_stored_unreadable", _SV, 410,
           "The saved form of this strategy can no longer be read.",
           "The draft was not saved or changed.", "Opening or restoring this strategy.", "Contact support; the saved strategy was left as it is."),
+    # W-122 (REQ-109 AC-1, AC-5): starting paper tracking of a saved strategy.
+    _gate("tracking_prices_not_live", _SV, 411,
+          "Prices are not live for every leg of this strategy.",
+          "Tracking did not start and nothing was stored; a tracking start never uses a guessed price.",
+          "Starting tracking of this strategy.", "Try again when the prices update."),
+    _gate("tracking_already_started", _SV, 412,
+          "This strategy is already being tracked.",
+          "Nothing was changed.", "Starting a second tracking of this strategy.",
+          "Open this strategy's tracking panel."),
+    _gate("tracking_not_connected", _SV, 413,
+          "Live prices are not connected.",
+          "Tracking did not start and nothing was stored.", "Starting tracking of this strategy.",
+          "Connect your Zerodha account and try again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
