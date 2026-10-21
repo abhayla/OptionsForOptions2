@@ -3,7 +3,7 @@
 
 Wired in the project settings (never only in an agent's frontmatter, which does not run in a
 headless session) on PreToolUse, PostToolUse and PostToolUseFailure for the shell tools (Bash,
-PowerShell). It acts ONLY when the hook input's `agent_type` names a read-only agent: `verifier` by
+PowerShell), and on SubagentStop (cleanup only, see below). It acts ONLY when the hook input's `agent_type` names a read-only agent: `verifier` by
 default, the env var VERIFIER_WRITE_GUARD_AGENTS adds more (comma-separated), and a namespaced name
 counts by its last ':' part (`plugin:verifier`). Every other agent and the main session (no
 `agent_type`) pass through untouched, exit 0.
@@ -25,6 +25,14 @@ CLAUDE_PROJECT_DIR, and every worktree `git worktree list` names for them.
                lists each entry (checkout root, path, sha256, action). Any change: exit 2 with
                "REFUSED: the verifier must not write files; ..." naming each path with its checkout
                and the quarantine folder. Nothing changed: exit 0.
+
+  SubagentStop a read-only agent finished: delete the snapshots THIS agent left behind (a call another
+               PreToolUse hook blocked never gets a Post event). Only a snapshot whose recorded
+               agent_id AND session_id both equal the stop input's is deleted (parallel verifiers run
+               at once). It never touches, judges or quarantines a repo file, and ALWAYS exits 0 (exit 2
+               would stop the subagent from finishing). A missing agent_id deletes nothing; an
+               unreadable or non-object snapshot, or one without an agent_id, is left for the 24 h prune.
+               The main session's Stop is not judged: exit 0.
 
 Links and junctions are never walked or followed: each is one opaque entry; a moved one is removed
 as a link (its target is recorded and never touched).
@@ -436,7 +444,9 @@ def on_pre(data: dict, agent: str, roots: list[str]) -> None:
     notes: list[str] = []
     try:
         _prune_old_state()
-        manifest = {"roots": []}
+        manifest = {"roots": [],
+                    "agent_id": data.get("agent_id") if isinstance(data.get("agent_id"), str) else None,
+                    "session_id": data.get("session_id") if isinstance(data.get("session_id"), str) else None}
         for root in roots:
             files, dirs = scan(root, notes)
             u = untracked_set(root)
@@ -493,8 +503,46 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
 # ------------------------------------------------------------------------------------ main
 
 
+def on_subagent_stop(data: dict) -> None:
+    """Delete only the snapshots THIS agent left (recorded agent_id AND session_id both equal the
+    stop input's). Never touches the repo, never judges, never quarantines; always exits 0 (exit 2 on
+    SubagentStop would stop the subagent from finishing). Anything unreadable, not a dict, or without
+    an agent_id is skipped and left for the 24 h prune."""
+    try:
+        agent_id, session_id = data.get("agent_id"), data.get("session_id")
+        if not isinstance(agent_id, str) or not agent_id.strip():
+            sys.exit(0)
+        if not isinstance(session_id, str):
+            sys.exit(0)  # cannot tell the session: delete nothing
+        base = os.path.join(state_base(), "snap")
+        try:
+            names = os.listdir(base)
+        except OSError:
+            sys.exit(0)
+        for name in names:
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(base, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    m = json.load(fh)
+                if not isinstance(m, dict):
+                    continue
+                if m.get("agent_id") == agent_id and m.get("session_id") == session_id:
+                    os.remove(path)
+            except Exception:  # one bad snapshot file must not stop the others being cleaned
+                continue
+    except SystemExit:
+        raise
+    except Exception as exc:  # never block a stop
+        sys.stderr.write("verifier-write-guard: snapshot cleanup on SubagentStop failed (%s: %s); "
+                         "leftover snapshots are pruned after 24 h.\n" % (type(exc).__name__, exc))
+    sys.exit(0)
+
+
 _AGENT_IN_RAW_RE = re.compile(r'"agent_type"\s*:\s*"([^"]*)"')
-NOT_JUDGED_EVENTS = ("SubagentStop", "Stop")  # never wired; exit 0 so a stale wiring cannot trap a stop
+_STOP_EVENT_IN_RAW_RE = re.compile(r'"hook_event_name"\s*:\s*"(?:SubagentStop|Stop)"')
+NOT_JUDGED_EVENTS =("Stop",)  # the main session's stop is not judged; exit 0
 
 
 def main() -> None:
@@ -506,6 +554,10 @@ def main() -> None:
     agents = read_only_agents()
 
     if not isinstance(data, dict):
+        if _STOP_EVENT_IN_RAW_RE.search(raw or ""):
+            sys.stderr.write("verifier-write-guard: stop-event input is not a JSON object; nothing to "
+                             "clean, and a stop is never blocked.\n")
+            sys.exit(0)
         m = _AGENT_IN_RAW_RE.search(raw or "")
         if m and is_read_only(m.group(1), agents):
             refuse("REFUSED: verifier-write-guard could not read its hook input (not a JSON object) "
@@ -523,6 +575,8 @@ def main() -> None:
         event = data.get("hook_event_name")
         if event in NOT_JUDGED_EVENTS:
             sys.exit(0)
+        if event == "SubagentStop":
+            on_subagent_stop(data)
         roots = judged_roots(data)
         if not roots:
             refuse("REFUSED: verifier-write-guard got no usable cwd (and no CLAUDE_PROJECT_DIR) for a "

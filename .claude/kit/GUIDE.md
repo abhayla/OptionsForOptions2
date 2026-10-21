@@ -19,7 +19,7 @@ line; read it before pushing or touching process files.
 - `python tools/kit_selftest.py .`
 - `python tools/kit_drift.py . --ci` (for a pull request, check against its base: `python tools/kit_drift.py . --ci --base <sha>`)
 - `python tools/check_pr_spec_block.py` (pull requests only; needs the PR body)
-- Merge a PR: `python tools/merge_when_green.py <pr>`
+- Merge a PR: `python tools/merge_when_green.py <pr> --reviewed-sha <full sha of the reviewed commit>`
 
 ## Kit files: never edit them in the project
 `.claude/rules/kit/`, `.claude/kit/` (this guide included), `.claude/README.md`, `.claude/hooks/`, `.claude/agents/`,

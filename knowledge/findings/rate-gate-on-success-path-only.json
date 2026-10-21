@@ -1,0 +1,25 @@
+{
+ "id": "rate-gate-on-success-path-only",
+ "scope": "project",
+ "class": "A per-connection rate limit applied to the normal outbound message but not to the other messages the same loop can send (error replies, refusals, retried re-subscriptions): when the normal path fails on every iteration, the loop sends at its poll rate instead of the limit, flooding the client and the shared feed, and the normal answer never arrives. Wider shape: a limit enforced at one send site instead of at the one place every message leaves through is a limit on that site only.",
+ "mechanism": "2026-10-19, GC-5S W-116 round 1 (ff7cf11) backend/ofo_app/chain_push.py: with the spot missing at apply time and a re-picked window holding a contract the provider did not know (KeyError), _maybe_push retried the re-pick before the 1 s gate and never set _last_push on that path, so each poll sent one error (30 errors in 30 loops, about 20 a second in production) and the rows never appeared; invalid client messages were also answered one-for-one.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "W-116 Tier A verifier round 1 (scratch a3.py: 'second 2 loops 30: sends 30 errors 30')",
+  "evidence": "Red test first in round 2: tests_app/test_chain_live.py storm test failed on ff7cf11 with assert [2, 30, 30] == [1, 1, 1]; green on 6562054. Round-2 verifier: 30 s mixed load (ticks 0.1 s, bad message 0.3 s, request 0.7 s, re-centres, one unknown contract) -> 30 messages, never two less than 1.0 s apart."
+ },
+ "fix": "One gate for every outbound message (push, error, refusal) and for subscription changes, at most once a second; an unknown contract makes only its own cell unavailable (W-116 round 2, 6562054). Side effect deferred as #439: a client sending a bad message every second can win the gate with errors and starve its own pushes.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_chain_live.py (storm test; 50 invalid messages in 1 s -> at most 1 reply a second)"
+  ],
+  "note": "Discriminates: red on ff7cf11 ([2, 30, 30]), green on 6562054 ([1, 1, 1]); the 'no shared gate' mutation turns 2 tests red. Not covered: the existing index (W-114) and strategy (live_push.StrategyPush) sockets were not re-checked for an error path outside their gate."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-029.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-19", "where": "W-116 round 1", "evidence": "30 errors in 30 loops (verifier a3.py)"}
+ ]
+}

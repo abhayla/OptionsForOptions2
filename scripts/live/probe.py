@@ -7,6 +7,10 @@ Four subcommands, each over a recorded folder (``--replay <dir>``, no network) o
 * ``pnl [--tag-prefix X]``                                  gross P&L from the fills beside Kite's position P&L
 * ``audit [--since ISO]``                                   the audit log, hash chain verified (run through dev_run.py)
 
+``--tag-prefix``: a tag made since 2026-10-19 is ``Q`` + the strategy id in 4 base-36 characters + plan (2) + leg (1)
+(``ofo.execution.basket.make_tag``), so one strategy's prefix is ``Q`` + its 4-char id (strategy 11: ``Q000B``); a
+legacy tag is ``OFS<id>V`` (strategy 11: ``OFS11V``). No ``--strategy`` shortcut: a prefix covers one grammar only.
+
 It only READS: every Kite call goes through ``KiteReads`` / ``KiteMargin`` and the runtime door's allow-list. No order,
 modify or cancel call exists here. Nothing prints a token or an api key. Exit codes: 0 ok, 2 a read was refused or bad
 (a stop, never a skipped check), 3 a compared fact differs.
@@ -447,7 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("instrument", metavar="EXCHANGE:SYMBOL")
     c.set_defaults(run=cmd_contract)
     n = sub.add_parser("pnl")
-    n.add_argument("--tag-prefix")
+    n.add_argument("--tag-prefix", help="Q + the strategy's 4-char base-36 id (strategy 11: Q000B); legacy OFS<id>V")
     n.add_argument("--save-dir", metavar="DIR",
                    help="also write the raw orders, trades and positions replies into DIR (new or empty)")
     n.set_defaults(run=cmd_pnl)
