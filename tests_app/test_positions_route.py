@@ -150,6 +150,7 @@ async def _plan(conn, user, sid: int, number: int, **opts) -> None:
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.execution_plan_store import PlanOrder  # noqa: PLC0415
     from test_execute_route import CORE_ID  # noqa: PLC0415
+    from test_execution_plan_store import trades_for  # noqa: PLC0415
 
     token = CORE_ID.exchange_token if symbol == SYMBOL else CORE_ID.exchange_token + 1
     if opts.get("legacy"):  # a row written before 0018: record_plan mints only make_tag's grammar, so the store's
@@ -158,13 +159,15 @@ async def _plan(conn, user, sid: int, number: int, **opts) -> None:
         await conn.execute(plans._INSERT_ORDER, {"s": sid, "p": number, "l": 0, "tag": tag, "iid": _iid(token),
                                                  "side": "BUY", "q": 65, "price": D("5.45")})
         if closed:
-            await plans.close_plan(conn, user, sid, number, reason="filled", filled={tag: 65})
+            await plans.close_plan(conn, user, sid, number, reason="filled", filled={tag: 65},
+                                   fills=trades_for({tag: 65}))
         return
     tag = make_tag(sid, number, 0)
     await plans.record_plan(conn, user, sid, number, "ENTRY", (PlanOrder(0, tag, _iid(token), symbol, "BUY", 65,
                                                                          D("5.45")),))
     if closed:
-        await plans.close_plan(conn, user, sid, number, reason="filled", filled={tag: 65})
+        await plans.close_plan(conn, user, sid, number, reason="filled", filled={tag: 65},
+                                   fills=trades_for({tag: 65}))
 
 
 async def _second_contract(conn) -> None:

@@ -29,7 +29,8 @@ for (const path of ['/positions/current-positions', '/positions/strategy-linked-
     await expect(page.getByTestId('position-row')).toHaveAttribute('data-symbol', SYMBOL)
     await expect(page.getByTestId('position-own-units')).toHaveText('65')
     await expect(page.getByTestId('position-zerodha')).toHaveText('130')
-    await expect(page.getByTestId('position-strategy-link')).toHaveAttribute('href', '/strategy/1/execute')
+    await expect(page.getByTestId('position-strategy-link')).toHaveCount(0) // W-121: order path off, no Execute link
+    await expect(page.getByTestId('position-strategy-name')).toHaveText('Strategy 1')
     await expect(page.getByTestId('positions-outside')).toHaveText('1 outside lot - view on Kite')
     await expect(page.getByTestId('positions-outside-kite')).toHaveAttribute('href', KITE_POSITIONS_URL)
     await expect(page.getByTestId('positions-page')).not.toContainText(/P&L|price|margin|₹/i)
@@ -72,7 +73,7 @@ test('AC-3: a refused read shows the catalogue message, not an empty list', asyn
   await expect(page.getByTestId('position-row')).toHaveCount(0)
 })
 
-test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet confirmed, no own units, and the Execute link', async ({ page }) => {
+test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet confirmed, no own units, and no Execute link while the order path is off', async ({ page }) => {
   // A browser mock, not the real route. The pending case is unproven end to end through the real route
   // (work/W-111.md next_action).
   await answer(page, [{ strategy_id: 1, blocked: true, contracts: [{ tradingsymbol: SYMBOL, zerodha_units: 65, units: null,
@@ -81,8 +82,10 @@ test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet 
   await expect(page.getByTestId('position-waiting')).toHaveText('Order placed - waiting for Check with Zerodha')
   await expect(page.getByTestId('position-zerodha')).toHaveText('65')
   await expect(page.getByTestId('position-unconfirmed')).toHaveText('not yet confirmed')
-  await expect(page.getByTestId('position-strategy-link')).toHaveAttribute('href', '/strategy/1/execute')
-  await expect(page.getByTestId('positions-blocked-link')).toHaveAttribute('href', '/strategy/1/execute')
+  // W-121 (REQ-073 AC-6): this job's API has the order path off, so the strategy is named and no Execute link is offered
+  await expect(page.getByTestId('position-strategy-link')).toHaveCount(0)
+  await expect(page.getByTestId('positions-blocked-link')).toHaveCount(0)
+  await expect(page.getByTestId('position-strategy-name')).toHaveText('Strategy 1')
   await expect(page.getByTestId('position-own-units')).toHaveCount(0)
   await expect(page.getByTestId('positions-outside')).toHaveCount(0)
 })
