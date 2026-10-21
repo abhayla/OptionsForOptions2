@@ -4,7 +4,8 @@ ADR-096: adding a held position "records the held legs (Zerodha's quantity, aver
 ADR-126 (1): "An adopted leg's entry price ... is stored exactly as Zerodha reports the average ... never rounded or
 refused"; (3) "Screens show the price to 2 decimals (7.03, half up for display only)".
 
-Before the fix: ``_exit_fields`` priced held legs only from filled plan orders (``prices[B]`` KeyError once ``held.units``
+Before the fix: ``_exit_fields`` priced held legs only from filled plan orders (``prices[B]`` KeyError once
+``held.units``
 held an adopted contract B), an adopted-only strategy had ``plan_number`` None (no active legs: no exit), and the
 return route reconciled plan-order contracts only (an adopted-only contract was never compared with Zerodha).
 
@@ -60,18 +61,18 @@ def _adopted(contract: str = B, price: D = D("7.025"), quantity: int = 65) -> bo
     return books.AdoptedHolding(contract, "BUY", quantity, "NRML", price, "zerodha-position", version_number=2)
 
 
-def _held(history: tuple, adopted: tuple) -> route._Held:  # noqa: SLF001 - the route's own held position
+def _held(history: tuple, adopted: tuple) -> route._Held:
     units = ep.held_units(history, adopted)
-    return route._Held(units, ep.version_state("EXIT", units), ep.latest_filled_plan(history), history, adopted)  # noqa: SLF001
+    return route._Held(units, ep.version_state("EXIT", units), ep.latest_filled_plan(history), history, adopted)
 
 
-def _exit(held: route._Held, catalogue: Catalogue) -> tuple[ep.PricedPlan, dict]:  # noqa: SLF001
+def _exit(held: route._Held, catalogue: Catalogue) -> tuple[ep.PricedPlan, dict]:
     """The EXIT path of ``_execute`` up to the gate: exit legs from held units, priced from the real recorded depth,
     then the gate's active legs."""
-    wanted = ep.exit_legs(held.units, route._iid)  # noqa: SLF001
+    wanted = ep.exit_legs(held.units, route._iid)
     quote = ep.quote_from_kite(live_quote())
     priced = ep.price_legs("1", "NIFTY", wanted, catalogue, lambda iid, token: quote)
-    return priced, route._exit_fields("1", held, priced, None, catalogue)  # noqa: SLF001
+    return priced, route._exit_fields("1", held, priced, None, catalogue)
 
 
 def _gate_exit(priced_legs: tuple, fields: dict) -> object:
@@ -80,7 +81,7 @@ def _gate_exit(priced_legs: tuple, fields: dict) -> object:
     held_products = {product_key(leg): route.BASKET_PRODUCT for leg in fields["active_legs"] or ()}
     ctx = types.SimpleNamespace(active_legs=fields["active_legs"], underlying="NIFTY",
                                 active_products=held_products, exit_products=fields["exit_products"])
-    return safety._exit_failure(Strategy(priced_legs), ctx)  # noqa: SLF001
+    return safety._exit_failure(Strategy(priced_legs), ctx)
 
 
 def test_plan_fill_on_a_and_adopted_b_exit_builds_for_both_with_no_keyerror():
@@ -138,7 +139,7 @@ def test_a_contract_both_filled_and_adopted_is_one_leg_with_the_net_units():
 
 def test_a_held_contract_with_no_price_fails_closed_with_the_catalogue_refusal():
     """No price for a held contract -> no active legs -> the gate's own catalogue refusal, never a guessed price."""
-    held = route._Held({B: 65}, ep.version_state("EXIT", {B: 65}), None, (), ())  # noqa: SLF001
+    held = route._Held({B: 65}, ep.version_state("EXIT", {B: 65}), None, (), ())
     priced, fields = _exit(held, _catalogue())
     assert fields["active_legs"] is None
     failure = _gate_exit(priced.strategy.legs, fields)
@@ -150,12 +151,13 @@ def test_a_held_contract_with_no_price_fails_closed_with_the_catalogue_refusal()
 def test_an_adopted_contract_the_catalogue_lost_is_the_catalogue_refusal_not_a_500():
     held = _held((), (_adopted(contract=f"{CORE_ID.exchange_segment}:99"),))
     with pytest.raises(KeyError):  # _execute maps KeyError to strategy_contract_not_in_catalogue
-        route._exit_fields("1", held, types.SimpleNamespace(strategy=types.SimpleNamespace(legs=())), None, _catalogue())  # noqa: SLF001
+        no_legs = types.SimpleNamespace(strategy=types.SimpleNamespace(legs=()))
+        route._exit_fields("1", held, no_legs, None, _catalogue())
 
 
-def _world(net: dict, adopted: tuple, catalogue: Catalogue | None = None) -> ret._World:  # noqa: SLF001
+def _world(net: dict, adopted: tuple, catalogue: Catalogue | None = None) -> ret._World:
     zerodha = types.SimpleNamespace(net=net)
-    return ret._World(catalogue or _catalogue(), "NIFTY", zerodha, {}, frozenset(), adopted)  # noqa: SLF001
+    return ret._World(catalogue or _catalogue(), "NIFTY", zerodha, {}, frozenset(), adopted)
 
 
 B_KEY = ("NIFTY", Instrument.CE, D("23700"), EXPIRY)
@@ -165,21 +167,21 @@ def test_return_route_reconciles_an_adopted_only_contract_and_flags_a_zerodha_di
     """Test (3): the reconcile list = plan-order contracts UNION adopted contracts; Zerodha holding 0 of the adopted
     65 is a mismatch that blocks; Zerodha holding the 65 is clean."""
     adopted = (_adopted(),)
-    (check,) = ret._checks((), _world({}, adopted))  # noqa: SLF001
+    (check,) = ret._checks((), _world({}, adopted))
     assert (check.key, check.platform_units, check.zerodha_units) == (B_KEY, 65, 0)
     assert check.blocks
-    (clean,) = ret._checks((), _world({B_KEY: 65}, adopted))  # noqa: SLF001
+    (clean,) = ret._checks((), _world({B_KEY: 65}, adopted))
     assert not clean.blocks
-    assert ret._symbols((), _world({}, adopted)) == {B_KEY: "NIFTY26O1923700CE"}  # noqa: SLF001
+    assert ret._symbols((), _world({}, adopted)) == {B_KEY: "NIFTY26O1923700CE"}
 
 
 def test_return_route_counts_a_contract_in_a_plan_and_adopted_once():
     adopted = (_adopted(contract=A),)
-    checks = ret._checks((_plan_one_filled(),), _world({}, adopted))  # noqa: SLF001
+    checks = ret._checks((_plan_one_filled(),), _world({}, adopted))
     assert [(c.platform_units, c.zerodha_units) for c in checks] == [(130, 0)]
 
 
 def test_return_route_refuses_an_adopted_contract_the_catalogue_lost():
     adopted = (_adopted(contract=f"{CORE_ID.exchange_segment}:99"),)
     with pytest.raises(StrategyRefused):
-        ret._checks((), _world({}, adopted))  # noqa: SLF001
+        ret._checks((), _world({}, adopted))
