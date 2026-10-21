@@ -17,6 +17,7 @@ import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { advancedDetails } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
@@ -285,6 +286,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       />
       <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
+      <TrackingPanel :saved-id="savedId" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>
