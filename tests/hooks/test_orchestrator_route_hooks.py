@@ -278,6 +278,21 @@ def test_merge_chain_order_and_success(capsys):
     assert "merge_when_green.py" in r.calls[2][1] and r.calls[2][2:] == ["308", "--reviewed-sha", SHA]
 
 
+def test_merge_children_run_in_utf8_mode(monkeypatch):
+    # PR 473 (2026-10-20): the kit gate's reader thread decoded a gh reply as cp1252 and the gate refused
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(kw.get("env") or {})
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.setattr(merge.subprocess, "run", fake_run)
+    merge.run(["gh", "--version"])
+    assert seen.get("PYTHONUTF8") == "1" and seen.get("PYTHONIOENCODING") == "utf-8"
+    assert "PATH" in seen  # the rest of the environment is kept
+
+
 def test_merge_stops_on_failed_close_check():
     r = Runner([(1, "body line 1: closes #5\n")])
     assert merge.merge("308", SHA, r) == 1
