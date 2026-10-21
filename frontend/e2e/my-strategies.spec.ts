@@ -55,9 +55,12 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   await expect(page).toHaveURL(/\/strategy\/builder\?draft=/)
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
 
+  // W-121 (REQ-073 AC-6): this job's API has no OFO_ORDER_PATH, so the order path is off and the page offers no Execute.
+  const features = page.waitForResponse((r) => r.url().endsWith('/api/features'))
   await page.goto(`${URL}/strategies/my-strategies`)
-  await page.getByTestId(`open-execute-${id}`).click()
-  await expect(page).toHaveURL(new RegExp(`/strategy/${id}/execute$`))
+  expect(((await (await features).json()) as { order_path: string }).order_path).toBe('off')
+  await expect(page.locator(`[data-strategy-id="${id}"]`).getByTestId(`open-builder-${id}`)).toBeVisible()
+  await expect(page.getByTestId(`open-execute-${id}`)).toHaveCount(0)
 
   await page.goto(`${URL}/strategies/completed-strategies`)
   await expect(page.getByTestId('completed-strategies')).toBeVisible()
