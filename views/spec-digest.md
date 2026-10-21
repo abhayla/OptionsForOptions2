@@ -151,7 +151,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
-- ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073 AC-5 and ADR-109 (Q-B4)]
+- ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073; refines ADR-109]
 
 ## Requirements (75)
 
