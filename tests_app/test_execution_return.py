@@ -18,7 +18,7 @@ import pytest
 from ofo.execution.basket import make_tag
 from ofo_app import execution_return as er
 from ofo_app import return_book as rb
-from ofo_app.execute_replay import recorded_text
+from ofo_app.execute_replay import recorded_text, replay_list_stamp
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
 SYMBOL = "NIFTY26O1923650CE"
@@ -320,7 +320,8 @@ def _app_for(conn, user, reads: _Reads, today: datetime.date | None = None):
         return today if today is not None else await _created_date(db)
 
     app = _app(_ConnMaker(conn), user)
-    app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+    app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)  # 12:21:04, this file's own read time
+    app.dependency_overrides[route.get_list_stamp] = lambda: replay_list_stamp  # list judged on the recorded day
     app.dependency_overrides[route.get_kite_session] = lambda: _session(reads)
     app.dependency_overrides[elig.get_eligibility_today] = lambda: _today
     return app

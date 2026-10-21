@@ -51,6 +51,9 @@ TOKEN = "12080386"
 CORE_ID = InstrumentId(NSE_FO, 47189)
 #: the market-hours instant of the real 2026-10-16 entry (the pinned request clock)
 AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=IST_UNNAMED)
+#: the recorded day's instrument-list load: the seed stores the listed contract with this ``as_of``, and the replay's
+#: list stamp answers it (``replay_list_stamp``). After Zerodha's 08:30 publish time, the same day as ``AT``.
+LIST_LOADED_AT = datetime.datetime(2026, 10, 16, 9, 0, tzinfo=IST_UNNAMED)
 FRAME_AT = datetime.datetime.fromtimestamp(1792143440, IST)  # the depth frame's exchange time, 15:07:20 IST
 #: fetch.json's NIFTY spot and its own time (the recorder's index read, README there)
 SPOT = (Decimal("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))
@@ -238,12 +241,28 @@ def _today_reader(request: Request) -> Callable[[Any], Awaitable[datetime.date]]
     return elig.get_eligibility_today()
 
 
+async def replay_list_stamp(conn: Any) -> tuple[datetime.datetime | None, datetime.datetime]:
+    """The list-freshness inputs on the RECORDED day, so the gate's rule (``execute._list_health``, unchanged) judges
+    a seed made at any wall-clock hour the same way: the load at ``LIST_LOADED_AT`` judged at ``AT``. Whether a list
+    was loaded at all is still read from the database (never loaded -> no stamp -> UNAVAILABLE). The database's own
+    stamp time is NOT used: the trigger stamps ``clock_timestamp()`` at seed time, which before 08:30 IST is a
+    pre-publish load on the database clock (round-2 MAJOR 2: CI runs 00:00-08:30 IST read STALE)."""
+    return (None if await elig.list_loaded_at(conn) is None else LIST_LOADED_AT), AT
+
+
+def replay_clocks() -> dict[Callable[..., Any], Callable[..., Any]]:
+    """Every clock the Execute gate judges against, pinned to the recorded day TOGETHER: the request clock and the
+    list-freshness pair. One dict, installed by ``overrides`` and by every route test, so no test can pin one clock
+    and leave the other on the wall clock (``tests_app/test_execute_clock_seams.py`` enforces it)."""
+    return {execute.get_execute_clock: lambda: (lambda: AT), execute.get_list_stamp: lambda: replay_list_stamp}
+
+
 def overrides() -> dict[Callable[..., Any], Callable[..., Any]]:
     """The Execute (and so the return) route's session, quote reader and clocks, answered from the recording;
     ``create_app`` installs them (the one app-assembly file)."""
     quotes = DepthQuotes(frame_quote())
     return {execute.get_kite_session: _replay_session, execute.get_quote_reader: lambda: quotes,
-            execute.get_execute_clock: lambda: (lambda: AT), elig.get_eligibility_today: _today_reader}
+            **replay_clocks(), elig.get_eligibility_today: _today_reader}
 
 
 # ---- the stored strategy (route tests and the seed command) ----------------------------------------------------------
@@ -270,7 +289,7 @@ async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 6
     from ofo_app.catalogue_store import apply_update  # noqa: PLC0415
     from ofo_app.strategy_store import build_definition, save_draft  # noqa: PLC0415
 
-    await apply_update(conn, [listed_contract()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo))
+    await apply_update(conn, [listed_contract()], as_of=LIST_LOADED_AT)
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
                               {"s": real_order()["tradingsymbol"]})).scalar_one()
