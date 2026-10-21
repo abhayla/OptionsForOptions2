@@ -324,6 +324,8 @@ issues:
   "#481": 4b  # #380-3 round-1 MINORs: opposite-side exit, adjustment contracts, order-book age, mixed close test
   "#482": S5  # IDENTITY-SCREENS: sign-up/login/profile/security/deletion screens deferred to stage 5 (owner D6)
   "#483": 4b  # MKT-HOURS-REREAD MINORs: no re-read on a missing next_change_at; out-of-order status answers
+  "#485": 4b  # #380-2 re-review MINORs: Execute stores-nothing unpinned, weaker equity test, clock read outside handler
+  "#486": 4b  # #313 round-1 MINORs: unkilled adopt guards, DB-only killers, cross-user adoption reference, no concurrent-adoption test
   "#488": 4b  # TRIM-STRUCT parked: structural list guard built (e7cee4b) but the daily reload never gets NSE's file
 
 # Work items whose status is not done.
@@ -358,6 +360,7 @@ work_items:
   W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
+  W-112: 4a           # GC-2g: no historical market data shown to users, repo_scan guard (REQ-052 AC-1)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
