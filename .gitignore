@@ -13,6 +13,11 @@ views/*
 !views/spec-digest.md
 !views/build-order.md
 !views/README.md
+# kit 1.8.0 item 2: the status page's local state and ci_local.py's test results stay local (already covered by
+# views/* above, named so a future re-include cannot expose them); the page's link file is committed.
+views/status-page.state.json
+views/test-results*
+!views/status-page.json
 .factory/authorizations/*
 !.factory/authorizations/README.md
 

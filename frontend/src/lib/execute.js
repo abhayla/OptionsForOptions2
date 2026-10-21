@@ -34,6 +34,11 @@ export function isLiveOutcome(push) {
 // eslint-disable-next-line no-restricted-syntax -- ADR-054: the read-only basket's form target, compared, never fetched
 export const KITE_BASKET_URL = 'https://kite.zerodha.com/connect/basket'
 
+/** Kite's own order book (the Orders screen's "Open Kite order book" link, ADR-138 (1)): a plain link the owner opens,
+ *  never fetched. The one home of this URL; the lint is disabled for this one line with the same reason as above. */
+// eslint-disable-next-line no-restricted-syntax -- ADR-138 (1): a link to Kite's order book, opened by the owner, never fetched
+export const KITE_ORDER_BOOK_URL = 'https://kite.zerodha.com/orders'
+
 /** The basket form's three values exactly as the Execute reply gives them, or null when the reply's basket is not the
  *  server's `{url, api_key, data}` shape with non-empty strings and exactly KITE_BASKET_URL (fail closed: no form). */
 export function basketFields(reply) {
