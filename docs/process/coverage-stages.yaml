@@ -321,6 +321,7 @@ issues:
   "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
   "#444": 4b  # Builder brief template lacks the kit 1.8.0 standing items (a)-(d)
   "#475": 4b  # WT-LINK-GUARD round-2 MINORs: quoted remove, flag in a variable, ln -t, cd-relative target, cp -rs, phrase in commit text
+  "#481": 4b  # #380-3 round-1 MINORs: opposite-side exit, adjustment contracts, order-book age, mixed close test
 
 # Work items whose status is not done.
 work_items:
