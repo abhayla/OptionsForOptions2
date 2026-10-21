@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import dataclasses
 import datetime
 import inspect
 import json
@@ -128,9 +129,10 @@ def _positions(quantity: int) -> object:
     return data
 
 
-def _attribute(plans, positions, others=None, at=AT) -> tuple[ra.Attribution, object]:
+def _attribute(plans, positions, others=None, at=AT, today=None) -> tuple[ra.Attribution, object]:
+    today = at.astimezone(IST).date() if today is None else today
     return asyncio.run(rr.attribute(_Conn(), USER, _catalogue(), positions, _recorded("orders-2026-10-19-roundtrip"),
-                                    at=at, clock=lambda: at, reader=_reader(plans, others)))
+                                    at=at, today=today, clock=lambda: at, reader=_reader(plans, others)))
 
 
 def _run(plans, positions, others=None) -> ra.Attribution:
@@ -174,6 +176,31 @@ def test_surplus_while_holding_is_outside_and_shortfall_blocks():
     assert dict(attribution.outside) == {KEY: 65}
 
 
+def _open_entry() -> tuple[StoredPlan, ...]:
+    """Plan 1 (the real OFS9V1L0 BUY 65) still OPEN, stamped at AT (2026-10-19) as the database clock stamps it."""
+    (plan,) = _plans((1,))
+    orders = tuple(dataclasses.replace(o, filled_quantity=None) for o in plan.orders)
+    return (dataclasses.replace(plan, status="open", orders=orders, closed_at=None, close_reason=None),)
+
+
+def test_the_session_date_is_the_stamping_clocks_not_the_request_clocks():
+    """#380-2 fix round (CI run 39427914444, RCA: the reconciler judged an open plan's session on the request clock's
+    date while the database clock stamped ``created_at``): a request clock pinned 3 days before the stamp (the route
+    tests' and the Execute replay's 2026-10-16 pin) with ``today`` = the stamping clock's date reads plan 1 as today's,
+    so the real COMPLETE 65 row counts and Zerodha's 65 agrees: nothing blocked. Mutation "judge on ``at``": the same
+    call with ``today`` = ``at``'s date refuses the whole account ("after today's IST session"); a datetime passed as
+    ``today`` is refused, never truncated."""
+    earlier = AT - datetime.timedelta(days=3)
+    attribution, _ = _attribute(_open_entry(), _positions(65), at=earlier, today=AT.date())
+    assert attribution.blocked == frozenset()
+    assert dict(attribution.held) == {str(SID): {KEY: 65}}
+    assert attribution.report.mismatches == ()
+    with pytest.raises(ra.AttributionError, match="after today's IST session"):
+        _attribute(_open_entry(), _positions(65), at=earlier, today=earlier.date())
+    with pytest.raises(ra.AttributionError, match="today must be a date"):
+        _attribute(_open_entry(), _positions(65), today=AT)
+
+
 def test_unreadable_positions_reply_is_refused_not_guessed():
     """Answer state "failed/ambiguous": a positions reply without ``net`` raises; nothing is decided."""
     with pytest.raises(ValueError, match="net"):
@@ -201,7 +228,7 @@ def test_reconciler_takes_no_net_or_verdict_from_its_caller():
         assert params & {"net", "broker_net", "zerodha_net", "zerodha_net_now", "held", "blocked", "reconciled",
                          "verdict", "attribution"} == set(), fn.__name__
     assert set(inspect.signature(rr.reconcile_account).parameters) == {
-        "conn", "user_ref", "catalogue", "positions_reply", "order_rows", "at", "clock", "source"}
+        "conn", "user_ref", "catalogue", "positions_reply", "order_rows", "at", "today", "clock", "source"}
 
 
 def _calls(path: Path) -> set[str]:

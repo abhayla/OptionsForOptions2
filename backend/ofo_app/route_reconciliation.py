@@ -117,31 +117,36 @@ def mismatch_rows(attribution: ra.Attribution, catalogue: Catalogue) -> tuple[St
 
 async def attribute(  # noqa: PLR0913 the account, Zerodha's two raw replies, the sources and the time
     conn: Any, user_ref: str, catalogue: Catalogue, positions_reply: object, order_rows: object, *,
-    at: datetime.datetime, clock: Callable[[], datetime.datetime], reader: ra.StoreReader | None = None,
+    at: datetime.datetime, today: datetime.date, clock: Callable[[], datetime.datetime],
+    reader: ra.StoreReader | None = None,
 ) -> tuple[ra.Attribution, PositionsRead]:
     """Parse Zerodha's two replies, read the standalone map, run the one attribution. Unreadable replies raise
-    ``KiteReplyError``/``ValueError``; unreadable stored data ``AttributionError``. Never guessed."""
+    ``KiteReplyError``/``ValueError``; unreadable stored data ``AttributionError``. Never guessed. ``today``: the
+    request's IST session date on the clock that stamps a plan's ``created_at`` (the database's); ``at`` stays the
+    comparison time."""
     positions = positions_from_reply(positions_reply, ContractIndex.from_catalogue(catalogue))  # type: ignore[arg-type]
     book = orders_from_reply(order_rows)
     standalone = standalone_keys(await reconciliation_store.standalone_for(conn, user_ref), catalogue)
     sources = ra.Sources(catalogue, clock) if reader is None else ra.Sources(catalogue, clock, reader)
     attribution = await ra.attribute_and_compare(ra.Account(conn, user_ref), standalone, positions.net, book, sources,
-                                                 at=at)
+                                                 at=at, today=today)
     return attribution, positions
 
 
 async def reconcile_account(  # noqa: PLR0913 the account, Zerodha's two raw replies, time, the trigger source
     conn: Any, user_ref: str, catalogue: Catalogue, positions_reply: object, order_rows: object, *,
-    at: datetime.datetime, clock: Callable[[], datetime.datetime], source: str | None,
+    at: datetime.datetime, today: datetime.date, clock: Callable[[], datetime.datetime], source: str | None,
 ) -> Verdict:
     """The routes' one call: per-user lock, the attribution (``attribute``), then the blocking mismatches stored under
     ``source`` (nothing stored when ``source`` is None). The caller must already hold no strategy row lock taken
-    before ``lock_user`` (take ``lock_user`` first)."""
+    before ``lock_user`` (take ``lock_user`` first). ``today`` is the session date of the clock that stamped the
+    plans (the database's India date): a request clock on another date must never make a plan stamped today read as
+    "from the future" (#380-2 fix round, CI run 39427914444)."""
     if source is not None and source not in reconciliation_store.SOURCES:
         raise ra.AttributionError(f"source must be one of {reconciliation_store.SOURCES} or None, got {source!r}")
     await lock_user(conn, user_ref)
     attribution, positions = await attribute(conn, user_ref, catalogue, positions_reply, order_rows, at=at,
-                                             clock=clock)
+                                             today=today, clock=clock)
     rows = mismatch_rows(attribution, catalogue)
     ids = [] if source is None else [await _store(conn, user_ref, row, source, at) for row in rows]
     return Verdict(attribution, positions, rows, tuple(ids))

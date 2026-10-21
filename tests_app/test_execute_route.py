@@ -424,6 +424,16 @@ async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
 _NO_CONTRACT_QUOTE = '{"status": "success", "data": {}}'  # Zerodha's reply without the contract
 
 
+def _partial_book() -> list[dict]:
+    """The real 12:21:04 row of OFS1V1L0 as the 2-lot order it is in the partial test: ordered 130 (the stored
+    order), 65 filled, the rest cancelled (CANCELLED is final). The recorded row itself says quantity 65, which the
+    one reconciler reads as a row unlike the stored 130-unit order (``book_row_differs``) and blocks: REQ-060 (ADR-109)
+    "A strategy owns exactly the fills of orders this app placed (its order ids and tags, ADR-105)" - an order of
+    another quantity under the plan's tag is not provably that order (#380-2 fix round, CI run 39427914444)."""
+    (row,) = _book("CANCELLED")
+    return [{**row, "quantity": 130, "filled_quantity": 65, "pending_quantity": 0, "cancelled_quantity": 65}]
+
+
 def _position_rows(**changes) -> list:
     data = json.loads((REPLIES / "positions-122104.json").read_text(encoding="utf-8"), parse_float=D)
     rows = data.get("data", data)["net"]
@@ -436,7 +446,8 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
     Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
     EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
     (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
-    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it)."""
+    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it). Zerodha's book shows plan
+    1's order as the 130-unit order it is, 65 filled (``_partial_book``; the one reconciler checks the row, #380-2)."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
@@ -458,6 +469,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65})
 
             def _with(**kw):
+                kw.setdefault("orders", _partial_book())  # the 130-unit order filled 65 (not the 65-unit real row)
                 replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
                                           positions="positions-122104"), **kw)
                 app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
@@ -476,7 +488,8 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             _with(positions=_position_rows(product=None))
             await _refused("EXIT", "differs from the product")
             _with()
-            replay = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
+            replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
+                                      positions="positions-122104"), orders=_partial_book())
             replay.quote_text = _NO_CONTRACT_QUOTE
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
             await _refused("EXIT", "Market data needed for execution")

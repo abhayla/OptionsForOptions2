@@ -185,10 +185,12 @@ async def _reconcile(req: _Request, catalogue: Any, zerodha: _Read) -> rr.Verdic
     """#380-2 (T3): the reconciler the Execute route also calls, as the "after execution" trigger (Q196): blocking
     mismatches are stored (sticky until a settling resolution, Q222). An open plan whose orders are all final counts
     with Zerodha's fills here already (ADR-110), so the verdict holds after the close below. Unreadable reply ->
-    broker unconfirmed; unreadable stored data -> reconciliation required (409); nothing guessed."""
+    broker unconfirmed; unreadable stored data -> reconciliation required (409); nothing guessed. The session date is
+    ``req.today``, the one this route's ``classify`` uses (the database's India date), so the reconciler and the
+    route judge a plan's session on the same date; ``req.now`` stays the comparison time."""
     try:
         return await rr.reconcile_account(req.db, req.user_ref, catalogue, zerodha.positions, zerodha.orders,
-                                          at=req.now, clock=req.now_clock, source="after_execution")
+                                          at=req.now, today=req.today, clock=req.now_clock, source="after_execution")
     except ra.AttributionError:
         raise _refuse("gate_reconciliation_mismatch") from None
     except (KiteReplyError, ReconciliationError, ValueError):

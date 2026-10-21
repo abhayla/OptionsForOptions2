@@ -32,9 +32,10 @@ from ofo_app import reconciliation_store as rs
 from ofo_app import route_reconciliation as rr
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, load_catalogue
+from ofo_app.eligibility_from_zerodha import database_clock_today
 from sqlalchemy import text
 from test_execution_plan_store import SYMBOLS, _new_strategy, _remove_own_rows, _user
-from test_route_reconciliation import AT, listed
+from test_route_reconciliation import AT, KEY, listed
 from test_route_reconciliation import _recorded as recorded
 
 SYMBOL = "NIFTY26OCT24000CE"
@@ -73,15 +74,21 @@ async def _hand_exit_account(conn, user: str) -> tuple[int, object]:
 
 
 async def _reconcile(conn, user, catalogue, sid, source):
+    """The routes' call; ``today`` = the database clock's India date (the clock that stamped the plans), as both
+    routes pass it (#380-2 fix round)."""
     return await rr.reconcile_account(conn, user, catalogue, recorded("positions-2026-10-19-roundtrip"),
-                                      _orders_for(sid), at=AT, clock=_clock, source=source)
+                                      _orders_for(sid), at=AT, today=await database_clock_today(conn), clock=_clock,
+                                      source=source)
 
 
 async def test_core_both_routes_give_the_same_verdict_and_store_exactly_one_mismatch(app_engine):
     """T3 core on the database: Execute's call (source None) and the return's call (after_execution) on one stored
     account give the same blocked set and the same mismatch row; Execute stores nothing; the return stores ONE row
-    (expected 65, Zerodha 0, missing platform position), and a second return keeps the same id (Q222, sticky);
-    Execute after it is still blocked by the stored row."""
+    (expected 65, Zerodha 0, missing platform position). A second return stores nothing new and is still blocked by
+    the one stored row, whose id is unchanged (REQ-060: "Q222 - an agreeing run does not unblock by itself; a recorded
+    manual resolution is needed"): the stored mismatch keeps its contract out of compare (#352-1 round 2,
+    ``Attribution.stored``), so compare reports no row there to store again, and the block comes from the stored row
+    itself. Execute after it is still blocked by the stored row."""
     user = _user()
     async with app_engine.connect() as conn:
         trans = await conn.begin()
@@ -100,8 +107,10 @@ async def test_core_both_routes_give_the_same_verdict_and_store_exactly_one_mism
             assert (stored.expected_units, stored.zerodha_units, stored.source) == (HELD, 0, "after_execution")
             assert stored.report["code"] == "recon_missing_platform_position"
             again = await _reconcile(conn, user, catalogue, sid, "after_execution")
-            assert again.stored_ids == returned.stored_ids
-            assert len(await rs.mismatches_for(conn, user, sid)) == 1
+            assert (again.rows, again.stored_ids) == ((), ())  # nothing new: the contract is held out of compare
+            assert dict(again.attribution.stored) == {KEY: (str(sid),)}  # ... by the stored row, which blocks
+            assert again.blocks(sid)
+            assert [row.id for row in await rs.mismatches_for(conn, user, sid)] == [stored.id]  # same row, same id
             later = await _reconcile(conn, user, catalogue, sid, None)
             assert later.blocks(sid)  # the stored row blocks the next Execute press (Q222)
         finally:
@@ -119,7 +128,8 @@ async def test_a_forged_net_or_verdict_cannot_reach_the_store(app_engine):
             for forged in ({"net": {}}, {"zerodha_net": {}}, {"verdict": None}, {"blocked": frozenset()}):
                 with pytest.raises(TypeError):
                     await rr.reconcile_account(conn, user, catalogue, recorded("positions-2026-10-19-roundtrip"),
-                                               _orders_for(sid), at=AT, clock=_clock, source="after_execution",
+                                               _orders_for(sid), at=AT, today=AT.date(), clock=_clock,
+                                               source="after_execution",
                                                **forged)
             assert await rs.mismatches_for(conn, user, sid) == ()
             with pytest.raises(ra.AttributionError):  # a source outside the closed list stores nothing
@@ -155,8 +165,8 @@ async def test_two_requests_of_one_user_on_two_strategies_wait_on_the_user_lock_
             async def request(conn, sid):
                 await rr.lock_user(conn, user)  # the route's order: the user lock, then the strategy row lock
                 await store.lock_strategy(conn, user, sid)
-                return await rr.reconcile_account(conn, user, catalogue, empty, [], at=AT, clock=_clock,
-                                                  source="after_execution")
+                return await rr.reconcile_account(conn, user, catalogue, empty, [], at=AT, today=AT.date(),
+                                                  clock=_clock, source="after_execution")
 
             one = await request(first, first_sid)
             waiter = asyncio.create_task(request(second, second_sid))

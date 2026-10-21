@@ -602,16 +602,18 @@ async def attribute_and_compare(  # noqa: PLR0913 the account, Zerodha's two rep
     sources: Sources,
     *,
     at: datetime.datetime,
+    today: datetime.date | None = None,
 ) -> Attribution:
     """Read every strategy of the account and all its plans, compute held units (open plans from Zerodha's order
-    book), set the pending contracts and the outside lots of Zerodha's net apart, then run compare.
+    book), set the pending contracts and the outside lots of Zerodha's net apart, then run compare. ``today``: the
+    IST session date an open plan's ``created_at`` is judged against (``survey_account``).
 
     ``standalone``: the recorded standalone units per contract. ``broker_net``: Zerodha's net units per contract from
     ``kite_replies.positions_from_reply`` (a flat row is absent: Zerodha holds 0; an unreadable reply raises there,
     before this runs). ``order_book``: today's order book from ``kite_replies.orders_from_reply``. Any malformed
     input raises ``ValueError`` (``AttributionError``, ``ReconciliationError``); a guessed zero never reaches
     compare."""
-    survey = await survey_account(account, standalone, broker_net, order_book, sources, at=at)
+    survey = await survey_account(account, standalone, broker_net, order_book, sources, at=at, today=today)
     clock, alone, raw_net, known, pending = sources.clock, survey.alone, survey.raw_net, survey.known, survey.pending
     unresolved: dict[ContractKey, list[Pending]] = {}
     for decision in survey.earlier:
@@ -661,6 +663,16 @@ class Survey:
     stored_unmapped: frozenset[str] = frozenset()
 
 
+def _session_date(at: datetime.datetime, today: object) -> datetime.date:
+    """The IST session date plans are judged against: ``today`` when given (a plain date; a datetime is refused,
+    never truncated), else ``at``'s IST date."""
+    if today is None:
+        return at.astimezone(IST).date()
+    if isinstance(today, datetime.datetime) or not isinstance(today, datetime.date):
+        raise AttributionError(f"today must be a date, got {today!r}")
+    return today
+
+
 async def survey_account(  # noqa: PLR0913 the attribution's own inputs
     account: Account,
     standalone: Mapping[ContractKey, int],
@@ -669,17 +681,21 @@ async def survey_account(  # noqa: PLR0913 the attribution's own inputs
     sources: Sources,
     *,
     at: datetime.datetime,
+    today: datetime.date | None = None,
 ) -> Survey:
     """Read every strategy and all its plans (the store reader), compute held units and pending contracts, and decide
     every earlier-day open plan (``decide_earlier_day``) against the base of every OTHER stored fill plus the
-    standalone. ``at`` must be time-zone aware; today's session is its IST date."""
+    standalone. ``at`` must be time-zone aware. ``today`` is the IST session date a plan's ``created_at`` is judged
+    against; the routes pass the date of the clock that stamped ``created_at`` (the database's, #380-2), because a
+    request clock on another date would call a plan stamped today "from the future" and refuse the whole account.
+    Without it, today's session is ``at``'s IST date. A ``today`` that is not a plain date is refused."""
     if not isinstance(account, Account) or not isinstance(account.user_ref, str) or not account.user_ref.strip():
         raise AttributionError(f"account must be an Account with a user, got {account!r}")
     if not isinstance(sources, Sources):
         raise AttributionError(f"sources must be a Sources with a StoreReader, got {sources!r}")
     if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None:
         raise AttributionError(f"at must be a time-zone-aware datetime, got {at!r}")
-    today = at.astimezone(IST).date()
+    today = _session_date(at, today)
     catalogue, reader = sources.catalogue, _check_reader(sources.reader)
     alone = units_map(standalone, "standalone quantities")
     raw_net = units_map(broker_net, "broker net positions")

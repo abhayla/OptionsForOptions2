@@ -495,11 +495,14 @@ async def _reconcile(req: _Request, held: _Held,
     calls (``route_reconciliation.reconcile_account``: every strategy of the user, the standalone, outside lots,
     pending plans, stored mismatches, Q224). The Execute press is not one of Q196's triggers and rolls back on a
     refusal, so it stores nothing (``source=None``); a mismatch stored earlier still blocks. An unreadable reply or
-    unreadable stored data -> (None, None): reconciliation unknown and products unread, both block (fail closed)."""
+    unreadable stored data -> (None, None): reconciliation unknown and products unread, both block (fail closed).
+    The session date is the database clock's India date (the clock that stamped every plan's ``created_at``), the
+    same clock the return route's session date reads in production."""
+    today = await elig.database_clock_today(req.db)
     try:
         reply = await asyncio.to_thread(req.session.reads.fetch_positions)
         verdict = await rr.reconcile_account(req.db, req.user_ref, catalogue, reply, held.order_rows, at=req.now,
-                                             clock=req.clock, source=None)
+                                             today=today, clock=req.clock, source=None)
     except (KiteReadError, KiteReplyError, ValueError):  # AttributionError / ReconciliationError included
         return None, None
     return verdict.positions, frozenset(verdict.attribution.blocked)

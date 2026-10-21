@@ -9,11 +9,13 @@ Q222; Q224; ADR-109 (4); ADR-083.
 from __future__ import annotations
 
 import asyncio
+import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from ofo.engine import Instrument
+from ofo.timeutil import IST
 from ofo_app import execution_plan_store as eps
 from ofo_app import next_day_resolution as nd
 from ofo_app import reconcile_attribution as ra
@@ -24,6 +26,8 @@ from sqlalchemy.exc import DBAPIError
 from tests_app.test_route_reconciliation import AT, KEY, USER, _catalogue
 
 KEY_TEXT_OK = "NSE_FO:51392"
+#: The database clock (it stamps a plan's ``created_at``) 3 days after the request clock AT, as in the route tests.
+STAMP_CLOCK = AT + datetime.timedelta(days=3)
 
 
 class _Result:
@@ -91,7 +95,8 @@ def test_lock_user_refuses_a_missing_user_before_any_statement(user):
 def test_reconcile_account_refuses_an_unknown_source_before_the_lock():
     conn = _Script()
     with pytest.raises(ra.AttributionError):
-        _run(rr.reconcile_account(conn, USER, _catalogue(), {}, [], at=AT, clock=lambda: AT, source="bogus"))
+        _run(rr.reconcile_account(conn, USER, _catalogue(), {}, [], at=AT, today=AT.date(), clock=lambda: AT,
+                                  source="bogus"))
     assert conn.statements == []
 
 
@@ -370,7 +375,7 @@ def test_the_return_route_answers_each_unreadable_state_with_its_own_refusal(mon
         raise error
 
     monkeypatch.setattr(route.rr, "reconcile_account", fails)
-    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT, today=AT.date())
     with pytest.raises(type(route._refuse(template))) as err:
         _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[])))
     assert repr(err.value.message) == repr(route._refuse(template).message)
@@ -383,6 +388,10 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
         def fetch_positions(self):
             return {}
 
+    async def db_now(db):
+        return STAMP_CLOCK
+
+    monkeypatch.setattr(route.elig, "database_now", db_now)
     req = SimpleNamespace(db=None, user_ref=USER, now=AT, clock=lambda: AT, session=SimpleNamespace(reads=Reads()))
     held = SimpleNamespace(order_rows=[])
     for error in (route.KiteReadError("x"), route.KiteReplyError("x"), ValueError("x")):
@@ -392,11 +401,17 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
         monkeypatch.setattr(route.rr, "reconcile_account", fails)
         assert _run(route._reconcile(req, held, _catalogue())) == (None, None)  # not "nothing blocked"
 
+    seen = []
+
     async def blocked(*args, **kwargs):
+        seen.append((kwargs["at"], kwargs["today"]))
         return SimpleNamespace(positions="P", attribution=SimpleNamespace(blocked=frozenset({"9"})))
 
     monkeypatch.setattr(route.rr, "reconcile_account", blocked)
     assert _run(route._reconcile(req, held, _catalogue())) == ("P", frozenset({"9"}))
+    # #380-2 fix round: the session date is the database clock's India date (it stamped every plan), never the
+    # request clock's: the request clock here is 3 days earlier, as the route tests' and the replay's pin.
+    assert seen == [(AT, STAMP_CLOCK.astimezone(IST).date())]
 
 
 # ---- #380-2d: the two guards the 380-2c mutation pass still found alive -----------------------------
@@ -451,7 +466,25 @@ def test_the_return_route_reads_each_unreadable_reconciler_reply_as_broker_uncon
         raise raised
 
     monkeypatch.setattr(route.rr, "reconcile_account", fails)
-    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT, today=AT.date())
     with pytest.raises(type(route._refuse("gate_broker_unconfirmed"))) as err:
         _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[])))
     assert repr(err.value.message) == repr(route._refuse("gate_broker_unconfirmed").message)
+
+
+def test_the_return_route_gives_the_reconciler_its_own_session_date(monkeypatch):
+    """#380-2 fix round: the return route's ``classify`` and the reconciler judge a plan's session on ONE date,
+    ``req.today`` (the database's India date), never the request clock's date (CI run 39427914444: a request clock
+    3 days before the stamp made every plan read "from the future" and refused the return)."""
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+
+    seen = []
+
+    async def verdict(*args, **kwargs):
+        seen.append((kwargs["at"], kwargs["today"], kwargs["source"]))
+        return "V"
+
+    monkeypatch.setattr(route.rr, "reconcile_account", verdict)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT, today=STAMP_CLOCK.date())
+    assert _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[]))) == "V"
+    assert seen == [(AT, STAMP_CLOCK.date(), "after_execution")]
