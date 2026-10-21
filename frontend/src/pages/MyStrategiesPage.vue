@@ -11,8 +11,12 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { fetchSavedLegs } from '@/lib/saveDraft'
 import { buildDraft } from '@/lib/legPicker'
+import { useOrderPath } from '@/lib/orderPath'
 
 const COMPLETED_STATUSES = []
+
+// W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
+const orderPathOn = useOrderPath()
 
 const route = useRoute()
 const router = useRouter()
@@ -75,7 +79,7 @@ async function openInBuilder(id) {
         <span data-testid="row-status">{{ s.status }}</span>
         <span class="text-ink-muted">last saved {{ istTime(s.updated_at) }}</span>
         <button type="button" class="underline" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
-        <router-link :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
+        <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
         <span v-if="notOpenable === s.id" class="text-ink-muted" data-testid="not-openable">This strategy has legs without a planned entry, so it cannot be opened in the Builder from here.</span>
       </li>
     </ul>

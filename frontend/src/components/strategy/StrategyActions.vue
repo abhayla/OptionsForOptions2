@@ -32,13 +32,16 @@
 </template>
 
 <script setup>
+import { useOrderPath } from '@/lib/orderPath'
+
 defineProps({
   hasLegs: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
   savedId: { type: Number, default: null },
-  // W-121 (REQ-073 AC-6): Execute is offered only when the server said the order path is "on"; the default is off.
-  orderPathOn: { type: Boolean, default: false },
 })
 
 defineEmits(['recalculate'])
+
+// W-121 (REQ-073 AC-6): Execute is offered only when the server said the order path is "on".
+const orderPathOn = useOrderPath()
 </script>

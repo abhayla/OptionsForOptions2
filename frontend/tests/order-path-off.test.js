@@ -53,18 +53,25 @@ describe('AC-6: the order-path read', () => {
 })
 
 describe('AC-6: StrategyActions shows no Execute action unless told "on"', () => {
-  const mountWith = (props) => mount(StrategyActions, { props: { hasLegs: true, savedId: 5, ...props }, global: { stubs: { RouterLink: { template: '<a data-testid="execute-strategy"><slot /></a>' } } } })
+  const mountWith = async (props) => {
+    const w = mount(StrategyActions, { props: { hasLegs: true, savedId: 5, ...props }, global: { stubs: { RouterLink: { template: '<a data-testid="execute-strategy"><slot /></a>' } } } })
+    await flushPromises()
+    return w
+  }
 
-  it('on + a saved strategy -> the action is there', () => {
-    expect(mountWith({ orderPathOn: true }).find('[data-testid="execute-strategy"]').exists()).toBe(true)
+  it('on + a saved strategy -> the action is there', async () => {
+    expect((await mountWith({})).find('[data-testid="execute-strategy"]').exists()).toBe(true)
   })
 
-  it('off, or the prop left out (unknown), or not saved -> the action is absent, not disabled', () => {
-    for (const props of [{ orderPathOn: false }, {}, { orderPathOn: true, savedId: null }]) {
-      const w = mountWith(props)
-      expect(w.find('[data-testid="execute-strategy"]').exists()).toBe(false)
-      expect(w.text()).not.toMatch(/Execute/)
-    }
+  it.each(STATES)('%s -> the action is absent, not disabled', async (_name, reply) => {
+    answer = reply
+    const w = await mountWith({})
+    expect(w.find('[data-testid="execute-strategy"]').exists()).toBe(false)
+    expect(w.text()).not.toMatch(/Execute/)
+  })
+
+  it('on but not saved -> absent', async () => {
+    expect((await mountWith({ savedId: null })).find('[data-testid="execute-strategy"]').exists()).toBe(false)
   })
 })
 

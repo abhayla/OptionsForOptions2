@@ -29,7 +29,7 @@ import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
-import { ORDER_PATH_OFF_SENTENCE, fetchOrderPathOn } from '@/lib/orderPath'
+import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -175,13 +175,11 @@ const setLegs = (next) => {
   syncLive()
 }
 
-// W-121 (REQ-073 AC-6): Execute is offered only on the server's stated "on"; unread or failed = off.
-const orderPathOn = ref(false)
+// W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
-  fetchOrderPathOn().then((on) => (orderPathOn.value = on))
 })
 watch(() => route.query.ux, () => {
   load()
@@ -291,7 +289,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
       <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
-      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" :order-path-on="orderPathOn" @recalculate="load" />
+      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>

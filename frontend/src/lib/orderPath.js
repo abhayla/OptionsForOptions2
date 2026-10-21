@@ -5,6 +5,7 @@
 //   field absent / body not an object / any other value (e.g. "ON", true, 1, "maybe") -> not offered;
 //   request failed (network, 4xx, 5xx, timeout) -> not offered.
 // The server refuses the order routes itself; this only keeps the screens from offering what it would refuse.
+import { ref } from 'vue'
 import api from '../services/api'
 
 export const ORDER_PATH_OFF_SENTENCE =
@@ -23,6 +24,14 @@ export async function fetchOrderPathOn() {
   } catch {
     return false
   }
+}
+
+/** THE helper every screen uses to decide whether an Execute affordance renders: a ref that is false until the server
+ *  has said "on" (and stays false on any other answer). Render with `v-if`, never a disabled element. */
+export function useOrderPath() {
+  const on = ref(false)
+  fetchOrderPathOn().then((value) => { on.value = value })
+  return on
 }
 
 /** Router guard for the two order routes: off or unknown -> the strategy page with the sentence. */
