@@ -21,6 +21,8 @@ from ofo_app import return_book as rb
 from ofo_app.execute_replay import recorded_text
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
+pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
+
 SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))

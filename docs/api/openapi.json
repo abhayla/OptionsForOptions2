@@ -1023,6 +1023,24 @@
         "title": "ExpiriesOut",
         "type": "object"
       },
+      "FeaturesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "order_path": {
+            "enum": [
+              "on",
+              "off"
+            ],
+            "title": "Order Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_path"
+        ],
+        "title": "FeaturesOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3568,6 +3586,24 @@
           }
         },
         "summary": "Zerodha Login"
+      }
+    },
+    "/features": {
+      "get": {
+        "operationId": "features_features_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Features"
       }
     },
     "/health": {

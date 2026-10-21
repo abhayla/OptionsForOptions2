@@ -26,6 +26,8 @@ from test_execute_route import (
 )
 from test_execution_plan_store import trades_for
 
+pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
+
 HTTP_OK, HTTP_CONFLICT, PLANS_AFTER_EXIT = 200, 409, 2
 TAG = "Q0001010"
 RECONCILE_PHRASE = "do not match what we recorded"

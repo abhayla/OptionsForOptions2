@@ -44,6 +44,8 @@ from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
 from test_execution_plan_store import trades_for
 
+pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
+
 ROOT = Path(__file__).resolve().parents[1]
 REAL_BASKET = real_basket()
 REAL_ORDER = real_order()

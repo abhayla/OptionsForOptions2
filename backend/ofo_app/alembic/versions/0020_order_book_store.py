@@ -70,6 +70,7 @@ def _load(filename: str, name: str):
 
 _PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0020")
 _M16 = _PREVIOUS._M16
+_TableSettings = _PREVIOUS._TableSettings
 _M8 = _PREVIOUS._M8
 _M4 = _PREVIOUS._M4
 _M3 = _PREVIOUS._M3
@@ -160,9 +161,10 @@ def _block() -> str:
     --    exactly as granted, no UPDATE / DELETE / TRUNCATE; the guard triggers enabled with their pinned bodies, no
     --    EXECUTE on a guard
     IF phase = 'post' THEN
-{_PREVIOUS._table_block(FILLS, "execution_plan_fills", FILL_INSERT_COLUMNS, (), FILL_GUARD, FILL_TRIGGER, FILL_PIN)}
-{_PREVIOUS._table_block(HOLDINGS, "adopted_holdings", HOLDING_INSERT_COLUMNS, (), HOLDING_GUARD, HOLDING_TRIGGER,
-                        HOLDING_PIN, HOLDING_SEQUENCE)}
+{_PREVIOUS._table_block(FILLS, _TableSettings("execution_plan_fills", FILL_INSERT_COLUMNS, (), FILL_GUARD,
+                                              FILL_TRIGGER, FILL_PIN))}
+{_PREVIOUS._table_block(HOLDINGS, _TableSettings("adopted_holdings", HOLDING_INSERT_COLUMNS, (), HOLDING_GUARD,
+                                                 HOLDING_TRIGGER, HOLDING_PIN, HOLDING_SEQUENCE))}
     END IF;
 """
 
