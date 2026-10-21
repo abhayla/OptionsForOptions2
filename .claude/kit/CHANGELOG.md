@@ -4,6 +4,122 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.10.1 — spec digest headroom (#138)
+
+1. Spec digest: decisions older than the newest 40 keep 50 characters of lead sentence (was 60), so the digest keeps
+   room for at least 15 more decisions under its 24000-byte cap (the 1.10.0 setting had dropped below that after five
+   new decision rows).
+   Migration: regenerate `views/spec-digest.md` with `python tools/build_spec_digest.py .`.
+2. Mechanical steps for every project that takes 1.10.1 (when the owner names it): `python tools/kit_upgrade.py`,
+   then `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
+## 1.10.0 — kit file guard tightened (partial), spec digest keeps recent decisions longer (OD-94, OD-96, #138)
+
+1. Kit file guard tightening (W-046, REQ-055 AC-6, partial by OD-96): once a command names a kit path, the guard's own
+   verdict also denies any character outside printable ASCII plus tab and line feed; in PowerShell, grouping,
+   sub-expressions and backticks outside quotes; and banned flags of read-only programs in every spelling the shell
+   accepts (git `--output`, `--ext-diff`, `--textconv`, `--filters`, `-c`; rg `--pre`, `--pre-glob`, `--hostname-bin`;
+   less and more `+` commands, `-o`, `-O`, `--log-file`). This closes writes such as `git diff --output=<kit file>`
+   that 1.9.0 allowed. In Bash, `2>$null` no longer counts as harmless. It only tightens: a comparison over 32,182
+   commands found nothing 1.9.0 denies that 1.10.0 allows. Known gap: a kit path glued onto a banned short flag
+   (`more -o<kit path>`) is still allowed, as in 1.9.0 (issue 142).
+   Migration: none; a command that relied on one of these spellings is now refused with the usual kit-file message.
+2. Spec digest (#138): the newest 40 decisions (by date, then id number) keep 100 characters of lead sentence and
+   older ones are cut at 60, so a growing decision log stays under the digest's size cap for longer.
+   Migration: regenerate `views/spec-digest.md` with `python tools/build_spec_digest.py .`.
+3. Not in 1.10.0: review records and round caps (W-045) are parked for good after a red round 5 (issue 128); the
+   merge gate's review-record seam stays a stub that passes.
+   Migration: none.
+4. Mechanical steps for every project that takes 1.10.0 (when the owner names it): `python tools/kit_upgrade.py`,
+   then `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
+## 1.9.0 — no orphaned verifier snapshots, fewer false kit-guard denies (OD-90, OD-91, REQ-056)
+
+1. Verifier write guard: each snapshot records the session id and agent id of its call, and when a read-only agent
+   stops (SubagentStop) the guard deletes that agent's leftover snapshots and no other agent's. A verifier call that
+   another hook blocked never gets a Post event, so before 1.9.0 its snapshot stayed on disk for up to 24 hours and
+   could hold up anything that reads those snapshots. At stop the guard never judges or moves a repository file and
+   always exits 0; the 24-hour prune stays for an agent that is killed. `settings.kit.json` wires the guard on
+   SubagentStop (REQ-056 AC-1).
+   Migration: regenerate the settings file with `python tools/kit_settings.py .`; a project-side stand-in that
+   cleaned these snapshots can be deleted.
+2. Kit file guard, from the Bash tool only and failing closed on any other shape (REQ-056 AC-2): the title or body of
+   `gh pr|issue create|comment|edit` and the message of `git commit -m` is data and is not judged as a path when it is
+   a plain word, a single- or double-quoted word with nothing that expands, a single-quoted string over several lines,
+   or `"$(cat <<'EOF' ... EOF\n)"` with a single-quoted delimiter (a body line that contains the delimiter word is
+   refused, because bash can end the heredoc there); `sed -n` (flags n, E, r only) with one script printing a line or
+   a line range is a read; a leading `cd <dir> &&` before an otherwise allowed command passes. Before any of this, the
+   whole command must be printable characters plus tab and line feed (bash drops a NUL byte, which could end a heredoc
+   where the guard does not). Real writes (redirects, `rm`, `sed -i`, unlisted `gh`/`git` flags) stay denied.
+   Migration: none.
+3. Spec digest: `tools/build_spec_digest.py` cuts each decision's lead sentence at 100 characters (was 150), so a
+   growing decision log stays under the digest's size cap for longer.
+   Migration: regenerate `views/spec-digest.md` with `python tools/build_spec_digest.py .`.
+4. Already in 1.8.0 and not repeated here: the template CI workflow cancels superseded pull-request runs and groups
+   main by commit (the `concurrency` block).
+   Migration: none.
+5. Mechanical steps for every project that takes 1.9.0 (when the owner names it): `python tools/kit_upgrade.py`, then
+   `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
+## 1.8.0 — plans, a status page by reader role, a safer merge gate and run discipline 1.1.0
+
+1. Plan records: `plans/PL-###.md` hold a plan's steps, each with a status and the work items it covers, and a
+   `changes` list (was, now, why); `factory/schemas/plan.schema.json` validates them and `factory_lint.py` checks them.
+   Migration: create the `plans/` folder (the kit ships `plans/README.md`).
+2. Status page: `tools/build_status_page.py` renders one page per project from data files, with a block for each
+   reading role (owner, product, architect, implementer, delivery, deployment, environments, QA, domain owner), a
+   design pass, derived numbers and an explicit "never ran" list. `tools/ci_local.py` now writes one JUnit file per
+   pytest call and a `views/test-results.json` summary that the page reads.
+   Migration: add `views/status-page.state.json` and the `views/test-results` files (name pattern `views/test-results` plus any suffix) to the ignore file; the first publish creates
+   `views/status-page.json` (`{"url": "<the link>"}`), which is committed.
+3. Stage-change hook: the new `status_page_due.py` runs at session start and at the end of a turn, notices a stage
+   change (a requirement, work item, plan step or owner question status, a release, a merged pull request), builds the
+   page and asks once for one publish to the same link. `settings.kit.json` wires it.
+   Migration: regenerate the settings file with `python tools/kit_settings.py .`.
+4. Merge gate newest run: `tools/merge_when_green.py` judges the newest run of each check, so an older red run that
+   was re-run green no longer blocks a merge.
+   Migration: none.
+5. Merge gate review pin and stale branches: `tools/merge_when_green.py` requires `--reviewed-sha` (a full 40-character
+   sha), merges only that reviewed commit, and, when the branch is behind and every check is green, updates it once
+   by a merge commit (never a rebase), at most three times; if the update changed a file of the pull request's diff or
+   a Tier A path it refuses with `RE-REVIEW NEEDED`.
+   Migration: every caller of `tools/merge_when_green.py` now passes `--reviewed-sha <full sha of the reviewed
+   commit>`; the tool refuses without one.
+6. Merge-gate bookkeeping and CI: the project template's CI workflow cancels a superseded run on the same pull
+   request (a run on the main branch is grouped by its commit and never cancelled); the deliver skill gains a
+   "Stacked items" section (stacked pull requests, one base update right before the gate, and the local-gate rule
+   that a base update voids the tested tree).
+   Migration: none; a project that edited its CI workflow merges the `concurrency` block by hand.
+7. Kit file guard: `kit_file_guard.py` lets a simple read of a protected path through from the Bash tool (a plain
+   file read or listing with no write, redirect or substitution) while still refusing writes (REQ-055 AC-1).
+   Migration: none.
+8. Builder brief, run discipline and handover: `builder-brief.md` in the kit folder is a brief template carrying the
+   standing items; `run-discipline.md` is version 1.1.0 (standing brief items a to d, and C8 prefer a structural
+   guarantee over a detector); `docs/HANDOVER.md` gains DONE, PENDING, BLOCKED, PARKED and NEXT sections under a
+   line cap; `budget.json` raises the always-loaded rule byte budget on purpose for the larger run-discipline.
+   Migration: none; a project that copied the old handover or brief text replaces it from the template.
+9. Deliver skill: sections for work-item size, plans (claims checked against the hosting service, design review of
+   a Tier A plan, a one-reviewer check of a plan's first outside effect), and role review of process changes; the
+   intake skill points to plans.
+   Migration: none.
+10. Run lock and delivery metrics: `tools/run_lock.py` keeps one owner-recorded lock per running job so two sessions
+    do not run the same job, and `tools/delivery_metrics.py` computes delivery measures from the project's own
+    history.
+    Migration: none; both tools are optional to call.
+11. Learning rule R4: `learning.md` adds that a change to review tiers, rounds, verifiers or guards goes to
+    independent role reviewers with the current rule quoted beside the proposed one (finding
+    `process-change-narrows-safety-rule`).
+    Migration: none.
+12. Mechanical steps for every project that takes 1.8.0 (when the owner names it): `python tools/kit_upgrade.py`,
+    then `python tools/kit_settings.py .`.
+    Migration: run those two commands.
+13. Not in 1.8.0: review records and round caps (parked, issue 128) and the guard tightening that closes holes in the existing
+    read-only allowlist, issue 120 (parked, issue 127).
+    Migration: none.
+
 ## 1.7.0 — every agent and dispatch runs on the routed model and effort (OD-73)
 
 1. Why: in 13 real sessions the main session carried 57.9% of list-price spend, builders defined as the mid-size

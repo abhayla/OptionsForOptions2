@@ -1,0 +1,27 @@
+{
+ "id": "net-only-read-misses-roundtrip",
+ "scope": "project",
+ "class": "Any reconciliation that decides what happened from an end-of-period NET quantity alone treats every round trip inside that period (buy then sell of the same contract, or the reverse) as 'nothing happened': the trades, their fills and their P&L vanish. Wider shape: a summary number cannot prove the absence of the events it sums.",
+ "mechanism": "2026-10-19: PR #421 (#352-1) resolves an earlier-day open plan from Kite's next-day positions net; reconcile_attribution.py:35-36 (branch build/352-1-next-day, 21ba2c389ff8) documents that an ENTRY filled and sold by hand on Kite the same day leaves the net at the base and closes the plan nothing_placed with no mismatch.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "PR #421 round-2 read-only Opus review (GC-6 row REVIEW-421)",
+  "evidence": "reconcile_attribution.py:35-36 'Documented limit: with no other holder on the contract, an ENTRY filled and sold by hand on Kite the same earlier day leaves the net at the base and reads nothing_placed'; ADR-111 requires a recorded mismatch for a hand close."
+ },
+ "fix": "Open: GC-6 row NET-ROUNDTRIP. Never close an earlier-day plan nothing_placed on net alone when activity on the contract cannot be ruled out; else unresolved_from_positions.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Discriminating proof: a derived next-day reply with net at the base but day buy 65 / sell 65 must close unresolved, while one with no activity closes nothing_placed."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-111.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "PR #421 review",
+   "evidence": "documented limit in the docstring; no test covers the round trip"
+  }
+ ]
+}

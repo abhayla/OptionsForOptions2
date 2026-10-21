@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal as D
 
 import pytest
-from ofo_app.execute_replay import AT, REPLIES, RecordedKite
+from ofo_app.execute_replay import AT, RecordedKite, recorded_text
 from test_execute_route import (
     RATES,
     _post,
@@ -26,12 +26,12 @@ from test_execute_route import (
 )
 
 HTTP_OK, HTTP_CONFLICT, PLANS_AFTER_EXIT = 200, 409, 2
-TAG = "OFS1V1L0"
+TAG = "Q0001010"
 RECONCILE_PHRASE = "do not match what we recorded"
 
 
 def _real_rows() -> list[dict]:
-    reply = json.loads((REPLIES / "orders-122104.json").read_text(encoding="utf-8"), parse_float=D)
+    reply = json.loads(recorded_text("orders-122104.json"), parse_float=D)
     return reply["data"]
 
 
@@ -43,7 +43,7 @@ def _replay(orders: list[dict], held: int = 65) -> RecordedKite:
     replay = RecordedKite(funds="1003", basket_total="354.25", orders=None, positions="positions-122104",
                           trades="trades-122104")
     replay.order_rows = orders
-    positions = json.loads((REPLIES / "positions-122104.json").read_text(encoding="utf-8"), parse_float=D)
+    positions = json.loads(recorded_text("positions-122104.json"), parse_float=D)
     data = copy.deepcopy(positions.get("data", positions))
     data["net"][0]["quantity"] = held
     replay.position_rows = data["net"]
@@ -140,7 +140,7 @@ async def test_ac6_another_strategys_drifted_tag_does_not_block_this_strategy(ap
     """OFS2V1L0 (strategy 2) filled 30 in the book is not this strategy's drift -> EXIT of strategy 1 goes through."""
     async with _world(app_engine, admin_engine, monkeypatch, close="filled", filled={TAG: 65}) as (
             app, sid, use, _stored):
-        other = {**_real_rows()[0], "tag": "OFS2V1L0", "tags": ["OFS2V1L0"], "filled_quantity": 30,
+        other = {**_real_rows()[0], "tag": "Q0002010", "tags": ["Q0002010"], "filled_quantity": 30,
                  "order_id": "261016170576999"}
         use(_replay([*_real_rows(), other]))
         resp = await _post(app, sid, "EXIT")
