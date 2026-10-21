@@ -40,11 +40,12 @@ class Settings(BaseSettings):
     #: #237: TEST-ONLY. Pins the catalogue routes' "today" (ofo_app.pinned_clock) so a recorded fixture stays live in CI.
     #: Refused unless APP_ENV is exactly "test".
     TEST_CATALOGUE_DATE: str | None = None
-    #: #370: the API's database pool. The defaults are SQLAlchemy's own (5 kept + 10 extra: no change for a normal
-    #: run). The throwaway CI role has CONNECTION LIMIT 5 (ADR-048) shared by three API processes, so the e2e job
-    #: starts each with 1 + 0: three connections in all, the rest of the limit left for seeding and tests.
-    DB_POOL_SIZE: int = Field(default=5, ge=1)
-    DB_MAX_OVERFLOW: int = Field(default=10, ge=0)
+    #: #370, GC-6: the API's database pool. The ofo_app role has CONNECTION LIMIT 5 (ADR-048) and a developer runs two
+    #: API processes beside a 13-card page, so one process may open 2 + 0 = 2 connections (2 processes x 2 = 4 <= 5).
+    #: A bigger pool is set per environment; start-up refuses a pool above the role's limit (db.verify_pool_budget).
+    #: The e2e job starts three processes with 1 + 0 each.
+    DB_POOL_SIZE: int = Field(default=2, ge=1)
+    DB_MAX_OVERFLOW: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":
