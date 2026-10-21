@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (139)
+## Decisions (145)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -106,11 +106,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is m… [refines REQ-073]
 - ADR-099 2026-10-16: When a Kite session is active, the outcome screen… [extends REQ-055]
 - ADR-100 2026-10-16: The Kite Connect app registers no static IP. [applies ADR-054]
-- ADR-101 2026-10-16: Every money figure read from a Zerodha reply that the margin gate or a screen compares (the basket… [applies ADR-016, ADR-099]
-- ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact… [applies ADR-008, ADR-101]
-- ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it… [applies ADR-016, ADR-018, ADR-019]
-- ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instru… [applies ADR-016, ADR-057, ADR-058, REQ-053]
-- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2; since 2026-10-19 the 8-character form Q + str… [applies ADR-050, ADR-054, REQ-073]
+- ADR-101 2026-10-16: Every money figure read from a Zerodha reply that… [applies ADR-016, ADR-099]
+- ADR-102 2026-10-17: Realised and position P&L computed from broker fi… [applies ADR-008, ADR-101]
+- ADR-103 2026-10-17: A fill that would move a strategy's ledger positi… [applies ADR-016, ADR-018, ADR-019]
+- ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradabl… [applies ADR-016, ADR-057, ADR-058, REQ-053]
+- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 A… [applies ADR-050, ADR-054, REQ-073]
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real de… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner… [refines ADR-106, ADR-107]
@@ -145,6 +145,12 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-138 2026-10-20: (1) Orders screen: one line per strategy order in the four ADR-135 states plus an "Open Kite order… [amends REQ-073; amends REQ-044; amends REQ-064; a…]
 - ADR-139 2026-10-20: (1) The first line of the Execute review follows one pattern: entry "You will place <n> orders now… [refines REQ-056]
 - ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: NORMAL when the worst-case loss is limited and with… [refines REQ-056]
+- ADR-141 2026-10-20: (1) The recorded action "Use Zerodha's numbers for this contract" (ADR-137) places no order, so it… [refines ADR-137]
+- ADR-142 2026-10-20: (1) The recovery actions of ADR-136/137 refuse with exactly these lines: open order on the contract… [refines ADR-136]
+- ADR-143 2026-10-20: (1) When the engine returns no worst-case loss for a basket (for example legs on different expiries… [extends ADR-140]
+- ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
+- ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
+- ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
 
 ## Requirements (75)
 

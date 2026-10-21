@@ -21,6 +21,10 @@ const REAL_PAGES = {
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
 }
 
+// Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
+const billingShell = () => import('../pages/BillingShellPage.vue')
+const SETTINGS_PAGES = { 'subscription-billing': billingShell, 'free-eligibility': billingShell, referrals: billingShell }
+
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
@@ -50,13 +54,15 @@ const settingsRoutes = [
   ...ACCOUNT_ITEMS.map(([slug, label]) => ({
     path: `/settings/${slug}`,
     name: `settings-${slug}`,
-    component: Placeholder,
+    component: SETTINGS_PAGES[slug] ?? Placeholder,
     meta: { title: label, section: 'settings', parent: ACCOUNT_LABEL },
   })),
 ]
 
 export const routes = [
   { path: '/', redirect: '/home' },
+  // GC-6 row LANDING (REQ-010): public page, no app shell (meta.public); '/' stays on /home until sign-in (Stage 5).
+  { path: '/welcome', name: 'landing', component: () => import('../pages/LandingPage.vue'), meta: { title: 'Welcome', public: true } },
   ...sectionRoutes,
   ...settingsRoutes,
   { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
