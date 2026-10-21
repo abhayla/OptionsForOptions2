@@ -109,20 +109,26 @@ def _attribute(store, quantity, *, at=MON, standalone=None, book=(), mismatches=
                                                 sources, at=at))
 
 
+_HELD = 65  # the base in the parametrized case: the closed plan's fill
+_STANDALONE = 25
 NEXT_DAY_BOOK = tuple(orders_from_reply([]))  # Kite's order book the next day: none of Friday's orders
 
 
 # ---- ENTRY ------------------------------------------------------------------------------------------------------
 
-def test_ac4_entry_net_equals_base_closes_nothing_placed():
-    """AC-4: earlier-day open ENTRY (real OFS1V1L0 BUY 65), no other plan (base 0), Zerodha flat the next day ->
-    closed nothing_placed, no mismatch; the attribution blocks nothing."""
+def test_net_roundtrip_entry_net_equals_base_is_unresolved_with_a_stored_mismatch():
+    """NET-ROUNDTRIP core (F-55, net-only-read-misses-roundtrip): earlier-day open ENTRY (real OFS1V1L0 BUY 65), no
+    other plan (base 0), Zerodha flat the next day. Flat is what a filled-then-hand-sold round trip also leaves (the
+    real 2026-10-16 positions-151006 row: quantity 0 with day_buy_quantity 65 and day_sell_quantity 65 the same day,
+    and Kite drops that row the next day), so nothing_placed is NOT written: one stored mismatch (by hand: expected =
+    base 0 + planned 65 = 65, Zerodha 0) and unresolved_from_positions; the strategy stays blocked."""
     done, calls = _resolve({1: _Entry(_real_plan(1))}, None, book=NEXT_DAY_BOOK)
-    assert calls == [("close", 1, 1, "nothing_placed")]
+    assert calls == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 1, eps.UNRESOLVED)]
     assert [(r.strategy_id, r.plan_number, r.action, r.reason, r.mismatch_ids) for r in done] == [
-        (1, 1, "ENTRY", "nothing_placed", ())]
+        (1, 1, "ENTRY", eps.UNRESOLVED, (1,))]
     seen = _attribute({1: _Entry(_real_plan(1))}, None)
-    assert dict(seen.pending) == {} and dict(seen.unresolved) == {} and seen.blocked == frozenset()
+    assert dict(seen.pending) == {} and seen.blocked == frozenset({"1"})
+    assert [p.reason for p in seen.unresolved[KEY]] == [ra.UNSETTLED_ROUNDTRIP_UNREAD]
 
 
 @pytest.mark.parametrize("quantity", [65, 30])
@@ -140,29 +146,37 @@ def test_ac6_entry_net_above_base_is_a_mismatch_never_filled(quantity):
     assert KEY not in seen.compared_net and dict(seen.outside) == {}  # never split as outside lots
 
 
-@pytest.mark.parametrize(("quantity", "outcome"), [(65, "nothing_placed"), (130, eps.UNRESOLVED),
+@pytest.mark.parametrize(("quantity", "outcome"), [(65, eps.UNRESOLVED), (130, eps.UNRESOLVED),
                                                     (95, eps.UNRESOLVED), (0, eps.UNRESOLVED)])
 def test_ac4_base_is_the_other_stored_plans(quantity, outcome):
     """AC-4: the strategy holds +65 from a CLOSED plan (real OFS1V1L0 filled 65) and has an earlier-day open ENTRY
-    BUY 65 as plan 2 (derived). Base = 65: net 65 -> nothing_placed; 130 (base + 65), 95 (base + 30), 0 -> mismatch."""
+    BUY 65 as plan 2 (derived). Base = 65: net 65 (= base, a round trip is not ruled out) -> mismatch
+    (expected 65 + 65, Zerodha 65); 130 (base + 65), 95 (base + 30), 0 -> mismatch."""
     closed = _real_plan(1, status="closed")
     plan2 = dataclasses.replace(_real_plan(1), plan_number=2, orders=tuple(
         dataclasses.replace(o, tag="OFS1V2L0") for o in _real_plan(1).orders))
     done, calls = _resolve({1: _Entry(closed, plan2)}, quantity)
     assert done[0].plan_number == plan2.plan_number and done[0].reason == outcome
-    if outcome == "nothing_placed":
-        assert calls == [("close", 1, 2, "nothing_placed")]
+    if outcome == eps.UNRESOLVED and quantity == _HELD:
+        assert calls == [("mismatch", 1, IID, 130, 65, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 2, eps.UNRESOLVED)]
     else:
         assert calls == [("mismatch", 1, IID, 65, quantity, ra.UNSETTLED_NET_CHANGED), ("close", 1, 2, eps.UNRESOLVED)]
 
 
+def test_net_roundtrip_partial_roundtrip_net_differs_is_the_existing_mismatch():
+    """Bought 65 and hand-sold 30 leaves net 35 != base 0: the net-changed mismatch (expected 0, Zerodha 35)."""
+    _, calls = _resolve({1: _Entry(_real_plan(1))}, 35)
+    assert calls == [("mismatch", 1, IID, 0, 35, ra.UNSETTLED_NET_CHANGED), ("close", 1, 1, eps.UNRESOLVED)]
+
+
 # ---- EXIT (ADR-111's carry-over) ----------------------------------------------------------------------------------
 
-def test_ac4_exit_net_equals_held_closes_nothing_placed():
-    """AC-4 / ADR-111: held +65 (real entry, closed filled 65), earlier-day open EXIT OFS1V2L0 SELL 65, Zerodha still
-    +65 the next day -> the EXIT did not fill: closed nothing_placed (a new EXIT can then be created)."""
+def test_net_roundtrip_exit_net_equals_held_is_unresolved():
+    """ADR-111 / F-55: held +65 (real entry, closed filled 65), earlier-day open EXIT OFS1V2L0 SELL 65, Zerodha still
+    +65 the next day: the EXIT may have sold and been bought back by hand, so it is not closed nothing_placed; by
+    hand expected = held 65 + planned (-65) = 0, Zerodha 65 -> one mismatch, unresolved_from_positions."""
     done, calls = _resolve({1: _Entry(_real_plan(1, status="closed"), _real_plan(2))}, 65)
-    assert calls == [("close", 1, 2, "nothing_placed")]
+    assert calls == [("mismatch", 1, IID, 0, 65, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 2, eps.UNRESOLVED)]
     assert done[0].action == "EXIT"
 
 
@@ -186,7 +200,7 @@ def test_ac6_contract_expired_is_a_mismatch_even_when_net_equals_base():
     assert calls == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_EXPIRED), ("close", 1, 1, eps.UNRESOLVED)]
     one_second_before = EXPIRY - datetime.timedelta(seconds=1)
     _, before = _resolve({1: _Entry(_real_plan(1))}, None, at=one_second_before)
-    assert before == [("close", 1, 1, "nothing_placed")]
+    assert before == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 1, eps.UNRESOLVED)]
 
 
 @pytest.mark.parametrize("created", [
@@ -206,9 +220,9 @@ def test_ac1_same_day_open_plan_is_untouched(created):
                                      datetime.datetime(2026, 10, 15, 15, 7, 21, tzinfo=IST)])
 def test_ac4_plan_at_2359_and_two_days_old_are_resolved(created):
     """AC-4: a plan created 23:59 IST the evening before, and one two days old, are earlier-day plans: net = base ->
-    nothing_placed."""
+    unresolved (round trip not ruled out)."""
     _, calls = _resolve({1: _Entry(_real_plan(1, created=created))}, None)
-    assert calls == [("close", 1, 1, "nothing_placed")]
+    assert calls == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 1, eps.UNRESOLVED)]
 
 
 def test_ac1_earlier_day_plan_with_its_tag_in_todays_book_stays_on_the_book_path():
@@ -249,14 +263,16 @@ def test_ac6_another_strategys_same_day_open_plan_makes_it_a_mismatch():
     assert calls[0] == ("mismatch", 1, IID, 65, 0, ra.UNSETTLED_SHARED)
 
 
-@pytest.mark.parametrize(("quantity", "outcome"), [(25, "nothing_placed"), (90, eps.UNRESOLVED)])
+@pytest.mark.parametrize(("quantity", "outcome"), [(25, eps.UNRESOLVED), (90, eps.UNRESOLVED)])
 def test_ac4_standalone_is_in_the_base(quantity, outcome):
     """AC-4 (REQ-060 AC-7): a standalone 25 recorded on the contract; earlier-day ENTRY BUY 65. Net 25 = base ->
-    nothing_placed; net 90 (base + 65) -> mismatch (expected 25, Zerodha 90)."""
+    mismatch (expected 25 + 65 = 90, Zerodha 25, round trip not ruled out); net 90 (base + 65) -> mismatch
+    (expected 25, Zerodha 90)."""
     done, calls = _resolve({1: _Entry(_real_plan(1))}, quantity, standalone={KEY: 25})
     assert done[0].reason == outcome
-    if outcome != "nothing_placed":
-        assert calls[0] == ("mismatch", 1, IID, 25, 90, ra.UNSETTLED_NET_CHANGED)
+    expected = ("mismatch", 1, IID, 90, 25, ra.UNSETTLED_ROUNDTRIP_UNREAD) if quantity == _STANDALONE else (
+        "mismatch", 1, IID, 25, 90, ra.UNSETTLED_NET_CHANGED)
+    assert calls[0] == expected
 
 
 def test_ac6_shared_contract_net_equals_base_is_a_mismatch_for_every_holder():
@@ -371,7 +387,8 @@ def test_ac1_earlier_means_strictly_before_todays_ist_date():
     assert [er.created_session(p, today) for p in (sun, mon, _real_plan(1))] == [
         er.SESSION_EARLIER, er.SESSION_TODAY, er.SESSION_EARLIER]
     assert _resolve({1: _Entry(mon)}, None)[1] == []
-    assert _resolve({1: _Entry(sun)}, None)[1] == [("close", 1, 1, "nothing_placed")]
+    assert _resolve({1: _Entry(sun)}, None)[1] == [
+        ("mismatch", 1, IID, 65, 0, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 1, eps.UNRESOLVED)]
 
 
 def test_ac6_mixed_sides_plan_is_a_mismatch_with_gross_expected():
@@ -423,9 +440,11 @@ def test_ac6_store_contract_key_admits_the_apps_real_instrument_id():
             rs._contract_key(bad, rs.BAD_MISMATCH)
 
 
-def test_ac6_two_contract_plan_records_only_the_unsettled_contract():
-    """AC-6: a derived two-leg earlier-day ENTRY (BUY 65 on the real 23650 CE, BUY 65 on 23700 CE); Zerodha flat on
-    23650 (= base) and +65 on 23700 -> one mismatch, on 23700 only (expected 0, Zerodha 65); the plan is unresolved."""
+def test_ac6_two_contract_plan_records_a_mismatch_on_both_contracts():
+    """AC-6, F-55: a derived two-leg earlier-day ENTRY (BUY 65 on the real 23650 CE, BUY 65 on 23700 CE); Zerodha flat
+    on 23650 (= base) and +65 on 23700 -> a mismatch on BOTH contracts: 23650 because a net equal to the base cannot
+    rule out a fill sold by hand (expected 65 = base + planned, Zerodha 0), 23700 because the net changed (expected 0,
+    Zerodha 65); the plan is unresolved."""
     real = _listed()
     other_token = (int(TOKEN) >> 8) + 2
     other = zerodha_listed(
@@ -439,9 +458,11 @@ def test_ac6_two_contract_plan_records_only_the_unsettled_contract():
                                tradingsymbol="NIFTY26O1923700CE")
     plan = dataclasses.replace(_real_plan(1), orders=(leg0, leg1))
     done, calls = _resolve({1: _Entry(plan)}, None, net={key2: 65}, catalogue=_catalogue(other))
-    assert calls == [("mismatch", 1, f"{NSE_FO}:{other_token}", 0, 65, ra.UNSETTLED_NET_CHANGED),
+    assert calls == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_ROUNDTRIP_UNREAD),
+                     ("mismatch", 1, f"{NSE_FO}:{other_token}", 0, 65, ra.UNSETTLED_NET_CHANGED),
                      ("close", 1, 1, eps.UNRESOLVED)]
-    assert [(c.key, c.reason) for c in done[0].decision.contracts] == [(KEY, None), (key2, ra.UNSETTLED_NET_CHANGED)]
+    assert [(c.key, c.reason) for c in done[0].decision.contracts] == [
+        (KEY, ra.UNSETTLED_ROUNDTRIP_UNREAD), (key2, ra.UNSETTLED_NET_CHANGED)]
 
 
 def test_ac1_unknown_plan_status_is_refused():
