@@ -53,7 +53,7 @@ def test_allowlist_holds_every_earlier_block_and_its_own_exactly_once() -> None:
     mine = _mine()
     text = mine.extended_allowlist_sql()
     markers = _earlier_markers()
-    assert "0018_reconciliation_store" in markers and len(markers) >= EARLIER_BLOCKS, markers
+    assert "0019_reconciliation_store" in markers and len(markers) >= EARLIER_BLOCKS, markers
     assert {n: m for n, m in markers.items() if m not in text} == {}
     assert text.count(mine.ALLOWLIST_BLOCK_MARKER) == 1
     assert text.count("CREATE OR REPLACE FUNCTION") == 1 and "CREATE FUNCTION" not in text
@@ -137,7 +137,7 @@ def test_one_holding_per_strategy_and_contract_not_per_contract() -> None:
 
 def test_predecessor_from_down_revision_and_downgrade_restores_it() -> None:
     mine = _mine()
-    assert mine._PREVIOUS.revision == mine.down_revision == "0018_reconciliation_store"
+    assert mine._PREVIOUS.revision == mine.down_revision == "0019_reconciliation_store"
     source = (VERSIONS / f"{THIS}.py").read_text(encoding="utf-8")
     assert re.findall(r"""_load\(\s*["']\d{4}_""", source) == []
     assert "op.execute(extended_allowlist_sql())" in source and "op.execute(previous_allowlist_sql())" in source

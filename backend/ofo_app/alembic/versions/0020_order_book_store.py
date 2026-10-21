@@ -1,8 +1,6 @@
 """Order-book store: platform fill prices and adopted holdings survive a restart (#313, GC-6).
 
-NOTE (stacking): ``down_revision`` names held PR #419's CURRENT stem ``0018_reconciliation_store``. GC-3F renumbers #419
-to 0019 (because #438 took 0018); when it does, change ``down_revision`` below to #419's renumbered stem. The
-predecessor is loaded by FILE NAME from ``down_revision``, so the stem must match the file exactly.
+The predecessor is loaded by FILE NAME from ``down_revision``, so the stem must match the file exactly.
 
 Basis: issue #313 ("it must be stored (fills AND adopted holdings, in the same transaction as the strategy version)
 before any route uses send_guard or the partial assessment"); ADR-096 (adopted holdings count in the strategy's
@@ -44,7 +42,7 @@ Changes (owner-run, one transaction):
 - downgrade: refuses while any row is stored in either table; otherwise restores the predecessor's state exactly.
 
 Revision ID: 0020_order_book_store
-Revises: 0018_reconciliation_store (to become #419's renumbered stem)
+Revises: 0019_reconciliation_store
 """
 
 from __future__ import annotations
@@ -55,7 +53,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0020_order_book_store"
-down_revision = "0018_reconciliation_store"  # change to #419's renumbered stem when GC-3F renumbers it
+down_revision = "0019_reconciliation_store"
 branch_labels = None
 depends_on = None
 
