@@ -114,6 +114,10 @@ def test_market_status_route_is_the_gates_verdict_in_each_state() -> None:
     unknown = _verdict(datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST))
     assert unknown["status"] == "unconfirmed" and unknown["next_open"] is None
     assert unknown["message"]["what_happened"].startswith("We could not confirm that the market is open")
+    # the server's next boundary, which the open screen waits for (MKT-HOURS-REREAD)
+    assert opened["next_change_at"].startswith("2026-10-21T15:30:00")
+    assert closed["next_change_at"].startswith("2026-10-21T09:15:00")
+    assert unknown["next_change_at"] is None
     assert any(r.path == "/execute/market-status" and "GET" in r.methods for r in execute.router.routes)
 
 

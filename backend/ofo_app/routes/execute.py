@@ -64,7 +64,7 @@ from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.market_calendar import MarketStatus, market_status, next_open
 from ofo.money import PAISE
-from ofo.timeutil import IST
+from ofo.timeutil import IST, SESSION_CLOSE
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
@@ -145,6 +145,9 @@ class MarketStatusOut(ApiModel):
     next_open: Optional[datetime.date]  # noqa: UP045 - the next trading day when closed, else None
     message: Optional[CatalogueText]  # noqa: UP045 - the gate's own refusal text, None when open
     as_of: datetime.datetime  # the server clock the verdict was judged on
+    # The server's next boundary: today's close when open, the next open when closed, None when unconfirmed. The screen
+    # waits (next_change_at - as_of) on the SERVER's two times and asks again; it never reads its own clock (MKT-HOURS M1).
+    next_change_at: Optional[datetime.datetime] = None  # noqa: UP045
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -295,11 +298,13 @@ def market_verdict(now: datetime.datetime) -> MarketStatusOut:
     """The gate's own market verdict at ``now`` (``market_failures``), as the screen shows it."""
     failures = market_failures(now, market_open(now))
     if not failures:
-        return MarketStatusOut(status="open", next_open=None, message=None, as_of=now)
+        closes = datetime.datetime.combine(now.astimezone(IST).date(), SESSION_CLOSE, IST)
+        return MarketStatusOut(status="open", next_open=None, message=None, as_of=now, next_change_at=closes)
     opens = next_open(now) if market_status(now) is not MarketStatus.NO_CALENDAR else None
     if opens is None:
         return MarketStatusOut(status="unconfirmed", next_open=None, message=failures[0].message, as_of=now)
-    return MarketStatusOut(status="closed", next_open=opens.date(), message=failures[0].message, as_of=now)
+    return MarketStatusOut(status="closed", next_open=opens.date(), message=failures[0].message, as_of=now,
+                           next_change_at=opens)
 
 
 @router.get("/execute/market-status", response_model=MarketStatusOut)

@@ -21,6 +21,11 @@ export const NOT_LIVE_PARTS = Object.freeze({
   next_action: 'Wait for the data to update, then try again.',
 })
 
+/** Margin added to the server's boundary before the screen asks again, so the server has crossed it (MKT-HOURS-REREAD). */
+export const MARKET_REREAD_MARGIN_MS = 2000
+/** Largest delay setTimeout honours (a larger one fires at once). */
+export const MAX_TIMEOUT_MS = 2147483647
+
 /** Catalogue template `gate_market_unconfirmed`, as the server renders it. Shown when the market-status read fails or
  *  the server cannot confirm the market (ADR-119 fail closed): the Execute actions stay disabled. */
 export const MARKET_UNCONFIRMED_PARTS = Object.freeze({
