@@ -1136,6 +1136,8 @@ async def test_held_contracts_read_from_strategy_legs_and_open_plans_or_unknown(
     assert await _held_contracts(_HeldConn(0, [], ["NSE_FO:not-a-token"])) is None  # an unreadable plan leg
 
 
+TRIM_DAY = datetime(2026, 10, 21, 8, 40, tzinfo=IST)
+LOAD_DAY = datetime(2026, 10, 15, 8, 40, tzinfo=IST)
 REAL_TRIM_DROPPED = 234  # NIFTY 2026-10-27 contracts the 2026-10-21 list no longer carries (2026-10-15 had them)
 _LAST_AUDIT = text("SELECT actor, payload ->> 'action' AS action, "
                    "jsonb_array_length(payload -> 'dropped_instrument_tokens') AS n "
@@ -1151,12 +1153,116 @@ async def test_real_far_strike_trim_is_accepted_by_the_store_with_one_audit_row(
                                as_of=datetime(2026, 10, 15, 8, 40, tzinfo=IST))
             audit_before = (await conn.execute(_AUDIT_COUNT)).scalar_one()
             result = await apply_update(conn, _real_list("kite-2026-10-21-nifty-sensex.csv.gz"),
-                                        as_of=datetime(2026, 10, 21, 8, 40, tzinfo=IST))
+                                        as_of=TRIM_DAY, nse_file=_nse_file())
             assert result.domain.structural_trim_accepted is True
             assert result.delisted == REAL_TRIM_DROPPED
             row = (await conn.execute(_LAST_AUDIT)).one()
             assert (await conn.execute(_AUDIT_COUNT)).scalar_one() == audit_before + 1
             assert (row.actor, row.action, row.n) == (
                 "system:catalogue-update", "catalogue_structural_trim_accepted", REAL_TRIM_DROPPED)
+        finally:
+            await trans.rollback()
+
+
+# --- ADR-148 condition 4 on a real database: strategy legs and OPEN plan legs hold a contract; a closed plan not ---
+
+def _nse_file():
+    from ofo.instruments.freeze_file import parse_freeze_file  # noqa: PLC0415
+
+    return parse_freeze_file(ROOT / "tests" / "fixtures" / "instruments" / "nse-fo-16102026-nifty-futures.csv.gz",
+                             nse_name="NSE_FO_contract_16102026.csv.gz")
+
+
+_WEEKLY = date(2026, 10, 27)
+_LOT = 65  # the real NIFTY lot on both lists
+_CONTRACT_ID = text("SELECT id FROM public.catalogue_contracts WHERE exchange_segment = :s AND exchange_token = :t "
+                    "AND NOT retired AND NOT delisted")
+
+
+async def _weekly_contract(conn: AsyncConnection, strike: int, kind: str) -> tuple[int, str, str]:
+    """(catalogue id, plan instrument_id, zerodha symbol) of a NIFTY 2026-10-27 option of the 2026-10-15 list."""
+    row = next(r for r in _real_list("kite-2026-10-15-nifty-sensex.csv.gz") if r.contract.name == "NIFTY"
+               and r.contract.expiry == _WEEKLY and r.contract.strike == strike and r.contract.instrument_type == kind)
+    cid = (await conn.execute(_CONTRACT_ID, {"s": row.id.exchange_segment, "t": row.id.exchange_token})).scalar_one()
+    return int(cid), f"{row.id.exchange_segment}:{row.id.exchange_token}", row.ref("zerodha").broker_symbol
+
+
+async def _strategy_with_plan(conn: AsyncConnection, leg: tuple[int, str, str], plan_leg: tuple[int, str, str] | None,
+                              *, close: bool = False) -> None:
+    """Saves a strategy holding ``leg``; with ``plan_leg``, records an ENTRY plan ordering it (closed if ``close``)."""
+    import uuid  # noqa: PLC0415
+
+    from ofo.engine.legs import Action  # noqa: PLC0415
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+    from ofo.strategy import stored_form as sf  # noqa: PLC0415
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app import strategy_store as store  # noqa: PLC0415
+
+    user = "test-" + uuid.uuid4().hex
+    saved = await store.build_definition(conn, "NIFTY", [sf.LegChoice(leg[0], Action("BUY"), _LOT)])
+    sid = (await store.save_draft(conn, user, saved)).id
+    if plan_leg is None:
+        return
+    number = await plans.next_plan_number(conn, user, sid)
+    order = plans.PlanOrder(leg_index=0, tag=make_tag(sid, number, 0), instrument_id=plan_leg[1],
+                            tradingsymbol=plan_leg[2], transaction_type="BUY", quantity=_LOT, price=Decimal("10.00"))
+    await plans.record_plan(conn, user, sid, number, "ENTRY", (order,))
+    if close:
+        await plans.close_plan(conn, user, sid, number, reason="nothing_placed", filled=None)
+
+
+async def _trim_after(app_engine: AsyncEngine, setup) -> tuple[str | None, int]:
+    """Loads the 2026-10-15 list, runs ``setup``, applies the real 2026-10-21 trim; (refusal text or None, audit rows
+    added). Rolled back."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _real_list("kite-2026-10-15-nifty-sensex.csv.gz"), as_of=LOAD_DAY)
+            await setup(conn)
+            before = (await conn.execute(_AUDIT_COUNT)).scalar_one()
+            try:
+                await apply_update(conn, _real_list("kite-2026-10-21-nifty-sensex.csv.gz"), as_of=TRIM_DAY,
+                                   nse_file=_nse_file())
+                refusal = None
+            except ValueError as exc:
+                refusal = str(exc)
+            return refusal, (await conn.execute(_AUDIT_COUNT)).scalar_one() - before
+        finally:
+            await trans.rollback()
+
+
+async def test_a_dropped_contract_held_by_a_saved_strategy_leg_is_refused(app_engine: AsyncEngine) -> None:
+    async def setup(conn):
+        await _strategy_with_plan(conn, await _weekly_contract(conn, 20000, "PE"), None)
+
+    refusal, audit_rows = await _trim_after(app_engine, setup)
+    assert refusal is not None and "1 dropped contract(s) are held" in refusal and audit_rows == 0
+
+
+async def test_a_dropped_contract_on_an_open_plan_leg_is_refused(app_engine: AsyncEngine) -> None:
+    async def setup(conn):
+        kept = await _weekly_contract(conn, 23500, "CE")
+        await _strategy_with_plan(conn, kept, await _weekly_contract(conn, 20000, "CE"))
+
+    refusal, audit_rows = await _trim_after(app_engine, setup)
+    assert refusal is not None and "1 dropped contract(s) are held" in refusal and audit_rows == 0
+
+
+async def test_a_closed_plan_leg_does_not_hold_its_contract(app_engine: AsyncEngine) -> None:
+    async def setup(conn):
+        kept = await _weekly_contract(conn, 23500, "CE")
+        await _strategy_with_plan(conn, kept, await _weekly_contract(conn, 20000, "CE"), close=True)
+
+    refusal, audit_rows = await _trim_after(app_engine, setup)
+    assert refusal is None and audit_rows == 1
+
+
+async def test_without_the_nse_file_the_real_trim_stays_refused(app_engine: AsyncEngine) -> None:
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _real_list("kite-2026-10-15-nifty-sensex.csv.gz"), as_of=LOAD_DAY)
+            with pytest.raises(ValueError, match="no anchor level for NIFTY: NIFTY: no NSE contract file was given"):
+                await apply_update(conn, _real_list("kite-2026-10-21-nifty-sensex.csv.gz"), as_of=TRIM_DAY)
         finally:
             await trans.rollback()
