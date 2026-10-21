@@ -1271,6 +1271,38 @@
             "title": "Legs",
             "type": "array"
           },
+          "range_end": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last scenario level in index points; sent with range_start",
+            "examples": [
+              "23600"
+            ],
+            "title": "Range End"
+          },
+          "range_start": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the first scenario level in index points; sent with range_end",
+            "examples": [
+              "22800"
+            ],
+            "title": "Range Start"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2090,6 +2122,10 @@
             "title": "Available",
             "type": "boolean"
           },
+          "customised": {
+            "title": "Customised",
+            "type": "boolean"
+          },
           "end": {
             "title": "End",
             "type": "string"
@@ -2172,7 +2208,8 @@
           "totals",
           "step",
           "start",
-          "end"
+          "end",
+          "customised"
         ],
         "title": "ScenarioOut",
         "type": "object"
