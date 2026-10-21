@@ -28,6 +28,7 @@ COLUMNS = ["Id", "Item", "P", "Contract", "Tier", "Status", "Evidence"]
 STATUS_PLAIN = {"todo", "building", "verified", "closed", "blocked-owner", "blocked-live"}
 STATUS_WITH_NUMBER = {"held", "merged", "parked", "deferred"}
 CLOSED_WORDS = {"closed", "parked", "deferred"}
+STATUS_ISSUE_WORDS = {"parked", "deferred"}  # their #N is an issue (held/merged name a PR)
 MIN_TABLE_LINES = 3  # header, separator, at least one row
 WITH_NUMBER_PARTS = 2  # "held" and "#N"
 CONTRACT_RE = re.compile(r"GC-\w+|owner|stage-5")
@@ -43,6 +44,7 @@ PR_REF_RE =re.compile(r"#(\d+)\b(?!-)")
 OUT_OF_SCOPE_LINE = re.compile(r"^Out of this contract.*$", re.M)
 # A plan id is an issue number (#352, #352-2) or an UPPER-CASE hyphenated name (CI-SPLIT, W-118-sel, REQ-041).
 PLAN_ID_RE = re.compile(r"#\d+(?:-\d+)?|\b[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+\b")
+NAMED_ISSUE_RE = re.compile(r"(\b[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+\b)\s*\(\s*(#\d+)\s*\)")  # NAME (#N)
 NOT_ROW_PREFIXES = ("ADR-", "GC-", "AC-")  # decision, contract and criterion references, not rows
 
 
@@ -129,6 +131,9 @@ def check_open_issues_have_rows(rows, issues, failures):
         m = re.fullmatch(r"#(\d+)", row["Id"])
         if m:
             covered.add(int(m.group(1)))
+        parsed = parse_status(row["Status"])  # "deferred #482" on any row covers issue 482
+        if parsed and parsed[0] in STATUS_ISSUE_WORDS:
+            covered.add(parsed[1])
     for num, state in sorted(issues.items()):
         if state == "OPEN" and num not in covered:
             failures.append(f"#{num}: open issue has no row in the tracker")
@@ -197,6 +202,9 @@ def check_contract_ids(rows, contract_text, issues, prs, failures):
         failures.append(f"{GC6_CONTRACT}: section 4 is missing or names no row ids (cannot compare)")
         return
     have = {r["Id"] for r in rows}
+    for name, num in NAMED_ISSUE_RE.findall(contract_text[SECTION_START.search(contract_text).end():]):
+        if name in have or num in have:  # "NAME (#N)" is met by a row Id NAME or Id #N
+            ids -= {name, num}
     for rid in sorted(ids - have):
         failures.append(f"{GC6_CONTRACT}: {rid}: named in section 4 but has no tracker row")
 

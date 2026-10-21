@@ -132,6 +132,16 @@ def test_sub_id_rows_do_not_cover_an_open_issue(tmp_path):
     assert run(tmp_path, rows=with_row("#352", "GC-2h", "todo"), issues=issues)[0] == 0
 
 
+def test_status_naming_an_issue_covers_it(tmp_path):
+    issues = [*GH_ISSUES, {"number": 482, "state": "OPEN"}]
+    assert run(tmp_path, issues=issues)[0] == 1  # no row at all: still flagged
+    for status in ("deferred #482", "parked #482"):
+        assert run(tmp_path, rows=with_row("IDENT-1", "GC-6", status), issues=issues)[0] == 0, status
+    code, out = run(tmp_path, rows=with_row("IDENT-1", "GC-6", "merged #482"), issues=issues)
+    assert code == 1  # a merged status names a PR, not an issue
+    assert "#482: open issue has no row" in out
+
+
 def test_pipe_inside_a_cell_says_to_escape_it(tmp_path):
     code, out = run(tmp_path, raw=table(CLEAN_ROWS) + "| X-2 | a | b | P1 | GC | A | todo | |\n")
     assert code == 1
@@ -224,6 +234,20 @@ def test_contract_ac_suffix_maps_to_the_ac_row(tmp_path):
     assert "W-083-AC2: named in section 4 but has no tracker row" in out
     raw = gc6_rows("W-083-AC2", "todo", "verify: python -m pytest -q tests_app/x.py")
     assert run(tmp_path, raw=raw, contract=contract)[0] == 0
+
+
+def test_contract_name_with_issue_number_met_by_either_row_id(tmp_path):
+    contract = CONTRACT.replace("S5-1 second", "LIVE-POS-TAB (#434) second")
+    rows = {k: v for k, v in CLEAN_ROWS.items() if k != "S5-1"}
+    issues = [*GH_ISSUES, {"number": 434, "state": "OPEN"}]
+    code, out = run(tmp_path, rows=rows, base_rows=rows, contract=contract, issues=issues)
+    assert code == 1  # neither row exists
+    assert "LIVE-POS-TAB: named in section 4 but has no tracker row" in out
+    for rid in ("#434", "LIVE-POS-TAB"):
+        rows2 = with_row(rid, "GC-2h", "todo")
+        del rows2["S5-1"]
+        gh = issues if rid == "#434" else [*GH_ISSUES, {"number": 434, "state": "CLOSED"}]
+        assert run(tmp_path, rows=rows2, base_rows=rows2, contract=contract, issues=gh)[0] == 0, rid
 
 
 def test_contract_section_4_missing_fails_closed(tmp_path):
