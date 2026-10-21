@@ -14,7 +14,8 @@ Copy from: none - modelled on ``strategy_store`` (row lock, id checks, error sty
   the highest plan number Zerodha's own order book showed today, so a number Kite already holds is never minted again.
 - record_plan: inserts the plan open with its orders, in the same transaction. Every order is checked here again
   (a frozen dataclass can be forged) and the DATABASE checks it a third time: one open plan (partial unique index),
-  tag = OFS<strategy>V<plan>L<leg>, tag unique, positive quantity and price.
+  tag = make_tag(strategy, plan, leg) (Q-grammar since 0018; legacy OFS rows still accepted), tag unique,
+  positive quantity and price.
 - close_plan: open -> closed once, with a reason; closed_at is the database clock. Nothing reopens a plan.
 Transaction control (commit) stays with the caller. Another user's strategy answers exactly like a missing one.
 """
@@ -41,7 +42,7 @@ TAG_TAKEN = "tag_taken"
 
 ACTIONS = ("ENTRY", "EXIT")
 SIDES = ("BUY", "SELL")
-#: ``unresolved_from_positions`` (migration 0018, #380 step 2.1): an earlier-day plan the next-day positions cannot
+#: ``unresolved_from_positions`` (migration 0019, #380 step 2.1): an earlier-day plan the next-day positions cannot
 #: settle closes with 0 stored per order; the stored reconciliation mismatch carries the block.
 UNRESOLVED = "unresolved_from_positions"
 CLOSE_REASONS = ("filled", "exited", "nothing_placed", "partial", UNRESOLVED)

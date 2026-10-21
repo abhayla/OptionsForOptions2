@@ -642,8 +642,16 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   `broker_state_invalid`: the owner would see a login error right after placing real orders (REQ-073 AC-3 return).
 - Unverified until GC-3's first basket: whether `state` is absent on the return, and whether a closed/cancelled basket
   returns `status=success`. The return route never reads `status` as proof of placement (it reads Zerodha's book by tag).
-- Bears on: REQ-073 AC-3, ADR-097 (2). Status: **documented + code read; live shape unmeasured**. Fixed by W-105 (a
-  no-state hit lands on a page with only "Check with Zerodha"); registry: `shared-callback-treats-every-return-as-login`.
+- Measured 2026-10-19 (GC-3L L2/L3, two real baskets, strategy 9 plans 1 and 2): after the owner pressed Place, Kite
+  did NOT redirect. The basket tab stayed on `/connect/basket`, showed the order COMPLETE (order 261019170382597, BUY 65
+  NIFTY26OCT24000CE filled 65/65 avg 7.00 at 10:34:26) with "Refresh order status" and "Finish" buttons; the redirect
+  presumably comes only on Finish, which was not pressed (an owner-only click). The plan was closed from the Execute
+  tab's Check (10:35:05 / 10:35:18 -> plan 1 `filled`, 0 mismatches; exit plan 2 the same way at 10:47:18 / 10:47:32
+  -> `exited`). The no-state return page (W-105) was therefore not reached live; the return shape on Finish is still
+  unmeasured.
+- Bears on: REQ-073 AC-3, ADR-097 (2). Status: **measured 2026-10-19: no redirect until Finish; the Execute tab's Check
+  closes the plan**. Fixed by W-105 (a no-state hit lands on a page with only "Check with Zerodha"); registry:
+  `shared-callback-treats-every-return-as-login`.
 
 ## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-basket routes never call
 - Measured 2026-10-17 (GC-3 P0 item 7, fresh Opus verifiers on main 85e38e0, current criterion text against the code
@@ -686,3 +694,139 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   stops before any click and the owner adds funds. Bears on: ADR-108 (2) ("against the funds read then"), ADR-016,
   ADR-107 (#338). Status: **measured; owner-decided for the GC-3 live test** (no rule change: ADR-108 already reads
   funds at L1).
+- Resolved 2026-10-19 (GC-3L L1, after the owner's Rs 1,000 deposit): `available_funds 1000.00`; the entry (BUY 65 at
+  7.45, net premium -484.25, charges 23.82, margin 484.25, read 10:24:54) passed the funds gate, and after the entry the
+  read was `funds 545.00` (10:35:55). Status: **resolved** - a Monday read of exactly 1000.00 after a Rs 1,000
+  deposit is consistent with the Sunday zero being the real balance, not a weekend artefact (no rule change).
+
+## F-45 - The app's database role allows 5 connections in total, while ONE API process's pool can open about 19
+- Measured 2026-10-19 10:41 IST, read-only on the VPS PostgreSQL: `rolconnlimit` of role `ofo_app` = 5 (server
+  `max_connections` 100); GC-3L's API alone held 3 on `ofo_dev`. `backend/ofo_app/db.py` builds the engine with
+  SQLAlchemy's default pool (5 + overflow 10) and `history_store.py` adds its own (2 + 2).
+- Real case (GC-5S core proof, 10:33-10:40 IST): the new Live Strategies page on a second API (:8766) loaded 13 saved
+  strategies at once (13 `GET /strategies/{id}` plus a socket each); the API log shows `asyncpg TooManyConnectionsError:
+  too many connections for role "ofo_app"` 11 times and an unhandled error on `GET /strategies/11`, and a plain
+  one-connection read failed the same way after the browser closed, until that API was stopped.
+- The limit is per ROLE across databases, so ofo_dev, ofo_test and every local API or DB test share the same 5.
+- Consequence: any screen that fans out per-strategy reads, and any second API process, can refuse database work to
+  another process on the role - including a live order run. Bears on: ADR-048 (the limited `ofo_app` role), REQ-050
+  (shared computation and scale), REQ-049 AC-4. Status: **measured; registry `db-role-limit-below-pool-size`**; fix
+  open (page: bounded concurrency; app: pool sized under the role limit), open for owner decision only if the role
+  limit itself should change. Earlier sample: #370 (CI e2e), held fix #395 (pool settings, 1 + 0 in CI only).
+- Also measured 2026-10-19 (GitHub CI, PR #429 and main a614b16): the e2e test `strategy-save-draft.spec.ts:71` fails on
+  main itself with `FATAL: too many connections for role "ofo_app"` in the CI database log. Independent Opus review the
+  same day: the defect is each API process's pool (5 kept + 10 overflow against a shared limit of 5), not the screens;
+  the Live Strategies e2e visits trigger it (PR #429 red 4/4 while main 1dae5de was green). #395 (CI pools 1 + 0) merged
+  2026-10-19 by GC-5S (owner decision) and #429 then passed; the per-process pool budget is open (next contract).
+
+## F-46 - A live screen keeps showing its last answer's numbers after its own connection drops
+- Measured 2026-10-19 by three GC-5S verifier rounds, each proven with a red test on the real component: the Live
+  Strategies card (W-113) was not paused while reconnecting after a drop; the Underlying/index view (W-114) kept both
+  index values with their "as of" time after a drop whose fallback read failed, and a read sent before a drop could
+  restore a live value later; the Home strip (W-115) copied that logic before it was fixed.
+- Bears on: REQ-049 AC-4 ("Screens show when data is stale or unavailable instead of presenting old numbers as live."),
+  REQ-072 AC-2. Status: **measured; registry `last-live-answer-kept-after-drop`**; fixed per screen, and structurally for
+  the index views (one state machine in the index composable, W-115 round 2); no repo-wide check yet for a new live
+  screen.
+
+## F-47 - The live feed carries no previous close, so the Option Chain's default Change column cannot be filled
+- Read 2026-10-19 in the code on main a614b16 (GC-5S W-116): `backend/ofo/marketdata/kite_frames.py` has no `close` or
+  `ohlc` field at all (Kite's packet decoder keeps LTP, depth, volume, OI and times only), and the normalised quote model
+  (`backend/ofo/marketdata/quote.py`) has no close field; W-116's chain socket therefore sends `change: null` on every
+  cell and computes no change from anything else.
+- Bears on: REQ-029 AC-2 ("Default columns: Strike, LTP, Change, OI, Volume (Q45)"). Not a rule change: the data path is
+  missing a field. Next step: the Kite full-mode packet's close price (or the instrument's previous close from a daily
+  read) added to the adapter and the quote model, then the chain fills Change from the server. Status: **measured; open
+  (data path work, no owner decision needed unless the source of the previous close is a choice the owner wants).**
+
+## F-48 - A live socket's once-a-second limit guarded only its normal push, so its error path flooded the client
+- Measured 2026-10-19 (GC-5S W-116 round 1, red test on the real class): with the spot missing and an unknown contract in
+  the chain window, the chain socket sent an error on every poll (`[2, 30, 30]` messages per second against a limit of
+  1); round 2 routes every outbound message through one gate (`[1, 1, 1]`).
+- Bears on: REQ-029 AC-4 (live streaming at a bounded rate), REQ-050 (shared computation and scale). Status: **measured;
+  registry `rate-gate-on-success-path-only` (guarded for the chain socket)**; the index and strategy sockets not
+  re-checked yet.
+
+## F-49 - The Strategy Builder page is built but missing from the route map, so its nav item opens the placeholder
+- Read 2026-10-19 in the code on main ca60fc5: `frontend/src/pages/StrategyBuilderPage.vue` and 12 components in
+  `frontend/src/components/strategy/` exist, but `REAL_PAGES` in `frontend/src/router/routes.js` (lines 9-21, 11
+  entries) has no `strategies-strategy-builder` key; every nav item without a key renders `PlaceholderPage.vue`. About 14
+  menu items still open the placeholder (My Strategies, Create Strategy, Strategy Builder, the 4 Positions and 4
+  Orders items, Adjustments, the Settings pages).
+- Bears on: REQ-009 AC-2 (the navigation items open their screens), REQ-034 (the outcome view the Builder shows).
+  Not a rule change: the product's main screen is unreachable from the menu. Status: **measured; open (screen S1 wires
+  the key and a test asserts every built page is keyed)**.
+
+## F-50 - Kite's basket page shows Required margin and Final margin; order sequence changes the required one, not the final one; for F&O, buy options first
+- Read 2026-10-19 from Kite's support article
+  https://support.zerodha.com/category/trading-and-markets/kite-features/basket-order/articles/kite-basket-orders
+  (from a search summary, not a logged-in session): the basket shows "Required margin" and "Final margin" (its example
+  50,343.68 vs 38,913.68); orders are placed in basket sequence; the sequence changes the required margin but not the
+  final margin; for F&O buy options first; rejected orders are re-run by hand with no fee; "Include existing positions"
+  can show a required margin of 0. Partial-failure handling: not stated on that page.
+- Bears on: REQ-055 AC-1, AC-3 (margin required versus available, Zerodha's figure authoritative), REQ-056 AC-3
+  (protective buys before the sells that depend on them). Consistent with F-39 (the basket margin of an option BUY).
+  Status: **read once from a vendor page; not measured on the owner's account** - the Execute screen labels our
+  figure an estimate and Zerodha's the authority.
+
+## F-51 - No studied app shows a guided objective, market-view and range flow; ours rests on the spec alone
+- Read 2026-10-19 on public pages only (not logged in): Sensibull, Upstox, Quantsapp, Stockmock and Opstra show no
+  objective / market-view / expected-range wizard in what was found; Angel One has predefined and custom tabs with
+  setups described as bullish, bearish or neutral; Dhan and AlgoTest list templates
+  (docs/design/screens-research-2026-10-19-part2.md section Create Strategy). Absence on public pages is not proof of
+  absence in the logged-in apps.
+- Bears on: REQ-024 (AC-3, AC-4, AC-7), REQ-026. Consequence: there is no competitor layout to copy for the Create
+  Strategy screen; its design follows the requirements and the wording stays provisional until the legal review (Q211,
+  Q261). Status: **read; unmeasured in logged-in apps**.
+
+## F-52 - The generated build order and a work item still say REQ-061 AC-2 waits on OQ-7, which ADR-096 answered on 2026-10-16
+- Read 2026-10-19: `views/build-order.md:56` and `work/W-083.md` (`status: blocked`, `next_action`) say AC-2 "waits on
+  owner OQ-7 (build an order-free adopt-into-existing path, or defer it in REQ-061)"; ADR-096 (owner, 2026-10-16
+  ~12:00 IST, with the question tool) records OQ-7 answered "(a) Build it now (Recommended)": the order-free adopt path.
+- Bears on: REQ-061 AC-2. Consequence: AC-2 is buildable and is not blocked on an owner answer; the stale text hides it
+  from anyone reading the build order. Status: **measured; `work/W-083.md` corrected 2026-10-19; `views/build-order.md`
+  is generated and refreshes when the work item's blocked status is cleared by its builder**.
+
+## F-53 - Every workflow runs on every PR push including drafts, and a frontend-only change also runs the API suite
+- Read 2026-10-19 in `.github/workflows`: `ci.yml`, `coverage.yml` and `app-tests.yml` trigger on `pull_request` with
+  no draft filter (no `ready_for_review` or `github.event.pull_request.draft` condition); `app-tests.yml` has ONE
+  `pull_request.paths` list (backend/ofo, backend/ofo_app, tests_app, frontend, the workflow file) for its jobs `api`,
+  `frontend` and `execute-screen-e2e`, so a change under `frontend/**` alone also starts the `api` job. `cancel-in-progress`
+  is set, so a newer push cancels an older run of the same PR.
+- Bears on: REQ-075 AC-7 (a docs-only PR runs only the kit checks; no API or frontend job). Not a rule change.
+  `ci.yml` is kit-owned: a draft filter there is a `harvest` issue to Startup-Factory; `app-tests.yml` is
+  project-owned and is split into a frontend job and an API job with their own path filters. Status: **measured; open
+  (GC-6 row O0)**.
+
+## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses Tue 2026-10-20 and lists Wed 2026-10-21
+- Measured 2026-10-19 by the GC-6 MKT-HOURS builder: NSE's own holiday API (`holiday-master?type=trading`, key `FO`)
+  returns 20 F&O trading holidays for 2026, including 2026-10-20 (Dussehra) and 2026-11-10 (Diwali-Balipratipada); the
+  public calendars checked the same day (cleartax, Tata MF, Upstox) agree on 20 October. The hard-coded 2026 list in
+  `abhayla/algochanakya@bf9faf7 backend/app/utils/market_hours.py` has no 20 October, lists 21 October (a trading day
+  per NSE) and misses several other holidays.
+- Bears on: ADR-119 (the holiday list is dated data with a source, never typed into code) and
+  `spec/technical-design/legacy-reuse.md` row M2 (`market_hours.py` ADAPT): copy the session logic only, never its
+  holiday list. The project's list is `backend/ofo/market_calendar.json` (source URL and fetch date in the file), built
+  on branch gc6/mkt-hours. Not a rule change. Status: **measured; the copied list is not used (GC-6 row MKT-HOURS)**.
+
+## F-55 - A net-only next-day read cannot see a same-day round trip: a filled-then-hand-sold entry reads "nothing placed"
+- Measured 2026-10-19 by the read-only Opus review of PR #421 (#352-1, head 21ba2c389ff8), confirmed by the
+  orchestrator: `backend/ofo_app/reconcile_attribution.py:35-36` on that branch documents "an ENTRY filled and sold by
+  hand on Kite the same earlier day leaves the net at the base and reads `nothing_placed`". Kite's next-day positions
+  give one net number per contract; a BUY 65 filled and a hand SELL 65 the same day net to 0, the same as no order.
+- Bears on: ADR-111 ("the app records the resulting mismatch" for a hand close on Kite) and REQ-060. The plan closes
+  with no mismatch and no P&L for a trade that happened. Fix direction (technical, GC-6 row NET-ROUNDTRIP): use the
+  activity fields of the next-day positions reply, or treat an earlier-day plan whose net equals the base as
+  unresolved, never `nothing_placed`, when activity cannot be ruled out. Status: **open; registry
+  `net-only-read-misses-roundtrip`**.
+
+## F-56 - Zerodha's instrument list is generated once each morning; Kite's docs say fetch it at about 08:30 IST
+- Read 2026-10-20 (web): the Kite Connect v3 docs (https://kite.trade/docs/connect/v3/market-data-and-instruments/)
+  say the instruments dump is best requested "once a day (ideally at around 08:30 AM)" and stored; Kite staff on the
+  developer forum (https://kite.trade/forum/discussion/11793) say it refreshes around 8 AM each trading day and is not
+  updated intraday (new strikes added during the day appear only in the next morning's file).
+- Bears on: ADR-015 (no stale data as live) and ADR-058 (the daily list). A catalogue load before the morning file
+  exists reads yesterday's list; GC-6 row INSTR-FRESH treats a list stamped before 08:30 IST as stale for that day
+  (setting `INSTRUMENT_LIST_PUBLISH_IST`, backend/ofo/timeutil.py on branch gc6/instr-fresh). No exact generation time
+  is published; 08:30 is the documented fetch time. Not a rule change. Status: **measured from documentation; no live
+  timing captured**.
