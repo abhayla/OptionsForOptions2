@@ -1,6 +1,9 @@
 """One-shot command: load Zerodha's public instrument list into the catalogue (W-068 step 4).
 
-    python -m ofo_app.catalogue_load
+    python -m ofo_app.catalogue_load [NSE_FO_contract_ddmmyyyy.csv.gz]
+
+The optional NSE F&O contract file gives the ADR-148 structural pass its anchor (the near-month index future's base
+price); without it a list the count guards refuse stays refused.
 
 Spec basis: REQ-053 AC-2 and ADR-058/059 (the guarded update): the command only DOWNLOADS, PARSES and calls the existing
 ``apply_update`` unchanged, so every guard (truncated-list refusal per index and per expiry, retirement, identity
@@ -20,6 +23,7 @@ import sys
 from datetime import datetime
 from typing import Any, TextIO
 
+from ofo.instruments.freeze_file import FreezeFile
 from sqlalchemy import text
 
 from ofo_app.catalogue_store import StoreUpdateResult, apply_update, parse_rows_naming_the_row
@@ -34,7 +38,7 @@ def format_counts(result: StoreUpdateResult) -> str:
 
 
 async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None, *,
-              as_of: datetime | None = None) -> int:
+              as_of: datetime | None = None, nse_file: FreezeFile | None = None) -> int:
     """Apply one downloaded list on ``conn``; returns the exit code. Never commits. A refusal (a guard, an unparseable
     row, a value the store cannot hold) is printed and returns 1 with nothing written (the work runs in a savepoint).
     ``as_of`` defaults to the database clock; only tests pass one."""
@@ -45,7 +49,7 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
             as_of = (await conn.execute(_NOW)).scalar_one()
         async with conn.begin_nested():
             result = await apply_update(conn, rows, as_of=as_of,
-                                        max_delist_percent=settings.CATALOGUE_MAX_DELIST_PERCENT)
+                                        max_delist_percent=settings.CATALOGUE_MAX_DELIST_PERCENT, nse_file=nse_file)
     except ValueError as exc:  # CatalogueStoreError is a ValueError; so are the domain's truncation guards
         print(f"catalogue update REFUSED, nothing written: {exc}", file=out)
         return 1
@@ -53,17 +57,21 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
     return 0
 
 
-async def main() -> int:
+async def main(argv: list[str] | None = None) -> int:
     from ofo.instruments.downloader import download_instruments_csv
+    from ofo.instruments.freeze_file import parse_freeze_file
+
     from ofo_app.config import get_settings
     from ofo_app.db import close_db, get_engine
 
     settings = get_settings()
+    args = sys.argv[1:] if argv is None else argv
+    nse_file = parse_freeze_file(args[0]) if args else None
     csv_text = await asyncio.to_thread(download_instruments_csv)
     try:
         async with get_engine().connect() as conn:
             trans = await conn.begin()
-            code = await run(conn, csv_text, settings)
+            code = await run(conn, csv_text, settings, nse_file=nse_file)
             if code == 0:
                 await trans.commit()
             else:

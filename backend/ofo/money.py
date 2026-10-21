@@ -15,6 +15,14 @@ HUNDREDTH: Final = Decimal("0.01")
 PAISE: Final = HUNDREDTH
 
 
+def paise_to_rupees(paise: int) -> Decimal:
+    """A whole number of paise (an exchange file's price column, e.g. NSE BasePric 2311920) as exact rupees (23119.20).
+    Only an int is accepted (never a bool, float or str)."""
+    if type(paise) is not int:
+        raise TypeError(f"paise must be an int, got {type(paise).__name__}")
+    return Decimal(paise) * PAISE
+
+
 def zerodha_paise(value: Decimal | int) -> Decimal:
     """One Kite money figure rounded HALF-UP to the paisa (ADR-099, ADR-101), where the figure is parsed.
 

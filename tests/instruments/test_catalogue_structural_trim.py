@@ -19,8 +19,8 @@ from ofo.instruments.catalogue import (
     TRIM_ACCEPTED_ACTION,
     Catalogue,
     StructuralPass,
-    _anchor,
 )
+from ofo.instruments.freeze_file import index_anchor, parse_freeze_file
 from ofo.instruments.models import BSE_FO, InstrumentId, ListedContract
 from ofo.instruments.parser import parse_instruments_stream
 from ofo.timeutil import IST
@@ -53,9 +53,23 @@ def _catalogue(rows: list[ListedContract] = OLD) -> Catalogue:
     return cat
 
 
-def _pass(held: frozenset[InstrumentId] | None = frozenset()) -> tuple[StructuralPass, AuditLog]:
+#: ADR-148 anchor: the NIFTY 2026-10-27 future's BasePric 2311920 paise in NSE's 16102026 contract file (the newest
+#: on 2026-10-19, when 19102026 returned 404); band 23119.20 +/- 5% = 21963.24-24275.16.
+NSE_FILE = parse_freeze_file(FIXTURES / "nse-fo-16102026-nifty-futures.csv.gz",
+                             nse_name="NSE_FO_contract_16102026.csv.gz")
+REAL_ANCHORS = {"NIFTY": index_anchor(NSE_FILE, "NIFTY", AS_OF.date())}
+#: A round anchor whose band edge (23000 + 5% = 24150) is a listed strike, for the "<=" boundary test.
+EDGE_ANCHORS = {"NIFTY": Decimal(23000)}
+EDGE_STRIKE = Decimal(24150)
+NEXT_WEEK = date(2026, 11, 3)
+LONG_DATED = date(2027, 3, 30)
+
+
+def _pass(held: frozenset[InstrumentId] | None = frozenset(),
+          anchors: dict[str, Decimal] = REAL_ANCHORS) -> tuple[StructuralPass, AuditLog]:
     log = AuditLog()
-    return StructuralPass(held=held, audit_log=log, actor="system:catalogue-update"), log
+    return StructuralPass(held=held, audit_log=log, actor="system:catalogue-update", anchors=anchors,
+                          anchor_note="test: no anchor given"), log
 
 
 def _weekly(r: ListedContract) -> bool:
@@ -63,9 +77,9 @@ def _weekly(r: ListedContract) -> bool:
 
 
 def _refused(new: list[ListedContract], held: frozenset[InstrumentId] | None = frozenset(),
-             old: list[ListedContract] = OLD) -> str:
+             old: list[ListedContract] = OLD, anchors: dict[str, Decimal] = REAL_ANCHORS) -> str:
     cat = _catalogue(old)
-    structural, log = _pass(held)
+    structural, log = _pass(held, anchors)
     with pytest.raises(ValueError) as exc:
         cat.update(new, as_of=AS_OF, structural=structural)
     assert len(log.events) == 0, "a refused update writes no audit row"
@@ -141,10 +155,38 @@ def test_held_contracts_unreadable_is_refused() -> None:
     assert "could not be read" in _refused(NEW, held=None)
 
 
-def test_no_anchor_derivable_is_refused() -> None:
-    one_strike = [r for r in OLD if not _weekly(r) or r.contract.strike == Decimal(17000)]
-    assert "no anchor level is derivable" in _refused(NEW, old=one_strike)
-    assert _anchor({Decimal(17000)}) is None and _anchor(set()) is None
+def test_no_anchor_for_the_index_is_refused() -> None:
+    assert "no anchor level for NIFTY: test: no anchor given" in _refused(NEW, anchors={})
+
+
+def test_real_anchor_is_the_near_month_future_base_price() -> None:
+    assert REAL_ANCHORS == {"NIFTY": Decimal("23119.20")}
+
+
+def test_strike_on_the_band_edge_is_refused() -> None:
+    new = [r for r in NEW if not (_weekly(r) and r.contract.strike >= EDGE_STRIKE)]
+    assert f"{EDGE_STRIKE}" in _refused(new, anchors=EDGE_ANCHORS)
+
+
+def _option_of(r: ListedContract, expiry: date) -> bool:
+    return r.contract.name == "NIFTY" and r.contract.expiry == expiry and r.contract.is_option()
+
+
+def _far_weekly(r: ListedContract) -> bool:  # the reviewer's day-2 far trim of the weekly (trips the 10% guard)
+    return _option_of(r, NIFTY_WEEKLY) and not Decimal(21800) <= r.contract.strike <= Decimal(25000)
+
+
+def test_next_week_losing_strikes_from_23800_up_is_refused() -> None:
+    # Review MAJOR-1: the old ladder-midpoint anchor (22625) let 23800 (2.9% above the real 23119.20) drop.
+    new = [r for r in NEW if not _far_weekly(r)
+           and not (_option_of(r, NEXT_WEEK) and r.contract.strike >= Decimal(23800))]
+    assert "inside the near-the-money band" in _refused(new, old=NEW)
+
+
+def test_long_dated_puts_at_or_below_22500_dropped_is_refused() -> None:
+    new = [r for r in NEW if not _far_weekly(r) and not (
+        _option_of(r, LONG_DATED) and r.contract.instrument_type == "PE" and r.contract.strike <= Decimal(22500))]
+    assert "inside the near-the-money band" in _refused(new, old=NEW)
 
 
 def test_token_reused_on_a_live_contract_is_refused() -> None:

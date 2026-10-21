@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Iterable, Union
+from typing import Iterable, Mapping, Union
 
 from ofo.audit import AuditLog, EventType
 from ofo.instruments.models import (
@@ -60,11 +60,8 @@ MAX_EXPIRY_LOSS_FRACTION = Decimal("0.5")
 #: ADR-059 (a): "the strike is unchanged and the expiry moved by at most 6 calendar days" (62964: 5 days, 61746: 3
 #: days); a move of 7 days or more is a token reuse, i.e. a new contract.
 MAX_EXPIRY_MOVE_DAYS = 6
-#: ADR-148 structural pass: the near-the-money band is this fraction of the expiry's anchor level on each side. On the
-#: real 2026-10-21 trim the narrowest kept side was 14.7% from the anchor, so 5% leaves a 3x margin either way.
+#: ADR-148 structural pass: the near-the-money band is this fraction of the index's anchor level on each side.
 TRIM_BAND_FRACTION = Decimal("0.05")
-#: ADR-148: an anchor (a ladder midpoint) needs at least two distinct stored strikes; fewer is unmeasurable.
-MIN_ANCHOR_STRIKES = 2
 #: ADR-148: the audit action a structurally accepted trim writes (ADMIN_CHANGE_RECORDED, declared payload keys only).
 TRIM_ACCEPTED_ACTION = "catalogue_structural_trim_accepted"
 
@@ -72,47 +69,38 @@ TRIM_ACCEPTED_ACTION = "catalogue_structural_trim_accepted"
 @dataclass(frozen=True)
 class StructuralPass:
     """What the ADR-148 second pass needs from the caller: the contracts held by an open position, an open execution
-    plan leg or a saved strategy leg (None = could not be read: the pass refuses), and where its audit row goes."""
+    plan leg or a saved strategy leg (None = could not be read: the pass refuses); one anchor level per index (the
+    near-month index future's NSE base price; an index absent here has none and any of its drops refuses), with
+    ``anchor_note`` saying why an anchor is missing; and where its audit row goes."""
 
     held: frozenset[InstrumentId] | None
     audit_log: AuditLog
     actor: str
+    anchors: Mapping[str, Decimal] = field(default_factory=dict)
+    anchor_note: str = ""
 
 
 class StructuralTrimRefused(ValueError):
     """ADR-148: why the structural pass kept a refusal (developer detail inside the refusal's ValueError)."""
 
 
-def _anchor(strikes: set[Decimal]) -> Decimal | None:
-    """ADR-148: an expiry's anchor level = the midpoint of the stored (previously accepted) option strike ladder. The
-    Kite list carries last_price 0 on every row (index and futures rows too) and the catalogue keeps no index level, so
-    the anchor comes from trusted stored state, never from the list being judged. Fewer than 2 strikes: unmeasurable."""
-    if len(strikes) < MIN_ANCHOR_STRIKES:
-        return None
-    return (min(strikes) + max(strikes)) / 2
-
-
 def _structural_refusal(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], replaced_live: int,
-                        new_rows: list[ListedContract], held: frozenset[InstrumentId] | None) -> None:
+                        new_rows: list[ListedContract], structural: StructuralPass) -> None:
     """ADR-148 allow-list: returns (accept) only when EVERY condition holds; otherwise raises the first reason it fails.
 
     1. no live contract's token was reused; 2. every exchange segment with live contracts is in the new list; 3. the
-    held contracts are known and none vanishes; 4. every vanishing contract is an option of an expiry whose anchor is
-    measurable, outside the band around that anchor, and beyond the ends of the strikes the new list keeps for that
+    held contracts are known and none vanishes; 4. every vanishing contract is an option of an index with an anchor,
+    outside the band around that anchor, and beyond the ends of the strikes the new list keeps for that
     underlying + expiry + type (a trim cuts the tails; a broken download leaves holes)."""
     _require_whole_list(live, replaced_live, new_rows)
-    _require_none_held(vanishing, held)
-    ladders: dict[tuple, set[Decimal]] = {}
-    for e in live:
-        if e.contract.is_option():
-            ladders.setdefault((e.contract.name, e.contract.expiry), set()).add(e.contract.strike)
+    _require_none_held(vanishing, structural.held)
     kept: dict[tuple, list[Decimal]] = {}
     for r in new_rows:
         if r.contract.is_option():
             kept.setdefault((r.contract.name, r.contract.expiry, r.contract.instrument_type), []).append(
                 r.contract.strike)
     for e in vanishing:
-        _require_far_tail(e, ladders, kept)
+        _require_far_tail(e, structural, kept)
 
 
 def _require_whole_list(live: list[CatalogueEntry], replaced_live: int, new_rows: list[ListedContract]) -> None:
@@ -135,14 +123,14 @@ def _require_none_held(vanishing: list[CatalogueEntry], held: frozenset[Instrume
         raise StructuralTrimRefused(f"{len(held_gone)} dropped contract(s) are held, e.g. {held_gone[0]}")
 
 
-def _require_far_tail(e: CatalogueEntry, ladders: dict[tuple, set[Decimal]], kept: dict[tuple, list[Decimal]]) -> None:
-    """Condition 4 for one vanishing contract: an option, anchor measurable, outside the band, beyond the kept ends."""
+def _require_far_tail(e: CatalogueEntry, structural: StructuralPass, kept: dict[tuple, list[Decimal]]) -> None:
+    """Condition 4 for one vanishing contract: an option, its index has an anchor, outside the band, beyond the ends."""
     c = e.contract
     if not c.is_option():
         raise StructuralTrimRefused(f"{c.name} {c.instrument_type} {c.expiry} ({e.id}) is not an option strike")
-    anchor = _anchor(ladders.get((c.name, c.expiry), set()))
+    anchor = structural.anchors.get(c.name)
     if anchor is None:
-        raise StructuralTrimRefused(f"no anchor level is derivable for {c.name} {c.expiry}")
+        raise StructuralTrimRefused(f"no anchor level for {c.name}: {structural.anchor_note or 'none given'}")
     if abs(c.strike - anchor) <= anchor * TRIM_BAND_FRACTION:
         raise StructuralTrimRefused(f"{c.name} {c.expiry} {c.strike} {c.instrument_type} is inside the "
                                     f"near-the-money band ({anchor} +/- {TRIM_BAND_FRACTION * 100}%)")
@@ -487,7 +475,7 @@ def _guard_or_structural(live: list[CatalogueEntry], vanishing: list[CatalogueEn
         if structural is None:
             raise
         try:
-            _structural_refusal(live, vanishing, len(leaving_live) - len(vanishing), new_rows, structural.held)
+            _structural_refusal(live, vanishing, len(leaving_live) - len(vanishing), new_rows, structural)
         except StructuralTrimRefused as why:
             raise ValueError(f"{refused} The structural trim check (ADR-148) also refused: {why}.") from None
         structural.audit_log.append(

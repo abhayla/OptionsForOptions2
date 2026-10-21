@@ -72,12 +72,14 @@ from sqlalchemy import text
 from ofo.instruments.catalogue import (
     DEFAULT_MAX_DELIST_PERCENT,
     IST,
+    SUPPORTED_UNDERLYINGS,
     Catalogue,
     CatalogueUpdateResult,
     StructuralPass,
     check_max_delist_percent,
     is_revision,
 )
+from ofo.instruments.freeze_file import FreezeFile, IndexAnchorUnavailable, index_anchor
 from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, ListedContract
 from ofo.instruments.parser import (
     ParsedInstruments, parse_instruments_rows, zerodha_index_row, zerodha_segment)
@@ -429,6 +431,19 @@ class _BufferedAuditLog:
                             "payload": payload})
 
 
+def _index_anchors(nse_file: FreezeFile | None, update_date: date) -> tuple[dict[str, Decimal], str]:
+    """ADR-148: one anchor per index from the NSE contract file (the parse helper the freeze-limit load uses); an index
+    whose anchor is unavailable is left out, with the reason (the structural pass then refuses any of its drops)."""
+    anchors: dict[str, Decimal] = {}
+    notes: list[str] = []
+    for name in sorted(SUPPORTED_UNDERLYINGS):
+        try:
+            anchors[name] = index_anchor(nse_file, name, update_date)
+        except IndexAnchorUnavailable as exc:
+            notes.append(f"{name}: {exc}")
+    return anchors, "; ".join(notes)
+
+
 async def _held_contracts(conn: Any) -> frozenset[InstrumentId] | None:
     """ADR-148: the exchange identities held by a saved strategy leg or an open plan leg; None when any cannot be read
     (a definition whose legs are not a list, a plan leg not shaped "<segment>:<exchange token>")."""
@@ -508,6 +523,7 @@ async def apply_update(
     reason: str | None = None,
     actor: str | None = None,
     max_delist_percent: Any = DEFAULT_MAX_DELIST_PERCENT,
+    nse_file: FreezeFile | None = None,
 ) -> StoreUpdateResult:
     """Apply a newer instrument list to the stored catalogue (see the module docstring). Refusals raise before any
     write: ValueError from the domain (the ADR-058/059 truncation guards; force without reason/actor),
@@ -580,8 +596,9 @@ async def apply_update(
         # ADR-148: only after the count guards refused (a refused domain update changed nothing) are the held
         # contracts read and the structural pass given its chance; its audit row is written with the catalogue change.
         audit = _BufferedAuditLog()
+        anchors, note = _index_anchors(nse_file, update_date)
         structural = StructuralPass(held=await _held_contracts(conn), audit_log=audit,
-                                    actor=STRUCTURAL_PASS_ACTOR)
+                                    actor=STRUCTURAL_PASS_ACTOR, anchors=anchors, anchor_note=note)
         domain = catalogue.update(rows, as_of=as_of, max_delist_percent=limit, structural=structural)
     replaced = set(domain.replaced)
     vanishing = set(domain.delisted)

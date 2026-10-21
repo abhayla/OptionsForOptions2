@@ -22,6 +22,7 @@ from typing import Iterable
 
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import NSE_FO, InstrumentId
+from ofo.money import paise_to_rupees
 
 REQUIRED_COLUMNS: tuple[str, ...] = (
     "FinInstrmId", "FinInstrmNm", "TckrSymb", "XpryDt", "StrkPric", "OptnTp", "MinLot", "MaxTradQty",
@@ -42,6 +43,8 @@ class FreezeRow:
     strike: Decimal  # rupees; 0 for a future
     lot_size: int
     freeze_limit: int  # MaxTradQty: an order must be BELOW this (F-36)
+    # ADR-148: a future's BasePric (paise -> rupees); None for an option, or when the column is absent or unparseable
+    base_price: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -102,8 +105,10 @@ def _row(raw: dict[str, str]) -> FreezeRow | None:
     token = _int(token_text, "FinInstrmId", token_text)
     seconds = _int(raw["XpryDt"], "XpryDt", token_text)
     expiry = (_EPOCH + timedelta(seconds=seconds)).date()
+    base_price = None
     if kind == "FUTIDX":
         instrument_type, strike = "FUT", Decimal(0)
+        base_price = _base_price(raw.get("BasePric"))
     else:
         instrument_type = raw["OptnTp"].strip()
         if instrument_type not in ("CE", "PE"):
@@ -111,7 +116,56 @@ def _row(raw: dict[str, str]) -> FreezeRow | None:
         strike = Decimal(_int(raw["StrkPric"], "StrkPric", token_text)) / 100
     return FreezeRow(exchange_token=token, underlying=underlying, instrument_type=instrument_type, expiry=expiry,
                      strike=strike, lot_size=_int(raw["MinLot"], "MinLot", token_text),
-                     freeze_limit=_int(raw["MaxTradQty"], "MaxTradQty", token_text))
+                     freeze_limit=_int(raw["MaxTradQty"], "MaxTradQty", token_text), base_price=base_price)
+
+
+def _base_price(text: str | None) -> Decimal | None:
+    """ADR-148: BasePric in whole paise -> rupees; None (never a guess) when absent, not a positive whole number."""
+    try:
+        return paise_to_rupees(_int(text or "", "BasePric", "-"))
+    except ValueError:
+        return None
+
+
+class IndexAnchorUnavailable(ValueError):
+    """ADR-148: the NSE contract file cannot give an index's anchor level (the structural pass then refuses)."""
+
+
+#: ADR-148: the newest NSE contract file may be at most this many weekdays older than the update date. Real case: on
+#: Monday 2026-10-19 the 19102026 file returned 404 and Friday's 16102026 file was the newest (1 weekday); 3 allows a
+#: late file across a weekend. Weekdays, not trading days (the repo has no holiday calendar), so a holiday makes the
+#: limit stricter, never looser.
+MAX_FILE_AGE_WEEKDAYS = 3
+
+
+def _weekdays_between(older: date, newer: date) -> int:
+    return sum(1 for n in range(1, (newer - older).days + 1) if (older + timedelta(days=n)).weekday() < 5)  # noqa: PLR2004 Mon-Fri
+
+
+def index_anchor(parsed: FreezeFile | None, underlying: str, update_date: date) -> Decimal:
+    """ADR-148: the anchor level of ``underlying`` = the near-month index future's base price (the nearest FUT expiry on
+    or after ``update_date``) from the NSE contract file. Raises IndexAnchorUnavailable for every other answer state:
+    no file, a file dated after the update date or more than MAX_FILE_AGE_WEEKDAYS older, no future row, two
+    near-month rows, or an unparseable price."""
+    if parsed is None:
+        raise IndexAnchorUnavailable("no NSE contract file was given (absent or not published, e.g. HTTP 404)")
+    if parsed.file_date > update_date:
+        raise IndexAnchorUnavailable(f"the NSE contract file is dated {parsed.file_date}, after {update_date}")
+    age = _weekdays_between(parsed.file_date, update_date)
+    if age > MAX_FILE_AGE_WEEKDAYS:
+        raise IndexAnchorUnavailable(f"the NSE contract file of {parsed.file_date} is {age} weekdays old, more than "
+                                     f"{MAX_FILE_AGE_WEEKDAYS}")
+    futures = [r for r in parsed.rows
+               if r.underlying == underlying and r.instrument_type == "FUT" and r.expiry >= update_date]
+    if not futures:
+        raise IndexAnchorUnavailable(f"the NSE contract file has no unexpired {underlying} future")
+    near = min(r.expiry for r in futures)
+    rows = [r for r in futures if r.expiry == near]
+    if len(rows) != 1:
+        raise IndexAnchorUnavailable(f"the NSE contract file has {len(rows)} {underlying} futures of {near}")
+    if rows[0].base_price is None:
+        raise IndexAnchorUnavailable(f"the {underlying} {near} future's BasePric is missing or not a number")
+    return rows[0].base_price
 
 
 def parse_freeze_rows(rows: Iterable[dict[str, str]], file_date: date) -> FreezeFile:
