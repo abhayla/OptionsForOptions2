@@ -1,0 +1,30 @@
+{
+ "id": "positions-reply-refused-for-non-platform-rows",
+ "scope": "generic",
+ "class": "A reader that must resolve every row of a broker reply against the platform's own catalogue refuses the WHOLE reply when the account holds any row the platform can never own (a stock, another underlying, another exchange), so a fail-closed gate downstream blocks every action for every strategy - the user's unrelated activity disables the product.",
+ "mechanism": "positions_from_reply (backend/ofo_app/kite_replies.py) resolved every non-flat net row through ContractIndex.resolve, which raises when a row is not in the F&O catalogue; the Execute route turns an unreadable positions reply into reconciliation 'unknown' and refuses.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-3L afternoon, Execute on strategies 14 and 15 (ofo_dev, owner's live Kite account)",
+  "evidence": "live net rows ('FRANKLININD','CNC',-201900), ('LIQUIDBEES','CNC',-2), ('NIFTY26OCT24000CE','NRML',0) (the owner's own equity sales, confirmed); positions_from_reply -> KiteReplyError 'FRANKLININD (token 138288644) matches 0 instrument rows; need exactly 1'; API log 'pre-execution blocked strategy=15 action=NEW_ENTRY codes=RECONCILIATION_MISMATCH' and the screen 'Reconciliation status unknown'"
+ },
+ "fix": "PR #440: platform_may_own(row) allowlist - a row is ours only when its exchange is NFO/BFO (ZERODHA_EXCHANGE_TO_SEGMENT) and its F&O symbol's underlying is in SUPPORTED_UNDERLYINGS for that segment; rows on NSE/BSE/MCX/CDS/BCD/NCO go to PositionsRead.ignored (logged once per read); an unknown or malformed exchange, a missing symbol, or a NIFTY/SENSEX F&O row missing from the catalogue still refuses. Review round 1 found an unknown exchange ignored (MAJOR), fixed in round 2.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_kite_replies_to_domain.py",
+   "tests_app/test_execute_route.py"
+  ],
+  "note": "Fixture tests/fixtures/kite_replies/positions-20261019-with-stocks.json (NIFTY rows real-saved, stock rows shaped from the live read). The live Execute with stock rows on the account is not yet proven (GC-3F item 1). ofo/reconciliation/grouping.py reads positions separately and is unchecked for the same class."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-060.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "Execute on strategy 14 and strategy 15",
+   "evidence": "RECONCILIATION_MISMATCH twice; nothing prepared, nothing placed"
+  }
+ ]
+}

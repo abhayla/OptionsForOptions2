@@ -17,7 +17,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Awaitable, Callable, Literal, Mapping, Optional, Union
+from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -350,15 +350,22 @@ def get_streaming() -> Optional[Callable[[str], bool]]:
     return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
 
 
-def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
+def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None, ids: Iterable[str]) -> bool:
+    """Issue #206's rule for any REST read of live inputs: True when every id is held by a socket on the shared feed.
+    No predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used
+    as they are. The chain read (ofo_app.routes.chain) uses it too."""
     if streaming is None:
-        return False
+        return True
     owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
     if ctx is not (owner if owner is not None else live_context()):
-        return False
+        return True
+    return all(streaming(i) for i in ids)
+
+
+def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
     index_id = getattr(ctx.provider, "index_id", lambda _u: None)(req.underlying)
     ids = [leg.instrument_id for leg in req.legs] + ([index_id] if index_id else [])
-    return not all(streaming(i) for i in ids)
+    return not inputs_streaming(ctx, streaming, ids)
 
 
 def _live_market():
