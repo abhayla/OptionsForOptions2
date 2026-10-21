@@ -8,11 +8,15 @@
   "where": "GC-5S core proof, Live Strategies page (W-113, ad727bb) on a second API :8766 beside GC-3L's API :8765",
   "evidence": "API log: 'asyncpg.exceptions.TooManyConnectionsError: too many connections for role \"ofo_app\"' x11 between ~10:33 and 10:40 IST and 'unhandled error ERR-7456055C on GET /strategies/11'; after the browser closed a one-connection read still failed with the same error until the :8766 API was stopped; then 'role ofo_app connlimit: 5 | server max_connections: 100', 'held by ofo_app on ofo_dev : 3' (GC-3L's API)."
  },
- "fix": "Partly open. Earlier sample: #370 (three CI e2e API processes x default pool); held PR #395 adds DB_POOL_SIZE / DB_MAX_OVERFLOW settings and sets 1 + 0 in the CI e2e job only, keeping SQLAlchemy's 5 + 10 default for every other run, so a dev or live API at default can still exceed the limit alone. Page side (W-113 round 2): the Live Strategies page starts its cards one at a time. Remaining (GC-3F, with #395): a default kept under the role limit, or a startup check that refuses a pool larger than the role's rolconnlimit; or the owner raises the role limit.",
+ "fix": "GC-6 POOL-BUDGET: defaults DB_POOL_SIZE 2 + DB_MAX_OVERFLOW 0 (two processes fit a limit of 5); start-up check refuses a pool above the role limit; one connection per token read (a connection already in a transaction is refused); single-flight charge-rates load.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No check compares pool settings with rolconnlimit; the default pool is not visible in db.py. Discriminating proof of any fix: 13 strategies on the page with a second API up produce zero TooManyConnectionsError lines and pg_stat_activity for ofo_app stays <= 5."
+  "status": "guarded",
+  "checks": [
+   "backend/ofo_app/db.py::verify_pool_budget (start-up refusal)",
+   "tests_app/test_db_pool_startup.py",
+   "tests_app/test_db_pool_core_proof.py"
+  ],
+  "note": "verify_pool_budget reads rolconnlimit/rolsuper once at start-up and refuses a pool above the limit (superuser and -1 skipped, unreadable limit = warning); test_db_pool_core_proof.py runs two engines with the default settings under load against the CI role (CONNECTION LIMIT 5) and shows the old defaults (5+10) do hit TooManyConnectionsError. Does NOT cover: more than the two modelled processes, other roles, or the production role's real limit (unmeasured)."
  },
  "spec_ref": [
   "spec/decisions/ADR-048.md"

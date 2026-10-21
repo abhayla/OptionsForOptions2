@@ -9,8 +9,10 @@ Copy from: none - algochanakya stored the access token in plaintext (legacy-reus
 - ``access_token_for``: the decrypted token of the active session, or None. A row that does not decrypt (another key,
   a copied ciphertext, tampering, no ciphertext) is treated as no session: fail closed, logged by row id only.
 - ``end_session``: ends the active session ('expired' or 'disconnected'), destroying the ciphertext; the row is kept.
-- ``call_with_token``: runs one authenticated Kite call; a KiteTokenException marks the session EXPIRED in its own
-  committed transaction. ``access_token_for`` does the same for a session past its expected expiry.
+- ``call_with_token``: runs one authenticated Kite call; a KiteTokenException marks the session EXPIRED, committed on
+  the caller's own FRESH connection (one connection per call, never a nested second one; a connection already in a
+  transaction is refused).
+  ``access_token_for`` does the same for a session past its expected expiry.
 Ending a session touches only public.broker_sessions: no strategy, account or entitlement row (REQ-015 AC-7).
 """
 
@@ -64,30 +66,42 @@ async def store_session(conn: Any, user_ref: str, access_token: str, cipher: Tok
     return session_id
 
 
-async def _end_committed(engine: Any, session_id: int, user_ref: str, reason: EndReason, broker: str) -> None:
-    """Ends session ``session_id`` (the row that was read) in its OWN committed transaction, so the caller's rollback
-    cannot bring a dead token back. If that row has already ended or been replaced, nothing changes."""
-    async with engine.begin() as own:
-        await own.execute(_END_ONE, {"reason": reason.value, "id": session_id, "user_ref": user_ref,
-                                     "broker": broker})
+def _require_fresh(conn: Any) -> None:
+    """The token end commits, which would also commit (or, inside ``begin()``, break) the caller's own transaction. A
+    connection that already has one open is refused before anything is read or written (GC-6 MAJOR-1)."""
+    if conn.in_transaction():
+        raise BrokerStoreError("token_read_needs_fresh_connection")
 
 
-async def access_token_for(conn: Any, user_ref: str, cipher: TokenCipher, *, engine: Any,
+async def _end_committed(conn: Any, session_id: int, user_ref: str, reason: EndReason, broker: str) -> None:
+    """Ends session ``session_id`` (the row that was read) on the caller's OWN connection and COMMITS it, so the
+    caller's later rollback cannot bring a dead token back. One connection only (GC-6 POOL-BUDGET): the old second
+    ``engine.begin()`` took two role connections per request, and the role has a limit of 5 (ADR-048). If that row has
+    already ended or been replaced, nothing changes. The commit would also commit anything else this transaction holds,
+    so ``access_token_for`` / ``call_with_token`` refuse a connection that is already in a transaction
+    (``_require_fresh``): the only thing the commit ever commits is the session read and this one UPDATE."""
+    await conn.execute(_END_ONE, {"reason": reason.value, "id": session_id, "user_ref": user_ref,
+                                  "broker": broker})
+    await conn.commit()
+
+
+async def access_token_for(conn: Any, user_ref: str, cipher: TokenCipher, *,
                            broker: str = BROKER_ZERODHA) -> str | None:
-    """``engine`` ends a session found past its expected expiry (by the database clock) in its own transaction."""
-    found = await _read_active(conn, user_ref, cipher, engine=engine, broker=broker)
+    """A session found past its expected expiry (by the database clock) is ended and committed on ``conn`` itself.
+    ``conn`` must be fresh (not in a transaction), else ``BrokerStoreError("token_read_needs_fresh_connection")``."""
+    _require_fresh(conn)
+    found = await _read_active(conn, user_ref, cipher, broker=broker)
     return None if found is None else found[1]
 
 
-async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, engine: Any,
-                       broker: str) -> tuple[int, str] | None:
+async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker: str) -> tuple[int, str] | None:
     """(session id, decrypted token) of the active session, or None."""
     row = (await conn.execute(_ACTIVE, {"user_ref": user_ref, "broker": broker})).one_or_none()
     if row is None:
         return None
     session_id, key_id, blob, past = row
     if past:
-        await _end_committed(engine, session_id, user_ref, EndReason.EXPIRED, broker)
+        await _end_committed(conn, session_id, user_ref, EndReason.EXPIRED, broker)
         log.info("broker session %s passed its expected expiry; ended", session_id)
         return None
     if key_id != cipher.key_id or blob is None:
@@ -109,17 +123,18 @@ async def end_session(conn: Any, user_ref: str, reason: EndReason, broker: str =
 
 
 async def call_with_token(conn: Any, user_ref: str, cipher: TokenCipher,
-                          call: Callable[[str], Awaitable[T]], *, engine: Any,
+                          call: Callable[[str], Awaitable[T]], *,
                           broker: str = BROKER_ZERODHA) -> T | None:
     """Runs ``call(access_token)``; None when there is no readable session. A Kite TokenException ends the session as
-    EXPIRED (Kite's answer wins over the expected expiry) in its own committed transaction on ``engine``, then is
-    re-raised: the caller's transaction rolling back on the re-raise cannot keep the dead token."""
-    found = await _read_active(conn, user_ref, cipher, engine=engine, broker=broker)
+    EXPIRED (Kite's answer wins over the expected expiry), committed on ``conn`` itself, then is re-raised: the caller's
+    transaction rolling back on the re-raise cannot keep the dead token."""
+    _require_fresh(conn)
+    found = await _read_active(conn, user_ref, cipher, broker=broker)
     if found is None:
         return None
     session_id, token = found
     try:
         return await call(token)
     except KiteTokenException:
-        await _end_committed(engine, session_id, user_ref, EndReason.EXPIRED, broker)
+        await _end_committed(conn, session_id, user_ref, EndReason.EXPIRED, broker)
         raise
