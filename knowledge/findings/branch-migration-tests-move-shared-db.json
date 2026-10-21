@@ -34,6 +34,11 @@
       "date": "2026-10-17",
       "where": "GC-2c, two DB runs started by the orchestrator side by side (W-094 store tests from one checkout, W-095 round 4's core test from a builder) at ~07:45 IST",
       "evidence": "each run upgraded/downgraded the shared DB with its own copy of 0016 (one with, one without the tradingsymbol column) while the other's tests ran: W-094's run -> '15 failed, 93 passed' (noise), the builder saw 'an older version of 0016'. Re-run strictly one checkout at a time. Third shape of the class: not a branch-vs-main gap but two branches at once. Rule applied for the rest of GC-2c: one DB holder at a time, named in the brief ('your DB run is the last step; another run may hold the DB')."
+    },
+    {
+      "date": "2026-10-21",
+      "where": "builder scope run 1, W-122 (migration 0019_strategy_tracking, insert-only tables), builder ran alembic and its DB tests by hand (not through atool)",
+      "evidence": "the builder's closing `alembic downgrade 0018_basket_tag_8` answered 'refusing downgrade: public.strategy_tracking holds paper entries'; `alembic current` -> '0019_strategy_tracking (head)' while main's head was 0018. Fourth shape: the branch's own tests COMMITTED rows into insert-only tables (no rollback), so the restoring downgrade itself refuses - restore_main_head would also go red here. The same evening tests_app/test_execute_drift_block.py failed 8/8 on main, origin/main and the W-121 branch with 'Catalogue update refused: would drop 207 of 208 live NIFTY contracts' (shared catalogue state left by earlier runs) - shared ofo_test state again. Status stays guarded only for atool runs; DB tests that commit into insert-only tables are unguarded: fix = such tests run inside a rolled-back transaction or a per-run throwaway schema."
     }
   ]
 }
