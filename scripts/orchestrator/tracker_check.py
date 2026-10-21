@@ -33,14 +33,14 @@ MIN_TABLE_LINES = 3  # header, separator, at least one row
 WITH_NUMBER_PARTS = 2  # "held" and "#N"
 CONTRACT_RE = re.compile(r"GC-\w+|owner|stage-5")
 GC6 = "GC-6"
-GC6_CONTRACT = "docs/process/goal-contract-GC-6-2026-10-19.md"
+GC6_CONTRACT_GLOB = "docs/process/goal-contract-GC-6-*.md"
 VERIFY_RE = re.compile(r"verify:\s*\S")
 ACCEPTED_RE = re.compile(r"owner-accepted \d{4}-\d{2}-\d{2}")
 VERIFY_STATUSES = {"todo", "building"}
 SECTION_START = re.compile(r"^## 4\.", re.M)
 SECTION_END = re.compile(r"^## \d+\.", re.M)  # numbered: a heading wrapped onto a second '## ' line is not an end
 AC_SUFFIX_RE = re.compile(r"\s+AC-(\d+)\b")
-PR_REF_RE =re.compile(r"#(\d+)\b(?!-)")
+PR_REF_RE = re.compile(r"\bPR\s+#(\d+)\b(?!-)", re.I)  # only an explicit own-PR reference, never a bare "#N"
 OUT_OF_SCOPE_LINE = re.compile(r"^Out of this contract.*$", re.M)
 # A plan id is an issue number (#352, #352-2) or an UPPER-CASE hyphenated name (CI-SPLIT, W-118-sel, REQ-041).
 PLAN_ID_RE = re.compile(r"#\d+(?:-\d+)?|\b[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+\b")
@@ -169,7 +169,7 @@ def check_merged_pr_in_open_row(rows, prs, failures):
         word = row["Status"].split(" ")[0]
         if word not in VERIFY_STATUSES:
             continue
-        named = {int(n) for n in PR_REF_RE.findall(f"{row['Item']} {row['Evidence']}")}
+        named = {int(n) for n in PR_REF_RE.findall(" ".join(row[c] for c in COLUMNS))}
         for num in sorted(n for n in named if prs.get(n) == "MERGED"):
             failures.append(f"line {row['line']}: {row['Id']}: status {word} but its notes name PR #{num}, "
                             f"which is MERGED on GitHub (update the row: merged/verified/closed, or say what is left)")
@@ -195,18 +195,19 @@ def contract_plan_ids(contract_text, pr_numbers):
     return ids
 
 
-def check_contract_ids(rows, contract_text, issues, prs, failures):
-    """Rule 3: every id the contract's order of work names is a tracker row."""
+def check_contract_ids(rows, contract, issues, prs, failures):
+    """Rule 3: every id the contract's order of work names is a tracker row. contract = (path, text)."""
+    contract_name, contract_text = contract
     ids = contract_plan_ids(contract_text, {n for n in prs if n not in issues})
     if not ids:
-        failures.append(f"{GC6_CONTRACT}: section 4 is missing or names no row ids (cannot compare)")
+        failures.append(f"{contract_name}: section 4 is missing or names no row ids (cannot compare)")
         return
     have = {r["Id"] for r in rows}
     for name, num in NAMED_ISSUE_RE.findall(contract_text[SECTION_START.search(contract_text).end():]):
         if name in have or num in have:  # "NAME (#N)" is met by a row Id NAME or Id #N
             ids -= {name, num}
     for rid in sorted(ids - have):
-        failures.append(f"{GC6_CONTRACT}: {rid}: named in section 4 but has no tracker row")
+        failures.append(f"{contract_name}: {rid}: named in section 4 but has no tracker row")
 
 
 def run(cmd, root):
@@ -246,6 +247,17 @@ def load_offline(path):
     return base, issues, prs
 
 
+def read_contract(root):
+    """The one GC-6 contract file; 0 or 2+ matches is an error (fail closed)."""
+    found = sorted(p for p in Path(root).glob(GC6_CONTRACT_GLOB) if p.is_file())
+    if len(found) != 1:
+        raise CheckError(f"{GC6_CONTRACT_GLOB}: expected exactly one contract file, found {len(found)}")
+    try:
+        return found[0].relative_to(root).as_posix(), found[0].read_text(encoding="utf-8")
+    except OSError as e:
+        raise CheckError(f"cannot read {found[0]}: {e}") from e
+
+
 def check(root, offline=None):
     try:
         text = (Path(root) / TRACKER).read_text(encoding="utf-8")
@@ -256,10 +268,7 @@ def check(root, offline=None):
     else:
         base = run(["git", "show", f"{BASE_REF}:{TRACKER}"], root)
         issues, prs = gh_states(root, "issue"), gh_states(root, "pr")
-    try:
-        contract = (Path(root) / GC6_CONTRACT).read_text(encoding="utf-8")
-    except OSError as e:
-        raise CheckError(f"cannot read {GC6_CONTRACT}: {e}") from e
+    contract = read_contract(root)
     failures = []
     rows = parse_tracker(text, failures)
     if not rows and not failures:

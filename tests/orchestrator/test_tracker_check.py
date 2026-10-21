@@ -264,6 +264,35 @@ def test_todo_or_building_row_naming_a_merged_pr_is_stale(tmp_path):
         assert f"STALE-1: status {status} but its notes name PR #51, which is MERGED" in out, status
 
 
+def test_historical_mention_of_a_merged_pr_is_not_stale(tmp_path):
+    for note in ("builds on merged #51 helper", "done in #51", "(#51)"):
+        raw = table(CLEAN_ROWS) + f"| OK-3 | screen | P1 | GC-2h | A | building | {note} |\n"
+        assert run(tmp_path, raw=raw)[0] == 0, note
+    raw = table(CLEAN_ROWS) + "| BAD-1 | screen | P1 | GC-2h | A | building | pr #51 opened |\n"
+    assert run(tmp_path, raw=raw)[0] == 1
+
+
+def test_own_pr_reference_in_any_cell_is_stale(tmp_path):
+    raw = table(CLEAN_ROWS) + "| BAD-2 | wait for PR #51 | P1 | GC-2h | A | todo | |\n"
+    assert run(tmp_path, raw=raw)[0] == 1
+
+
+def test_two_contract_files_fail_closed(tmp_path):
+    run(tmp_path)
+    (tmp_path / "docs" / "process" / "goal-contract-GC-6-other.md").write_text(CONTRACT, encoding="utf-8")
+    r = exec_script(tmp_path, "--offline", tmp_path / "fixture.json")
+    assert r.returncode == EXIT_CANNOT_CHECK
+    assert "found 2" in r.stdout + r.stderr
+
+
+def test_contract_file_with_another_date_is_found(tmp_path):
+    run(tmp_path)
+    old = tmp_path / GC6_CONTRACT
+    old.rename(old.with_name("goal-contract-GC-6-2030-01-01.md"))
+    r = exec_script(tmp_path, "--offline", tmp_path / "fixture.json")
+    assert r.returncode == 0
+
+
 def test_row_naming_an_open_or_unknown_pr_is_not_stale(tmp_path):
     raw = table(CLEAN_ROWS) + "| OK-1 | screen | P1 | GC-2h | A | building | PR #50 open; see #9999 |\n"
     assert run(tmp_path, raw=raw)[0] == 0
