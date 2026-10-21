@@ -60,6 +60,77 @@ MAX_EXPIRY_LOSS_FRACTION = Decimal("0.5")
 #: ADR-059 (a): "the strike is unchanged and the expiry moved by at most 6 calendar days" (62964: 5 days, 61746: 3
 #: days); a move of 7 days or more is a token reuse, i.e. a new contract.
 MAX_EXPIRY_MOVE_DAYS = 6
+#: ADR-147 structural pass: the near-the-money band is this fraction of the expiry's anchor level on each side. On the
+#: real 2026-10-21 trim the narrowest kept side was 14.7% from the anchor, so 5% leaves a 3x margin either way.
+TRIM_BAND_FRACTION = Decimal("0.05")
+#: ADR-147: the audit action a structurally accepted trim writes (ADMIN_CHANGE_RECORDED, declared payload keys only).
+TRIM_ACCEPTED_ACTION = "catalogue_structural_trim_accepted"
+
+
+@dataclass(frozen=True)
+class StructuralPass:
+    """What the ADR-147 second pass needs from the caller: the contracts held by an open position, an open execution
+    plan leg or a saved strategy leg (None = could not be read: the pass refuses), and where its audit row goes."""
+
+    held: frozenset[InstrumentId] | None
+    audit_log: AuditLog
+    actor: str
+
+
+def _anchor(strikes: set[Decimal]) -> Decimal | None:
+    """ADR-147: an expiry's anchor level = the midpoint of the stored (previously accepted) option strike ladder. The
+    Kite list carries last_price 0 on every row (index and futures rows too) and the catalogue keeps no index level, so
+    the anchor comes from trusted stored state, never from the list being judged. Fewer than 2 strikes: unmeasurable."""
+    if len(strikes) < 2:
+        return None
+    return (min(strikes) + max(strikes)) / 2
+
+
+def _structural_refusal(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], replaced_live: int,
+                        new_rows: list[ListedContract], held: frozenset[InstrumentId] | None) -> str | None:
+    """ADR-147 allow-list: None (accept) only when EVERY condition holds; otherwise the first reason it fails.
+
+    1. no live contract's token was reused; 2. every exchange segment with live contracts is in the new list; 3. the held
+    contracts are known and none vanishes; 4. every vanishing contract is an option of an expiry whose anchor is
+    measurable, outside the band around that anchor, and beyond the ends of the strikes the new list keeps for that
+    underlying + expiry + type (a trim cuts the tails; a broken download leaves holes)."""
+    if replaced_live:
+        return f"{replaced_live} live contract(s) had their token reused"
+    new_segments = {r.contract.exchange_segment for r in new_rows}
+    missing = sorted({e.contract.exchange_segment for e in live} - new_segments)
+    if missing:
+        return f"segment(s) {missing} have live contracts but are absent from the list"
+    if held is None:
+        return "the contracts held by open positions, open plans and saved strategies could not be read"
+    held_gone = sorted(e.id for e in vanishing if e.id in held)
+    if held_gone:
+        return f"{len(held_gone)} dropped contract(s) are held, e.g. {held_gone[0]}"
+    ladders: dict[tuple, set[Decimal]] = {}
+    for e in live:
+        if e.contract.is_option():
+            ladders.setdefault((e.contract.name, e.contract.expiry), set()).add(e.contract.strike)
+    kept: dict[tuple, list[Decimal]] = {}
+    for r in new_rows:
+        c = r.contract
+        if c.is_option():
+            kept.setdefault((c.name, c.expiry, c.instrument_type), []).append(c.strike)
+    for e in vanishing:
+        c = e.contract
+        if not c.is_option():
+            return f"{c.name} {c.instrument_type} {c.expiry} ({e.id}) is not an option strike"
+        anchor = _anchor(ladders.get((c.name, c.expiry), set()))
+        if anchor is None:
+            return f"no anchor level is derivable for {c.name} {c.expiry}"
+        if abs(c.strike - anchor) <= anchor * TRIM_BAND_FRACTION:
+            return (f"{c.name} {c.expiry} {c.strike} {c.instrument_type} is inside the near-the-money band "
+                    f"({anchor} +/- {TRIM_BAND_FRACTION * 100}%)")
+        strikes = kept.get((c.name, c.expiry, c.instrument_type))
+        if not strikes:
+            return f"the list keeps no {c.name} {c.expiry} {c.instrument_type} strike"
+        if min(strikes) <= c.strike <= max(strikes):
+            return (f"{c.name} {c.expiry} {c.strike} {c.instrument_type} leaves a hole inside the kept strikes "
+                    f"{min(strikes)}-{max(strikes)}")
+    return None
 
 
 def check_max_delist_percent(value: object) -> Decimal:
@@ -191,6 +262,7 @@ class Catalogue:
         actor: str | None = None,
         audit_log: AuditLog | None = None,
         max_delist_percent: object = DEFAULT_MAX_DELIST_PERCENT,
+        structural: StructuralPass | None = None,
     ) -> "CatalogueUpdateResult":
         """Refresh from a newer instrument list.
 
@@ -211,6 +283,11 @@ class Catalogue:
         update is refused otherwise, and every forced update appends one ADMIN_CHANGE_RECORDED
         event (who, when = `as_of`, reason, exact dropped contract ids) before anything changes
         (REQ-064; issue #80). `reason`/`actor`/`audit_log` are rejected without `force`.
+
+        ADR-147: when the count guards refuse and `structural` is given, a second pass (`_structural_refusal`, an
+        allow-list) may accept a far-strike trim; it appends one ADMIN_CHANGE_RECORDED event (action
+        TRIM_ACCEPTED_ACTION, the counts, the dropped ids) only when it accepts. It never runs when the count guards
+        pass, and `structural` is ignored with `force=True`.
         """
         if as_of.tzinfo is None or as_of.utcoffset() is None:
             raise ValueError("Catalogue.update() requires a timezone-aware as_of")
@@ -244,6 +321,7 @@ class Catalogue:
         # ADR-059: both guards count every live contract that stops being live in this update - not carried, AND
         # delisted because its token now carries another contract.
         leaving_live = vanishing + [live[i] for i in replaced if i in live]
+        trim_accepted = False
         if force:
             assert audit_log is not None and reason is not None and actor is not None
             leaving = vanishing + [self._entries[i] for i in replaced]
@@ -265,7 +343,34 @@ class Catalogue:
                 },
             )
         else:
-            _refuse_truncation(list(live.values()), leaving_live, limit, update_date)
+            try:
+                _refuse_truncation(list(live.values()), leaving_live, limit, update_date)
+            except ValueError as refused:
+                # ADR-147: the count guards refused; the structural pass runs only now, and only when the caller gave
+                # it what it needs. It may ACCEPT; any unmet or unmeasurable condition keeps the refusal.
+                if structural is None:
+                    raise
+                why = _structural_refusal(list(live.values()), vanishing, len(leaving_live) - len(vanishing),
+                                          in_scope_new, structural.held)
+                if why is not None:
+                    raise ValueError(f"{refused} The structural trim check (ADR-147) also refused: {why}.") from None
+                trim_accepted = True
+                structural.audit_log.append(
+                    EventType.ADMIN_CHANGE_RECORDED,
+                    actor=structural.actor,
+                    timestamp=as_of,
+                    correlation_id=f"catalogue-structural-trim-{as_of.isoformat()}",
+                    payload={
+                        "action": TRIM_ACCEPTED_ACTION,
+                        "reason": (f"ADR-147 structural pass accepted a far-strike trim the count guards refused: "
+                                   f"{len(vanishing)} of {len(live)} live contracts dropped, all outside the "
+                                   f"near-the-money band, none held; count guard said: {refused}"),
+                        "dropped_instrument_tokens": [[e.id.exchange_segment, e.id.exchange_token] for e in vanishing],
+                        "dropped_tradingsymbols": [
+                            [r.broker, r.broker_symbol] for e in vanishing for r in e.broker_refs.values()
+                        ],
+                    },
+                )
 
         added = 0
         replaced_set = set(replaced)
@@ -282,7 +387,8 @@ class Catalogue:
                 newly_unlisted += 1
 
         return CatalogueUpdateResult(added=added, newly_unlisted=newly_unlisted, skipped_expired=skipped_expired,
-                                     replaced=tuple(replaced), delisted=tuple(e.id for e in vanishing))
+                                     replaced=tuple(replaced), delisted=tuple(e.id for e in vanishing),
+                                     structural_trim_accepted=trim_accepted)
 
     def all_entries(self) -> list[CatalogueEntry]:
         return list(self._entries.values())
@@ -409,3 +515,4 @@ class CatalogueUpdateResult:
     skipped_expired: int = 0  # in-scope rows whose expiry had passed: never loaded (ADR-059)
     replaced: tuple[InstrumentId, ...] = ()  # tokens reused by a new contract in this list (ADR-059)
     delisted: tuple[InstrumentId, ...] = ()  # live contracts this list stopped carrying (ADR-058)
+    structural_trim_accepted: bool = False  # the count guards refused and the ADR-147 structural pass accepted
