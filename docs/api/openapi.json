@@ -1941,7 +1941,8 @@
               "exited",
               "nothing_placed",
               "partial",
-              "reconciliation_required"
+              "reconciliation_required",
+              "unresolved_from_positions"
             ],
             "title": "State",
             "type": "string"
