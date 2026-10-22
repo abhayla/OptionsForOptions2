@@ -89,6 +89,7 @@ def _build(raw: dict[str, Any]) -> Template:
             TemplateLeg(
                 name=leg["name"], action=Action(leg["action"]), instrument=Instrument(leg["instrument"]),
                 strike=strike, expiry_slot=leg["expiry_slot"], quantity_multiplier=leg["quantity_multiplier"],
+                protective=leg.get("protective", False),
             )
         )
     constraints: list[Constraint] = []

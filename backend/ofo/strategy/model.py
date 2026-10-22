@@ -108,6 +108,8 @@ class TemplateLeg:
     strike: LinearExpr | None
     expiry_slot: str
     quantity_multiplier: int = 1
+    #: REQ-076 AC-8 / REQ-078 AC-5: the Hedge leg of the shape (data, never per-strategy code; REQ-028 AC-5)
+    protective: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.action, Action):

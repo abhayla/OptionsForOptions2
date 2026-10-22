@@ -897,9 +897,38 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
           "You can build, save and track strategies."),
 )
 
+# --- W-126 (REQ-076, REQ-077, REQ-078): a refused leg edit (strike step, Shift / Width / Hedge, typed price). The whole
+# edit is refused and nothing changes; each text names the leg.
+_LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("leg_edit_strike_not_listed", _UI, 5, "{leg} is not listed in the instrument file.",
+          "The edit was refused and no leg changed.", "This edit.", "Pick a listed strike, or change a different leg.",
+          {"leg": LegRef}),
+    _gate("leg_edit_no_further_strike", _UI, 6, "{leg} has no further listed strike in that direction.",
+          "The edit was refused and no leg changed.", "This edit.", "Step the other way, or pick a strike.",
+          {"leg": LegRef}),
+    _gate("leg_edit_futures_no_stepper", _UI, 7, "{leg} is a futures leg and has no strike to step.",
+          "The edit was refused and no leg changed.", "This edit.", "Change the lots instead.", {"leg": LegRef}),
+    _gate("leg_edit_width_not_applicable", _UI, 8,
+          "Width applies to straddles, strangles, iron butterflies and iron condors.",
+          "The edit was refused and no leg changed.", "This edit.", "Use Shift, or pick strikes leg by leg."),
+    _gate("leg_edit_hedge_not_applicable", _UI, 9,
+          "Hedge applies to vertical spreads, iron butterflies and iron condors with 2 or 4 legs.",
+          "The edit was refused and no leg changed.", "This edit.", "Use Shift, or pick strikes leg by leg."),
+    _gate("leg_edit_width_below_zero", _UI, 10, "The width between the short strikes cannot go below 0.",
+          "The edit was refused and no leg changed.", "This edit.", "Use Width +1, or Shift."),
+    _gate("leg_edit_hedge_below_minimum", _UI, 11, "{leg} would sit closer than one strike step to its short leg.",
+          "The edit was refused and no leg changed.", "This edit.", "Use Hedge +1, or pick strikes leg by leg.",
+          {"leg": LegRef}),
+    _gate("leg_edit_needs_option_leg", _UI, 12, "Shift needs at least one option leg.",
+          "The edit was refused and no leg changed.", "This edit.", "Add an option leg first."),
+    _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
+          "The typed price was refused and the previous price stays.", "This price.",
+          "Type a price that is a multiple of the tick size.", {"leg": LegRef, "tick": Money}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _LEG_EDIT_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
