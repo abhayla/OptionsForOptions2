@@ -6,6 +6,8 @@
   (:class:`ofo_app.chain_push.ChainPush`). Every message is minted by the response door (`ClosedWebSocketRoute`); no
   token, key or session value travels on it or in its URL. The test replay (APP_ENV=test, OUTCOME_REPLAY) gives each
   connection its own replay feed through the strategy socket's builder (``routes.live.current_feed``).
+- ``POST /api/market/chain/preview`` (W-124, REQ-031): the selected legs in, the outcome route's own summary numbers
+  out (net premium, max profit / loss, breakevens, payoff points, the matched template's name); read-only.
 - ``GET /api/market/chain``: the screen's first paint, and with ``fallback=true`` the refresh of a screen whose own
   socket is down: then the answer is NOT_CONNECTED whoever else holds the contracts (finding
   liveness-from-shared-subscribers). No live feed: NOT_CONNECTED.
@@ -35,6 +37,7 @@ from ofo_app.chain_push import (
     stored_chain,
     window_ids,
 )
+from ofo_app.chain_preview import PreviewOut, PreviewRequest, preview_answer
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
@@ -48,6 +51,7 @@ from ofo_app.routes.outcome import (
 
 PATH = "/api/market/chain/live"
 REST_PATH = "/api/market/chain"
+PREVIEW_PATH = REST_PATH + "/preview"
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -84,6 +88,16 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
 ) -> ChainOut:
     req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side)
     return chain_read(ctx, streaming, req, await reader(underlying, expiry), fallback=fallback, now=now)
+
+
+@router.post(PREVIEW_PATH, response_model=PreviewOut)
+def market_chain_preview(  # noqa: PLR0913 - one request body or seam each
+        req: PreviewRequest,
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
+        now: Annotated[AnswerClock, Depends(get_answer_clock)],
+) -> PreviewOut:
+    return preview_answer(req, ctx, streaming, now=now)
 
 
 async def chain_live(socket: ClosedSocket) -> None:
