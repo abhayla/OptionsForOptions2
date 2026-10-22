@@ -21,13 +21,14 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 
 from ofo_app.routes import execute as execute_routes  # noqa: E402
 from ofo_app.routes.strategies import StrategyRefused  # noqa: E402
-from test_strategy_store import _client  # noqa: E402
-from test_strategy_tracking import _DELIST, _RETIRE, _REUSE, IDS, _setup  # noqa: E402
+from test_strategy_store import _body, _client, _ids  # noqa: E402
+from test_strategy_tracking import _DELIST, _RETIRE, _REUSE, IDS, _quantity_130, _setup  # noqa: E402
 from test_strategy_tracking import db as _rolled_back_db  # noqa: E402
 
 db = _rolled_back_db  # the fixture: one connection whose outer transaction is always rolled back (0 rows left)
 
-NOT_LIVE = [((_DELIST, _REUSE), "token_reassigned"), ((_RETIRE,), "contract_retired"), ((_DELIST,), "contract_delisted")]
+NOT_LIVE = [((_DELIST, _REUSE), "token_reassigned"), ((_RETIRE,), "contract_retired"),
+            ((_DELIST,), "contract_delisted")]
 NOT_LIVE_IDS = ["token_reassigned", "contract_retired", "contract_delisted"]
 
 
@@ -61,8 +62,13 @@ async def test_a_not_live_leg_has_no_key_and_names_why_on_load_and_history(db, s
     """The reused-token case is the bug: before #500 leg 0 still carried NSE_FO:44624, now the NEW 26000 CE's token, so
     the Builder priced another contract. Now leg 0 has no key and its reason, on GET and on every history entry; the
     other legs keep theirs."""
-    app, stored = await _after(db, sqls)
-    async with _client(app) as c:
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:  # a route save first, so the history holds real entries to check
+        body = _quantity_130(_body(await _ids(db), expected_revision=stored.revision))  # a change: one history entry
+        put = await c.put(f"/strategies/{stored.id}", json=body)
+        assert put.status_code == HTTPStatus.OK, put.text
+        for sql in sqls:
+            await db.execute(text(sql), {"id": stored.saved.contract_ids[0]})
         got = await c.get(f"/strategies/{stored.id}")
         history = await c.get(f"/strategies/{stored.id}/history")
     assert got.status_code == HTTPStatus.OK, got.text
@@ -70,7 +76,8 @@ async def test_a_not_live_leg_has_no_key_and_names_why_on_load_and_history(db, s
     assert _keys(got.json()["definition"]["legs"]) == want
     assert history.status_code == HTTPStatus.OK, history.text
     entries = history.json()["entries"]
-    assert all(_keys(e["definition"]["legs"]) == want for e in entries)  # a store-made draft may have no entry yet
+    assert len(entries) >= 1
+    assert [_keys(e["definition"]["legs"]) for e in entries] == [want] * len(entries)
     # display identity is still the stored contract's own terms, never the new holder's (22800 CE, not 26000 CE)
     leg0 = got.json()["definition"]["legs"][0]
     assert (leg0["strike"], leg0["expiry"]) == ("22800.00", "2026-10-13")

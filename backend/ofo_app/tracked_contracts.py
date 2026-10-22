@@ -9,7 +9,8 @@ a 26000 CE inserted on its token NSE_FO:44624, and the view answered LIVE +195.0
 
 Design (run-discipline C8, a structural guarantee): ``resolve`` is the only place in backend/ofo_app where a stored
 contract id becomes a feed key: the tracking route, the saved strategy's legs handed to the Builder for outcome requests
-(routes/strategies.py) and Execute's entry legs (routes/execute.py). A key is given ONLY when the catalogue row is live (neither retired nor delisted) AND the
+(routes/strategies.py) and Execute's entry legs (routes/execute.py). A key is given ONLY when the catalogue row
+is live (neither retired nor delisted) AND the
 live contract holding its (segment, token) today is the same internal id. Every other answer is an explicit state and
 carries no feed key, so nothing can be priced for it:
 

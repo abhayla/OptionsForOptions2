@@ -99,6 +99,7 @@ def test_the_scan_fails_closed_on_every_bypass_shape(tmp_path, snippet):
 #: backend/ofo_app reaches a stored contract's feed key only through ofo_app.tracked_contracts.resolve.
 STORED_IDENTITY = ("load_contract", "live_contract_id")
 APP = "backend/ofo_app"
+MIN_APP_MODULES = 50  # backend/ofo_app holds well over this many modules
 #: Reviewed modules that may touch the raw catalogue identity, each with why it never prices a stored id by its token.
 #: A new module that touches it fails the scan until it routes through resolve or is reviewed and added here.
 REVIEWED_RAW_IDENTITY = {
@@ -106,10 +107,10 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/catalogue_store.py": "owns the table: writes rows, answers id -> row and live token -> holder",
     "backend/ofo_app/alembic/": "migrations: schema DDL only, no runtime read",
     "backend/ofo_app/models.py": "ORM table definition for migrations; no query",
-    "backend/ofo_app/catalogue_picker.py": "lists LIVE contracts (NOT retired AND NOT delisted) for picking; no stored id",
+    "backend/ofo_app/catalogue_picker.py": "lists LIVE contracts only (not retired, not delisted); no stored id",
     "backend/ofo_app/seed_test_catalogue.py": "test seeding: counts rows; no key handed out",
-    "backend/ofo_app/execute_replay.py": "APP_ENV=test replay seeding: inserts the recorded contract; no stored id read",
-    "backend/ofo_app/execution_plan_store.py": "key -> broker symbol with its live flag (direction key -> row, not id -> key)",
+    "backend/ofo_app/execute_replay.py": "APP_ENV=test replay seeding: inserts the recorded contract",
+    "backend/ofo_app/execution_plan_store.py": "key -> broker symbol with its live flag (key -> row)",
     "backend/ofo_app/live_market.py": "imports the store for load_catalogue (live rows by key); no stored id read",
     "backend/ofo_app/routes/outcome.py": "key -> LIVE holder -> its row (live_contract_id first): never id -> key",
     "backend/ofo_app/strategy_store.py": "save-time validation of a picked id (live, terms); returns no feed key",
@@ -124,9 +125,10 @@ MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/rou
 
 
 def _stored_identity_uses(path: pathlib.Path) -> list[str]:
-    """Every way ``path`` could read a stored contract's exchange identity without ofo_app.tracked_contracts: an import of
-    the catalogue store by import source (any local name), a relative or dynamic import (unresolvable: fails closed), a
-    name or attribute naming load_contract / live_contract_id, and a string naming the catalogue table (raw SQL)."""
+    """Every way ``path`` could read a stored contract's exchange identity without ofo_app.tracked_contracts: an
+    import of the catalogue store by import source (any local name), a relative or dynamic import (unresolvable:
+    fails closed), a name or attribute naming load_contract / live_contract_id, and a string naming the catalogue
+    table (raw SQL)."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     found = []
     for node in ast.walk(tree):
@@ -137,7 +139,7 @@ def _stored_identity_uses(path: pathlib.Path) -> list[str]:
             elif "*" in names or (node.module == "ofo_app" and "catalogue_store" in names) or (
                     node.module.startswith("ofo_app.catalogue_store")
                     and (names & set(STORED_IDENTITY) or node.module != "ofo_app.catalogue_store")):
-                # the whole store, a star, a submodule, or one of the id -> identity reads (by import source, any alias);
+                # the whole store, a star, a submodule, or an id -> identity read (by import source, any alias);
                 # its other names (load_catalogue: live rows by key, apply_update) never turn a stored id into a key
                 found.append(f"{node.lineno}: from {node.module} import {sorted(names)}")
         elif isinstance(node, ast.Import):
@@ -158,7 +160,7 @@ def test_app_wide_a_stored_contract_reaches_a_feed_key_only_through_resolve():
     the callers #500 moved (strategies, execute, tracking) never are. A reviewed entry that no longer exists or no
     longer touches it fails too (no stale exemptions)."""
     files = sorted((ROOT / APP).rglob("*.py"))
-    assert len(files) > 50  # the package really was scanned
+    assert len(files) > MIN_APP_MODULES  # the package really was scanned
     touching = {p.relative_to(ROOT).as_posix(): _stored_identity_uses(p) for p in files}
     touching = {k: v for k, v in touching.items() if v}
     unreviewed = {k: v for k, v in touching.items() if not _reviewed(k)}

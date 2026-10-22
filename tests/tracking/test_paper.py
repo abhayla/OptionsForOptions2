@@ -130,7 +130,7 @@ def test_ac2_a_stale_or_missing_index_computes_no_detection(replayed, spot_chang
     bad = dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, **spot_change))
     view = paper.tracking_view(bad, entry, D("100"), ALL_LIVE)
     assert view.detections == () and view.index.state != "live"
-    assert paper.tracking_view(snap, entry, D("100"), ALL_LIVE).detections != ()  # the same inputs fire with a live index
+    assert paper.tracking_view(snap, entry, D("100"), ALL_LIVE).detections != ()  # fires with a live index
 
 
 def test_ac2_a_multi_expiry_strategy_has_no_breakeven_condition_but_keeps_paper_pnl():

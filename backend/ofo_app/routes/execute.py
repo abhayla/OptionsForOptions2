@@ -67,12 +67,11 @@ from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import entitlement_store, live_market, order_audit
+from ofo_app import entitlement_store, live_market, order_audit, tracked_contracts
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
-from ofo_app import tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_store import load_catalogue

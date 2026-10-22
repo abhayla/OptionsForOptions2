@@ -44,11 +44,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
 from ofo_app import tracked_contracts
-from ofo_app.tracked_contracts import ContractState
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.tracked_contracts import ContractState
 
 router = APIRouter(route_class=ClosedRoute)
 
