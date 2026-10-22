@@ -25,11 +25,13 @@ reason. Strict row order stays (owner, same session: "Keep strict order").
 
 - **R1 Attack list before the build** (cause: row 2 brief gap). The start check (built rows) or the Measure step (rows
   to build) writes the list of attacks the final verifier will run; the list is copied into the builder brief under
-  `Attack list:`; the builder runs each one before reporting. Example: "a heartbeat alone must not count as a price".
+  `Attack list:` - at least 5 numbered items, each naming the test file expected to hold it (check_brief refuses
+  fewer than 5); the builder runs each one before reporting. Example: "a heartbeat alone must not count as a price".
 - **R2 Builder runs every changed test file in full** (cause: row 1 stale picker test, row 2 stale status test). Not a
   `-k` subset. DB-backed `tests_app` files run through the MAIN checkout's `scripts/orchestrator/db_run.py <worktree>
   ...` (the worktree has no `.env`); a skipped DB test counts as NOT run and is reported as such. Before reporting,
-  grep every test tree for the old value or old answer of anything changed.
+  grep every test tree for the old value or old answer of anything changed, and put the grep command and its hit
+  count in the evidence table.
 - **R3 Size by files touched** (cause: row 1 continuation dispatch, 23 min, 178k tokens). From Measure, count the
   files the fix must touch: <= 5 files S (30 min / 40 calls); 6-15 M (60 / 80); more, or backend + frontend, L (split
   backend then frontend). A class spread over ~20 files is never S.
@@ -37,7 +39,11 @@ reason. Strict row order stays (owner, same session: "Keep strict order").
   copies live in the agent's scratch folder only.
 - **R5 A resume re-sends the agent's whole history** (row 3: a 4-call follow-up to the builder cost 203k tokens, 28 s;
   a fresh small agent ~60-80k). Resume the same builder only for a real fix round where its context saves re-reading;
-  a small follow-up (switch a fixture, add one test) goes to a fresh agent with a narrow brief.
+  a small follow-up (<= 3 files changed and no new design, e.g. switch a fixture, add one test) goes to a fresh agent
+  with a narrow brief.
+- **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
+  (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
+  meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
 - **R6 The orchestrator runs its own checks after every bookkeeping edit**: `tests/test_tests_required_exist.py` after
   any work-item edit, `coverage.py . --check` after any status or stage change (rows 1-3: a W-129 entry naming no file,
   and `status: done` making coverage drop W-129/W-130; work items stay `in_review` until the chunk PR merges).
@@ -50,7 +56,21 @@ rules: abhayla/Startup-Factory#161.
 
 ## Log (newest first)
 
-### Row 3 - REQ-054 Broker adapter, read part (closed 2026-10-22 ~13:35 IST)
+### Meta review after row 3 (2026-10-22 13:05 IST, fresh Sonnet agent, 0.7 min / 108k / 5 calls)
+- Found: row 3's close time was typed (~13:35) while the close commit says 12:56 (fixed below; times now from `date`
+  or the commit); totals left out the process-guards builder and row 1's half of the shared start check; orchestrator
+  cost and tool calls never given in numbers; R1/R2/R5 and the meta-review timing too vague to check; verifier briefs
+  still let a verifier spend ~5 min re-proving #497.
+- Accepted and applied: per-row measured table (every agent: minutes, tokens, tool calls, from its completion notice;
+  process agents listed separately; orchestrator tool calls counted, its own tokens stated as unmeasured); R1 >= 5
+  numbered attacks each naming the test file expected to hold it (check_brief enforces 5); R2 report the grep command
+  and hit count; R5 small = <= 3 files and no new design; the meta review is due BEFORE row N+1's build (missed once:
+  row 4's build started alongside this review); verifier briefs carry the known-failing test list (#497 names).
+- Rejected: skipping AC re-checks already evidenced (the loosening an independent reviewer rejected with evidence,
+  see above); lowering verifier budgets (also a loosening); running process work only after the row closes (same
+  tokens, only more wall-clock).
+
+### Row 3 - REQ-054 Broker adapter, read part (closed 2026-10-22 12:56 IST, commit 5f5cc339)
 - Measured: measure 1.0 min / 80k; build 17.1 min / 200k; real-fixture follow-up (resume) 0.5 min / 203k; verify
   r1 18.5 min / 169k. ONE round. Total ~37 min, ~650k tokens (the resume alone 31% of it). Orchestrator: live
   `/user/profile` recording through the new door on the owner's session.

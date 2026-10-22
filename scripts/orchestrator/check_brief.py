@@ -167,6 +167,7 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 STANDING_RE = re.compile(r"^\W*Standing items:", re.I | re.M)
 ATTACK_RE = re.compile(r"^\W*Attack list:(.*)$", re.I)
 NUMBERED_RE = re.compile(r"^\W*\d+\.\s+\S")
+BLOCK_END_RE = re.compile(r"^(#|[A-Z][\w /()-]*:(\s|$))")  # a heading or the next `Label:` line ends the attack list
 BUDGET_RE = re.compile(r"^\W*Budget:\s*(\d+)\s*min\b[^,\n]*,\s*(\d+)\s*tool calls", re.I | re.M)
 SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review R3: S, M / each part of an L, fix and re-check
 
@@ -185,18 +186,30 @@ def _threat_model_lines(lines: list[str]) -> list[str]:
     return out
 
 
-def _has_attack_list(lines: list[str]) -> bool:
-    """`Attack list:` whose own line remainder, or whose next non-blank line, starts a numbered item."""
+MIN_ATTACKS = 5  # row-review R1 (meta review after row 3): at least five numbered attacks
+
+
+def _attack_count(lines: list[str]) -> int:
+    """Numbered items in the `Attack list:` block (its own line remainder, then the following lines up to the next
+    `Label:` line or heading); wrapped continuation lines of an item are not counted. 0 when there is no such line."""
+    best = 0
     for i, line in enumerate(lines):
         m = ATTACK_RE.match(line)
         if not m:
             continue
-        if NUMBERED_RE.match(m.group(1)):
-            return True
-        nxt = next((x for x in lines[i + 1:] if x.strip()), "")
-        if NUMBERED_RE.match(nxt):
-            return True
-    return False
+        count = 1 if NUMBERED_RE.match(m.group(1)) else 0
+        for nxt in lines[i + 1:]:
+            if NUMBERED_RE.match(nxt):
+                count += 1
+            elif BLOCK_END_RE.match(nxt):
+                break
+        best = max(best, count)
+    return best
+
+
+def _has_attack_list(lines: list[str]) -> bool:
+    """`Attack list:` followed by at least MIN_ATTACKS numbered items."""
+    return _attack_count(lines) >= MIN_ATTACKS
 
 
 def check_builder_brief(brief: str) -> list[str]:
@@ -205,7 +218,8 @@ def check_builder_brief(brief: str) -> list[str]:
         return []
     misses: list[str] = []
     if not _has_attack_list(brief.splitlines()):
-        misses.append("MISSING Attack list: `Attack list:` followed by a numbered item (`1.`) (row-review R1)")
+        misses.append(f"MISSING Attack list: `Attack list:` followed by at least {MIN_ATTACKS} numbered items "
+                      "(`1.` ...) (row-review R1)")
     pairs = [(int(a), int(b)) for a, b in BUDGET_RE.findall(brief)]
     if not pairs or any(p not in SIZE_PAIRS for p in pairs):
         misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "

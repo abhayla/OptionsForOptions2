@@ -194,7 +194,8 @@ GUARD_TESTS_LINE = ("Tests: python -m pytest tests/test_*.py tests/errors/test_w
                     "tests/errors/test_producer_inventory.py -m repo_scan\n")
 NO_ATTACK_BUILDER = ("# Row 99\nStanding items: (a) n/a: x\n" + GUARD_TESTS_LINE
                      + "Budget: 60 min wall-clock, 80 tool calls\n")
-WITH_ATTACK_BUILDER = NO_ATTACK_BUILDER + "Attack list:\n1. a heartbeat alone is not a price\n"
+WITH_ATTACK_BUILDER = NO_ATTACK_BUILDER + ("Attack list:\n1. a heartbeat alone is not a price\n2. b\n3. c\n4. d\n"
+                                           "5. e\n")
 
 
 def _sub_brief(root: pathlib.Path, text: str, name: str = "row-99-x.md") -> pathlib.Path:

@@ -250,6 +250,7 @@ def test_threat_model_bullet_and_lowercase_forms_pass(tmp_path):
 # ---- row-review R1 (attack list) and R3 (size budget): builder briefs only
 STANDING = "Standing items: (a) n/a: x (b) n/a: y (c) n/a: z (d) n/a: w\n"
 GOOD_BUDGET = "Budget: 60 min wall-clock, 80 tool calls\n"
+FIVE = "1. a\n2. b\n3. c\n4. d\n5. e\n"
 
 
 def _builder(attack: str, budget: str) -> str:
@@ -262,14 +263,24 @@ def _out(tmp_path, text, capsys):
 
 
 def test_builder_brief_needs_a_numbered_attack_list(tmp_path, capsys):
-    """R1: no `Attack list:`, or one with no numbered item, is refused; a numbered one passes."""
+    """R1: no `Attack list:`, one with no numbered item, or fewer than five, is refused; five numbered items pass."""
     code, out = _out(tmp_path, _builder("", GOOD_BUDGET), capsys)
     assert code == 1 and "MISSING Attack list" in out
     code, out = _out(tmp_path, _builder("Attack list: none yet\nsome prose\n", GOOD_BUDGET), capsys)
     assert code == 1 and "MISSING Attack list" in out
-    assert run(tmp_path, _builder("Attack list:\n\n1. a heartbeat is not a price\n", GOOD_BUDGET)) == 0
-    assert run(tmp_path, _builder("Attack list: 1. a; 2. b\n", GOOD_BUDGET)) == 0
-    assert run(tmp_path, _builder("Attack list: (run each)\n1. a\n", GOOD_BUDGET)) == 0
+    code, out = _out(tmp_path, _builder("Attack list:\n1. a\n2. b\n3. c\n4. d\n", GOOD_BUDGET), capsys)
+    assert code == 1 and "at least 5" in out
+    assert run(tmp_path, _builder("Attack list:\n\n" + FIVE, GOOD_BUDGET)) == 0
+    assert run(tmp_path, _builder("Attack list: (run each)\n" + FIVE, GOOD_BUDGET)) == 0
+    wrapped = "Attack list: 1. a\n2. b\n   wrapped line of b\n3. c\n4. d\n5. e\n"
+    assert run(tmp_path, _builder(wrapped, GOOD_BUDGET)) == 0
+
+
+def test_numbered_items_after_the_next_label_do_not_count(tmp_path, capsys):
+    """Numbered lines after the next `Label:` line (e.g. a reviewer checklist) are not attacks."""
+    text = _builder("Attack list:\n1. a\n2. b\nReviewer checklist:\n3. c\n4. d\n5. e\n", GOOD_BUDGET)
+    code, out = _out(tmp_path, text, capsys)
+    assert code == 1 and "MISSING Attack list" in out
 
 
 @pytest.mark.parametrize("budget", ["Budget: 45 min wall-clock, 60 tool calls\n",
@@ -279,14 +290,14 @@ def test_builder_brief_needs_a_numbered_attack_list(tmp_path, capsys):
                                     "no budget line\n"])
 def test_builder_brief_budget_must_be_a_size_pair(tmp_path, capsys, budget):
     """R3: only 30/40, 60/80 and the fix pairs 15/20, 20/30 pass; anything else, or no line, is refused."""
-    code, out = _out(tmp_path, _builder("Attack list:\n1. a\n", budget), capsys)
+    code, out = _out(tmp_path, _builder("Attack list:\n" + FIVE, budget), capsys)
     assert code == 1 and "MISSING size budget" in out
 
 
 @pytest.mark.parametrize("budget", ["30 min wall-clock, 40 tool calls", "60 min wall-clock, 80 tool calls",
                                     "15 min wall-clock, 20 tool calls", "20 min wall-clock, 30 tool calls"])
 def test_builder_brief_size_pairs_pass(tmp_path, budget):
-    assert run(tmp_path, _builder("Attack list:\n1. a\n", f"Budget: {budget}\n")) == 0
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, f"Budget: {budget}\n")) == 0
 
 
 def test_non_builder_brief_is_unaffected(tmp_path):
