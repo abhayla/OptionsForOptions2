@@ -12,10 +12,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
+import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 
-const UNDERLYINGS = ['NIFTY', 'SENSEX']
 const SIDE_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume']]
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
