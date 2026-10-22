@@ -27,10 +27,8 @@ tracked_contracts.resolve app-wide), #508 ADR-167 (owner 2026-10-22: curves and 
 shown once; sentences keep charges).
 
 **Open PRs at the stop (re-run the gate; nothing merges without a green gate):**
-- #507 W-125/W-128 (lane B4: held switches, ready-made shapes, POP). Tier A PASS WITH MINORS on 0f170403; evidence
-  committed; CI fix round pushed 40ac682d (features body exact, selector pin). Next: `PYTHONUTF8=1 python
-  scripts/orchestrator/merge.py 507 --reviewed-sha 40ac682d9c7430bc26ee7fcb081d360440067995` (if RE-REVIEW NEEDED, run
-  samelines.py against 40ac682d and use the head when SAME).
+- #507 W-125/W-128 (lane B4: held switches, ready-made shapes, POP): **MERGED 2026-10-22 ~08:55 IST**, all 7 checks
+  green (reviewed head 4f9c1163 after samelines SAME vs 40ac682d). Tracker rows for W-125/W-128 still to add.
 - #509 W-124 (lane A3: option chain values, stale-spot safe shading, migration 0022 user settings). Tier A round 2
   PASS WITH MINORS on 627acfb7; evidence committed (head cd6fca2d). Next: `merge.py 509 --reviewed-sha
   cd6fca2d72d2576d45ba874feda1913713c3f8f5`; after merge: `dev_alembic.py upgrade head` (ofo_dev -> 0022).
