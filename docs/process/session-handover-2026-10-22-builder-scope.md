@@ -39,10 +39,16 @@ shown once; sentences keep charges).
   Evidence NOT yet recorded: record REQ-084 AC-4, AC-6, AC-8, AC-9 from `ev-W-127.json` in the scripts folder
   (`record_evidence_fp.py <path-or-agent> W-127 ...`), AC-1/2/3 are PARTIAL (not claimed). Then open the PR (body:
   write from the verifier result in this file's B2 notes) and land with the evidence commit as reviewed sha.
-- **A1 W-126 (lane A1: leg rows, Shift/Width/Hedge) - fix round 1 was RUNNING at the stop** (Tier A REVISE on
-  b9355453: MAJOR REQ-078 AC-4 half-step Width - only the side nearer spot moves, as Sensibull; minors: forged-id leg
-  name, Width for long straddle/strangle, controls fetched on every leg change). Check branch build/W-126-a1-leg-rows
-  for a newer head than b9355453; if absent, re-dispatch the fix round from that list.
+- **A1 W-126 (lane A1: leg rows, Shift/Width/Hedge) - fix round 1 DONE, pushed 6fcdd0bd** (after Tier A REVISE on
+  b9355453). Next: Tier A round 2 (the last allowed round) on 6fcdd0bd. Check: (a) the half-step Width rule follows
+  REQ-078 AC-4 / Sensibull 7.2 literally - the side NEARER spot moves one gap, so 23,000 PE / 23,050 CE with spot
+  23,010 becomes a 23,050 straddle; a tie or no spot moves the calls down (the orchestrator's brief had said "straddle
+  at the strike nearer spot" - that was wrong, the builder followed the spec); (b) NEW exception added by the builder:
+  Width is offered on a Custom shape whose only near miss on a width-adjustable template is the ATM position rule -
+  judge it (alternative: loosen the template constraint in catalogue.yaml); (c) new read-only POST
+  /api/strategies/leg-controls drives disabled-with-reason controls; (d) Width measured as lowest CE - highest PE over
+  all legs (long straddle/strangle now work). Builder results: 9/9 mutants killed, Tests line 1195 passed, repo_scan
+  981, app tests 233, vitest 510 + the known learn.test.js CRLF failure, ratchet OK.
 
 **Shared test DB:** ofo_test at 0021_strategy_tracking (main's head before #509). Known pollution #497 ("Catalogue
 update refused ...") blocks some local DB tests; CI is the judge.
