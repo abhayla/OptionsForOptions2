@@ -13,6 +13,8 @@ import re
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan  # reads the built bundle and the openapi file
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DIST = ROOT / "frontend" / "dist"
 OPENAPI = ROOT / "docs" / "api" / "openapi.json"

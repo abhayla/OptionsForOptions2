@@ -8,10 +8,13 @@ the quote store (finding guard-as-forbidden-list); a screen's feed reaches the p
 import ast
 import pathlib
 
+import pytest
 from _kite_fixture import NIFTY_CE_ID, new_provider, recorded_frames, replay
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_frames import parse_frame
 from ofo.marketdata.quote import NormalizedQuote
+
+pytestmark = pytest.mark.repo_scan  # reads the source of every backend module
 
 BACKEND = pathlib.Path(__file__).resolve().parents[2] / "backend"
 
