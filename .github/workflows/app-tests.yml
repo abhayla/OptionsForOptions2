@@ -326,6 +326,8 @@ jobs:
       # backend dependencies" step above (requirements-app.txt); with CI set the scan fails, never skips, when
       # frontend/dist is missing. tests/test_app_workflow_bundle_scan.py asserts this step sits after both.
       - name: Bundle and reply secret scan (REQ-048 AC-5)
+        env:
+          OFO_REQUIRE_BUNDLE_SCAN: '1'  # here a missing frontend/dist fails the scan; elsewhere the file skips it
         run: python -m pytest -q -p no:cacheprovider tests/test_bundle_secret_scan.py
 
       # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the

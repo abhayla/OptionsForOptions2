@@ -33,6 +33,20 @@ def test_the_scan_step_runs_in_the_frontend_job_after_the_build_and_after_the_py
     assert "continue-on-error" not in steps[scan]
 
 
+def test_only_the_scan_step_requires_the_bundle_so_other_jobs_skip_not_fail():
+    """Row 6 verifier round 2: failing on `CI` turned the kit's tests job red on every run (no frontend build there).
+    The scan step sets OFO_REQUIRE_BUNDLE_SCAN; no other step of any job does."""
+    steps = _steps()
+    scan = _index(steps, SCAN_COMMAND)
+    assert steps[scan].get("env", {}).get("OFO_REQUIRE_BUNDLE_SCAN") == "1"
+    doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    others = [(job, i) for job, body in doc["jobs"].items() for i, s in enumerate(body.get("steps", []))
+              if "OFO_REQUIRE_BUNDLE_SCAN" in str(s.get("env", {})) and not (job == "frontend" and i == scan)]
+    assert others == []
+    assert "OFO_REQUIRE_BUNDLE_SCAN" not in str(doc.get("env", {})) and all(
+        "OFO_REQUIRE_BUNDLE_SCAN" not in str(body.get("env", {})) for body in doc["jobs"].values())
+
+
 def test_pytest_is_in_the_requirements_the_frontend_job_installs():
     reqs = (WORKFLOW.parents[2] / "requirements-app.txt").read_text(encoding="utf-8")
     assert any(line.strip().lower().startswith("pytest==") for line in reqs.splitlines())

@@ -177,8 +177,11 @@ def scan_openapi(doc: dict) -> list[str]:
 def test_the_built_bundle_names_no_vendor_host_and_holds_no_key_or_token():
     if not DIST.is_dir():
         message = "frontend/dist is absent: run `npm run build` in frontend/ (CI runs this right after the build step)"
-        if os.environ.get("CI"):
-            pytest.fail(message)  # in CI a missing build is a failed scan, never a skipped one
+        # Only the frontend job's scan step sets OFO_REQUIRE_BUNDLE_SCAN (app-tests.yml): there a missing build is a
+        # failed scan, never a skipped one. Not `CI`: GitHub sets CI on every runner, and the kit's tests job runs this
+        # file over tests/ without building the frontend (row 6 verifier round 2).
+        if os.environ.get("OFO_REQUIRE_BUNDLE_SCAN") == "1":
+            pytest.fail(message)
         pytest.skip(message)
     assert scan_dir(DIST) == []
 
