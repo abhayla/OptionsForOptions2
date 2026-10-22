@@ -267,3 +267,103 @@ async def test_the_reconnect_path_reaches_no_order_call_even_if_the_wire_were_as
     await _market(monkeypatch, wire)._read_positions_once()
     for method, url in wire.calls:
         check_call(method, url)  # raises when not an allow-listed read
+
+
+# ---- over the bus (REQ-113 A1, attack 5): the feed announces a reconnect, the API reads positions once -------------
+
+async def _key_appears(bus, key: str) -> None:
+    for _ in range(500):  # at most 500 polls of 20 ms
+        if await bus.exists(key):
+            return
+        await asyncio.sleep(0.02)
+    pytest.fail("the API never published its wanted set")
+
+
+async def _bus_world(redis_url, on_reconnect):
+    from ofo_app import feed_bus
+
+    user = f"rc{time.monotonic_ns()}"
+    provider = _provider()
+    socket = feed_bus.BusSocket(provider, user_ref=user, clock=lambda: NOW, redis_url=redis_url,
+                                on_reconnect=on_reconnect)
+    return feed_bus, user, socket, asyncio.create_task(socket.run())
+
+
+async def test_a_real_reconnect_of_the_feed_socket_makes_exactly_one_positions_read_in_the_api(redis_url):
+    """AC-5 of REQ-015 over the bus: the feed's REAL KiteSocket re-connects (first connection dropped); the API's
+    BusSocket calls its positions read exactly once - none for the first connect."""
+    from ofo_app import feed_main
+
+    calls: list[int] = []
+
+    async def read():
+        calls.append(1)
+
+    feed_bus, user, socket, task = await _bus_world(redis_url, read)
+    kite = DropFirst()
+    stop = asyncio.Event()
+    bus = feed_bus.new_client(redis_url)
+    try:
+        async with serve(kite.handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            feed = asyncio.create_task(feed_main.run_feed(
+                user_ref=user, api_key="KEY-abc123", access_token="TOK-xyz789", ws_url=f"ws://127.0.0.1:{port}",
+                client=bus, clock=lambda: datetime.datetime.now(IST), stop=stop))
+            try:
+                await _until(lambda: len(calls) >= 1, 20)
+                await _until(lambda: kite.sent >= 5, 20)
+                await asyncio.sleep(0.5)  # a duplicate read would show here
+            finally:
+                stop.set()
+                await asyncio.wait_for(feed, 20)
+        assert kite.connections == 2 and len(calls) == 1
+    finally:
+        socket.stop()
+        await asyncio.wait_for(task, 20)
+        await bus.delete(*(k(user) for k in (feed_bus.ticks_key, feed_bus.want_key, feed_bus.status_key)))
+        await bus.aclose()
+
+
+async def test_a_second_reconnect_event_with_the_same_id_makes_no_second_read(redis_url):
+    """Attack 5: the event's feed time is its id. The same id twice -> one read; a later id -> a second read; an
+    earlier id -> none; no reconnect callback (inprocess wiring) -> none and no error."""
+    calls: list[int] = []
+
+    async def read():
+        calls.append(1)
+
+    feed_bus, user, socket, task = await _bus_world(redis_url, read)
+    bus = feed_bus.new_client(redis_url)
+    try:
+        await _key_appears(bus, feed_bus.want_key(user))
+        read_events = [NOW, NOW + datetime.timedelta(seconds=5)]  # the first, and a later one
+        ignored_events = [NOW, NOW + datetime.timedelta(seconds=1)]  # the same id again, and an earlier one
+        for at in (read_events[0], ignored_events[0], read_events[1], ignored_events[1]):
+            await bus.xadd(feed_bus.ticks_key(user), feed_bus.encode_message(user, feed_bus.KIND_RECONNECTED, at))
+        await _until(lambda: socket.counters["reconnect_ignored"] == len(ignored_events), 10)
+        assert len(calls) == len(read_events)
+    finally:
+        socket.stop()
+        await asyncio.wait_for(task, 20)
+        await bus.delete(*(k(user) for k in (feed_bus.ticks_key, feed_bus.want_key, feed_bus.status_key)))
+        await bus.aclose()
+
+
+async def test_a_failing_positions_read_never_ends_the_bus_socket(redis_url, caplog):
+    """A failed read is logged by class and the bus keeps running (no retry; the next reconnect is the next read)."""
+    async def read():
+        raise RuntimeError("secret-text-must-not-be-logged")
+
+    feed_bus, user, socket, task = await _bus_world(redis_url, read)
+    bus = feed_bus.new_client(redis_url)
+    caplog.set_level("WARNING")
+    try:
+        await _key_appears(bus, feed_bus.want_key(user))
+        await bus.xadd(feed_bus.ticks_key(user), feed_bus.encode_message(user, feed_bus.KIND_RECONNECTED, NOW))
+        await _until(lambda: "RuntimeError" in caplog.text, 10)
+        assert "secret-text" not in caplog.text and not task.done()
+    finally:
+        socket.stop()
+        await asyncio.wait_for(task, 20)
+        await bus.delete(*(k(user) for k in (feed_bus.ticks_key, feed_bus.want_key, feed_bus.status_key)))
+        await bus.aclose()

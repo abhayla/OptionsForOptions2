@@ -156,3 +156,30 @@ async def test_disconnect_succeeds_when_no_feed_exists(app_engine, monkeypatch):
     monkeypatch.setattr(live_market, "_current", None)
     async with AsyncClient(transport=ASGITransport(app=_app(maker, user)), base_url="http://t") as ac:
         assert (await ac.post(DISCONNECT)).json() == {"disconnected": True}
+
+
+async def test_disconnect_wakes_the_market_data_process_in_bus_mode(app_engine, redis_url, monkeypatch):
+    """REQ-113 A1: in ``bus`` mode the Disconnect route also publishes its one ``disconnect`` control message (the
+    stored session is already ended - the feed process reads that, the message is only a wake-up)."""
+    from ofo_app import feed_bus  # noqa: PLC0415
+
+    user, cipher = _user(), TokenCipher(os.urandom(32))
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, cipher)
+    market = live_market.LiveMarket()
+    market.state = live_market.LIVE
+    monkeypatch.setattr(live_market, "_current", market)
+    monkeypatch.setenv("FEED_MODE", "bus")
+    monkeypatch.setenv("REDIS_URL", redis_url)
+    bus = feed_bus.new_client(redis_url)
+    try:
+        await bus.delete(feed_bus.control_key(live_market.OWNER_REF))
+        async with AsyncClient(transport=ASGITransport(app=_app(maker, user)), base_url="http://t") as ac:
+            assert (await ac.post(DISCONNECT)).json() == {"disconnected": True}
+        sent = await bus.xrange(feed_bus.control_key(live_market.OWNER_REF))
+        assert [fields[b"k"] for _id, fields in sent] == [b"disconnect"]
+        assert all(set(fields) == {b"u", b"k", b"t"} for _id, fields in sent)
+    finally:
+        await bus.delete(feed_bus.control_key(live_market.OWNER_REF))
+        await bus.aclose()

@@ -103,6 +103,7 @@ async def world(redis_url):
     finally:
         if w.task is not None and not w.task.done():
             await w.stop()
+        await w.bus.aclose()  # a test that failed before closing its client must not hang the stand-in at exit
 
 
 async def go_live(w: World) -> None:
@@ -145,6 +146,7 @@ async def test_redis_dropped_mid_read_reads_stale_then_recovers_only_on_a_fresh_
     w.switch["drop"] = False
     await poll(lambda: w.provider.feed.connected, "the feed to be seen connected again (status key)")
     assert w.provider.feed.health(w.clock.now) is DataHealth.STALE, "connected again but no fresh frame yet"
+    w.clock.now += datetime.timedelta(seconds=1)  # a frame must be received AFTER the loss to count (AC-3)
     fresh = w.clock.now
     await w.publish("frame", fresh, PRICE_FRAME)
     await poll(lambda: w.provider.feed.health(fresh) is DataHealth.AVAILABLE, "a fresh frame to make the data live")
@@ -370,3 +372,145 @@ async def test_the_relay_publishes_frames_in_order_with_the_feed_receive_time(re
     assert [m.at for m in decoded][1:4] == [T0 + datetime.timedelta(seconds=i) for i in range(3)]
     assert all(m.data == PRICE_FRAME for m in decoded if m.kind == "frame")
     await bus.aclose()
+
+
+async def test_a_frame_the_feed_received_before_the_bus_loss_is_never_live_after_it(world):
+    """AC-3 (attack 6): Redis lost then back -> the API stays stale until a frame whose FEED receive time is after the
+    loss. A frame received before the loss but published after the bus returned (the feed's queued backlog) is counted
+    and skipped; the next frame, received after the loss, is live."""
+    w = world
+    await go_live(w)
+    w.clock.now = T0 + datetime.timedelta(seconds=1)
+    w.switch["drop"] = True
+    await poll(lambda: w.socket.counters["redis_lost"] >= 1, "the API to notice the lost connection")
+    lost_at = w.clock.now
+    w.switch["drop"] = False
+    await poll(lambda: w.provider.feed.connected, "the feed to be seen connected again")
+    frames_before = w.provider.counters["frames"]
+    await w.publish("frame", lost_at - datetime.timedelta(milliseconds=500), PRICE_FRAME)  # before the loss
+    await poll(lambda: w.socket.counters["bus_frame_before_outage"] >= 1, "the pre-loss frame to be skipped")
+    assert w.provider.counters["frames"] == frames_before
+    w.clock.now = lost_at + datetime.timedelta(seconds=2)
+    await w.publish("frame", w.clock.now, PRICE_FRAME)  # received after the loss
+    await poll(lambda: w.provider.feed.health(w.clock.now) is DataHealth.AVAILABLE, "a post-loss frame to read live")
+    assert w.provider.counters["frames"] == frames_before + 1
+
+
+async def test_the_feed_keeps_its_wanted_set_and_resumes_status_through_a_redis_outage(redis_url):
+    """AC-3 (attack 6): a failed ``want`` read is not an expiry - the last wanted set stays; a failed status write is
+    counted and the next one goes out when Redis answers again."""
+    user = f"o{uuid.uuid4().hex[:12]}"
+    bus = feed_bus.new_client(redis_url)
+    relay = feed_bus.FeedRelay(user, lambda: T0)
+    switch = {"down": False}
+
+    class Outage:
+        def __getattr__(self, name):
+            async def call(*a, **k):
+                if switch["down"]:
+                    raise aioredis.ConnectionError("down")
+                return await getattr(bus, name)(*a, **k)
+            return call
+
+    try:
+        await bus.set(feed_bus.want_key(user), feed_bus.encode_want(user, [11, 22]), px=60_000)
+        await relay.refresh_want(Outage())
+        assert relay.subscribed_tokens() == [11, 22]
+        switch["down"] = True
+        await relay.refresh_want(Outage())
+        assert relay.subscribed_tokens() == [11, 22], "a failed read emptied the wanted set"
+        assert relay.counters["redis_failed"] == 1
+        task = asyncio.ensure_future(relay.status_loop(Outage()))
+        await poll(lambda: relay.counters["redis_failed"] >= TWO_ATTEMPTS, "a failed status write to be counted")
+        switch["down"] = False
+        await poll(lambda: bus.exists(feed_bus.status_key(user)), "status publishing to resume")
+        task.cancel()
+    finally:
+        await bus.delete(feed_bus.want_key(user), feed_bus.status_key(user))
+        await bus.aclose()
+
+
+def test_the_bus_timers_fit_inside_the_expiries_they_refresh():
+    """AC-3: the API refreshes its wanted snapshot and the feed its status more often than either expires, else a
+    healthy link would flap (kills a refresh slower than its expiry)."""
+    assert feed_bus.WANT_REFRESH_S * 1000 < feed_bus.WANT_TTL_MS
+    assert feed_bus.STATUS_EVERY_S * 1000 < feed_bus.STATUS_TTL_MS
+    assert feed_bus.STATUS_TTL_MS <= 10_000, "a dead feed must read down within seconds"  # noqa: PLR2004
+
+
+async def test_a_status_saying_not_connected_reads_the_feed_as_not_connected(world):
+    """A status with ``connected: false`` (the feed's socket is closed) reads as not connected, never live."""
+    w = world
+    await go_live(w)
+    await w.status(connected=False, connections=0)
+    await poll(lambda: w.provider.feed.connected is False, "connected:false to read as not connected")
+
+
+async def test_a_stopped_phase_status_reads_the_feed_as_not_connected(world):
+    """A1: the feed's ``stopped`` phase (no stored session) is not connected even if its connected flag were true."""
+    w = world
+    await go_live(w)
+    body = {"u": w.user, "connected": True, "ended": False, "connections": 1, "last_frame_us": None, "phase": "stopped"}
+    await w.bus.set(feed_bus.status_key(w.user), json.dumps(body), px=60_000)
+    await poll(lambda: w.provider.feed.connected is False, "phase stopped to read as not connected")
+
+
+def test_an_oversized_frame_is_malformed():
+    """The frame size cap: one byte over MAX_FRAME_BYTES is refused, the cap itself is accepted."""
+    at = T0
+    over = feed_bus.encode_message("x", "frame", at, b"" * (feed_bus.MAX_FRAME_BYTES + 1))
+    assert feed_bus.decode_message("x", over) == (None, "malformed")
+    exact = feed_bus.encode_message("x", "frame", at, b"" * feed_bus.MAX_FRAME_BYTES)
+    assert feed_bus.decode_message("x", exact)[0] is not None
+
+
+def test_the_relay_status_says_ended_after_the_session_ended():
+    """The relay's status after ``on_session_ended``: ended true, connected false, and the API's decoder reads it."""
+    relay = feed_bus.FeedRelay("x", lambda: T0)
+    relay.on_connected(T0)
+    relay.on_session_ended(T0)
+    status = feed_bus.decode_status("x", json.dumps(relay.status()))
+    assert status is not None and status["ended"] is True and status["connected"] is False
+
+
+async def test_the_ticks_stream_is_capped(redis_url, monkeypatch):
+    """The stream-length cap: far more entries than STREAM_MAXLEN leave a bounded stream (nothing the bus holds grows
+    without limit)."""
+    monkeypatch.setattr(feed_bus, "STREAM_MAXLEN", 10)
+    user = f"m{uuid.uuid4().hex[:12]}"
+    bus = feed_bus.new_client(redis_url)
+    relay = feed_bus.FeedRelay(user, lambda: T0)
+    try:
+        for _ in range(600):
+            relay.on_frame(PRICE_FRAME, T0)
+        await relay.flush(bus)
+        assert await bus.xlen(feed_bus.ticks_key(user)) < 600 // 2
+    finally:
+        await bus.delete(feed_bus.ticks_key(user))
+        await bus.aclose()
+
+
+async def test_every_wait_on_the_socket_is_bounded(world):
+    """A hung wait is a defect: the ended-status wait fails after its bound instead of hanging CI (mutant M18)."""
+    w = world
+    await go_live(w)
+    await w.status(ended=True)
+    done, pending = await asyncio.wait({w.task}, timeout=WAIT_S)
+    if pending:
+        w.socket.stop()
+        w.task.cancel()
+    assert done, "a status that says ended did not end the socket within the bound"
+
+
+async def test_full_mode_depth_frames_over_the_bus_reach_latest_depth(world):
+    """REQ-113 A1, caller ``routes/execute.py`` -> ``live_market.latest_depth``: the recorded frames carried over the
+    bus (raw bytes, one parser) give the provider the same 5-level depth they give in-process."""
+    w = world
+    await go_live(w)
+    for _at, frame in recorded_frames():
+        if len(frame) > 1:
+            await w.publish("frame", T0, frame)
+    await poll(lambda: w.provider.counters["frames"] >= 5, "the recorded frames to reach the provider")  # noqa: PLR2004
+    await asyncio.sleep(0.3)
+    found = [i for i in all_instrument_ids(new_provider()[2]) if w.provider.latest_depth(i, T0) is not None]
+    assert found, "no instrument has a 5-level depth after the recorded full-mode frames came over the bus"

@@ -6,7 +6,9 @@ frame, ``d`` (the raw Kite bytes: one frame parser, in ``KiteProvider``). The st
 reader starts at the stream's tail, so the bus holds nothing that cannot be rebuilt.
 API -> feed: key ``ofo:feed:<user_ref>:want`` = the FULL set of wanted instrument tokens, with an expiry (a
 snapshot, never add/remove deltas); an absent or expired key means nothing is wanted.
-Feed status: key ``ofo:feed:<user_ref>:status`` with an expiry (connections, connected, last frame time).
+Feed status: key ``ofo:feed:<user_ref>:status`` with an expiry (connections, connected, last frame time, phase).
+API -> feed control: stream ``ofo:feed:<user_ref>:control``, entries ``u`` / ``k`` (``login`` / ``disconnect``) / ``t``.
+It is only a wake-up: the encrypted token store decides, so it never carries a token or a fingerprint (REQ-113 AC-7).
 
 A frame is stamped with the feed's receive time, never the API's arrival time, so a frame that sat on the bus is
 read as the old price it is (ADR-015). Every answer state of Redis has one behaviour, none of them "live":
@@ -42,6 +44,7 @@ KEY_PREFIX = "ofo:feed"
 STREAM_MAXLEN = 20_000  # entries kept per user (about a minute of a busy feed); older ones are dropped
 WANT_TTL_MS = 10_000  # the API refreshes the snapshot every WANT_REFRESH_S; a dead API's wishes lapse after this
 WANT_REFRESH_S = 1.0
+CONTROL_MAXLEN = 100  # a wake-up stream: a lost or trimmed entry is rebuilt by the feed's fixed re-check
 STATUS_TTL_MS = 5_000  # the feed refreshes every STATUS_EVERY_S; a dead feed's status lapses after this
 STATUS_EVERY_S = 0.5
 READ_BLOCK_MS = 200  # blocking reads stay short so a coarse timer (the test stand-in) adds no seconds
@@ -55,7 +58,11 @@ CALL_TIMEOUT_S = 2.0
 BACKOFF_START, BACKOFF_MAX = 0.2, 2.0
 
 KIND_FRAME, KIND_CONNECTED, KIND_DROPPED, KIND_ENDED = "frame", "connected", "dropped", "ended"
-KINDS = frozenset({KIND_FRAME, KIND_CONNECTED, KIND_DROPPED, KIND_ENDED})
+KIND_RECONNECTED = "reconnected"  # the feed's Kite socket connected again (REQ-015 AC-5); its time is its event id
+KINDS = frozenset({KIND_FRAME, KIND_CONNECTED, KIND_DROPPED, KIND_ENDED, KIND_RECONNECTED})
+CONTROL_LOGIN, CONTROL_DISCONNECT = "login", "disconnect"
+CONTROL_KINDS = frozenset({CONTROL_LOGIN, CONTROL_DISCONNECT})
+PHASE_LIVE, PHASE_STOPPED = "live", "stopped"
 SESSION_ENDED, STOPPED = "session ended", "stopped"  # the same words KiteSocket.run returns
 
 _USER_REF = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -78,6 +85,10 @@ def want_key(user_ref: str) -> str:
 
 def status_key(user_ref: str) -> str:
     return f"{KEY_PREFIX}:{valid_user_ref(user_ref)}:status"
+
+
+def control_key(user_ref: str) -> str:
+    return f"{KEY_PREFIX}:{valid_user_ref(user_ref)}:control"
 
 
 def to_micros(at: datetime.datetime) -> int:
@@ -138,6 +149,23 @@ def decode_message(user_ref: str, fields: dict) -> tuple[BusMessage | None, str]
     return BusMessage(kind, from_micros(int(stamp)), data), ""
 
 
+async def publish_control(client: Any, user_ref: str, kind: str, at: datetime.datetime) -> None:
+    """API -> feed wake-up. Only a kind word and a time: no token, no fingerprint, no session detail."""
+    if kind not in CONTROL_KINDS:
+        raise ValueError("a control message is one of login / disconnect")
+    fields = {"u": valid_user_ref(user_ref), "k": kind, "t": str(to_micros(at))}
+    await client.xadd(control_key(user_ref), fields, maxlen=CONTROL_MAXLEN, approximate=True)
+
+
+def valid_control(user_ref: str, fields: dict) -> bool:
+    """Allow-list: exactly ``u`` / ``k`` / ``t``, this user, a known kind, a plain integer time."""
+    plain = {_text(k): _text(v) for k, v in fields.items()}
+    if set(plain) != {"u", "k", "t"} or plain["u"] != user_ref or plain["k"] not in CONTROL_KINDS:
+        return False
+    stamp = plain["t"]
+    return stamp is not None and stamp.isascii() and stamp.isdigit() and len(stamp) <= MAX_STAMP_DIGITS
+
+
 def encode_want(user_ref: str, tokens: list[int]) -> str:
     return json.dumps({"u": valid_user_ref(user_ref), "tokens": sorted(set(tokens))}, separators=(",", ":"))
 
@@ -172,11 +200,11 @@ def decode_status(user_ref: str, raw: Any) -> dict | None:
         return None
     if type(body.get("connections")) is not int or body["connections"] < 0:
         return None
-    last = body.get("last_frame_us")
-    if last is not None and type(last) is not int:
+    last, phase = body.get("last_frame_us"), body.get("phase", PHASE_LIVE)
+    if (last is not None and type(last) is not int) or phase not in {PHASE_LIVE, PHASE_STOPPED}:
         return None
     return {"connected": body["connected"], "ended": body["ended"], "connections": body["connections"],
-            "last_frame_us": last}
+            "last_frame_us": last, "phase": phase}
 
 
 class BusSocket:
@@ -186,8 +214,13 @@ class BusSocket:
 
     def __init__(self, provider: Any, *, user_ref: str, clock: Callable[[], datetime.datetime],  # noqa: PLR0913
                  redis_url: str | None = None, client_factory: Callable[[], Any] | None = None,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+                 on_reconnect: Callable[[], Awaitable[None]] | None = None) -> None:
         self._provider = provider
+        self._on_reconnect = on_reconnect  # REQ-015 AC-5: one REST positions read per reconnect event
+        self._reconnect_tasks: set[asyncio.Task] = set()
+        self._last_reconnect_at: datetime.datetime | None = None
+        self._floor: datetime.datetime | None = None  # the newest bus loss: no frame received before it is live
         self._user = valid_user_ref(user_ref)
         self._clock = clock
         self._factory = client_factory or functools.partial(new_client, redis_url or feed_mode.redis_url())
@@ -207,6 +240,13 @@ class BusSocket:
     async def run(self) -> str:
         """Run until stopped or the feed reports the Zerodha session ended. A lost Redis marks the feed disconnected."""
         self._backoff = BACKOFF_START
+        try:
+            return await self._run_loop()
+        finally:
+            for task in self._reconnect_tasks:
+                task.cancel()
+
+    async def _run_loop(self) -> str:
         while not self._stop:
             client = None
             try:
@@ -228,7 +268,8 @@ class BusSocket:
 
     def _lost(self, reason: str) -> None:
         self.counters["redis_lost"] += 1
-        self._set_feed(False, self._clock())  # stale (ADR-015) until the feed is seen up AND a fresh frame arrives
+        self._floor = self._clock()
+        self._set_feed(False, self._floor)  # stale (ADR-015) until the feed is seen up AND a fresh frame arrives
         log.warning("feed bus unreachable: %s", reason)
 
     def _set_feed(self, up: bool, at: datetime.datetime) -> None:
@@ -268,6 +309,9 @@ class BusSocket:
             self.counters[f"bus_{reason}"] += 1
             return False
         if message.kind == KIND_FRAME:
+            if self._floor is not None and message.at <= self._floor:
+                self.counters["bus_frame_before_outage"] += 1  # received by the feed before the bus was lost: not live
+                return False
             self._provider.on_frame(message.data, message.at)  # stamped with the FEED's receive time
             if self.last_frame_at is None or message.at > self.last_frame_at:
                 self.last_frame_at = message.at
@@ -275,10 +319,29 @@ class BusSocket:
             self._set_feed(True, message.at)
         elif message.kind == KIND_DROPPED:
             self._set_feed(False, message.at)
+        elif message.kind == KIND_RECONNECTED:
+            self._reconnected(message.at)
         else:
             self._provider.on_session_ended(message.at)
             return True
         return False
+
+    def _reconnected(self, at: datetime.datetime) -> None:
+        """One positions read per event; the event's time is its id, so a repeat of the same event reads nothing."""
+        if self._on_reconnect is None or (self._last_reconnect_at is not None and at <= self._last_reconnect_at):
+            self.counters["reconnect_ignored"] += 1
+            return
+        self._last_reconnect_at = at
+        task = asyncio.get_running_loop().create_task(self._guarded_read(), name="bus-reconnect-read")
+        self._reconnect_tasks = {t for t in self._reconnect_tasks if not t.done()} | {task}
+
+    async def _guarded_read(self) -> None:
+        try:
+            await self._on_reconnect()  # type: ignore[misc]
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a failed read never ends the bus; class name only
+            log.warning("reconnect read failed: %s", type(exc).__name__)
 
     async def _read_status(self, client: Any) -> bool:
         """The feed's status key. A missing, expired or malformed one means the feed is down. True when ended."""
@@ -293,7 +356,7 @@ class BusSocket:
         if status["ended"]:
             self._provider.on_session_ended(now)
             return True
-        self._set_feed(status["connected"], now)
+        self._set_feed(status["connected"] and status["phase"] == PHASE_LIVE, now)
         return False
 
     async def _publish_want(self, client: Any) -> None:
@@ -305,6 +368,13 @@ class BusSocket:
             return
         await client.set(want_key(self._user), encode_want(self._user, tokens), px=WANT_TTL_MS)
         self._last_want, self._last_want_at = tokens, now
+
+
+async def publish_stopped(client: Any, user_ref: str, clock: Callable[[], datetime.datetime]) -> None:
+    """The feed holds no socket for this user (no stored session): phase ``stopped``, 0 connections, not connected."""
+    body = {"u": valid_user_ref(user_ref), "connected": False, "ended": False, "phase": PHASE_STOPPED,
+            "connections": 0, "last_frame_us": None, "at_us": to_micros(clock())}
+    await client.set(status_key(user_ref), json.dumps(body, separators=(",", ":")), px=STATUS_TTL_MS)
 
 
 class FeedRelay:
@@ -346,6 +416,10 @@ class FeedRelay:
         self.connected, self.ended = False, True
         self._queue(KIND_ENDED, now)
 
+    async def announce_reconnect(self) -> None:
+        """KiteSocket's ``on_reconnect`` in the market-data process: tell the API once per RE-connection."""
+        self._queue(KIND_RECONNECTED, self._clock())
+
     def on_text(self, message: str) -> None:
         self.counters["text"] += 1  # order updates are a later part (REQ-113 order-update stream); nothing stored
 
@@ -384,7 +458,7 @@ class FeedRelay:
 
     def status(self) -> dict[str, Any]:
         last = self.last_frame_at
-        return {"u": self._user, "connected": self.connected, "ended": self.ended,
+        return {"u": self._user, "connected": self.connected, "ended": self.ended, "phase": PHASE_LIVE,
                 "connections": 0 if self._socket is None else self._socket.connections,
                 "last_frame_us": None if last is None else to_micros(last), "at_us": to_micros(self._clock())}
 

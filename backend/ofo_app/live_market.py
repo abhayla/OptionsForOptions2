@@ -30,8 +30,9 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from redis.exceptions import RedisError
 
-from ofo_app import feed_mode
+from ofo_app import feed_bus, feed_mode
 from ofo_app.config import app_env, get_settings
 from ofo_app.feed_bus import BusSocket
 from ofo_app.kite_margin import KiteMargin, urllib_transport
@@ -161,7 +162,8 @@ class LiveMarket:
 
         provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
         if feed_mode.feed_mode() == feed_mode.BUS:  # REQ-113: the market-data process holds the socket, not this one
-            socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
+            socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url(),
+                               on_reconnect=self._read_positions_once)
         else:
             socket = KiteSocket(provider, api_key=broker_config.api_key, access_token=token, clock=clock,
                                 base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once)
@@ -192,13 +194,31 @@ class LiveMarket:
 
     async def pick_up_login(self, broker_config) -> None:
         """#296: called after a login stored a session. Restarts from the stored session unless the socket is
-        running on that same session. Never raises: a failure is logged by class name only."""
+        running on that same session. Never raises: a failure is logged by class name only. In ``bus`` mode the
+        market-data process is also woken (REQ-113): it reads the same stored session itself."""
         async with self._lock:
             if self._closed:
                 return
             self._config = broker_config
             await self._restart_if_new(broker_config, skip_if=self._fingerprint if self.running() else None,
                                        after="the new Kite login")
+        await self.tell_feed(feed_bus.CONTROL_LOGIN)
+
+    async def tell_feed(self, kind: str) -> None:
+        """REQ-113: wake the market-data process (``bus`` mode only). Only a kind word and a time go on the bus - the
+        encrypted token store is the truth, and a lost message is rebuilt by the feed's timed re-check (AC-3)."""
+        if feed_mode.feed_mode() != feed_mode.BUS:
+            return
+        client = None
+        try:
+            client = feed_bus.new_client(feed_mode.redis_url())
+            await feed_bus.publish_control(client, OWNER_REF, kind, datetime.datetime.now(IST))
+        except (RedisError, OSError, TimeoutError, feed_mode.FeedModeRefused) as exc:
+            log.warning("market-data process not woken (%s): %s", kind, type(exc).__name__)
+        finally:
+            if client is not None:
+                with contextlib.suppress(Exception):
+                    await client.aclose()
 
     async def _restart_if_new(self, broker_config, *, skip_if: bytes | None, after: str) -> None:
         """Under the lock. Reads the stored session; when its fingerprint is ``skip_if`` (or there is none) nothing
@@ -302,6 +322,7 @@ async def stop_current() -> None:
     await market.stop()
     market.feed, market._socket, market._fingerprint = None, None, None
     market.state = NOT_CONNECTED
+    await market.tell_feed(feed_bus.CONTROL_DISCONNECT)  # bus mode: the feed process stops its Kite socket too
 
 
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
