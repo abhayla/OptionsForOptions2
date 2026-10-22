@@ -19,8 +19,6 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
 from typing import Final, Literal
 
-from ofo.charges import ChargeRates
-from ofo.charges.round_trip import exercise_stt_at, round_trip_charges
 from ofo.engine import scenario_grid
 from ofo.engine.estimate import EstimateAssumptions
 from ofo.engine.model import ModelInputs, estimate, join_labels
@@ -61,16 +59,13 @@ class ScenarioValues:
     data_label: str | None = None
     # data label and model label joined, e.g. "stale since 09:20 IST; estimated from spot" (W-060 round 3)
     output_label: str | None = None
-    # W-075 / ADR-082 (2): the round-trip charges already subtracted from every At Expiry total (None = not applied)
-    charges: Decimal | None = None
 
 
 def _missing_iv(inputs: ModelInputs) -> list[str]:
     return [leg.contract for leg in inputs.legs if leg.leg.is_option and leg.iv is None]
 
 
-def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAULT_VIEW, *,
-                    rates: ChargeRates | None = None) -> ScenarioValues:
+def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAULT_VIEW) -> ScenarioValues:
     """Values of ``view`` over ``level_set``, each carrying the spot level, its time and its labels.
 
     ``inputs`` is a gated :class:`~ofo.engine.model.ModelInputs` (spot and each expiry's forward checked once):
@@ -91,13 +86,9 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
     levels = level_set.levels
     if view is View.AT_EXPIRY:
         grid = scenario_grid(inputs.strategy, levels)
-        totals, charges = grid.totals, None
-        if rates is not None:  # ADR-082 (2): round trip once, plus STT on exercise of each bought option in the money
-            charges = round_trip_charges(inputs.strategy.legs, inputs.underlying, rates)
-            totals = tuple(t - charges - exercise_stt_at(inputs.strategy.legs, level, rates)
-                           for t, level in zip(grid.totals, levels, strict=True))
-        return ScenarioValues(view, LABELS[view], "exact", levels, True, None, totals, grid.leg_rows,
-                              output_label=inputs.data_label, charges=charges, **spot)
+        # ADR-167: every scenario value is BEFORE charges and taxes; the charges are one separate breakdown
+        return ScenarioValues(view, LABELS[view], "exact", levels, True, None, grid.totals, grid.leg_rows,
+                              output_label=inputs.data_label, **spot)
     missing = _missing_iv(inputs)
     if missing:
         reason = render_explanation("scenario_estimated_unavailable", legs=tuple(missing))

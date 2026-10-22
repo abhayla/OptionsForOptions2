@@ -59,21 +59,6 @@ describe('AC-3 helpers', () => {
   })
 })
 
-describe('W-075: the Charges and taxes row is drawn from the API like every other row', () => {
-  it('cellText gives the API label and the API money display, and the browser adds nothing', () => {
-    const row = {
-      row_id: 'CHARGES',
-      cells: {
-        leg: { value: 'Charges and taxes (estimate)', display: 'Charges and taxes (estimate)' },
-        '22533.25': { value: '-214.959564795', display: '-₹214.96' },
-      },
-    }
-    expect(cellText(row, { id: 'leg' })).toBe('Charges and taxes (estimate)')
-    expect(cellText(row, { id: '22533.25', is_scenario_level: true })).toBe('-₹214.96')
-    expect(cellText(row, { id: 'iv' })).toBe('')
-  })
-})
-
 describe('ADR-008: no client maths on the outcome response (second layer)', () => {
   const SRC = path.resolve(__dirname, '../src')
   // Named exceptions, each with its reason: PayoffChart hands numbers to chart.js to DRAW the line (its tooltip and labels

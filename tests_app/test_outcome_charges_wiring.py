@@ -51,6 +51,9 @@ async def test_route_says_including_charges_when_a_rate_set_is_stored(replayed, 
     assert "including about ₹" in s["what_can_i_lose"] and "including about ₹" in s["what_can_i_make"]
     assert s["charges"] is not None and D(s["charges"]) > 0 and s["charges_unavailable"] is False
     assert D(s["max_loss"]) == D("8245.25") + D(s["charges"])
+    body = resp.json()  # ADR-167: the breakdown is apart and the curve is before charges
+    assert body["charges_breakdown"]["total"] == s["charges"] and body["charges_breakdown"]["brokerage"] == "160.00"
+    assert all(D(p["pnl"]) <= D("4754.75") for p in body["payoff"]["points"])  # the plain maximum profit, not net
 
 
 async def test_route_keeps_the_old_phrase_when_no_rate_set_is_stored(replayed, monkeypatch):  # noqa: F811 - pytest fixture

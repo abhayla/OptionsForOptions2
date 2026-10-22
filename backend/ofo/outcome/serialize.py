@@ -66,6 +66,14 @@ def _leg(leg: OutcomeLeg) -> dict[str, Any]:
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 
+def _breakdown(b: Any) -> dict[str, Any] | None:
+    """ADR-167: the round-trip charges by component, as Decimal strings, shown once (Sensibull screen 022)."""
+    if b is None:
+        return None
+    return {"brokerage": _s(b.brokerage), "stt": _s(b.stt), "exchange_transaction": _s(b.exchange_transaction),
+            "gst": _s(b.gst), "stamp": _s(b.stamp), "sebi": _s(b.sebi), "total": _s(b.total)}
+
+
 def _greeks(g: Any) -> dict[str, Any]:
     return {"delta": _s(g.delta), "gamma": _s(g.gamma), "theta": _s(g.theta), "vega": _s(g.vega)}
 
@@ -135,4 +143,5 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary, "whatif": _whatif(out.whatif),
+        "charges_breakdown": _breakdown(out.charges_breakdown),
     }

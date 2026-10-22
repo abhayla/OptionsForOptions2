@@ -10,9 +10,9 @@ from decimal import Decimal
 import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Instrument
-from ofo.rules.inputs import DataHealth
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.rules.inputs import DataHealth
 from ofo.scenario.whatif import WhatIfInput
 from ofo.table import UXLevel
 from outcome.test_same_engine import CONDOR, CURRENT, RATE, VALUATION, definition, formula_pnl

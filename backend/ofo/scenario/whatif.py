@@ -28,8 +28,6 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from itertools import pairwise
 from typing import TYPE_CHECKING, Final
 
-from ofo.charges import ChargeRates
-from ofo.charges.round_trip import exercise_stt_at, round_trip_charges
 from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument
@@ -142,14 +140,10 @@ class WhatIfResult:
     oi_reason: ExplanationText | None
 
 
-def expiry_total_at(model: ModelInputs, level: Decimal, rates: ChargeRates | None = None) -> Decimal:
-    """The exact At Expiry total at ONE level: the engine's expiry grid and the same charge rule as the At Expiry view
-    (ADR-082 (2)). REQ-084 AC-7: this is what the target-level control gives with no live IV."""
-    total = scenario_grid(model.strategy, (level,)).totals[0]
-    if rates is None:
-        return total
-    return (total - round_trip_charges(model.strategy.legs, model.underlying, rates)
-            - exercise_stt_at(model.strategy.legs, level, rates))
+def expiry_total_at(model: ModelInputs, level: Decimal) -> Decimal:
+    """The exact At Expiry total at ONE level, before charges and taxes (ADR-167): the engine's expiry grid.
+    REQ-084 AC-7: this is what the target-level control gives with no live IV."""
+    return scenario_grid(model.strategy, (level,)).totals[0]
 
 
 def _first_close(model: ModelInputs) -> datetime.datetime:
@@ -309,11 +303,10 @@ def _oi(snapshot: MarketSnapshot, expiry: datetime.date) -> tuple[OiOverlay | No
 
 def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelSet, now: datetime.datetime,  # noqa: PLR0913 - one reply block
                  inputs: WhatIfInput, expiry_total_at: Callable[[Decimal], Decimal],
-                 legs_meta: Sequence[tuple[str, int | None]], charges: Decimal | None = None) -> WhatIfResult:
+                 legs_meta: Sequence[tuple[str, int | None]]) -> WhatIfResult:
     """The what-if block of one reply. ``expiry_total_at(level)`` is the engine's exact At Expiry total at a level (the
-    caller passes the engine function the table uses, charges included). ``legs_meta`` is, per engine leg in order,
-    (instrument id, lot size). ``charges`` are the round-trip charges taken off the At Expiry curve (ADR-082); the
-    Estimated curve takes the same amount off so both curves are net of the same charges."""
+    caller passes the engine function the table uses). ``legs_meta`` is, per engine leg in order, (instrument id,
+    lot size). Every figure is BEFORE charges and taxes (ADR-167): the charges are one separate breakdown."""
     when, time_notes = _clamp_time(model, now, inputs.target_time)
     level, level_notes = _clamp_level(level_set, inputs.target_level, model.spot_level)
     level = _quote_level(level)
@@ -338,10 +331,8 @@ def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelS
         return WhatIfResult(estimated_available=False, estimated_reason=refusal, estimated_points=(),
                             target_estimated_pnl=None, estimated_breakevens=(), greeks=None, greeks_reason=refusal,
                             **common)
-    charge = Decimal(0) if charges is None else charges
-
     def total_at(lvl: Decimal) -> Decimal:
-        return estimate(model, _quote_level(lvl), valuation_time=when, iv_offset=inputs.iv_offset).total - charge
+        return estimate(model, _quote_level(lvl), valuation_time=when, iv_offset=inputs.iv_offset).total
 
     points = tuple((lvl, total_at(lvl)) for lvl in level_set.levels)
     greeks = reason = None

@@ -1215,10 +1215,6 @@
     "sha256": "8461935265421850080cd604591d7c73fcae4aca56478d139ffb97314a917403",
     "reviewed": "pending owner read"
   },
-  "explanation:cell_charges_row_label": {
-    "sha256": "15f3134d5882c186b17f6f87fa6cf811347dae3ca3233ab49f1e510a0620aa3d",
-    "reviewed": "pending owner read"
-  },
   "explanation:execute_cost_charges_not_included": {
     "sha256": "a7f0559e88aa53f42ab25de4b9ff301d7f8eefc573a52ce3fd4109fbb5902290",
     "reviewed": "pending owner read"

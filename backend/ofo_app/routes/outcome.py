@@ -309,6 +309,17 @@ class SummaryOut(ApiModel):
     charges_unavailable: bool = False
 
 
+class ChargesBreakdownOut(ApiModel):
+    """ADR-167: the round-trip charges by component, shown once; no curve or scenario value includes them."""
+    brokerage: Money
+    stt: Money
+    exchange_transaction: Money
+    gst: Money
+    stamp: Money
+    sebi: Money
+    total: Money
+
+
 class GreeksOut(ApiModel):
     delta: Money
     gamma: Money
@@ -436,6 +447,7 @@ class OutcomeResponse(ApiModel):
     payoff: Optional[PayoffOut]
     summary: Optional[SummaryOut]
     whatif: WhatIfOut | None = None
+    charges_breakdown: ChargesBreakdownOut | None = None
     #: present ONLY at ux_level=advanced (absent, not empty, at guided/standard) and only when a snapshot was read
     advanced_details: Optional[list[AdvancedLegOut]] = None
 

@@ -31,6 +31,7 @@ import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import WhatIfControls from '@/components/strategy/WhatIfControls.vue'
 import GreeksPanel from '@/components/strategy/GreeksPanel.vue'
+import ChargesBreakdown from '@/components/strategy/ChargesBreakdown.vue'
 import { DEFAULT_WHATIF, matchesWhatif, whatifFields } from '@/lib/whatifChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
@@ -316,6 +317,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       </div>
       <WhatIfControls v-if="data.whatif" class="mt-4" :whatif="data.whatif" :model-value="whatifInputs" :underlying="data.underlying" @update:model-value="setWhatif" />
       <GreeksPanel v-if="uxLevel === 'advanced' && data.whatif" class="mt-4" :greeks="data.whatif.greeks" :reason="data.whatif.greeks_reason" :name-of="(id) => nameOf(data.legs.find((l) => l.instrument_id === id) ?? { instrument_id: id })" />
+      <ChargesBreakdown v-if="data.charges_breakdown" class="mt-4" :breakdown="data.charges_breakdown" />
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
       <StrategyTable
         :table="data.table"

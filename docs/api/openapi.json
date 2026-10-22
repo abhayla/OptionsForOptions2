@@ -632,6 +632,51 @@
         "title": "ChainRowOut",
         "type": "object"
       },
+      "ChargesBreakdownOut": {
+        "additionalProperties": false,
+        "description": "ADR-167: the round-trip charges by component, shown once; no curve or scenario value includes them.",
+        "properties": {
+          "brokerage": {
+            "title": "Brokerage",
+            "type": "string"
+          },
+          "exchange_transaction": {
+            "title": "Exchange Transaction",
+            "type": "string"
+          },
+          "gst": {
+            "title": "Gst",
+            "type": "string"
+          },
+          "sebi": {
+            "title": "Sebi",
+            "type": "string"
+          },
+          "stamp": {
+            "title": "Stamp",
+            "type": "string"
+          },
+          "stt": {
+            "title": "Stt",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brokerage",
+          "stt",
+          "exchange_transaction",
+          "gst",
+          "stamp",
+          "sebi",
+          "total"
+        ],
+        "title": "ChargesBreakdownOut",
+        "type": "object"
+      },
       "ColumnOut": {
         "additionalProperties": false,
         "properties": {
@@ -1747,6 +1792,16 @@
             "format": "date-time",
             "title": "Answered At",
             "type": "string"
+          },
+          "charges_breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargesBreakdownOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "legs": {
             "items": {

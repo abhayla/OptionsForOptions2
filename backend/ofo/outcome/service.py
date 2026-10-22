@@ -30,24 +30,23 @@ from enum import Enum
 from typing import Final
 
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, round_trip_charges
+from ofo.charges.round_trip import ChargesBreakdown, ChargesNotComputable, holds_bought_option, round_trip_breakdown
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
-                              model_inputs)
-from ofo.instruments.models import ZERODHA
+from ofo.engine.model import ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels, model_inputs
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
+from ofo.instruments.models import ZERODHA
 from ofo.marketdata.forward import ForwardUnavailable, mid_price
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
-from ofo.scenario.whatif import WhatIfInput, WhatIfResult, build_whatif, expiry_total_at
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, ScenarioValues, View, scenario_values
+from ofo.scenario.whatif import WhatIfInput, WhatIfResult, build_whatif, expiry_total_at
 from ofo.table import ColumnSpec, Table, UXLevel, build_table, visible_columns
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
@@ -168,6 +167,7 @@ class Outcome:
     visible_columns: tuple[ColumnSpec, ...] = ()
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
+    charges_breakdown: ChargesBreakdown | None = None  # ADR-167: the round-trip charges by component, shown once
     whatif: WhatIfResult | None = None  # W-127: Estimated curve, target figures, bands, OI and Greeks in the one reply
 
 
@@ -327,8 +327,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
-    Expiry values include the round-trip charges at the planned prices; None, or a leg the rate table cannot price,
-    keeps the values before charges, ADR-071's phrase, and ``Summary.charges_unavailable``. Breakevens, risk
+    Expiry sentences include the round-trip charges at the planned prices (ADR-082 (2)); None, or a leg the rate table
+    cannot price, keeps ADR-071's phrase and ``Summary.charges_unavailable``. Every curve and scenario value is BEFORE
+    charges and taxes (ADR-167); the charges come once as ``charges_breakdown``. Breakevens, risk
     boundaries and the zero-P&L columns are the locked ADR-008 values and never move with charges."""
     if not isinstance(definition, StrategyDefinition):
         raise ValueError(f"definition must be a StrategyDefinition, got {definition!r}")
@@ -408,14 +409,15 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
 
     config = config or ScenarioSettings().for_index(definition.underlying)
     level_set = build_level_set(model, config, override=override)
-    charges = None
+    charges = breakdown = None
     if rates is not None:
-        try:
-            charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
+        try:  # ADR-167: the total feeds the max-loss / max-profit sentences; the breakdown is shown once, apart
+            breakdown = round_trip_breakdown(model.strategy.legs, definition.underlying, rates)
+            charges = breakdown.total
         except ChargesNotComputable:
-            charges = None
+            charges = breakdown = None
     # the ONE computation (AC-8)
-    values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
+    values = scenario_values(level_set, model, view)  # before charges and taxes (ADR-167)
     table = build_table(model, level_set=level_set, scenario=values)
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
@@ -428,5 +430,6 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         payoff_points=points,
         summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
         whatif=build_whatif(model, snapshot, level_set, valuation, whatif or WhatIfInput(),
-                            lambda lvl: expiry_total_at(model, lvl, None if charges is None else rates),
-                            [(leg.instrument_id, leg.lot_size) for leg in legs], charges))
+                            lambda lvl: expiry_total_at(model, lvl),
+                            [(leg.instrument_id, leg.lot_size) for leg in legs]),
+        charges_breakdown=breakdown)

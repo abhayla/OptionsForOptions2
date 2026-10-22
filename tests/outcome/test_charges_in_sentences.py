@@ -197,11 +197,11 @@ def test_every_charges_derived_decimal_has_two_places(replayed):
     """Class: no money value derived from the unrounded charges total may leak extra decimals into the API."""
     _, out = outcome_of(replayed, RATES)
     s = out.summary
-    money = [s.charges, s.max_profit, s.max_loss, *out.scenario.totals, out.scenario.charges,
+    money = [s.charges, s.max_profit, s.max_loss, *out.scenario.totals, *vars(out.charges_breakdown).values(),
              *(p[1] for p in out.payoff_points)]
     assert len(money) > len(out.scenario.totals) and all(_is_paise(m) for m in money), money
     for row in out.table.rows:
-        if row.row_id in ("TOTAL", "CHARGES"):
+        if row.row_id == "TOTAL":
             for cell in row.cells.values():
                 if cell.kind.value == "money" and isinstance(cell.value, D):
                     assert _is_paise(cell.value), (row.row_id, cell.value)
@@ -243,7 +243,7 @@ def _assert_old_phrase_and_flag(out):
     assert s.what_can_i_lose == "At most ₹8,245.25 at expiry, before charges and taxes."
     assert s.what_can_i_make == "At most ₹4,754.75 at expiry, before charges and taxes."
     assert "about ₹" not in s.what_can_i_lose + s.what_can_i_make
-    assert out.scenario.charges is None  # the expiry values are the plain ones: scenario_values got no rates
+    assert out.charges_breakdown is None  # no breakdown is made up for a leg the rate table cannot price
 
 
 def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatch):
@@ -260,47 +260,39 @@ def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     assert out.state is OutcomeState.COMPUTED, out.reason
     assert out.summary.charges is None and out.summary.charges_unavailable
     assert "about ₹" not in out.summary.what_can_i_lose + out.summary.what_can_i_make
-    assert out.scenario.charges is None
+    assert out.charges_breakdown is None
 
 
 # --- round 3: the table shows the charges as a row, so legs + charges == TOTAL in every column --------------------
 
-CHARGES_ROW = "CHARGES"
-CHARGES_LABEL = "Charges and taxes (estimate)"
 
 
 def _rows(out):
     return {r.row_id: r for r in out.table.rows}
 
 
-def test_table_has_a_charges_row_and_legs_plus_charges_equal_total_in_every_column(replayed):
+def test_table_has_no_charges_row_and_legs_equal_total_in_every_column(replayed):
+    """ADR-167: the scenario values are before charges, so there is no CHARGES row and the leg rows add to TOTAL."""
     _, out = outcome_of(replayed, RATES)
     rows = _rows(out)
-    assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", CHARGES_ROW, "TOTAL"]  # between legs and TOTAL
-    row = rows[CHARGES_ROW]
-    assert row.cells[ColumnId.LEG].display == CHARGES_LABEL
+    assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", "TOTAL"]
     levels = out.level_set.levels
     assert len(levels) >= MIN_LEVELS
     for level in levels:
         legs_sum = sum((rows[str(i)].cell(level).value for i in range(1, 5)), D("0"))
-        assert rows[CHARGES_ROW].cell(level).value is not None
-        assert legs_sum + rows[CHARGES_ROW].cell(level).value == rows["TOTAL"].cell(level).value, level  # exact
-        assert rows[CHARGES_ROW].cell(level).value <= 0  # charges only ever cost money
-    # at a level with no bought option in the money the cell is exactly minus the round trip
-    assert out.summary.charges == -rows[CHARGES_ROW].cell(D("22533.25")).value
-    # the money display string is the same one every other money cell uses
-    shown = rows[CHARGES_ROW].cell(D("22533.25")).display
-    assert shown.startswith("-₹") or "₹" in shown
+        assert legs_sum == rows["TOTAL"].cell(level).value, level  # exact
 
 
-def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estimated_now(replayed):
-    _, none_out = outcome_of(replayed, None)
-    assert CHARGES_ROW not in _rows(none_out)
-    d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
-                                          for i, a in REPLAY_CONDOR))
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    est = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
-    assert CHARGES_ROW not in _rows(est)
+def test_the_curve_is_before_charges_and_the_breakdown_is_apart(replayed):
+    """ADR-167: the At Expiry payoff points equal the plain run (no rates) point for point; the breakdown carries the
+    charges once: brokerage is 20 per order x 8 orders = 160.00, and its total is the sentences' charges."""
+    _, with_rates = outcome_of(replayed, RATES)
+    _, without = outcome_of(replayed, None)
+    assert with_rates.payoff_points == without.payoff_points
+    assert with_rates.scenario.totals == without.scenario.totals
+    b = with_rates.charges_breakdown
+    assert b.brokerage == D("160.00") and b.total == with_rates.summary.charges
+    assert without.charges_breakdown is None
 
 
 # --- round 4 (owner OQ-4 a): one line under the max-loss sentence when the strategy holds a bought option --------
