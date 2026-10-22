@@ -19,7 +19,10 @@ reason. Strict row order stays (owner, same session: "Keep strict order").
    under rule (3) above; a loosening change goes to a reviewer and the owner instead.
 4. **Log** it here (newest first), and show the owner three lines (right / wrong / changed) under the status table.
 5. Every 3rd row and at each chunk end: a fresh agent reads this log and the row records and reports what the reviews
-   missed (it does not re-verify product code).
+   missed (it does not re-verify product code). The same turn, the orchestrator updates the Effect check table and
+   copies every generic lesson into `docs/process/delivery-learnings-generic.md` (no project names, no project
+   tools), then comments the change on the kit harvest issue abhayla/Startup-Factory#161 (owner 2026-10-22: "document
+   all these findings in a doc which we can share with startup factory project").
 
 ## Standing rules learned (applied to every brief from row 3 on)
 
