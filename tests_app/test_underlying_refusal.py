@@ -59,6 +59,7 @@ async def test_every_route_refuses_an_unsupported_underlying_the_same_way(value:
     assert CODE in resp.text, (path, resp.text)
     assert "Supported underlyings: " + ", ".join(SUPPORTED_UNDERLYINGS) in resp.text
     assert INVALID not in resp.text
+    assert f"{value} is not supported." in resp.text  # echoed as typed, never rewritten
 
 
 @pytest.mark.parametrize("value", ["BANK-NIFTY", "x" * 30, "N I"])

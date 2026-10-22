@@ -32,7 +32,7 @@ class CatalogueRefused(UserFacing, Exception):
 def refusal_message(value: object) -> UserFacingError:
     """The message for a value outside the set."""
     if isinstance(value, str) and _SHAPE.fullmatch(value):
-        return render("gate_underlying_unsupported", symbol=value.upper())  # the message's slot takes capitals only
+        return render("gate_underlying_unsupported", symbol=value)
     return render("user_input_request_invalid")  # not even a symbol shape: the fixed input error, never echoed
 
 
@@ -41,7 +41,7 @@ def require_supported(value: str) -> str:
     if value in SUPPORTED_UNDERLYINGS:
         return value
     if _SHAPE.fullmatch(value):
-        raise CatalogueRefused("gate_underlying_unsupported", symbol=value.upper())
+        raise CatalogueRefused("gate_underlying_unsupported", symbol=value)
     raise CatalogueRefused("user_input_request_invalid")
 
 
