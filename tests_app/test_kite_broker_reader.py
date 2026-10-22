@@ -2,10 +2,10 @@
 
 No network, no database. A replay transport serves recorded replies (positions, orders, funds) byte for byte.
 
-HONEST NOTE (Core/Proof): no real ``GET /user/profile`` reply is recorded yet. ``PROFILE_REPLY`` below has the shape in
-Kite's published documentation and is NOT a recording; the orchestrator runs the account read once on the owner's live
-session and commits the redacted reply under ``tests/fixtures/kite_replies/``. Until then the profile tests prove our
-parsing against the documented shape only.
+Core/Proof: ``user-profile-2026-10-22-redacted.json`` is the REAL ``GET /user/profile`` reply from the owner's live
+session (HTTP 200), recorded through ``KiteReads.fetch_profile`` and redacted (name, email, avatar, user id, user type
+replaced by placeholders). ``PROFILE_REPLY`` below is TYPED from Kite's documentation, not a recording: it is kept only
+for the extra-key, missing-key and PII attack cases, where the test needs known PII strings to search for.
 """
 from __future__ import annotations
 
@@ -83,7 +83,33 @@ def row(order_id: str, status: str = "OPEN", *, filled: int = 0,
 # -- the account read (Core) -------------------------------------------------------------------------------------
 
 
-def test_core_account_read_through_the_door_keeps_exactly_five_keys() -> None:
+REAL_KEPT = {"broker": "ZERODHA", "exchanges": ("MF", "BFO", "BSE", "NSE", "NFO"),
+             "products": ("CNC", "NRML", "MIS", "BO", "CO"), "order_types": ("MARKET", "LIMIT", "SL", "SL-M")}
+REAL_DROPPED = ("email", "user_name", "user_shortname", "avatar_url", "meta", "user_type")
+
+
+def test_core_real_recorded_profile_reply_keeps_the_five_values_and_nothing_else() -> None:
+    """AC-1 core on the REAL reply (live session 2026-10-22, redacted): the four non-identity values exactly as
+    Zerodha sent them; every other key is absent from the value and its repr."""
+    text = recorded("user-profile-2026-10-22-redacted")
+    raw = json.loads(text)["data"]
+    fake = Replay(text=text)
+    profile = door(fake).fetch_profile()
+    assert (profile.broker, profile.exchanges, profile.products, profile.order_types) == (
+        REAL_KEPT["broker"], REAL_KEPT["exchanges"], REAL_KEPT["products"], REAL_KEPT["order_types"])
+    assert profile.user_id == raw["user_id"]  # the fifth kept key (a placeholder in the redacted file)
+    assert {f.name for f in dataclasses.fields(profile)} == PROFILE_KEYS
+    shown = repr(profile) + json.dumps(dataclasses.asdict(profile))
+    for key in REAL_DROPPED:
+        assert key not in dataclasses.asdict(profile) and key not in shown
+        value = raw[key]
+        if isinstance(value, str):
+            assert value not in shown, key
+    assert raw["meta"]["demat_consent"] not in shown and raw["email"] not in shown
+    assert [(m, u) for m, u, _, _ in fake.calls] == [("GET", f"{BASE}/user/profile")]
+
+
+def test_documented_shape_reply_keeps_exactly_five_keys() -> None:
     """AC-1 core: ``GET /user/profile`` through the door; the value has the five kept keys and nothing else."""
     fake = Replay(text=PROFILE_REPLY)
     profile = door(fake).fetch_profile()
