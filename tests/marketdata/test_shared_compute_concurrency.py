@@ -90,11 +90,18 @@ def test_a_slow_computation_for_one_key_does_not_block_reads_of_other_keys():
     slow_reader = threading.Thread(target=lambda: done.append(cache.get_or_compute(key("SLOW"), slow)))
     slow_reader.start()
     assert started.wait(timeout=30)  # the slow computation is running now and holds its key
-    try:
-        assert cache.get_or_compute(key("FAST"), lambda: "fast figure") == "fast figure"  # a new key computes
-        assert cache.get_or_compute(key("FAST"), lambda: "never") == "fast figure"  # and an existing one reads
-        assert done == []  # while the slow one is still not finished
-    finally:
-        release.set()
-        slow_reader.join(timeout=30)
+    fast = []
+
+    def fast_reads():
+        fast.append(cache.get_or_compute(key("FAST"), lambda: "fast figure"))  # a new key computes
+        fast.append(cache.get_or_compute(key("FAST"), lambda: "never"))  # and an existing one reads
+
+    fast_reader = threading.Thread(target=fast_reads, daemon=True)
+    fast_reader.start()
+    fast_reader.join(timeout=10)  # a blocked reader fails the test here instead of hanging it
+    finished_while_slow_ran = not fast_reader.is_alive()
+    release.set()
+    slow_reader.join(timeout=30)
+    assert finished_while_slow_ran, "a slow computation for one key blocked another key"
+    assert fast == ["fast figure", "fast figure"]
     assert done == ["slow figure"]

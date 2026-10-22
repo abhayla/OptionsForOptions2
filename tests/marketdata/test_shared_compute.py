@@ -3,6 +3,7 @@
 Replays the real 2026-10-08 recording (tests/fixtures/kite_ws) into a provider, reads the snapshot twice (two readers
 of one feed snapshot) and counts engine calls: the counter is 2 per contract without the shared cache and 1 with it.
 Two users' feeds with identical data never share an entry (ADR-053, F-23). Counts work, not time."""
+import dataclasses
 import datetime
 from collections import Counter
 from decimal import Decimal
@@ -141,6 +142,23 @@ def test_a_forward_is_computed_once_per_feed_snapshot_and_equals_the_unshared_on
     assert set(calls.values()) == {2}  # another user's feed computes its own
 
 
+def test_a_changed_input_at_the_same_instant_never_reads_the_old_entry(feed):
+    """A poisoned or stale entry cannot answer other inputs, through the real outcome path (not only the cache)."""
+    provider, at = feed
+    snap = read(provider, at, STRADDLE)
+    cache = SharedCompute()
+    first = outcome(snap, STRADDLE, cache, 'user-1')
+    legs = dict(snap.legs)
+    for iid in STRADDLE:
+        quote = legs[iid].quote
+        moved = dataclasses.replace(quote, ltp=quote.ltp + Decimal('10'), bid=quote.bid + Decimal('10'),
+                                    ask=quote.ask + Decimal('10'))
+        legs[iid] = dataclasses.replace(legs[iid], quote=moved)  # same timestamp, other prices
+    second = outcome(dataclasses.replace(snap, legs=legs), STRADDLE, cache, 'user-1')
+    assert [leg.iv for leg in second.legs] != [leg.iv for leg in first.legs]
+    assert all(leg.iv is not None for leg in second.legs)
+
+
 def key(owner="u1", instant=T0, figure="iv", instrument="X", inputs=(1,)):
     return SharedKey(owner, "NIFTY", datetime.date(2026, 10, 13), instant, figure, instrument, inputs)
 
@@ -188,3 +206,19 @@ def test_the_key_refuses_what_it_cannot_scope():
         SharedCompute().get_or_compute(("u1", "NIFTY"), lambda: 1)
     with pytest.raises(ValueError, match="max_entries"):
         SharedCompute(max_entries=0)
+
+
+def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, monkeypatch):
+    """The quotes the forward reads are in its key: other quotes at the same valuation instant are another entry."""
+    provider, at = feed
+    cache = FeedScope(SharedCompute(), "user-1")
+    before = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    real = provider.option_chain_snapshot
+
+    def shifted(underlying, expiry):
+        return [dataclasses.replace(q, bid=q.bid + Decimal("10"), ask=q.ask + Decimal("10"))
+                if q.instrument_type.value == "CE" and q.bid and q.ask else q for q in real(underlying, expiry)]
+
+    monkeypatch.setattr(provider, "option_chain_snapshot", shifted)
+    after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    assert after.forwards != before.forwards
