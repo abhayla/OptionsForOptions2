@@ -34,12 +34,12 @@ from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, ro
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
-                              model_inputs)
-from ofo.instruments.models import ZERODHA
+from ofo.engine.model import ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels, model_inputs
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
+from ofo.instruments.models import ZERODHA
 from ofo.marketdata.forward import ForwardUnavailable, mid_price
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
@@ -317,12 +317,36 @@ def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) 
                    reason, tuple(legs), MARGIN)
 
 
+def _leg_iv(em, leg, shared, where):
+    """One leg's implied volatility through the one engine; None when the engine has no answer for these inputs (a
+    deterministic answer, so it is shared too: only a raised error is never cached). With ``shared`` the figure is
+    computed once per (feed owner, underlying, expiry, quote instant, exact inputs). ``leg`` is
+    (kind, price, strike, forward)."""
+    kind, price, strike, fwd = leg
+
+    def compute():
+        try:
+            return implied_vol(em, kind, price, strike).iv
+        except (ValueError, ArithmeticError):
+            return None
+
+    if shared is None:
+        return compute()
+    inputs = (kind.value, strike, price, em.level, fwd.forward, fwd.implied_yield, fwd.years, fwd.rate,
+              fwd.days_in_year)
+    return shared.compute(where, inputs, compute)
+
+
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
-                  override: RangeOverride | None = None) -> Outcome:
+                  override: RangeOverride | None = None, shared: FeedScope | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
+
+    ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
+    market-wide IV is then computed once per feed snapshot and read back by every other reader of the same feed; the
+    owner is part of the key, so two users' feeds never share. Without ``shared`` every call computes itself.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
     Expiry values include the round-trip charges at the planned prices; None, or a leg the rate table cannot price,
@@ -369,9 +393,11 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                 price = mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
-                    iv = implied_vol(em, kind, price, strike).iv
+                    where = (snapshot.underlying, c.expiry, q.timestamp, "leg_iv", p.instrument_id)
+                    iv = _leg_iv(em, (kind, price, strike, fwd), shared, where)
                 except (ValueError, ArithmeticError):
                     iv = None
+                if iv is None:
                     label = join_labels(label, render_explanation("leg_label_no_iv"))
         quantity = p.lots * c.lot_size
         legs.append(OutcomeLeg(p.instrument_id, symbol, p.action, kind, strike, c.expiry, p.lots, c.lot_size,

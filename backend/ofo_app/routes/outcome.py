@@ -25,6 +25,7 @@ from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.marketdata.provider import MarketDataProvider
+from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
@@ -41,6 +42,9 @@ from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
+#: The one process-wide cache of market-wide figures (REQ-050); keyed by feed owner, so one user's feed never serves
+#: another's. Only market-wide figures go in; strategy maths never does (tests/marketdata/test_scale_classes.py).
+SHARED_COMPUTE = SharedCompute()
 log = logging.getLogger("ofo_app.outcome")
 
 # A loaded rate set is reused for 300 s (rates change by a dated admin row, so a few minutes of lag is harmless and the
@@ -136,6 +140,9 @@ class MarketContext:
     provider: MarketDataProvider
     clock: Callable[[], datetime.datetime]
     rate: Decimal
+    #: whose Zerodha feed this is (ADR-053): part of every shared-cache key, so two users' feeds never share. None (a
+    #: test or replay context with no owner) means nothing is shared: every reader computes for itself.
+    feed_owner: str | None = None
 
 
 def get_market_context() -> Optional[MarketContext]:
@@ -432,8 +439,9 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         out = not_connected(definition, ux, None, stored)
     else:
         valuation = answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
+        shared = FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
-                                 valuation, ctx.rate)
+                                 valuation, ctx.rate, shared)
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
@@ -442,7 +450,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+                                config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)

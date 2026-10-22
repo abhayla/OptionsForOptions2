@@ -18,9 +18,9 @@ Standard library only.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Mapping
 
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
@@ -28,6 +28,7 @@ from ofo.instruments.models import ListedContract
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import MarketDataProvider, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.shared_compute import FeedScope
 
 
 def contract_id(lc: ListedContract) -> str:
@@ -60,9 +61,25 @@ class MarketSnapshot:
 _LEG_TYPES = frozenset(i.value for i in Instrument)
 
 
-def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],
-                  valuation: datetime.datetime, rate: Decimal) -> MarketSnapshot:
-    """Read every input the outcome needs from ``provider`` in one pass (one status, one spot, one chain/expiry)."""
+def _forward(chain, spot, expiry, at, where):
+    """One expiry's forward; with ``shared`` computed once per (feed owner, underlying, expiry, valuation instant, the
+    exact quotes it reads). A refused forward raises and is never cached (the next reader tries again)."""
+    shared, underlying = where
+    valuation, rate = at
+    if shared is None:
+        return parity_forward(chain, spot, expiry, valuation, rate)
+    quotes = tuple((q.instrument_id, q.bid, q.ask, q.timestamp, q.health) for q in chain)
+    inputs = (rate, spot.ltp, spot.timestamp, spot.health, quotes) if spot is not None else (rate, None, quotes)
+    scope = (underlying, expiry, valuation, "forward", None)
+    return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, valuation, rate))
+
+
+def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],  # noqa: PLR0913
+                  valuation: datetime.datetime, rate: Decimal, shared: FeedScope | None = None) -> MarketSnapshot:
+    """Read every input the outcome needs from ``provider`` in one pass (one status, one spot, one chain/expiry).
+
+    ``shared`` (REQ-050, ADR-053): a :class:`FeedScope`; each expiry's forward is then computed once per feed snapshot,
+    with the feed owner in the key."""
     if not isinstance(provider, MarketDataProvider):
         raise ValueError(f"provider must be a MarketDataProvider, got {provider!r}")
     status = provider.status()
@@ -91,7 +108,7 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
     errors: dict[datetime.date, str] = {}
     for expiry, chain in chains.items():
         try:
-            forwards[expiry] = parity_forward(chain, spot, expiry, valuation, rate)
+            forwards[expiry] = _forward(chain, spot, expiry, (valuation, rate), (shared, underlying))
         except ForwardUnavailable:
             errors[expiry] = render_explanation("outcome_why_forward")  # the cause goes to no user
     ended: dict[str, datetime.datetime] = {}

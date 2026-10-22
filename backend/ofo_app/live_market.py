@@ -91,7 +91,7 @@ class LiveMarket:
                fingerprint: bytes | None = None) -> None:
         """Wires an already built provider + socket (the real start and the tests share this). ``fingerprint`` is
         ``token_fingerprint`` of the token the socket was built with (#296), None when unknown."""
-        self.feed = LiveFeed(MarketContext(provider, clock, LIVE_RATE), FanOut(provider))
+        self.feed = LiveFeed(MarketContext(provider, clock, LIVE_RATE, OWNER_REF), FanOut(provider))
         self._socket = socket
         self._fingerprint = fingerprint
         self.state = LIVE
