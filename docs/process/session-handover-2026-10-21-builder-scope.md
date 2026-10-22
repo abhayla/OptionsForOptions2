@@ -11,18 +11,31 @@ ADR-165). Next session: run the same /goal prompt; this file is the state. No or
   #453 #421 #420 #418 #394 #459. #450 (CI split) merged. #424 Tier B review PASS WITH MINORS on 5889145.
 - Owner decision ADR-166 ("Start tracking" is the label; REQ-109 AC-1 reworded) - on this docs branch.
 
-## IN FLIGHT (at the time of writing)
-- W-121 order path off (REQ-073 AC-6): Tier A verifier PASS WITH MINORS on ff7be0a; evidence recorded; PR #496 landing.
-  Deferred #495 (route scan reads direct imports only; fix = check inside the order modules, run-discipline C8).
-- W-122 Start tracking + Q253 detection (Step 2 core): backend built, core proof green on the replay (paper P&L +195.00
-  = -390 + 130 + 780 - 325; detection at threshold 0.6: short strike 22,400 vs index 22,533.25, 133.25 points, 0.59%);
-  part 2 (frontend, guard mutations) running; branch build/W-122-track-detect. Its migration is 0019 and collides with
-  #419's 0019: renumber W-122 after #419/#451 land. W-122 links REQ-109 only (one link per work item); REQ-045's
-  detection ACs need a W-123 linking the same tests.
-- Held-PR lander (scratchpad `land_held2.sh`): 424 474 417 448 419 451 452 393 465 457 466, one at a time; on RE-REVIEW
-  NEEDED it compares the PR's own +/- lines at the reviewed sha and the head (`samelines.py`) and retries with the
-  head only when they are identical. #451/#452 had a red `api` job (ruff PLR0913 108 -> 109, expected to clear once
-  #419's ruff fix is on main).
+## STATE at 2026-10-22 ~07:00 IST (update of the run-1 notes below)
+- Step 1 DONE: W-121 order path off merged (#496; REQ-073 AC-6 evidence pass); every held PR landed (#424 #474 #417
+  #448 #419 #451 #452 #393 #465 #457 #466 #450) or parked (12); W-111 re-opened and merged (#498).
+- Step 2 BUILT, live proof PENDING: W-122/W-123 merged (#504, CI 7/7 green) after three Tier A rounds (edit rewrote
+  P&L -> reused token priced -> independent redesign PASS WITH MINORS on 21642978); evidence: W-122 REQ-109 AC-1, AC-2
+  pass; W-123 REQ-045 AC-2 pass. ofo_dev upgraded to 0021. Live runbook: run the Step 2 checklist below at market open
+  with the owner's Kite login. Threshold is a test-only dependency: the live proof uses a short strike within 0.5% of
+  the index at the DEFAULT threshold, plus a negative strategy 2% away.
+- Main was red 00:00-05:56 IST (create-strategy e2e race: the click came before the templates reply) -> fixed #503,
+  main green on 1d54e1a8 and on #504.
+- In flight: #500 class fix (stored contract priced by a reused token, app-wide through tracked_contracts.resolve),
+  branch fix/500-reused-token, round 2 running (29 DB tests red in round 1, unproven).
+- Docs: #501 merged (ADR-166, Sensibull-first + copy-first rules in CLAUDE.md and the contract, copy_from_check.py,
+  24 lane briefs under docs/process/builder-scope-briefs/, findings, tracker).
+
+## Step 2 live checklist (no order is ever sent; the order path is off on the server)
+1. API on 127.0.0.1:8765 against ofo_dev with LIVE_MARKET=1 (dev_run.py); `/health` 200; `GET /features` -> off.
+2. Owner: private window -> `http://127.0.0.1:8765/broker/zerodha/login` -> lands on `/broker/connected`.
+3. After 09:20: NIFTY spot from the index route; iron condor on the nearest weekly expiry with short CE at the listed
+   strike nearest spot + 0.3%, short PE spot - 1.5%, wings 200 out, 1 lot; save; Start tracking; GET the view twice,
+   2 minutes apart; a second condor with shorts 2% away (must show NO detection).
+4. Hand check: P&L = sum(side x qty x (current - entry)) to the paisa; distance % = |index - strike| / index x 100;
+   two leg prices vs Kite's REST quote in the same minute (more than one tick apart while LIVE = STOP); positions
+   before = after.
+5. PASS -> record the evidence rows and start the four lanes; FAIL -> Steps 3-7 wait for the fix.
 
 ## BLOCKED on owner inputs (named)
 - REQ-105 delayed prices: a delayed-price source + written permission (ADR-155) - built switched off only.
@@ -32,10 +45,10 @@ ADR-165). Next session: run the same /goal prompt; this file is the state. No or
 - Step 2 live window and the final live window: the owner's Kite login on a market day.
 
 ## NEXT
-1. Live core proof (Step 2) on the next market day with the owner's Kite login: build a NIFTY iron condor, Start
-   tracking, one detection from the live feed with the threshold lowered, numbers checked by hand.
-2. Then four lanes from the drafted cluster briefs (scratchpad `lane-briefs/`, 24 briefs, all `check_brief` clean;
-   copy them into `docs/process/` with this batch): A1-A5, B1-B6, C1-C8, D1-D5. Merge order: A3 and B4 first.
+1. Step 2 live window (checklist above) with the owner's Kite login.
+2. Then four lanes from `docs/process/builder-scope-briefs/` (24 briefs, check_brief + copy_from_check clean):
+   A1-A5, B1-B6, C1-C8, D1-D5. Merge order: A3 and B4 first; content PRs before guard/scan PRs (lesson below).
+3. Land #500 when its round passes Tier A review.
 
 ## Landing log (held PRs, `land_held2.sh` + `samelines.py`)
 Merged tonight: #450 CI split, #424 Windows pytest, #474 link guard, #417 tracker check, #448 DB pool budget, #419
