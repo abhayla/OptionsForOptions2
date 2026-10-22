@@ -14,7 +14,7 @@ adjustment orders). REQ-006 and REQ-007 became row 16 (UX levels removed, ADR-16
 brackets after `Not started` is the starting state (2026-10-22, from the requirement files and the run-1 handover; not
 re-tested).
 
-**Chunks** are the PR / full-CI / review points. Tier: A = fresh Opus review of the chunk PR (money maths, live data,
+**Chunks** (8; 6a and 6b merged by the efficiency review) are the PR / full-CI / review points. Tier: A = fresh Opus review of the chunk PR (money maths, live data,
 engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row also gets its own independent verifier.
 
 **Deferred acceptance criteria** (out of this contract's scope by ADR-165 / ADR-168 (1); the row closes as
@@ -70,16 +70,16 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 40 | REQ-138 | Builder settings saved per user | P3 | 5 | A | Not started (not built) |
 | 41 | REQ-139 | Header with the day's change and OHLC | P3 | 5 | A | Not started (not built) |
 | 42 | REQ-106 | Market context strip: ATM IV, PCR, max pain, VIX | P3 | 5 | A | Not started (not built) |
-| 43 | REQ-111 | Private notes on a strategy | P3 | 6a | B | Not started (not built) |
-| 44 | REQ-086 | Share a read-only link | P3 | 6a | B | Not started (partly built) |
-| 45 | REQ-087 | Option chain display options | P3 | 6a | B | Not started (partly built, PR #509) |
-| 46 | REQ-090 | Adds BANKNIFTY and FINNIFTY (also closes REQ-001 AC-1) | P3 | 6a | A | Not started (not built) |
-| 47 | REQ-024 | Guided strategy creation (Create Strategy screen) | P3 | 6b | B | Not started (partly built) |
-| 48 | REQ-026 | Expected market range input | P3 | 6b | B | Not started (built) |
-| 49 | REQ-068 | Strategy preferences | P3 | 6b | B | Not started (built) |
-| 50 | REQ-025 | Strategy discovery and preferences | P3 | 6b | B | Not started (not built) |
-| 51 | REQ-027 | Strike selection modes (rule-placed part held, Q211) | P3 | 6b | B | Not started (not built) |
-| 52 | REQ-069 | Suggested setups (rule-placed part held, Q211) | P3 | 6b | B | Not started (not built) |
+| 43 | REQ-111 | Private notes on a strategy | P3 | 6 | B | Not started (not built) |
+| 44 | REQ-086 | Share a read-only link | P3 | 6 | B | Not started (partly built) |
+| 45 | REQ-087 | Option chain display options | P3 | 6 | B | Not started (partly built, PR #509) |
+| 46 | REQ-090 | Adds BANKNIFTY and FINNIFTY (also closes REQ-001 AC-1) | P3 | 6 | A | Not started (not built) |
+| 47 | REQ-024 | Guided strategy creation (Create Strategy screen) | P3 | 6 | B | Not started (partly built) |
+| 48 | REQ-026 | Expected market range input | P3 | 6 | B | Not started (built) |
+| 49 | REQ-068 | Strategy preferences | P3 | 6 | B | Not started (built) |
+| 50 | REQ-025 | Strategy discovery and preferences | P3 | 6 | B | Not started (not built) |
+| 51 | REQ-027 | Strike selection modes (rule-placed part held, Q211) | P3 | 6 | B | Not started (not built) |
+| 52 | REQ-069 | Suggested setups (rule-placed part held, Q211) | P3 | 6 | B | Not started (not built) |
 | 53 | REQ-109 | Start tracking (paper P&L) | Tracking | 7 | A | Not started (merged; live proof pending) |
 | 54 | REQ-140 | Profit left and loss left for a tracked strategy | Tracking | 7 | A | Not started (not built) |
 | 55 | REQ-079 | Ready-made shapes and quick picks (held, Q211) | P4 held | 8 | B | Not started (built, switched off) |
