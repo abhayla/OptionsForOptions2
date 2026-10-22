@@ -41,7 +41,8 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
     ``as_of`` defaults to the database clock; only tests pass one."""
     out = out if out is not None else sys.stdout
     try:
-        rows = parse_rows_naming_the_row(io.StringIO(csv_text))
+        # ~0.3 s on a full list: parsed off the event loop
+        rows = await asyncio.to_thread(parse_rows_naming_the_row, io.StringIO(csv_text))
         if as_of is None:
             as_of = (await conn.execute(_NOW)).scalar_one()
         async with conn.begin_nested():

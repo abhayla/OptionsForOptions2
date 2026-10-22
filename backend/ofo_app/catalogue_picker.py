@@ -32,7 +32,7 @@ LOADED_AT = text(f"SELECT max(last_seen_at) FROM {BROKER_ROWS} WHERE broker = :b
 
 
 _NOW = text("SELECT clock_timestamp()")
-_PUBLISH_TIME = datetime.time(8, 0)  # Zerodha's list for a session is published by 08:00 IST (this product's own rule)
+_PUBLISH_TIME = datetime.time(8, 30)  # Kite docs: fetch the list "once a day (ideally at around 08:30 AM)" (F-56)
 _SATURDAY = 5  # datetime.weekday(): Monday is 0
 
 
@@ -42,8 +42,8 @@ async def database_now(conn: Any) -> datetime.datetime:
 
 
 def session_start(now: datetime.datetime) -> datetime.datetime:
-    """08:00 IST of the most recent trading-session day at ``now``: today when today is a weekday and the time is at or
-    past 08:00, otherwise the previous weekday. There is no exchange holiday calendar in this project yet, so a weekday
+    """08:30 IST of the most recent trading-session day at ``now``: today when today is a weekday and the time is at or
+    past 08:30, otherwise the previous weekday. There is no exchange holiday calendar in this project yet, so a weekday
     holiday counts as a session day (the list is then the same as the previous one, which is harmless)."""
     local = now.astimezone(IST)
     day = local.date() if local.time() >= _PUBLISH_TIME else local.date() - datetime.timedelta(days=1)
@@ -55,7 +55,7 @@ def session_start(now: datetime.datetime) -> datetime.datetime:
 def loaded_before(loaded_at: datetime.datetime | None, now: datetime.datetime) -> bool:
     """True when the list was never loaded or its latest load is before the current session's publish time (W-133,
     REQ-053 AC-3, finding daily-load-misses-intraday-additions): such a list is unconfirmed, never trusted. A list
-    loaded Friday 09:00 is current on Saturday 11:00 and on Monday 07:30. ``now`` and ``loaded_at`` are database
+    loaded Friday 09:00 is current on Saturday 11:00 and on Monday 08:00. ``now`` and ``loaded_at`` are database
     times."""
     return loaded_at is None or loaded_at < session_start(now)
 
@@ -117,7 +117,7 @@ async def database_today(conn: Any) -> datetime.date:
 
 async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) -> list[datetime.date]:
     """Expiry dates (ascending) that hold at least one pickable contract of ``underlying``; none from a list that was
-    not loaded today (unconfirmed)."""
+    not loaded in the current session (unconfirmed)."""
     if not await list_is_current(conn, today):
         return []
     rows = await conn.execute(_EXPIRIES, {"broker": ZERODHA, "underlying": underlying, "today": today})
@@ -127,7 +127,8 @@ async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) ->
 async def pickable_contracts(conn: Any, underlying: str, today: datetime.date,
                              expiry: datetime.date | None = None) -> list[PickableContract]:
     """Pickable contracts of ``underlying`` ordered by expiry, strike, type; one expiry when ``expiry`` is given
-    (a past or unknown expiry gives an empty list); none from a list that was not loaded today (unconfirmed)."""
+    (a past or unknown expiry gives an empty list); none from a list that was not loaded in the current session
+    (unconfirmed)."""
     if not await list_is_current(conn, today):
         return []
     rows = await conn.execute(_CONTRACTS, {"broker": ZERODHA, "underlying": underlying, "today": today,

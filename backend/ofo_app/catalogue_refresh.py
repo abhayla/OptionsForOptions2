@@ -6,7 +6,7 @@ daily-load-misses-intraday-additions ("a once-a-day catalogue load misses strike
 
 One in-process asyncio task started by the app lifespan when ``CATALOGUE_REFRESH`` is on (explicitly "1", or by default
 when ``LIVE_MARKET`` is on). It loads once at start-up (any day, any hour: a restarted app must not wait for the next
-window), then every ``REFRESH_INTERVAL`` between 08:15 and 15:45 IST on weekdays. There is no exchange holiday
+window), then every ``REFRESH_INTERVAL`` between 08:35 and 15:45 IST on weekdays. There is no exchange holiday
 calendar in this project yet (``routes.execute.market_open`` says the same), so a weekday holiday runs the load too;
 Zerodha's list is the same that day and the load is harmless.
 
@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 
 ENV_NAME: Final = "CATALOGUE_REFRESH"
 _TRUE: Final = frozenset({"1", "true", "yes", "on"})
-WINDOW_OPEN: Final = datetime.time(8, 15)
+WINDOW_OPEN: Final = datetime.time(8, 35)
 WINDOW_CLOSE: Final = datetime.time(15, 45)
 REFRESH_INTERVAL: Final = datetime.timedelta(minutes=60)
 RUN_TIMEOUT_SECONDS: Final = 120.0
@@ -58,7 +58,7 @@ def refresh_requested(environ: Any = None) -> bool:
 
 
 def in_window(now: datetime.datetime) -> bool:
-    """A weekday between 08:15 and 15:45 IST (no holiday calendar exists yet)."""
+    """A weekday between 08:35 and 15:45 IST (no holiday calendar exists yet)."""
     local = now.astimezone(IST)
     return local.weekday() < _SATURDAY and WINDOW_OPEN <= local.time() <= WINDOW_CLOSE
 

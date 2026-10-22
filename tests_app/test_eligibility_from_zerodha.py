@@ -250,7 +250,7 @@ def test_the_eligibility_reader_never_writes():
     assert all(s.lstrip().upper().startswith("SELECT") for s in statements), statements
 
 
-# ---- W-133 (REQ-053 AC-3, finding daily-load-misses-intraday-additions): a list not loaded today is unconfirmed --
+# ---- W-133 (REQ-053 AC-3, finding daily-load-misses-intraday-additions): an earlier-session list is unconfirmed --
 
 async def _loaded_india_date(conn) -> datetime.date:
     """The India date of the latest load on the database clock (last_seen_at is stamped by clock_timestamp())."""
@@ -263,23 +263,44 @@ _IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 FRIDAY_LOAD = datetime.datetime(2026, 10, 23, 9, 0, tzinfo=_IST)
 
 
+def _next_weekday_after(day: datetime.date) -> datetime.date:
+    """The next weekday after ``day``: the first day that is a later trading session, judged at 12:00 (a Saturday or
+    Sunday maps back to Friday's session, so 'one calendar day later' is not later on a Friday or a Saturday)."""
+    day += datetime.timedelta(days=1)
+    while day.weekday() >= WEEKEND_FIRST:
+        day += datetime.timedelta(days=1)
+    return day
+
+
+WEEKEND_FIRST = 5  # datetime.weekday(): Saturday
+
+
 def _ist(day: int, hour: int, minute: int) -> datetime.datetime:
     return datetime.datetime(2026, 10, day, hour, minute, tzinfo=_IST)
 
 
 def test_ac3_a_friday_load_is_current_on_saturday_and_early_monday_but_not_monday_after_publish():
-    """Core proof + attack 1: loaded Friday 09:00, current Saturday 11:00 and Monday 07:30; unconfirmed Monday 09:00."""
+    """Core proof + attack 1: loaded Friday 09:00, current Saturday 11:00 and Monday 08:00; unconfirmed Monday 09:00."""
     assert not picker.loaded_before(FRIDAY_LOAD, _ist(24, 11, 0))
-    assert not picker.loaded_before(FRIDAY_LOAD, _ist(26, 7, 30))
+    assert not picker.loaded_before(FRIDAY_LOAD, _ist(26, 8, 0))
     assert picker.loaded_before(FRIDAY_LOAD, _ist(26, 9, 0))
     assert picker.loaded_before(None, _ist(24, 11, 0))
 
 
+@pytest.mark.parametrize("load_day", [19, 20, 21, 22, 23, 24, 25])  # Mon..Sun
+def test_ac3_the_next_session_day_is_a_later_session_on_every_weekday(load_day):
+    """Class guard: whatever weekday the load fell on, the next weekday at 12:00 is a session after the load's."""
+    day = _next_weekday_after(datetime.date(2026, 10, load_day))
+    assert day.weekday() < WEEKEND_FIRST and day > datetime.date(2026, 10, load_day)
+    judged = datetime.datetime.combine(day, datetime.time(12, 0), tzinfo=_IST)
+    assert picker.loaded_before(_ist(load_day, 14, 0), judged)
+
+
 def test_ac3_a_load_before_the_publish_time_is_unconfirmed_after_it():
-    """Attack 2: loaded 07:59 on a weekday, checked 09:00 the same day -> unconfirmed; loaded 08:00 -> current."""
-    assert picker.loaded_before(_ist(22, 7, 59), _ist(22, 9, 0))
-    assert not picker.loaded_before(_ist(22, 8, 0), _ist(22, 9, 0))
-    assert picker.session_start(_ist(22, 7, 59)) == _ist(21, 8, 0)  # before publish: the previous weekday's session
+    """Attack 2: loaded 08:29 on a weekday, checked 09:00 the same day -> unconfirmed; loaded 08:30 -> current."""
+    assert picker.loaded_before(_ist(22, 8, 29), _ist(22, 9, 0))
+    assert not picker.loaded_before(_ist(22, 8, 30), _ist(22, 9, 0))
+    assert picker.session_start(_ist(22, 8, 29)) == _ist(21, 8, 30)  # before publish: the previous weekday's session
 
 
 async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_nothing(app_engine):
@@ -289,10 +310,10 @@ async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_n
         trans = await conn.begin()
         try:
             ids, user = await _seeded(conn), _user()
-            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
+            next_session_day = _next_weekday_after(await _loaded_india_date(conn))
             first = ids[IRON_CONDOR[0][0]]
-            assert await elig.leg_statuses(conn, [first], tomorrow) == [None]
-            async with _client(_on(_app(_ConnMaker(conn), user), tomorrow)) as ac:
+            assert await elig.leg_statuses(conn, [first], next_session_day) == [None]
+            async with _client(_on(_app(_ConnMaker(conn), user), next_session_day)) as ac:
                 resp = await ac.post("/strategies", json=_body(ids))
             assert resp.status_code == HTTP_FORBIDDEN, resp.text
             assert UNAVAILABLE not in resp.text, resp.text
@@ -315,16 +336,16 @@ async def test_ac3_a_list_loaded_earlier_today_is_current(app_engine):
             await trans.rollback()
 
 
-async def test_ac3_the_picker_offers_nothing_from_a_list_not_loaded_today(app_engine):
-    """Same class, the other read: the picker treats a list not loaded today as unconfirmed (nothing offered)."""
+async def test_ac3_the_picker_offers_nothing_from_a_list_from_an_earlier_session(app_engine):
+    """Same class, the other read: the picker treats a list from an earlier session as unconfirmed (nothing offered)."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await _seeded(conn)
-            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
+            next_session_day = _next_weekday_after(await _loaded_india_date(conn))
             assert await picker.pickable_expiries(conn, "NIFTY", LIST_DAY)  # loaded today: offered
-            assert await picker.pickable_expiries(conn, "NIFTY", tomorrow) == []
-            assert await picker.pickable_contracts(conn, "NIFTY", tomorrow) == []
+            assert await picker.pickable_expiries(conn, "NIFTY", next_session_day) == []
+            assert await picker.pickable_contracts(conn, "NIFTY", next_session_day) == []
         finally:
             await trans.rollback()
 
@@ -353,8 +374,8 @@ def test_ac3_attack_4_the_pinned_date_seam_applies_under_app_env_test_only(monke
     assert pinned_clock.pinned_today() is None
 
 
-async def test_ac3_the_pre_execution_registry_is_empty_for_a_list_not_loaded_today(app_engine, monkeypatch):
-    """The gate's own read: with no load today the registry is empty, so the gate refuses every leg as unconfirmed."""
+async def test_ac3_the_pre_execution_registry_is_empty_for_a_list_from_an_earlier_session(app_engine, monkeypatch):
+    """The gate's own read: no load in the current session -> empty registry, so every leg is refused as unconfirmed."""
     monkeypatch.setenv("APP_ENV", "test")
     async with app_engine.connect() as conn:
         trans = await conn.begin()
@@ -362,8 +383,8 @@ async def test_ac3_the_pre_execution_registry_is_empty_for_a_list_not_loaded_tod
             await _seeded(conn)
             monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())
             assert len(await elig.fresh_registry(conn, underlying="NIFTY")) > 0
-            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
-            monkeypatch.setenv("TEST_CATALOGUE_DATE", tomorrow.isoformat())
+            next_session_day = _next_weekday_after(await _loaded_india_date(conn))
+            monkeypatch.setenv("TEST_CATALOGUE_DATE", next_session_day.isoformat())
             assert len(await elig.fresh_registry(conn, underlying="NIFTY")) == 0
         finally:
             await trans.rollback()

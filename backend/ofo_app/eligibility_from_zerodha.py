@@ -16,8 +16,8 @@ clock's India date (``catalogue_picker.database_today``, which honours only the 
   from its caller: a refusal can only make a contract NOT tradable (finding caller-supplied-verdict-trusted).
 
 Staleness (W-133, finding daily-load-misses-intraday-additions / F-33): a list whose latest load is before the current
-session's 08:00 IST publish time (``catalogue_picker.session_start``) is unconfirmed (``None`` / an empty registry), never trusted. A contract Zerodha lists during the
-day is eligible after the next scheduled load (``ofo_app.catalogue_refresh``, hourly 08:15-15:45 IST).
+session's 08:30 IST publish time (``catalogue_picker.session_start``) is unconfirmed (``None`` / an empty registry), never trusted. A contract Zerodha lists during the
+day is eligible after the next scheduled load (``ofo_app.catalogue_refresh``, hourly 08:35-15:45 IST).
 
 Copy from: none - the eligibility registry and the picker are this project's own; no algochanakya row covers
 eligibility.

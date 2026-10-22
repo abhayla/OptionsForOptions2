@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import functools
 import io
 import logging
+import time
 from datetime import timedelta, timezone
 from decimal import Decimal
 
@@ -43,6 +45,18 @@ TWO_RUNS, THREE_RUNS, FIVE_TICKS = 2, 3, 5
 _ONTO_ANY_CATALOGUE = _settings("100")
 
 
+FAIL_FAST_SECONDS = 10
+
+
+def fail_fast(test):
+    """A scheduler test that hangs fails after ``FAIL_FAST_SECONDS`` with a TimeoutError, not at the CI job's limit."""
+    @functools.wraps(test)
+    async def wrapper(*args, **kwargs):
+        async with asyncio.timeout(FAIL_FAST_SECONDS):
+            return await test(*args, **kwargs)
+    return wrapper
+
+
 def _scheduler(load, clock: Clock, **kwargs) -> RefreshScheduler:
     return RefreshScheduler(load, now=clock, **kwargs)
 
@@ -50,15 +64,15 @@ def _scheduler(load, clock: Clock, **kwargs) -> RefreshScheduler:
 # ---- the timetable -----------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(("at", "expected"), [
-    (datetime.datetime(2026, 10, 19, 8, 14, tzinfo=IST), False),
-    (datetime.datetime(2026, 10, 19, 8, 15, tzinfo=IST), True),
+    (datetime.datetime(2026, 10, 19, 8, 34, tzinfo=IST), False),
+    (datetime.datetime(2026, 10, 19, 8, 35, tzinfo=IST), True),
     (datetime.datetime(2026, 10, 19, 15, 45, tzinfo=IST), True),
     (datetime.datetime(2026, 10, 19, 15, 46, tzinfo=IST), False),
     (datetime.datetime(2026, 10, 24, 10, 0, tzinfo=IST), False),  # Saturday
     (datetime.datetime(2026, 10, 25, 10, 0, tzinfo=IST), False),  # Sunday
-    (datetime.datetime(2026, 10, 19, 3, 0, tzinfo=datetime.UTC), True),  # 08:30 IST, given in UTC
+    (datetime.datetime(2026, 10, 19, 3, 10, tzinfo=datetime.UTC), True),  # 08:40 IST, given in UTC
 ])
-def test_the_window_is_weekdays_0815_to_1545_ist(at, expected):
+def test_the_window_is_weekdays_0835_to_1545_ist(at, expected):
     assert catalogue_refresh.in_window(at) is expected
 
 
@@ -71,6 +85,7 @@ def test_the_refresh_is_off_unless_asked_and_on_by_default_with_live_market(env,
     assert catalogue_refresh.refresh_requested(env) is expected
 
 
+@fail_fast
 async def test_it_loads_at_start_up_on_any_day_then_only_inside_the_window_one_interval_apart():
     clock, calls = Clock(SATURDAY), []
 
@@ -82,9 +97,9 @@ async def test_it_loads_at_start_up_on_any_day_then_only_inside_the_window_one_i
     assert await sch.step() == LOADED and len(calls) == 1  # start-up: Saturday 03:00, still loads
     clock.at = SATURDAY + timedelta(hours=2)
     assert await sch.step() is None  # outside the window and a non-trading day
-    clock.at = MONDAY - timedelta(minutes=46)  # 08:14 Monday
+    clock.at = MONDAY - timedelta(minutes=26)  # 08:34 Monday
     assert await sch.step() is None
-    clock.at = MONDAY - timedelta(minutes=45)  # 08:15 Monday: in the window, > 60 min since the last start
+    clock.at = MONDAY - timedelta(minutes=25)  # 08:35 Monday: in the window, > 60 min since the last start
     assert await sch.step() == LOADED and len(calls) == TWO_RUNS
     clock.at += timedelta(minutes=59)
     assert await sch.step() is None
@@ -94,6 +109,7 @@ async def test_it_loads_at_start_up_on_any_day_then_only_inside_the_window_one_i
     assert await sch.step() is None
 
 
+@fail_fast
 async def test_two_runs_never_overlap():
     started, release, calls = asyncio.Event(), asyncio.Event(), []
 
@@ -111,6 +127,7 @@ async def test_two_runs_never_overlap():
     assert await first == LOADED
 
 
+@fail_fast
 async def test_a_failing_run_logs_its_code_only_and_retries_on_schedule(caplog):
     clock, calls = Clock(MONDAY), []
 
@@ -128,6 +145,7 @@ async def test_a_failing_run_logs_its_code_only_and_retries_on_schedule(caplog):
     assert await sch.step() == FAILED and len(calls) == TWO_RUNS  # on schedule
 
 
+@fail_fast
 async def test_a_refused_list_is_reported_as_refused():
     async def load() -> int:
         return 1
@@ -135,6 +153,7 @@ async def test_a_refused_list_is_reported_as_refused():
     assert await _scheduler(load, Clock(MONDAY)).attempt() == REFUSED
 
 
+@fail_fast
 async def test_a_hung_load_times_out_and_never_blocks_other_work():
     """Standing item (a): the higher-priority work (a stand-in for the live feed and a request) keeps running."""
     ticks = []
@@ -154,6 +173,7 @@ async def test_a_hung_load_times_out_and_never_blocks_other_work():
     assert await sch.attempt() == TIMED_OUT  # the lock was released: the next run is not stuck BUSY
 
 
+@fail_fast
 async def test_a_hung_download_carries_a_socket_timeout_so_its_thread_ends_and_the_run_times_out(monkeypatch):
     """The fetch passes a socket timeout to the door; a fetch past it ends with the timeout code, no thread is left."""
     import threading  # noqa: PLC0415 - local to this one test
@@ -183,6 +203,28 @@ async def test_a_hung_download_carries_a_socket_timeout_so_its_thread_ends_and_t
     assert await asyncio.to_thread(ended.wait, 5)
 
 
+@fail_fast
+async def test_the_parse_of_a_full_list_runs_off_the_event_loop(monkeypatch):
+    """Standing item (a), attack 2: a parse that takes 2 s (fake, blocking) leaves the loop free to serve a request."""
+    def slow_parse(_stream):
+        time.sleep(2)
+        raise ValueError("stop after the parse")
+
+    monkeypatch.setattr(catalogue_load, "parse_rows_naming_the_row", slow_parse)
+    ticks = []
+
+    async def request_served_meanwhile() -> None:
+        for _ in range(FIVE_TICKS):
+            ticks.append(time.monotonic())
+            await asyncio.sleep(0.01)
+
+    code, _ = await asyncio.gather(catalogue_load.run(None, "x", _settings("10"), io.StringIO()),
+                                   request_served_meanwhile())
+    assert code == 1  # the parse's refusal, nothing written
+    assert len(ticks) == FIVE_TICKS and ticks[-1] - ticks[0] < 1.0  # all served while the parse was still running
+
+
+@fail_fast
 async def test_shutdown_stops_the_task_and_the_run_in_flight():
     started, cancelled = asyncio.Event(), []
 
@@ -202,6 +244,7 @@ async def test_shutdown_stops_the_task_and_the_run_in_flight():
     await catalogue_refresh.stop(None)  # nothing started: nothing to stop
 
 
+@fail_fast
 async def test_the_lifespan_starts_the_task_only_when_asked_and_stops_it_on_shutdown(monkeypatch):
     events = []
 

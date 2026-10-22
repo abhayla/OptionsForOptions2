@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import ast
 import datetime
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -23,10 +22,6 @@ pytestmark = pytest.mark.repo_scan
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 #: The scoped trees, by path (relative to backend/).
 SCOPE_GLOBS = ("ofo/execution/**/*.py", "ofo/broker/**/*.py", "ofo_app/kite_*.py")
-#: Values that ARE an order type, a product or an exchange segment (exact string match).
-_TOKENS = frozenset({"LIMIT", "MARKET", "SL", "SL-M", "NRML", "MIS", "CNC", "MTF", "NFO", "BFO", "NSE", "BSE", "MCX",
-                     "CDS", "BCD"})
-_NUMERIC_NAME = re.compile(r"LIMIT|FREEZE|QTY|QUANT|LOT|PRICE|MAX_\w*(ORDER|BATCH|SLICE|TOKEN|QUOTE)")
 _ORDER_TYPES = frozenset({"LIMIT", "MARKET", "SL", "SL-M"})
 
 #: Every place in backend/ that writes an order type as a string literal: (path, literal) -> (count, reason). A new
@@ -89,8 +84,19 @@ def _strings(value: object) -> set[str]:
     return set()
 
 
+def _carries_a_literal(value: ast.expr) -> bool:
+    """True when the value's source holds a number or a string anywhere in it (a bare literal, a tuple/frozenset of
+    strings, an f-string, ``_BASE ** 3 - 1``, ``compute(900)``). The scan reads the SOURCE, so a value it cannot
+    evaluate still counts: it fails closed. A value with no literal in it (``object()``, ``tuple(SomeEnum)``) is built
+    at runtime, which is out of scope. True/False/None carry no limit and do not count."""
+    return any(isinstance(n, ast.Constant) and isinstance(n.value, (str, bytes, int, float, complex))
+               and not isinstance(n.value, bool) for n in ast.walk(value))
+
+
 def module_constants(root: Path) -> set[str]:
-    """``<module>:<NAME>`` of every module-level constant in the scoped trees that is shaped like a Zerodha rule."""
+    """``<module>:<NAME>`` of EVERY module-level UPPER_CASE constant in the scoped trees whose value carries a literal
+    number or string. Allow-list scope: there is no name or value pattern to miss (``MAX_TAG_LENGTH`` has no ``LIMIT``
+    in it); each hit must be in ``RULES`` or ``NOT_A_ZERODHA_RULE``."""
     hits = set()
     for path in scoped_files(root):
         for node in _parse(path).body:
@@ -100,20 +106,7 @@ def module_constants(root: Path) -> set[str]:
                 name, value = node.target.id, node.value
             else:
                 continue
-            if not name.lstrip("_").isupper():
-                continue
-            try:
-                literal = ast.literal_eval(value)
-            except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
-                if isinstance(value, ast.Call) and getattr(value.func, "id", "") == "frozenset" and value.args:
-                    try:
-                        literal = ast.literal_eval(value.args[0])
-                    except (ValueError, TypeError, SyntaxError):
-                        continue
-                else:
-                    continue
-            numeric = isinstance(literal, (int, float)) and not isinstance(literal, bool)
-            if (_strings(literal) & _TOKENS) or (numeric and _NUMERIC_NAME.search(name)):
+            if name.lstrip("_").isupper() and _carries_a_literal(value):
                 hits.add(f"{_module_name(root, path)}:{name}")
     return hits
 
@@ -167,7 +160,7 @@ def registry_problems(root: Path, rules=RULES, other=NOT_A_ZERODHA_RULE) -> list
         if not _defined(root, constant):
             problems.append(f"{constant}: names a constant that no longer exists (stale)")
     listed = {r.constant for r in rules} | set(other)
-    problems += [f"{c}: a Zerodha-rule-shaped constant that is not in the registry"
+    problems += [f"{c}: a module-level constant that is not in the registry"
                  for c in sorted(module_constants(root) - listed)]
     return problems
 
@@ -194,7 +187,10 @@ def test_the_real_tree_has_every_rule_cited_and_every_order_type_site_listed():
 
 def test_the_scan_is_not_empty_and_finds_the_known_constants():
     found = module_constants(BACKEND)
-    assert {"ofo.execution.sequence:DEFAULT_FREEZE_UNITS", "ofo_app.kite_ws:MAX_TOKENS_PER_CONNECTION"} <= found
+    assert {"ofo.execution.sequence:DEFAULT_FREEZE_UNITS", "ofo_app.kite_ws:MAX_TOKENS_PER_CONNECTION",
+            "ofo.execution.basket:MAX_TAG_LENGTH", "ofo.execution.basket:_LEGACY_TAG_MAX_LENGTH"} <= found
+    listed = {r.constant for r in RULES}
+    assert {"ofo.execution.basket:MAX_TAG_LENGTH", "ofo.execution.basket:_LEGACY_TAG_MAX_LENGTH"} <= listed
     assert order_type_sites(BACKEND)  # the order-type scan reads the whole of backend/
 
 
@@ -215,7 +211,7 @@ def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
 
 def test_a_rule_constant_planted_without_a_registry_entry_is_red(tmp_path):
     root = _tree(tmp_path, {"ofo/execution/planted.py": "SL_M_LIMIT_UNITS = 500\n"})
-    assert "ofo.execution.planted:SL_M_LIMIT_UNITS: a Zerodha-rule-shaped constant that is not in the registry" in \
+    assert "ofo.execution.planted:SL_M_LIMIT_UNITS: a module-level constant that is not in the registry" in \
         registry_problems(root, rules=(), other={})
     root = _tree(tmp_path, {"ofo_app/kite_planted.py": 'SEGMENT = "NFO"\n'})
     assert any("kite_planted:SEGMENT" in p for p in registry_problems(root, rules=(), other={}))
@@ -251,3 +247,30 @@ def test_a_scoped_file_that_cannot_be_parsed_fails_closed(tmp_path):
         order_type_sites(root)
     with pytest.raises(ScanError):
         module_constants(tmp_path / "empty")  # no scoped file at all
+
+
+def test_a_constant_with_no_rule_shaped_name_is_found_and_red_until_listed(tmp_path):
+    """Attack 3: ``MAX_FOO_LENGTH = 9`` (a name no pattern knew), a string and an annotated cap are all red."""
+    root = _tree(tmp_path, {"ofo/execution/planted.py": "MAX_FOO_LENGTH = 9\nTHE_SIDE = 'BUY'\n_HIDDEN_CAP: int = 3\n"})
+    problems = registry_problems(root, rules=(), other={})
+    for name in ("MAX_FOO_LENGTH", "THE_SIDE", "_HIDDEN_CAP"):
+        assert any(f"planted:{name}" in p for p in problems), problems
+    listed = {f"ofo.execution.planted:{n}": "a reason" for n in ("MAX_FOO_LENGTH", "THE_SIDE", "_HIDDEN_CAP")}
+    assert registry_problems(root, rules=(), other=listed) == []
+
+
+@pytest.mark.parametrize("source", [
+    "CAP = compute(900)\n",                      # a call the scan cannot evaluate
+    "CAP = _BASE ** 3 - 1\n",                    # arithmetic
+    "CAP = f'https://{HOST}/orders'\n",          # an f-string
+    "CAP = {'NIFTY': 1800}\n",                   # a dict
+    "CAP = frozenset({'LIMIT', *OTHERS})\n",     # a set with a star the scan cannot resolve
+])
+def test_a_value_the_scan_cannot_evaluate_fails_closed(tmp_path, source):
+    root = _tree(tmp_path, {"ofo/execution/planted.py": source})
+    assert module_constants(root) == {"ofo.execution.planted:CAP"}
+
+
+def test_a_value_built_at_runtime_with_no_literal_is_out_of_scope(tmp_path):
+    root = _tree(tmp_path, {"ofo/execution/planted.py": "A = object()\nB = tuple(SomeEnum)\nC = True\nD = None\n"})
+    assert module_constants(root) == set()
