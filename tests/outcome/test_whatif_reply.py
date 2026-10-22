@@ -8,14 +8,12 @@ import datetime
 from decimal import Decimal
 
 import pytest
-
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Instrument
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.whatif import WhatIfInput
+from ofo.scenario.whatif import WhatIfInput
 from ofo.table import UXLevel
-
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from outcome.test_same_engine import CONDOR, CURRENT, RATE, VALUATION, definition, formula_pnl
 
 
@@ -182,7 +180,7 @@ def test_req084_ac3_iv_offset_must_be_a_step_of_a_tenth():
     with pytest.raises(ValueError):
         WhatIfInput(iv_offset=Decimal("2.05"))
     with pytest.raises(ValueError):
-        WhatIfInput(target_time=datetime.datetime(2026, 10, 9))  # noqa: DTZ001 - naive on purpose
+        WhatIfInput(target_time=datetime.datetime(2026, 10, 9))
 
 
 def test_req083_ac4_bands_follow_the_target_date_when_one_is_set(replayed):
@@ -192,3 +190,27 @@ def test_req083_ac4_bands_follow_the_target_date_when_one_is_set(replayed):
     short = build(replayed, WhatIfInput(target_time=VALUATION + datetime.timedelta(days=2))).whatif.bands
     one_full, one_short = full[2].level - CURRENT, short[2].level - CURRENT
     assert one_short < one_full and abs(one_short * Decimal(5).sqrt() - one_full * Decimal(2).sqrt()) <= Decimal(4)
+
+
+def test_req084_ac1_a_target_level_outside_the_range_is_clamped_with_a_reason(replayed):
+    """REQ-084 AC-1: the server sends its limits (the level set's start, end and step); a level beyond them is clamped
+    to the nearest end and the screen is told."""
+    out = build(replayed)
+    w = build(replayed, WhatIfInput(target_level=out.level_set.end + 5000)).whatif
+    assert (w.level_min, w.level_max, w.level_step) == (out.level_set.start, out.level_set.end, out.level_set.step)
+    assert w.target_level == out.level_set.end
+    assert str(w.clamp_notes[0]) == "The target level was outside the range shown; the nearest end of the range is used."
+    assert build(replayed, WhatIfInput(target_level=out.level_set.start - 5000)).whatif.target_level == out.level_set.start
+
+
+def test_req083_ac3_a_leg_without_iv_gives_the_expiry_curve_only_with_the_reason(replayed):
+    """REQ-083 AC-3 / REQ-084 AC-7: one option leg has no quote, so no IV: no Estimated curve and no Greeks, the reason
+    is stated, and the exact At Expiry curve and the target-level At Expiry P&L are still there."""
+    def drop_quote(snap):
+        iid = CONDOR[0][0]
+        return dataclasses.replace(snap, legs={**snap.legs, iid: dataclasses.replace(snap.legs[iid], quote=None)})
+    out = build(replayed, snapshot_edit=drop_quote)
+    w = out.whatif
+    assert not w.estimated_available and w.estimated_points == () and w.greeks is None
+    assert "no implied volatility" in str(w.estimated_reason) and w.greeks_reason == w.estimated_reason
+    assert out.payoff_points and w.target_expiry_pnl == formula_pnl(w.target_level, replayed)

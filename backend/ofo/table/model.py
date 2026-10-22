@@ -83,7 +83,7 @@ CHARGES_ROW_ID = "CHARGES"  # W-075 round 3: between the legs and TOTAL, only wh
 
 # A futures leg's per-unit Greeks (implementation decision, spec silent): linear payoff, slope 1, no volatility
 # sensitivity. Signed by _position_greeks like every other leg (BUY +1, SELL -1, x quantity).
-_FUTURES_PER_UNIT_GREEKS = Greeks(delta=Decimal(1), gamma=Decimal(0), theta=Decimal(0), vega=Decimal(0))
+FUTURES_PER_UNIT_GREEKS = Greeks(delta=Decimal(1), gamma=Decimal(0), theta=Decimal(0), vega=Decimal(0))
 
 
 class CellKind(Enum):
@@ -240,12 +240,12 @@ def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
 def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | None, ExplanationText | None]:
     """The platform's UNROUNDED per-unit Black-Scholes Greeks for one leg (AC-6), or ``None`` with a reason.
 
-    A futures leg always has a value (:data:`_FUTURES_PER_UNIT_GREEKS`, never excluded from a total). An option
+    A futures leg always has a value (:data:`FUTURES_PER_UNIT_GREEKS`, never excluded from a total). An option
     leg with no IV has none. Round-3 fix: uses ``bs_greeks_unrounded`` — rounding happens once, at the position
     level, never here (see the module docstring's "no round-then-scale" note).
     """
     if leg.instrument is Instrument.FUT:
-        return _FUTURES_PER_UNIT_GREEKS, None
+        return FUTURES_PER_UNIT_GREEKS, None
     if leg.iv is None:
         return None, _r("no_iv")
     # W-060 round 3: the engine at the gated live spot with the leg's expiry yield q (ADR-061, ADR-063)

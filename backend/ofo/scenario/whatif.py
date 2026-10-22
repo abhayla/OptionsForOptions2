@@ -21,9 +21,10 @@ Answer states (run-discipline B4 (d)):
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
-from typing import Callable, Final, Sequence
+from typing import TYPE_CHECKING, Final
 
 from ofo.charges import ChargeRates
 from ofo.charges.round_trip import exercise_stt_at, round_trip_charges
@@ -34,19 +35,20 @@ from ofo.engine.model import ModelInputs, WhatIfRefused, estimate, expiry_model,
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.marketdata.forward import mid_price
 from ofo.money import PAISE
-from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.levels import ExpectedMove, LevelSet
 from ofo.scenario.spot import spot_reading
-from ofo.table.model import _FUTURES_PER_UNIT_GREEKS
+from ofo.table.model import FUTURES_PER_UNIT_GREEKS
 from ofo.timeutil import EXPIRY_CLOSE
 
-__all__ = ["WhatIfInput", "WhatIfResult", "WhatIfRefused", "build_whatif", "expiry_total_at"]
+if TYPE_CHECKING:  # the snapshot module imports nothing from here; a runtime import would cycle through ofo.outcome
+    from ofo.outcome.snapshot import MarketSnapshot
+
+__all__ = ["WhatIfInput", "WhatIfRefused", "WhatIfResult", "build_whatif", "expiry_total_at"]
 
 #: the rupee examples use this index move (REQ-084 AC-9: "if NIFTY rises 10 points")
 EXAMPLE_POINTS: Final = 10
 _GREEK_STEP: Final = Decimal("0.0001")
-_RUPEE_STEP: Final = Decimal("0.01")
 _IV_STEP: Final = Decimal("0.1")
 _BISECT_ROUNDS: Final = 60
 _HALF: Final = Decimal("0.5")
@@ -216,7 +218,7 @@ def _greeks_panel(model: ModelInputs, level: Decimal, when: datetime.datetime, o
     lot_sizes: set[int | None] = set()
     for leg, (iid, lot_size) in zip(model.legs, legs_meta, strict=True):
         lot_sizes.add(lot_size)
-        unit = (_FUTURES_PER_UNIT_GREEKS if leg.instrument is Instrument.FUT
+        unit = (FUTURES_PER_UNIT_GREEKS if leg.instrument is Instrument.FUT
                 else leg_greeks_at(model, leg, level, when, offset))
         pos = _signed(unit, leg.action, leg.quantity)
         totals = [t + p for t, p in zip(totals, pos, strict=True)]
@@ -229,7 +231,7 @@ def _greeks_panel(model: ModelInputs, level: Decimal, when: datetime.datetime, o
 
 
 def _rupees(value: Decimal) -> Decimal:
-    return value.quantize(_RUPEE_STEP, rounding=ROUND_HALF_EVEN)
+    return value.quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
 
 def _examples(index: str, raw: list[Decimal], total: Greeks) -> tuple[GreekExample, ...]:

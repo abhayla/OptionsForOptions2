@@ -919,6 +919,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "The target date was before now; the estimate is shown for now."),
     ExplanationTemplate("whatif_target_clamped_late", "values_seen",
                         "The target date was after the first expiry; the estimate is shown at that expiry's 15:30 IST close."),
+    ExplanationTemplate("whatif_level_clamped", "values_seen",
+                        "The target level was outside the range shown; the nearest end of the range is used."),
     ExplanationTemplate("whatif_curve_no_iv", "values_seen",
                         "The Estimated curve is not shown: an option leg has no implied volatility. The expiry curve is exact."),
     ExplanationTemplate("whatif_bands_unavailable", "values_seen",

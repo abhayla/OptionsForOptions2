@@ -118,6 +118,31 @@
         "title": "AdvancedLegOut",
         "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read)."
       },
+      "BandOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "-2SD",
+              "-1SD",
+              "1SD",
+              "2SD"
+            ],
+            "title": "Label"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "level"
+        ],
+        "title": "BandOut"
+      },
       "CellOut": {
         "properties": {
           "value": {
@@ -262,6 +287,122 @@
           "visible"
         ],
         "title": "ColumnOut"
+      },
+      "GreekExampleOut": {
+        "properties": {
+          "greek": {
+            "type": "string",
+            "enum": [
+              "delta",
+              "gamma",
+              "theta",
+              "vega"
+            ],
+            "title": "Greek"
+          },
+          "sentence": {
+            "title": "Sentence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "greek",
+          "sentence"
+        ],
+        "title": "GreekExampleOut"
+      },
+      "GreekRowOut": {
+        "properties": {
+          "instrument_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id"
+          },
+          "per_unit": {
+            "$ref": "#/components/schemas/GreeksOut"
+          },
+          "per_position": {
+            "$ref": "#/components/schemas/GreeksOut"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "per_unit",
+          "per_position"
+        ],
+        "title": "GreekRowOut"
+      },
+      "GreeksOut": {
+        "properties": {
+          "delta": {
+            "type": "string",
+            "title": "Delta"
+          },
+          "gamma": {
+            "type": "string",
+            "title": "Gamma"
+          },
+          "theta": {
+            "type": "string",
+            "title": "Theta"
+          },
+          "vega": {
+            "type": "string",
+            "title": "Vega"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
+        ],
+        "title": "GreeksOut"
+      },
+      "GreeksPanelOut": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GreekRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_per_position": {
+            "$ref": "#/components/schemas/GreeksOut"
+          },
+          "total_per_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/GreekExampleOut"
+            },
+            "type": "array",
+            "title": "Examples"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rows",
+          "total_per_position",
+          "total_per_unit",
+          "examples"
+        ],
+        "title": "GreeksPanelOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -587,6 +728,102 @@
         "title": "MarginOut",
         "description": "ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."
       },
+      "OiOut": {
+        "properties": {
+          "expiry": {
+            "type": "string",
+            "format": "date",
+            "title": "Expiry"
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Read At"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "strikes": {
+            "items": {
+              "$ref": "#/components/schemas/OiStrikeOut"
+            },
+            "type": "array",
+            "title": "Strikes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expiry",
+          "read_at",
+          "stale",
+          "strikes"
+        ],
+        "title": "OiOut"
+      },
+      "OiStrikeOut": {
+        "properties": {
+          "strike": {
+            "type": "string",
+            "title": "Strike"
+          },
+          "call_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi"
+          },
+          "put_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi"
+          },
+          "call_oi_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi Change"
+          },
+          "put_oi_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi Change"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strike",
+          "call_oi",
+          "put_oi",
+          "call_oi_change",
+          "put_oi_change"
+        ],
+        "title": "OiStrikeOut"
+      },
       "OutcomeRequest": {
         "properties": {
           "underlying": {
@@ -655,6 +892,45 @@
             "description": "the last scenario level in index points; sent with range_start",
             "examples": [
               "23600"
+            ]
+          },
+          "target_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[1-9]\\d{0,5}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Level",
+            "description": "the what-if index level in points (clamped to the range shown)",
+            "examples": [
+              "23000"
+            ]
+          },
+          "target_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Time",
+            "description": "the what-if date and time (clamped between now and the first expiry close, 15:30 IST)"
+          },
+          "iv_offset": {
+            "type": "string",
+            "pattern": "^-?\\d{1,2}\\.\\d$",
+            "title": "Iv Offset",
+            "description": "volatility points added to every option leg's own IV, steps of 0.1",
+            "default": "0.0",
+            "examples": [
+              "2.0"
             ]
           },
           "fallback": {
@@ -811,6 +1087,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "whatif": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WhatIfOut"
               },
               {
                 "type": "null"
@@ -1235,6 +1521,177 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WhatIfOut": {
+        "properties": {
+          "estimate_label": {
+            "title": "Estimate Label"
+          },
+          "level_min": {
+            "type": "string",
+            "title": "Level Min"
+          },
+          "level_max": {
+            "type": "string",
+            "title": "Level Max"
+          },
+          "level_step": {
+            "type": "string",
+            "title": "Level Step"
+          },
+          "time_min": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time Min"
+          },
+          "time_max": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time Max"
+          },
+          "target_level": {
+            "type": "string",
+            "title": "Target Level"
+          },
+          "target_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Target Time"
+          },
+          "iv_offset": {
+            "type": "string",
+            "title": "Iv Offset"
+          },
+          "clamp_notes": {
+            "items": {},
+            "type": "array",
+            "title": "Clamp Notes"
+          },
+          "target_expiry_pnl": {
+            "type": "string",
+            "title": "Target Expiry Pnl"
+          },
+          "estimated_available": {
+            "type": "boolean",
+            "title": "Estimated Available"
+          },
+          "estimated_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Reason"
+          },
+          "estimated_points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "type": "array",
+            "title": "Estimated Points"
+          },
+          "target_estimated_pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Estimated Pnl"
+          },
+          "estimated_breakevens": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Estimated Breakevens"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksPanelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason"
+          },
+          "bands": {
+            "items": {
+              "$ref": "#/components/schemas/BandOut"
+            },
+            "type": "array",
+            "title": "Bands"
+          },
+          "bands_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bands Reason"
+          },
+          "oi": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OiOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oi_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "estimate_label",
+          "level_min",
+          "level_max",
+          "level_step",
+          "time_min",
+          "time_max",
+          "target_level",
+          "target_time",
+          "iv_offset",
+          "clamp_notes",
+          "target_expiry_pnl",
+          "estimated_available",
+          "estimated_reason",
+          "estimated_points",
+          "target_estimated_pnl",
+          "estimated_breakevens",
+          "greeks",
+          "greeks_reason",
+          "bands",
+          "bands_reason",
+          "oi",
+          "oi_reason"
+        ],
+        "title": "WhatIfOut",
+        "description": "W-127 (REQ-083, REQ-084): the Estimated curve and every what-if figure, from the ONE engine reply."
       }
     }
   }

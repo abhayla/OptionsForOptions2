@@ -7,15 +7,15 @@ entry 190.00), 75 units each, rate 6.5 %, q = 0 (spot-fallback forward). Target 
 """
 import datetime
 import math
-from decimal import ROUND_HALF_EVEN, Decimal as D
+from decimal import ROUND_HALF_EVEN
+from decimal import Decimal as D
 
 import pytest
-from scenario_fixtures import NIFTY_EXPIRY, VALUATION, nifty_input, nifty_leg
-
 from ofo.engine.black_scholes import IST
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.model import WhatIfRefused, estimate
 from ofo.scenario.levels import ExpectedMove
+from scenario_fixtures import NIFTY_EXPIRY, VALUATION, nifty_input, nifty_leg
 
 RATE = 0.065
 TARGET = datetime.datetime(2026, 10, 25, 15, 30, tzinfo=IST)

@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 
 from ofo.outcome.service import Outcome, OutcomeLeg
-from ofo.outcome.whatif import GreeksPanel, WhatIfResult
+from ofo.scenario.whatif import GreeksPanel, WhatIfResult
 from ofo.table import Cell, ColumnSpec, Table
 
 

@@ -42,7 +42,7 @@ from ofo.marketdata.forward import ForwardUnavailable, mid_price
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
-from ofo.outcome.whatif import WhatIfInput, WhatIfResult, build_whatif, expiry_total_at
+from ofo.scenario.whatif import WhatIfInput, WhatIfResult, build_whatif, expiry_total_at
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set

@@ -1474,5 +1474,9 @@
   "explanation:greeks_example_vega": {
     "sha256": "89c366687820b842e55fb70c7617ca848222703865d28a19be91ac4dab0255ad",
     "reviewed": "pending owner read"
+  },
+  "explanation:whatif_level_clamped": {
+    "sha256": "444d222212721bdb1d45cfa96cf894a81bfdd88e878abee86557cb68baa8e525",
+    "reviewed": "pending owner read"
   }
 }

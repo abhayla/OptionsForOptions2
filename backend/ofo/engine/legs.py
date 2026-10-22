@@ -91,7 +91,7 @@ class Leg:
         return self.instrument is not Instrument.FUT
 
 
-def _long_value_at(leg: Leg, market: Decimal) -> Decimal:
+def long_value_at(leg: Leg, market: Decimal) -> Decimal:
     """Value per unit of the long side at ``market``: option intrinsic value, or the level for futures."""
     if leg.instrument is Instrument.CE:
         return max(market - leg.strike, Decimal(0))
@@ -113,7 +113,7 @@ def position_pnl(leg: Leg, value: Decimal) -> Decimal:
 def expiry_pnl(leg: Leg, market: Decimal) -> Decimal:
     """Expiry scenario P&L of one leg at underlying level ``market`` (§1). Uses entry price, never LTP."""
     require_decimal(market, "market")
-    return position_pnl(leg, _long_value_at(leg, market))
+    return position_pnl(leg, long_value_at(leg, market))
 
 
 def live_pnl(leg: Leg) -> Decimal:
