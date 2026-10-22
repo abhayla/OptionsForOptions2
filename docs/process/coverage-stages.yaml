@@ -298,6 +298,7 @@ decisions:
   ADR-163: S6.1        # whole-strategy Execute only (owner 2026-10-21)
   ADR-164: S6.2        # max profit and loss as a percentage of funds (owner 2026-10-21)
   ADR-165: all         # builder-first scope, no order placing in this scope (owner 2026-10-21)
+  ADR-166: S6.1        # "Start tracking" is the label of REQ-109's action (owner 2026-10-21)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -394,6 +395,11 @@ issues:
   "#485": 4b  # #380-2 re-review MINORs: Execute stores-nothing unpinned, weaker equity test, clock read outside handler
   "#486": 4b  # #313 round-1 MINORs: unkilled adopt guards, DB-only killers, cross-user adoption reference, no concurrent-adoption test
   "#488": 4b  # TRIM-STRUCT parked: structural list guard built (e7cee4b) but the daily reload never gets NSE's file
+  "#495": S6.1  # Order-path scan misses routes that reach order code through a helper module (W-121 MINOR-1)
+  "#497": S6.1  # Shared ofo_test catalogue left by earlier runs makes local DB tests fail (420 of 424 NIFTY contracts)
+  "#499": S6.1  # History scan ignores prose text in templates (follow-up to #409)
+  "#500": S6.1  # Stored contract priced by a reused exchange token: _with_tokens and execute _IDS
+  "#502": S6.1  # Create Strategy: a templates failure before the view pick is wiped; none-listed beside the error
 
 # Work items whose status is not done.
 work_items:
