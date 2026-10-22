@@ -40,10 +40,11 @@ from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
+from ofo_app import tracked_contracts
+from ofo_app.tracked_contracts import ContractState
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -97,8 +98,11 @@ class StrategyUpdateIn(StrategyIn):
 class LegOut(ApiModel):
     contract_id: int
     action: Literal["BUY", "SELL"]
-    exchange_segment: Identifier  # of the leg's stored contract: with the token, the id the outcome API prices by
-    exchange_token: int
+    # Issue #500: the catalogue's answer for the leg's stored contract. Segment and token (the id the outcome API prices
+    # by) are set ONLY when it is live; otherwise both are None and contract_state says why (tracked_contracts).
+    contract_state: ContractState
+    exchange_segment: Optional[Identifier]  # noqa: UP045 - None when contract_state is not live
+    exchange_token: Optional[int]  # noqa: UP045 - None when contract_state is not live
     instrument: Identifier
     strike: Optional[Identifier]
     expiry: Identifier
@@ -218,20 +222,21 @@ def _definition_out(saved: sf.SavedDefinition) -> dict:
     return doc
 
 
-_TOKENS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
-               "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
-
-
 async def _with_tokens(db: Any, *docs: dict) -> None:
-    """Adds each leg's exchange segment and token (read from its stored catalogue contract) to the documents in place.
-    The stored form keeps only the contract id (ADR-057); a leg whose contract is gone cannot reach here (the load
-    already refused it as 409)."""
+    """Adds each leg's catalogue answer to the documents in place (issue #500): ``contract_state`` and, ONLY when that
+    is live, the exchange segment and token the outcome API prices it by. The stored form keeps only the contract id
+    (ADR-057), and a retired or delisted contract's token may now belong to a new contract (ADR-059), so the key comes
+    from ofo_app.tracked_contracts.resolve, the one door; a leg that is not live (retired, delisted, token reassigned,
+    missing) gets None for both, so no outcome request can carry another contract's key (fail closed)."""
     ids = sorted({leg["contract_id"] for doc in docs for leg in doc["legs"]})
-    found = {int(r.id): (r.exchange_segment, int(r.exchange_token))
-             for r in (await db.execute(_TOKENS, {"ids": ids})).all()} if ids else {}
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     for doc in docs:
         for leg in doc["legs"]:
-            leg["exchange_segment"], leg["exchange_token"] = found[leg["contract_id"]]
+            answer = found[leg["contract_id"]]
+            feed_id = answer.feed_id
+            leg["contract_state"] = answer.state
+            leg["exchange_segment"] = None if feed_id is None else feed_id.exchange_segment
+            leg["exchange_token"] = None if feed_id is None else feed_id.exchange_token
 
 
 async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:

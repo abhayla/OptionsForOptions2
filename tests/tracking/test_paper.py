@@ -48,6 +48,17 @@ def _snapshot(provider, at):
     return read_snapshot(provider, "NIFTY", IDS, at, RATE)
 
 
+ALL_LIVE = (None, None, None, None)  # contract_reasons: every leg's stored contract live (required since issue #500)
+
+
+def test_contract_reasons_is_a_required_argument():
+    """Issue #500 (verifier minor 1): no default, so a caller cannot price legs without the catalogue's answer."""
+    import inspect  # noqa: PLC0415
+
+    param = inspect.signature(paper.tracking_view).parameters["contract_reasons"]
+    assert param.default is inspect.Parameter.empty
+
+
 def _legs():
     return [paper.TrackedLeg(i, a, k, D(s), EXPIRY, 65, D("0"), datetime.datetime(2026, 10, 8, tzinfo=datetime.UTC))
             for i, a, k, s in CONDOR]
@@ -67,14 +78,14 @@ def test_ac1_ac2_core_proof_entry_paper_pnl_and_one_detection_on_the_replay(repl
     assert all(e.price_at is not None for e in entry)
     for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
         provider.on_frame(_frame(provider, iid, rupees), last)
-    view = paper.tracking_view(_snapshot(provider, last), entry, D("0.6"))
+    view = paper.tracking_view(_snapshot(provider, last), entry, D("0.6"), ALL_LIVE)
     assert view.paused is False and view.paper_pnl == D("195.00")
     assert view.breakevens == (D("22326.85"), D("22873.15"))
     assert view.index.price == D("22533.25")
     assert [(x.condition, x.level, x.index_level, x.distance_points, x.distance_percent, x.threshold_percent)
             for x in view.detections] == [("near_short_strike", D("22400"), D("22533.25"), D("133.25"), D("0.59"),
                                            D("0.6"))]
-    assert paper.tracking_view(_snapshot(provider, last), entry, D("0.5")).detections == ()
+    assert paper.tracking_view(_snapshot(provider, last), entry, D("0.5"), ALL_LIVE).detections == ()
 
 
 def _with_quote(snapshot, iid, **change):
@@ -95,7 +106,7 @@ def test_ac5_a_stale_or_missing_leg_refuses_the_entry_and_pauses_the_view(replay
         paper.capture_entry(snap, _legs())
     assert [(p.instrument_id, p.state) for p in refused.value.prices] == [(IDS[0], state)]
     entry = paper.capture_entry(_snapshot(provider, last), _legs())
-    view = paper.tracking_view(snap, entry, D("0.5"))
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
     assert view.paused is True and view.paper_pnl is None
     assert view.as_of == snap.legs[IDS[0]].quote.timestamp
 
@@ -117,9 +128,9 @@ def test_ac2_a_stale_or_missing_index_computes_no_detection(replayed, spot_chang
     snap = _snapshot(provider, last)
     entry = paper.capture_entry(snap, _legs())
     bad = dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, **spot_change))
-    view = paper.tracking_view(bad, entry, D("100"))
+    view = paper.tracking_view(bad, entry, D("100"), ALL_LIVE)
     assert view.detections == () and view.index.state != "live"
-    assert paper.tracking_view(snap, entry, D("100")).detections != ()  # the same inputs fire with a live index
+    assert paper.tracking_view(snap, entry, D("100"), ALL_LIVE).detections != ()  # the same inputs fire with a live index
 
 
 def test_ac2_a_multi_expiry_strategy_has_no_breakeven_condition_but_keeps_paper_pnl():

@@ -17,7 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
       const id = Number(detail[1])
       detailGets.push(id)
       if (failDetailFor.has(id)) return Promise.reject({ parts: { what_happened: `Server says draft ${id} failed`, impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
-      return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, exchange_segment: 'NSE_FO', exchange_token: 1000 + id,
+      return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1000 + id,
         action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' }] } } })
     }
     const cat = /^\/catalogue\/NIFTY\/contracts/.exec(url)

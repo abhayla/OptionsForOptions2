@@ -10,11 +10,13 @@
   },
   "fix": "W-122 round 3 (21642978): one helper backend/ofo_app/tracked_contracts.py resolve() is the only path from a stored contract id to a feed key in the tracking code; it returns a key only when the row is live AND live_contract_id(token) is the same id; every other case is a named state (contract_retired, contract_delisted, token_reassigned, contract_missing) and the view answers PAUSED with pause_reason; Start tracking refuses them. Mutation: identity check removed -> LIVE != PAUSED.",
   "detection": {
-    "status": "unguarded",
+    "status": "guarded",
     "checks": [
-      "tests_app/test_strategy_tracking_imports.py (repo_scan): tracking code reaches feed keys only through tracked_contracts.resolve"
+      "tests_app/test_strategy_tracking_imports.py (repo_scan): tracking code reaches feed keys only through tracked_contracts.resolve",
+      "tests_app/test_strategy_tracking_imports.py::test_app_wide_a_stored_contract_reaches_a_feed_key_only_through_resolve (repo_scan, issue #500): every module of backend/ofo_app that imports the catalogue store's id -> identity reads (load_contract, live_contract_id, the whole store, by import source), imports relatively or dynamically, or names the catalogue table in a string must be in a reviewed list with a reason; strategies, execute and tracking never are; stale exemptions fail",
+      "tests_app/test_stored_contract_feed_keys.py: GET /strategies/{id} and its history give a not-live leg no key and its contract_state; Execute refuses it (gate_contract_not_live)"
     ],
-    "note": "Guards the tracking code only. Same shape found but not fixed (deferred #500): routes/strategies.py:221-231 _with_tokens (keys handed to the browser for outcome requests) and routes/execute.py:98/:352 _IDS (order path, switched off by W-121). outcome.py:119 is safe (key -> live holder)."
+    "note": "Issue #500 sweep of backend/ofo_app (stored id -> feed key): routes/strategies.py _with_tokens FIXED (resolve; leg carries contract_state, segment/token None unless live; the Builder shows the reason and buildDraft sends no outcome request); routes/execute.py _wanted FIXED (resolve; not live -> 409 gate_contract_not_live, missing -> strategy_contract_not_in_catalogue); routes/tracking.py already via resolve. Safe, reviewed: routes/outcome.py (key -> LIVE holder -> row), execution_plan_store.py:167 (key -> broker symbol with live flag), catalogue_picker.py (live rows only), history_finalize/replay_mode/kite_history (keys from a parsed instrument list, not stored ids), strategy_store.py (save-time validation, returns no key), execute_replay/seed_test_catalogue (test seeding). Not covered: a module that reads a stored contract's token through some other table copy (none exists today) or through a helper outside backend/ofo_app."
   },
   "spec_ref": [
     "spec/requirements/REQ-109.md"
