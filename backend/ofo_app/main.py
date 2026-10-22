@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from ofo.broker import egress as _egress
 
-from ofo_app import errors, event_loop, execute_replay_switch, live_market, pinned_clock, replay_mode
+from ofo_app import errors, event_loop, execute_replay_switch, held_switches, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
@@ -87,6 +87,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
         Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
+    held_switches.require_valid_configuration()  # W-125: a held feature on without a reference refuses to start
     live.set_replay_feed(None)
     if pinned_clock.pin_requested():  # #237 test-only; refused outside APP_ENV=test, before anything is served
         pinned_clock.require_test_env(app_env() or "")

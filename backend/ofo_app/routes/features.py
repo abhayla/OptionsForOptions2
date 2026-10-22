@@ -12,6 +12,7 @@ from fastapi import APIRouter
 
 from ofo_app.api_models import ApiModel
 from ofo_app.errors import ClosedRoute
+from ofo_app.held_switches import features_on
 from ofo_app.order_path_switch import order_path_on
 
 router = APIRouter(route_class=ClosedRoute)
@@ -19,8 +20,13 @@ router = APIRouter(route_class=ClosedRoute)
 
 class FeaturesOut(ApiModel):
     order_path: Literal["on", "off"]
+    #: W-125: the held features that are ON (ofo_app.held_switches); an off feature is simply not listed, so the
+    #: browser shows nothing for it (absent, not greyed).
+    held: list[Literal["platform_strikes", "probability_of_profit", "delayed_prices", "history_charts",
+                       "events_calendar", "fii_dii", "market_event_warning", "strategy_price_history"]]
 
 
 @router.get("/features", response_model=FeaturesOut)
 async def features() -> FeaturesOut:
-    return FeaturesOut(order_path="on" if order_path_on() else "off")
+    return FeaturesOut(order_path="on" if order_path_on() else "off",
+                       held=list(features_on()))  # type: ignore[arg-type]  # names come from the closed list
