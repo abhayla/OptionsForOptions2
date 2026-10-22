@@ -13,6 +13,9 @@ Also (guard-set checks, exit 1): (a) some line must name all three literals `tes
 each exist as knowledge/findings/<id>.json;
 (c) any brief (any tier) whose first 10 lines mention a guard/door/gate/scan needs a line starting `Threat model:`
 (outside a code fence) that contains both `in scope` and `out of scope`.
+(d) a BUILDER brief (it has a `Standing items:` line; verifier and measure briefs do not) needs `Attack list:` followed
+by a numbered item (`1.`), and a `Budget:` line whose minutes/calls are a size pair from docs/process/row-review.md R3
+(30/40 S, 60/80 M or each part of an L, or a fix/re-check pair of at most half: 15/20, 20/30, 30/40).
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
@@ -161,6 +164,11 @@ GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
 THREAT_RE = re.compile(r"^\W*Threat model:(.*)$", re.I)
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
+STANDING_RE = re.compile(r"^\W*Standing items:", re.I | re.M)
+ATTACK_RE = re.compile(r"^\W*Attack list:(.*)$", re.I)
+NUMBERED_RE = re.compile(r"^\W*\d+\.\s+\S")
+BUDGET_RE = re.compile(r"^\W*Budget:\s*(\d+)\s*min\b[^,\n]*,\s*(\d+)\s*tool calls", re.I | re.M)
+SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review R3: S, M / each part of an L, fix and re-check
 
 
 def _threat_model_lines(lines: list[str]) -> list[str]:
@@ -175,6 +183,34 @@ def _threat_model_lines(lines: list[str]) -> list[str]:
         elif fence is None and THREAT_RE.match(line):
             out.append(line)
     return out
+
+
+def _has_attack_list(lines: list[str]) -> bool:
+    """`Attack list:` whose own line remainder, or whose next non-blank line, starts a numbered item."""
+    for i, line in enumerate(lines):
+        m = ATTACK_RE.match(line)
+        if not m:
+            continue
+        if NUMBERED_RE.match(m.group(1)):
+            return True
+        nxt = next((x for x in lines[i + 1:] if x.strip()), "")
+        if NUMBERED_RE.match(nxt):
+            return True
+    return False
+
+
+def check_builder_brief(brief: str) -> list[str]:
+    """Row-review R1 and R3 for a builder brief (one with a `Standing items:` line); other briefs are unaffected."""
+    if not STANDING_RE.search(brief):
+        return []
+    misses: list[str] = []
+    if not _has_attack_list(brief.splitlines()):
+        misses.append("MISSING Attack list: `Attack list:` followed by a numbered item (`1.`) (row-review R1)")
+    pairs = [(int(a), int(b)) for a, b in BUDGET_RE.findall(brief)]
+    if not pairs or any(p not in SIZE_PAIRS for p in pairs):
+        misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "
+                      "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review R3)")
+    return misses
 
 
 def check_guard_set(brief: str, root: Path) -> list[str]:
@@ -211,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     text = path.read_text(encoding="utf-8")
     results = check_text(text, Path(args.root))
-    misses = check_guard_set(text, Path(args.root))
+    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text)
     out = []
     for r in results:
         short = r.quote if len(r.quote) <= 80 else r.quote[:77] + "..."

@@ -3,6 +3,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
 _spec = importlib.util.spec_from_file_location("check_brief", ROOT / "scripts" / "orchestrator" / "check_brief.py")
@@ -243,3 +245,58 @@ def test_threat_model_bullet_and_lowercase_forms_pass(tmp_path):
     assert run(tmp_path, base + "- " + THREAT_LINE) == 0
     assert run(tmp_path, base + THREAT_LINE.replace("Threat model", "threat model")) == 0
     assert run(tmp_path, base + "- Threat model: in scope only.\n") == 1
+
+
+# ---- row-review R1 (attack list) and R3 (size budget): builder briefs only
+STANDING = "Standing items: (a) n/a: x (b) n/a: y (c) n/a: z (d) n/a: w\n"
+GOOD_BUDGET = "Budget: 60 min wall-clock, 80 tool calls\n"
+
+
+def _builder(attack: str, budget: str) -> str:
+    return "# Row 99\n" + STANDING + attack + budget
+
+
+def _out(tmp_path, text, capsys):
+    code = run(tmp_path, text)
+    return code, capsys.readouterr().out
+
+
+def test_builder_brief_needs_a_numbered_attack_list(tmp_path, capsys):
+    """R1: no `Attack list:`, or one with no numbered item, is refused; a numbered one passes."""
+    code, out = _out(tmp_path, _builder("", GOOD_BUDGET), capsys)
+    assert code == 1 and "MISSING Attack list" in out
+    code, out = _out(tmp_path, _builder("Attack list: none yet\nsome prose\n", GOOD_BUDGET), capsys)
+    assert code == 1 and "MISSING Attack list" in out
+    assert run(tmp_path, _builder("Attack list:\n\n1. a heartbeat is not a price\n", GOOD_BUDGET)) == 0
+    assert run(tmp_path, _builder("Attack list: 1. a; 2. b\n", GOOD_BUDGET)) == 0
+    assert run(tmp_path, _builder("Attack list: (run each)\n1. a\n", GOOD_BUDGET)) == 0
+
+
+@pytest.mark.parametrize("budget", ["Budget: 45 min wall-clock, 60 tool calls\n",
+                                    "Budget: 60 min wall-clock, 60 tool calls\n",
+                                    "Budget: 30 min wall-clock, 80 tool calls\n",
+                                    "Budget: 90 min wall-clock, 80 tool calls\n",
+                                    "no budget line\n"])
+def test_builder_brief_budget_must_be_a_size_pair(tmp_path, capsys, budget):
+    """R3: only 30/40, 60/80 and the fix pairs 15/20, 20/30 pass; anything else, or no line, is refused."""
+    code, out = _out(tmp_path, _builder("Attack list:\n1. a\n", budget), capsys)
+    assert code == 1 and "MISSING size budget" in out
+
+
+@pytest.mark.parametrize("budget", ["30 min wall-clock, 40 tool calls", "60 min wall-clock, 80 tool calls",
+                                    "15 min wall-clock, 20 tool calls", "20 min wall-clock, 30 tool calls"])
+def test_builder_brief_size_pairs_pass(tmp_path, budget):
+    assert run(tmp_path, _builder("Attack list:\n1. a\n", f"Budget: {budget}\n")) == 0
+
+
+def test_non_builder_brief_is_unaffected(tmp_path):
+    """A verifier or measure brief (no `Standing items:`) needs neither an attack list nor a size pair."""
+    assert run(tmp_path, "# Verify row 99\nBudget: 45 min wall-clock, 70 tool calls\n") == 0
+
+
+def test_real_row_3_brief_passes_and_row_1_predates_the_rule(capsys):
+    d = ROOT / "docs" / "process" / "builder-sequence-briefs"
+    assert check_brief.main([str(d / "row-03-REQ-054-broker-reader.md"), "--root", str(ROOT)]) == 0
+    capsys.readouterr()
+    assert check_brief.main([str(d / "row-01-REQ-001-underlyings.md"), "--root", str(ROOT)]) == 1
+    assert "MISSING Attack list" in capsys.readouterr().out
