@@ -1,0 +1,29 @@
+{
+  "id": "stored-contract-priced-by-reused-token",
+  "scope": "generic",
+  "class": "Any code that turns a STORED contract id into a live price through its exchange feed key (segment:token) without checking that the contract is still live and still holds that token prices the wrong instrument once the exchange reuses the token for a new contract after expiry or delisting.",
+  "mechanism": "public.catalogue_contracts keeps (exchange_segment, exchange_token) unique among LIVE contracts only (catalogue_store.py); a retired or delisted row keeps its old token, and a later live contract may hold the same token. A reader that does load_contract(id) -> f\"{segment}:{token}\" -> live quote gets the new contract's price.",
+  "first_seen": {
+    "date": "2026-10-21",
+    "where": "W-122 Start tracking view (backend/ofo_app/routes/tracking.py:181-185 _entry_legs, head 0bd5f562), Tier A round-2 verifier on the shared ofo_test database",
+    "evidence": "tracking started on a NIFTY iron condor; leg 0's contract (22800 CE, expiry 10-13) delisted; a new live contract (26000 CE, expiry 11-24) inserted on the same token NSE_FO:44624; GET tracking view -> 200 LIVE paper_pnl 195.00 with leg 0 current_price 45.15, the NEW contract's quote. A retired leg also answered 200 LIVE."
+  },
+  "fix": "W-122 round 3 (21642978): one helper backend/ofo_app/tracked_contracts.py resolve() is the only path from a stored contract id to a feed key in the tracking code; it returns a key only when the row is live AND live_contract_id(token) is the same id; every other case is a named state (contract_retired, contract_delisted, token_reassigned, contract_missing) and the view answers PAUSED with pause_reason; Start tracking refuses them. Mutation: identity check removed -> LIVE != PAUSED.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [
+      "tests_app/test_strategy_tracking_imports.py (repo_scan): tracking code reaches feed keys only through tracked_contracts.resolve"
+    ],
+    "note": "Guards the tracking code only. Same shape found but not fixed (deferred #500): routes/strategies.py:221-231 _with_tokens (keys handed to the browser for outcome requests) and routes/execute.py:98/:352 _IDS (order path, switched off by W-121). outcome.py:119 is safe (key -> live holder)."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-109.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-21",
+      "where": "W-122 tracking view, round-2 verifier",
+      "evidence": "200 LIVE 195.00 with leg 0 priced 45.15 from the new 26000 CE on reused token NSE_FO:44624"
+    }
+  ]
+}

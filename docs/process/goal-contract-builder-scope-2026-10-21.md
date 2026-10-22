@@ -37,6 +37,12 @@ contract or parked by Step 1.
 - **Every brief:** `docs/process/builder-brief.md` + the item part: the REQ/AC text quoted (`check_brief.py` passes),
   `Copy from:` rows, the Sensibull study screens it follows (`D:\Abhay\Ventures\competitors\sensibull\2026-10-21\
   INDEX.md` screen numbers; screenshots never enter this repo), `Budget:`, `Report: evidence-table`.
+- **Sensibull first, no reinvented wheel (owner 2026-10-22):** any question, gap or confusion about what a screen or
+  feature should do is answered from the Sensibull study first (cite the screen number; build to it unless an ADR-152
+  exception applies; say so when the study has no such screen); broker and market-data work also reads the
+  multi-broker architecture INDEX. Before dispatch every brief passes `check_brief.py` AND
+  `scripts/orchestrator/copy_from_check.py . <brief>` (every legacy-reuse map row naming the brief's requirements is in
+  the brief; COPY/ADAPT rows are used or the report says why not).
 - **Tests and CI:** changed files' tests while building; full suites once per PR in CI; red CI = read the failed log,
   fix, push once.
 - **Review:** one review per PR; Tier A (fresh Opus) only for money maths, the live feed and detection numbers;

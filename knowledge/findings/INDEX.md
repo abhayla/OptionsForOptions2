@@ -2,7 +2,7 @@
 
 # Findings index
 
-87 finding(s), generated from `knowledge/findings/*.json`.
+88 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -83,6 +83,7 @@
 | state-with-no-working-exit | Any non-terminal state of a lifecycle (strategy, order, proposal) from which every action the system offers is refused leaves the user stuck with no path forward except acting outside the platform; the explanation shown for that state then points at actions that do not work. A transition table checked only pair-by-pair (is each allowed move allowed?) cannot see this: it needs a reachability check that every reachable non-terminal state has at least one action that succeeds. | unguarded | occurrences, scope, spec_ref |
 | store-filled-only-by-tests | A store whose only writers are test fixtures: the write path (guards, revisions, history) is built and verified, and readers are built and verified against fixture rows, but no runnable job or command ever fills the store in a real environment, so every feature reading it is empty outside tests while each piece reports done. Wider shape: a consumer verified before its producer exists looks finished until the first real run. | unguarded | occurrences, scope, spec_ref |
 | store-rule-enforced-per-call-site | A rule about what a store may hold (which source may sit where, which rank wins, which day is frozen) written separately in each write method or caller instead of in one private writer every write passes through; each fix closes the method a test happened to probe, and any other or future write method (or a second store implementation behind the same interface) bypasses it. | unguarded | occurrences, scope, spec_ref |
+| stored-contract-priced-by-reused-token | Any code that turns a STORED contract id into a live price through its exchange feed key (segment:token) without checking that the contract is still live and still holds that token prices the wrong instrument once the exchange reuses the token for a new contract after expiry or delisting. | unguarded | occurrences, scope, spec_ref |
 | sync-check-strict-both-ways | A check that keeps a hand-written list in sync with an external system and fails in BOTH directions (item missing from the list, list naming an item the system no longer has) breaks every open change the moment any change closes an item, until someone edits the list; the break lands on unrelated work. | guarded | occurrences, scope, spec_ref |
 | targeted-tests-miss-dependent-files | When local runs are limited to the test files a change is 'about' (to save a shared host's CPU), a test in another file that pins the changed behaviour - a status code, a redirect, a message code, a route shape - is skipped, so the change looks green locally and the first full run in CI fails; the selection must be driven by a search for every changed route, code and message across both test trees, not by file names. | guarded | occurrences, scope, spec_ref |
 | test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, scope, spec_ref |
