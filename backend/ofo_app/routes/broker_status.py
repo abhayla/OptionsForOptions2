@@ -28,11 +28,10 @@ from typing import Annotated, Any, Literal, Optional
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
 from ofo.marketdata.feed_health import FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
-from sqlalchemy import text
 
 from ofo_app import broker_sync, live_market
 from ofo_app.api_models import ApiModel
-from ofo_app.broker_token_store import end_session
+from ofo_app.broker_token_store import active_session_status, end_session
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute
 from ofo_app.routes.broker import current_user_ref
@@ -43,10 +42,6 @@ Level = Literal["connected", "partial", "disconnected"]
 Fix = Literal["connect_zerodha", "session_expired", "live_feed_off", "live_feed_not_running", "live_feed_session_ended",
               "no_read_yet", "live_data_not_connected", "positions_not_synced", "live_feed_waiting",
               "live_feed_reconnecting", "live_feed_idle"]
-
-_ACTIVE = text(
-    "SELECT started_at, expected_expiry <= clock_timestamp() AS past FROM public.broker_sessions "
-    "WHERE user_ref = :user_ref AND broker = 'zerodha' AND ended_at IS NULL")
 
 
 class StatusOut(ApiModel):
@@ -114,8 +109,7 @@ def build_status(session: tuple[datetime.datetime, bool] | None, last_read: date
 @router.get("/api/broker/status", response_model=BrokerStatusOut)
 async def broker_status(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> BrokerStatusOut:
-    row = (await db.execute(_ACTIVE, {"user_ref": user_ref})).one_or_none()
-    session = None if row is None else (row[0], bool(row[1]))
+    session = await active_session_status(db, user_ref)
     return build_status(session, broker_sync.last_read(), live_market.current_state(),
                         live_market.feed_phase())
 

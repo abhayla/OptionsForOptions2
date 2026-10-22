@@ -86,6 +86,12 @@ def test_ac2_every_zerodha_source_is_a_repo_path_that_exists_or_a_kite_docs_addr
         assert (ROOT / source.split(" ")[0]).exists(), (name, source)
 
 
+def test_ac2_funds_read_source_is_the_module_that_makes_the_margins_call() -> None:
+    """AC-2 (fix round 1): the cited file exists and holds the ``/user/margins`` call it claims."""
+    source = declared()["funds_read"][1].split(" ")[0]
+    assert "/user/margins" in (ROOT / source).read_text(encoding="utf-8")
+
+
 def test_ac2_the_profile_source_really_lists_mis() -> None:
     """AC-2: the intraday_product source is the real profile reply and it lists MIS (read here, not assumed)."""
     reply = json.loads((ROOT / "tests/fixtures/kite_replies/user-profile-2026-10-22-redacted.json").read_text("utf-8"))
@@ -208,6 +214,9 @@ BAD_FILES = {
     "on is text": json.dumps({"funds_read": {**GOOD, "on": "true"}}),
     "blank source": json.dumps({"funds_read": {**GOOD, "source": " "}}),
     "unknown flag": json.dumps({"funds_read": GOOD, "teleport": GOOD}),
+    "duplicate flag key": '{"broker_held_triggers": {"on": false, "source": "REQ-100 AC-1", "date": "2026-10-22"}, '
+                          '"broker_held_triggers": {"on": true, "source": "REQ-100 AC-1", "date": "2026-10-22"}}',
+    "duplicate entry key": '{"funds_read": {"on": false, "on": true, "source": "tests/x.py", "date": "2026-10-22"}}',
 }
 
 

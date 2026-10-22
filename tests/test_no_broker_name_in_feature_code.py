@@ -16,8 +16,14 @@ itself binds to one (``ZERODHA = "zerodha"``, found by walking ``backend/``, not
 * in JS/Vue: ``===``/``!==``/``==``/``!=``, ``switch``/``case``, ``includes``/``indexOf``/``startsWith``/``endsWith``
   next to a quoted broker string, or a comparison of ``.broker``/``broker_id``/``brokerName``.
 
-Text is not a comparison: a label such as "Margin (Zerodha)" is not flagged. The scratch cases below prove each
-red and that the same text in a data-layer module stays green.
+ALLOW-LIST (fix round 1, finding guard-as-forbidden-list): the comparison rules above name shapes, and a language has
+more ways to name a broker than any list of shapes (``b.startswith('zerodha')``, an import alias, SQL text). So ANY
+broker word in feature code is a finding unless its file and exact line text are on the reasoned allow-list
+``broker_name_allowlist.py``. Python is resolved by AST (string constants except docstrings; every name, attribute,
+import and alias holding a broker word; names the tree binds to a broker string); JS/Vue is a token scan with comments
+stripped. An allow-list entry whose line no longer exists is a finding (stale). Known limit: a name built from
+strings at runtime (``getattr(m, 'Ki' + 'te')``) is not seen. The scratch cases below prove each red and that the same
+text in a data-layer module stays green.
 """
 from __future__ import annotations
 
@@ -28,6 +34,7 @@ from pathlib import Path
 from typing import Final
 
 import pytest
+from broker_name_allowlist import ALLOW
 
 pytestmark = pytest.mark.repo_scan
 
@@ -84,9 +91,71 @@ def _broker_operand(node: ast.AST, bound: frozenset[str]) -> bool:
     return False
 
 
-def scan_python(source: str, bound: frozenset[str]) -> list[int]:
-    """Lines of broker-name use as a comparison / match / dispatch key; raises SyntaxError if unparsable."""
+#: Found anywhere inside a word: ZerodhaKite, KiteBrokerReader, connect_zerodha.
+SUBSTRING_WORDS: Final = ("zerodha", "kite")
+CAMEL: Final = re.compile(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])")
+
+
+def _has_broker_word(value: str) -> bool:
+    """A broker word in any casing or joining: a substring word, or a whole word of ``BROKER_WORDS`` (split on
+    non-letters and camel-case humps)."""
+    lower = value.lower()
+    if any(w in lower for w in SUBSTRING_WORDS):
+        return True
+    return any(t.lower() in BROKER_WORDS for t in (*TOKEN.findall(lower), *CAMEL.findall(value)))
+
+
+def _docstring_ids(tree: ast.AST) -> set[int]:
+    ids = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                    and isinstance(first.value.value, str):
+                ids.add(id(first.value))
+    return ids
+
+
+def _named_words(node: ast.AST, bound: frozenset[str]) -> list[str]:
+    """Every identifier this node introduces or uses (name, attribute, import, alias, def, argument, keyword)."""
+    if isinstance(node, ast.Name):
+        names = [node.id]
+    elif isinstance(node, ast.Attribute):
+        names = [node.attr]
+    elif isinstance(node, ast.alias):
+        names = [node.name, node.asname or ""]
+    elif isinstance(node, ast.ImportFrom):
+        names = [node.module or ""]
+    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names = [node.name]
+    elif isinstance(node, ast.arg):
+        names = [node.arg]
+    elif isinstance(node, ast.keyword):
+        names = [node.arg or ""]
+    else:
+        return []
+    return [n for n in names if n and (_has_broker_word(n) or n in bound)]
+
+
+def scan_python_words(source: str, bound: frozenset[str]) -> list[int]:
+    """Lines holding ANY broker word as code (a string constant that is not a docstring, or an identifier);
+    comments never reach the AST. Raises SyntaxError if unparsable."""
+    tree = ast.parse(source)
+    docs = _docstring_ids(tree)
     hits = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs \
+                and _has_broker_word(node.value):
+            hits.append(node.lineno)
+        elif _named_words(node, bound):
+            hits.append(getattr(node, "lineno", 0))
+    return sorted(set(hits))
+
+
+def scan_python(source: str, bound: frozenset[str]) -> list[int]:
+    """Lines of broker-name use: a broker word anywhere in code, or a comparison / match / dispatch key on a
+    ``broker`` identifier; raises SyntaxError if unparsable."""
+    hits = list(scan_python_words(source, bound))
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Compare):
             if any(_broker_operand(o, bound) for o in (node.left, *node.comparators)):
@@ -102,32 +171,55 @@ def scan_python(source: str, bound: frozenset[str]) -> list[int]:
 
 _QUOTED = r"""(?:'[^'\n]*'|"[^"\n]*"|`[^`\n]*`)"""
 _JS_OPERAND = rf"(?:{_QUOTED}|[\w$.\[\]?]*[bB]roker(?:_?[iI]d|_?[nN]ame|[kK]ey)?\b)"
-JS_COMPARE: Final = re.compile(rf"(?:===|!==|==|!=)\s*{_JS_OPERAND}|{_JS_OPERAND}\s*(?:===|!==|==|!=)")
-JS_CALL: Final = re.compile(rf"\.(?:includes|indexOf|startsWith|endsWith|has|get)\(\s*{_JS_OPERAND}|"
-                            rf"{_QUOTED}[^;\n]*\.(?:includes|indexOf)\(|\bcase\s+{_QUOTED}")
+JS_COMPARE: Final = re.compile(rf"(?:===|!==|==|!=)\s*{_JS_OPERAND}|{_JS_OPERAND}\s*(?:===|!==|==|!=)", re.I)
+JS_CALL: Final = re.compile(rf"\.(?:includes|indexOf|startsWith|endsWith|has|get|some|find|test)\(\s*{_JS_OPERAND}|"
+                            rf"Object\.is\([^)]*{_JS_OPERAND}|"
+                            rf"{_QUOTED}[^;\n]*\.(?:includes|indexOf)\(|\bcase\s+{_QUOTED}", re.I)
+JS_BLOCK_COMMENT: Final = re.compile(r"/\*.*?\*/|<!--.*?-->", re.S)
+JS_LINE_COMMENT: Final = re.compile(r"(?:(?<=\s)|^)//[^\n]*")
+
+
+def strip_js_comments(source: str) -> str:
+    """Blank out comments, keeping the line count so hit line numbers stay true."""
+    blank = JS_BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), source)
+    return "\n".join(JS_LINE_COMMENT.sub("", line) for line in blank.split("\n"))
 
 
 def scan_js(source: str) -> list[int]:
-    """Lines where a broker word (or a ``broker`` identifier) is compared, switched on or looked up."""
+    """Lines holding ANY broker word outside comments (a literal, a name, a regex, a key), plus the comparison and
+    lookup shapes on a ``broker`` identifier (``BROKER``, ``brokerId``)."""
     hits = []
-    for number, line in enumerate(source.splitlines(), start=1):
+    for number, line in enumerate(strip_js_comments(source).splitlines(), start=1):
+        if _has_broker_word(line):
+            hits.append(number)
+            continue
         for pattern in (JS_COMPARE, JS_CALL):
             for match in pattern.finditer(line):
                 text = match.group(0)
-                quoted = re.findall(_QUOTED, text)
                 bare = re.sub(_QUOTED, "", text)  # a path such as '/broker/status' is text, not an identifier
-                if any(_is_broker_text(q) for q in quoted) or re.search(
-                        r"[bB]roker(?:_?[iI]d|_?[nN]ame|[kK]ey)?\b", bare):
+                if re.search(r"broker(?:_?id|_?name|_?key)?\b", bare, re.I):
                     hits.append(number)
     return sorted(set(hits))
 
 
-def scan_tree(root: Path, minimums: Mapping[str, int] | None = None) -> list[str]:
+def scan_tree(root: Path, minimums: Mapping[str, int] | None = None,
+              allow: Mapping[tuple[str, str], str] | None = None) -> list[str]:
     """Findings (``path:line: reason``) over the feature folders under ``root``; empty means clean. A missing feature
-    folder is always a finding; ``minimums`` is how many files a folder must hold (the real tree's floor)."""
+    folder is always a finding; ``minimums`` is how many files a folder must hold (the real tree's floor); ``allow``
+    maps (path, stripped line text) to its reason (the real tree uses ``ALLOW``, a scratch tree none)."""
     findings: list[str] = []
     if minimums is None:  # the real tree has a floor; a scratch tree only needs its folders to exist
         minimums = MIN_FEATURE_FILES if root == ROOT else {}
+    if allow is None:
+        allow = ALLOW if root == ROOT else {}
+    for (rel_path, line_text), reason in allow.items():  # a stale or unexplained entry is itself a finding
+        target = root / rel_path
+        exists = target.is_file() and line_text in {ln.strip() for ln in
+                                                    target.read_text(encoding="utf-8").splitlines()}
+        if not exists:
+            findings.append(f"{rel_path}: allow-list entry is stale (line no longer exists): {line_text!r}")
+        if not reason.strip():
+            findings.append(f"{rel_path}: allow-list entry has no reason: {line_text!r}")
     bound =_bound_broker_names(root)
     for rel in (*FEATURE_PYTHON, *FEATURE_JS):
         folder = root / rel
@@ -145,8 +237,11 @@ def scan_tree(root: Path, minimums: Mapping[str, int] | None = None) -> list[str
             except (SyntaxError, UnicodeDecodeError, ValueError) as error:
                 findings.append(f"{name}: cannot be read ({type(error).__name__}); unreadable cannot be cleared")
                 continue
-            findings.extend(f"{name}:{n}: compares or switches on a broker name or id; ask a capability flag instead"
-                            for n in lines)
+            source_lines = text.splitlines()
+            findings.extend(f"{name}:{n}: names a broker (or compares a broker id); ask a capability flag instead, or "
+                            "add the line to broker_name_allowlist.py with a reason"
+                            for n in lines if (name, source_lines[n - 1].strip() if 0 < n <= len(source_lines)
+                                               else "") not in allow)
     return findings
 
 
@@ -234,18 +329,99 @@ def test_ac3_the_same_js_text_outside_the_feature_folders_is_green(tmp_path: Pat
     assert scan_tree(root) == []
 
 
+#: Fix round 1: the verifier's unlisted shapes (an allow-list, not a list of shapes: all must be red).
+PY_BYPASS_PLANTS = {
+    "startswith": "def f(b):\n    return b.startswith('zerodha')\n",
+    "dunder eq": "def f(b):\n    return 'zerodha'.__eq__(b)\n",
+    "camel literal": "def f(b):\n    return b == 'ZerodhaKite'\n",
+    "class name compare": "def f(r):\n    return type(r).__name__ == 'KiteBrokerReader'\n",
+    "isinstance": "def f(r):\n    return isinstance(r, KiteBrokerReader)\n",
+    "import alias": "from ofo.instruments.models import ZERODHA as Z\ndef f(b):\n    return b == Z\n",
+    "local alias": "from ofo.instruments import models\nZ = models.ZERODHA\ndef f(b):\n    return b == Z\n",
+    "dict get": "def f(T):\n    return T.get('kite')\n",
+    "module set": "BROKERS = {'zerodha', 'x'}\ndef f(b):\n    return b in BROKERS\n",
+    "contains": "S = frozenset(['zerodha'])\ndef f(b):\n    return S.__contains__(b)\n",
+    "sql text": "Q = \"SELECT 1 FROM public.broker_sessions WHERE broker = 'zerodha'\"\n",
+    "match capture": "def f(b):\n    match b:\n        case 'upstox':\n            return 1\n",
+    "f-string": "def f(b):\n    return f\"{b}-kite\"\n",
+}
+JS_BYPASS_PLANTS = {
+    "const alias": "const Z = 'zerodha'\nif (b === Z) {}\n",
+    "BROKER constant": "if (b === BROKER) {}\n",
+    "some": "list.some(x => x === 'zerodha')\n",
+    "multi-line includes": "const ok = names.includes(\n  'zerodha'\n)\n",
+    "camel literal": "if (b === 'ZerodhaKite') {}\n",
+    "map key": "const v = MAP['zerodha']\n",
+    "regex": "/zerodha/i.test(b)\n",
+    "Object.is": "Object.is(b, 'kite')\n",
+}
+
+
+@pytest.mark.parametrize("label", sorted(PY_BYPASS_PLANTS))
+def test_ac3_each_unlisted_python_shape_is_red(tmp_path: Path, label: str) -> None:
+    """AC-3 (fix round 1, attack 1): shapes the old forbidden-list missed are red under the allow-list."""
+    assert scan_tree(_tree(tmp_path, "backend/ofo_app/routes/planted.py", PY_BYPASS_PLANTS[label])), label
+
+
+@pytest.mark.parametrize("label", sorted(PY_BYPASS_PLANTS))
+def test_ac3_the_same_unlisted_python_shape_in_a_data_layer_module_is_green(tmp_path: Path, label: str) -> None:
+    """AC-3 (attack 2): the same text in the session store (data layer) is clean."""
+    assert scan_tree(_tree(tmp_path, "backend/ofo_app/broker_token_store.py", PY_BYPASS_PLANTS[label])) == [], label
+
+
+@pytest.mark.parametrize("label", sorted(JS_BYPASS_PLANTS))
+def test_ac3_each_unlisted_js_shape_is_red(tmp_path: Path, label: str) -> None:
+    """AC-3 (attack 1): the JS shapes the old scan missed, in .js and .vue (inside a script block)."""
+    root = _tree(tmp_path, "frontend/src/lib/planted.js", JS_BYPASS_PLANTS[label])
+    assert scan_tree(root), label
+    vue = f"<template><p>x</p></template>\n<script>\n{JS_BYPASS_PLANTS[label]}</script>\n"
+    assert scan_tree(_tree(tmp_path, "frontend/src/components/Planted.vue", vue)), label
+
+
+def test_ac3_the_verifier_bypass_startswith_in_a_feature_module_is_red(tmp_path: Path) -> None:
+    """AC-3 (the proof): ``b.startswith('zerodha')`` in a feature module was green before this fix, red after."""
+    findings = scan_tree(_tree(tmp_path, "backend/ofo/strategy/planted.py", PY_BYPASS_PLANTS["startswith"]))
+    assert [f for f in findings if "strategy/planted.py:2" in f]
+
+
+def test_ac3_allow_listed_line_is_green_and_a_stale_entry_is_red(tmp_path: Path) -> None:
+    """AC-3 (attack 3): an allow-listed line passes; an entry whose line is gone is itself a finding."""
+    rel = "backend/ofo_app/routes/planted.py"
+    root = _tree(tmp_path, rel, "LABEL = 'Margin (Zerodha)'\n")
+    assert scan_tree(root, allow={(rel, "LABEL = 'Margin (Zerodha)'"): "a label"}) == []
+    stale = scan_tree(root, allow={(rel, "LABEL = 'Margin (Zerodha)'"): "a label",
+                                   (rel, "GONE = 'zerodha'"): "no longer there"})
+    assert any("stale" in f for f in stale)
+    assert any("no reason" in f for f in scan_tree(root, allow={(rel, "LABEL = 'Margin (Zerodha)'"): " "}))
+    assert any("stale" in f for f in scan_tree(root, allow={("backend/ofo_app/routes/missing.py", "x"): "r"}))
+
+
+def test_ac3_a_comment_or_docstring_is_not_a_finding_and_a_second_script_block_is(tmp_path: Path) -> None:
+    """AC-3 (attack 4): comments/docstrings are ignored; every ``<script>`` block of a .vue file is scanned."""
+    py = '"""Talks about Zerodha."""\n# kite here\ndef f():\n    """Zerodha docstring."""\n    return 1  # zerodha\n'
+    assert scan_tree(_tree(tmp_path, "backend/ofo_app/routes/ok.py", py)) == []
+    js = "// zerodha\n/* kite\n   zerodha */\nconst x = 1 // kite\n"
+    assert scan_tree(_tree(tmp_path, "frontend/src/lib/ok.js", js)) == []
+    vue = "<!-- zerodha -->\n<script>\nconst a = 1\n</script>\n<script setup>\nconst b = 'zerodha'\n</script>\n"
+    found = scan_tree(_tree(tmp_path, "frontend/src/components/Two.vue", vue))
+    assert [f for f in found if "Two.vue:6" in f] and not [f for f in found if "Two.vue:1:" in f]
+
+
+def test_ac3_every_allow_list_entry_has_a_reason() -> None:
+    """AC-3 (attack 7): the real allow-list is explained, entry by entry."""
+    assert ALLOW and all(r.strip() for r in ALLOW.values())
+
+
 @pytest.mark.parametrize("text", [
-    'LABEL = "Margin (Zerodha)"\n', 'def f(state):\n    return state == "connected"\n',
+    'def f(state):\n    return state == "connected"\n',
     'def f(b):\n    return {"broker": b}\n', 'def f(a):\n    return a["state"]\n',
-    'from typing import Literal\nStep = Literal["zerodha_login", "connected"]\n',
 ])
 def test_ac3_text_and_unrelated_comparisons_are_not_flagged(tmp_path: Path, text: str) -> None:
-    """AC-3: a label naming the broker, an unrelated comparison and a dict VALUE are not findings (no false red)."""
+    """AC-3: an unrelated comparison and a dict VALUE are not findings (no false red)."""
     assert scan_tree(_tree(tmp_path, "backend/ofo_app/routes/ok.py", text)) == []
 
 
-@pytest.mark.parametrize("text", ["const label = 'Margin (Zerodha)'\n", "if (state === 'connected') {}\n",
-                                  "const r = { broker: 'x' }\n"])
+@pytest.mark.parametrize("text", ["if (state === 'connected') {}\n", "const r = { broker: 'x' }\n"])
 def test_ac3_js_text_and_unrelated_comparisons_are_not_flagged(tmp_path: Path, text: str) -> None:
     """AC-3: no false red on JS text, an unrelated comparison or an object literal."""
     assert scan_tree(_tree(tmp_path, "frontend/src/lib/ok.js", text)) == []

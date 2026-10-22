@@ -21,7 +21,7 @@
   },
   "funds_read": {
     "on": true,
-    "source": "backend/ofo_app/kite_reads.py (GET /user/margins, row 3 of the builder sequence)",
+    "source": "backend/ofo_app/kite_margin.py (GET /user/margins, row 3 of the builder sequence)",
     "date": "2026-10-22"
   },
   "positions_read": {

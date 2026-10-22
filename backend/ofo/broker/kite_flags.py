@@ -21,12 +21,20 @@ FLAG_FILE: Final = Path(__file__).with_name("kite_flags.json")
 _ENTRY_KEYS: Final = frozenset({"on", "source", "date"})
 
 
+def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """A repeated key would silently let the last one win (a second ``on: true``); refuse it, so every flag is off."""
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate key in the flag file")
+    return dict(pairs)
+
+
 def declared() -> dict[str, tuple[bool, str, datetime.date]]:
     """The file's ``{name: (on, source, date)}``. Raises ``FlagLoadError`` for anything but the exact shape: an
     unreadable file, bad JSON, an entry not exactly ``on``/``source``/``date``, a date not YYYY-MM-DD."""
     try:
-        data = json.loads(FLAG_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:  # ValueError covers JSON and UTF-8 decoding errors
+        data = json.loads(FLAG_FILE.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys)
+    except (OSError, ValueError) as error:  # ValueError covers JSON, UTF-8 decoding and duplicate-key errors
         raise FlagLoadError("the flag file cannot be read") from error
     if not isinstance(data, dict):
         raise FlagLoadError("the flag file must hold an object")

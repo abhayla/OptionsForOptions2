@@ -114,6 +114,18 @@ async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker:
         return None
 
 
+_STATUS_ROW = text(
+    "SELECT started_at, expected_expiry <= clock_timestamp() AS past FROM public.broker_sessions "
+    "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
+
+
+async def active_session_status(conn: Any, user_ref: str, broker: str = BROKER_ZERODHA) -> tuple[Any, bool] | None:
+    """Read-only: the owner's active session as (started_at, past expected expiry), the database clock deciding; None
+    without one. Moved here from the status route so feature code never names the broker."""
+    row = (await conn.execute(_STATUS_ROW, {"user_ref": user_ref, "broker": broker})).one_or_none()
+    return None if row is None else (row[0], bool(row[1]))
+
+
 async def end_session(conn: Any, user_ref: str, reason: EndReason, broker: str = BROKER_ZERODHA) -> int | None:
     """Ends the active session, destroying its ciphertext in the same statement. Returns its id, or None."""
     if reason not in (EndReason.EXPIRED, EndReason.DISCONNECTED):
