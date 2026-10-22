@@ -47,15 +47,18 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from ofo.engine.chain_values import CellValues, ChainGreeks, cell_values, chain_greeks, in_the_money
+from ofo.engine.model import data_label
 from ofo.errors import render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+from ofo.rules.inputs import DataHealth
+from ofo.scenario.spot import spot_reading
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext
@@ -147,6 +150,10 @@ class ChainOut(ApiModel):
     spot: Money | None  # the underlying index price (REQ-029 AC-8); None when missing or not live
     spot_at: datetime.datetime | None
     spot_health: HealthCode | None
+    #: REQ-087 AC-2 / REQ-049: why the spot-based values (shading, intrinsic, time value,
+    #: breakeven %, ATM) are off, as the
+    #: catalogue's own data label ("stale since HH:MM IST"); None when the spot is available or missing
+    spot_label: CatalogueText | None = None
     atm_strike: Money | None  # the catalogue strike nearest the live spot (REQ-029 AC-8); None without a live spot
     rows_missing: RowsMissing | None
     rows: list[ChainRowOut]  # ascending strike (REQ-029 AC-1: Calls | Strike | Puts)
@@ -260,6 +267,24 @@ def live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
     return quote.ltp if quote is not None and is_live_price(quote.ltp) else None
 
 
+def fresh_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
+    """REQ-087 AC-2 (ADR-015): the spot that spot-based VALUES may use: the live price of the index quote ONLY while the
+    quote's health is available. A stale or delayed spot still picks the window (``live_spot``) but is never drawn
+    from."""
+    quote = None if ctx is None else _spot_quote(ctx, underlying)
+    if quote is None or quote.health is not DataHealth.AVAILABLE:
+        return None
+    return live_spot(ctx, underlying)
+
+
+def spot_label(ctx: MarketContext | None, underlying: str) -> CatalogueText | None:
+    """The REQ-049 data label of a stale or delayed spot (the engine's ``data_label``); None otherwise."""
+    quote = None if ctx is None else _spot_quote(ctx, underlying)
+    if quote is None or not is_live_price(quote.ltp):
+        return None
+    return data_label(spot_reading(quote))
+
+
 def pick_window(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue) -> tuple[Decimal, ...] | None:
     """The strikes to show around the ATM of the live spot; None when there is no live spot or no strike."""
     grid = strike_grid(catalogue)
@@ -342,7 +367,7 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
           window: tuple[Decimal, ...], slow: SlowValues | None,
           unknown: frozenset[str]) -> list[ChainRowOut]:
     every = window_quotes(ctx, req)
-    spot = live_spot(ctx, req.underlying)
+    spot = fresh_spot(ctx, req.underlying)
     greeks = (chain_greeks(every.values(), _spot_quote(ctx, req.underlying), req.expiry, ctx.clock(), ctx.rate)
               if spot is not None else {})
     quotes = {i: q for i, q in every.items() if i not in unknown}
@@ -377,6 +402,7 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
                         atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at)
     spot = live_spot(ctx, req.underlying)
+    fresh = fresh_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
     missing = _rows_missing(catalogue, req.expiry, window)
     return ChainOut(
@@ -384,7 +410,8 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot=None if spot is None else spot.quantize(PAISE),
         spot_at=None if spot_quote is None else spot_quote.timestamp,
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
-        atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
+        spot_label=spot_label(ctx, req.underlying),
+        atm_strike=atm_strike(grid, fresh).quantize(PAISE) if fresh is not None and grid else None,
         rows_missing=missing,
         rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
         answered_at=answered_at)

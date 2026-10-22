@@ -664,6 +664,15 @@
             ],
             "title": "Spot Health"
           },
+          "spot_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Label"
+          },
           "state": {
             "enum": [
               "LIVE",

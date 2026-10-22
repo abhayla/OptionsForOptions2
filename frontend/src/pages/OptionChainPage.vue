@@ -137,10 +137,13 @@ const view = computed(() => shown())
 const lotSize = computed(() => lotSizeOf(view.value))
 const sideFields = computed(() => fieldsFor(uxLevel.value, perLot.value, lotSize.value))
 const colspan = computed(() => sideFields.value.length)
-const showsItm = computed(() => view.value?.spot != null)
+// REQ-087 AC-2 / REQ-049: shading and the spot-based columns are on only while the spot is AVAILABLE; the reason is the
+// server's own data label ("stale since HH:MM IST"), or the missing-price line when there is no spot at all.
+const showsItm = computed(() => view.value?.spot != null && view.value?.spot_health === 'available')
+const itmOffReason = computed(() => (typeof view.value?.spot_label === 'string' ? view.value.spot_label : ''))
 
 // REQ-031: the live preview of the selected legs, from the server's outcome numbers (one engine). A failed or
-// not-connected read keeps the last numbers but marks them stale; they are never shown as live.
+// not-connected read shows NO numbers (only that the preview is unavailable): a last answer is never kept under a banner.
 const preview = ref(null)
 const previewStale = ref(false)
 let previewSeq = 0
@@ -157,7 +160,10 @@ async function readPreview() {
   if (data && data.state === 'COMPUTED') {
     preview.value = data
     previewStale.value = false
-  } else previewStale.value = true
+  } else {
+    preview.value = null
+    previewStale.value = true
+  }
 }
 const previewKey = computed(() => JSON.stringify([underlying.value, previewLegs(legs.value), view.value?.answered_at ?? null]))
 watch(previewKey, readPreview, { immediate: true })
@@ -218,7 +224,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       <label class="text-sm"><input v-model="perLot" type="checkbox" data-testid="per-lot-toggle" /> Per lot</label>
       <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
       <p v-if="!strikesSaved" class="text-xs" data-testid="strikes-not-saved">Your choice works now but could not be saved.</p>
-      <p v-if="view && !showsItm" class="text-xs" data-testid="itm-off">In-the-money shading is off: the underlying price is missing.</p>
+      <p v-if="view && !showsItm" class="text-xs" data-testid="itm-off">In-the-money shading is off: {{ itmOffReason || 'the underlying price is missing or not live.' }}</p>
     </div>
 
     <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>
@@ -269,11 +275,11 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
                 </p>
               </template>
             </td>
-            <td v-for="[key] in sideFields" :key="'c' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': row.ce && row.ce.in_the_money === true }" :data-itm="row.ce && row.ce.in_the_money === true ? 'true' : 'false'" :data-testid="'ce-' + key">
+            <td v-for="[key] in sideFields" :key="'c' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': showsItm && row.ce && row.ce.in_the_money === true }" :data-itm="showsItm && row.ce && row.ce.in_the_money === true ? 'true' : 'false'" :data-testid="'ce-' + key">
               {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="(key === 'ltp' || key === 'per_lot') && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthWord(row.ce) }}</span>
             </td>
             <td class="px-2 py-1 text-center" data-testid="strike">{{ row.strike }}</td>
-            <td v-for="[key] in sideFields" :key="'p' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': row.pe && row.pe.in_the_money === true }" :data-itm="row.pe && row.pe.in_the_money === true ? 'true' : 'false'" :data-testid="'pe-' + key">
+            <td v-for="[key] in sideFields" :key="'p' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': showsItm && row.pe && row.pe.in_the_money === true }" :data-itm="showsItm && row.pe && row.pe.in_the_money === true ? 'true' : 'false'" :data-testid="'pe-' + key">
               {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="(key === 'ltp' || key === 'per_lot') && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthWord(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
@@ -315,7 +321,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
         <button type="button" class="rounded border border-line px-2" data-testid="multi-expiry-review" @click="reviewSelection">Review Selection</button>
       </div>
       <div v-if="preview || previewStale" class="mt-2 rounded border border-line p-2 text-sm" data-testid="chain-preview">
-        <p v-if="previewStale" class="text-xs" data-testid="preview-stale">Preview is out of date: not connected to live data. The numbers below are the last ones.</p>
+        <p v-if="previewStale" class="text-xs" data-testid="preview-stale">Preview unavailable: not connected to live data.</p>
         <template v-if="previewText">
           <p data-testid="preview-net">Net premium: {{ previewText.net }}</p>
           <p data-testid="preview-max-profit">Max profit: {{ previewText.maxProfit }}</p>

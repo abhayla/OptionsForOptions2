@@ -139,10 +139,9 @@ def upgrade() -> None:
     op.execute(f"SELECT {allowlist}('{role}', 'post')")
 
 
-def downgrade() -> None:
-    # A stored preference is the user's record: refuse rather than drop it.
-    op.execute(
-        f"""
+def refuse_downgrade_sql() -> str:
+    """A stored preference is the user's record: the downgrade refuses (an exception) while any row exists."""
+    return f"""
         DO $$
         BEGIN
             EXECUTE 'LOCK TABLE {SETTINGS} IN ACCESS EXCLUSIVE MODE';
@@ -152,7 +151,10 @@ def downgrade() -> None:
         END
         $$
         """  # noqa: S608 constant table name
-    )
+
+
+def downgrade() -> None:
+    op.execute(refuse_downgrade_sql())
     role = _BASE._app_role()
     op.execute(previous_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {_BASE.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")

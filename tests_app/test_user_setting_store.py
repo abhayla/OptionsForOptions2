@@ -12,12 +12,16 @@ not an int choice (True == 1 never passes); updated_at is stamped by the databas
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from ofo_app import user_setting_store as store
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 KEY = store.CHAIN_STRIKES_EACH_SIDE
+MIGRATION = (Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
+             / "0022_user_settings.py")
 OWNER, OTHER = "u-owner", "u-other"
 DEFAULT, TWENTY = 10, 20
 FIRST_YEAR = 2026
@@ -100,3 +104,26 @@ async def test_updated_at_is_stamped_by_the_trigger_not_the_caller(db):
     year = (await db.execute(text("SELECT EXTRACT(YEAR FROM updated_at) FROM public.user_settings "
                                   "WHERE user_ref = :u"), {"u": OWNER})).scalar_one()
     assert int(year) >= FIRST_YEAR
+
+
+async def test_the_downgrade_guard_refuses_while_a_row_exists_and_passes_when_empty(admin_engine):
+    """REQ-087 AC-3 / ADR-093: a stored preference is the user's record. The migration's own refuse-SQL, run as the
+    owner
+    inside a transaction that is rolled back: it raises with a row present and is silent on an empty table."""
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location("ofo_mig_0022_guard_test", MIGRATION)
+    mig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mig)
+    async with admin_engine.connect() as conn:
+        outer = await conn.begin()
+        try:
+            assert (await conn.execute(text("SELECT count(*) FROM public.user_settings"))).scalar_one() == 0
+            await conn.execute(text(mig.refuse_downgrade_sql()))  # empty: no error
+            await conn.execute(text("INSERT INTO public.user_settings (user_ref, key, value) "
+                                    "VALUES ('u-guard', 'chain.strikes_each_side', CAST('20' AS JSONB))"))
+            with pytest.raises(DBAPIError, match="refusing downgrade"):
+                async with conn.begin_nested():
+                    await conn.execute(text(mig.refuse_downgrade_sql()))
+        finally:
+            await outer.rollback()

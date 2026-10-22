@@ -96,6 +96,17 @@ describe('REQ-087 display options', () => {
     expect(shade('pe-ltp')).toEqual(['false'])
   })
 
+  it('AC-2: a stale spot turns shading off at once with the server\'s data label, never from the old spot', async () => {
+    const w = await mountLive({ spot_health: 'stale', spot_label: 'stale since 10:00 IST' })
+    expect(w.findAll('[data-itm="true"]')).toHaveLength(0)
+    expect(w.find('[data-testid="itm-off"]').text()).toContain('stale since 10:00 IST')
+    for (const health of ['delayed', 'unavailable']) {
+      FakeSocket.all.at(-1).serverPush(answer({ spot_health: health }))
+      await flushPromises()
+      expect(w.findAll('[data-itm="true"]')).toHaveLength(0)
+    }
+  })
+
   it('AC-2/AC-5: with no spot the shading is off and says why', async () => {
     const w = await mountLive({ spot: null, rows: [row('22900.00', { in_the_money: null, intrinsic: null }, { in_the_money: null, intrinsic: null })] })
     expect(w.find('[data-testid="itm-off"]').exists()).toBe(true)
@@ -180,7 +191,7 @@ describe('REQ-031 live preview and REQ-030 AC-14', () => {
     expect(w.html()).not.toMatch(/Execute|Place order/i)
   })
 
-  it('AC-2: when the feed drops the last numbers are kept but marked out of date; they are never shown as live', async () => {
+  it('AC-2: when the feed drops the preview shows NO numbers, only that it is unavailable', async () => {
     previewAnswer = () => Promise.resolve({ data: PREVIEW })
     const w = await mountLive()
     await pickShortCall(w)
@@ -188,7 +199,8 @@ describe('REQ-031 live preview and REQ-030 AC-14', () => {
     await w.find('[data-testid="lots-plus"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-testid="preview-stale"]').exists()).toBe(true)
-    expect(w.find('[data-testid="preview-net"]').text()).toBe('Net premium: 6500.00 Cr') // the last numbers, with the stale mark
+    expect(w.find('[data-testid="preview-net"]').exists()).toBe(false) // no last numbers under a banner
+    expect(w.find('[data-testid="preview-max-loss"]').exists()).toBe(false)
   })
 
   it('AC-1: no leg, no preview; a leg without a captured price is not previewed', async () => {

@@ -246,7 +246,7 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
                                                         "unavailable_reason", *W124_KEYS})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
-                                    "rows_missing", "rows", "answered_at"}
+                                    "rows_missing", "rows", "answered_at", "spot_label"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
@@ -510,7 +510,8 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
-                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview",
+                   "ofo.marketdata.quote", "ofo.money", "ofo.engine.model", "ofo.rules.inputs", "ofo.scenario.spot",
+                   "ofo_app.chain_preview",
                    "ofo.engine.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
