@@ -334,6 +334,28 @@
             ],
             "title": "Bid"
           },
+          "breakeven": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven"
+          },
+          "breakeven_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven Pct"
+          },
           "change": {
             "anyOf": [
               {
@@ -344,6 +366,28 @@
               }
             ],
             "title": "Change"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "gamma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gamma"
           },
           "health": {
             "anyOf": [
@@ -367,6 +411,21 @@
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "type": "string"
+          },
+          "intrinsic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
           },
           "ltp": {
             "anyOf": [
@@ -401,9 +460,42 @@
             ],
             "title": "Oi Change"
           },
+          "per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Lot"
+          },
           "permitted": {
             "title": "Permitted",
             "type": "boolean"
+          },
+          "theta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theta"
+          },
+          "time_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value"
           },
           "unavailable_reason": {
             "anyOf": [
@@ -420,6 +512,17 @@
               }
             ],
             "title": "Unavailable Reason"
+          },
+          "vega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vega"
           },
           "volume": {
             "anyOf": [
@@ -445,7 +548,17 @@
           "health",
           "at",
           "permitted",
-          "unavailable_reason"
+          "unavailable_reason",
+          "lot_size",
+          "per_lot",
+          "intrinsic",
+          "time_value",
+          "breakeven",
+          "breakeven_pct",
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
         ],
         "title": "ChainCellOut",
         "type": "object"
@@ -605,6 +718,51 @@
           "pe"
         ],
         "title": "ChainRowOut",
+        "type": "object"
+      },
+      "ChainStrikesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "strikes_each_side": {
+            "enum": [
+              10,
+              20,
+              30,
+              40
+            ],
+            "title": "Strikes Each Side",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strikes_each_side"
+        ],
+        "title": "ChainStrikesIn",
+        "type": "object"
+      },
+      "ChainStrikesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "strikes_each_side": {
+            "enum": [
+              10,
+              20,
+              30,
+              40
+            ],
+            "title": "Strikes Each Side",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strikes_each_side",
+          "is_default"
+        ],
+        "title": "ChainStrikesOut",
         "type": "object"
       },
       "ColumnOut": {
@@ -1939,6 +2097,173 @@
           }
         },
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "breakevens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breakevens",
+            "type": "array"
+          },
+          "matched_template": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Template"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_unlimited": {
+            "title": "Max Loss Unlimited",
+            "type": "boolean"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_unlimited": {
+            "title": "Max Profit Unlimited",
+            "type": "boolean"
+          },
+          "net_premium": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Premium"
+          },
+          "net_side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Cr",
+                  "Dr"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Side"
+          },
+          "payoff": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "title": "Payoff",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "COMPUTED",
+              "NOT_CONNECTED",
+              "REFUSED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "underlying",
+          "reason",
+          "net_premium",
+          "net_side",
+          "max_profit",
+          "max_loss",
+          "max_profit_unlimited",
+          "max_loss_unlimited",
+          "breakevens",
+          "payoff",
+          "matched_template",
+          "answered_at"
+        ],
+        "title": "PreviewOut",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "additionalProperties": false,
+        "description": "The selected legs as the chain holds them: the same leg shape as the outcome route (never a client price).",
+        "properties": {
+          "fallback": {
+            "default": false,
+            "description": "true when the screen's own live socket is down (ADR-077)",
+            "title": "Fallback",
+            "type": "boolean"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/ofo_app__routes__outcome__LegIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs"
+        ],
+        "title": "PreviewRequest",
         "type": "object"
       },
       "RefusalOut": {
@@ -3963,8 +4288,8 @@
             "name": "strikes_each_side",
             "required": false,
             "schema": {
-              "default": 15,
-              "maximum": 15,
+              "default": 10,
+              "maximum": 40,
               "minimum": 1,
               "title": "Strikes Each Side",
               "type": "integer"
@@ -4006,6 +4331,44 @@
           }
         },
         "summary": "Market Chain"
+      }
+    },
+    "/api/market/chain/preview": {
+      "post": {
+        "operationId": "market_chain_preview_api_market_chain_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Chain Preview"
       }
     },
     "/api/market/indices": {
@@ -4142,6 +4505,60 @@
           }
         },
         "summary": "Strategy Templates"
+      }
+    },
+    "/api/user-settings/chain-strikes": {
+      "get": {
+        "operationId": "read_chain_strikes_api_user_settings_chain_strikes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainStrikesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Chain Strikes"
+      },
+      "put": {
+        "operationId": "write_chain_strikes_api_user_settings_chain_strikes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainStrikesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainStrikesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Chain Strikes"
       }
     },
     "/broker/zerodha/login": {
