@@ -14,7 +14,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor-advanced.json'
-import { BASE_DELAY_MS, LIVE_PATH, MAX_ATTEMPTS, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
+import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_ATTEMPTS, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -131,20 +131,21 @@ describe('AC-4: the Builder live socket', () => {
     expect(statuses.at(-1)).toBe('live')
   })
 
-  it('AC-4: the backoff doubles, is capped, and stops after MAX_ATTEMPTS failures in a row', () => {
-    expect([1, 2, 3, 4, 5, 6, 7].map(backoffDelay)).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000])
+  it('AC-4 / REQ-113 AC-2: 1 s apart for the first 30 attempts, then doubles to the cap, and stops after the slow limit', () => {
+    expect([1, 2, 30, 31, 32, 33, 34, 35, 36].map(backoffDelay)).toEqual([1000, 1000, 1000, 2000, 4000, 8000, 16000, 30000, 30000])
     expect(backoffDelay(50)).toBe(MAX_DELAY_MS)
     const { live, statuses, onDown } = rig()
     live.follow(BODY)
-    for (let i = 0; i < MAX_ATTEMPTS + 3; i++) {
+    const TOTAL = FAST_ATTEMPTS + MAX_ATTEMPTS
+    for (let i = 0; i < TOTAL + 3; i++) {
       FakeSocket.all.at(-1).serverClose()
       vi.advanceTimersByTime(MAX_DELAY_MS)
     }
-    expect(FakeSocket.all.length).toBe(1 + MAX_ATTEMPTS) // the first socket plus MAX_ATTEMPTS retries, then no more
+    expect(FakeSocket.all.length).toBe(1 + TOTAL) // the first socket plus every fast and slow retry, then no more
     expect(statuses.at(-1)).toBe('off')
-    expect(onDown).toHaveBeenCalledTimes(MAX_ATTEMPTS + 1) // every drop still asked REST
+    expect(onDown).toHaveBeenCalledTimes(TOTAL + 1) // every drop still asked REST
     live.follow({ ...BODY, ux_level: 'guided' }) // a new strategy after giving up tries again
-    expect(FakeSocket.all.length).toBe(2 + MAX_ATTEMPTS)
+    expect(FakeSocket.all.length).toBe(2 + TOTAL)
   })
 
   it('AC-4: a fallback that calls follow() again opens no socket outside the backoff', () => {
@@ -354,7 +355,7 @@ describe('W-073: draft URL with un-normalized values, and a leg edit while the s
     const w = await openRaw()
     FakeSocket.all[0].serverOpen()
     FakeSocket.all[0].serverClose()
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    for (let i = 0; i < FAST_ATTEMPTS + MAX_ATTEMPTS; i++) {
       vi.advanceTimersByTime(MAX_DELAY_MS + 1)
       FakeSocket.all.at(-1).serverClose()
     }

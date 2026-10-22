@@ -5,10 +5,11 @@
 <script setup>
 import { onMounted } from 'vue'
 import { istTime } from '@/lib/displayFormat'
+import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 defineProps({ showStatus: { type: Boolean, default: false } }) // W-117: Market context adds one status line
-const { answer, start, rowFor, shownValue, notLive, isLive } = useIndexAnswer()
+const { answer, start, reconnecting, rowFor, shownValue, notLive, isLive } = useIndexAnswer()
 onMounted(start)
 const statusText = () => (isLive() ? 'Index values are live.' : answer.value || notLive() ? 'Index values are not live.' : '')
 const timeText = (row) => (row?.at ? istTime(row.at) : '')
@@ -16,6 +17,7 @@ const timeText = (row) => (row?.at ? istTime(row.at) : '')
 
 <template>
   <div class="flex flex-wrap items-center gap-x-6 gap-y-1 rounded border border-line bg-surface px-3 py-2 text-sm" data-testid="index-strip">
+    <span v-if="reconnecting" class="font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</span>
     <span v-if="notLive()" class="font-medium" data-testid="strip-state">{{ NOT_LIVE_LABEL }}</span>
     <span v-for="u in INDEX_KEYS" :key="u" :data-testid="`strip-${u}`" class="flex items-baseline gap-2">
       <span class="font-medium">{{ INDEX_NAMES[u] }}</span>

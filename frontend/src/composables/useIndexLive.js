@@ -3,10 +3,10 @@
 // (state, two rows, answered_at) at most once a second; this file sends NOTHING (the socket needs no client message) and
 // hands every push over untouched - no price maths in the browser. When the socket drops, `onDown` runs so the page asks
 // GET /api/market/indices?fallback=true, whose answer is the server's own not-live state. The reconnect backoff is the
-// strategy socket's (imported from useStrategyLive.js, not copied).
+// strategy socket's (createLiveSocket, imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
-import { MAX_ATTEMPTS, backoffDelay } from './useStrategyLive'
+import { createLiveSocket, useReconnecting } from './useStrategyLive'
 
 export const INDEX_LIVE_PATH = '/api/market/indices/live'
 export const INDEX_REST_PATH = '/api/market/indices'
@@ -22,81 +22,22 @@ export function isIndicesAnswer(msg) {
 }
 
 /**
- * The socket lifecycle, framework-free (tested with a fake socket and fake timers).
- * onPush(answer): every index answer the server pushed, untouched. onDown(): the socket closed without stop().
- * onStatus(status): connecting | live | down | off.
+ * The index socket: the ONE socket helper (createLiveSocket, same fast-then-slow reconnect) in its read-only form: it
+ * sends nothing. onPush(answer): every index answer the server pushed, untouched. onDown(): the socket closed without
+ * stop(). onStatus(status): connecting | live | down | off.
  */
-export function createIndexSocket({ url, onPush, onDown = () => {}, onStatus = () => {},
-  WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  let socket = null
-  let attempts = 0 // failed attempts in a row
-  let timer = null
-  let stopped = true
-
-  function open() {
-    timer = null
-    onStatus('connecting')
-    const ws = new WebSocketImpl(url)
-    socket = ws
-    ws.onmessage = (ev) => {
-      if (socket !== ws) return
-      let msg
-      try {
-        msg = JSON.parse(ev.data)
-      } catch {
-        return // the server mints every message; anything else is ignored, never shown
-      }
-      if (!isIndicesAnswer(msg)) return
-      attempts = 0
-      onStatus('live')
-      onPush(msg)
-    }
-    ws.onclose = () => {
-      if (socket !== ws) return
-      socket = null
-      if (stopped) return
-      onStatus('down')
-      schedule()
-      onDown()
-    }
-  }
-
-  function schedule() {
-    if (stopped || timer !== null) return
-    if (attempts >= MAX_ATTEMPTS) {
-      onStatus('off')
-      return
-    }
-    attempts += 1
-    timer = setTimer(open, backoffDelay(attempts))
-  }
-
-  function start() {
-    if (!stopped) return
-    stopped = false
-    attempts = 0
-    open()
-  }
-
-  function stop() {
-    stopped = true
-    if (timer !== null) clearTimer(timer)
-    timer = null
-    const ws = socket
-    socket = null
-    if (ws) ws.close()
-    onStatus('off')
-  }
-
-  return { start, stop, attempts: () => attempts }
+export function createIndexSocket({ url, onPush, onDown = () => {}, onStatus = () => {}, WebSocketImpl = globalThis.WebSocket,
+  setTimer = setTimeout, clearTimer = clearTimeout }) {
+  const live = createLiveSocket({ url, onPush, onDown, onStatus, isAnswer: isIndicesAnswer, sendBody: false, WebSocketImpl, setTimer, clearTimer })
+  return { start: () => live.follow(null), stop: live.stop, attempts: live.attempts }
 }
 
-/** Vue wrapper: `status` is a ref; closes on unmount. */
+/** Vue wrapper: `status` is a ref, `reconnecting` a computed (REQ-113 AC-2); closes on unmount. */
 export function useIndexLive({ onPush, onDown, url = indexLiveUrl(), WebSocketImpl } = {}) {
   const status = ref('off')
   const live = createIndexSocket({ url, onPush, onDown, WebSocketImpl, onStatus: (s) => (status.value = s) })
   onBeforeUnmount(() => live.stop())
-  return { status, start: live.start, stop: live.stop }
+  return { status, reconnecting: useReconnecting(status), start: live.start, stop: live.stop }
 }
 
 export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
@@ -130,7 +71,7 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
     answer.value = { state: 'NOT_CONNECTED', indices: rows }
   }
 
-  const { status, start: startSocket } = useIndexLive({
+  const { status, reconnecting, start: startSocket } = useIndexLive({
     url,
     WebSocketImpl,
     onPush: (msg) => {
@@ -163,5 +104,5 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const isLive = () => answer.value?.state === 'LIVE'
   const shownValue = (row) => (isLive() && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
   const notLive = () => answer.value?.state === 'NOT_CONNECTED' || failed.value
-  return { answer, status, start, rowFor, shownValue, isLive, notLive }
+  return { answer, status, reconnecting, start, rowFor, shownValue, isLive, notLive }
 }

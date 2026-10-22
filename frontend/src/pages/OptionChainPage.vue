@@ -14,6 +14,7 @@ import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
+import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 
 const SIDE_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume']]
@@ -35,7 +36,7 @@ const expiry = ref('')
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { status, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
+const { status, reconnecting, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
 
 async function loadExpiries() {
   const mine = ++expirySeq
@@ -149,6 +150,8 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       </p>
       <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
     </div>
+
+    <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</p>
 
     <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>
     <p v-else-if="notLive()" class="mt-3 text-sm" data-testid="not-live">{{ NOT_LIVE_LABEL }}</p>

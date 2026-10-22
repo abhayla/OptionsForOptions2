@@ -8,20 +8,27 @@
 // /api/strategies/live and re-renders from each push. The browser does no P&L or price maths (ADR-008): a push is the
 // server's whole outcome answer and is handed over untouched. When the socket drops, `onDown` runs so the page asks the
 // REST outcome route, whose answer carries the server's own not-live label; this file writes no label of its own.
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 export const LIVE_PATH = '/api/strategies/live'
-/** Reconnect delays: 1 s, 2 s, 4 s ... capped at 30 s; after MAX_ATTEMPTS failed attempts in a row it stops trying
- *  (the page stays on the REST answer; a later strategy change or Recalculate starts again). */
+/** Reconnect delays (REQ-113 AC-2: an API deploy restarts in seconds, the screen must be back within 10 s): the first
+ *  FAST_ATTEMPTS attempts are BASE_DELAY_MS apart (about 30 s), then 2 s, 4 s, 8 s ... capped at MAX_DELAY_MS. After
+ *  MAX_ATTEMPTS failed attempts in the slow phase it stops trying (the page stays on the REST answer; a later strategy
+ *  change or Recalculate starts again). */
 export const BASE_DELAY_MS = 1000
 export const MAX_DELAY_MS = 30000
+export const FAST_ATTEMPTS = 30
 export const MAX_ATTEMPTS = 10
 
 /** The delay before reconnect attempt `attempt` (1-based). */
 export function backoffDelay(attempt) {
-  const delay = BASE_DELAY_MS * 2 ** (attempt - 1) // a timer value in ms, never a price or P&L
+  if (attempt <= FAST_ATTEMPTS) return BASE_DELAY_MS
+  const delay = 2 * BASE_DELAY_MS * 2 ** (attempt - FAST_ATTEMPTS - 1) // a timer value in ms, never a price or P&L
   return delay > MAX_DELAY_MS ? MAX_DELAY_MS : delay
 }
+
+/** True when `attempts` failed attempts in a row are all there will be (the slow phase used up its limit). */
+export const gaveUp = (attempts) => attempts >= FAST_ATTEMPTS + MAX_ATTEMPTS
 
 /** Same-origin socket URL for the current page: never a host from config, never a query string. */
 export function liveUrl(loc = window.location) {
@@ -38,9 +45,10 @@ export function isOutcome(msg) {
  * onPush(outcome): every outcome the server pushed, untouched. onMessage(other): any other message (a catalogue error).
  * onDown(): the socket closed without stop() - the page falls back to REST. onStatus(status): connecting | live | down |
  * off. isAnswer(msg) says which message is the screen's answer (default: the outcome check; the Option Chain passes its own).
+ * sendBody false = a read-only socket that sends nothing (the index strip). 'live' is reported only for an answer push.
  */
 export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {}, isAnswer = isOutcome,
-  WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let socket = null
   let body = null // the JSON text last sent or to send
   let attempts = 0 // failed attempts in a row
@@ -55,7 +63,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     const ws = new WebSocketImpl(url)
     socket = ws
     ws.onopen = () => {
-      if (socket === ws && body) ws.send(body)
+      if (socket === ws && body && sendBody) ws.send(body)
     }
     ws.onmessage = (ev) => {
       if (socket !== ws) return
@@ -85,7 +93,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
 
   function schedule() {
     if (stopped || timer !== null) return
-    if (attempts >= MAX_ATTEMPTS) {
+    if (gaveUp(attempts)) {
       status('off')
       return
     }
@@ -109,12 +117,12 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
       open()
       return
     }
-    if (changed && socket && socket.readyState === 1) socket.send(body)
+    if (changed && sendBody && socket && socket.readyState === 1) socket.send(body)
   }
 
   /** Send the current body again, once, because the USER asked (a Refresh button); never called from a timer. */
   function resend() {
-    if (body && socket && socket.readyState === 1) socket.send(body)
+    if (body && sendBody && socket && socket.readyState === 1) socket.send(body)
   }
 
   /** Close for good (no draft, page left): no reconnect, no fallback. */
@@ -132,10 +140,24 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
   return { follow, resend, stop, attempts: () => attempts }
 }
 
-/** Vue wrapper: `status` is a ref (connecting | live | down | off); closes on unmount. */
+/**
+ * REQ-113 AC-2: "reconnecting" is what a screen that HAS been live reads while its socket is connecting or down. It is false
+ * before the first answer (nothing to reconnect), after stop() (page left) and after the helper gave up ('off'). One rule
+ * for every live screen; the words come from RECONNECTING_TEXT in lib/sharedStateText.js.
+ */
+export function useReconnecting(status) {
+  const everLive = ref(false)
+  watch(status, (s) => {
+    if (s === 'live') everLive.value = true
+    else if (s === 'off') everLive.value = false
+  }, { flush: 'sync' })
+  return computed(() => everLive.value && (status.value === 'connecting' || status.value === 'down'))
+}
+
+/** Vue wrapper: `status` is a ref (connecting | live | down | off), `reconnecting` a computed; closes on unmount. */
 export function useStrategyLive({ onPush, onMessage, onDown, url = liveUrl(), WebSocketImpl } = {}) {
   const status = ref('off')
   const live = createLiveSocket({ url, onPush, onMessage, onDown, WebSocketImpl, onStatus: (s) => (status.value = s) })
   onBeforeUnmount(() => live.stop())
-  return { status, follow: live.follow, stop: live.stop }
+  return { status, reconnecting: useReconnecting(status), follow: live.follow, stop: live.stop }
 }

@@ -15,6 +15,7 @@ import ExecuteCost from '@/components/execution/ExecuteCost.vue'
 import BasketForm from '@/components/execution/BasketForm.vue'
 import ReturnCheck from '@/components/execution/ReturnCheck.vue'
 import { useStrategyLive } from '@/composables/useStrategyLive'
+import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
@@ -98,6 +99,7 @@ async function prepare(action) {
 <template>
   <section class="p-4" data-testid="execute-screen" :data-phase="phase">
     <h1 class="text-xl font-semibold" data-testid="page-title">Execute Strategy {{ strategyId ?? '' }}</h1>
+    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
 

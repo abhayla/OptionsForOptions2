@@ -3,6 +3,8 @@
 export const MARKET_CLOSED_PREFIX = 'Market closed. Prices are from '
 export const marketClosedText = (time) => `${MARKET_CLOSED_PREFIX}${time}.`
 
+// REQ-113 AC-2: shown (test id live-reconnecting) by every live screen whose socket dropped after it had been live.
+export const RECONNECTING_TEXT = 'Live prices are reconnecting'
 export const SESSION_ENDED_TEXT = 'Zerodha session ended. Reconnect to continue'
 export const RECONNECT_LABEL = 'Reconnect'
 export const LAST_SYNC_PREFIX = 'Last synced '

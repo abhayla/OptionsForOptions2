@@ -6,7 +6,7 @@
 // reconnect backoff is the strategy socket's (imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
-import { createLiveSocket } from './useStrategyLive'
+import { createLiveSocket, useReconnecting } from './useStrategyLive'
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
 export const CHAIN_REST_PATH = '/market/chain' // relative to the api base (/api)
@@ -132,7 +132,7 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
   // A REST first paint that says LIVE while the socket is still connecting is a wait, not a not-connected state.
   const waitingForSocket = () => answer.value?.state === 'LIVE' && status.value === 'connecting'
   const notLive = () => !isLive() && !waitingForSocket() && (answer.value !== null || failed.value)
-  return { answer, status, request, follow, clear, stop, refresh, shown, isLive, notLive }
+  return { answer, status, reconnecting: useReconnecting(status), request, follow, clear, stop, refresh, shown, isLive, notLive }
 }
 
 /** Whole days from `today` to the expiry date (date parts only; a label, never a price). */

@@ -15,7 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import IndexViewPage from '@/pages/IndexViewPage.vue'
 import { INDEX_LIVE_PATH, INDEX_REST_PATH, createIndexSocket, indexLiveUrl, isIndicesAnswer } from '@/composables/useIndexLive'
-import { MAX_ATTEMPTS } from '@/composables/useStrategyLive'
+import { FAST_ATTEMPTS, MAX_ATTEMPTS } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -77,7 +77,7 @@ describe('the index socket lifecycle', () => {
     expect(isIndicesAnswer({ state: 'COMPUTED', indices: [] })).toBe(false)
   })
 
-  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it stops after MAX_ATTEMPTS', () => {
+  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it stops after the fast and slow limits', () => {
     const timers = []
     const onDown = vi.fn()
     const s = createIndexSocket({ url: 'ws://x', WebSocketImpl: FakeSocket, onPush: () => {}, onDown,
@@ -86,14 +86,15 @@ describe('the index socket lifecycle', () => {
     FakeSocket.all[0].serverClose()
     expect(onDown).toHaveBeenCalledTimes(1)
     expect(timers[0].ms).toBe(1000)
-    for (let i = 1; i < MAX_ATTEMPTS; i += 1) {
+    const TOTAL = FAST_ATTEMPTS + MAX_ATTEMPTS
+    for (let i = 1; i < TOTAL; i += 1) {
       timers[i - 1].fn()
       FakeSocket.all[i].serverClose()
     }
-    expect(timers.map((t) => t.ms).slice(0, 3)).toEqual([1000, 2000, 4000])
-    timers[MAX_ATTEMPTS - 1].fn()
-    FakeSocket.all[MAX_ATTEMPTS].serverClose()
-    expect(timers).toHaveLength(MAX_ATTEMPTS) // no attempt past the limit
+    expect(timers.map((t) => t.ms).slice(0, 3)).toEqual([1000, 1000, 1000])
+    timers[TOTAL - 1].fn()
+    FakeSocket.all[TOTAL].serverClose()
+    expect(timers).toHaveLength(TOTAL) // no attempt past the limit
   })
 })
 
