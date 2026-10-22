@@ -30,8 +30,13 @@ shown once; sentences keep charges).
 - #507 W-125/W-128 (lane B4: held switches, ready-made shapes, POP): **MERGED 2026-10-22 ~08:55 IST**, all 7 checks
   green (reviewed head 4f9c1163 after samelines SAME vs 40ac682d). Tracker rows for W-125/W-128 still to add.
 - #509 W-124 (lane A3: option chain values, stale-spot safe shading, migration 0022 user settings). Tier A round 2
-  PASS WITH MINORS on 627acfb7; evidence committed (head cd6fca2d). Next: `merge.py 509 --reviewed-sha
-  cd6fca2d72d2576d45ba874feda1913713c3f8f5`; after merge: `dev_alembic.py upgrade head` (ofo_dev -> 0022).
+  PASS WITH MINORS on 627acfb7; evidence committed (head cd6fca2d; samelines SAME). **Now CONFLICTING with main after
+  #507 merged** (backend/ofo_app/main.py routers, docs/api/openapi.json, docs/process/coverage-stages.yaml,
+  frontend/src/pages/StrategyBuilderPage.vue, tests_app/test_response_door.py). Next: merge origin/main into
+  build/W-124-a3-chain (keep both sides; recount the response-door union by hand - a clean merge has left the count
+  wrong before; regenerate openapi.json; check migration 0022's down_revision is still main's head), run door + drift +
+  the chain tests + ratchet, push, then `merge.py 509 --reviewed-sha <new head>` (the resolution diff is mechanical;
+  get a narrow review if StrategyBuilderPage.vue needed real choices). After merge: `dev_alembic.py upgrade head`.
 - **B2 W-127 (lane B2: what-if, payoff chart, ADR-167 before-charges, charges breakdown) - NO PR YET.** Branch
   build/W-127-b2-payoff head 56f0d8ab (main merged; door 212 passed, ratchet OK). Tier A PASS WITH MINORS on 25e33c3a.
   Evidence NOT yet recorded: record REQ-084 AC-4, AC-6, AC-8, AC-9 from `ev-W-127.json` in the scripts folder
