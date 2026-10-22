@@ -85,6 +85,7 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 2 | not set | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
 | 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
 | 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | in progress | | | | builder stopped at its 100-turn hard limit with 152 tool calls against an 80-call budget, mid-rename |
+| 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | | | | | |
 
 ## Log (newest first)
 
