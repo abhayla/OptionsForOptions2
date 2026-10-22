@@ -38,8 +38,11 @@ reason. Strict row order stays (owner, same session: "Keep strict order").
 - **R5 Fix rounds go to the same builder** (it keeps context; measured 190-210k tokens vs 130-160k for a fresh one,
   but no re-reading time). Kept; re-measure at the chunk-end meta review.
 
-Pending owner decision (rule (3), loosening): final verifier skips ACs the diff did not touch that passed at the start
-check. Status: independent reviewer read requested 2026-10-22; then one owner question.
+Rejected (rule (3), loosening), 2026-10-22: "the final verifier skips ACs the diff did not touch". Independent
+reviewer (Sonnet, fresh context): saves ~1-2 min per verify round on Tier B rows only (Tier A rows stay full), while
+both stale-test failures of rows 1-2 were exactly "untouched" ACs broken by a shared change; a safe version needs an
+import-graph script that eats the saving. Final verifiers keep checking every in-scope AC. Kit harvest of the adopted
+rules: abhayla/Startup-Factory#161.
 
 ## Log (newest first)
 

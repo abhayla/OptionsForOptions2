@@ -14,6 +14,8 @@ what is PARKED, NEXT, and the per-PC setup that is not in git), then `docs/HANDO
 lists) and the active plan `docs/process/master-plan-2026-10-07.md`. Nothing pending is closed until it is implemented
 and independently verified. Open items: `spec/open-questions.md`. Do not write requirements or code before the ADRs
 they rest on exist.
+After every delivered row or work item: write the measured process review and apply its fixes per
+`docs/process/row-review.md` (owner 2026-10-22; its rules R1-R5 apply to every brief).
 Orchestration: briefs in `docs/process/`, helpers in `scripts/orchestrator/`. Builder worktrees live under the
 `.claude` folder, a path the kit guard blocks in Bash, so reach them through the helpers: `agit.py <agent-id> <git
 args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|release`, `ev_agent.py` /
