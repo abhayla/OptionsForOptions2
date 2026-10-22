@@ -5,9 +5,9 @@ current contract stale while the feed is live, because Kite sends only changes (
 import datetime
 
 from _kite_fixture import all_instrument_ids, new_provider, recorded_frames, replay
-
-from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
+from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_STALE, FEED_WAITING, RECONNECT_WINDOW
 from ofo.marketdata.health import build_quote
+from ofo.marketdata.kite_frames import parse_frame
 from ofo.rules.inputs import DataHealth
 
 SEC = datetime.timedelta(seconds=1)
@@ -77,3 +77,42 @@ def test_disconnect_session_end_and_never_connected():
     assert provider.status().session_ended is True
     fresh, _, _ = new_provider()
     assert fresh.status().health is DataHealth.UNAVAILABLE
+
+
+# ---- #513 item 1 (W-135, REQ-049 AC-2): only a frame with a WANTED tick is live data ---------------------------
+def test_a_frame_of_only_unwanted_ticks_is_not_live_data_after_the_last_screen_releases():
+    provider, clock, items = new_provider()
+    ids = all_instrument_ids(items)
+    provider.subscribe(ids)
+    provider.drain_subscription_changes()  # the socket sent the subscribe
+    end = replay(provider, clock)
+    provider.unsubscribe(ids)  # the last screen releases every token
+    provider.drain_subscription_changes()
+    at = end + 10 * SEC  # long after the last wanted frame
+    frames = [(t, f) for t, f in recorded_frames() if len(f) > 1][:3]
+    for i, (_, frame) in enumerate(frames):
+        clock.now = at + i * SEC
+        provider.on_frame(frame, clock.now)  # Kite still sends the released tokens for a moment
+    assert provider.counters["released_tick"] > 0
+    assert provider.feed.phase(clock.now) == FEED_WAITING  # red today: the unwanted ticks called on_data
+
+
+def test_a_frame_with_one_wanted_tick_among_unwanted_ones_is_live_data():
+    provider, clock, _items = new_provider()
+    provider.on_connected(clock.now)
+    at, frame = next((t, f) for t, f in recorded_frames() if len(parse_frame(f).ticks) > 1)
+    first = provider._by_token[parse_frame(frame).ticks[0].token].contract
+    provider.subscribe([f"{first.exchange_segment}:{first.exchange_token}"])  # one of the frame's ticks is wanted
+    clock.now = at
+    assert provider.feed.phase(at) == FEED_WAITING
+    provider.on_frame(frame, at)
+    assert provider.feed.phase(at) == FEED_HEALTHY
+
+
+def test_a_heartbeat_alone_is_never_a_healthy_phase():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    end = replay(provider, clock)
+    assert provider.feed.phase(end) == FEED_HEALTHY
+    now = _heartbeats(provider, clock, end, 10)
+    assert provider.feed.phase(now) == FEED_WAITING

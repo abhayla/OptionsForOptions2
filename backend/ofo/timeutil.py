@@ -32,3 +32,14 @@ EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)
 EXPIRY_DAY_SETTLE_FROM: Final = datetime.time(15, 39)
 #: Minute history for a trading day is fetched up to this IST time (naive time), past the 15:30 close.
 HISTORY_FETCH_UNTIL: Final = datetime.time(15, 59)
+
+
+SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading weekdays
+
+
+def market_open(now: datetime.datetime) -> bool:
+    """The ONE market-hours check: a weekday inside the regular session, on IST wall clock (REQ-049 AC-4, the Execute
+    gate and the Settings live-data row all read it). No holiday calendar exists yet: a holiday reads as open (reported
+    gap; the legacy 2026 holiday list is wrong, F-54, and is never copied)."""
+    local = now.astimezone(IST)
+    return local.weekday() < SATURDAY and SESSION_OPEN <= local.time() < SESSION_CLOSE

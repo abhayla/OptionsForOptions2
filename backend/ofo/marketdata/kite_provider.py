@@ -13,7 +13,6 @@ from __future__ import annotations
 import datetime
 import json
 from collections import Counter
-from decimal import Decimal
 from typing import Callable, Iterable, Sequence
 
 from ofo.engine.executable_price import Depth, depth_from_levels
@@ -74,7 +73,9 @@ class KiteProvider(MarketDataProvider):
         """A binary message: a data frame or a heartbeat. Returns the quotes it produced, in order."""
         result = parse_frame(data)
         if result.malformed == 0:  # only a well-formed frame or a heartbeat is activity
-            if result.ticks:
+            # #513 item 1: live data means a tick for a token somebody holds now; a frame of only released or unknown
+            # tokens (Kite keeps sending them for a moment) proves the link, like a heartbeat, never prices
+            if any(t.token in self._wanted for t in result.ticks):
                 self.feed.on_data(received_at)
             else:
                 self.feed.on_activity(received_at)

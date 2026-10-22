@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
@@ -63,7 +64,7 @@ from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
+from ofo.timeutil import IST, market_open  # the one shared market-hours check (re-exported for the route's tests)
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import eligibility_from_zerodha as elig
@@ -91,6 +92,7 @@ from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
+_LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
@@ -158,7 +160,8 @@ async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
     try:
         margin = await live_market.owner_margin_client()
         reads = await live_market.owner_kite_reads()
-    except Exception:  # noqa: BLE001 - the class name only; a stored token is never in a message
+    except Exception as exc:  # noqa: BLE001 - the class name only; a stored token is never in a message
+        _LOG.warning("stored broker session unreadable: %s", type(exc).__name__)  # #513 item 2: never the text
         raise _refuse("gate_broker_unconfirmed") from None
     if margin is None or reads is None:
         return None
@@ -237,13 +240,6 @@ def _refuse(template: str, **slots: object) -> StrategyRefused:
 
 def _refuse_with(message: UserFacingError) -> StrategyRefused:
     return StrategyRefused("gate_dependencies_unsatisfied", Failure.CONFLICT, message=message)
-
-
-def market_open(now: datetime.datetime) -> bool:
-    """Weekday inside the session (ofo/timeutil). No holiday calendar exists yet: a holiday reads as open and Zerodha
-    refuses the order on its page (reported gap)."""
-    local = now.astimezone(IST)
-    return local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE
 
 
 def _health(times: tuple[datetime.datetime, ...], checked_at: datetime.datetime) -> DataHealth:

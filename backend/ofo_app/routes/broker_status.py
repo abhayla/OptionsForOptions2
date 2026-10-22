@@ -23,11 +23,13 @@ active session with reason 'disconnected' (``broker_token_store.end_session``) a
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
 from ofo.marketdata.feed_health import FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
+from ofo.timeutil import market_open
 
 from ofo_app import broker_sync, live_market
 from ofo_app.api_models import ApiModel
@@ -35,13 +37,14 @@ from ofo_app.broker_token_store import active_session_status, end_session
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.execute import get_execute_clock
 
 router = APIRouter(route_class=ClosedRoute)
 
 Level = Literal["connected", "partial", "disconnected"]
 Fix = Literal["connect_zerodha", "session_expired", "live_feed_off", "live_feed_not_running", "live_feed_session_ended",
               "no_read_yet", "live_data_not_connected", "positions_not_synced", "live_feed_waiting",
-              "live_feed_reconnecting", "live_feed_idle"]
+              "live_feed_reconnecting", "live_feed_idle", "live_feed_market_closed"]
 
 
 class StatusOut(ApiModel):
@@ -66,10 +69,16 @@ def _status(state: Level, fix: Fix | None = None) -> StatusOut:
     return StatusOut(state=state, fix=fix)
 
 
-def _live_status(live_state: str, phase: str | None) -> StatusOut:
+def _live_status(live_state: str, phase: str | None, market_is_open: bool = True) -> StatusOut:
     """``phase`` is the provider's feed phase while the socket runs, None when it does not. Connected only when prices
     are arriving (``healthy``); a running socket with no frame yet, or frames stopped, is waiting; a socket in backoff
-    is reconnecting; a socket up with nothing subscribed is idle; never from the socket task being alive."""
+    is reconnecting; a socket up with nothing subscribed is idle; never from the socket task being alive.
+    Outside market hours (REQ-049 AC-4, #513 item 3) a quiet or not-running feed is the market being closed, not a
+    fault: ``live_feed_market_closed`` says so and never advises Reconnect. A session Zerodha ended still says so."""
+    closed = not market_is_open
+    if closed and (phase == FEED_WAITING or (phase is None and live_state not in (live_market.SESSION_ENDED,
+                                                                                  live_market.NOT_STARTED))):
+        return _status("partial", "live_feed_market_closed")
     by_phase = {FEED_HEALTHY: _status("connected"), FEED_WAITING: _status("partial", "live_feed_waiting"),
                 FEED_RECONNECTING: _status("partial", "live_feed_reconnecting"),
                 FEED_ENDED: _status("partial", "live_feed_session_ended"),
@@ -84,7 +93,7 @@ def _live_status(live_state: str, phase: str | None) -> StatusOut:
 
 
 def build_status(session: tuple[datetime.datetime, bool] | None, last_read: datetime.datetime | None,
-                 live_state: str, live_phase: str | None) -> BrokerStatusOut:
+                 live_state: str, live_phase: str | None, market_is_open: bool = True) -> BrokerStatusOut:
     """Pure: the four statuses from the session row (started_at, past expiry), the last successful read, and the live
     market's state and its feed phase (None = no socket running). Exercised directly by the state tests."""
     if session is None or session[1]:
@@ -94,7 +103,7 @@ def build_status(session: tuple[datetime.datetime, bool] | None, last_read: date
                                order_execution=down, last_successful_sync=None, historical_data="not_available")
     started = session[0]
     synced = last_read if last_read is not None and last_read >= started else None
-    live = _live_status(live_state, live_phase)
+    live = _live_status(live_state, live_phase, market_is_open)
     sync = _status("connected") if synced is not None else _status("partial", "no_read_yet")
     if live.state != "connected":
         execution = _status("partial", "live_data_not_connected")
@@ -108,10 +117,12 @@ def build_status(session: tuple[datetime.datetime, bool] | None, last_read: date
 
 @router.get("/api/broker/status", response_model=BrokerStatusOut)
 async def broker_status(db: Annotated[Any, Depends(get_db)],
-                        user_ref: Annotated[str, Depends(current_user_ref)]) -> BrokerStatusOut:
+                        user_ref: Annotated[str, Depends(current_user_ref)],
+                        clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+                        ) -> BrokerStatusOut:
     session = await active_session_status(db, user_ref)
     return build_status(session, broker_sync.last_read(), live_market.current_state(),
-                        live_market.feed_phase())
+                        live_market.feed_phase(), market_open(clock()))
 
 
 @router.post("/api/broker/disconnect", response_model=DisconnectOut)

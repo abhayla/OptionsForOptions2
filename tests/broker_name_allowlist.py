@@ -230,6 +230,7 @@ LINES: dict[str, tuple[str, ...]] = {
         "connect_zerodha: 'Zerodha is not connected. Use Connect Zerodha below, log in on Zerodha\\'s own page, and come back here.',",
         "session_expired: 'Your Zerodha login for today has expired. Use Reconnect and log in again on Zerodha\\'s own page.',",
         "live_feed_waiting: 'Connected to Zerodha, but no prices have arrived yet. Wait a few seconds; if this stays, use Reconnect.',",
+        "live_feed_market_closed: 'The market is closed, so no new prices are arriving. Live prices resume at the next market open (9:15 am IST on a trading day).',",
         "live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',",
         "live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',",
         "no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',",

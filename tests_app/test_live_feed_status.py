@@ -14,7 +14,7 @@ import pathlib
 
 import pytest
 from ofo.instruments.parser import parse_instruments_csv
-from ofo.marketdata.feed_health import FEED_STALE
+from ofo.marketdata.feed_health import FEED_RECONNECTING, FEED_STALE
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app import broker_sync, live_market
 from ofo_app.routes.broker_status import broker_status, build_status
@@ -194,11 +194,51 @@ class _Db:
 async def test_the_route_answers_from_the_feed_not_the_task(market, provider, clock):
     """Through the real route function with a running socket and no frame yet: waiting, then connected after a frame."""
     provider.on_connected(clock.now)
-    waiting = await broker_status(_Db(), "owner")
+    waiting = await broker_status(_Db(), "owner", clock)
     assert (waiting.live_market_data.state, waiting.live_market_data.fix) == ("partial", "live_feed_waiting")
     _frame(provider, clock.now)
-    flowing = await broker_status(_Db(), "owner")
+    flowing = await broker_status(_Db(), "owner", clock)
     assert flowing.live_market_data.state == "connected"
+
+
+# ---- W-135 (REQ-049 AC-4, #513 item 3): Reconnect advice only inside market hours -------------------------------
+# 2026-10-22 is a Thursday, 2026-10-24 a Saturday. Fixed clocks, never the wall clock.
+def _ist(day: int, hour: int, minute: int) -> datetime.datetime:
+    return datetime.datetime(2026, 10, day, hour, minute, tzinfo=IST)
+
+
+@pytest.mark.parametrize(("at", "fix"), [
+    (_ist(22, 15, 29), "live_feed_waiting"),        # last minute of the session: the Reconnect advice stands
+    (_ist(22, 15, 30), "live_feed_market_closed"),  # SESSION_CLOSE is exclusive
+    (_ist(22, 15, 31), "live_feed_market_closed"),
+    (_ist(22, 9, 14), "live_feed_market_closed"),
+    (_ist(22, 9, 15), "live_feed_waiting"),
+    (_ist(24, 11, 0), "live_feed_market_closed"),   # Saturday
+])
+async def test_the_waiting_row_advises_reconnect_only_inside_market_hours(market, provider, clock, at, fix):
+    clock.now = at
+    provider.on_connected(at)  # connected, no price frame yet
+    out = await broker_status(_Db(), "owner", clock)
+    assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", fix)
+
+
+def test_after_hours_a_session_end_still_says_so_and_a_flowing_feed_stays_connected(market, provider, clock):
+    clock.now = _ist(22, 16, 0)
+    provider.on_connected(clock.now)
+    _frame(provider, clock.now)
+    closed = build_status((T0, False), LATER, live_market.current_state(), live_market.feed_phase(), False)
+    assert closed.live_market_data.state == "connected"  # prices arriving is never relabelled
+    provider.on_session_ended(clock.now)
+    ended = build_status((T0, False), LATER, live_market.current_state(), live_market.feed_phase(), False)
+    assert ended.live_market_data.fix == "live_feed_session_ended"  # a genuine 403: Reconnect is the right advice
+    reconnecting = build_status((T0, False), LATER, live_market.current_state(), FEED_RECONNECTING, False)
+    assert reconnecting.live_market_data.fix == "live_feed_reconnecting"
+
+
+def test_the_market_hours_check_has_one_home():
+    from ofo.timeutil import market_open as shared
+    from ofo_app.routes import execute
+    assert execute.market_open is shared
 
 
 # ---- fix round 1: heartbeats never keep the row Connected --------------------------------------------------------
