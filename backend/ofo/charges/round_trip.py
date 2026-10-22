@@ -17,11 +17,11 @@ from decimal import ROUND_CEILING, Decimal
 from ofo.charges.calculator import ChargeOrder, charges_for_orders, exercise_stt
 from ofo.charges.rates import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.instruments.models import BSE_FO, NSE_FO
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.money import PAISE
 
 #: The index -> exchange segment map (NIFTY options trade on NSE, SENSEX options on BSE).
-SEGMENT_BY_UNDERLYING = {"NIFTY": NSE_FO, "SENSEX": BSE_FO}
+SEGMENT_BY_UNDERLYING = dict(SUPPORTED_UNDERLYINGS)  # the one home (REQ-001 AC-4)
 
 
 def to_paise_up(amount: Decimal) -> Decimal:

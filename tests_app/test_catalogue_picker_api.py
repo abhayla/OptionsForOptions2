@@ -249,9 +249,12 @@ async def test_unsupported_underlying_and_bad_input_use_catalogue_messages(app_e
                     assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
                     resp = await ac.get("/api/catalogue/BANKNIFTY/contracts", params={"expiry": "2026-10-08"})
                     assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
-                    resp = await ac.get("/api/catalogue/nifty/expiries")  # not even a symbol shape: the fixed input error
+                    resp = await ac.get("/api/catalogue/nifty/expiries")  # wrong case: refused, echoed as typed
+                    assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
+                    assert "nifty is not supported" in resp.text
+                    resp = await ac.get("/api/catalogue/BANK-NIFTY/expiries")  # not a symbol: fixed error, not echoed
                     assert resp.status_code == 422 and resp.json()["code"] == FIXED_INPUT_CODE, resp.text
-                    assert "nifty" not in resp.text
+                    assert "BANK-NIFTY" not in resp.text
                     resp = await ac.get("/api/catalogue/NIFTY/contracts")  # expiry missing
                     assert resp.status_code == 422 and resp.json()["code"] == FIXED_INPUT_CODE, resp.text
                     resp = await ac.get("/api/catalogue/NIFTY/contracts", params={"expiry": "tomorrow"})

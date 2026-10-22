@@ -27,6 +27,8 @@ from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.money import zerodha_paise
 
 log = logging.getLogger("ofo_app.kite_margin")
@@ -41,7 +43,8 @@ _PRODUCTS: Final = frozenset({"NRML", "MIS"})
 _ORDER_TYPES: Final = frozenset({"LIMIT", "MARKET"})
 # NFO (NIFTY) is proven on the 2026-10-15 reply; BFO (SENSEX -> BSE_FO) is unproven on real data until a BFO basket
 # reply is recorded.
-_EXCHANGES: Final = frozenset({"NFO", "BFO"})
+_EXCHANGES: Final = frozenset(code for code, segment in ZERODHA_EXCHANGE_TO_SEGMENT.items()
+                              if segment in SUPPORTED_UNDERLYINGS.values())  # Zerodha codes of the home's segments
 
 
 class KiteMarginError(Exception):

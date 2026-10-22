@@ -10,9 +10,12 @@ from typing import get_args
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.charges.round_trip import SEGMENT_BY_UNDERLYING
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.marketdata.kite_provider import IST
 from ofo_app.db import get_db
+from ofo_app.kite_margin import _EXCHANGES
 from ofo_app.main import create_app
 from ofo_app.routes.catalogue import get_today
 from ofo_app.routes.chain import REST_PATH
@@ -119,3 +122,10 @@ async def test_an_index_row_as_a_leg_with_a_provider_is_refused_with_a_catalogue
         resp = await ac.post("/api/strategies/outcome", json={"underlying": "NIFTY", "legs": [leg]})
     assert resp.status_code < SERVER_ERROR, resp.text
     assert "unknown instrument" in resp.text, resp.text  # the leg is named unvalued by the catalogue explanation
+
+
+def test_the_pairings_are_derived_from_the_home() -> None:
+    """REQ-001 AC-4: the charges segment table and the margin exchange codes come from SUPPORTED_UNDERLYINGS."""
+    assert dict(SUPPORTED_UNDERLYINGS) == SEGMENT_BY_UNDERLYING
+    home_segments = SUPPORTED_UNDERLYINGS.values()
+    assert {c for c, seg in ZERODHA_EXCHANGE_TO_SEGMENT.items() if seg in home_segments} == _EXCHANGES
