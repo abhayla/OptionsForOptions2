@@ -78,6 +78,10 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
   tree for the old value or answer of anything you changed.
 - **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
+- **Run the app tests your change can break** (row-review R13; row 7 found a row-5 stale test in a file nobody ran):
+  for every backend file you change, list the `tests_app` files that import it or call its routes
+  (`scripts/orchestrator/select_app_tests.py` does this for a whole branch; for your own commits grep the importers),
+  run them all through the throwaway-database runner, and list them in your report.
 - **The `Budget:` is a hard stop** (row 4, 2026-10-22: a builder used 152 tool calls on an 80-call budget, hit the
   100-turn hard limit and stopped mid-rename with uncommitted files). At 80% of the calls (64 of 80, 32 of 40):
   start no new change; finish or revert the one in hand so the tree is consistent; commit; report done / not done /

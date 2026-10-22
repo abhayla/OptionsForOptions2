@@ -235,6 +235,14 @@ def test_after_hours_a_session_end_still_says_so_and_a_flowing_feed_stays_connec
     assert reconnecting.live_market_data.fix == "live_feed_reconnecting"
 
 
+def test_after_hours_a_stopped_socket_after_a_session_end_still_says_log_in_again():
+    """Row 7 verifier round 1 (mutation M5 survived): after a Zerodha-ended session the socket STOPS - the market
+    state is SESSION_ENDED and the feed phase is None, not FEED_ENDED. After hours that row must still say the session
+    ended (log in again), never 'market closed'."""
+    out = build_status((T0, False), LATER, live_market.SESSION_ENDED, None, False)
+    assert out.live_market_data.fix == "live_feed_session_ended"
+
+
 def test_the_market_hours_check_has_one_home():
     from ofo.timeutil import market_open as shared
     from ofo_app.routes import execute

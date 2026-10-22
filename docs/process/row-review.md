@@ -63,6 +63,9 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
   builder runs it with exactly those; a test that can only skip in CI is a defect.
 - **R12 Secrets are guarded by inventory** (row 6): the closed set of reply fields / build inputs that may exist,
   asserted both ways; never a list of secret-looking names.
+- **R13 Run the tests a change can break, not only the ones named** (row 7 found a row-5 stale test in a file nobody
+  ran). Builder and verifier select the app tests for the row's own backend diff (`scripts/orchestrator/select_app_tests.py`
+  logic, restricted to the row's commits) and run every file it names in a throwaway database.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -102,9 +105,25 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | 6 (measure, build, finish, verify r1, fix, verify r2) | 52 agent min; 58 wall-clock (12:57-13:55) | ~870k | 2 | time -42% (faster), tokens +93% (slower): see the row 4 log |
 | 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | 7 (build, finish x2, verify r1, research, fix, verify r2) + 3 process (reset tool, throwaway-db tool, tool review) | 61 agent min; 97 wall-clock (13:58-15:35) | ~1,010k (+316k process) | 2 | wall-clock +8% (within 20%); tokens +124%: see the row 5 log |
 | 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
-| 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | | | | | |
+| 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | 3 (measure, build, verify r1) | 52 agent min; ~62 wall-clock (16:40-17:42) | ~368k | 1 | time -31% (faster), tokens -18% (within 20%): see the row 7 log |
+| 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | | | | | |
 
 ## Log (newest first)
+
+### Row 7 - REQ-049 Data health (closed 2026-10-22 ~17:42 IST)
+- Expected 90 min / 450k (set before dispatch, in the brief). Actual: measure 1.5 min / 81k / 25 calls; build 21.9 min /
+  130k / 88 calls (budget 80 - the hard stop broken again); verify r1 28.4 min / 157k / 42. Agents 52 min, ~368k;
+  wall-clock ~62 min (16:40 dispatch after f369fa05 - 17:42). Orchestrator: one test for the untested branch (M5,
+  proved on a scratch export), the row-5 stale test, the selector run.
+- Difference: time -31%, tokens -18%: FASTER. Why: ONE verify round, the first since row 3. What helped: the Size and
+  CI lines (the builder ran its app tests with exactly CI's variables - none of row 6's CI surprises); real recorded
+  frames named in the brief; #513's three items handed over with file:line from row 2's verifier.
+- Wrong: the builder ran 88 calls on an 80 budget (the hard stop is still prose for agents); row 5's builder had not run
+  `test_execute_route.py` although it changed `execute.py` - a stale test the row-5 verifier never ran either (it ran
+  only the files its brief named); found here, passes on main, fixed.
+- Changed: R13 - the builder AND the verifier run `python scripts/orchestrator/select_app_tests.py <worktree>`-style
+  selection on the ROW's own diff (backend files) and run every app test file it names (throwaway database), and list
+  them in the report; the brief's Tests line names it. The whole-chunk selection (83 files) runs in CI at the chunk PR.
 
 ### Meta review after row 6 (2026-10-22 ~16:45 IST, fresh Sonnet agent, 1.0 min / 117k / 6 calls)
 - Found: waste is not shrinking (row 3 best; rows 4-6 two rounds each, row 6 parked); about 9 of ~15 causes are the
