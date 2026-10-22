@@ -63,12 +63,13 @@ test('AC-3: a refused read shows the catalogue message, not an empty list', asyn
   await page.route('**/api/positions', (route) => route.fulfill({
     status: 409,
     json: { error_class: 'BROKER_AUTHENTICATION', code: 'BROKER_AUTHENTICATION_102',
-      what_happened: 'Your Zerodha account is not connected. Connect it to continue.',
+      what_happened: 'Connect your Zerodha account to continue. We\'ll use your Zerodha account to verify '
+        + 'availability, check margin and prepare/execute your strategy.',
       impact: 'Orders cannot be sent to Zerodha.', what_is_blocked: 'Execution of this strategy.',
       next_action: 'Connect your Zerodha account from the account page.', external_text: null },
   }))
   await page.goto('/positions/current-positions')
-  await expect(page.getByTestId('positions-page')).toContainText('Your Zerodha account is not connected')
+  await expect(page.getByTestId('positions-page')).toContainText('Connect your Zerodha account to continue.')
   await expect(page.getByTestId('positions-empty')).toHaveCount(0)
   await expect(page.getByTestId('position-row')).toHaveCount(0)
 })

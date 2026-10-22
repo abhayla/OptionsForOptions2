@@ -64,8 +64,11 @@ class KiteSocket:
     def __init__(self, provider: _KiteProvider, *, api_key: str, access_token: str,  # noqa: PLR0913
                  clock: _Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
                  connect: _Callable | None = None,
-                 sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep) -> None:
+                 sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep,
+                 on_reconnect: _Callable[[], _Awaitable[None]] | None = None) -> None:
         self._provider = provider
+        self._on_reconnect = on_reconnect  # REQ-015 AC-5: once per RE-connection, as its own task (see ``run``)
+        self._reconnect_tasks: set[asyncio.Task] = set()
         for value in (api_key, access_token, base_url):  # plain data only (W-080 r9): a str subclass is caller code
             _plain_str(value, "the socket address parts")
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
@@ -88,6 +91,13 @@ class KiteSocket:
 
     async def run(self) -> str:
         """Run until stopped or the session ends. Returns ``STOPPED`` or ``SESSION_ENDED``."""
+        try:
+            return await self._run()
+        finally:
+            for task in self._reconnect_tasks:
+                task.cancel()
+
+    async def _run(self) -> str:
         self._backoff = BACKOFF_START  # reset only by the first data frame of a connection, not by opening one
         while not self._stop:
             _check_ws_url(self._url)  # outside the try: a refusal ends the run, it is never retried
@@ -96,6 +106,7 @@ class KiteSocket:
                     self.connections += 1
                     self._provider.on_connected(self._clock())
                     _log.info("kite socket connected")
+                    self._start_reconnect_read()
                     await self._subscribe_all(ws)
                     await self._pump(ws)
             except _InvalidStatus as exc:
@@ -113,6 +124,25 @@ class KiteSocket:
             await self._sleep(self._backoff)
             self._backoff = min(self._backoff * 2, BACKOFF_MAX)
         return STOPPED
+
+    def _start_reconnect_read(self) -> None:
+        """REQ-015 AC-5: after a RE-connection (not the first connect) run the owner's callback once, as its own task so
+        the receive loop never waits on it (ticks keep flowing). One at a time: a read still running is not doubled.
+        The callback is a Zerodha read; nothing here can place or submit an order."""
+        if self._on_reconnect is None or self.connections < 2:  # noqa: PLR2004
+            return
+        if any(not t.done() for t in self._reconnect_tasks):
+            return
+        task = asyncio.get_running_loop().create_task(self._guarded_reconnect_read(), name="kite-reconnect-read")
+        self._reconnect_tasks = {task}
+
+    async def _guarded_reconnect_read(self) -> None:
+        try:
+            await self._on_reconnect()  # type: ignore[misc]
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a failed read never ends the socket; class name only
+            _log.warning("kite reconnect read failed: %s", type(exc).__name__)
 
     @contextlib.asynccontextmanager
     async def _opened(self) -> _AsyncIterator[object]:

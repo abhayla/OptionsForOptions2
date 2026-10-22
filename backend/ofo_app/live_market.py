@@ -32,7 +32,7 @@ from ofo.marketdata.kite_provider import IST, KiteProvider
 
 from ofo_app.config import app_env, get_settings
 from ofo_app.kite_margin import KiteMargin, urllib_transport
-from ofo_app.kite_reads import KiteReads
+from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
 from ofo_app.routes.outcome import MarketContext, server_now
@@ -158,8 +158,28 @@ class LiveMarket:
 
         provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
         socket = KiteSocket(provider, api_key=broker_config.api_key, access_token=token, clock=clock,
-                            base_url=get_settings().KITE_WS_URL)
+                            base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once)
         self.attach(provider, socket, clock, token_fingerprint(token))
+
+    async def _read_positions_once(self) -> None:
+        """REQ-015 AC-5: after the socket re-connects, ONE positions read through ``KiteReads`` (which marks
+        ``broker_sync`` on success). A read, never an order call. Every answer is defined: OK and empty note the sync;
+        a Kite error, timeout or 429 is logged by class/code only and leaves the status rows as they were; there is no
+        retry (the next reconnect is the next read). It runs in a worker thread, outside the socket's receive loop."""
+        if self._config is None:
+            return
+        token = await self._stored_token(self._config)
+        if token is None:
+            return
+        transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+        reads = KiteReads(api_key=self._config.api_key, access_token=token, transport=transport)
+        del token
+        try:
+            await asyncio.wait_for(asyncio.to_thread(reads.fetch_positions), timeout=CALL_TIMEOUT_SECONDS + 5)
+        except TimeoutError:
+            log.warning("positions read after reconnect timed out")
+        except KiteReadError as exc:
+            log.warning("positions read after reconnect failed: %s", exc.code)
 
     def running(self) -> bool:
         return self.state == LIVE and self._task is not None and not self._task.done()
@@ -242,6 +262,18 @@ def latest_depth(instrument_id: str) -> Depth | None:
         return None
     reader = getattr(ctx.provider, "latest_depth", None)  # a provider without depth (the test replay) has none
     return None if reader is None else reader(instrument_id, ctx.clock())
+
+
+def feed_phase() -> str | None:
+    """REQ-015 AC-4: the running socket's feed phase (``ofo.marketdata.feed_health.FEED_*``), read from the provider's
+    own feed state - not from the socket task being alive, which stays alive through every drop and backoff. None when
+    no socket is running or the provider keeps no feed state (the status then names the not-running fix)."""
+    market = _current
+    if market is None or not market.running() or market.feed is None:
+        return None
+    feed = getattr(market.feed.ctx.provider, "feed", None)
+    phase = getattr(feed, "phase", None)
+    return None if phase is None else phase(market.feed.ctx.clock())
 
 
 def current_state() -> str:

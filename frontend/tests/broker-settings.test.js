@@ -48,6 +48,14 @@ describe('/settings/broker-market-data', () => {
     expect(t(w, 'last-sync-none')).toContain('no successful read')
   })
 
+  it('partial: the waiting and reconnecting feed fixes read in plain words (REQ-015 AC-4)', async () => {
+    const waiting = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_waiting' } })
+    expect(t(waiting, 'status-live_market_data')).toBe('Partially connected')
+    expect(t(waiting, 'fix-live_market_data')).toContain('no prices have arrived yet')
+    const back = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_reconnecting' } })
+    expect(t(back, 'fix-live_market_data')).toContain('reconnecting')
+  })
+
   it('disconnected: guide text and a Connect button, no Disconnect', async () => {
     const d = { state: 'disconnected', fix: 'session_expired' }
     const w = await open({ ...base, account_connection: d, live_market_data: d, position_sync: d, order_execution: d })

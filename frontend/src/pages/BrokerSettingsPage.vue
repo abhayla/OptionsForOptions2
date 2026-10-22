@@ -21,6 +21,8 @@ const FIX = {
   session_expired: 'Your Zerodha login for today has expired. Use Reconnect and log in again on Zerodha\'s own page.',
   live_feed_off: 'Live market data is switched off on the server. Ask whoever runs the server to turn it on.',
   live_feed_not_running: 'The live price feed is not running yet. Open a strategy screen to start it; if it stays off, use Reconnect.',
+  live_feed_waiting: 'Connected to Zerodha, but no prices have arrived yet. Wait a few seconds; if this stays, use Reconnect.',
+  live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',
   live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',
   no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',
   live_data_not_connected: 'Orders are not ready until live market data is connected. Fix the live market data row first.',

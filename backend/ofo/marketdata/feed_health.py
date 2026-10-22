@@ -30,6 +30,13 @@ RECONNECT_WINDOW = datetime.timedelta(seconds=30)
 MAX_KEPT_TIMES = 20_000
 
 
+#: What the live feed is doing, in closed words (REQ-015 AC-4 live-data row, REQ-049 window): ``healthy`` = connected and
+#: a price frame inside ``feed_stale``; ``waiting`` = connected but no price frame yet (a heartbeat alone proves
+#: nothing about prices) or frames stopped beyond ``feed_stale``; ``reconnecting`` = not connected (backoff, or never
+#: connected); ``ended`` = the Zerodha session ended (403).
+FEED_HEALTHY, FEED_WAITING, FEED_RECONNECTING, FEED_ENDED = "healthy", "waiting", "reconnecting", "ended"
+
+
 class FeedState:
     """Connection and activity of ONE feed. Times are passed in (no clock here)."""
 
@@ -68,6 +75,15 @@ class FeedState:
         self.connected = False
         self.session_ended = True
         self._disconnected_at = now
+
+    def phase(self, now: datetime.datetime) -> str:
+        """One of the four ``FEED_*`` words. ``healthy`` only when ``health`` is AVAILABLE, never from the socket task
+        being alive."""
+        if self.session_ended:
+            return FEED_ENDED
+        if not self.connected:
+            return FEED_RECONNECTING
+        return FEED_HEALTHY if self.health(now) is DataHealth.AVAILABLE else FEED_WAITING
 
     def health(self, now: datetime.datetime) -> DataHealth:
         if self.session_ended:

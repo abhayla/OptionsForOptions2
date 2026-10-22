@@ -187,6 +187,9 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
 # (tests/errors/template_pins.json, docs/process/w024-templates-for-owner.md).
 
 _EXEC = "Execution of this strategy."
+#: REQ-015 AC-2: the one contextual connection prompt, word for word.
+CONNECT_PROMPT = ("Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, "
+                  "check margin and prepare/execute your strategy.")
 _RECONNECT = "Reconnect your Zerodha account from the account page, then try again."
 _NO_ALTERNATIVE = " No nearby listed strike is available to offer."
 _ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
@@ -321,7 +324,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
                     "right now."),
     _gate("gate_broker_unconfirmed", _BA, 101, "We could not confirm your Zerodha connection. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
-    _gate("gate_broker_not_connected", _BA, 102, "Your Zerodha account is not connected. Connect it to continue.",
+    _gate("gate_broker_not_connected", _BA, 102, CONNECT_PROMPT,
           "Orders cannot be sent to Zerodha.", _EXEC, "Connect your Zerodha account from the account page."),
     _gate("gate_session_unconfirmed", _BA, 103, "We could not confirm your Zerodha session. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),

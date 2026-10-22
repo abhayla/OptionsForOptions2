@@ -15,6 +15,8 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.marketdata.feed_health import FEED_HEALTHY
+from ofo.marketdata.kite_provider import KiteProvider
 from ofo_app import broker_sync, live_market
 from ofo_app import broker_token_store as store
 from ofo_app.broker_config import BrokerSettings, load_broker_config
@@ -52,7 +54,7 @@ def _clean_sync():
 
 def test_everything_connected_only_with_a_session_a_running_feed_and_a_read_after_login():
     """AC-4: all four Connected, with the last successful sync time."""
-    out = build_status((T0, False), LATER, live_market.LIVE, True)
+    out = build_status((T0, False), LATER, live_market.LIVE, FEED_HEALTHY)
     assert _states(out) == dict.fromkeys(FOUR, ("connected", None))
     assert out.last_successful_sync == LATER and out.historical_data == "not_available"
 
@@ -64,7 +66,7 @@ def test_everything_connected_only_with_a_session_a_running_feed_and_a_read_afte
 ])
 def test_a_session_without_a_running_feed_is_partial_and_names_the_fix(live_state, fix):
     """AC-4: never Connected by default - a stored session alone does not make live data Connected."""
-    out = build_status((T0, False), LATER, live_state, False)
+    out = build_status((T0, False), LATER, live_state, None)
     assert _states(out) == {"account_connection": ("connected", None), "live_market_data": ("partial", fix),
                             "position_sync": ("connected", None),
                             "order_execution": ("partial", "live_data_not_connected")}
@@ -73,7 +75,7 @@ def test_a_session_without_a_running_feed_is_partial_and_names_the_fix(live_stat
 def test_no_read_since_login_is_partial_and_a_read_before_login_does_not_count():
     """AC-4: a read older than this session (the previous login's) is not this session's sync."""
     for last in (None, EARLIER):
-        out = build_status((T0, False), last, live_market.LIVE, True)
+        out = build_status((T0, False), last, live_market.LIVE, FEED_HEALTHY)
         assert _states(out)["position_sync"] == ("partial", "no_read_yet")
         assert _states(out)["order_execution"] == ("partial", "positions_not_synced")
         assert out.last_successful_sync is None
@@ -81,14 +83,14 @@ def test_no_read_since_login_is_partial_and_a_read_before_login_does_not_count()
 
 def test_no_session_is_disconnected_with_the_guide_everywhere():
     """AC-4: Disconnected (with the guide) for all four, even if the feed word says live."""
-    out = build_status(None, LATER, live_market.LIVE, True)
+    out = build_status(None, LATER, live_market.LIVE, FEED_HEALTHY)
     assert _states(out) == dict.fromkeys(FOUR, ("disconnected", "connect_zerodha"))
     assert out.last_successful_sync is None
 
 
 def test_a_stale_session_past_todays_expiry_is_not_connected():
     """AC-4 attack 3: a session older than Kite's expiry reads Disconnected, whatever else is running."""
-    out = build_status((T0, True), LATER, live_market.LIVE, True)
+    out = build_status((T0, True), LATER, live_market.LIVE, FEED_HEALTHY)
     assert _states(out) == dict.fromkeys(FOUR, ("disconnected", "session_expired"))
 
 
@@ -215,7 +217,7 @@ async def _market(state: str, finished: bool):
 
 async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_engine, monkeypatch):
     """AC-4: the route's feed-running input is `running()`, not the state word: LIVE with a done task is not Connected;
-    LIVE with a running task is."""
+    LIVE with a running task is Connected only once the provider's feed has a price frame (W-130)."""
     user = _user()
     maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
     app = _app(maker, user)
@@ -227,8 +229,15 @@ async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_eng
         dead = (await ac.get("/api/broker/status")).json()
         assert dead["live_market_data"]["state"] == "partial" and dead["order_execution"]["state"] == "partial"
         live = await _market(live_market.LIVE, finished=False)
+        clock = lambda: datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.UTC)  # noqa: E731
+        provider = KiteProvider([], clock=clock)
+        provider.on_connected(clock())
+        live.feed = type("F", (), {"ctx": type("C", (), {"provider": provider, "clock": staticmethod(clock)})()})()
         monkeypatch.setattr(live_market, "_current", live)
         monkeypatch.setattr(live, "_fingerprint", b"x")
+        waiting = (await ac.get("/api/broker/status")).json()  # task running, socket open, no price frame yet
+        assert waiting["live_market_data"] == {"state": "partial", "fix": "live_feed_waiting"}
+        provider.feed.on_data(clock())  # a price frame arrives
         alive = (await ac.get("/api/broker/status")).json()
         assert alive["live_market_data"] == {"state": "connected", "fix": None}
         live._task.cancel()

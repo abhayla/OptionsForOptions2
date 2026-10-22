@@ -156,8 +156,8 @@
     "reviewed": "owner read 2026-10-08"
   },
   "gate_broker_not_connected": {
-    "sha256": "97b63566c5a01205721b9e0cdef6b7b3ff0c1c94412dd1d4e2e77d5b2c21be34",
-    "reviewed": "owner read 2026-10-08"
+    "sha256": "6308e1db36dcbabfb68afa5e57df381d2a7d706fb2531ba9e186a964aafdd48e",
+    "reviewed": "pending owner read"
   },
   "gate_session_unconfirmed": {
     "sha256": "0f11ff56a270948befa6cfdcb34103e8c9aa5b160c63c406c0f7992f3c7fc974",

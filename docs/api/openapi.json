@@ -2569,7 +2569,9 @@
                   "live_feed_session_ended",
                   "no_read_yet",
                   "live_data_not_connected",
-                  "positions_not_synced"
+                  "positions_not_synced",
+                  "live_feed_waiting",
+                  "live_feed_reconnecting"
                 ],
                 "type": "string"
               },
