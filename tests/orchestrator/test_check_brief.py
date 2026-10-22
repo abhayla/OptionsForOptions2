@@ -300,6 +300,18 @@ def test_builder_brief_size_pairs_pass(tmp_path, budget):
     assert run(tmp_path, _builder("Attack list:\n" + FIVE, f"Budget: {budget}\n")) == 0
 
 
+def test_a_guard_in_the_build_section_must_be_an_allow_list(tmp_path, capsys):
+    """R8 (finding guard-as-forbidden-list, row 4): a build section describing a scan without `allow-list` is
+    refused; the same with `allow-list` passes; no build section, or one without a guard word, is unaffected."""
+    head = _builder("Attack list:\n" + FIVE, GOOD_BUDGET)
+    code, out = _out(tmp_path, head + "## What to build\nA repo scan fails on `== 'zerodha'` and `in (...)`.\n",
+                     capsys)
+    assert code == 1 and "MISSING allow-list" in out
+    assert run(tmp_path, head + "## What to build\nThe scan is an allow-list of reasoned lines.\n") == 0
+    assert run(tmp_path, head + "## What to build\nA new route.\n## Tests\nscan the logs\n") == 0
+    assert run(tmp_path, head) == 0
+
+
 def test_non_builder_brief_is_unaffected(tmp_path):
     """A verifier or measure brief (no `Standing items:`) needs neither an attack list nor a size pair."""
     assert run(tmp_path, "# Verify row 99\nBudget: 45 min wall-clock, 70 tool calls\n") == 0

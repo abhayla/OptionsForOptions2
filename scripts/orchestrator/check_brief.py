@@ -224,7 +224,22 @@ def check_builder_brief(brief: str) -> list[str]:
     if not pairs or any(p not in SIZE_PAIRS for p in pairs):
         misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "
                       "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review R3)")
+    build = _build_section(brief)
+    if BUILD_GUARD_RE.search(build) and not ALLOW_LIST_RE.search(build):
+        misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
+                      "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
     return misses
+
+
+BUILD_GUARD_RE = re.compile(r"\b(scan|guard|gate|detector)s?\b", re.I)
+ALLOW_LIST_RE = re.compile(r"allow[- ]list", re.I)  # not `test_write_allowlist.py`, which every brief names
+
+
+def _build_section(brief: str) -> str:
+    """The text of the `## What to build` section (to the next `## ` heading); '' when the brief has none."""
+    if "## What to build" not in brief:
+        return ""
+    return brief.split("## What to build", 1)[1].split("\n## ", 1)[0]
 
 
 def check_guard_set(brief: str, root: Path) -> list[str]:

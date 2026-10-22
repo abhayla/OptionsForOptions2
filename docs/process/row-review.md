@@ -51,6 +51,9 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
   a fresh small agent ~60-80k). Resume the same builder only for a real fix round where its context saves re-reading;
   a small follow-up (<= 3 files changed and no new design, e.g. switch a fixture, add one test) goes to a fresh agent
   with a narrow brief.
+- **R8 Every guard in a brief is an allow-list** (row 4: the orchestrator's brief listed forbidden shapes and 19 others
+  passed). The build section names what IS allowed and refuses the rest; forbidden shapes belong in the attack list
+  only. check_brief refuses a builder brief whose build section names a scan/guard/gate/detector without "allow-list".
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -78,16 +81,38 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | R5 fresh agent for small follow-ups | resume re-sending a whole history | resume tokens on <= 3-file tasks | - | 203k (row 3, before R5 fixed) |
 | R6 orchestrator self-checks | bookkeeping turning a repo test red | red repo tests from orchestrator edits | 1 (row 1 W-129) | 0 (row 3) |
 | R7 measured table | wrong times, missing agents in totals | review claims without a record (meta review) | - | 4 (meta review after row 3) |
+| R8 guards as allow-lists | a scan written as a list of forbidden shapes | forbidden-list guards reaching a verifier | 3 earlier occurrences (finding) | 1 (row 4, in the orchestrator's own brief); check_brief R8 added after it, caught row 5's brief before dispatch |
+| Budget hard stop | builder running past its budget | builders over budget | - | 2 (row 4: 152/80 calls; fix 47/40) |
 
 | Row | Expected (min / tokens) | Agents | Actual minutes (agents) | Actual tokens (agents) | Verify rounds | Notes |
 |---|---|---|---|---|---|---|
 | 1 | not set | 5 + half shared start check | 52 | ~820k (+93k shared) | 2 | before R1-R7 |
 | 2 | not set | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
 | 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
-| 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | in progress | | | | builder stopped at its 100-turn hard limit with 152 tool calls against an 80-call budget, mid-rename |
+| 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | 6 (measure, build, finish, verify r1, fix, verify r2) | 52 agent min; 58 wall-clock (12:57-13:55) | ~870k | 2 | time -42% (faster), tokens +93% (slower): see the row 4 log |
 | 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | | | | | |
 
 ## Log (newest first)
+
+### Row 4 - REQ-117 Broker capability flags (closed 2026-10-22 13:57 IST)
+- Expected 100 min / 450k (stated after the fact). Actual: measure 0.6 min / 75k / 11 calls; build 22.8 min / 258k /
+  152 calls (budget 80; stopped at its 100-turn hard limit mid-rename); finish (fresh agent) 8.2 min / 93k / 38; verify
+  r1 6.7 min / 155k / 30; fix (fresh agent) 8.3 min / 125k / 47 (budget 40); verify r2 5.8 min / 164k / 27. Agents 52
+  min, ~870k tokens; wall-clock 58 min (12:57-13:55). Orchestrator: ~45 tool calls (briefs, checks, evidence, the R8
+  check); its tokens unmeasured.
+- Difference: time 42% UNDER (the estimate's 60-minute build was too generous for a builder that worked fast but
+  undisciplined; fresh small agents for the finish and the fix took 8 minutes each). Tokens 93% OVER: (1) the first
+  builder ignored its budget (152 calls, 258k) and left a half-done rename that a second agent had to finish (93k);
+  (2) a whole verify round + fix round (~445k) came from the orchestrator's brief, which specified the broker-name scan
+  as a list of forbidden shapes (finding guard-as-forbidden-list, 4th occurrence).
+- Right: R5 worked (fresh finisher 93k vs ~260k to resume); the round-2 verifier classified all 184 allow-list entries
+  before trusting a generated allow-list; one real consumer proves "flag off -> hidden with a reason" now.
+- Wrong: the orchestrator wrote a forbidden-list guard into a brief although the finding was listed as checked; builders
+  ran over budget twice; the estimate was not set before dispatch (rule came mid-row).
+- Changed: R8 + check_brief refuses a builder brief whose build section describes a scan/guard/gate/detector without
+  the word allow-list (it flags the original row-4 brief and caught row 5's AC-5 forbidden-shape list before dispatch,
+  rewritten as a registry allow-list); Budget hard stop in the builder brief (at 80% of calls: no new change, consistent
+  tree, commit, report); the finding's occurrence recorded.
 
 ### Meta review after row 3 (2026-10-22 13:05 IST, fresh Sonnet agent, 0.7 min / 108k / 5 calls)
 - Found: row 3's close time was typed (~13:35) while the close commit says 12:56 (fixed below; times now from `date`

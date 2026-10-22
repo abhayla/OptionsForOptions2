@@ -33,6 +33,11 @@
    "date": "2026-10-16",
    "where": "GC-2a, verifier-in-flight hook brief (PR #335, round 1)",
    "evidence": "The orchestrator's own brief listed the git subcommands to refuse (merge, pull, checkout, ...). The Tier A review found git apply, rm, mv, checkout-index, read-tree, submodule, sparse-checkout, bisect, an -c alias and xargs git merge all passed with a verifier in flight. Round 2 inverts it: only a closed read-only set passes. The brief cited this finding and still wrote the list: citing a finding is not reading its fix."
+  },
+  {
+   "date": "2026-10-22",
+   "where": "builder sequence row 4 (REQ-117 AC-3), tests/test_no_broker_name_in_feature_code.py at 2e0cea66",
+   "evidence": "the orchestrator's brief listed forbidden shapes (==, in, ZERODHA, 'kite', JS ===, includes); the verifier passed 19 unlisted shapes (startswith, isinstance, alias, SQL text, JS const alias...); fixed to an allow-list in 23eee95b"
   }
  ]
 }

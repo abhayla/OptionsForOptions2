@@ -46,11 +46,16 @@ citation check (`sources.py` holds some source rows; read it).
    `tests/fixtures/instruments/instruments_slice.csv`: hold back some rows on the first load, add them on the second)
    -> the additions appear, nothing duplicates, one history revision where a term changed, and a contract held back
    then added is offered by the picker after the second load.
-4. AC-5: a repo test (`repo_scan`): every module constant that encodes a Zerodha rule (market-order limits, SL-M,
-   freak-trade, OI/strike restrictions, basket limits, freeze, lot) sits next to a source citation with a URL or doc
-   name AND a date, discovered by a name/shape rule you define and document; and no code says options are limit-only
-   (grep shapes: `limit_only`, `LIMIT_ONLY`, `only LIMIT`, an options branch forcing order_type LIMIT). It fails closed
-   on a file it cannot parse.
+4. AC-5, as an allow-list (finding guard-as-forbidden-list, row-review R8): one registry module of the Zerodha rules
+   the code encodes (market-order limits, SL-M, freak-trade, OI/strike restrictions, basket limits, freeze, lot), each
+   entry = the constant's import path + a source (URL or doc name) + a date; a repo test (`repo_scan`) fails when a
+   registry entry lacks a source or date, when an entry names a constant that no longer exists (stale), and when any
+   module under `backend/ofo/execution/`, `backend/ofo/broker/` or `backend/ofo_app/kite_*` defines a module-level
+   constant whose value is an order type, a product, a quantity or price limit, or an exchange segment that is NOT in
+   the registry's allow-list (discovered by AST, failing closed on a file it cannot parse). "Options are limit-only"
+   is guaranteed structurally: every place that sets an order type takes it from the strategy leg or the user's
+   choice; the allow-list of call sites that set `order_type` lives next to the test, and a new call site is red until
+   it is listed with a reason.
 
 Attack list: (the final verifier runs each; run each yourself first, row-review R1; each names its test file)
 1. Add-time check against a list last loaded yesterday -> `gate_contract_unconfirmed`; loaded earlier today -> eligible
@@ -63,8 +68,9 @@ Attack list: (the final verifier runs each; run each yourself first, row-review 
    today -> offered (`tests/execution/test_eligibility_from_zerodha_list.py`).
 5. A truncated list (> 10% of an index, or > half of one expiry) from the scheduler path -> refused, nothing written,
    previous list kept (`tests_app/test_catalogue_refresh.py`).
-6. A Zerodha rule constant planted without a source and date -> the AC-5 scan red; a planted `LIMIT_ONLY` for options
-   -> red; the real tree -> green (`tests/test_zerodha_rules_cited.py`).
+6. A Zerodha rule constant planted in a scoped module without a registry entry -> red; a registry entry without a
+   source or date, or naming a removed constant -> red; a new call site setting `order_type` not on the allow-list ->
+   red; the real tree -> green (`tests/test_zerodha_rules_cited.py`).
 7. Token 61746 reused after expiry -> the retired row never shadows the live one after a scheduled reload
    (`tests_app/test_contract_identity_lifecycle.py`).
 
