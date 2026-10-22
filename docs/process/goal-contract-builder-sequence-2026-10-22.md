@@ -79,6 +79,14 @@ READ, MEASURE, write its builder brief, run `check_brief.py` + `copy_from_check.
    order), skipping further down if needed. When the answer comes, write it into the spec the same turn and work the
    waiting row next, before any new row.
 8. **Two failed verify or review rounds** -> `PARKED (#issue)` with the evidence; print the table; next row.
+9. **Process review** (owner 2026-10-22 ~12:10 IST, three question-tool answers; method and log in
+   `docs/process/row-review.md`): right after the row closes and before the next row's build, the orchestrator writes
+   the row's review from measured facts (minutes, tokens, rounds, the cause of each extra round), applies any change
+   that adds a check or cuts waste without dropping one, logs it, and shows three lines (right / wrong / changed)
+   under the printed table. A change that removes or loosens a check goes to an independent reviewer, then to the
+   owner as one question. Every 3rd row and each chunk end, a fresh agent reviews the reviews. Steps 2-3 also write
+   the row's **attack list** (what the final verifier will try), copied into the builder brief (row-review R1).
+   Strict row order confirmed by the owner the same session ("Keep strict order").
 
 ## Chunks (the only PR / full-CI / chunk-review points)
 

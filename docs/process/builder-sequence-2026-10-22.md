@@ -24,13 +24,16 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 - REQ-001 AC-1 BANKNIFTY/FINNIFTY part - closes at row 46 (REQ-090).
 - REQ-109 AC-6 delayed-price mode - closes at row 58 (REQ-105); AC-8 alerts on paper strategies - adjustments contract.
 - REQ-140 AC-3 imported-strategy part - import contract (REQ-104).
+- REQ-015 AC-5 reconcile part ("validates and resynchronises": Trigger.AFTER_RECONNECT) - needs REQ-060
+  reconciliation, order-path scope like REQ-113/REQ-114's order-update stream (added 2026-10-22 at row 2; the
+  positions re-read after a reconnect IS built).
 - REQ-107 parts that read REQ-047 adjustment data - adjustments contract.
 
 | # | W | REQ | Name | Priority | Chunk | Tier | Status |
 |---|---|---|---|---|---|---|---|
 | 1 | W-129 | REQ-001 | Scope: underlyings and leg types (NIFTY/SENSEX now; BANKNIFTY/FINNIFTY at row 46) | Prerequisite | 1 | B | Done (AC-1 deferred: BANKNIFTY/FINNIFTY part, row 46; MINORs #512) |
-| 2 | W-130 | REQ-015 | Zerodha connection (Kite login, reads only) | Prerequisite | 1 | A | In progress |
-| 3 | W-131 | REQ-054 | Broker adapter, read part | Prerequisite | 1 | A | Not started (partly built) |
+| 2 | W-130 | REQ-015 | Zerodha connection (Kite login, reads only) | Prerequisite | 1 | A | Done (live check pending: AC-5 network drop, row 63; AC-5 reconcile part deferred: order path; AC-3 rewritten by ADR-169; MINORs #513) |
+| 3 | W-131 | REQ-054 | Broker adapter, read part | Prerequisite | 1 | A | In progress |
 | 4 | W-132 | REQ-117 | Broker adapter capability flags | Prerequisite | 1 | A | Not started (unmeasured) |
 | 5 | W-133 | REQ-053 | Contract eligibility: daily instrument list, valid strikes and expiries (read part) | Prerequisite | 1 | A | Not started (partly built) |
 | 6 | W-134 | REQ-048 | Market-data pipeline (prices reach the server, never the browser directly) | Prerequisite | 1 | A | Not started (partly built) |

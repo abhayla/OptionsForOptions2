@@ -237,8 +237,10 @@ async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_eng
         live.feed = type("F", (), {"ctx": type("C", (), {"provider": provider, "clock": staticmethod(clock)})()})()
         monkeypatch.setattr(live_market, "_current", live)
         monkeypatch.setattr(live, "_fingerprint", b"x")
-        waiting = (await ac.get("/api/broker/status")).json()  # task running, socket open, no price frame yet
-        assert waiting["live_market_data"] == {"state": "partial", "fix": "live_feed_waiting"}
+        # task running, socket open, no price frame yet, nothing subscribed (KiteProvider([])): idle, not waiting
+        # (row 2 fix round 1: a socket with no subscription is idle; a subscribed one with no frame is waiting)
+        idle = (await ac.get("/api/broker/status")).json()
+        assert idle["live_market_data"] == {"state": "partial", "fix": "live_feed_idle"}
         provider.feed.on_data(clock())  # a price frame arrives
         alive = (await ac.get("/api/broker/status")).json()
         assert alive["live_market_data"] == {"state": "connected", "fix": None}

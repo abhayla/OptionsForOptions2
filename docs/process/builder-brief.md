@@ -2,6 +2,10 @@
 
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
+Process learnings are logged per row in `docs/process/row-review.md`; its standing rules R1-R5 apply to every brief.
+Size every brief by the files the fix must touch (R3): <= 5 files S (30 min / 40 calls), 6-15 M (60 / 80), more or
+backend + frontend L (split backend then frontend). The orchestrator copies the start check's or Measure's attack list
+into the brief as `Attack list:` (R1).
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
 tier, the `Standing items:` line (section below), and the literal `Budget:` / `Report:` / `Tests:` lines, which the
 dispatch hooks read from the prompt text) and
@@ -66,6 +70,14 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
 
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
+- **Run the brief's `Attack list:` yourself before reporting** (row-review R1, 2026-10-22: row 2's round 1 failed on
+  an attack nobody listed, "a heartbeat alone must not count as a price"). Each item gets a test or a scratch run
+  and a line in the report.
+- **Run every changed test file in full, never a `-k` subset** (row-review R2: two stale tests reached the verifier).
+  DB-backed `tests_app` files run through the MAIN checkout's `scripts/orchestrator/db_run.py <your worktree> python
+  -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
+  tree for the old value or answer of anything you changed.
+- **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
 - One test per AC in `tests_required`; each test's docstring starts with the AC id (e.g. `"""AC-3: ..."""`).
 - Assert exact values (Decimal equality), not "is not None" or ranges, wherever the spec gives a number.
 - **Expected values come from the spec or an independent hand computation, never from running your own code and

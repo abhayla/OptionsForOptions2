@@ -1,0 +1,31 @@
+{
+ "id": "keepalive-counted-as-live-data",
+ "scope": "generic",
+ "class": "A liveness or health state that is refreshed by ANY inbound traffic on a connection (heartbeats, pings, keep-alive bytes) reports the data stream as live after the data itself has stopped; the connection is alive, the data is not, and the screen shows Connected indefinitely.",
+ "mechanism": "Kite's ticker sends 1-byte heartbeats about once a second whatever is subscribed; FeedState.on_activity refreshed the last-activity time for heartbeats too, and phase() read health() off that time, so after one price frame the live-market-data row stayed 'healthy' with zero subscriptions and no price frame.",
+ "first_seen": {
+  "date": "2026-10-22",
+  "where": "backend/ofo/marketdata/feed_health.py:62-86, kite_provider.py:76-80 (builder sequence row 2, REQ-015 AC-4, head af331fe4)",
+  "evidence": "verifier probe hb_probe.py: one price frame, unsubscribe, 70 s of heartbeats only -> phase healthy, health AVAILABLE; live GET /api/broker/status 11:47:45 IST with no screen open -> live_market_data connected (orchestrator reading 11:44: still connected 70 s after the last screen closed)."
+ },
+ "fix": "Keep the last PRICE-frame time separately (updated only by data frames) and judge 'live data' from it; heartbeats prove only that the connection is up. A connection with nothing subscribed is its own state (idle), not live and not broken.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_live_feed_status.py::test_one_price_frame_then_only_heartbeats_past_the_window_is_waiting_not_connected",
+   "tests_app/test_live_feed_status.py::test_after_unsubscribe_the_heartbeats_leave_the_row_idle"
+  ],
+  "note": "Fixed in row 2 fix round 1 (8a23776f): FeedState keeps the last price-frame time apart; residual ~3 s from unwanted ticks is issue #513."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-015.md",
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-22",
+   "where": "live API on the owner's session, /api/broker/status",
+   "evidence": "connected with no subscription and no price frame for 70 s"
+  }
+ ]
+}
