@@ -23,19 +23,21 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from ofo.errors import render
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.marketdata.quote import is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext
+from ofo_app.underlying import Underlying
 
 #: The two indices of the view, in the order the message lists them (NIFTY then SENSEX).
-UNDERLYINGS: tuple[Literal["NIFTY", "SENSEX"], ...] = ("NIFTY", "SENSEX")
+UNDERLYINGS: tuple[str, ...] = tuple(SUPPORTED_UNDERLYINGS)
 
 
 class IndexOut(ApiModel):
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     instrument_id: InstrumentId | None  # (segment, exchange token), REQ-072 AC-1; None when the catalogue lacks it
     value: Money | None  # the last price as given; None when there is none or the answer is not live
     at: datetime.datetime | None  # the quote's own time (aware); kept in the not-live answer as "last value time"
@@ -55,7 +57,7 @@ def index_ids(ctx: MarketContext) -> dict[str, str | None]:
     return {u: reader(u) for u in UNDERLYINGS}
 
 
-def _row(ctx: MarketContext, underlying: Literal["NIFTY", "SENSEX"], instrument_id: str | None,
+def _row(ctx: MarketContext, underlying: Underlying, instrument_id: str | None,
          live: bool) -> IndexOut:
     quote = None if instrument_id is None else ctx.provider.underlying_quote(underlying)
     if quote is not None and quote.instrument_id != instrument_id:  # never another instrument's quote as this index's

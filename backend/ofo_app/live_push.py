@@ -18,15 +18,24 @@ import contextlib
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
+from ofo.errors import UserFacingError, render
+from ofo.marketdata.fanout import FanOut
 from pydantic import ValidationError
 
-from ofo.errors import render
-from ofo.marketdata.fanout import FanOut
 from ofo_app.errors import SocketClosed
 from ofo_app.outcome_margin import OutcomeMargin
-from ofo_app.routes.outcome import (ContractLookup, MarketContext, OutcomeRequest, get_contract_lookup,
-                                    get_margin_source, load_charge_rates, margin_for_request, outcome_response,
-                                    stored_legs_for)
+from ofo_app.routes.outcome import (
+    ContractLookup,
+    MarketContext,
+    OutcomeRequest,
+    get_contract_lookup,
+    get_margin_source,
+    load_charge_rates,
+    margin_for_request,
+    outcome_response,
+    stored_legs_for,
+)
+from ofo_app.underlying import refusal_of
 
 MIN_PUSH_INTERVAL = 1.0  # ADR-068: at most once a second per strategy
 POLL_SECONDS = 0.05
@@ -87,8 +96,8 @@ class StrategyPush:
         index_id = getattr(self._feed.ctx.provider, "index_id", lambda _u: None)(req.underlying)
         return ids + ([index_id] if index_id else [])
 
-    async def _error(self) -> None:
-        await self._channel.send(render("user_input_request_invalid"))
+    async def _error(self, message: UserFacingError | None = None) -> None:
+        await self._channel.send(message or render("user_input_request_invalid"))
 
     async def _replace(self, raw: Any) -> None:
         if isinstance(raw, dict) and "fallback" in raw:  # the REST refresh's flag; it means nothing on the socket (#234)
@@ -96,8 +105,8 @@ class StrategyPush:
             return
         try:
             req = OutcomeRequest.model_validate(raw)
-        except ValidationError:
-            await self._error()
+        except ValidationError as exc:
+            await self._error(refusal_of(exc.errors()))
             return
         if req == self._req:  # an identical strategy changes nothing: no reset, no re-subscribe, no push (ADR-068 (2))
             return

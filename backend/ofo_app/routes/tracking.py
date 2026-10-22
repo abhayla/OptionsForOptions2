@@ -41,6 +41,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -72,7 +73,7 @@ class TrackingLegOut(ApiModel):
 
 
 class TrackingIndexOut(ApiModel):
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     level: Money | None
     state: PriceStateCode
     at: datetime.datetime | None

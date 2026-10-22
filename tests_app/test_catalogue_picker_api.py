@@ -348,7 +348,6 @@ async def test_a_disconnected_provider_gives_no_price(replay_ctx) -> None:
 
 
 @pytest.mark.parametrize("body", [
-    {"underlying": "BANKNIFTY", "instrument_ids": [LIVE_ID]},
     {"underlying": "NIFTY", "instrument_ids": []},
     {"underlying": "NIFTY", "instrument_ids": ["not an id"]},
     {"underlying": "NIFTY", "instrument_ids": [LIVE_ID], "planned_entry": "1.00"},
@@ -357,3 +356,8 @@ async def test_planned_entry_refuses_a_bad_body(body: dict) -> None:
     status, answer = await _capture(body)
     assert status == 422 and answer["code"] == FIXED_INPUT_CODE
     # the price rule itself is a domain function, tested in tests/outcome/test_planned_entry.py
+
+
+async def test_planned_entry_refuses_an_unsupported_underlying_with_the_catalogue_message() -> None:
+    status, answer = await _capture({"underlying": "BANKNIFTY", "instrument_ids": [LIVE_ID]})
+    assert status == 422 and answer["code"] == "USER_INPUT_101"  # noqa: PLR2004

@@ -15,10 +15,12 @@ import time
 from decimal import Decimal
 from typing import Callable, Optional
 
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.instruments.parser import parse_instruments_csv
-from ofo.marketdata.kite_frames import iter_recording
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.kite_frames import iter_recording
 from ofo.marketdata.kite_provider import IST, KiteProvider
+
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
 
@@ -180,7 +182,8 @@ class ReplayFeeds:
     def __init__(self, ctx: MarketContext, monotonic: Callable[[], float] = time.monotonic) -> None:
         self._items, self._frames = _load_recording()
         provider = ctx.provider
-        index_ids = frozenset(i for i in (getattr(provider, "index_id", lambda _u: None)(u) for u in ("NIFTY", "SENSEX"))
+        index_ids = frozenset(i for i in (getattr(provider, "index_id", lambda _u: None)(u)
+                                           for u in SUPPORTED_UNDERLYINGS)
                               if i)
         self.streaming = ReplayStreaming(ctx, index_ids)
         self._monotonic = monotonic

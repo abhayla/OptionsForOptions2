@@ -48,6 +48,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.underlying import refusal_of
 
 keep_public_codes(frozenset(t.code for t in CATALOGUE.values()))  # codes are public: never redacted as a token shape
 
@@ -653,6 +654,9 @@ async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
             return _body(message, failure.status, retry_after=failure.retry_after, cookie=cookie)
         return _body(message, STATUS_BY_CLASS[message.error_class], cookie=cookie)
     if isinstance(exc, RequestValidationError):
+        refused = refusal_of(exc.errors())  # an underlying outside the supported set: its catalogue message (W-129)
+        if refused is not None:
+            return _body(refused, STATUS_BY_CLASS[refused.error_class])
         log.info("request not valid on %s %s: %s", request.method, request.url.path, _validation_problems(exc))
         return _body(render("user_input_request_invalid"), 422)
     if isinstance(exc, StarletteHTTPException):

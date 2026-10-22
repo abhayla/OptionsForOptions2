@@ -38,6 +38,7 @@ from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger("ofo_app.outcome")
@@ -158,7 +159,7 @@ class LegIn(BaseModel):
 
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
@@ -241,7 +242,7 @@ class RowOut(ApiModel):
 
 
 class TableOut(ApiModel):
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     output_label: Optional[CatalogueText]
@@ -335,7 +336,7 @@ class AdvancedLegOut(ApiModel):
 
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     ux_level: Literal["guided", "standard", "advanced"]
     status_label: Optional[CatalogueText]
     reason: Optional[CatalogueText]

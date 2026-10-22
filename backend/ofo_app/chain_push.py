@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from ofo.errors import render
+from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
@@ -58,6 +58,7 @@ from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext
+from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class ChainRequest(BaseModel):
     """What the chain socket's client sends (and the REST read's query): one underlying, one expiry, a strike count."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     expiry: datetime.date
     strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
 
@@ -125,7 +126,7 @@ class ChainRowOut(ApiModel):
 
 class ChainOut(ApiModel):
     state: Literal["LIVE", "NOT_CONNECTED"]
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     expiry: datetime.date
     spot: Money | None  # the underlying index price (REQ-029 AC-8); None when missing or not live
     spot_at: datetime.datetime | None
@@ -379,6 +380,7 @@ class ChainPush:
         self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
+        self._error_message: UserFacingError | None = None  # the catalogue message the pending error reply carries
         self._error_due = False  # invalid client messages since the last error reply: answered with ONE error, gated
         self._error_since: float | None = None  # when the pending error reply became due: aged ones beat a push
         self._last_error: float | None = None  # the last error reply: at most one every ERROR_REPLY_SECONDS
@@ -411,7 +413,8 @@ class ChainPush:
     def _take_message(self, raw: Any) -> None:
         try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
-        except ValidationError:
+        except ValidationError as exc:
+            self._error_message = refusal_of(exc.errors()) or render("user_input_request_invalid")
             if not self._error_due:
                 self._error_since = self._monotonic()
             self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
@@ -530,7 +533,7 @@ class ChainPush:
 
     async def _send_error(self) -> None:
         self._error_due, self._error_since = False, None
-        await self._emit(render("user_input_request_invalid"))
+        await self._emit(self._error_message or render("user_input_request_invalid"))
         self._last_error = self._monotonic()
 
     async def run(self) -> None:

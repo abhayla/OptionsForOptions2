@@ -39,6 +39,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.chain import get_chain_reader
 from ofo_app.routes.outcome import MarketContext, get_market_context
 from ofo_app.routes.strategies import StrategyRefused
+from ofo_app.underlying import Underlying
 
 LOAD_PATH = "/api/strategies/load-template"
 QUICK_PICK_PATH = "/api/strategies/quick-pick"
@@ -72,20 +73,20 @@ class PlacedLegOut(ApiModel):
 
 
 class ReadyMadeOut(ApiModel):
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[PlacedLegOut]
 
 
 class LoadTemplateIn(ApiModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     template_id: Identifier
     expiry: datetime.date
 
 
 class QuickPickIn(ApiModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     kind: Literal["straddle", "strangle"]
     distance: int  # index points; a straddle sends 0 (ignored); a strangle's must be one of the offered distances
     side: Literal["BUY", "SELL"]

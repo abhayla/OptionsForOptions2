@@ -49,6 +49,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.tracked_contracts import ContractState
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -79,7 +80,7 @@ class LegIn(BaseModel):
 class StrategyIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[LegIn] = Field(min_length=1)
     rules_ref: Optional[str] = None
     risk_limits: dict[str, str] = Field(default_factory=dict, description="name -> decimal as a string")
@@ -128,7 +129,7 @@ class PreferencesOut(ApiModel):
 
 class DefinitionOut(ApiModel):
     schema_version: int
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[LegOut]
     rules_ref: Optional[Identifier]
     risk_limits: RiskLimitsOut
@@ -146,7 +147,7 @@ class StrategyOut(ApiModel):
 
 class SummaryOut(ApiModel):
     id: int
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     status: Identifier
     created_at: datetime.datetime
     updated_at: datetime.datetime

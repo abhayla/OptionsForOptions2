@@ -18,7 +18,7 @@ from __future__ import annotations
 import datetime
 import time
 from collections.abc import Callable
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
@@ -45,6 +45,7 @@ from ofo_app.routes.outcome import (
     get_streaming,
     inputs_streaming,
 )
+from ofo_app.underlying import Underlying
 
 PATH = "/api/market/chain/live"
 REST_PATH = "/api/market/chain"
@@ -72,7 +73,7 @@ def chain_read(ctx: MarketContext | None, streaming: Callable[[str], bool] | Non
 
 @router.get(REST_PATH, response_model=ChainOut)
 async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
-        underlying: Annotated[Literal["NIFTY", "SENSEX"], Query()],
+        underlying: Annotated[Underlying, Query()],
         expiry: Annotated[datetime.date, Query()],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
