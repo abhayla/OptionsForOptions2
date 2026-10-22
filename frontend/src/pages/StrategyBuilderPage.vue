@@ -224,6 +224,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 <template>
   <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel" :data-live="live.status.value">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
+    <router-link to="/market/option-chain" class="text-sm underline" data-testid="select-from-chain">Select from Option Chain</router-link>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>

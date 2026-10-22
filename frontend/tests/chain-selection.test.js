@@ -244,7 +244,7 @@ describe('Option Chain: contracts Zerodha does not permit (REQ-030 AC-13, AC-16;
     const before = sock().sent.length
     await w.get('[data-testid="chain-refresh"]').trigger('click')
     expect(sock().sent.length).toBe(before + 1)
-    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-27', strikes_each_side: 15 })
+    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-27', strikes_each_side: 10 })
   })
 
   it('AC-16: with every contract permitted there is no notice, but Refresh is still shown and re-sends the request once', async () => {

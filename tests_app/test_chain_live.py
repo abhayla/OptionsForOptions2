@@ -48,7 +48,7 @@ NIFTY_ID = "NSE_INDEX:256265"
 GRID = [Decimal(25000 + 50 * i) for i in range(9)]  # 25000 .. 25400
 WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
-W124_KEYS = ("lot_size", "per_lot", "intrinsic", "time_value", "breakeven", "breakeven_pct", "delta", "gamma", "theta",
+W124_KEYS = ("lot_size", "in_the_money", "per_lot", "intrinsic", "time_value", "breakeven", "breakeven_pct", "delta", "gamma", "theta",
              "vega")  # the keys W-124 added to every cell (REQ-087, REQ-029 AC-3)
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
@@ -338,8 +338,8 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
         "unavailable_reason": "unknown"}
     # no price: every price-dependent extra is absent (a dash), never 0; the lot size is the catalogue's
     # (the intrinsic value needs only the spot: 25162.30 - 25050 = 112.30)
-    assert [cell[k] for k in W124_KEYS if k not in ("lot_size", "intrinsic")] == [None] * 8
-    assert (cell["lot_size"], cell["intrinsic"]) == (75, "112.30")
+    assert [cell[k] for k in W124_KEYS if k not in ("lot_size", "intrinsic", "in_the_money")] == [None] * 8
+    assert (cell["lot_size"], cell["intrinsic"], cell["in_the_money"]) == (75, "112.30", True)  # call 25050 < spot
 
 
 @pytest.mark.parametrize("bad", [0, 41, -1, "x", "5", True, 2.0, None])
@@ -510,7 +510,7 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
-                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview", "ofo.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
+                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview", "ofo.engine.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)

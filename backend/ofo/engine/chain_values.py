@@ -75,6 +75,16 @@ def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal |
         breakeven_pct=pct)
 
 
+def in_the_money(kind: str, strike: Decimal, spot: Decimal | None) -> bool | None:
+    """REQ-087 AC-2: calls with a strike below the spot, puts with a strike above it. None without a live spot (the
+    shading is then off, with the reason on the screen), never False."""
+    if kind not in ("CE", "PE"):
+        raise ValueError(f"an option side is CE or PE, got {kind!r}")
+    if spot is None or not is_live_price(spot):
+        return None
+    return strike < spot if kind == "CE" else strike > spot
+
+
 def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
                  valuation: datetime.datetime, rate: Decimal) -> Mapping[str, ChainGreeks]:
     """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility. Empty when

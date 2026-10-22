@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from ofo.chain_values import CellValues, ChainGreeks, cell_values, chain_greeks
+from ofo.engine.chain_values import CellValues, ChainGreeks, cell_values, chain_greeks, in_the_money
 from ofo.errors import render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
@@ -121,6 +121,7 @@ class ChainCellOut(ApiModel):
     unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
     #: W-124 (REQ-087 AC-1/AC-4/AC-5, REQ-029 AC-3): server-computed extras; None = a dash on the screen, never 0.
     lot_size: int  # the instrument file's lot size: the "per lot" heading and multiplier (REQ-087 AC-1)
+    in_the_money: bool | None  # REQ-087 AC-2, decided on the server against the live spot; None without a spot
     per_lot: Money | None  # LTP x lot size
     intrinsic: Money | None  # against the spot (the index), labelled so
     time_value: Money | None  # LTP minus intrinsic
@@ -304,11 +305,12 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
 
 def _extras(contract: PickableContract, ltp: Decimal | None, spot: Decimal | None,
             greeks: Mapping[str, ChainGreeks]) -> dict[str, Any]:
-    """The W-124 fields of one cell: the pure maths of ``ofo.chain_values`` (per-lot, intrinsic, time value, breakeven)
+    """The W-124 fields of one cell: the pure maths of ``ofo.engine.chain_values`` (per-lot, intrinsic, time value, breakeven)
     and the engine's Greeks for this contract when its price gave an implied volatility."""
     v: CellValues = cell_values(contract.instrument_type, contract.strike, ltp, spot, contract.lot_size)
     g = greeks.get(contract.instrument_id)
-    return {"lot_size": contract.lot_size, "per_lot": v.per_lot, "intrinsic": v.intrinsic, "time_value": v.time_value,
+    return {"lot_size": contract.lot_size, "in_the_money": in_the_money(contract.instrument_type, contract.strike, spot),
+            "per_lot": v.per_lot, "intrinsic": v.intrinsic, "time_value": v.time_value,
             "breakeven": v.breakeven, "breakeven_pct": v.breakeven_pct,
             "delta": None if g is None else g.delta, "gamma": None if g is None else g.gamma,
             "theta": None if g is None else g.theta, "vega": None if g is None else g.vega}

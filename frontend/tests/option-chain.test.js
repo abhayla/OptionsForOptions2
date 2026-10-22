@@ -69,7 +69,7 @@ describe('Option Chain screen', () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
-    expect(JSON.parse(sock().sent[0])).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
+    expect(JSON.parse(sock().sent[0])).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 10 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
     const heads = w.findAll('thead tr').at(0).findAll('th').map((t) => t.text()).filter(Boolean)

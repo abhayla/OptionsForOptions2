@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from ofo.chain_values import CellValues, cell_values, chain_greeks
+from ofo.engine.chain_values import CellValues, cell_values, chain_greeks, in_the_money
 
 D = Decimal
 SPOT = D("22976.85")
@@ -60,6 +60,14 @@ def test_sensex_lot_20_per_lot():
 def test_a_future_is_not_an_option_side():
     with pytest.raises(ValueError):
         cell_values("FUT", D("1"), D("1"), SPOT, LOT)
+
+
+@pytest.mark.parametrize(("kind", "strike", "spot", "expected"), [
+    ("CE", "22900", SPOT, True), ("CE", "23000", SPOT, False), ("PE", "23000", SPOT, True), ("PE", "22900", SPOT, False),
+    ("CE", "22976.85", SPOT, False), ("PE", "22976.85", SPOT, False),  # at the money: neither side is in the money
+    ("CE", "22900", None, None), ("PE", "23000", None, None), ("CE", "22900", D("0"), None)])
+def test_req_087_ac_2_calls_below_spot_and_puts_above_spot_are_in_the_money(kind, strike, spot, expected):
+    assert in_the_money(kind, D(strike), spot) is expected
 
 
 def test_greeks_without_a_spot_quote_are_empty_not_guessed():

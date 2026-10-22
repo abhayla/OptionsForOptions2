@@ -407,6 +407,17 @@
             ],
             "title": "Health"
           },
+          "in_the_money": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In The Money"
+          },
           "instrument_id": {
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
@@ -550,6 +561,7 @@
           "permitted",
           "unavailable_reason",
           "lot_size",
+          "in_the_money",
           "per_lot",
           "intrinsic",
           "time_value",
