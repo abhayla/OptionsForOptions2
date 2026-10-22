@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Instrument
+from ofo.rules.inputs import DataHealth
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.whatif import WhatIfInput
@@ -218,3 +219,16 @@ def test_req083_ac3_a_leg_without_iv_gives_the_expiry_curve_only_with_the_reason
     assert not w.estimated_available and w.estimated_points == () and w.greeks is None
     assert "no implied volatility" in str(w.estimated_reason) and w.greeks_reason == w.estimated_reason
     assert out.payoff_points and w.target_expiry_pnl == formula_pnl(w.target_level, replayed)
+
+
+def test_req083_ac4_an_unhealthy_atm_quote_gives_no_bands(replayed):
+    """REQ-083 AC-4 (red case): when the at-the-money call's quote is UNHEALTHY there is no ATM IV: no bands, the reason;
+    the same chain with a healthy quote gives four bands (test above)."""
+    def sour_atm(snap):
+        chain = snap.chains[next(iter(snap.chains))]
+        atm = min({q.strike for q in chain}, key=lambda k: (abs(k - CURRENT), k))
+        sick = tuple(dataclasses.replace(q, health=DataHealth.UNHEALTHY) if (q.strike == atm and q.instrument_type is Instrument.CE)
+                     else q for q in chain)
+        return dataclasses.replace(snap, chains={**snap.chains, next(iter(snap.chains)): sick})
+    w = build(replayed, snapshot_edit=sour_atm).whatif
+    assert w.bands == () and "no at-the-money implied volatility" in str(w.bands_reason)
