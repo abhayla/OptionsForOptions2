@@ -151,6 +151,35 @@ async def test_a_hung_load_times_out_and_never_blocks_other_work():
     assert await sch.attempt() == TIMED_OUT  # the lock was released: the next run is not stuck BUSY
 
 
+async def test_a_hung_download_carries_a_socket_timeout_so_its_thread_ends_and_the_run_times_out(monkeypatch):
+    """The fetch passes a socket timeout to the door; a fetch past it ends with the timeout code, no thread is left."""
+    import threading  # noqa: PLC0415 - local to this one test
+    from ofo.instruments import downloader  # noqa: PLC0415
+
+    seen: dict = {}
+    release, ended = threading.Event(), threading.Event()
+
+    def hung_open(url, *, timeout=None, **_kw):
+        seen["timeout"] = timeout
+        try:
+            release.wait(5)  # stands in for a socket that never answers, until its timeout would fire
+            raise TimeoutError
+        finally:
+            ended.set()
+
+    monkeypatch.setattr(downloader, "open_url", hung_open)
+
+    async def load() -> int:
+        return await catalogue_load.load_once(_settings("10"), io.StringIO())
+
+    sch = _scheduler(load, Clock(MONDAY), timeout=0.2)
+    assert await sch.attempt() == TIMED_OUT
+    assert seen["timeout"] is not None and 0 < seen["timeout"] <= catalogue_refresh.RUN_TIMEOUT_SECONDS
+    assert not ended.is_set()  # the run gave up while the fetch was still going
+    release.set()  # the socket timeout fires: the fetch ends, its thread returns to the pool
+    assert await asyncio.to_thread(ended.wait, 5)
+
+
 async def test_shutdown_stops_the_task_and_the_run_in_flight():
     started, cancelled = asyncio.Event(), []
 

@@ -242,7 +242,7 @@ def test_fresh_registry_takes_no_verdict_from_its_caller():
 def test_the_eligibility_reader_never_writes():
     """AC-2: every statement in the module is a SELECT; nothing writes the catalogue or stores eligibility."""
     statements = [v.text for v in vars(elig).values() if isinstance(v, TextClause)]
-    assert len(statements) == 4, statements
+    assert len(statements) == 3, statements  # the clock query moved to catalogue_picker.database_now (W-133)
     assert all(s.lstrip().upper().startswith("SELECT") for s in statements), statements
 
 
@@ -253,6 +253,29 @@ async def _loaded_india_date(conn) -> datetime.date:
     return (await conn.execute(text(
         "SELECT (max(last_seen_at) AT TIME ZONE 'Asia/Kolkata')::date FROM public.broker_instruments "
         "WHERE broker = 'zerodha' AND NOT retired"))).scalar_one()
+
+
+_IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+FRIDAY_LOAD = datetime.datetime(2026, 10, 23, 9, 0, tzinfo=_IST)
+
+
+def _ist(day: int, hour: int, minute: int) -> datetime.datetime:
+    return datetime.datetime(2026, 10, day, hour, minute, tzinfo=_IST)
+
+
+def test_ac3_a_friday_load_is_current_on_saturday_and_early_monday_but_not_monday_after_publish():
+    """Core proof + attack 1: loaded Friday 09:00, current Saturday 11:00 and Monday 07:30; unconfirmed Monday 09:00."""
+    assert not picker.loaded_before(FRIDAY_LOAD, _ist(24, 11, 0))
+    assert not picker.loaded_before(FRIDAY_LOAD, _ist(26, 7, 30))
+    assert picker.loaded_before(FRIDAY_LOAD, _ist(26, 9, 0))
+    assert picker.loaded_before(None, _ist(24, 11, 0))
+
+
+def test_ac3_a_load_before_the_publish_time_is_unconfirmed_after_it():
+    """Attack 2: loaded 07:59 on a weekday, checked 09:00 the same day -> unconfirmed; loaded 08:00 -> current."""
+    assert picker.loaded_before(_ist(22, 7, 59), _ist(22, 9, 0))
+    assert not picker.loaded_before(_ist(22, 8, 0), _ist(22, 9, 0))
+    assert picker.session_start(_ist(22, 7, 59)) == _ist(21, 8, 0)  # before publish: the previous weekday's session
 
 
 async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_nothing(app_engine):

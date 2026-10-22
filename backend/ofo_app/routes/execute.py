@@ -74,6 +74,7 @@ from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
+from ofo_app.catalogue_picker import loaded_before
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
 from ofo_app.db import get_db
@@ -554,12 +555,12 @@ async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None
 
 
 def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
-    """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
+    """Instrument-list freshness on the database clock: healthy when the latest load is at or after the current
+    session's publish time (W-133: the same rule as the add-time check), stale before it. ``last_seen_at`` is stamped by
     ``clock_timestamp()``, so both sides of the comparison come from the same clock."""
     if loaded is None:
         return DataHealth.UNAVAILABLE
-    same_day = loaded.astimezone(IST).date() == db_now.astimezone(IST).date()
-    return DataHealth.HEALTHY if same_day else DataHealth.STALE
+    return DataHealth.STALE if loaded_before(loaded, db_now) else DataHealth.HEALTHY
 
 
 async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,
