@@ -1071,7 +1071,7 @@
       },
       "EditLegIn": {
         "additionalProperties": false,
-        "description": "A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry may\nbe absent (a leg whose contract has no live price yet). ``extra=\"forbid\"`` keeps any other state out (REQ-076 AC-7).",
+        "description": "A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry\nmay be absent (a contract with no live price yet). ``extra=\"forbid\"`` keeps other state out (REQ-076 AC-7).",
         "properties": {
           "action": {
             "enum": [
@@ -1575,6 +1575,60 @@
           "answered_at"
         ],
         "title": "IndicesOut",
+        "type": "object"
+      },
+      "LegControlsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/EditLegIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs"
+        ],
+        "title": "LegControlsIn",
+        "type": "object"
+      },
+      "LegControlsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "controls": {
+            "$ref": "#/components/schemas/ControlsOut"
+          },
+          "shape": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape"
+          }
+        },
+        "required": [
+          "shape",
+          "controls"
+        ],
+        "title": "LegControlsOut",
         "type": "object"
       },
       "LegEditIn": {
@@ -4052,14 +4106,46 @@
             "title": "Contract Id",
             "type": "integer"
           },
+          "contract_state": {
+            "anyOf": [
+              {
+                "const": "live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              }
+            ],
+            "title": "Contract State"
+          },
           "exchange_segment": {
-            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Exchange Segment",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Segment"
           },
           "exchange_token": {
-            "title": "Exchange Token",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Token"
           },
           "expiry": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -4102,6 +4188,7 @@
         "required": [
           "contract_id",
           "action",
+          "contract_state",
           "exchange_segment",
           "exchange_token",
           "instrument",
@@ -4457,6 +4544,45 @@
           }
         },
         "summary": "Market Indices"
+      }
+    },
+    "/api/strategies/leg-controls": {
+      "post": {
+        "description": "REQ-078 AC-2: which of Shift / Width / Hedge apply to these legs, and the shape label. Read-only: nothing moves,\nnothing is priced, no outcome is built. The Builder asks on every leg change.",
+        "operationId": "leg_controls_api_strategies_leg_controls_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegControlsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegControlsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Controls"
       }
     },
     "/api/strategies/leg-edit": {

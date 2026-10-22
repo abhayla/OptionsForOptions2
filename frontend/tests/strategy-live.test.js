@@ -10,7 +10,7 @@ let apiAnswer = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')),
-    post: (url, body) => { apiCalls.push({ url, body }); return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer }) } } }
+    post: (url, body) => { if (url === '/strategies/leg-controls') return Promise.resolve({ data: { shape: null, controls: { shift: true, width: false, hedge: false } } }); apiCalls.push({ url, body }); return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer }) } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor-advanced.json'

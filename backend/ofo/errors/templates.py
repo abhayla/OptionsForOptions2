@@ -848,6 +848,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "to another contract).",
           "Tracking did not start and nothing was stored; a leg is never priced from another contract.",
           "Starting tracking of this strategy.", "Rebuild the strategy on live contracts and save it again."),
+    # Issue #500: the same states on Execute's entry legs (ofo_app.tracked_contracts); no order is built for them.
+    _gate("gate_contract_not_live", _SV, 415,
+          "A leg of this strategy is no longer a live contract (expired, delisted, or its exchange token now belongs "
+          "to another contract).",
+          "No order was prepared or sent; a leg is never priced or ordered as another contract.",
+          "Executing this strategy.", "Rebuild the strategy on live contracts and save it again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
@@ -921,6 +927,9 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"leg": LegRef}),
     _gate("leg_edit_needs_option_leg", _UI, 12, "Shift needs at least one option leg.",
           "The edit was refused and no leg changed.", "This edit.", "Add an option leg first."),
+    _gate("leg_edit_unknown_contract", _UI, 14, "Leg {number} is not a contract in the instrument file.",
+          "The edit was refused and no leg changed.", "This edit.", "Pick the leg again from the picker.",
+          {"number": Count}),
     _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
           "The typed price was refused and the previous price stays.", "This price.",
           "Type a price that is a multiple of the tick size.", {"leg": LegRef, "tick": Money}),

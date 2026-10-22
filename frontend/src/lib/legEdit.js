@@ -85,10 +85,14 @@ export function controlsFrom(reply) {
   return { ...reply.controls, shiftTotal: reply.shift_total, shape: reply.shape }
 }
 
+/** Nothing applies until the server has said so (REQ-078 AC-2): the controls are disabled with their reasons. */
 export const NO_CONTROLS = { shift: false, width: false, hedge: false, shiftTotal: 0, shape: null }
-/** Before the server has answered an edit for these legs every stepper is offered; a click that does not apply is
- *  refused by the server with its reason (REQ-078 AC-6), and each reply then says which controls apply (AC-2). */
-export const OFFERED_CONTROLS = { shift: true, width: true, hedge: true, shiftTotal: 0, shape: null }
+
+/** The body of the read-only controls call (POST /strategies/leg-controls): the legs as they are, no edit. */
+export function buildControlsRequest(underlying, legs) {
+  const body = buildEditRequest(underlying, legs, { control: 'reset_prices' })
+  return { underlying, legs: body.legs }
+}
 
 /** Late replies: only the newest request's answer is used (the same idea as `seq` in LegPicker.vue). */
 export function newestWins() {

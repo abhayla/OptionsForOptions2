@@ -1,6 +1,7 @@
 // W-071 (REQ-038 AC-5, ADR-057, ADR-075, ADR-068 item 1): the Save Draft body and the reopen rebuild. Pure functions.
 import { describe, it, expect } from 'vitest'
 import { buildSaveBody, canSaveLegs, legsFromSaved } from '@/lib/saveDraft'
+import { buildDraft } from '@/lib/legPicker'
 
 const leg = (over = {}) => ({
   id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 2381960, lot_size: 65, action: 'SELL', lots: 2,
@@ -8,7 +9,7 @@ const leg = (over = {}) => ({
 })
 const contract = { contract_id: 2381960, exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE',
   expiry: '2026-10-19', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1922800CE' }
-const saved = (over = {}) => ({ underlying: 'NIFTY', legs: [{ contract_id: 2381960, exchange_segment: 'NSE_FO', exchange_token: 44624,
+const saved = (over = {}) => ({ underlying: 'NIFTY', legs: [{ contract_id: 2381960, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 44624,
   action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-19', quantity: 130,
   planned_entry: '101.25', captured_at: '2026-10-14T15:25:00+05:30', ...over }] })
 
@@ -54,5 +55,29 @@ describe('legsFromSaved', () => {
     expect(legsFromSaved(saved(), [])).toBeNull()
     expect(legsFromSaved(saved(), [{ ...contract, exchange_token: 1 }])).toBeNull()
     expect(legsFromSaved(saved({ quantity: 100 }), [contract])).toBeNull()
+  })
+})
+
+// Issue #500: a saved leg whose stored contract is no longer live comes back with its state and no segment/token. It is
+// shown with that reason and never priced: no instrument id, and buildDraft sends no outcome request for the strategy.
+describe('a saved leg that is no longer live (issue #500)', () => {
+  const NOT_LIVE = ['token_reassigned', 'contract_retired', 'contract_delisted', 'contract_missing']
+  for (const state of NOT_LIVE) {
+    it(`${state}: the leg has no instrument id, carries its reason, and no outcome request is built`, () => {
+      const def = saved({ contract_state: state, exchange_segment: null, exchange_token: null })
+      const legs = legsFromSaved(def, [contract]) // even with the same token live in the catalogue answer
+      expect(legs).toHaveLength(1)
+      expect(legs[0]).toMatchObject({ instrument_id: null, not_live: true, reason_code: state, planned_entry: null,
+        strike: '22800', expiry: '2026-10-19' })
+      expect(JSON.stringify(legs)).not.toContain('44624')
+      expect(buildDraft([...legs, leg()])).toBeNull()
+    })
+  }
+  it('a not-live state that still carries a key, or a leg with no state, is refused (fails closed)', () => {
+    expect(legsFromSaved(saved({ contract_state: 'token_reassigned' }), [contract])).toBeNull()
+    expect(legsFromSaved(saved({ contract_state: undefined }), [contract])).toBeNull()
+  })
+  it('a live leg still builds its own key', () => {
+    expect(legsFromSaved(saved(), [contract])[0].instrument_id).toBe('NSE_FO:44624')
   })
 })

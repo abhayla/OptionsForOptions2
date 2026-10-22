@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
 from ofo.instruments import Catalogue, parse_instruments_csv
+from ofo.instruments.models import InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
 from ofo_app.main import create_app
 from ofo_app.routes.leg_edit import get_capture, get_edit_catalogue
@@ -51,9 +52,9 @@ def legs(prices=None, **extra):
             for a, t, k, p in START]
 
 
-def post(body: dict) -> tuple[int, dict]:
+def post(body: dict, cat=CAT, path="/api/strategies/leg-edit") -> tuple[int, dict]:
     app = create_app()
-    app.dependency_overrides[get_edit_catalogue] = lambda: CAT
+    app.dependency_overrides[get_edit_catalogue] = lambda: cat
     app.dependency_overrides[get_market_context] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
     app.dependency_overrides[get_capture] = lambda: fake_capture
@@ -61,7 +62,7 @@ def post(body: dict) -> tuple[int, dict]:
 
     async def go():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-            r = await client.post("/api/strategies/leg-edit", json={"underlying": "NIFTY"} | body)
+            r = await client.post(path, json={"underlying": "NIFTY"} | body)
             return r.status_code, r.json()
     return asyncio.run(go())
 
@@ -159,3 +160,60 @@ def test_a_control_without_its_fields_is_a_plain_validation_error():
                 {"control": "step", "index": 9, "direction": 1}):
         status, reply = post({"legs": legs(), "edit": bad})
         assert status == HTTP_UNPROCESSABLE and "no further" not in str(reply)
+
+
+def test_a_delisted_contract_on_leg_3_is_named_as_leg_3_with_its_real_contract():
+    """A delisted contract is refused naming ITS leg number and the stored contract, never a placeholder contract."""
+    gone = Catalogue()
+    gone.load(parse_instruments_csv(ROOT / "tests" / "fixtures" / "instruments" / "instruments_slice.csv"))
+    victim = BY_KEY[("CE", 23400)]
+    segment, _, token = victim.partition(":")
+    gone.get(InstrumentId(segment, int(token))).currently_listed = False
+    status, reply = post({"legs": legs(), "edit": {"control": "shift", "direction": 1}}, cat=gone)
+    text = str(reply)
+    assert status == HTTP_UNPROCESSABLE
+    assert "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026)" in text and "2000" not in text
+
+
+def test_an_unknown_instrument_on_leg_2_is_refused_by_its_number_only():
+    """An id the file does not hold has no contract to name: the text names the leg number and nothing else."""
+    bad = legs()
+    bad[1]["instrument_id"] = "NSE_FO:1"
+    status, reply = post({"legs": bad, "edit": {"control": "shift", "direction": 1}})
+    assert status == HTTP_UNPROCESSABLE and "Leg 2 is not a contract in the instrument file." in str(reply)
+    assert "2000" not in str(reply) and "Leg 1" not in str(reply)
+
+
+def strangle(action, put, call, put_price="40.00", call_price="40.00"):
+    rows = [(action, "PE", put, put_price), (action, "CE", call, call_price)]
+    return [{"instrument_id": BY_KEY[(t, k)], "action": a, "lots": 1, "base_lots": 1, "planned_entry": p,
+             "captured_at": STAMP.isoformat()} for a, t, k, p in rows]
+
+
+def test_ac_078_4_width_minus_one_on_a_one_step_strangle_becomes_a_straddle_through_the_route():
+    """REQ-078 AC-4: 23,000 PE / 23,050 CE at Width -1 -> a straddle (no live spot: the rule's calls-down side)."""
+    status, reply = post({"legs": strangle("SELL", 23000, 23050), "edit": {"control": "width", "direction": -1}})
+    assert status == HTTP_OK and [int(float(s)) for s in strikes(reply)] == [23000, 23000]
+    assert reply["shape"] == "short_straddle"
+
+
+def test_ac_078_2_width_applies_to_long_strangle_and_long_straddle():
+    """REQ-078 AC-2: Width works on the long shapes (Sensibull 7.2 lists LONG_STRADDLE / LONG_STRANGLE)."""
+    _, controls = post({"legs": strangle("BUY", 23000, 23100)}, path="/api/strategies/leg-controls")
+    assert controls["shape"] == "long_strangle" and controls["controls"]["width"] is True
+    status, reply = post({"legs": strangle("BUY", 23000, 23100), "edit": {"control": "width", "direction": 1}})
+    assert status == HTTP_OK and [int(float(s)) for s in strikes(reply)] == [22950, 23150]
+
+
+def test_ac_078_2_controls_call_says_which_controls_apply_and_changes_nothing():
+    """REQ-078 AC-2: the read-only controls call: a condor allows all three; a vertical, Shift and Hedge only."""
+    _, condor_controls = post({"legs": legs()}, path="/api/strategies/leg-controls")
+    assert condor_controls == {"shape": "iron_condor", "controls": {"shift": True, "width": True, "hedge": True}}
+    vertical = [{"instrument_id": BY_KEY[(t, k)], "action": a, "lots": 1, "base_lots": 1, "planned_entry": p,
+                 "captured_at": STAMP.isoformat()}
+                for a, t, k, p in (("BUY", "CE", 23000, "100.00"), ("SELL", "CE", 23200, "40.00"))]
+    _, spread = post({"legs": vertical}, path="/api/strategies/leg-controls")
+    assert spread["controls"] == {"shift": True, "width": False, "hedge": True}
+    assert spread["shape"] == "bull_call_spread"
+    assert post({"legs": legs()}, path="/api/strategies/leg-controls")[0] == HTTP_OK
+    assert "outcome" not in condor_controls and "legs" not in condor_controls

@@ -21,7 +21,7 @@ vi.mock('@/services/api', async (importActual) => {
 import LegList from '@/components/strategy/LegList.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { REASONS, applyEditReply, buildEditRequest, multiplierValid, newestWins, priceShape, shiftText } from '@/lib/legEdit'
+import { REASONS, applyEditReply, buildControlsRequest, buildEditRequest, multiplierValid, newestWins, priceShape, shiftText } from '@/lib/legEdit'
 import { buildDraft } from '@/lib/legPicker'
 
 const AT = '2026-10-06T09:20:00+05:30'
@@ -174,6 +174,7 @@ describe('LegList (Sensibull 011/012)', () => {
 
 describe('the Builder page sends the edit and draws the reply', () => {
   async function open() {
+    answers['POST /strategies/leg-controls'] ??= { shape: 'iron_condor', controls: { shift: true, width: true, hedge: true } }
     const draft = JSON.stringify({ underlying: 'NIFTY', legs: CONDOR.map((l) => ({
       instrument_id: l.instrument_id, action: l.action, lots: 1, planned_entry: l.planned_entry, captured_at: AT })) })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
@@ -223,5 +224,49 @@ describe('the Builder page sends the edit and draws the reply', () => {
     release[0]() // the older (Shift +1) answers last
     await flushPromises()
     expect(w.findAll('[data-testid="leg-strike"]').map((s) => s.text())).toEqual(['1.00', '1.00', '1.00', '1.00'])
+  })
+})
+
+describe('the controls come from the server on every leg change (REQ-078 AC-2)', () => {
+  const draftOf = (legs) => JSON.stringify({ underlying: 'NIFTY', legs: legs.map((l) => ({
+    instrument_id: l.instrument_id, action: l.action, lots: 1, planned_entry: l.planned_entry, captured_at: AT })) })
+  async function openWith(legs) {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: draftOf(legs) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+
+  it('the request is the legs with no edit, and nothing else', () => {
+    const body = buildControlsRequest('NIFTY', CONDOR)
+    expect(Object.keys(body).sort()).toEqual(['legs', 'underlying'])
+    expect(body.legs).toHaveLength(4)
+  })
+
+  it('Width and Hedge show disabled with their reasons when the server says they do not apply', async () => {
+    answers['POST /strategies/outcome'] = SHIFTED.outcome
+    answers['POST /strategies/leg-controls'] = { shape: null, controls: { shift: true, width: false, hedge: false } }
+    const w = await openWith(CONDOR)
+    expect(calls.filter((c) => c.url === '/strategies/leg-controls')).toHaveLength(1)
+    expect(t(w, 'width-plus').attributes('disabled')).toBeDefined()
+    expect(t(w, 'hedge-reason').text()).toBe(REASONS.hedge)
+    expect(t(w, 'shift-plus').attributes('disabled')).toBeUndefined()
+  })
+
+  it('a failed controls call leaves every control disabled (nothing is assumed)', async () => {
+    answers['POST /strategies/outcome'] = SHIFTED.outcome
+    answers['POST /strategies/leg-controls'] = new Error('down')
+    const w = await openWith(CONDOR)
+    expect(t(w, 'shift-plus').attributes('disabled')).toBeDefined()
+    expect(t(w, 'width-reason').text()).toBe(REASONS.width)
+  })
+
+  it('one leg: no controls call, everything disabled', async () => {
+    answers['POST /strategies/outcome'] = SHIFTED.outcome
+    const w = await openWith(CONDOR.slice(0, 1))
+    expect(calls.some((c) => c.url === '/strategies/leg-controls')).toBe(false)
+    expect(t(w, 'shift-plus').attributes('disabled')).toBeDefined()
   })
 })

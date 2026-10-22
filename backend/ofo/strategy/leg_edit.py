@@ -59,7 +59,7 @@ class Moved:
     moved: frozenset[int]  # indexes whose contract changed: their planned entries are re-captured
 
 
-def _ref(underlying: str, legs: list[EditLeg], index: int, strike: Decimal | None = None) -> LegValue:
+def leg_ref(underlying: str, legs: list[EditLeg], index: int, strike: Decimal | None = None) -> LegValue:
     leg = legs[index].leg
     return LegValue(index + 1, leg if strike is None else replace(leg, strike=strike), underlying)
 
@@ -77,7 +77,7 @@ def _land(cat: Catalogue, underlying: str, legs: list[EditLeg], targets: Mapping
     for index, strike in sorted(targets.items()):
         leg = legs[index].leg
         if strike not in listed_strikes(cat, underlying, leg.expiry, leg.instrument):
-            raise LegEditRefused("leg_edit_strike_not_listed", leg=_ref(underlying, legs, index, strike))
+            raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index, strike))
         out[index] = replace(legs[index], leg=replace(leg, strike=strike), typed=False)
     return Moved(out, frozenset(targets))
 
@@ -92,13 +92,13 @@ def step_strike(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int
     """REQ-076 AC-1: the next LISTED strike above / below (never strike + a typed constant)."""
     leg = legs[index].leg
     if leg.strike is None:
-        raise LegEditRefused("leg_edit_futures_no_stepper", leg=_ref(underlying, legs, index))
+        raise LegEditRefused("leg_edit_futures_no_stepper", leg=leg_ref(underlying, legs, index))
     grid = listed_strikes(cat, underlying, leg.expiry, leg.instrument)
     if leg.strike not in grid:
-        raise LegEditRefused("leg_edit_strike_not_listed", leg=_ref(underlying, legs, index))
+        raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index))
     at = grid.index(leg.strike) + direction
     if not 0 <= at < len(grid):
-        raise LegEditRefused("leg_edit_no_further_strike", leg=_ref(underlying, legs, index))
+        raise LegEditRefused("leg_edit_no_further_strike", leg=leg_ref(underlying, legs, index))
     return _land(cat, underlying, legs, {index: grid[at]})
 
 
@@ -111,16 +111,26 @@ def shift(cat: Catalogue, underlying: str, legs: list[EditLeg], direction: int) 
     return _land(cat, underlying, legs, {i: legs[i].leg.strike + step for i in options})
 
 
-def width(cat: Catalogue, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
-    """REQ-078 AC-4: every call leg one step up and every put leg one step down (reversed for -1); the distance between
-    the highest short put and the lowest short call never goes below 0."""
-    puts = [x.leg.strike for x in legs if x.leg.instrument is Instrument.PE and x.leg.action is Action.SELL]
-    calls = [x.leg.strike for x in legs if x.leg.instrument is Instrument.CE and x.leg.action is Action.SELL]
-    if not puts and not calls:
+def width(cat: Catalogue, underlying: str, legs: list[EditLeg], direction: int, spot: Decimal | None = None) -> Moved:
+    """REQ-078 AC-4: every call leg one step up and every put leg one step down (reversed for -1). The width is the
+    lowest call strike minus the highest put strike (Sensibull bundle-findings 7.2: "Value = |highest PE strike - lowest
+    CE strike|"), so it holds for long and short shapes alike. It never goes below 0: a narrowing of exactly one step
+    cannot be done by moving both sides two steps, so "only the side nearer spot moves" one step (7.2: "puts up one gap
+    if the put side is nearer spot, else calls down one gap"; a tie, or no spot, is "else": the calls come down)."""
+    puts = [x.leg.strike for x in legs if x.leg.instrument is Instrument.PE]
+    calls = [x.leg.strike for x in legs if x.leg.instrument is Instrument.CE]
+    if not puts or not calls:
         raise LegEditRefused("leg_edit_width_not_applicable")
     step = strike_step(cat, underlying, legs)
-    if direction < 0 and puts and calls and min(calls) - max(puts) < 2 * step:
-        raise LegEditRefused("leg_edit_width_below_zero")
+    current = min(calls) - max(puts)
+    if direction < 0 and current < 2 * step:
+        if current < step:
+            raise LegEditRefused("leg_edit_width_below_zero")
+        puts_nearer = spot is not None and abs(spot - max(puts)) < abs(spot - min(calls))
+        side = Instrument.PE if puts_nearer else Instrument.CE
+        shift_by = step if puts_nearer else -step
+        return _land(cat, underlying, legs,
+                     {i: x.leg.strike + shift_by for i, x in enumerate(legs) if x.leg.instrument is side})
     targets = {i: x.leg.strike + (direction * step if x.leg.instrument is Instrument.CE else -direction * step)
                for i, x in enumerate(legs) if x.leg.instrument in OPTIONS}
     return _land(cat, underlying, legs, targets)
@@ -141,7 +151,7 @@ def hedge(cat: Catalogue, underlying: str, legs: list[EditLeg], protective: froz
         primaries = [x.leg.strike for j, x in enumerate(legs)
                      if j not in protective and x.leg.instrument is leg.instrument]
         if primaries and (new - min(primaries, key=lambda s: abs(s - leg.strike))) * (1 if away > 0 else -1) < step:
-            raise LegEditRefused("leg_edit_hedge_below_minimum", leg=_ref(underlying, legs, i, new))
+            raise LegEditRefused("leg_edit_hedge_below_minimum", leg=leg_ref(underlying, legs, i, new))
         targets[i] = new
     return _land(cat, underlying, legs, targets)
 
@@ -177,7 +187,7 @@ def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index:
     tick = cat.tick_size(underlying, leg.expiry, kind)
     if (type(price) is not Decimal or not price.is_finite() or price <= 0
             or round_to_tick(price, tick, Action.BUY) != price):
-        raise LegEditRefused("leg_edit_price_not_tick", leg=_ref(underlying, legs, index), tick=tick)
+        raise LegEditRefused("leg_edit_price_not_tick", leg=leg_ref(underlying, legs, index), tick=tick)
     return [replace(x, leg=replace(x.leg, entry_price=price), typed=True) if i == index else x
             for i, x in enumerate(legs)]
 

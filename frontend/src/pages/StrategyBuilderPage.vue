@@ -30,7 +30,7 @@ import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
-import { NO_CONTROLS, OFFERED_CONTROLS, applyEditReply, buildEditRequest, controlsFrom, newestWins } from '@/lib/legEdit'
+import { NO_CONTROLS, applyEditReply, buildControlsRequest, buildEditRequest, controlsFrom, newestWins } from '@/lib/legEdit'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
@@ -183,17 +183,16 @@ const setLegs = (next) => {
   savedRevision.value = null
   linkRefused.value = false
   legs.value = next
-  controls.value = { ...OFFERED_CONTROLS }
-  shape.value = null
   load()
   syncLive()
+  refreshControls()
 }
 
 // W-126 (REQ-076, REQ-077, REQ-078): ONE edit goes to the server (a control and its direction or value); the reply is the
 // new legs, the controls that apply, the shape label and the engine's outcome. Nothing is moved or priced here. Only the
 // newest request's reply is used.
 const editSeq = newestWins()
-const controls = ref({ ...OFFERED_CONTROLS })
+const controls = ref({ ...NO_CONTROLS })
 const shape = ref(null)
 const editError = ref(null)
 async function sendEdit(edit) {
@@ -213,6 +212,28 @@ async function sendEdit(edit) {
     return null
   }
 }
+// REQ-078 AC-2: which of Shift / Width / Hedge apply, asked of the server on every leg change (read-only: nothing moves,
+// nothing is priced). Until it answers, or if it fails, every control is disabled with its reason.
+const controlsSeq = newestWins()
+async function refreshControls() {
+  const mine = controlsSeq.start()
+  const underlying = legs.value[0]?.underlying
+  if (legs.value.length < 2 || !underlying) {
+    controls.value = { ...NO_CONTROLS }
+    shape.value = null
+    return
+  }
+  try {
+    const res = await api.post('/strategies/leg-controls', buildControlsRequest(underlying, legs.value))
+    if (!controlsSeq.isCurrent(mine)) return
+    controls.value = { ...res.data.controls, shiftTotal: 0, shape: res.data.shape }
+    shape.value = res.data.shape
+  } catch {
+    if (!controlsSeq.isCurrent(mine)) return
+    controls.value = { ...NO_CONTROLS }
+    shape.value = null
+  }
+}
 async function onEdit(edit) {
   const reply = await sendEdit(edit)
   if (!reply) return
@@ -229,6 +250,7 @@ const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
+  refreshControls()
 })
 watch(() => route.query.ux, () => {
   load()
@@ -270,7 +292,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
     <LegList :legs="legs" :shape="shape" @edit="onEdit" />
-    <StrategyControls v-if="legs.length" :controls="legs.length >= 2 ? controls : NO_CONTROLS" @edit="onEdit" />
+    <StrategyControls v-if="legs.length" :controls="controls" @edit="onEdit" />
     <ErrorMessage v-if="editError" class="mt-2" :parts="editError" data-testid="edit-error" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 

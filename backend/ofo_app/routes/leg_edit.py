@@ -155,28 +155,43 @@ class LegEditOut(ApiModel):
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry
 
 
+class LegControlsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    underlying: Literal["NIFTY", "SENSEX"]
+    legs: list[EditLegIn] = Field(min_length=1, max_length=20)
+
+
+class LegControlsOut(ApiModel):
+    shape: Identifier | None
+    controls: ControlsOut
+
+
 # ---- the edit -----------------------------------------------------------------------------------------------------
 
-def _contract_of(cat: Catalogue, instrument_id: str, underlying: str):
-    segment, _, token = instrument_id.partition(":")
+def _contract_of(cat: Catalogue, item: EditLegIn, underlying: str, number: int):
+    """The stored contract of a request leg. A delisted contract is named as the contract it really is; an id the
+    instrument file does not hold (or another underlying's) is refused by the leg's NUMBER,
+    never by a made-up contract."""
+    segment, _, token = item.instrument_id.partition(":")
     try:
         entry = cat.get(ContractKey(segment, int(token)))
     except ValueError:
         entry = None
-    if entry is None or not entry.currently_listed or entry.contract.name != underlying:
-        raise LegEditRefused("leg_edit_strike_not_listed", leg=_unknown_ref(underlying, instrument_id))
-    return entry.contract
-
-
-def _unknown_ref(underlying: str, instrument_id: str):
-    placeholder = Leg(Action.BUY, Instrument.CE, Decimal(1), datetime.date(2000, 1, 1), 1, Decimal(0))
-    return LegValue(1, placeholder, underlying)
+    if entry is None or entry.contract.name != underlying:
+        raise LegEditRefused("leg_edit_unknown_contract", number=number)
+    c = entry.contract
+    if not entry.currently_listed:
+        strike = None if c.instrument_type == "FUT" else c.strike
+        shown = Leg(Action(item.action), Instrument(c.instrument_type), strike, c.expiry,
+                    item.lots * c.lot_size, Decimal(0))
+        raise LegEditRefused("leg_edit_strike_not_listed", leg=LegValue(number, shown, underlying))
+    return c
 
 
 def _legs_of(cat: Catalogue, req: LegEditIn) -> list[EditLeg]:
     out = []
-    for item in req.legs:
-        c = _contract_of(cat, item.instrument_id, req.underlying)
+    for number, item in enumerate(req.legs, start=1):
+        c = _contract_of(cat, item, req.underlying, number)
         entry = Decimal(item.planned_entry) if item.planned_entry is not None else Decimal(0)
         leg = Leg(Action(item.action), Instrument(c.instrument_type), None if c.instrument_type == "FUT" else c.strike,
                   c.expiry, item.lots * c.lot_size, entry)
@@ -184,20 +199,27 @@ def _legs_of(cat: Catalogue, req: LegEditIn) -> list[EditLeg]:
     return out
 
 
-def _id_of(cat: Catalogue, underlying: str, leg: Leg) -> str:
+def _id_of(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int) -> str:
+    leg = legs[index].leg
     for e in cat.all_entries():
         c = e.contract
         if (e.currently_listed and c.name == underlying and c.expiry == leg.expiry
                 and c.instrument_type == leg.instrument.value and (leg.strike is None or c.strike == leg.strike)):
             return f"{c.exchange_segment}:{c.exchange_token}"
-    raise LegEditRefused("leg_edit_strike_not_listed", leg=_unknown_ref(underlying, "none"))
+    raise LegEditRefused("leg_edit_strike_not_listed", leg=edit.leg_ref(underlying, legs, index))
+
+
+def _live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
+    """The live index level, or None (no feed, no price): Width then takes the rule's tie side, it invents no spot."""
+    quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
+    return quote.ltp if quote is not None and quote.ltp is not None and quote.ltp > 0 else None
 
 
 def _reference_spot(ctx: MarketContext | None, underlying: str, legs: list[EditLeg], gap: Decimal) -> Decimal:
     """The spot the shape is read against: the live index when there is one, else the middle of the option strikes."""
-    quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
-    if quote is not None and quote.ltp is not None and quote.ltp > 0:
-        return quote.ltp
+    live = _live_spot(ctx, underlying)
+    if live is not None:
+        return live
     strikes = [x.leg.strike for x in legs if x.leg.strike is not None]
     mid = (min(strikes) + max(strikes)) / 2
     return (mid / gap).quantize(Decimal(1)) * gap
@@ -212,16 +234,26 @@ def shape_and_controls(cat: Catalogue, ctx: MarketContext | None, underlying: st
     gap = edit.strike_step(cat, underlying, legs)
     spot = _reference_spot(ctx, underlying, legs, gap)
     found = match([x.leg for x in legs], spot=spot, strike_gap=gap, templates=load_templates())
+    if isinstance(found, Custom) and _live_spot(ctx, underlying) is None:
+        # no live index: the middle of the strikes is only a guess, so the neighbouring ATM strikes are tried too
+        for nearby in (spot - gap, spot + gap):
+            if not isinstance(again := match([x.leg for x in legs], spot=nearby, strike_gap=gap,
+                                              templates=load_templates()), Custom):
+                found, spot = again, nearby
+                break
     if isinstance(found, Custom):
-        return None, frozenset(), ControlsOut(shift=True, width=False, hedge=False)
+        # A strangle one step wide (23,000 PE / 23,050 CE) cannot be OTM on both sides of one ATM strike, so it fits no
+        # template, yet it is exactly a width-adjustable shape whose only miss is the ATM position word. Width is
+        # offered when such a near miss exists and every leg is an option (REQ-078 AC-2); the shape stays Custom.
+        near_width = len(options) == len(legs) and any(
+            n.template.width_adjustable and n.reason.startswith("sign constraint") for n in found.nearest)
+        return None, frozenset(), ControlsOut(shift=True, width=near_width, hedge=False)
     marks = protective_keys(found)
     atm = atm_strike(spot, gap)
     ranks = {e: i for i, e in enumerate(sorted({x.leg.expiry for x in legs}))}
     hedged = frozenset(i for i, x in enumerate(legs) if x.leg.strike is not None and (
         x.leg.action, x.leg.instrument, int((x.leg.strike - atm) / gap), ranks[x.leg.expiry]) in marks)
-    shorts = {x.leg.instrument for x in legs if x.leg.action is Action.SELL}
-    width_ok = bool(shorts & {Instrument.CE, Instrument.PE}) and len(options) == len(legs) and (
-        found.template.width_adjustable)
+    width_ok = len(options) == len(legs) and found.template.width_adjustable  # long and short shapes alike (AC-2)
     hedge_ok = bool(hedged) and len(legs) % 2 == 0 and len(legs) <= edit.MAX_HEDGE_LEGS
     return found.template.id, hedged, ControlsOut(shift=True, width=width_ok, hedge=hedge_ok)
 
@@ -250,7 +282,7 @@ def apply_edit(cat: Catalogue, ctx: MarketContext | None, req: LegEditIn, legs: 
         _, _, controls = shape_and_controls(cat, ctx, name, legs)
         if not controls.width:
             raise LegEditRefused("leg_edit_width_not_applicable")
-        moved = edit.width(cat, name, legs, direction)
+        moved = edit.width(cat, name, legs, direction, _live_spot(ctx, name))
     else:
         _, hedged, controls = shape_and_controls(cat, ctx, name, legs)
         if not controls.hedge:
@@ -277,7 +309,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> LegEditOut:
     legs = _legs_of(cat, req)
     new_legs, moved, shift_total = apply_edit(cat, ctx, req, legs)
-    ids = [_id_of(cat, req.underlying, x.leg) for x in new_legs]
+    ids = [_id_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
     recapture = sorted(moved | unpriced) if req.edit.control == "reset_prices" else sorted(moved)
@@ -313,3 +345,15 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates)
     return LegEditOut.model_validate({"legs": out_legs, "shape": shape, "controls": controls.model_dump(),
                                       "shift_total": shift_total, "outcome": outcome})
+
+
+@router.post("/api/strategies/leg-controls", response_model=LegControlsOut)
+async def leg_controls(req: LegControlsIn,
+                       cat: Annotated[Catalogue, Depends(get_edit_catalogue)],
+                       ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> LegControlsOut:
+    """REQ-078 AC-2: which of Shift / Width / Hedge apply to these legs, and the shape label. Read-only: nothing moves,
+    nothing is priced, no outcome is built. The Builder asks on every leg change."""
+    legs = _legs_of(cat, LegEditIn(underlying=req.underlying, legs=req.legs,
+                                   edit=EditIn(control="reset_prices")))
+    shape, _, controls = shape_and_controls(cat, ctx, req.underlying, legs)
+    return LegControlsOut.model_validate({"shape": shape, "controls": controls.model_dump()})

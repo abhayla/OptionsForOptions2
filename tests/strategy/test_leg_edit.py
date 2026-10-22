@@ -17,6 +17,7 @@ Hand computation (per unit, then x 65):
 from __future__ import annotations
 
 import datetime
+import itertools
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 EXPIRY = datetime.date(2026, 10, 6)
 LOT = 65
+NIFTY_GAP = D("50")
 INCLUDED_AFTER_UNTICK = 3
 NIFTY = "NIFTY"
 
@@ -189,3 +191,66 @@ def test_refusals_are_user_facing_catalogue_text(cat):
         leg_edit.width(cat, NIFTY, condor()[:1], 1)
     assert err.value.message.what_happened == (
         "Width does not apply to this strategy.")
+
+
+def two_legs(action, put, call, price="50.00"):
+    return [EditLeg(Leg(action, Instrument.PE, D(put), EXPIRY, LOT, D(price)), 1, 1),
+            EditLeg(Leg(action, Instrument.CE, D(call), EXPIRY, LOT, D(price)), 1, 1)]
+
+
+@pytest.mark.parametrize(("spot", "expected"), [
+    (D("23010"), [D("23050"), D("23050")]),  # put side nearer (10 < 40): "puts up one gap" -> straddle at 23050
+    (D("23040"), [D("23000"), D("23000")]),  # call side nearer (10 < 40): the calls come down -> straddle at 23000
+    (D("23025"), [D("23000"), D("23000")]),  # tie: Sensibull 7.2 "else calls down one gap"
+    (None, [D("23000"), D("23000")]),        # no spot: the same "else"
+])
+def test_ac_078_4_one_step_width_narrows_by_moving_only_the_side_nearer_spot(cat, spot, expected):
+    """REQ-078 AC-4: a short strangle 23,000 PE / 23,050 CE (width 1 step of 50) at Width -1: half the change is under
+    one step, so only the side nearer spot moves one step. Sensibull bundle-findings 7.2: "If delta is not a whole
+    multiple of the gap and |delta| < gap, only the side nearer to spot moves one gap (puts up one gap if the put side
+    is nearer spot, else calls down one gap)". Hand: width 50 -> 0, a straddle."""
+    result = leg_edit.width(cat, NIFTY, two_legs(Action.SELL, "23000", "23050"), -1, spot)
+    assert strikes(result.legs) == expected
+    assert result.moved == frozenset({0}) or result.moved == frozenset({1})
+
+
+def test_ac_078_4_width_two_steps_and_wider_still_move_both_sides(cat):
+    """REQ-078 AC-4: width 200 (4 steps) at -1 -> 100: puts +50, calls -50; a straddle at +1 -> 100 wide."""
+    narrowed = leg_edit.width(cat, NIFTY, two_legs(Action.SELL, "22900", "23100"), -1, D("23000"))
+    assert strikes(narrowed.legs) == [D("22950"), D("23050")]
+    exactly_two = leg_edit.width(cat, NIFTY, two_legs(Action.SELL, "22950", "23050"), -1, D("23000"))
+    assert strikes(exactly_two.legs) == [D("23000"), D("23000")]  # width 100 -> 0, both sides move one step
+    widened = leg_edit.width(cat, NIFTY, two_legs(Action.SELL, "23000", "23000"), 1)
+    assert strikes(widened.legs) == [D("22950"), D("23050")]
+    one_step_wider = leg_edit.width(cat, NIFTY, two_legs(Action.SELL, "23000", "23050"), 1)
+    assert strikes(one_step_wider.legs) == [D("22950"), D("23100")]
+
+
+def test_ac_078_4_sensex_step_is_the_files_gap(cat):
+    """REQ-078 AC-4 on SENSEX: the step is that expiry's own gap in the file (not NIFTY's 50)."""
+    contracts = [e.contract for e in cat.all_entries()]
+    options = [c for c in contracts if c.name == "SENSEX" and c.instrument_type in ("CE", "PE")]
+    expiry = min(c.expiry for c in options)
+    gap = cat.strike_gap("SENSEX", expiry)
+    grid = leg_edit.listed_strikes(cat, "SENSEX", expiry, Instrument.PE)
+    pair = next((a, b) for a, b in itertools.pairwise(grid) if b - a == gap and b in
+                leg_edit.listed_strikes(cat, "SENSEX", expiry, Instrument.CE) and a in
+                leg_edit.listed_strikes(cat, "SENSEX", expiry, Instrument.CE))
+    legs = [EditLeg(Leg(Action.SELL, Instrument.PE, pair[0], expiry, 20, D("50.00")), 1, 1),
+            EditLeg(Leg(Action.SELL, Instrument.CE, pair[1], expiry, 20, D("50.00")), 1, 1)]
+    result = leg_edit.width(cat, "SENSEX", legs, -1, None)
+    assert strikes(result.legs) == [pair[0], pair[0]]  # the calls came down by the file's own gap
+    assert gap != NIFTY_GAP
+
+
+def test_ac_078_2_long_strangle_and_straddle_take_width_too(cat):
+    """REQ-078 AC-2 / Sensibull 7.2: Width = lowest call strike - highest put strike over ALL legs, so the long shapes
+    work; a long straddle at -1 is below zero."""
+    widened = leg_edit.width(cat, NIFTY, two_legs(Action.BUY, "23000", "23100"), 1)
+    assert strikes(widened.legs) == [D("22950"), D("23150")]
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.width(cat, NIFTY, two_legs(Action.BUY, "23000", "23000"), -1)
+    assert err.value.template == "leg_edit_width_below_zero"
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.width(cat, NIFTY, [two_legs(Action.BUY, "23000", "23000")[0]], 1)
+    assert err.value.template == "leg_edit_width_not_applicable"

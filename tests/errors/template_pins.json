@@ -595,6 +595,10 @@
     "sha256": "67c02f1b39ba7deb14ed855259647af8e2a8790b51d3deedbd7d52fa652753b7",
     "reviewed": "pending owner read"
   },
+  "gate_contract_not_live": {
+    "sha256": "94729abf6c1067bcda21d1cf9b30f11a0e30abc216d0d41130b44a44b59bb907",
+    "reviewed": "pending owner read"
+  },
   "freeze_limit_exceeded": {
     "sha256": "12733b0f78a2dcf444a0c0a9bc044976359e554b3ad59db1202a53f48be89ac9",
     "reviewed": "pending owner read"
@@ -1461,6 +1465,10 @@
   },
   "leg_edit_price_not_tick": {
     "sha256": "926a63c553a31591cbd60bf47ae205fe6eb55892759dcca745d0e3b37b13c26a",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_unknown_contract": {
+    "sha256": "6f66686722d95876bc85977232872fb72771236decea29c6dc35e1ae59aaced0",
     "reviewed": "pending owner read"
   }
 }

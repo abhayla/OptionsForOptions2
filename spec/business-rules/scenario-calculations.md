@@ -24,6 +24,9 @@ calculation engine.
   ADR-035). Worked check: BUY 22,800 PE, entry ₹42.50, LTP ₹38.20, Quantity 75, Market 22,000 → expiry P&L
   `(800 − 42.50) × 75 = ₹56,812.50` (not ₹57,135, which the LTP would give).
 - Every cell is filled for every leg, including out-of-the-money legs (owner, T1 #93, #95). No blanks.
+- Scenario values and payoff curves (At Expiry and Estimated) are shown **before charges and taxes**; the round-trip
+  charges are shown once as a separate breakdown (ADR-167, owner 2026-10-22, amending ADR-082 (2) for scenario values;
+  the max-loss and max-profit sentences still include charges per ADR-082 (2)).
 
 ## 2. Live (current) P&L (T1 #85)
 
