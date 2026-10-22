@@ -253,8 +253,16 @@ GOOD_BUDGET = "Budget: 60 min wall-clock, 80 tool calls\n"
 FIVE = "1. a\n2. b\n3. c\n4. d\n5. e\n"
 
 
-def _builder(attack: str, budget: str) -> str:
-    return "# Row 99\n" + STANDING + attack + budget
+SIZE_S = "Size: S, 3 files, 2 items\n"
+SIZE_M = "Size: M, 8 files, 3 items\n"
+CI_LINE = "CI: kit tests job (tests/); vars: none\n"
+
+
+def _builder(attack: str, budget: str, size: str | None = None, ci: str = CI_LINE) -> str:
+    """A minimal builder brief; the Size line follows the budget unless given (row-review R3 by machine)."""
+    if size is None:
+        size = SIZE_M if "60 min" in budget else SIZE_S
+    return "# Row 99\n" + STANDING + attack + budget + size + ci
 
 
 def _out(tmp_path, text, capsys):
@@ -317,9 +325,34 @@ def test_non_builder_brief_is_unaffected(tmp_path):
     assert run(tmp_path, "# Verify row 99\nBudget: 45 min wall-clock, 70 tool calls\n") == 0
 
 
-def test_real_row_3_brief_passes_and_row_1_predates_the_rule(capsys):
+def test_real_row_7_brief_passes_and_row_1_predates_the_rules(capsys):
     d = ROOT / "docs" / "process" / "builder-sequence-briefs"
-    assert check_brief.main([str(d / "row-03-REQ-054-broker-reader.md"), "--root", str(ROOT)]) == 0
+    assert check_brief.main([str(d / "row-07-REQ-049-data-health.md"), "--root", str(ROOT)]) == 0
     capsys.readouterr()
     assert check_brief.main([str(d / "row-01-REQ-001-underlyings.md"), "--root", str(ROOT)]) == 1
     assert "MISSING Attack list" in capsys.readouterr().out
+
+
+def test_size_line_is_required_and_must_match_the_budget(tmp_path, capsys):
+    """Meta review after row 6: R3 broken three times in prose; by machine now."""
+    head = "Attack list:\n" + FIVE
+    code, out = _out(tmp_path, _builder(head, "Budget: 30 min wall-clock, 40 tool calls\n", size=""), capsys)
+    assert code == 1 and "MISSING size line" in out
+    big = "Size: S, 9 files, 2 items\n"
+    code, out = _out(tmp_path, _builder(head, "Budget: 30 min wall-clock, 40 tool calls\n", size=big), capsys)
+    assert code == 1 and "is not S" in out
+    many = "Size: S, 3 files, 5 items\n"
+    code, out = _out(tmp_path, _builder(head, "Budget: 30 min wall-clock, 40 tool calls\n", size=many), capsys)
+    assert code == 1 and "is not S" in out
+    both = "Size: S, 4 files, 2 items, backend + frontend\n"
+    code, out = _out(tmp_path, _builder(head, "Budget: 30 min wall-clock, 40 tool calls\n", size=both), capsys)
+    assert code == 1 and "across backend and frontend" in out
+    code, out = _out(tmp_path, _builder(head, "Budget: 30 min wall-clock, 40 tool calls\n", size=SIZE_M), capsys)
+    assert code == 1 and "takes 60/80" in out
+    assert run(tmp_path, _builder(head, "Budget: 60 min wall-clock, 80 tool calls\n", size=SIZE_M)) == 0
+
+
+def test_ci_line_is_required(tmp_path, capsys):
+    """R11 (row 6): every builder brief names the CI job and variables of its new tests."""
+    code, out = _out(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET, ci=""), capsys)
+    assert code == 1 and "MISSING CI line" in out

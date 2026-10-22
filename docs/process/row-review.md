@@ -90,8 +90,9 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | R5 fresh agent for small follow-ups | resume re-sending a whole history | resume tokens on <= 3-file tasks | - | 203k (row 3, before R5 fixed) |
 | R6 orchestrator self-checks | bookkeeping turning a repo test red | red repo tests from orchestrator edits | 1 (row 1 W-129) | 0 (row 3) |
 | R7 measured table | wrong times, missing agents in totals | review claims without a record (meta review) | - | 4 (meta review after row 3) |
-| R8 guards as allow-lists | a scan written as a list of forbidden shapes | forbidden-list guards reaching a verifier | 3 earlier occurrences (finding) | 1 (row 4, in the orchestrator's own brief); check_brief R8 added after it, caught row 5's brief before dispatch |
-| Budget hard stop | builder running past its budget | builders over budget | - | 2 (row 4: 152/80 calls; fix 47/40) |
+| R8 guards as allow-lists | a scan written as a list of forbidden shapes | forbidden-list guards reaching a verifier | 3 earlier occurrences (finding) | 2 (row 4 in the orchestrator's brief; row 6 although the brief said allow-list) - R12 (inventory) added |
+| Budget hard stop | builder running past its budget | builders over budget | - | 5 (row 4: 152/80, 47/40; row 5: 48/40; row 6: 46/40, 46/40) - Size line by machine added after row 6 |
+| R1 / R2 / R3 / R6 (rows 4-6) | listed above | per row | - | R1: 0 misses; R2: 1 (row 6, CI env) -> R11; R3: 3 (rows 5, 6) -> Size line by machine; R6: 1 (row 5, F-57 unstaged, caught by coverage) |
 
 | Row | Expected (min / tokens) | Agents | Actual minutes (agents) | Actual tokens (agents) | Verify rounds | Notes |
 |---|---|---|---|---|---|---|
@@ -100,9 +101,27 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
 | 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | 6 (measure, build, finish, verify r1, fix, verify r2) | 52 agent min; 58 wall-clock (12:57-13:55) | ~870k | 2 | time -42% (faster), tokens +93% (slower): see the row 4 log |
 | 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | 7 (build, finish x2, verify r1, research, fix, verify r2) + 3 process (reset tool, throwaway-db tool, tool review) | 61 agent min; 97 wall-clock (13:58-15:35) | ~1,010k (+316k process) | 2 | wall-clock +8% (within 20%); tokens +124%: see the row 5 log |
-| 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 75 agent min; ~105 wall-clock (15:20-17:05) | ~610k | 2 (PARKED) | time +75%, tokens +74%: see the row 6 log |
+| 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
+| 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | | | | | |
 
 ## Log (newest first)
+
+### Meta review after row 6 (2026-10-22 ~16:45 IST, fresh Sonnet agent, 1.0 min / 117k / 6 calls)
+- Found: waste is not shrinking (row 3 best; rows 4-6 two rounds each, row 6 parked); about 9 of ~15 causes are the
+  orchestrator's (briefs, sizing, spec reading, bookkeeping), 5 the builders', 1 the environment; rules broken after
+  they were written: R8 (the word passed, the design did not), the Budget hard stop (3 more over-budget runs), R3 (row
+  6 was backend + frontend + CI on an S budget), R2/R11 (a test passing only with the builder's DATABASE_URL), R7
+  (meta review after row 3 missed once); the row 6 numbers were wrong: the close commit 150873d3 is 16:34, so wall-clock
+  was 74 min (+23%, not +75%) and the agent sum is 53 min (not 75); other close times typed a few minutes off; the
+  effect table stopped at row 3.
+- Accepted and applied: `check_brief` now requires a `Size: S|M|L, <n> files, <k> items[, backend + frontend]` line
+  whose budget matches (more than 5 files, more than 4 items, or backend + frontend can never be S) and a `CI:` line
+  naming the job and variables of the new tests (R3, R11 by machine); the R8 check now reads only the build section
+  proper (a "no static detector" standing item had tripped it); row 6 numbers corrected below and to the owner; times
+  from commits only; the effect table updated with rows 4-6.
+- Not yet machine-checked (kept as prose, named here so the next meta review can count them): R9 (findings before a
+  time/limit rule - the proposed "cite an F-id" check is too noisy as written), R6 (status done before the chunk
+  merges), a generated measured table from git log.
 
 ### Row 6 - REQ-048 Market-data pipeline (PARKED #517, 2026-10-22 ~17:05 IST)
 - Expected 60 min / 350k. Actual: measure 1.6 min / 76k / 10 calls; build 14.6 min / 112k / 46 (budget 40); verify r1

@@ -193,7 +193,8 @@ def test_agent_gate_allows_a_good_brief_and_a_prompt_without_one(tmp_path):
 GUARD_TESTS_LINE = ("Tests: python -m pytest tests/test_*.py tests/errors/test_write_allowlist.py "
                     "tests/errors/test_producer_inventory.py -m repo_scan\n")
 NO_ATTACK_BUILDER = ("# Row 99\nStanding items: (a) n/a: x\n" + GUARD_TESTS_LINE
-                     + "Budget: 60 min wall-clock, 80 tool calls\n")
+                     + "Budget: 60 min wall-clock, 80 tool calls\nSize: M, 8 files, 3 items\n"
+                     + "CI: kit tests job; vars: none\n")
 WITH_ATTACK_BUILDER = NO_ATTACK_BUILDER + ("Attack list:\n1. a heartbeat alone is not a price\n2. b\n3. c\n4. d\n"
                                            "5. e\n")
 

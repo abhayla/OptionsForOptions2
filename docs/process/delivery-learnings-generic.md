@@ -43,6 +43,22 @@ Kept current at every meta review (every 3rd delivered item); the kit harvest is
 9. **Effect check.** Each rule names the waste it targets and the counter that shows whether it came back; a rule
    whose waste recurs twice is rewritten or turned into a machine check.
 
+10. **Prose rules break within one item; put them in the brief checker** (meta review after item 6: the budget hard
+    stop, the size rule and the allow-list rule were each broken right after being written). The checker requires a
+    `Size: S|M|L, <n> files, <k> items[, backend + frontend]` line whose budget matches (more than 5 files, more than 4
+    items or both layers is never small), and a `CI:` line naming the job and variables that run each new test.
+11. **A test must be run with exactly CI's variables, and must say which CI job runs it.** Waste: a test passed only
+    because the builder's shell had a database variable CI does not set; a scan "ran" locally but no CI job both
+    built the frontend and ran it; a fail-closed switch keyed on `CI` (set on every runner) turned an unrelated job red
+    on every run.
+12. **Guard secrets by inventory, not by names.** A checked-in list of every reply field (and every build-time
+    variable), asserted both ways, so a new field needs review; never a list of secret-looking words (`token` or
+    `kite_session` slipped through two rounds of name lists). The word "allow-list" in a brief is not an allow-list
+    design: review the design.
+13. **A run on shared test data proves nothing about the code.** Give each local DB run a throwaway database (create,
+    migrate, run as the limited role, drop only what this run created); measured: 15 "known failures" + 5 unrunnable
+    tests became 137 passing, with no shared data touched.
+
 ## Rejected, with the reason (so other projects do not re-try them blind)
 
 - **"The final verifier only checks what the start check asked."** Both first-round failures in the source project

@@ -224,11 +224,41 @@ def check_builder_brief(brief: str) -> list[str]:
     if not pairs or any(p not in SIZE_PAIRS for p in pairs):
         misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "
                       "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review R3)")
+    misses.extend(_size_misses(brief, pairs))
+    if not CI_LINE_RE.search(brief):
+        misses.append("MISSING CI line: `CI: <job/step that runs the new tests>; vars: <the variables they need>` "
+                      "(row-review R11: a test that passes only in the builder's shell, or never runs in CI)")
     build = _build_section(brief)
     if BUILD_GUARD_RE.search(build) and not ALLOW_LIST_RE.search(build):
         misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
                       "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
     return misses
+
+
+SIZE_LINE_RE = re.compile(r"^\W*Size:\s*(S|M|L)\b[^\n]*?(\d+)\s*files?[^\n]*?(\d+)\s*items?([^\n]*)$", re.I | re.M)
+CI_LINE_RE = re.compile(r"^\W*CI:\s*\S", re.M)
+SMALL_PAIRS = {(30, 40), (15, 20), (20, 30)}  # S, and the fix / re-check pairs
+MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review R3; meta review after row 6: finish/fix briefs had 5 items on S budgets
+
+
+def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
+    """R3 by machine (meta review after row 6): a `Size: S|M|L, <n> files, <k> items[, backend + frontend]` line, and a
+    budget that matches it - more than 5 files, more than 4 items, or backend + frontend can never take an S budget."""
+    m = SIZE_LINE_RE.search(brief)
+    if not m:
+        return ["MISSING size line: `Size: S|M|L, <n> files, <k> items` (add `backend + frontend` when both change) "
+                "(row-review R3)"]
+    size, files, items, rest = m.group(1).upper(), int(m.group(2)), int(m.group(3)), m.group(4).lower()
+    spans_both = "backend" in rest and "frontend" in rest
+    too_big = files > MAX_S_FILES or items > MAX_S_ITEMS or spans_both
+    if too_big and size == "S":
+        return [f"MISSING size: {files} files, {items} items{' across backend and frontend' if spans_both else ''} "
+                "is not S - declare M (60/80) or split it (row-review R3)"]
+    if size == "S" and any(p not in SMALL_PAIRS for p in pairs):
+        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review R3)"]
+    if size in {"M", "L"} and any(p != (60, 80) for p in pairs):
+        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review R3)"]
+    return []
 
 
 BUILD_GUARD_RE = re.compile(r"\b(scan|guard|gate|detector)s?\b", re.I)
@@ -239,7 +269,9 @@ def _build_section(brief: str) -> str:
     """The text of the `## What to build` section (to the next `## ` heading); '' when the brief has none."""
     if "## What to build" not in brief:
         return ""
-    return brief.split("## What to build", 1)[1].split("\n## ", 1)[0]
+    section = brief.split("## What to build", 1)[1].split("\n## ", 1)[0]
+    # The section ends at the next labelled block too (row 7: "no static detector" in Standing items tripped R8).
+    return re.split(r"\n\W*(?:Attack list|Standing items|Threat model|Reviewer checklist):", section, maxsplit=1)[0]
 
 
 def check_guard_set(brief: str, root: Path) -> list[str]:
