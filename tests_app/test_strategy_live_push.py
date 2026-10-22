@@ -407,7 +407,7 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
         return Catalogue()
 
     class Sock(FakeSocket):
-        def __init__(self, prov, *, api_key, access_token, clock, base_url):
+        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):
             super().__init__(prov, result="stopped")
             seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987")
 
@@ -690,7 +690,7 @@ def test_ac4_the_replay_serves_every_connection_and_its_pushes_change(monkeypatc
         ltps = [p["legs"][0]["ltp"] for p in pushes]
         assert len(set(ltps)) >= 3, ltps  # the recording moves this leg 14 times in 10 s
         assert len({_pnl_cell(p, "1") for p in pushes}) >= 3
-        assert all(b - a >= 0.9 for a, b in zip(times, times[1:]))  # receive-side gap; the server gate is 1.0 s
+        assert all(b - a >= 0.9 for a, b in zip(times, times[1:], strict=False))  # receive-side gap; the server gate is 1.0 s
         for p in pushes:
             expected = (Decimal("100.00") - Decimal(p["legs"][0]["ltp"])) * 65
             assert _pnl_cell(p, "1") == f"₹{expected:,.2f}"
