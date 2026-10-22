@@ -42,7 +42,8 @@ export function selectedContract(contracts, type, strike) {
 /** The body the outcome API takes. Only legs that carry a planned entry and its capture time can be sent (its leg model
  *  requires both); a leg without them stays in the picker's list and is shown as not connected. null when none can be sent. */
 export function buildDraft(legs) {
-  const priced = legs.filter((l) => l.planned_entry != null && l.captured_at != null)
+  // W-126 (REQ-076 AC-6): an unticked leg is left out of every number, so it is never sent to the outcome.
+  const priced = legs.filter((l) => l.included !== false && l.planned_entry != null && l.captured_at != null)
   if (!priced.length) return null
   return {
     underlying: priced[0].underlying,

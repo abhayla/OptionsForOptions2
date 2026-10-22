@@ -28,6 +28,9 @@ import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
+import LegList from '@/components/strategy/LegList.vue'
+import StrategyControls from '@/components/strategy/StrategyControls.vue'
+import { NO_CONTROLS, OFFERED_CONTROLS, applyEditReply, buildEditRequest, controlsFrom, newestWins } from '@/lib/legEdit'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
@@ -180,7 +183,44 @@ const setLegs = (next) => {
   savedRevision.value = null
   linkRefused.value = false
   legs.value = next
+  controls.value = { ...OFFERED_CONTROLS }
+  shape.value = null
   load()
+  syncLive()
+}
+
+// W-126 (REQ-076, REQ-077, REQ-078): ONE edit goes to the server (a control and its direction or value); the reply is the
+// new legs, the controls that apply, the shape label and the engine's outcome. Nothing is moved or priced here. Only the
+// newest request's reply is used.
+const editSeq = newestWins()
+const controls = ref({ ...OFFERED_CONTROLS })
+const shape = ref(null)
+const editError = ref(null)
+async function sendEdit(edit) {
+  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit, controls.value.shiftTotal)
+  if (!body || !body.underlying) return null
+  const mine = editSeq.start()
+  try {
+    const res = await api.post('/strategies/leg-edit', body)
+    if (!editSeq.isCurrent(mine)) return null
+    editError.value = null
+    controls.value = controlsFrom(res.data)
+    shape.value = res.data.shape
+    return res.data
+  } catch (e) {
+    if (!editSeq.isCurrent(mine)) return null
+    editError.value = e?.parts ?? NEUTRAL_PARTS // a refused edit changes nothing (REQ-078 AC-6)
+    return null
+  }
+}
+async function onEdit(edit) {
+  const reply = await sendEdit(edit)
+  if (!reply) return
+  savedId.value = null
+  savedRevision.value = null
+  legs.value = applyEditReply(legs.value, reply)
+  if (reply.outcome) applyOutcome(reply.outcome)
+  else load()
   syncLive()
 }
 
@@ -229,6 +269,9 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
+    <LegList :legs="legs" :shape="shape" @edit="onEdit" />
+    <StrategyControls v-if="legs.length" :controls="legs.length >= 2 ? controls : NO_CONTROLS" @edit="onEdit" />
+    <ErrorMessage v-if="editError" class="mt-2" :parts="editError" data-testid="edit-error" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
