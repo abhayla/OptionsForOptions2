@@ -418,6 +418,7 @@ issues:
   "#516": 4a  # Row 5 (REQ-053) MINORs: scheduler start-up gap before 08:30, scan shapes, unverified registry entries
   "#517": 4a  # PARKED row 6 (REQ-048 AC-5): credential scans are name lists; redesign as a reply-field inventory
   "#518": 4a  # Row 7 (REQ-049) MINORs: snapshot health typed by caller, retyped 9:15 text, stale docstring, no holiday calendar
+  "#519": 4a  # PARKED row 8 (REQ-050 AC-1/AC-3): 30 of 40 cache-key parts unguarded; build keys from the engine call
 
 # Work items whose status is not done.
 work_items:

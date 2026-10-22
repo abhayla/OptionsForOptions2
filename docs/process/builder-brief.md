@@ -82,6 +82,12 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   for every backend file you change, list the `tests_app` files that import it or call its routes
   (`scripts/orchestrator/select_app_tests.py` does this for a whole branch; for your own commits grep the importers),
   run them all through the throwaway-database runner, and list them in your report.
+- **A cache or memo key is built from the call it guards** (row-review R14; row 8, 2026-10-22: 30 of 40 key parts had
+  no killing test, so a later edit dropping one would serve stale figures with every test green): one helper takes the
+  computation's exact arguments and returns key + result; a test changes one input at a time and asserts a recompute.
+- **Every caller of a changed entry point** is named in the brief and tested (row-review R15; row 8 missed two routes).
+- **DB-backed app runs start first**, in the background, with `-o faulthandler_timeout=60`, and the report gives their
+  timing (row-review R16; ~23 s per DB test over the tunnel).
 - **The `Budget:` is a hard stop** (row 4, 2026-10-22: a builder used 152 tool calls on an 80-call budget, hit the
   100-turn hard limit and stopped mid-rename with uncommitted files). At 80% of the calls (64 of 80, 32 of 40):
   start no new change; finish or revert the one in hand so the tree is consistent; commit; report done / not done /

@@ -75,6 +75,11 @@ Attack list: (each names its test file)
    token appears in any bus message or log line (`tests_app/test_feed_process_boundary.py`).
 8. `feed_main` refuses the test database exactly like the API (`tests_app/test_live_market_refuses_test_db.py`).
 
+Process rules (row-review R14-R16): every caller of `LiveMarket` start/stop and of the socket factory at
+`live_market.py:161` is named in your report and covered (grep them first, R15); the app-test run through the launcher
+starts FIRST in the background with `-o faulthandler_timeout=60` and its timing is reported (R16); no cache key in this
+part (R14 n/a).
+
 Standing items: (a) n/a: no time-budgeted job (the feed loop is event driven); (b) the CI `api` step gains the `redis` import: the dependency install step runs before it (requirements-app.txt) - check the step order; (c) n/a: no static detector added; (d) Redis answer states - value present, key expired/absent, connection refused, connection dropped mid-read, empty stream, malformed message: each listed in `tests_app/test_bus_socket.py` with what it does (stale or refuse, never live).
 Threat model: in scope - one user's frames read by another user's consumer, an old frame shown as live, a token on the bus or in a log, a Kite call outside the egress gate, a test switch reachable in production; out of scope - a hostile process on the same host writing to Redis (Redis is bound to localhost).
 Findings checked: wall-clock-assertion-flakes-under-load, dependent-tests-not-run-stale-later, caller-supplied-verdict-trusted

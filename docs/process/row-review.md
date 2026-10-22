@@ -66,6 +66,14 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
 - **R13 Run the tests a change can break, not only the ones named** (row 7 found a row-5 stale test in a file nobody
   ran). Builder and verifier select the app tests for the row's own backend diff (`scripts/orchestrator/select_app_tests.py`
   logic, restricted to the row's commits) and run every file it names in a throwaway database.
+- **R14 Cache keys are built from the call** (row 8: 30 of 40 key parts had no killing test). A cache or memo key is
+  made from the exact arguments passed to the computation it guards (one helper returns key and result), and the attack
+  list carries "remove each key part in turn: each removal has a killing test".
+- **R15 Measure lists every caller** (row 8: two routes reading the same snapshot were missed). For a changed entry
+  point, Measure greps every caller and the brief names each one.
+- **R16 Slow DB runs start first** (row 8: ~23 s per DB test over the tunnel; a 498-test selection needs ~3 h). The R13
+  app run starts first, in the background, with `-o faulthandler_timeout=60`; the report gives its timing. The selection
+  is never dropped; CI at the chunk PR runs it in full.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -106,9 +114,36 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | 7 (build, finish x2, verify r1, research, fix, verify r2) + 3 process (reset tool, throwaway-db tool, tool review) | 61 agent min; 97 wall-clock (13:58-15:35) | ~1,010k (+316k process) | 2 | wall-clock +8% (within 20%); tokens +124%: see the row 5 log |
 | 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
 | 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | 3 (measure, build, verify r1) | 52 agent min; ~62 wall-clock (16:40-17:42) | ~368k | 1 | time -31% (faster), tokens -18% (within 20%): see the row 7 log |
-| 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | | | | | |
+| 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | 6 (build, design review, fix 1, verify r1, fix 2, verify r2) + 2 process (row 9 measure, row 9 design review) | ~219 wall-clock (17:20-20:59, two sessions); session-2 agents 60 min (fix 2 30.0, verify r2 30.2); session-1 agents unmeasured (notices lost at the handover) | session 2: 375k (fix 2 169k, verify r2 206k); session 1 unmeasured | 2 (PARKED #519) | time +143%, tokens over (at least the 375k measured plus 4 unmeasured agents): see the row 8 log |
+| 9 | part A0 90 / 350k (set 20:20 IST before dispatch, in the brief); row 9 = 4 parts (A0, A1, B, C), ~330 min in all | | | | | |
 
 ## Log (newest first)
+
+### Row 8 - REQ-050 Shared computation (PARKED #519, 2026-10-22 ~21:00 IST)
+- Expected 90 min / 450k. Actual: ~219 min wall-clock (17:20 dispatch - 20:59 close), across a session handover at 91%
+  context. Session 2: fix 2 30.0 min / 169k / 79 calls (budget 80 - its 40-file app run was still going at the stop);
+  verify r2 (Opus) 30.2 min / 206k / 67. Session 1 (build, an Opus design review, fix 1, verify r1): unmeasured - their
+  completion notices did not survive the handover (commit times only: build 17:47-18:04, fix 1 18:13-18:42). Process
+  agents (separate): row 9 measure 0.8 min / 84k / 18; row 9 design review (Opus) 1.9 min / 139k / 16. Orchestrator:
+  ruff ratchet back to baseline (the 2 PLR0913 rises came from fix 1's fake sockets), F-58 measured, Q273, close.
+- Difference: +143% time. Causes: (1) brief gap - the row brief did not fix the key's INSTANT, so the build keyed each
+  IV on its own quote time and evicted on arrival (a design review + fix round); (2) Measure gap - only the outcome route
+  was named, the planned-entry and tracking readers of the same snapshot were missed (round 1); (3) the attack list named
+  single key parts (M8, M15), never "every key part" - round 2 found 30 of 40 key parts with no killing test (MAJOR,
+  park); (4) environment - a DB test costs ~23 s over the tunnel, so the 498-test R13 selection needs ~3 h: neither the
+  builder nor the verifier could finish it inside a budget; (5) a session handover mid-row (context).
+- Right: the code is correct (no wrong number found; the suspected hang was slow DB tests, proved by 5 stack dumps with no
+  lock wait); fix 2 met every round-1 item in one pass; the verifier's 40-mutant key sweep is the check the brief should
+  have asked for.
+- Wrong: the orchestrator's briefs (instant, callers, key completeness) caused 3 of the 5 causes; the builder stopped at
+  79 calls with its app run unfinished and two watcher loops left running.
+- Changed (all add checks, applied now): R14 - a cache/memo key is BUILT from the exact arguments of the computation it
+  guards (structural, run-discipline C8), and the attack list carries "remove each key part in turn: each removal has a
+  killing test" (builder-brief quality bar); R15 - Measure lists EVERY caller of a changed entry point (grep), not only
+  the one an AC names; R16 - DB-backed app runs start FIRST, in the background, with a per-test timeout
+  (`-o faulthandler_timeout=60`), and their timing goes in the report; the R13 selection is never dropped (the chunk PR's
+  CI runs it in full). Tier A verifiers are dispatched as general-purpose agents (the `verifier` type stops at 40 turns,
+  below a Tier A budget).
 
 ### Row 7 - REQ-049 Data health (closed 2026-10-22 ~17:42 IST)
 - Expected 90 min / 450k (set before dispatch, in the brief). Actual: measure 1.5 min / 81k / 25 calls; build 21.9 min /

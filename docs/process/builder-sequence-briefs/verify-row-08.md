@@ -5,7 +5,7 @@ commit or delete a tracked file in any checkout (no in-place mutation); scratch 
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\verify-08r2`.
 
 Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1`, head
-<HEAD> (row-8 build = 5844a0c3^..<HEAD>; fix round 1 = 0d6f2dad, 85de202e; fix round 2 = e79086cf..<HEAD>). Spec:
+5a72453d (row-8 build = 5844a0c3^..5a72453d; fix round 1 = 0d6f2dad, 85de202e; fix round 2 = e79086cf..5a72453d). Spec:
 `spec/requirements/REQ-050.md` (every AC), ADR-053 (V1: each user's own feed, so the feed owner is in every key),
 ADR-012. Builder briefs: `docs/process/builder-sequence-briefs/row-08-REQ-050-shared-compute.md`, `row-08-fix-1.md`,
 `row-08-fix-2.md` - run every item of their `Attack list:` again, with the variables of the CI job on their `CI:` line.
