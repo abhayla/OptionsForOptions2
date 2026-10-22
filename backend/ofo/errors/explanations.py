@@ -967,6 +967,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("leg_label_quote_unusable", "values_seen", "quote {health}; not used", {"health": HealthWord}),
     ExplanationTemplate("leg_label_quote_no_price", "values_seen", "quote has no last price"),
     ExplanationTemplate("leg_label_no_iv", "values_seen", "no implied volatility for this price"),
+    # W-125 (REQ-079 AC-4, ADR-150 (2) verbatim): on every leg placed by the fixed rule, until its strike is edited.
+    ExplanationTemplate("ready_made_fixed_rule_label", "rule", "Strikes placed by a fixed rule - change them"),
     ExplanationTemplate("outcome_problem_leg", "values_seen", "Instrument {leg} cannot be used: {why}", {"leg": InstrumentRef, "why": Explained}),
     ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in the snapshot"),
     ExplanationTemplate("outcome_why_unknown_instrument", "values_seen", "unknown instrument"),

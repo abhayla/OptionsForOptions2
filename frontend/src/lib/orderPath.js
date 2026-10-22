@@ -16,14 +16,19 @@ export function orderPathIsOn(body) {
   return Boolean(body) && typeof body === 'object' && body.order_path === 'on'
 }
 
-/** Reads the switch; any failure is "off" (fail closed). */
-export async function fetchOrderPathOn() {
+/** The one read of GET /features (also used by the held-feature switches); any failure is null (fail closed). */
+export async function fetchFeaturesBody() {
   try {
     const { data } = await api.get('/features')
-    return orderPathIsOn(data)
+    return data
   } catch {
-    return false
+    return null
   }
+}
+
+/** Reads the switch; any failure is "off" (fail closed). */
+export async function fetchOrderPathOn() {
+  return orderPathIsOn(await fetchFeaturesBody())
 }
 
 /** THE helper every screen uses to decide whether an Execute affordance renders: a ref that is false until the server

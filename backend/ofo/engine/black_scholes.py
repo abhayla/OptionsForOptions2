@@ -166,6 +166,24 @@ def forward_price(spot: Decimal, years: Decimal, rate: Decimal, *, dividend_yiel
     return _to_decimal(s * math.exp((r - _yield(dividend_yield)) * t), PRICE_STEP)
 
 
+PROBABILITY_STEP: Final = Decimal("0.000000001")
+
+
+def probability_below(level: Decimal, forward: Decimal, years: Decimal, vol: Decimal) -> Decimal:
+    """W-125 (REQ-082 AC-2): the model probability that the underlying ends BELOW ``level`` at expiry.
+
+    The model is the one that prices the options: ``ln S_T`` is normal with variance ``vol^2 T`` and a mean that makes
+    ``E[S_T]`` equal the expiry's parity ``forward`` (carry, rate and implied yield are inside it, ADR-063).
+    ``level`` of 0 or less gives 0. Returned to 1e-9, half-even; callers round it to a whole percent for display.
+    """
+    f, t, v = _paise(forward, "forward"), _positive(years, "years"), _positive(vol, "vol")
+    if level <= 0:
+        return Decimal(0)
+    x = _paise(level, "level")
+    sd = v * math.sqrt(t)
+    return _to_decimal(_norm_cdf((math.log(x / f) + 0.5 * sd * sd) / sd), PROBABILITY_STEP)
+
+
 def implied_volatility(
     option: Instrument, price: Decimal, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal,
     *, dividend_yield: Decimal = Decimal("0"),
