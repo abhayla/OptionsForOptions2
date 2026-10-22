@@ -308,7 +308,7 @@ def greek_cells(out):
 
 
 def greek_keys(cache):
-    return [k for k in cache._slots if k.figure == "leg_greeks"]  # noqa: SLF001 - the test reads what was cached
+    return [k for k in cache._slots if k.figure == "leg_greeks"]  # the test reads what was cached
 
 
 def test_core_the_second_reader_computes_no_greeks_through_the_real_outcome_path(feed, greek_calls):

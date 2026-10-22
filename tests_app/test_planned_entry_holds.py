@@ -43,6 +43,7 @@ HTTP_OK = 200
 RATE = Decimal("0.065")
 LEGS = ["NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"]
 ANSWER = datetime.datetime(2026, 10, 8, 3, 50, 5, tzinfo=datetime.UTC)
+FEEDS = 2  # two users' feeds in the sharing test
 
 
 def _frame(provider, instrument_id: str, rupees: str) -> bytes:
@@ -209,4 +210,4 @@ async def test_req050_planned_entry_shares_the_forward_with_the_outcome_route_on
     assert set(calls.values()) == {1}  # the outcome route read the planned-entry route's forward
     other = Rig(book=True, owner="user-2")
     await other.post()
-    assert all(v == 2 for v in calls.values())  # another feed computes its own
+    assert all(v == FEEDS for v in calls.values())  # another feed computes its own

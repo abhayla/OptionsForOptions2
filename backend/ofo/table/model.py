@@ -369,10 +369,10 @@ def _total_pnl_percent_cell(inputs: ModelInputs, unrealized: Decimal | None) -> 
     return Cell(value, render_explanation("cell_percent_signed", value=value), CellKind.PERCENT)
 
 
-def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: Sequence[Decimal],
-               scenario: ScenarioValues | None, health: "StrategyHealth | None",
-               supplied: Sequence[Greeks | None]) -> Row:
+def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,
+               health: "StrategyHealth | None", supplied: Sequence[Greeks | None]) -> Row:
     legs = inputs.legs
+    level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
     futures_reason = _r("futures_notional")
     ltp_reason = _r("not_all_ltp")
@@ -460,7 +460,22 @@ def _charges_row(level_columns: Sequence[Decimal], scenario: ScenarioValues | No
     return Row(CHARGES_ROW_ID, cells)
 
 
-def build_table(
+def _checked_leg_greeks(inputs: ModelInputs, leg_greeks: Sequence[Greeks | None] | None) -> list[Greeks | None]:
+    """The caller's per-unit Greeks as one entry per leg: an allow-list (a Greeks only for an option leg that has an
+    IV, else None); anything else is refused."""
+    if leg_greeks is None:
+        return [None] * len(inputs.legs)
+    if len(leg_greeks) != len(inputs.legs):
+        raise ValueError(f"leg_greeks must have one entry per leg ({len(inputs.legs)}), got {len(leg_greeks)}")
+    for leg, given in zip(inputs.legs, leg_greeks, strict=True):
+        if given is not None and (not isinstance(given, Greeks) or leg.instrument is Instrument.FUT
+                                  or leg.iv is None):
+            raise ValueError("leg_greeks may hold a Greeks only for an option leg that has an IV, "
+                             f"got {given!r} for {leg.contract}")
+    return list(leg_greeks)
+
+
+def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional caller-supplied parts
     inputs: ModelInputs,
     *,
     level_set: LevelSet | None = None,
@@ -511,15 +526,7 @@ def build_table(
         if scenario.levels != level_set.levels:
             raise ValueError("scenario was computed over a different level set")
 
-    if leg_greeks is not None:
-        if len(leg_greeks) != len(inputs.legs):
-            raise ValueError(f"leg_greeks must have one entry per leg ({len(inputs.legs)}), got {len(leg_greeks)}")
-        for leg, given in zip(inputs.legs, leg_greeks, strict=True):
-            if given is not None and (not isinstance(given, Greeks) or leg.instrument is Instrument.FUT
-                                      or leg.iv is None):
-                raise ValueError("leg_greeks may hold a Greeks only for an option leg that has an IV, "
-                                 f"got {given!r} for {leg.contract}")
-    supplied = list(leg_greeks) if leg_greeks is not None else [None] * len(inputs.legs)
+    supplied = _checked_leg_greeks(inputs, leg_greeks)
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
@@ -537,7 +544,7 @@ def build_table(
     charges_row = _charges_row(level_columns, scenario)
     if charges_row is not None:
         rows.append(charges_row)
-    rows.append(_total_row(inputs, level_set, level_columns, scenario, strategy_health, supplied))
+    rows.append(_total_row(inputs, level_set, scenario, strategy_health, supplied))
     return Table(tuple(columns), tuple(rows), inputs.underlying, inputs.spot_level, inputs.spot_at, inputs.label)
 
 

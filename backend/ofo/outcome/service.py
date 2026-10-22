@@ -366,9 +366,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
-    market-wide IV is then computed once per feed snapshot and read back by every other reader of the same feed (so are each
-    option leg's per-unit Greeks); the
-    owner is part of the key, so two users' feeds never share. Without ``shared`` every call computes itself.
+    market-wide IV and per-unit Greeks are then computed once per feed snapshot and read back by every other reader of
+    the same feed; the owner is part of the key, so two users' feeds never share. Without ``shared`` every call
+    computes itself.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
     Expiry values include the round-trip charges at the planned prices; None, or a leg the rate table cannot price,
