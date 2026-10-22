@@ -595,6 +595,10 @@
     "sha256": "67c02f1b39ba7deb14ed855259647af8e2a8790b51d3deedbd7d52fa652753b7",
     "reviewed": "pending owner read"
   },
+  "gate_contract_not_live": {
+    "sha256": "94729abf6c1067bcda21d1cf9b30f11a0e30abc216d0d41130b44a44b59bb907",
+    "reviewed": "pending owner read"
+  },
   "freeze_limit_exceeded": {
     "sha256": "12733b0f78a2dcf444a0c0a9bc044976359e554b3ad59db1202a53f48be89ac9",
     "reviewed": "pending owner read"

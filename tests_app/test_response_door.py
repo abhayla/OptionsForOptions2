@@ -143,11 +143,7 @@ def test_a_hostile_model_is_refused_at_class_creation_with_the_class_check_on(na
 # --- the real strategies route: a permanent golden (bytes derived by hand from the declared field order) ---------------
 
 class _FakeDb:
-    async def execute(self, statement, params=None):
-        """The route reads each leg's exchange segment and token from the catalogue (W-071): one row per asked id."""
-        from types import SimpleNamespace
-        rows = [SimpleNamespace(id=i, exchange_segment="NFO", exchange_token=44624) for i in params["ids"]]
-        return SimpleNamespace(all=lambda: rows)
+    """The route reads each leg's catalogue answer through tracked_contracts.resolve (issue #500), replaced below."""
 
     async def commit(self) -> None: ...
 
@@ -177,6 +173,12 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
 
     monkeypatch.setattr(strategies.store, "load", load)
     monkeypatch.setattr(strategies.sf, "to_document", lambda saved: document)
+
+    async def resolve(db, ids):  # issue #500: every leg's answer comes from the one door; here a live contract
+        from ofo.instruments.models import InstrumentId
+        return tuple(SimpleNamespace(contract_id=i, state="live", feed_id=InstrumentId("NSE_FO", 44624)) for i in ids)
+
+    monkeypatch.setattr(strategies.tracked_contracts, "resolve", resolve)
     app = create_app()
 
     async def fake_db():
@@ -188,7 +190,7 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
     assert response.content == (
         b'{"id":3,"status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
-        b'[{"contract_id":5,"action":"BUY","exchange_segment":"NFO","exchange_token":44624,'
+        b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
         b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}}}')
 

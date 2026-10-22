@@ -38,6 +38,30 @@ export function legsFromSaved(definition, contracts) {
   const byId = new Map(contracts.map((c) => [c.contract_id, c]))
   const out = []
   for (const [i, l] of definition.legs.entries()) {
+    if (l.contract_state !== 'live') {
+      // Issue #500: the server gives a leg that is no longer live no segment and token, only its state. It is shown with
+      // that reason, from the saved leg's own terms, and never priced (no instrument id; buildDraft sends nothing).
+      if (!l.contract_state || l.exchange_segment != null || l.exchange_token != null) return null // unknown shape
+      out.push({
+        id: `saved-${i}`,
+        underlying: definition.underlying,
+        instrument_id: null,
+        contract_id: l.contract_id,
+        symbol: null,
+        expiry: l.expiry,
+        instrument_type: l.instrument,
+        strike: l.strike,
+        lot_size: null,
+        action: l.action,
+        lots: null,
+        planned_entry: null,
+        captured_at: null,
+        source: null,
+        reason_code: l.contract_state,
+        not_live: true,
+      })
+      continue
+    }
     const c = byId.get(l.contract_id)
     if (!c || c.exchange_segment !== l.exchange_segment || c.exchange_token !== l.exchange_token) return null
     if (!Number.isInteger(l.quantity) || l.quantity % c.lot_size !== 0) return null

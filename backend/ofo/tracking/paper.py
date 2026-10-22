@@ -152,9 +152,10 @@ class TrackingView:
 
 
 def tracking_view(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg], threshold_percent: Decimal,
-                  contract_reasons: Sequence[ContractReason | None] | None = None) -> TrackingView:
-    """``contract_reasons``: per leg, None when its stored contract is live, else why not (module docstring)."""
-    reasons = tuple(contract_reasons) if contract_reasons is not None else (None,) * len(legs)
+                  contract_reasons: Sequence[ContractReason | None]) -> TrackingView:
+    """``contract_reasons``: per leg, None when its stored contract is live, else why not (module docstring). Required
+    (issue #500): a caller cannot price a leg without having asked the catalogue whether its contract is still live."""
+    reasons = tuple(contract_reasons)
     if len(reasons) != len(legs):
         raise ValueError("tracking_view needs one contract answer per leg")
     prices = tuple(leg_price(snapshot, leg.instrument_id) if reason is None else

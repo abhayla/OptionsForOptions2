@@ -51,11 +51,31 @@ def replace_line(rel: str, needle: str, new_line: str) -> str:
     return f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n@@ -{n},1 +{n},1 @@\n-{old}\n+{new_line}\n"
 
 
+#: The #241 diff's selection over today's tests_app. It grows when a later test file names one of the diff's keys (a
+#: route path, a class, a module): the backend snapshots are frozen but tests_app is the live folder. The selector
+#: never truncates to MAX_FILES (dropping a file could drop a red one); the cap is a budget that atool.py enforces
+#: (it refuses a selection over MAX_FILES unless --route-tests-anyway). So this pins the set, and each later file that
+#: legitimately joined it is listed with why.
+PR241_SELECTION = {
+    "tests_app/test_catalogue_picker_api.py", "tests_app/test_chain_live.py", "tests_app/test_chain_permissions.py",
+    "tests_app/test_eligibility_from_zerodha.py", "tests_app/test_response_door.py",
+    "tests_app/test_strategy_closed_shape.py", "tests_app/test_strategy_followups.py",
+    "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
+    "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
+    "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
+    "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
+    "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
+    "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
+}
+
+
 def test_pr241_diff_selects_both_red_files_within_the_cap() -> None:
+    """Both #241 red files are selected; the selection is exactly the pinned set (see PR241_SELECTION for why it is
+    above MAX_FILES now: tests_app grew; the cap is atool's budget, never a reason for the selector to drop files)."""
     chosen = pick(FILES, DIFF)
     print("CASE #241:", len(chosen), chosen)
     assert RED <= set(chosen), chosen
-    assert len(chosen) <= sel.MAX_FILES, chosen
+    assert set(chosen) == PR241_SELECTION, sorted(set(chosen) ^ PR241_SELECTION)
 
 
 def test_pr241_diff_does_not_select_the_catalogue_loading_tests() -> None:
