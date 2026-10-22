@@ -131,6 +131,13 @@ requirements:
   REQ-131: S8   # held (legal, licence, consent or static-IP check) - later stage
   REQ-132: S8   # held (legal, licence, consent or static-IP check) - later stage
   REQ-133: S6.1
+  REQ-134: S6.1   # builder sequence (ADR-168), provisional
+  REQ-135: S6.1   # builder sequence (ADR-168), provisional
+  REQ-136: S6.1   # builder sequence (ADR-168), provisional
+  REQ-137: S6.1   # builder sequence (ADR-168), provisional
+  REQ-138: S6.1   # builder sequence (ADR-168), provisional
+  REQ-139: S6.1   # builder sequence (ADR-168), provisional
+  REQ-140: S6.4   # builder sequence (ADR-168), provisional
 
 decisions:
   ADR-001: all
@@ -300,6 +307,7 @@ decisions:
   ADR-165: all         # builder-first scope, no order placing in this scope (owner 2026-10-21)
   ADR-166: S6.1        # "Start tracking" is the label of REQ-109's action (owner 2026-10-21)
   ADR-167: S6.2        # curves and scenario values before charges, charges shown once (owner 2026-10-22)
+  ADR-168: S6.1        # builder sequence: one row at a time, 63 work items (owner 2026-10-22)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -444,6 +452,68 @@ work_items:
   W-120: 4b           # GC-6: Option Chain leg selection and import (REQ-030)
   W-125: S6.1         # builder scope lane B4: held-feature switch, ready-made shapes and quick picks, probability of profit (REQ-079, REQ-082)
   W-128: S6.2         # builder scope lane B4: probability of profit from the engine, held (REQ-082)
+  W-129: 4a  # builder sequence row 1: Scope
+  W-130: 4a  # builder sequence row 2: Zerodha connection (Kite login, reads only)
+  W-131: 4a  # builder sequence row 3: Broker adapter, read part
+  W-132: S6.7  # builder sequence row 4: Broker adapter capability flags
+  W-133: 4a  # builder sequence row 5: Contract eligibility
+  W-134: 4a  # builder sequence row 6: Market-data pipeline (prices reach the server, nev
+  W-135: 4a  # builder sequence row 7: Data health
+  W-136: S5  # builder sequence row 8: Shared computation (market-wide figures computed o
+  W-137: S6.7  # builder sequence row 9: Price feed in its own process (price socket part)
+  W-138: S6.7  # builder sequence row 10: Zerodha rate limits for read calls
+  W-139: S6.7  # builder sequence row 11: Price feed health check and reconnect (price socke
+  W-140: 4a  # builder sequence row 12: Index spot price
+  W-141: [done, 4a]  # builder sequence row 13: Calculation engine
+  W-142: [done, 4a]  # builder sequence row 14: Expiry and live P&L formulas
+  W-143: 4a  # builder sequence row 15: Shape templates and shape matching
+  W-144: [done, 4a]  # builder sequence row 16: Save a strategy and load it back exactly
+  W-145: S6.5  # builder sequence row 17: Remove UX levels
+  W-146: 4a  # builder sequence row 18: Strategy table
+  W-147: S6.1  # builder sequence row 19: Leg picker
+  W-148: S6.1  # builder sequence row 20: Leg rows
+  W-149: S6.1  # builder sequence row 21: Entry prices
+  W-150: 4a  # builder sequence row 22: Outcome view and scenario levels
+  W-151: S6.1  # builder sequence row 23: An old reply never draws over a newer edit
+  W-152: S6.1  # builder sequence row 24: Old live frames dropped; a new screen waits for it
+  W-153: 4b  # builder sequence row 25: Margin check, read part (Zerodha's margin for the
+  W-154: S6.2  # builder sequence row 26: Money summary
+  W-155: S6.1  # builder sequence row 27: Clear all legs, days to expiry, "Prices as of" sta
+  W-156: [done, S6.3]  # builder sequence row 28: Builder history and restore
+  W-157: S6.1  # builder sequence row 29: Name a strategy, Save As, rename, saved list with
+  W-158: S6.1  # builder sequence row 30: Shift / Width / Hedge
+  W-159: S6.2  # builder sequence row 31: Warnings and "How this trade works"
+  W-160: S6.1  # builder sequence row 32: Figure definitions and the projections note
+  W-161: S6.1  # builder sequence row 33: Option chain display and live data
+  W-162: S6.1  # builder sequence row 34: Pick legs from the option chain into the builder
+  W-163: S6.1  # builder sequence row 35: Option chain live strategy preview
+  W-164: S6.2  # builder sequence row 36: Payoff chart extras
+  W-165: S6.2  # builder sequence row 37: What-if (level, date, IV) and the Greeks panel
+  W-166: S6.1  # builder sequence row 38: Payoff table and SD table
+  W-167: S6.2  # builder sequence row 39: Manual P&L entries
+  W-168: S6.1  # builder sequence row 40: Builder settings saved per user
+  W-169: S6.1  # builder sequence row 41: Header with the day's change and OHLC
+  W-170: S6.2  # builder sequence row 42: Market context strip
+  W-171: S6.6  # builder sequence row 43: Private notes on a strategy
+  W-172: S6.6  # builder sequence row 44: Share a read-only link
+  W-173: S6.1  # builder sequence row 45: Option chain display options
+  W-174: S6.1  # builder sequence row 46: Adds BANKNIFTY and FINNIFTY (also closes REQ-001 A
+  W-175: S6.2  # builder sequence row 47: Guided strategy creation (Create Strategy screen)
+  W-176: S6.2  # builder sequence row 48: Expected market range input
+  W-177: S6.2  # builder sequence row 49: Strategy preferences
+  W-178: S6.2  # builder sequence row 50: Strategy discovery and preferences
+  W-179: S6.2  # builder sequence row 51: Strike selection modes (rule-placed part held, Q21
+  W-180: S6.2  # builder sequence row 52: Suggested setups (rule-placed part held, Q211)
+  W-181: S6.4  # builder sequence row 53: Start tracking (paper P&L)
+  W-182: S6.4  # builder sequence row 54: Profit left and loss left for a tracked strategy
+  W-183: S6.1  # builder sequence row 55: Ready-made shapes and quick picks (held, Q211)
+  W-184: S6.2  # builder sequence row 56: Probability of profit (held, Q211)
+  W-185: 4a  # builder sequence row 57: Market-data sourcing and licensing (needed by rows
+  W-186: S8  # builder sequence row 58: Delayed prices before a Zerodha login (held; needs
+  W-187: 4a  # builder sequence row 59: Historical price storage (needed by rows 60-61)
+  W-188: S8  # builder sequence row 60: IV and OI history charts (held, display rights)
+  W-189: S8  # builder sequence row 61: Strategy price history chart (held, display rights
+  W-190: S8  # builder sequence row 62: Events calendar, FII/DII (held, data source)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 

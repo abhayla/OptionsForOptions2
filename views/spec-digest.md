@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (164)
+## Decisions (165)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -130,7 +130,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-123 2026-10-19: (1) When a contract held by two or more strategie… [amends REQ-060; extends ADR-116]
 - ADR-124 2026-10-19: (1) The control that lets the user change the ran… [extends ADR-121]
 - ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved b… [extends ADR-109; extends ADR-120]
-- ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
+- ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-09… [refines ADR-084]
 - ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
 - ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
 - ADR-129 2026-10-20: (1) The success outcome of the return-from-Kite check (after "Checking with Zerodha…") reads exactl… [extends REQ-073]
@@ -170,16 +170,17 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-165 2026-10-21: (1) The current scope is: every prerequisite of the strategy builder works, everything inside the s… [applies ADR-150; applies ADR-152; applies ADR-055…]
 - ADR-166 2026-10-21: The action on one saved strategy that records each leg at the live price and starts watching it (RE… [refines REQ-109]
 - ADR-167 2026-10-22: SPEC CHANGE to ADR-082 (2) for the scenario values. [amends ADR-082]
+- ADR-168 2026-10-22: The strategy builder is built from one ordered list of requirements (the owner's 59, grown to 63 ro… [amends ADR-165; amends ADR-004; supersedes REQ-00…]
 
-## Requirements (124)
+## Requirements (131)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
 - REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
 - REQ-005 [Specified]: Product language and positioning
-- REQ-006 [Specified]: Three UX levels
-- REQ-007 [Specified]: Strategy information density
+- REQ-006 [Superseded]: Three UX levels
+- REQ-007 [Superseded]: Strategy information density
 - REQ-008 [Approved]: Home dashboard
 - REQ-009 [Approved]: Primary navigation and account menu
 - REQ-010 [Approved]: Public site and live-data access
@@ -297,6 +298,13 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-131 [Draft]: The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in…
 - REQ-132 [Draft]: Native Android and iOS apps use the same backend and the one engine, and add no rule of their own
 - REQ-133 [Approved]: A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price…
+- REQ-134 [Approved]: Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the…
+- REQ-135 [Approved]: Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as o…
+- REQ-136 [Approved]: Every builder figure has a plain definition on hover or tap, and the builder carries one note that its number…
+- REQ-137 [Approved]: A payoff table lists P&L at target date and at expiry for index levels at a chosen interval, and a standard-d…
+- REQ-138 [Approved]: Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart…
+- REQ-139 [Approved]: The builder header shows the underlying's spot with the day's change and percent and the day's open, high, lo…
+- REQ-140 [Approved]: For a strategy already being tracked, the builder summary shows the profit still possible and the loss still…
 
 ## Spec sections (216)
 

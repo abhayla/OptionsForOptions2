@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 124; sections: 19
+Requirements: 131; sections: 19
 
 ## Accounts and identity (5)
 
@@ -47,7 +47,7 @@ Requirements: 124; sections: 19
 | REQ-117 | The broker adapter declares named capability flags, and features ask the flag, never the broker's name | foundation | Approved |
 | REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | Approved |
 
-## Calculations and outcome (8)
+## Calculations and outcome (11)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -59,6 +59,9 @@ Requirements: 124; sections: 19
 | REQ-082 | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) | feature | Approved |
 | REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | Approved |
 | REQ-084 | What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples | feature | Approved |
+| REQ-136 | Every builder figure has a plain definition on hover or tap, and the builder carries one note that its numbers are projections | feature | Approved |
+| REQ-137 | A payoff table lists P&L at target date and at expiry for index levels at a chosen interval, and a standard-deviation table shows the 1SD and 2SD ranges | feature | Approved |
+| REQ-140 | For a strategy already being tracked, the builder summary shows the profit still possible and the loss still possible from now first, with the original maximums below | feature | Approved |
 
 ## Delivery (3)
 
@@ -80,7 +83,7 @@ Requirements: 124; sections: 19
 | REQ-022 | Free-eligibility loop | feature | Specified |
 | REQ-023 | Paid Pro and billing | feature | Specified |
 
-## Market data (15)
+## Market data (16)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -99,6 +102,7 @@ Requirements: 124; sections: 19
 | REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | Approved |
 | REQ-131 | The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in writing | polish | Draft |
 | REQ-133 | A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data | foundation | Approved |
+| REQ-139 | The builder header shows the underlying's spot with the day's change and percent and the day's open, high, low and previous close | feature | Approved |
 
 ## Monitoring (5)
 
@@ -145,8 +149,8 @@ Requirements: 124; sections: 19
 | REQ-003 | Public multi-user SaaS | foundation | Approved |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
-| REQ-006 | Three UX levels | feature | Specified |
-| REQ-007 | Strategy information density | polish | Specified |
+| REQ-006 | Three UX levels | feature | Superseded |
+| REQ-007 | Strategy information density | polish | Superseded |
 | REQ-090 | Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files | foundation | Approved |
 | REQ-094 | Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept | polish | Draft |
 | REQ-132 | Native Android and iOS apps use the same backend and the one engine, and add no rule of their own | polish | Draft |
@@ -186,7 +190,7 @@ Requirements: 124; sections: 19
 |---|---|---|---|
 | REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | Approved |
 
-## Strategy building (15)
+## Strategy building (17)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -205,8 +209,10 @@ Requirements: 124; sections: 19
 | REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | Approved |
 | REQ-085 | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape | feature | Approved |
 | REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | Approved |
+| REQ-135 | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited | feature | Approved |
+| REQ-138 | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L | feature | Approved |
 
-## Strategy lifecycle (7)
+## Strategy lifecycle (8)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -217,6 +223,7 @@ Requirements: 124; sections: 19
 | REQ-040 | Activity timeline and rule-trigger audit | foundation | Verified |
 | REQ-086 | Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked | feature | Approved |
 | REQ-089 | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills | feature | Approved |
+| REQ-134 | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched | feature | Approved |
 
 ## Zerodha connection (2)
 

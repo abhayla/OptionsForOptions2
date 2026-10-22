@@ -2,7 +2,7 @@
 
 # Findings index
 
-88 finding(s), generated from `knowledge/findings/*.json`.
+89 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -30,6 +30,7 @@
 | duplicate-test-basename-collision | Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time. | guarded | scope, spec_ref |
 | fallback-time-claims-missing-data | A 'last updated <time>' label that falls back to the current time when no data was ever received tells the user data arrived when none did; the honest label for never-received data is a different message, not a time. | unguarded | occurrences, scope, spec_ref |
 | fill-not-exactly-once | Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills. | unguarded | occurrences, scope, spec_ref |
+| first-live-frame-before-first-price | A live socket that computes and pushes its first frame the moment it connects, before every contract it needs has had its first tick, reports a failure state (here REFUSED: a derived input such as the forward cannot be computed yet) instead of a waiting state; the screen flashes an error on every open and every reconnect, and the error clears by itself one tick later. | unguarded | occurrences, scope, spec_ref |
 | fixture-retag-by-string-breaks-on-format-change | Any test that adapts recorded real-world data to its own fixture ids by string surgery on a product-built identifier (an order tag, a key, a code) re-implements the product's builder; when the builder's format changes, every such test on every branch built before the change breaks at once, and each branch's CI finds it separately. | unguarded | occurrences, scope, spec_ref |
 | fixture-symbol-not-in-catalogue | Any test fixture that types a broker tradingsymbol (or a symbol/expiry pair) from memory instead of taking it from the real instrument catalogue can pass for months while encoding a contract Zerodha does not list; the defect surfaces only when some later code checks the catalogue, and every test built on the fixture then has to change. | guarded | occurrences, scope, spec_ref |
 | freshness-judged-on-request-start-clock | Any live-data freshness rule that compares a feed timestamp against a 'now' read at the START of a request, before slow reads (broker margin, positions) that run while the feed keeps ticking, refuses every tick newer than that 'now' (a rule of 0 <= now - t fails for t after now), so a healthy, fast feed reads as out of date exactly when the data is freshest. Replay tests cannot see it when their clock is pinned after the recorded frame. | guarded | occurrences, scope, spec_ref |
