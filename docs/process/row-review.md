@@ -35,8 +35,12 @@ reason. Strict row order stays (owner, same session: "Keep strict order").
   backend then frontend). A class spread over ~20 files is never S.
 - **R4 Never mutate in place** (row 1 builder edited files in place for mutation checks and restored them). Mutation
   copies live in the agent's scratch folder only.
-- **R5 Fix rounds go to the same builder** (it keeps context; measured 190-210k tokens vs 130-160k for a fresh one,
-  but no re-reading time). Kept; re-measure at the chunk-end meta review.
+- **R5 A resume re-sends the agent's whole history** (row 3: a 4-call follow-up to the builder cost 203k tokens, 28 s;
+  a fresh small agent ~60-80k). Resume the same builder only for a real fix round where its context saves re-reading;
+  a small follow-up (switch a fixture, add one test) goes to a fresh agent with a narrow brief.
+- **R6 The orchestrator runs its own checks after every bookkeeping edit**: `tests/test_tests_required_exist.py` after
+  any work-item edit, `coverage.py . --check` after any status or stage change (rows 1-3: a W-129 entry naming no file,
+  and `status: done` making coverage drop W-129/W-130; work items stay `in_review` until the chunk PR merges).
 
 Rejected (rule (3), loosening), 2026-10-22: "the final verifier skips ACs the diff did not touch". Independent
 reviewer (Sonnet, fresh context): saves ~1-2 min per verify round on Tier B rows only (Tier A rows stay full), while
@@ -45,6 +49,22 @@ import-graph script that eats the saving. Final verifiers keep checking every in
 rules: abhayla/Startup-Factory#161.
 
 ## Log (newest first)
+
+### Row 3 - REQ-054 Broker adapter, read part (closed 2026-10-22 ~13:35 IST)
+- Measured: measure 1.0 min / 80k; build 17.1 min / 200k; real-fixture follow-up (resume) 0.5 min / 203k; verify
+  r1 18.5 min / 169k. ONE round. Total ~37 min, ~650k tokens (the resume alone 31% of it). Orchestrator: live
+  `/user/profile` recording through the new door on the owner's session.
+- Right: first row under R1-R4 passed its Tier A check on round 1 (16 of 17 mutations killed); the 7-point attack
+  list was run by both builder and verifier; the egress guard refused an off-door probe, so the real fixture was
+  recorded through the door itself.
+- Wrong: the builder typed the profile reply from Kite's docs instead of asking for a real one (the brief said the
+  orchestrator records it AFTER the build, so the builder had nothing real to use: brief ordering); the follow-up went
+  to the resumed builder at 203k tokens (R5 corrected); the verifier spent ~5 min proving 53 DB failures were the
+  shared-catalogue pollution #497.
+- Changed: R5 corrected, R6 added; for a row whose core is a live reply, the orchestrator records the reply BEFORE the
+  build when the door call already exists, else the brief says "core test waits for the orchestrator's fixture"
+  (builder writes it against the fixture path, orchestrator drops the file in, test runs); #497 named up front in
+  every verifier brief (done since row 2).
 
 ### Row 2 - REQ-015 Zerodha connection (closed 2026-10-22 ~12:15 IST)
 - Measured: shared start check 11.6 min / 185k (rows 1-2); build 12.4 min / 161k; verify r1 6.3 min / 160k; fix

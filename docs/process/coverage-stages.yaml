@@ -412,6 +412,7 @@ issues:
   "#502": S6.1  # Create Strategy: a templates failure before the view pick is wiped; none-listed beside the error
   "#512": S6.1  # Row 1 (REQ-001) MINORs: underlying table scan shapes, migration lists, index-leg save test
   "#513": 4a  # Row 2 (REQ-015) MINORs: unwanted ticks count for ~3 s, unreadable session not logged, after-hours Reconnect advice
+  "#514": 4a  # Row 3 (REQ-054) MINORs: profile sync mark, one-broker scan allow-list, bare-string order id
 
 # Work items whose status is not done.
 work_items:
