@@ -17,6 +17,7 @@ import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { advancedDetails } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
@@ -163,12 +164,20 @@ function syncLive() {
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
 const savedId = ref(null)
-const openSaved = (next, id) => {
+// W-122: the revision the page loaded or saved (Start tracking is based on it, never on a fresh read)
+const savedRevision = ref(null)
+const openSaved = (next, id, revision) => {
   setLegs(next)
   savedId.value = Number.isInteger(id) ? id : null
+  savedRevision.value = savedId.value === null ? null : revision ?? null
+}
+const onSaved = (id, revision) => {
+  savedId.value = id
+  savedRevision.value = revision ?? null
 }
 const setLegs = (next) => {
   savedId.value = null
+  savedRevision.value = null
   linkRefused.value = false
   legs.value = next
   load()
@@ -220,7 +229,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
@@ -290,6 +299,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       />
       <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
+      <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>

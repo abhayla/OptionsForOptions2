@@ -222,6 +222,8 @@ _ALLOWED_LEG_SHAPES = {
     "engine/inputs.py:LegInput": "a calculation input",
     "execution/review.py:ReviewLine": "a display row of the pre-execution review; it has no route to the broker",
     "outcome/service.py:OutcomeLeg": "a display row of the outcome view (W-063); it has no route to the broker",
+    "tracking/paper.py:TrackedLeg": "a paper entry leg (W-122, REQ-109 AC-3): stored only under its saved strategy's "
+                                    "tracking row; no order route imports ofo.tracking",
 }
 
 

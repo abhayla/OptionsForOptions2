@@ -8,7 +8,7 @@ import { onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
-import { buildSaveBody, canSaveLegs, fetchSavedLegs } from '@/lib/saveDraft'
+import { buildSaveBody, canSaveLegs, fetchSavedDraft } from '@/lib/saveDraft'
 
 const props = defineProps({ legs: { type: Array, default: () => [] }, rulesRef: { type: String, default: '' } })
 const emit = defineEmits(['open', 'saved'])
@@ -35,7 +35,7 @@ async function save() {
     const res = await api.post('/strategies', buildSaveBody(props.legs, props.rulesRef))
     if (!Number.isInteger(res.data?.id)) throw new Error('unreadable answer') // fail closed: not a saved draft
     savedId.value = res.data.id
-    emit('saved', res.data.id)
+    emit('saved', res.data.id, Number.isInteger(res.data.revision) ? res.data.revision : null)
     await refresh()
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -49,8 +49,8 @@ async function open(id) {
   busy.value = true
   errorParts.value = null
   try {
-    const legs = await fetchSavedLegs(api, id) // throws when unreadable: the draft on screen stays
-    emit('open', legs, id)
+    const { legs, revision } = await fetchSavedDraft(api, id) // throws when unreadable: the draft on screen stays
+    emit('open', legs, id, revision)
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
   } finally {

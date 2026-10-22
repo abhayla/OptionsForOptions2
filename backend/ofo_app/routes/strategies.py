@@ -192,7 +192,7 @@ _FORM_TEMPLATE = MappingProxyType({
 _STORED_OWN_MESSAGE = frozenset({sf.CONTRACT_NOT_IN_CATALOGUE, sf.CONTRACT_TERMS_CHANGED})
 
 
-def _refused(exc: Exception, form_status: int) -> Exception:
+def refused_answer(exc: Exception, form_status: int) -> Exception:
     """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message."""
     if isinstance(exc, store.StrategyStoreError):
         if exc.code in (store.NOT_FOUND, store.HISTORY_NOT_FOUND):
@@ -309,7 +309,7 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
         await db.commit()
     except (store.StrategyStoreError, sf.StoredFormError) as exc:
         await db.rollback()
-        raise _refused(exc, form_status) from None
+        raise refused_answer(exc, form_status) from None
     except Exception:
         await db.rollback()
         raise

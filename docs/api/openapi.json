@@ -871,6 +871,78 @@
         "title": "DefinitionOut",
         "type": "object"
       },
+      "DetectionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "condition": {
+            "enum": [
+              "near_short_strike",
+              "near_breakeven"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "distance_percent": {
+            "title": "Distance Percent",
+            "type": "string"
+          },
+          "distance_points": {
+            "title": "Distance Points",
+            "type": "string"
+          },
+          "index_level": {
+            "title": "Index Level",
+            "type": "string"
+          },
+          "kind": {
+            "const": "platform_detection",
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "price_health": {
+            "enum": [
+              "live",
+              "stale",
+              "missing"
+            ],
+            "title": "Price Health",
+            "type": "string"
+          },
+          "threshold_percent": {
+            "title": "Threshold Percent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "condition",
+          "level",
+          "index_level",
+          "distance_points",
+          "distance_percent",
+          "threshold_percent",
+          "at",
+          "price_health"
+        ],
+        "title": "DetectionOut",
+        "type": "object"
+      },
       "DisconnectOut": {
         "additionalProperties": false,
         "properties": {
@@ -2799,6 +2871,323 @@
         "title": "TemplatesOut",
         "type": "object"
       },
+      "TrackingIndexOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "state": {
+            "enum": [
+              "live",
+              "stale",
+              "missing"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "level",
+          "state",
+          "at"
+        ],
+        "title": "TrackingIndexOut",
+        "type": "object"
+      },
+      "TrackingLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "current_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price"
+          },
+          "entry_at": {
+            "format": "date-time",
+            "title": "Entry At",
+            "type": "string"
+          },
+          "entry_price": {
+            "title": "Entry Price",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price At"
+          },
+          "price_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "stale",
+                  "missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              }
+            ],
+            "title": "Price State"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "action",
+          "instrument",
+          "strike",
+          "expiry",
+          "quantity",
+          "entry_price",
+          "entry_at",
+          "current_price",
+          "price_state",
+          "price_at"
+        ],
+        "title": "TrackingLegOut",
+        "type": "object"
+      },
+      "TrackingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "detections": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionOut"
+            },
+            "title": "Detections",
+            "type": "array"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackingIndexOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "paper_pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Pnl"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "prices_at": {
+            "format": "date-time",
+            "title": "Prices At",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "started_at",
+          "prices_at",
+          "state",
+          "pause_reason",
+          "paper_pnl",
+          "as_of",
+          "answered_at",
+          "legs",
+          "index",
+          "breakevens",
+          "detections"
+        ],
+        "title": "TrackingOut",
+        "type": "object"
+      },
+      "TrackingStartIn": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "description": "the saved strategy revision the user started tracking from",
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "TrackingStartIn",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -4228,6 +4617,92 @@
           }
         },
         "summary": "Restore Strategy"
+      }
+    },
+    "/strategies/{strategy_id}/tracking": {
+      "get": {
+        "operationId": "get_tracking_strategies__strategy_id__tracking_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tracking"
+      },
+      "post": {
+        "operationId": "start_tracking_strategies__strategy_id__tracking_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingStartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Tracking"
       }
     }
   }

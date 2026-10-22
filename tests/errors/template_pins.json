@@ -579,6 +579,22 @@
     "sha256": "37af4860523233b34cd12de2cb78686122ce98dbb7b2603e4bf98765b8ac634b",
     "reviewed": "pending owner read"
   },
+  "tracking_prices_not_live": {
+    "sha256": "c6c8408583175a441086a6a5ee36edde4686b3f8374ded2399a7286d7e0b77a7",
+    "reviewed": "pending owner read"
+  },
+  "tracking_already_started": {
+    "sha256": "0af61212321e743afa88fe7df4b3d9af15d92a1bff093a8d9c8c5dd533ae60c8",
+    "reviewed": "pending owner read"
+  },
+  "tracking_not_connected": {
+    "sha256": "9190a74e9ac24de2fbbe926e6d617867fc81b42fce40f3a2db86517ac36564df",
+    "reviewed": "pending owner read"
+  },
+  "tracking_contract_not_live": {
+    "sha256": "67c02f1b39ba7deb14ed855259647af8e2a8790b51d3deedbd7d52fa652753b7",
+    "reviewed": "pending owner read"
+  },
   "freeze_limit_exceeded": {
     "sha256": "12733b0f78a2dcf444a0c0a9bc044976359e554b3ad59db1202a53f48be89ac9",
     "reviewed": "pending owner read"

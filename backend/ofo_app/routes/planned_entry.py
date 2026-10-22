@@ -80,7 +80,7 @@ def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     return valuation, snapshot, priced
 
 
-async def _hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
+async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
                              unpriced: list[str]):
     """Gate 4a D-2 (ADR-075, ADR-020): hold the contracts that have no live price on the shared fan-out until each has
     its first AVAILABLE quote or PLANNED_ENTRY_WAIT_S passes, and ALWAYS release exactly that hold (timeout, error,
@@ -118,7 +118,7 @@ async def planned_entry(body: PlannedEntryIn,
     valuation, snapshot, priced_by_id = _read(ctx, body.underlying, ids)
     unpriced = [i for i, p in priced_by_id.items() if p is None]
     if unpriced and feed is not None:
-        valuation, snapshot, priced_by_id = await _hold_until_priced(feed, ctx, body.underlying, ids, unpriced)
+        valuation, snapshot, priced_by_id = await hold_until_priced(feed, ctx, body.underlying, ids, unpriced)
     entries = []
     for iid in ids:
         leg = snapshot.legs[iid]

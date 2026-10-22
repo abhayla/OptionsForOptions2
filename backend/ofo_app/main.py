@@ -35,6 +35,7 @@ from ofo_app.routes import (
     positions,
     strategies,
     strategy_templates,
+    tracking,
 )
 
 log = logging.getLogger(__name__)
@@ -119,4 +120,5 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
+    app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
     return app
