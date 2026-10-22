@@ -145,6 +145,12 @@ class MarketContext:
     feed_owner: str | None = None
 
 
+def feed_scope(ctx: MarketContext) -> FeedScope | None:
+    """The shared-cache scope of ``ctx``'s feed (REQ-050 AC-1/AC-3, ADR-053), or None when there is no feed owner. Every
+    route that reads a market snapshot takes its scope here, so none bypasses the shared cache."""
+    return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
+
+
 def get_market_context() -> Optional[MarketContext]:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
     answers "not connected". Tests and the replay mode override this dependency."""
@@ -439,7 +445,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         out = not_connected(definition, ux, None, stored)
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
-        shared = FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
+        shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  answered_at, ctx.rate, shared)
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is

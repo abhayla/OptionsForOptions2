@@ -38,7 +38,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
@@ -117,7 +117,7 @@ def _legs(saved, ids: list[str]) -> list[paper.TrackedLeg]:
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read for the legs and the index. With a live feed, legs nobody holds are held until their first live
     quote or the planned-entry wait passes (the same rule and helper as the planned-entry route)."""
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate)
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
     unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
     if unpriced and feed is not None:
         _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
