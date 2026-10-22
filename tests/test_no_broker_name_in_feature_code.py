@@ -16,7 +16,7 @@ itself binds to one (``ZERODHA = "zerodha"``, found by walking ``backend/``, not
 * in JS/Vue: ``===``/``!==``/``==``/``!=``, ``switch``/``case``, ``includes``/``indexOf``/``startsWith``/``endsWith``
   next to a quoted broker string, or a comparison of ``.broker``/``broker_id``/``brokerName``.
 
-Text is not a comparison: a label such as "Margin (Zerodha)" is not flagged. The scratch cases below prove each rule goes
+Text is not a comparison: a label such as "Margin (Zerodha)" is not flagged. The scratch cases below prove each
 red and that the same text in a data-layer module stays green.
 """
 from __future__ import annotations
@@ -85,7 +85,7 @@ def _broker_operand(node: ast.AST, bound: frozenset[str]) -> bool:
 
 
 def scan_python(source: str, bound: frozenset[str]) -> list[int]:
-    """Lines of broker-name use as a comparison / match / dispatch key in ``source``; raises SyntaxError if unparsable."""
+    """Lines of broker-name use as a comparison / match / dispatch key; raises SyntaxError if unparsable."""
     hits = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Compare):
@@ -94,9 +94,9 @@ def scan_python(source: str, bound: frozenset[str]) -> list[int]:
         elif isinstance(node, (ast.MatchValue, ast.MatchSingleton)):
             if _broker_operand(getattr(node, "value", node), bound):
                 hits.append(node.lineno)
-        elif isinstance(node, ast.Subscript):
-            if _identifier(node.value) != "Literal" and _broker_operand(node.slice, bound):  # Literal[...] is a type
-                hits.append(node.lineno)
+        elif (isinstance(node, ast.Subscript) and _identifier(node.value) != "Literal"  # Literal[...] is a type
+              and _broker_operand(node.slice, bound)):
+            hits.append(node.lineno)
     return sorted(set(hits))
 
 
@@ -116,7 +116,8 @@ def scan_js(source: str) -> list[int]:
                 text = match.group(0)
                 quoted = re.findall(_QUOTED, text)
                 bare = re.sub(_QUOTED, "", text)  # a path such as '/broker/status' is text, not an identifier
-                if any(_is_broker_text(q) for q in quoted) or re.search(r"[bB]roker(?:_?[iI]d|_?[nN]ame|[kK]ey)?\b", bare):
+                if any(_is_broker_text(q) for q in quoted) or re.search(
+                        r"[bB]roker(?:_?[iI]d|_?[nN]ame|[kK]ey)?\b", bare):
                     hits.append(number)
     return sorted(set(hits))
 
@@ -142,7 +143,7 @@ def scan_tree(root: Path, minimums: Mapping[str, int] | None = None) -> list[str
                 text = path.read_text(encoding="utf-8")
                 lines = scan_python(text, bound) if path.suffix == ".py" else scan_js(text)
             except (SyntaxError, UnicodeDecodeError, ValueError) as error:
-                findings.append(f"{name}: cannot be read ({type(error).__name__}); a file that cannot be read cannot be cleared")
+                findings.append(f"{name}: cannot be read ({type(error).__name__}); unreadable cannot be cleared")
                 continue
             findings.extend(f"{name}:{n}: compares or switches on a broker name or id; ask a capability flag instead"
                             for n in lines)
@@ -154,13 +155,13 @@ def test_ac3_feature_code_never_compares_a_broker_name_or_id() -> None:
     assert scan_tree(ROOT) == []
 
 
-# --- the scratch cases: each rule goes red; the same text in a data-layer module is green ---------------------------------
+# --- the scratch cases: each rule goes red; the same text in a data-layer module is green ---------------------
 
 def _tree(tmp_path: Path, rel: str, text: str) -> Path:
     path = tmp_path / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-    consts = tmp_path / "backend/ofo/broker/session.py"  # where the tree binds the broker id (found, not typed in the scan)
+    consts = tmp_path / "backend/ofo/broker/session.py"  # where the tree binds the broker id
     consts.parent.mkdir(parents=True, exist_ok=True)
     consts.write_text('BROKER_ZERODHA = "zerodha"\n', encoding="utf-8")
     for rel_folder in FEATURE_PYTHON:  # every feature folder exists and holds one harmless file

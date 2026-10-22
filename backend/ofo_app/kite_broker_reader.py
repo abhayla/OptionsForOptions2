@@ -14,8 +14,8 @@ import datetime
 from collections.abc import Callable, Sequence
 from decimal import Decimal
 
-from ofo.broker.capabilities import CapabilitySet, load_or_off
-from ofo.broker.kite_capabilities import load_zerodha_capabilities
+from ofo.broker import kite_flags
+from ofo.broker.flags import FlagSet, flags_or_off
 from ofo.execution.basket import parse_tag
 from ofo.execution.partial import BrokerOrderStatus
 from ofo.instruments.catalogue import Catalogue
@@ -46,10 +46,10 @@ class KiteBrokerReader:
         return "KiteBrokerReader()"
 
     @property
-    def capabilities(self) -> CapabilitySet:
+    def capabilities(self) -> FlagSet:
         """REQ-117 AC-1: Zerodha's named flags, each with its source and date. A declaration that cannot load gives
         every flag off (fail closed), never an error here."""
-        return load_or_off(load_zerodha_capabilities)
+        return flags_or_off(kite_flags.load_zerodha_flags)
 
     def _read_at(self) -> datetime.datetime:
         stamp = self._now()

@@ -112,6 +112,9 @@ BROKER_ADAPTER_PATHS = {
                                    "routes/execution_return.py - REQ-063 AC-1",
     "ofo_app/kite_broker_reader.py": "the one Zerodha BrokerReader (W-131): glue over the Kite read and margin doors "
                                      "and the reply adapter; REQ-054 AC-2 keeps it the only broker - REQ-063 AC-1",
+    "ofo_app/routes/broker_capabilities.py": "composition root of the broker-flags read (W-132, REQ-117): serves "
+                                              "Zerodha's declared flags (ofo.broker.kite_flags) as on/off, like "
+                                              "routes/positions.py - REQ-063 AC-1",
     "ofo_app/return_book.py":"the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",

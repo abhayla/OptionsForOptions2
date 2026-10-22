@@ -20,7 +20,9 @@ import urllib.request
 from decimal import Decimal as D
 
 import pytest
+from ofo.broker import kite_flags
 from ofo.broker.egress import EgressRefused
+from ofo.broker.flags import BrokerFlag, is_supported
 from ofo.broker.kite_endpoints import ALLOWED_CALLS
 from ofo.engine import Action
 from ofo.execution.partial import BrokerOrderStatus, BrokerReader
@@ -506,13 +508,10 @@ def test_attack7_the_reader_calls_only_the_read_methods_of_its_two_doors() -> No
     assert kite_replies.order_status_from_row is order_status_from_row
 
 
-def test_the_reader_exposes_zerodhas_declared_flags_and_fails_closed(monkeypatch) -> None:
+def test_the_reader_exposes_zerodhas_declared_flags_and_fails_closed(monkeypatch, tmp_path) -> None:
     """REQ-117 AC-1/AC-4: ``capabilities`` is Zerodha's declared set (held triggers off); a declaration that cannot
     load gives every flag off instead of an error."""
-    from ofo.broker.capabilities import Capability, is_supported
-    from ofo.broker import kite_capabilities
-
     r = reader(Replay())
-    assert [is_supported(r.capabilities, c) for c in Capability] == [True, False, True, True, True, True, True]
-    monkeypatch.setattr(kite_capabilities, "ZERODHA_DECLARED", {"funds_read": (True, "", kite_capabilities.CHECKED)})
-    assert [is_supported(r.capabilities, c) for c in Capability] == [False] * 7
+    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [True, False, True, True, True, True, True]
+    monkeypatch.setattr(kite_flags, "FLAG_FILE", tmp_path / "missing.json")
+    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [False] * 7

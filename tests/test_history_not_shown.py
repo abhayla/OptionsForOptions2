@@ -47,6 +47,7 @@ ALLOWED_FRONTEND_WORDS = frozenset({
     ("router/nav.js", "history"),
     ("router/nav.js", "History"),
     ("router/routes.js", "alerts-history"),  # route name of the Alerts > History page (fired alerts, REQ-009 AC-6)
+    ("lib/brokerCapabilities.js", "intraday_product"),  # a broker flag name (REQ-117): MIS support
     ("pages/BrokerSettingsPage.vue", "history-statement"),  # test id of the "not available" sentence (ADR-066)
 })
 

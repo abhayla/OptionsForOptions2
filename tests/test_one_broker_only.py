@@ -32,7 +32,7 @@ BACKEND = ROOT / "backend"
 
 #: The Zerodha/Kite modules (relative to ``backend/``): the whole of REQ-054 AC-2's "only the Zerodha implementation".
 KITE_MODULES: Final = frozenset({
-    "ofo/broker/kite_auth.py", "ofo/broker/kite_capabilities.py", "ofo/broker/kite_endpoints.py", "ofo/broker/kite_http.py",
+    "ofo/broker/kite_auth.py", "ofo/broker/kite_flags.py", "ofo/broker/kite_endpoints.py", "ofo/broker/kite_http.py",
     "ofo/marketdata/kite_frames.py", "ofo/marketdata/kite_provider.py",
     "ofo_app/eligibility_from_zerodha.py", "ofo_app/kite_broker_reader.py", "ofo_app/kite_client.py",
     "ofo_app/kite_history.py", "ofo_app/kite_http.py", "ofo_app/kite_margin.py", "ofo_app/kite_reads.py",
@@ -40,7 +40,7 @@ KITE_MODULES: Final = frozenset({
 })
 #: Generic broker plumbing that names no vendor (session state, tokens, config, the egress gate, routes).
 NEUTRAL_BROKER_NAMED: Final = frozenset({
-    "ofo/broker/__init__.py", "ofo/broker/capabilities.py", "ofo/broker/egress.py", "ofo/broker/session.py",
+    "ofo/broker/__init__.py", "ofo/broker/flags.py", "ofo/broker/egress.py", "ofo/broker/session.py",
     "ofo_app/alembic/versions/0004_broker_instruments.py", "ofo_app/alembic/versions/0007_broker_sessions.py",
     "ofo_app/alembic/versions/0015_audit_broker_allowlist.py", "ofo_app/broker_config.py", "ofo_app/broker_crypto.py",
     "ofo_app/broker_sync.py", "ofo_app/broker_token_store.py", "ofo_app/routes/broker.py",

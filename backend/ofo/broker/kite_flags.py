@@ -1,40 +1,53 @@
 """What Zerodha can do, as named flags (REQ-117 AC-2, W-132; ADR-016 Zerodha is the authority).
 
-Each flag is declared with the source it rests on and the date it was checked. A source is a Kite docs address or a
-path in this repo (the real reply or the module that makes the call). ``broker_held_triggers`` stays OFF until
-REQ-100 AC-1's core proof has passed; turning it on is a deliberate edit here, with that proof as its new source.
-The flags only describe Zerodha: feature code asks the flag by name and never compares the broker's name (REQ-117 AC-3,
-``tests/test_no_broker_name_in_feature_code.py``). Declared data: nothing is fetched at runtime.
+The values are declared in ``kite_flags.json`` next to this module: each flag with on/off, the source it rests on and
+the date it was checked. A source is a Kite docs address or a path in this repo (the real reply, or the module that
+makes the call). ``broker_held_triggers`` stays OFF until REQ-100 AC-1's core proof has passed; turning it on is a
+deliberate edit of that file, with the proof as its new source. The flags only describe Zerodha: feature code asks the
+flag by name and never compares the broker's name (REQ-117 AC-3, ``tests/test_no_broker_name_in_feature_code.py``).
+Nothing is fetched at runtime; a file that is missing, unreadable or malformed refuses the load (callers that must not
+fail use ``flags_or_off``, which gives every flag off).
 """
 from __future__ import annotations
 
 import datetime
-from types import MappingProxyType
+import json
+from pathlib import Path
 from typing import Final
 
-from ofo.broker.capabilities import CapabilitySet, load_capabilities
+from ofo.broker.flags import FlagLoadError, FlagSet, load_flags
 
-CHECKED: Final = datetime.date(2026, 10, 22)
-
-ZERODHA_DECLARED: Final = MappingProxyType({
-    "basket_page_orders": (True, "https://kite.trade/docs/connect/v3/publisher/ (the Kite publisher basket, ADR-054)",
-                           CHECKED),
-    "broker_held_triggers": (False, "REQ-100 AC-1: the core proof has not passed (checked 2026-10-22)", CHECKED),
-    "intraday_product": (True, "tests/fixtures/kite_replies/user-profile-2026-10-22-redacted.json "
-                               "(the real profile reply: products include MIS)", CHECKED),
-    "order_update_stream": (True, "https://kite.trade/docs/connect/v3/websocket/#postbacks-and-non-trade-updates "
-                                  "(Kite Connect order updates over the WebSocket and postbacks)", CHECKED),
-    "funds_read": (True, "backend/ofo_app/kite_reads.py (GET /user/margins, row 3 of the builder sequence)", CHECKED),
-    "positions_read": (True, "backend/ofo_app/kite_reads.py (GET /portfolio/positions, row 3 of the builder sequence)",
-                       CHECKED),
-    "basket_margin_quote": (True, "backend/ofo_app/kite_margin.py (POST /margins/basket)", CHECKED),
-})
+FLAG_FILE: Final = Path(__file__).with_name("kite_flags.json")
+_ENTRY_KEYS: Final = frozenset({"on", "source", "date"})
 
 
-def load_zerodha_capabilities() -> CapabilitySet:
-    """Zerodha's declared flags. Raises ``CapabilityLoadError`` if the declaration is malformed (callers that must not
-    fail use ``load_or_off``)."""
-    return load_capabilities(ZERODHA_DECLARED)
+def declared() -> dict[str, tuple[bool, str, datetime.date]]:
+    """The file's ``{name: (on, source, date)}``. Raises ``FlagLoadError`` for anything but the exact shape: an
+    unreadable file, bad JSON, an entry not exactly ``on``/``source``/``date``, a date not YYYY-MM-DD."""
+    try:
+        data = json.loads(FLAG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:  # ValueError covers JSON and UTF-8 decoding errors
+        raise FlagLoadError("the flag file cannot be read") from error
+    if not isinstance(data, dict):
+        raise FlagLoadError("the flag file must hold an object")
+    out = {}
+    for name, entry in data.items():
+        if not isinstance(entry, dict) or set(entry) != _ENTRY_KEYS:
+            raise FlagLoadError(f"flag {name}: expected exactly on, source and date")
+        stamp = entry["date"]
+        if not isinstance(stamp, str):
+            raise FlagLoadError(f"flag {name}: the date is text YYYY-MM-DD")
+        try:
+            day = datetime.date.fromisoformat(stamp)
+        except ValueError as error:
+            raise FlagLoadError(f"flag {name}: the date is not a date") from error
+        out[name] = (entry["on"], entry["source"], day)
+    return out
 
 
-__all__ = ["CHECKED", "ZERODHA_DECLARED", "load_zerodha_capabilities"]
+def load_zerodha_flags() -> FlagSet:
+    """Zerodha's declared flags. Raises ``FlagLoadError`` when the declaration is bad."""
+    return load_flags(declared())
+
+
+__all__ = ["FLAG_FILE", "declared", "load_zerodha_flags"]
