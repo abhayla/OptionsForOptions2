@@ -1,0 +1,93 @@
+# Builder sequence (top to bottom, one row at a time) - 2026-10-22
+
+Decision: ADR-168 (owner 2026-10-22). Contract: `goal-contract-builder-sequence-2026-10-22.md`.
+This file is the status table. The run edits ONE row's Status when that row closes, then prints the whole table.
+
+Rev 2 (independent architect review 2026-10-22, verdict REVISE, all findings applied): the owner's 59-row list grew to
+63 rows. Added because a listed row depends on them: REQ-117 and REQ-118 (broker reads), REQ-113 (feed process),
+REQ-050 (shared computation, needed by REQ-106), REQ-052 (data sourcing, needed by REQ-105/108). Moved: REQ-089 before
+REQ-138, REQ-107 before REQ-091. Removed to the later adjustments contract: REQ-037 (its AC-4 prepares and executes
+adjustment orders). REQ-006 and REQ-007 became row 16 (UX levels removed, ADR-168 (4)). Row 63 is the close-out.
+
+**Status words:** `Not started`, `In progress`, `Done`, `Done (live check pending)`, `Done (switched off: <hold>)`,
+`Done (AC-x deferred: <where>)`, `Waiting on owner (<question>)`, `PARKED (#issue)`, `Superseded`. The text in
+brackets after `Not started` is the starting state (2026-10-22, from the requirement files and the run-1 handover; not
+re-tested).
+
+**Chunks** are the PR / full-CI / review points. Tier: A = fresh Opus review of the chunk PR (money maths, live data,
+engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row also gets its own independent verifier.
+
+**Deferred acceptance criteria** (out of this contract's scope by ADR-165 / ADR-168 (1); the row closes as
+`Done (AC-x deferred: ...)` when everything else passes):
+- Order sending in REQ-053, REQ-054, REQ-055 (read parts only here) - order-path scope, not built (ADR-165).
+- Order-update stream in REQ-113, REQ-114 (price socket only here; the order-update part needs REQ-060 reconciliation) - order-path scope.
+- REQ-001 AC-1 BANKNIFTY/FINNIFTY part - closes at row 46 (REQ-090).
+- REQ-109 AC-6 delayed-price mode - closes at row 58 (REQ-105); AC-8 alerts on paper strategies - adjustments contract.
+- REQ-140 AC-3 imported-strategy part - import contract (REQ-104).
+- REQ-107 parts that read REQ-047 adjustment data - adjustments contract.
+
+| # | REQ | Name | Priority | Chunk | Tier | Status |
+|---|---|---|---|---|---|---|
+| 1 | REQ-001 | Scope: underlyings and leg types (NIFTY/SENSEX now; BANKNIFTY/FINNIFTY at row 46) | Prerequisite | 1 | B | Not started (built) |
+| 2 | REQ-015 | Zerodha connection (Kite login, reads only) | Prerequisite | 1 | A | Not started (built) |
+| 3 | REQ-054 | Broker adapter, read part | Prerequisite | 1 | A | Not started (partly built) |
+| 4 | REQ-117 | Broker adapter capability flags | Prerequisite | 1 | A | Not started (unmeasured) |
+| 5 | REQ-053 | Contract eligibility: daily instrument list, valid strikes and expiries (read part) | Prerequisite | 1 | A | Not started (partly built) |
+| 6 | REQ-048 | Market-data pipeline (prices reach the server, never the browser directly) | Prerequisite | 1 | A | Not started (partly built) |
+| 7 | REQ-049 | Data health: fresh, stale and missing prices labelled honestly | Prerequisite | 1 | A | Not started (partly built) |
+| 8 | REQ-050 | Shared computation (market-wide figures computed once) | Prerequisite | 1 | A | Not started (unmeasured) |
+| 9 | REQ-113 | Price feed in its own process (price socket part) | Prerequisite | 1 | A | Not started (unmeasured) |
+| 10 | REQ-118 | Zerodha rate limits for read calls | Prerequisite | 1 | A | Not started (unmeasured) |
+| 11 | REQ-114 | Price feed health check and reconnect (price socket part) | Prerequisite | 1 | A | Not started (not built) |
+| 12 | REQ-072 | Index spot price | Prerequisite | 1 | A | Not started (verified) |
+| 13 | REQ-032 | Calculation engine | Prerequisite | 1 | A | Not started (verified) |
+| 14 | REQ-033 | Expiry and live P&L formulas | Prerequisite | 1 | A | Not started (verified) |
+| 15 | REQ-028 | Shape templates and shape matching | Prerequisite | 1 | B | Not started (built) |
+| 16 | REQ-038 | Save a strategy and load it back exactly | Prerequisite | 1 | A | Not started (verified) |
+| 17 | REQ-006 + REQ-007 | Remove UX levels: one full screen for everyone; spec rewrite first (ADR-168 (4)(5)) | P1 core | 2 | B | Not started |
+| 18 | REQ-035 | Strategy table: every leg's P&L at each level | P1 core | 2 | A | Not started (verified) |
+| 19 | REQ-080 | Leg picker: strikes with live prices, futures, depth popup | P1 core | 2 | A | Not started (basic picker only) |
+| 20 | REQ-076 | Leg rows: strike -/+, lots, multiplier, leave a leg out, shape name | P1 core | 2 | A | Not started (built on branch W-126) |
+| 21 | REQ-077 | Entry prices: typed price, Reset Prices, "price has moved" mark | P1 core | 2 | A | Not started (not built) |
+| 22 | REQ-034 | Outcome view and scenario levels | P1 core | 2 | A | Not started (mostly built) |
+| 23 | REQ-119 | An old reply never draws over a newer edit | P1 core | 2 | A | Not started (not built) |
+| 24 | REQ-133 | Old live frames dropped; a new screen waits for its first price | P1 core | 2 | A | Not started (not built) |
+| 25 | REQ-055 | Margin check, read part (Zerodha's margin for the plan) | P1 core | 3 | A | Not started (partly built) |
+| 26 | REQ-081 | Money summary: net premium, charges, margin, reward/risk | P1 core | 3 | A | Not started (partly built on branch W-127) |
+| 27 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Not started (not built) |
+| 28 | REQ-070 | Builder history and restore | P1 core | 3 | B | Not started (server only) |
+| 29 | REQ-134 | Name a strategy, Save As, rename, saved list with search | P1 core | 3 | B | Not started (not built) |
+| 30 | REQ-078 | Shift / Width / Hedge | P2 | 4 | A | Not started (built on branch W-126) |
+| 31 | REQ-085 | Warnings and "How this trade works" | P2 | 4 | A | Not started (not built) |
+| 32 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | Not started (not built) |
+| 33 | REQ-029 | Option chain display and live data | P2 | 4 | A | Not started (partly built) |
+| 34 | REQ-030 | Pick legs from the option chain into the builder | P2 | 4 | B | Not started (partly built, PR #509) |
+| 35 | REQ-031 | Option chain live strategy preview | P2 | 4 | A | Not started (partly built, PR #509) |
+| 36 | REQ-083 | Payoff chart extras: "now" curve, hover, SD bands, OI bars | P3 | 5 | A | Not started (partly built on branch W-127) |
+| 37 | REQ-084 | What-if (level, date, IV) and the Greeks panel | P3 | 5 | A | Not started (partly built on branch W-127) |
+| 38 | REQ-137 | Payoff table and SD table | P3 | 5 | A | Not started (not built) |
+| 39 | REQ-089 | Manual P&L entries | P3 | 5 | A | Not started (not built) |
+| 40 | REQ-138 | Builder settings saved per user | P3 | 5 | A | Not started (not built) |
+| 41 | REQ-139 | Header with the day's change and OHLC | P3 | 5 | A | Not started (not built) |
+| 42 | REQ-106 | Market context strip: ATM IV, PCR, max pain, VIX | P3 | 5 | A | Not started (not built) |
+| 43 | REQ-111 | Private notes on a strategy | P3 | 6a | B | Not started (not built) |
+| 44 | REQ-086 | Share a read-only link | P3 | 6a | B | Not started (partly built) |
+| 45 | REQ-087 | Option chain display options | P3 | 6a | B | Not started (partly built, PR #509) |
+| 46 | REQ-090 | Adds BANKNIFTY and FINNIFTY (also closes REQ-001 AC-1) | P3 | 6a | A | Not started (not built) |
+| 47 | REQ-024 | Guided strategy creation (Create Strategy screen) | P3 | 6b | B | Not started (partly built) |
+| 48 | REQ-026 | Expected market range input | P3 | 6b | B | Not started (built) |
+| 49 | REQ-068 | Strategy preferences | P3 | 6b | B | Not started (built) |
+| 50 | REQ-025 | Strategy discovery and preferences | P3 | 6b | B | Not started (not built) |
+| 51 | REQ-027 | Strike selection modes (rule-placed part held, Q211) | P3 | 6b | B | Not started (not built) |
+| 52 | REQ-069 | Suggested setups (rule-placed part held, Q211) | P3 | 6b | B | Not started (not built) |
+| 53 | REQ-109 | Start tracking (paper P&L) | Tracking | 7 | A | Not started (merged; live proof pending) |
+| 54 | REQ-140 | Profit left and loss left for a tracked strategy | Tracking | 7 | A | Not started (not built) |
+| 55 | REQ-079 | Ready-made shapes and quick picks (held, Q211) | P4 held | 8 | B | Not started (built, switched off) |
+| 56 | REQ-082 | Probability of profit (held, Q211) | P4 held | 8 | A | Not started (built, switched off) |
+| 57 | REQ-052 | Market-data sourcing and licensing (needed by rows 58, 62) | P4 held | 8 | B | Not started (unmeasured) |
+| 58 | REQ-105 | Delayed prices before a Zerodha login (held; needs REQ-016 approved first) | P4 held | 8 | A | Not started (not built) |
+| 59 | REQ-051 | Historical price storage (needed by rows 60-61) | P4 held | 8 | A | Not started (not built) |
+| 60 | REQ-107 | IV and OI history charts (held, display rights) | P4 held | 8 | B | Not started (not built) |
+| 61 | REQ-091 | Strategy price history chart (held, display rights) | P4 held | 8 | B | Not started (not built) |
+| 62 | REQ-108 | Events calendar, FII/DII (held, data source) | P4 held | 8 | B | Not started (not built) |
+| 63 | - | Close-out: every "live check pending" criterion proven in one live window; handover for the next contract (adjustments incl. REQ-037, alerts, import) | Close-out | 8 | - | Not started |

@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-072
+Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-072; Superseded, never built (2): REQ-006, REQ-007
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -95,6 +95,13 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | normal | waiting: on REQ-042, REQ-045, REQ-046 |
 | REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | normal | waiting: on REQ-062, REQ-115 |
 | REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | normal | waiting: on REQ-060, REQ-115, REQ-116 |
+| REQ-134 | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched | feature | normal | waiting: on REQ-070 |
+| REQ-135 | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited | feature | normal | waiting: on REQ-049, REQ-076 |
+| REQ-136 | Every builder figure has a plain definition on hover or tap, and the builder carries one note that its numbers are projections | feature | normal | waiting: on REQ-034, REQ-081 |
+| REQ-137 | A payoff table lists P&L at target date and at expiry for index levels at a chosen interval, and a standard-deviation table shows the 1SD and 2SD ranges | feature | normal | waiting: on REQ-034, REQ-083, REQ-084 |
+| REQ-138 | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L | feature | normal | waiting: on REQ-076, REQ-081, REQ-083, REQ-089 |
+| REQ-139 | The builder header shows the underlying's spot with the day's change and percent and the day's open, high, low and previous close | feature | normal | waiting: on REQ-049 |
+| REQ-140 | For a strategy already being tracked, the builder summary shows the profit still possible and the loss still possible from now first, with the original maximums below | feature | normal | waiting: on REQ-081, REQ-109 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
 | REQ-111 | The user can keep private notes on a strategy | polish | normal | next |
@@ -104,8 +111,6 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 Draft or Specified requirements are recorded only: never next, never in the order above. An approved requirement that depends on one shows as waiting on it by id.
 
 - REQ-005 (Specified): Product language and positioning
-- REQ-006 (Specified): Three UX levels
-- REQ-007 (Specified): Strategy information density
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
 - REQ-023 (Specified): Paid Pro and billing
