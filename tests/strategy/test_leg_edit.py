@@ -21,7 +21,6 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
-
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.metrics import strategy_metrics
 from ofo.instruments import Catalogue, parse_instruments_csv
@@ -31,6 +30,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 EXPIRY = datetime.date(2026, 10, 6)
 LOT = 65
+INCLUDED_AFTER_UNTICK = 3
 NIFTY = "NIFTY"
 
 
@@ -85,7 +85,7 @@ def test_core_proof_shift_width_hedge_on_real_instrument_file(cat):
 
 def test_ac_078_3_shift_minus_one_and_futures_do_not_move(cat):
     """REQ-078 AC-3: -1 reverses; a futures leg does not move; the move changes no side, lots, expiry or type (AC-7)."""
-    legs = condor() + [EditLeg(Leg(Action.BUY, Instrument.FUT, None, EXPIRY, LOT, D("23100.00")), 1, 1)]
+    legs = [*condor(), EditLeg(Leg(Action.BUY, Instrument.FUT, None, EXPIRY, LOT, D("23100.00")), 1, 1)]
     moved = leg_edit.shift(cat, NIFTY, legs, -1)
     assert strikes(moved.legs)[:4] == [D("22750"), D("22950"), D("23350"), D("23550")]
     assert moved.legs[4] == legs[4] and moved.moved == frozenset({0, 1, 2, 3})
@@ -97,7 +97,8 @@ def test_ac_078_3_shift_minus_one_and_futures_do_not_move(cat):
 def test_ac_078_6_unlisted_landing_refuses_whole_move(cat):
     """REQ-078 AC-6: one leg landing on an unlisted strike refuses the whole move; the input is untouched."""
     legs = condor()
-    legs[3] = EditLeg(Leg(Action.BUY, Instrument.CE, D("23610"), EXPIRY, LOT, D("44.00")), 1, 1)  # 23610 is off the grid
+    off_grid = D("23610")  # not a listed strike
+    legs[3] = EditLeg(Leg(Action.BUY, Instrument.CE, off_grid, EXPIRY, LOT, D("44.00")), 1, 1)
     with pytest.raises(LegEditRefused) as err:
         leg_edit.shift(cat, NIFTY, legs, 1)
     assert err.value.template == "leg_edit_strike_not_listed"
@@ -129,7 +130,7 @@ def test_ac_078_5_hedge_minimum_one_step_and_leg_count(cat):
 
 
 def test_ac_076_1_step_strike_uses_listed_strikes_and_edges(cat):
-    """REQ-076 AC-1: the stepper walks the listed strikes (not strike + a constant); no step past the ends; no futures."""
+    """REQ-076 AC-1: the stepper walks the listed strikes (not strike + a constant); no step past the ends."""
     legs = condor()
     assert leg_edit.step_strike(cat, NIFTY, legs, 1, 1).legs[1].leg.strike == D("23050")
     first = min(c.strike for c in cat.contracts_for(NIFTY, EXPIRY, frozenset({"PE"})))
@@ -155,11 +156,11 @@ def test_ac_076_4_5_multiplier_is_base_lots_times_m_and_quantity_from_lot_size(c
 
 
 def test_ac_076_6_include_leg_flips_only_that_leg_and_unticked_leaves_the_engine_legs(cat):
-    """REQ-076 AC-6: an unticked leg is absent from the engine's legs: unticking the bought wing makes max loss unlimited."""
+    """REQ-076 AC-6: an unticked leg is absent from the engine's legs: no bought wing, max loss is unlimited."""
     legs = leg_edit.include_leg(condor(), 3, False)
     assert [x.included for x in legs] == [True, True, True, False]
     included = leg_edit.included_legs(legs)
-    assert len(included) == 3
+    assert len(included) == INCLUDED_AFTER_UNTICK
     assert strategy_metrics(Strategy(tuple(x.leg for x in included))).max_loss is leg_edit.UNLIMITED
 
 

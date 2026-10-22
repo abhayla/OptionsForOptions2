@@ -897,8 +897,8 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
           "You can build, save and track strategies."),
 )
 
-# --- W-126 (REQ-076, REQ-077, REQ-078): a refused leg edit (strike step, Shift / Width / Hedge, typed price). The whole
-# edit is refused and nothing changes; each text names the leg.
+# --- W-126 (REQ-076, REQ-077, REQ-078): a refused leg edit (strike step, Shift / Width / Hedge, typed price).
+# The whole edit is refused and nothing changes; each text names the leg.
 _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_strike_not_listed", _UI, 5, "{leg} is not listed in the instrument file.",
           "The edit was refused and no leg changed.", "This edit.", "Pick a listed strike, or change a different leg.",

@@ -141,8 +141,8 @@ async def capture_entries(ctx: MarketContext | None, feed: LiveFeed | None, unde
     context, or a provider that is not connected, prices nothing (ADR-020 Q185: never a default)."""
     if ctx is None or not ctx.provider.status().connected:
         return None, dict.fromkeys(ids)
-    valuation, snapshot, priced = _read(ctx, underlying, ids)
+    valuation, _, priced = _read(ctx, underlying, ids)
     unpriced = [i for i in ids if priced.get(i) is None]
     if unpriced and feed is not None:
-        valuation, snapshot, priced = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
+        valuation, _, priced = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
     return valuation, {i: priced.get(i) for i in ids}

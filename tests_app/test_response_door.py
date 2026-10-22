@@ -271,7 +271,8 @@ def test_the_app_models_are_all_swept() -> None:
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
         "BasketOrderOut", "ExecuteOut", "CostOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut",
         "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
-        "TemplatesOut", "TemplateLegOut", "EditLegOut", "ControlsOut", "LegEditOut", "PositionsOut", "StrategyPositionsOut", "StrategyContractOut",
+        "TemplatesOut", "TemplateLegOut", "EditLegOut", "ControlsOut", "LegEditOut",
+        "PositionsOut", "StrategyPositionsOut", "StrategyContractOut",
         "StatusOut", "BrokerStatusOut", "DisconnectOut", "FeaturesOut",
         "TrackingLegOut", "TrackingIndexOut", "DetectionOut", "TrackingOut"}
     # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and

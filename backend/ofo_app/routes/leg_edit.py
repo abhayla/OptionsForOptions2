@@ -1,7 +1,8 @@
 """POST /api/strategies/leg-edit (W-126; REQ-076, REQ-077, REQ-078; ADR-008, ADR-068, ADR-150).
 
-The browser sends the builder's legs plus ONE edit (a strike step, the multiplier, a tick, a typed price, Reset Prices, or
-a Shift / Width / Hedge click with its direction); the server applies it with :mod:`ofo.strategy.leg_edit` against the
+The browser sends the builder's legs plus ONE edit (a strike step, the multiplier, a tick, a typed price, Reset Prices,
+or a Shift / Width / Hedge click with its direction); the server applies it with :mod:`ofo.strategy.leg_edit`
+against the
 instrument file, re-captures the planned entry of every leg whose contract changed through the one capture path
 (:func:`ofo_app.routes.planned_entry.capture_entries`), and answers the new legs plus the engine's outcome of the
 INCLUDED legs. The browser computes nothing. A refused edit changes nothing and answers with its catalogue text (422).
@@ -15,18 +16,21 @@ import datetime
 import time
 from collections.abc import Awaitable, Callable
 from decimal import Decimal
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
+from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
+from ofo.errors import LegValue
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.strategy import leg_edit as edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
+from ofo.strategy.model import atm_strike
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app.api_models import ApiModel, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
@@ -47,6 +51,7 @@ from ofo_app.routes.planned_entry import capture_entries, get_live_feed
 
 router = APIRouter(route_class=ClosedRoute)
 
+MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs (REQ-078 AC-2)
 CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
 _catalogue_cache: dict = {"until": 0.0, "value": None}
 
@@ -57,8 +62,8 @@ async def get_edit_catalogue() -> Catalogue:
     """The stored instrument list as a domain Catalogue (REQ-076 AC-1). Tests override this dependency."""
     if time.monotonic() < _catalogue_cache["until"]:
         return _catalogue_cache["value"]
-    from ofo_app import catalogue_store  # late, like outcome.stored_contracts
-    from ofo_app.db import get_sessionmaker
+    from ofo_app import catalogue_store  # noqa: PLC0415 - late, like outcome.stored_contracts
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
     async with get_sessionmaker()() as session:
         value = await catalogue_store.load_catalogue(await session.connection())
@@ -74,8 +79,8 @@ def get_capture() -> Capture:
 # ---- request ---------------------------------------------------------------------------------------------------------
 
 class EditLegIn(LegIn):
-    """A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry may
-    be absent (a leg whose contract has no live price yet). ``extra="forbid"`` keeps any other state out (REQ-076 AC-7)."""
+    """A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry
+    may be absent (a contract with no live price yet). ``extra="forbid"`` keeps other state out (REQ-076 AC-7)."""
 
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
@@ -93,13 +98,27 @@ class EditIn(BaseModel):
     included: StrictBool | None = None
     price: str | None = Field(default=None, pattern=r"^\d{1,7}(\.\d{1,2})?$")
 
+    @model_validator(mode="after")
+    def _control_has_its_fields(self) -> EditIn:
+        """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
+        needs = {"step": ("index", "direction"), "shift": ("direction",), "width": ("direction",),
+                 "hedge": ("direction",), "include": ("index", "included"), "price": ("index", "price"),
+                 "multiplier": ("multiplier",), "reset_prices": ()}[self.control]
+        given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
+                 "multiplier": self.multiplier}
+        missing = [name for name in needs if given[name] is None]
+        if missing:
+            raise ValueError(f"{self.control} needs {missing}")
+        return self
+
 
 class LegEditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     underlying: Literal["NIFTY", "SENSEX"]
     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
     edit: EditIn
-    shift_total: int = Field(default=0, ge=-100000, le=100000, description="index points moved by Shift since the last strike edit")
+    shift_total: int = Field(default=0, ge=-100000, le=100000,
+                             description="index points moved by Shift since the last strike edit")
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
 
@@ -136,7 +155,7 @@ class LegEditOut(ApiModel):
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry
 
 
-# ---- the edit ---------------------------------------------------------------------------------------------------------
+# ---- the edit -----------------------------------------------------------------------------------------------------
 
 def _contract_of(cat: Catalogue, instrument_id: str, underlying: str):
     segment, _, token = instrument_id.partition(":")
@@ -150,7 +169,6 @@ def _contract_of(cat: Catalogue, instrument_id: str, underlying: str):
 
 
 def _unknown_ref(underlying: str, instrument_id: str):
-    from ofo.errors import LegValue
     placeholder = Leg(Action.BUY, Instrument.CE, Decimal(1), datetime.date(2000, 1, 1), 1, Decimal(0))
     return LegValue(1, placeholder, underlying)
 
@@ -169,8 +187,8 @@ def _legs_of(cat: Catalogue, req: LegEditIn) -> list[EditLeg]:
 def _id_of(cat: Catalogue, underlying: str, leg: Leg) -> str:
     for e in cat.all_entries():
         c = e.contract
-        if (e.currently_listed and c.name == underlying and c.expiry == leg.expiry and c.instrument_type == leg.instrument.value
-                and (leg.strike is None or c.strike == leg.strike)):
+        if (e.currently_listed and c.name == underlying and c.expiry == leg.expiry
+                and c.instrument_type == leg.instrument.value and (leg.strike is None or c.strike == leg.strike)):
             return f"{c.exchange_segment}:{c.exchange_token}"
     raise LegEditRefused("leg_edit_strike_not_listed", leg=_unknown_ref(underlying, "none"))
 
@@ -186,10 +204,10 @@ def _reference_spot(ctx: MarketContext | None, underlying: str, legs: list[EditL
 
 
 def shape_and_controls(cat: Catalogue, ctx: MarketContext | None, underlying: str, legs: list[EditLeg]):
-    """(template id or None, hedge-marked indexes, which controls apply). Shift: any shape with an option leg; Width and
-    Hedge: by the catalogue's shape (REQ-078 AC-2); the Hedge marks are the catalogue's `protective` legs."""
+    """(template id or None, hedge-marked indexes, which controls apply). Shift: any shape with an option leg; Width
+    and Hedge: by the catalogue's shape (REQ-078 AC-2); the Hedge marks are the catalogue's `protective` legs."""
     options = [x for x in legs if x.leg.instrument is not Instrument.FUT]
-    if len(legs) < 2 or not options:
+    if len(legs) < MIN_SHAPE_LEGS or not options:
         return None, frozenset(), ControlsOut(shift=False, width=False, hedge=False)
     gap = edit.strike_step(cat, underlying, legs)
     spot = _reference_spot(ctx, underlying, legs, gap)
@@ -197,7 +215,6 @@ def shape_and_controls(cat: Catalogue, ctx: MarketContext | None, underlying: st
     if isinstance(found, Custom):
         return None, frozenset(), ControlsOut(shift=True, width=False, hedge=False)
     marks = protective_keys(found)
-    from ofo.strategy.model import atm_strike
     atm = atm_strike(spot, gap)
     ranks = {e: i for i, e in enumerate(sorted({x.leg.expiry for x in legs}))}
     hedged = frozenset(i for i, x in enumerate(legs) if x.leg.strike is not None and (
@@ -205,9 +222,8 @@ def shape_and_controls(cat: Catalogue, ctx: MarketContext | None, underlying: st
     shorts = {x.leg.instrument for x in legs if x.leg.action is Action.SELL}
     width_ok = bool(shorts & {Instrument.CE, Instrument.PE}) and len(options) == len(legs) and (
         found.template.width_adjustable)
-    hedge_ok = bool(hedged) and len(legs) in (2, edit.MAX_HEDGE_LEGS)
+    hedge_ok = bool(hedged) and len(legs) % 2 == 0 and len(legs) <= edit.MAX_HEDGE_LEGS
     return found.template.id, hedged, ControlsOut(shift=True, width=width_ok, hedge=hedge_ok)
-
 
 
 def apply_edit(cat: Catalogue, ctx: MarketContext | None, req: LegEditIn, legs: list[EditLeg]):
@@ -244,8 +260,9 @@ def apply_edit(cat: Catalogue, ctx: MarketContext | None, req: LegEditIn, legs: 
 
 
 def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
-    if e.index is None or e.index >= len(legs):
-        raise LegEditRefused("leg_edit_no_further_strike", leg=_unknown_ref("NIFTY", "none"))
+    if e.index is None or e.index >= len(legs):  # a forged index: a plain validation error, never a guess
+        raise RequestValidationError(
+            [{"loc": ("body", "edit", "index"), "msg": "index outside legs", "type": "value_error"}])
     return e.index
 
 

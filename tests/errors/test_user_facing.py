@@ -16,6 +16,7 @@ from collections.abc import Callable
 import pytest
 
 from ofo.errors import UserFacing, UserFacingError, render, user_message_of
+from ofo.strategy.leg_edit import LegEditRefused
 
 pytestmark = pytest.mark.repo_scan
 
@@ -95,8 +96,6 @@ def _disconnect_status() -> object:
 
 
 def _leg_edit_refused() -> object:
-    from ofo.strategy.leg_edit import LegEditRefused
-
     return LegEditRefused("leg_edit_width_not_applicable")
 
 

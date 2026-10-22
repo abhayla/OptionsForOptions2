@@ -1,15 +1,18 @@
 """Leg edits of the Strategy Builder: strike step, multiplier, include tick, typed price, Shift / Width / Hedge (W-126).
 
-Spec: REQ-076 AC-1 (strikes come from the instrument file), AC-4/AC-5 (multiplier; quantity = lots x the file's lot size),
+Spec: REQ-076 AC-1 (strikes come from the instrument file), AC-4/AC-5 (multiplier; quantity = lots x the file's lot
+size),
 AC-6 (an unticked leg leaves every number); REQ-077 AC-2 (a typed price is a positive multiple of the file's tick size);
 REQ-078 AC-3..AC-8 (Shift, Width, Hedge by one strike step; the whole move is refused when any leg would land on an
-unlisted strike; sides, lots, expiry and type never change). ADR-008: this module computes no money; it moves strikes and
+unlisted strike; sides, lots, expiry and type never change). ADR-008: this module computes no money; it moves
+strikes and
 the engine prices them. Every function is pure: it returns new legs and never changes its input.
 
 A moved leg is a new contract: :class:`Moved` names the indexes so the caller re-captures their planned entries
 (REQ-078 AC-8) through the one capture path, then calls :func:`with_entries`.
 
-Answer states (run-discipline B4 (d)): strike listed / not listed (refused, names the leg), no further listed strike (the
+Answer states (run-discipline B4 (d)): strike listed / not listed (refused, names the leg), no further listed strike
+(the
 stepper's edge), futures leg (no strike), tick size known / the file has no such contract (refused, fail closed).
 """
 from __future__ import annotations
@@ -132,9 +135,11 @@ def hedge(cat: Catalogue, underlying: str, legs: list[EditLeg], protective: froz
     targets: dict[int, Decimal] = {}
     for i in sorted(protective):
         leg = legs[i].leg
-        away = step if leg.instrument is Instrument.CE else -step  # a call hedge sits above its short, a put hedge below
+        # a call hedge sits above its short, a put hedge below
+        away = step if leg.instrument is Instrument.CE else -step
         new = leg.strike + direction * away
-        primaries = [x.leg.strike for j, x in enumerate(legs) if j not in protective and x.leg.instrument is leg.instrument]
+        primaries = [x.leg.strike for j, x in enumerate(legs)
+                     if j not in protective and x.leg.instrument is leg.instrument]
         if primaries and (new - min(primaries, key=lambda s: abs(s - leg.strike))) * (1 if away > 0 else -1) < step:
             raise LegEditRefused("leg_edit_hedge_below_minimum", leg=_ref(underlying, legs, i, new))
         targets[i] = new
@@ -166,11 +171,12 @@ def included_legs(legs: list[EditLeg]) -> list[EditLeg]:
 
 
 def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int, price: Decimal) -> list[EditLeg]:
-    """REQ-077 AC-1/AC-2: a typed planned entry must be a positive multiple of the file's tick size for that contract."""
+    """REQ-077 AC-1/AC-2: a typed planned entry is a positive multiple of the file's tick size for that contract."""
     leg = legs[index].leg
     kind = ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
     tick = cat.tick_size(underlying, leg.expiry, kind)
-    if type(price) is not Decimal or not price.is_finite() or price <= 0 or round_to_tick(price, tick, Action.BUY) != price:
+    if (type(price) is not Decimal or not price.is_finite() or price <= 0
+            or round_to_tick(price, tick, Action.BUY) != price):
         raise LegEditRefused("leg_edit_price_not_tick", leg=_ref(underlying, legs, index), tick=tick)
     return [replace(x, leg=replace(x.leg, entry_price=price), typed=True) if i == index else x
             for i, x in enumerate(legs)]
