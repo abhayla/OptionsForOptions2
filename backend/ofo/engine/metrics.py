@@ -206,3 +206,15 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     breakevens = tuple(_to_decimal(x) for x in zeros)
     return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
                            loss_regions=_loss_regions(points, values, upper_slope, zeros))
+
+
+def loss_regions_after_charges(strategy: Strategy, charges: Decimal) -> tuple[LossRegion, ...]:
+    """W-125 (REQ-082 AC-2): the loss regions of a single-expiry strategy's expiry P&L LESS ``charges`` (a flat amount
+    taken off every level, ADR-082). Same region logic as ``strategy_metrics`` (a region is found by walking the pieces,
+    never inferred from breakevens alone); ``charges`` of 0 gives ``strategy_metrics(strategy).loss_regions``."""
+    if not strategy.is_single_expiry:
+        raise MultiExpiryError("loss regions need every leg on one expiry")
+    points = [Decimal(0), *sorted({leg.strike for leg in strategy.legs if leg.is_option})]
+    values = [strategy.expiry_pnl_at(p) - charges for p in points]
+    upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
+    return _loss_regions(points, values, upper_slope, _breakevens(points, values, upper_slope))

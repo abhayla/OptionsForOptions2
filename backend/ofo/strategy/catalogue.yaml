@@ -25,7 +25,7 @@ templates:
     objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
-      - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+      - {name: w, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
     constraints: []
     legs:
       - {name: long_call, action: BUY, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
@@ -39,7 +39,7 @@ templates:
     objectives: [income, directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
-      - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+      - {name: w, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
     constraints: []
     legs:
       - {name: short_put, action: SELL, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
@@ -68,7 +68,7 @@ templates:
     objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
-      - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+      - {name: w, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
     constraints: []
     legs:
       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
@@ -82,7 +82,7 @@ templates:
     objectives: [income, directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
-      - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+      - {name: w, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
     constraints: []
     legs:
       - {name: short_call, action: SELL, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
