@@ -407,7 +407,7 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
         return Catalogue()
 
     class Sock(FakeSocket):
-        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):
+        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):  # noqa: PLR0913 - KiteSocket's keywords
             super().__init__(prov, result="stopped")
             seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987")
 

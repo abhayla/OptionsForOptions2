@@ -447,3 +447,12 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   beside the Place step, a return that flags a basket missing from the owner's book - or keep AC-5 and place no further
   real orders until an account pin exists; whether Kite's basket accepts any pin is unverified).
 - Asked after GC-3L, with its real case (ADR-108 rule 4: one private window, user id checked by hand).
+
+## Q273 — OPEN (business: production host; due before the first deploy that runs two processes, not before the build) — Where does Redis run in production?
+- REQ-113 AC-3 makes the bus Redis (ADR-043) once the market-data process and the API process both run. Row 9 of the
+  builder sequence builds that (2026-10-22) and tests it on real Redis in CI and on a pure-Python stand-in on the laptop
+  (F-58). Redis has no supported native Windows build, and the owner's rule bars a server runtime on the laptop.
+- Options for the owner when the first deploy is planned: (a) Redis on the Linux production host next to the app;
+  (b) a managed Redis service (spend); (c) production keeps the single-process mode (no bus, AC-3's first sentence)
+  until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
+- Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.

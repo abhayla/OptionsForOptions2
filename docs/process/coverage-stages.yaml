@@ -317,6 +317,7 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
+  Q273: S6.7            # open: where Redis runs in production (ask at the first two-process deploy brief)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -584,6 +585,7 @@ findings:
   F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
   F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
   F-57: 4a        # Zerodha rule constants checked against current docs; NIFTY freeze 3,510 reported, unconfirmed (row 5)
+  F-58: S6.7      # fakeredis TCP server: no pub/sub delivery, Streams work (row 9 bus design)
 
 hypotheses:
   H1: done

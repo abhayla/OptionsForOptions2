@@ -858,3 +858,15 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
     No source says options are limit-only.
 - Bears on: REQ-053 AC-5, ADR-081, REQ-073. Status: **measured from documentation; the 3,510 freeze limit open until
   NSE's own file or circular is read** (the daily-file loader reads it live).
+
+## F-58 - The pure-Python Redis stand-in (fakeredis 2.40.0 TcpFakeServer) does not deliver pub/sub over the network; Streams work
+- Measured 2026-10-22 ~20:20 IST on the laptop (builder sequence row 9, REQ-113 AC-3 design), redis client 6.4.0:
+  over `TcpFakeServer`, PING/SET/GET work and SUBSCRIBE is confirmed, but PUBLISH returns 1 subscriber and the
+  subscriber's `get_message(timeout=3)` returns `None` (the message never arrives). Redis Streams work: `XADD` from a
+  second connection 0.5 s after a blocking `XREAD ... BLOCK 3000` started was received, at 2.54 s (the stand-in checks
+  for new data on a coarse timer; real Redis wakes at once). `srv.shutdown()` from the main thread hung past 120 s; exit
+  with the process instead.
+- Bears on: REQ-113 AC-3 (the bus is Redis per ADR-043) and the owner's rule that no server runtime is installed on the
+  laptop. Decision (orchestrator, technical, row 9, after an independent Opus design review): the bus uses Redis
+  Streams with a length cap and keys with an expiry (rebuildable state only), so the same code runs on real Redis in CI
+  and on the stand-in on the laptop. Not a rule change. Status: **measured on real runs**.

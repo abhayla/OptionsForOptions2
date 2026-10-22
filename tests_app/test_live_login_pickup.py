@@ -50,7 +50,7 @@ class WorldSocket(FakeSocket):
 
     world: ClassVar[dict] = {}  # the kite_world fixture binds its world here
 
-    def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):
+    def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):  # noqa: PLR0913 - KiteSocket's keywords
         super().__init__(prov, result="stopped")
         self.fingerprint = live_market.token_fingerprint(access_token)
         self.alive_at_birth = socket_tasks()
