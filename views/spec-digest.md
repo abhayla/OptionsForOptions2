@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (163)
+## Decisions (164)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -129,7 +129,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-122 2026-10-19: The one-line range reading of ADR-121 (1) uses ex… [extends ADR-121]
 - ADR-123 2026-10-19: (1) When a contract held by two or more strategie… [amends REQ-060; extends ADR-116]
 - ADR-124 2026-10-19: (1) The control that lets the user change the ran… [extends ADR-121]
-- ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved because the next-day positions cannot show whether… [extends ADR-109; extends ADR-120]
+- ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved b… [extends ADR-109; extends ADR-120]
 - ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
 - ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
 - ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
@@ -169,6 +169,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-164 2026-10-21: SPEC CHANGE to ADR-055 (1) for this one figure. [refines ADR-055]
 - ADR-165 2026-10-21: (1) The current scope is: every prerequisite of the strategy builder works, everything inside the s… [applies ADR-150; applies ADR-152; applies ADR-055…]
 - ADR-166 2026-10-21: The action on one saved strategy that records each leg at the live price and starts watching it (RE… [refines REQ-109]
+- ADR-167 2026-10-22: SPEC CHANGE to ADR-082 (2) for the scenario values. [amends ADR-082]
 
 ## Requirements (124)
 
