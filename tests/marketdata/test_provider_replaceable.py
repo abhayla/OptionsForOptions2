@@ -107,6 +107,9 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/routes/execution_return.py": "composition root of the return-from-Kite route (W-096): wires the owner's "
                                           "Kite read client and reply adapter to the return logic, like "
                                           "routes/execute.py - REQ-063 AC-1",
+    "ofo_app/routes/positions.py": "composition root of the Positions read (W-111): wires the owner's Kite read client "
+                                   "and positions/orders reply adapter to W-108's attribution, like "
+                                   "routes/execution_return.py - REQ-063 AC-1",
     "ofo_app/return_book.py": "the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",
