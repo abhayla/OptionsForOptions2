@@ -77,10 +77,14 @@ async def drop_database(conn, name):
     await conn.execute(f'DROP DATABASE IF EXISTS "{name}"')
 
 
-async def create_database(conn, name):
+async def create_database(conn, name, on_created=None):
+    """CREATE, then the grants; `on_created` is called right after the CREATE succeeds, so a CREATE that failed (e.g.
+    the name already exists: another run's database) is never dropped by this run."""
     if not is_tool_name(name):
         raise Refused(f"refusing to create {name!r}")
     await conn.execute(f'CREATE DATABASE "{name}"')
+    if on_created is not None:
+        on_created()
     await conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM PUBLIC')
     await conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {APP_ROLE}')
 
@@ -136,9 +140,13 @@ class Fresh:
         self.runner = runner
         self.err = err or functools.partial(print, file=sys.stderr)
         self.name = name or make_name()
+        self.created = False
         tmp_admin = with_database(self.admin, self.name)
         self.env = dict(os.environ, TEST_DATABASE_URL=with_database(self.app_url, self.name),
                         TEST_ADMIN_DATABASE_URL=tmp_admin, ALEMBIC_DATABASE_URL=tmp_admin, OFO_REQUIRE_DB_TESTS="1")
+
+    def _mark_created(self):
+        self.created = True
 
     def _admin_do(self, action):
         asyncio.run(_connect_and(self.connect, self.admin, functools.partial(action, name=self.name)))
@@ -152,25 +160,30 @@ class Fresh:
         try:
             code = self._setup_and_run(checkout, command)
         finally:
-            # CREATE may have half-succeeded (database made, grant refused), so the drop always runs; IF EXISTS keeps a
-            # CREATE that never happened quiet. Only this run's own name is ever dropped (allow-list in drop_database).
-            try:
-                self._admin_do(drop_database)
-            except Exception as e:  # noqa: BLE001 - any server answer is reported with its step
-                detail = f"{type(e).__name__}: {scrub(e, self.secrets)}"
-                self.err(f"db_run_fresh: step drop failed for {self.name}: {detail}")
-                self.err("db_run_fresh: run --sweep later to remove it")
-                code = code or EXIT_SETUP
+            # Drop only what THIS run created (the CREATE succeeded, even if a grant then failed); a CREATE that failed -
+            # e.g. the name exists because another run picked it - is never dropped here. Allow-list in drop_database.
+            if self.created:
+                code = self._drop_own(code)
+        return code
+
+    def _drop_own(self, code):
+        try:
+            self._admin_do(drop_database)
+        except Exception as e:  # noqa: BLE001 - any server answer is reported with its step
+            detail = f"{type(e).__name__}: {scrub(e, self.secrets)}"
+            self.err(f"db_run_fresh: step drop failed for {self.name}: {detail}")
+            self.err("db_run_fresh: run --sweep later to remove it")
+            return code or EXIT_SETUP
         return code
 
     def _setup_and_run(self, checkout, command):
         step = "create"
         try:
-            self._admin_do(create_database)
+            self._admin_do(functools.partial(create_database, on_created=self._mark_created))
             step = "migrate"
             res = self.runner(ALEMBIC, cwd=checkout, env=self.env, capture_output=True, text=True)
-            if res.returncode != 0:
-                self.err("db_run_fresh: step migrate failed: " + scrub((res.stderr or "")[-600:], self.secrets))
+            if res.returncode != 0:  # scrub BEFORE cutting, so a secret split by the cut can never show
+                self.err("db_run_fresh: step migrate failed: " + scrub(res.stderr or "", self.secrets)[-600:])
                 return EXIT_SETUP
         except Exception as e:  # noqa: BLE001 - server answers (no privilege, name clash, ...) are reported with a step
             self.err(f"db_run_fresh: step {step} failed: {type(e).__name__}: {scrub(e, self.secrets)}")
@@ -202,6 +215,11 @@ def main(argv=None, connect=real_connect, settings_loader=load_settings, runner=
         settings = settings_loader()
         return _guarded(_Action(connect, sweep), settings, "sweep")
     if len(argv) == MIN_ARGS and argv[0] == "--drop":  # the allow-list runs inside drop_database, before any DROP
+        t = name_time(argv[1])
+        if t is not None and datetime.datetime.now(datetime.UTC) - t < SWEEP_AGE:
+            print(f"db_run_fresh: refusing to drop {argv[1]!r}: younger than {SWEEP_AGE} "
+                  "(another run may be using it)", file=sys.stderr)
+            return EXIT_REFUSED
         settings = settings_loader()
         return _guarded(_Action(connect, functools.partial(drop_database, name=argv[1])), settings, "drop")
     if len(argv) < MIN_ARGS or argv[0].startswith("--"):

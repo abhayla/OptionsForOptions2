@@ -88,11 +88,23 @@ def test_drop_refuses_any_name_not_made_by_the_tool(name):
     assert drops(log) == [] and not any("pg_terminate" in s for s in sql(log))
 
 
-def test_drop_accepts_the_tool_name_and_terminates_only_its_connections():
+OLD_GOOD = "ofo_test_tmp_20200101000000_ab12"  # older than the 24 h sweep age
+
+
+def test_drop_accepts_an_old_tool_name_and_terminates_only_its_connections():
     log = []
-    assert fresh.main(["--drop", GOOD], connect=make_connect(log), settings_loader=lambda: SETTINGS) == 0
-    assert drops(log) == [f'DROP DATABASE IF EXISTS "{GOOD}"']
+    assert fresh.main(["--drop", OLD_GOOD], connect=make_connect(log), settings_loader=lambda: SETTINGS) == 0
+    assert drops(log) == [f'DROP DATABASE IF EXISTS "{OLD_GOOD}"']
     assert any("datname = $1" in s for s in sql(log))
+
+
+def test_drop_refuses_a_tool_name_younger_than_the_sweep_age(capsys):
+    """Review 2026-10-22: --drop must not kill another session's run that is still going."""
+    log = []
+    young = "ofo_test_tmp_" + fresh.datetime.datetime.now(fresh.datetime.UTC).strftime("%Y%m%d%H%M%S") + "_ab12"
+    assert fresh.main(["--drop", young], connect=make_connect(log), settings_loader=lambda: SETTINGS) == 2
+    assert drops(log) == []
+    assert "younger than" in capsys.readouterr().err
 
 
 def test_dropped_when_command_fails_and_exit_code_is_the_commands():
@@ -124,11 +136,20 @@ def test_main_maps_interrupt_to_130():
     assert code == INTERRUPT and len(drops(log)) == 1
 
 
-def test_create_refused_exit_3_and_still_drops_own_name_only():
+def test_create_refused_exit_3_and_nothing_dropped():
+    """Review 2026-10-22: a failed CREATE (the name exists: another run's database) is never dropped by this run."""
     log, runner = [], Runner()
     code, errs = go(log, runner, fail_on="CREATE DATABASE")
     assert code == SETUP and any("step create failed" in e for e in errs)
     assert runner.calls == []
+    assert drops(log) == []
+
+
+def test_grant_refused_after_create_still_drops_own_database():
+    """The CREATE succeeded, then a grant failed: this run made the database, so it drops it."""
+    log, runner = [], Runner()
+    code, _ = go(log, runner, fail_on="GRANT CONNECT")
+    assert code == SETUP and runner.calls == []
     assert len(drops(log)) == 1 and drops(log)[0].startswith('DROP DATABASE IF EXISTS "ofo_test_tmp_')
 
 
