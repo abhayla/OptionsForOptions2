@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from ofo.engine.black_scholes import DAYS_IN_YEAR
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import ListedContract
@@ -29,6 +30,7 @@ from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_for
 from ofo.marketdata.provider import MarketDataProvider, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope
+from ofo.timeutil import EXPIRY_CLOSE
 
 
 def contract_id(lc: ListedContract) -> str:
@@ -62,24 +64,40 @@ _LEG_TYPES = frozenset(i.value for i in Instrument)
 
 
 def _forward(chain, spot, expiry, at, where):
-    """One expiry's forward; with ``shared`` computed once per (feed owner, underlying, expiry, valuation instant, the
-    exact quotes it reads). A refused forward raises and is never cached (the next reader tries again)."""
+    """One expiry's forward; with ``shared`` computed once per (feed owner, underlying, expiry, snapshot instant, the
+    exact quotes it reads, the expiry close and the days-per-year convention). A refused forward raises and is never
+    cached (the next reader tries again). The quote set is sorted, so the order a chain is read in never splits it."""
     shared, underlying = where
-    valuation, rate = at
+    instant, rate = at
     if shared is None:
-        return parity_forward(chain, spot, expiry, valuation, rate)
-    quotes = tuple((q.instrument_id, q.bid, q.ask, q.timestamp, q.health) for q in chain)
-    inputs = (rate, spot.ltp, spot.timestamp, spot.health, quotes) if spot is not None else (rate, None, quotes)
-    scope = (underlying, expiry, valuation, "forward", None)
-    return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, valuation, rate))
+        return parity_forward(chain, spot, expiry, instant, rate)
+    quotes = tuple(sorted((q.instrument_id, q.bid, q.ask, q.timestamp, q.health.value) for q in chain))
+    spot_part = (None,) if spot is None else (spot.ltp, spot.timestamp, spot.health.value)
+    inputs = (rate, EXPIRY_CLOSE, DAYS_IN_YEAR, *spot_part, quotes)
+    scope = (underlying, expiry, instant, "forward", None)
+    return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, instant, rate))
+
+
+def snapshot_instant(clock: datetime.datetime, quotes) -> datetime.datetime:
+    """The one instant of an answer: the latest frame time among the quotes actually read, never later than ``clock``.
+    Every figure (IV, Greeks, forward, the strategy's P&L) is valued at it, so two readers of one snapshot share every
+    figure whatever their clocks say; with no quote read it is the clock."""
+    times = [q.timestamp for q in quotes if q is not None]
+    return min(clock, max(times)) if times else clock
+
+
+def _expired(expiry: datetime.date, clock: datetime.datetime) -> bool:
+    """Judged on the REAL clock, never the frame time: after the close no contract is valued with time left."""
+    return expiry < clock.date() or datetime.datetime.combine(expiry, EXPIRY_CLOSE) <= clock
 
 
 def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],  # noqa: PLR0913
                   valuation: datetime.datetime, rate: Decimal, shared: FeedScope | None = None) -> MarketSnapshot:
     """Read every input the outcome needs from ``provider`` in one pass (one status, one spot, one chain/expiry).
 
-    ``shared`` (REQ-050, ADR-053): a :class:`FeedScope`; each expiry's forward is then computed once per feed snapshot,
-    with the feed owner in the key."""
+    ``valuation`` is the clock reading; the snapshot's own ``valuation`` is the one snapshot instant (the latest frame
+    time read, capped at the clock). ``shared`` (REQ-050, ADR-053): a :class:`FeedScope`; each expiry's forward is then
+    computed once per feed snapshot, with the feed owner in the key."""
     if not isinstance(provider, MarketDataProvider):
         raise ValueError(f"provider must be a MarketDataProvider, got {provider!r}")
     status = provider.status()
@@ -97,18 +115,19 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
             legs[iid] = LegMarket(iid, lc, None, render_explanation("outcome_why_other_underlying", contract_on=c.name,
                                                               underlying=underlying))
             continue
-        if c.expiry is None or c.expiry < valuation.date():
+        if c.expiry is None or _expired(c.expiry, valuation):
             legs[iid] = LegMarket(iid, lc, None, render_explanation("outcome_why_expired"))
             continue
         if c.expiry not in chains:
             chains[c.expiry] = provider.option_chain_snapshot(underlying, c.expiry)
         quote = next((q for q in chains[c.expiry] if q.instrument_id == iid), None)
         legs[iid] = LegMarket(iid, lc, quote)
+    instant = snapshot_instant(valuation, [spot, *(q for chain in chains.values() for q in chain)])
     forwards: dict[datetime.date, ExpiryForward] = {}
     errors: dict[datetime.date, str] = {}
     for expiry, chain in chains.items():
         try:
-            forwards[expiry] = _forward(chain, spot, expiry, (valuation, rate), (shared, underlying))
+            forwards[expiry] = _forward(chain, spot, expiry, (instant, rate), (shared, underlying))
         except ForwardUnavailable:
             errors[expiry] = render_explanation("outcome_why_forward")  # the cause goes to no user
     ended: dict[str, datetime.datetime] = {}
@@ -118,4 +137,4 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
         t = provider.last_quote_time(iid) if held is None else None
         if t is not None:
             ended[iid] = t
-    return MarketSnapshot(underlying, valuation, rate, status, spot, legs, forwards, errors, ended)
+    return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended)

@@ -438,10 +438,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         answered_at = now()
         out = not_connected(definition, ux, None, stored)
     else:
-        valuation = answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
+        answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
-                                 valuation, ctx.rate, shared)
+                                 answered_at, ctx.rate, shared)
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
@@ -449,7 +449,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
             out = not_live(definition, snapshot, ux)
         else:
             config, override = req.scenario_choice()
-            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
+            out = build_outcome(definition, snapshot, ux, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)

@@ -163,14 +163,13 @@ def key(owner="u1", instant=T0, figure="iv", instrument="X", inputs=(1,)):
     return SharedKey(owner, "NIFTY", datetime.date(2026, 10, 13), instant, figure, instrument, inputs)
 
 
-def test_a_new_snapshot_instant_computes_again_and_the_old_entry_is_evicted():
+def test_a_new_snapshot_instant_is_another_key_and_an_old_entry_is_never_served_for_it():
     cache, later = SharedCompute(), T0 + datetime.timedelta(seconds=1)
     cache.get_or_compute(key(), lambda: "old")
     assert cache.get_or_compute(key(instant=later), lambda: "new") == "new"
-    assert cache.computations == 2 and len(cache) == 1  # two computations, the old entry gone
-    assert cache.get_or_compute(key(), lambda: "recomputed") == "recomputed"  # evicted: this is a fresh computation
-    assert len(cache) == 1  # and an older instant than the feed's newest is not kept
-    assert cache.get_or_compute(key(instant=later), lambda: "x") == "new"  # the newest entry is still there
+    assert cache.computations == 2 and len(cache) == 2  # a new instant computes; the old entry waits for the size cap
+    assert cache.get_or_compute(key(instant=later), lambda: "x") == "new"
+    assert cache.get_or_compute(key(), lambda: "x") == "old"  # each instant answers only its own key
 
 
 def test_other_feeds_entries_survive_a_new_instant_of_one_feed():
@@ -186,6 +185,7 @@ def test_memory_is_bounded_by_the_hard_cap():
     for n in range(10):
         cache.get_or_compute(key(instrument=f"I{n}"), lambda n=n: n)
     assert len(cache) == 3
+    assert cache.get_or_compute(key(instrument="I0"), lambda: "again") == "again"  # the oldest was evicted by size
 
 
 def test_different_inputs_never_read_another_entry():
@@ -222,3 +222,62 @@ def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, m
     monkeypatch.setattr(provider, "option_chain_snapshot", shifted)
     after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
     assert after.forwards != before.forwards
+
+
+def test_a_changed_chain_in_another_order_shares_and_other_quotes_do_not(feed, monkeypatch):
+    """Quotes in a different order are the same forward entry; the same quotes with other prices are not."""
+    provider, at = feed
+    calls: Counter = Counter()
+    real = snapshot_module.parity_forward
+
+    def counted(chain, spot, expiry, valuation, rate):
+        calls[expiry] += 1
+        return real(chain, spot, expiry, valuation, rate)
+
+    monkeypatch.setattr(snapshot_module, "parity_forward", counted)
+    cache = FeedScope(SharedCompute(), "user-1")
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    chain = provider.option_chain_snapshot
+    monkeypatch.setattr(provider, "option_chain_snapshot", lambda u, e: list(reversed(chain(u, e))))
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    assert set(calls.values()) == {1}  # the reversed chain read the same entry
+
+
+def test_core_a_second_reader_a_second_later_on_the_clock_computes_nothing(feed, iv_calls, monkeypatch):
+    """The core, through the real outcome path: the clock moves on by one second between two readers of one recorded
+    snapshot; every market-wide figure (each leg's IV, each expiry's forward) is read back, none recomputed."""
+    provider, at = feed
+    forwards: Counter = Counter()
+    real = snapshot_module.parity_forward
+
+    def counted(chain, spot, expiry, valuation, rate):
+        forwards[expiry] += 1
+        return real(chain, spot, expiry, valuation, rate)
+
+    monkeypatch.setattr(snapshot_module, "parity_forward", counted)
+    cache = FeedScope(SharedCompute(), "user-1")
+    first_snap = read(provider, at, STRADDLE, cache.cache, "user-1")
+    first = outcome(first_snap, STRADDLE, cache.cache, "user-1")
+    ivs, fwds = sum(iv_calls.values()), sum(forwards.values())
+    assert ivs == CONTRACTS and fwds >= 1
+    later = at + datetime.timedelta(seconds=1)
+    second_snap = read(provider, later, STRADDLE, cache.cache, "user-1")
+    second = outcome(second_snap, STRADDLE, cache.cache, "user-1")
+    assert sum(iv_calls.values()) == ivs and sum(forwards.values()) == fwds  # the second reader computed nothing
+    assert second_snap.valuation == first_snap.valuation  # one instant: the frames', not the clock's
+    assert [leg.iv for leg in second.legs] == [leg.iv for leg in first.legs]
+
+
+def test_a_newer_frame_for_one_contract_is_a_new_instant_with_new_entries(feed, iv_calls):
+    provider, at = feed
+    cache = SharedCompute()
+    snap = read(provider, at, STRADDLE, cache, "user-1")
+    outcome(snap, STRADDLE, cache, "user-1")
+    before = sum(iv_calls.values())
+    newer = snap.valuation + datetime.timedelta(milliseconds=500)
+    legs = dict(snap.legs)
+    quote = legs[STRADDLE[0]].quote
+    legs[STRADDLE[0]] = dataclasses.replace(legs[STRADDLE[0]], quote=dataclasses.replace(quote, timestamp=newer))
+    moved = dataclasses.replace(snap, legs=legs, valuation=newer)
+    build_outcome(definition(STRADDLE), moved, valuation=newer, shared=FeedScope(cache, "user-1"))
+    assert sum(iv_calls.values()) == before + CONTRACTS  # every figure of the new instant is computed afresh

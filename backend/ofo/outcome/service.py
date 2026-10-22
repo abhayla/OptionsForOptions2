@@ -393,7 +393,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                 price = mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
-                    where = (snapshot.underlying, c.expiry, q.timestamp, "leg_iv", p.instrument_id)
+                    where = (snapshot.underlying, c.expiry, snapshot.valuation, "leg_iv", p.instrument_id)
                     iv = _leg_iv(em, (kind, price, strike, fwd), shared, where)
                 except (ValueError, ArithmeticError):
                     iv = None

@@ -98,7 +98,7 @@ def test_a_slow_computation_for_one_key_does_not_block_reads_of_other_keys():
 
     fast_reader = threading.Thread(target=fast_reads, daemon=True)
     fast_reader.start()
-    fast_reader.join(timeout=10)  # a blocked reader fails the test here instead of hanging it
+    fast_reader.join(timeout=2)  # a blocked reader fails the test here, fast, instead of hanging it
     finished_while_slow_ran = not fast_reader.is_alive()
     release.set()
     slow_reader.join(timeout=30)
