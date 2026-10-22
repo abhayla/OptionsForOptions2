@@ -1,3 +1,4 @@
+# ruff: noqa: PLC0415
 """REQ-015 AC-4 (W-130): the Settings "live market data" row follows the provider's FEED health, not the socket task.
 
 Core: a running socket task whose provider has had no price frame yet (or is in reconnect backoff) used to answer
@@ -16,7 +17,7 @@ from ofo.instruments.parser import parse_instruments_csv
 from ofo.marketdata.feed_health import FEED_STALE
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app import broker_sync, live_market
-from ofo_app.routes.broker_status import build_status, broker_status
+from ofo_app.routes.broker_status import broker_status, build_status
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
 INSTRUMENT_ID = "NSE_FO:47189"

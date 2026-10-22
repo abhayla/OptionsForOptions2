@@ -229,7 +229,9 @@ async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_eng
         dead = (await ac.get("/api/broker/status")).json()
         assert dead["live_market_data"]["state"] == "partial" and dead["order_execution"]["state"] == "partial"
         live = await _market(live_market.LIVE, finished=False)
-        clock = lambda: datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.UTC)  # noqa: E731
+        def clock() -> datetime.datetime:
+            return datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.UTC)
+
         provider = KiteProvider([], clock=clock)
         provider.on_connected(clock())
         live.feed = type("F", (), {"ctx": type("C", (), {"provider": provider, "clock": staticmethod(clock)})()})()

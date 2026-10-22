@@ -50,13 +50,13 @@ def stored_credentials() -> tuple[str, str] | None:
     """(api key, access token) from the broker settings and the ENCRYPTED session store - the same read the live socket
     uses (``broker_token_store.access_token_for``). The token is never read from the environment (REQ-015 AC-9), so a
     ``KITE_ACCESS_TOKEN`` variable is ignored. None when there is no active session."""
-    import asyncio
+    import asyncio  # noqa: PLC0415
 
-    from ofo_app.broker_config import load_broker_config
-    from ofo_app.broker_crypto import TokenCipher
-    from ofo_app.broker_token_store import access_token_for
-    from ofo_app.db import get_engine
-    from ofo_app.live_market import OWNER_REF
+    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_token_for  # noqa: PLC0415
+    from ofo_app.db import get_engine  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415 - a Kite door loads only inside main (the egress gate test)
 
     config = load_broker_config()
 

@@ -1,3 +1,4 @@
+# ruff: noqa: PLC0415, PLR2004, PLW0108
 """W-067 AC-4 (REQ-051, ADR-067): the after-close job makes a day final from Kite's own candles, once.
 
 Spec basis (quoted): REQ-051 AC-4 "Aggregated history is built from the live feed where practical and licensed (Q169)";
@@ -76,9 +77,85 @@ def test_finalize_refuses_before_the_session_has_closed(committed_day):
 
 
 def test_the_command_line_entry_refuses_before_the_close_with_exit_2(monkeypatch, capsys):
-    for name, value in (("KITE_API_KEY", "example-key"), ("KITE_ACCESS_TOKEN", "example-token"),
+    for name, value in (("KITE_API_KEY", "example-key"),
                         ("DATABASE_URL", "postgresql+asyncpg://example@127.0.0.1:1/none")):
         monkeypatch.setenv(name, value)
     csv = ROOT / "tests" / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
     code = main(["--day", "2026-10-08", "--instruments-csv", str(csv)], now=at(11, 0))
     assert code == 2 and "refused" in capsys.readouterr().out
+
+
+def test_the_job_ignores_an_access_token_in_the_environment_and_uses_only_the_stored_session(monkeypatch, capsys):
+    """REQ-015 AC-9: KITE_ACCESS_TOKEN in the environment is never read; with no stored session the job stops (exit 4)
+    before Kite is built, even though the environment holds a token."""
+    from ofo_app import history_finalize as job
+    from ofo_app import kite_history
+
+    monkeypatch.setenv("KITE_ACCESS_TOKEN", "env-token-must-be-ignored")
+    monkeypatch.setattr(job, "stored_credentials", lambda: None)
+    built = []
+    monkeypatch.setattr(kite_history, "KiteHistory", lambda *a, **k: built.append((a, k)))
+    csv = ROOT / "tests" / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
+    assert job.main(["--day", "2026-10-08", "--instruments-csv", str(csv)], now=at(16, 5)) == 4
+    assert built == [] and "no stored Zerodha session" in capsys.readouterr().out
+
+
+def test_the_job_builds_kite_with_the_stored_token_not_the_environment_one(monkeypatch):
+    from ofo_app import history_finalize as job
+    from ofo_app import history_store, kite_history
+
+    monkeypatch.setenv("KITE_ACCESS_TOKEN", "env-token-must-be-ignored")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://example@127.0.0.1:1/none")
+    monkeypatch.setattr(job, "stored_credentials", lambda: ("stored-key", "stored-token"))
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_history(listed, *, api_key, access_token):
+        seen.update(api_key=api_key, access_token=access_token)
+        raise Stop
+
+    monkeypatch.setattr(kite_history, "KiteHistory", fake_history)
+    monkeypatch.setattr(history_store, "PostgresHistoryStore", lambda url: None)
+    csv = ROOT / "tests" / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
+    with pytest.raises(Stop):
+        job.main(["--day", "2026-10-08", "--instruments-csv", str(csv)], now=at(16, 5))
+    assert seen == {"api_key": "stored-key", "access_token": "stored-token"}
+
+
+def test_stored_credentials_reads_through_the_encrypted_store_only(monkeypatch):
+    """The real function: broker settings from the environment, the token through ``access_token_for`` (the stored,
+    decrypted session) - an unrelated KITE_ACCESS_TOKEN in the environment changes nothing."""
+    import base64
+
+    from ofo_app import broker_token_store as token_store
+    from ofo_app import history_finalize as job
+
+    for name, value in (("KITE_API_KEY", "key-1"), ("KITE_API_SECRET", "secret-1"),
+                        ("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback"),
+                        ("FRONTEND_ORIGIN", "http://127.0.0.1:5173"), ("KITE_EXPECTED_USER_ID", "AB1234"),
+                        ("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(b"k" * 32).decode()),
+                        ("KITE_ACCESS_TOKEN", "env-token-must-be-ignored")):
+        monkeypatch.setenv(name, value)
+
+    async def stored(conn, user_ref, cipher, **kw):
+        return "stored-token"
+
+    class _Engine:
+        def connect(self):
+            class _Cm:
+                async def __aenter__(self):
+                    return object()
+
+                async def __aexit__(self, *a):
+                    return False
+            return _Cm()
+
+        async def dispose(self):
+            pass
+
+    from ofo_app import db
+    monkeypatch.setattr(token_store, "access_token_for", stored)
+    monkeypatch.setattr(db, "get_engine", lambda: _Engine())
+    assert job.stored_credentials() == ("key-1", "stored-token")

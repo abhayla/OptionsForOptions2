@@ -75,14 +75,11 @@ def _live_status(live_state: str, phase: str | None) -> StatusOut:
     """``phase`` is the provider's feed phase while the socket runs, None when it does not. Connected only when prices
     are arriving (``healthy``); a running socket with no frame yet, or frames stopped, is waiting; a socket in backoff
     is reconnecting; the answer never comes from the socket task being alive."""
-    if phase == FEED_HEALTHY:
-        return _status("connected")
-    if phase == FEED_WAITING:
-        return _status("partial", "live_feed_waiting")
-    if phase == FEED_RECONNECTING:
-        return _status("partial", "live_feed_reconnecting")
-    if phase == FEED_ENDED:
-        return _status("partial", "live_feed_session_ended")
+    by_phase = {FEED_HEALTHY: _status("connected"), FEED_WAITING: _status("partial", "live_feed_waiting"),
+                FEED_RECONNECTING: _status("partial", "live_feed_reconnecting"),
+                FEED_ENDED: _status("partial", "live_feed_session_ended")}
+    if phase in by_phase:
+        return by_phase[phase]
     if live_state == live_market.SESSION_ENDED:
         return _status("partial", "live_feed_session_ended")
     if live_state == live_market.NOT_STARTED:
