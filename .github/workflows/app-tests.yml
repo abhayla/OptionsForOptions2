@@ -148,6 +148,17 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # REQ-113: the bus between the market-data process and the API (Redis Streams). The bus tests FAIL, never skip,
+      # when OFO_REQUIRE_DB_TESTS=1 and this service is missing.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -206,6 +217,7 @@ jobs:
           OFO_REQUIRE_DB_TESTS: '1'
           TEST_DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           TEST_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+          REDIS_URL: redis://localhost:6379/0  # REQ-113: the bus tests (tests_app/test_bus_socket.py and the feed tests)
           # W-067 r2: finalize of a FULL trading day (F-33: about 1,603 instruments x 375 minutes = 601,125 bars) runs
           # here only; a developer PC runs the same test at 40 instruments (its PostgreSQL also serves production).
           OFO_HISTORY_SCALE_INSTRUMENTS: '1603'

@@ -9,6 +9,7 @@ import base64
 
 import pytest
 
+from ofo_app import feed_main
 from ofo_app.config import Settings, database_name
 
 BASE = "postgresql+asyncpg://example@127.0.0.1:5432/"
@@ -91,3 +92,15 @@ def test_empty_or_missing_name_refused_under_live_market():
         with pytest.raises(ValueError, match="ADR-078"):
             Settings(DATABASE_URL=url, LIVE_MARKET=True, _env_file=None)
     assert Settings(DATABASE_URL=BASE, _env_file=None).LIVE_MARKET is False
+
+
+def test_the_market_data_process_refuses_the_test_database_like_the_api(monkeypatch):
+    """REQ-113 AC-7 / ADR-078: ``feed_main`` builds its settings as a LIVE run, so the test database (or an unnamed
+    one) is refused exactly as the API refuses it; a named dev database is allowed."""
+    monkeypatch.setenv("TEST_DATABASE_URL", BASE + "ofo_test")
+    for refused in ("ofo_test", "ofo_test?ssl=disable", ""):
+        monkeypatch.setenv("DATABASE_URL", BASE + refused)
+        with pytest.raises(ValueError, match="ADR-078"):
+            feed_main.feed_settings()
+    monkeypatch.setenv("DATABASE_URL", BASE + "ofo_dev")
+    assert feed_main.feed_settings().LIVE_MARKET is True

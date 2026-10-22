@@ -115,6 +115,8 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/routes/broker_capabilities.py": "composition root of the broker-flags read (W-132, REQ-117): serves "
                                               "Zerodha's declared flags (ofo.broker.kite_flags) as on/off, like "
                                               "routes/positions.py - REQ-063 AC-1",
+    "ofo_app/feed_main.py":"the market-data process (REQ-113): builds the one real KiteSocket over "
+                              "the bus relay; REQ-063 AC-1 keeps the Kite door out of the API process",
     "ofo_app/return_book.py":"the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",

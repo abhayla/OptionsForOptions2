@@ -18,7 +18,7 @@ import base64
 import math
 import os
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -126,3 +126,29 @@ def order_path_on(monkeypatch: pytest.MonkeyPatch) -> None:
     Execute and return routes opt in with ``pytestmark = pytest.mark.usefixtures("order_path_on")``."""
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("OFO_ORDER_PATH", "1")
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """REQ-113: the bus address. CI sets REDIS_URL from a ``redis:7`` service; a developer PC gets the pure-Python
+    stand-in (fakeredis, finding F-58) on a loopback port. No Redis and no stand-in FAILS when OFO_REQUIRE_DB_TESTS=1
+    (CI), else skips."""
+    given = os.environ.get("REDIS_URL", "").strip()
+    if given:
+        yield given
+        return
+    try:
+        import fakeredis  # noqa: PLC0415
+    except ImportError:
+        if _required():
+            pytest.fail("REDIS_URL is unset and fakeredis is not installed, but OFO_REQUIRE_DB_TESTS=1")
+        pytest.skip("no Redis: set REDIS_URL or install fakeredis (requirements-dev.txt)")
+    import threading  # noqa: PLC0415
+
+    server = fakeredis.TcpFakeServer(("127.0.0.1", 0), server_type="redis")
+    threading.Thread(target=server.serve_forever, daemon=True, name="redis-stand-in").start()
+    yield f"redis://127.0.0.1:{server.server_address[1]}/0"
+    stopper = threading.Thread(target=server.shutdown, daemon=True)  # shutdown() waits for the serve loop: bound it
+    stopper.start()
+    stopper.join(timeout=3)
+    server.server_close()

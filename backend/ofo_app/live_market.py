@@ -31,7 +31,9 @@ from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
 from ofo.marketdata.kite_provider import IST, KiteProvider
 
+from ofo_app import feed_mode
 from ofo_app.config import app_env, get_settings
+from ofo_app.feed_bus import BusSocket
 from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.live_push import LiveFeed
@@ -158,8 +160,11 @@ class LiveMarket:
             return datetime.datetime.now(IST)
 
         provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
-        socket = KiteSocket(provider, api_key=broker_config.api_key, access_token=token, clock=clock,
-                            base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once)
+        if feed_mode.feed_mode() == feed_mode.BUS:  # REQ-113: the market-data process holds the socket, not this one
+            socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
+        else:
+            socket = KiteSocket(provider, api_key=broker_config.api_key, access_token=token, clock=clock,
+                                base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once)
         self.attach(provider, socket, clock, token_fingerprint(token))
 
     async def _read_positions_once(self) -> None:

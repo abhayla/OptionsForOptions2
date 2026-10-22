@@ -20,6 +20,7 @@ from ofo_app import (
     errors,
     event_loop,
     execute_replay_switch,
+    feed_mode,
     held_switches,
     live_market,
     pinned_clock,
@@ -96,6 +97,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
     errors.set_frontend_origin(config.frontend_origin)  # write-once (#159)
+    feed_mode.require_valid(app_env() or "", live_market.live_requested())  # REQ-113: an allow-list, before serving
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
