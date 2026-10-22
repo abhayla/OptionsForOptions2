@@ -106,8 +106,10 @@ def _expected_document(ids: dict[str, int], strike_text: dict[str, str], maps: d
     return {"schema_version": 1, "underlying": "NIFTY", **maps,
             "legs": [{"contract_id": ids[s], "action": side, "instrument": inst.value, "strike": strike_text[s],
                       "expiry": "2026-10-13", "quantity": 65,
-                      # W-071 (ADR-057): the stored contract's segment and token, so the browser can price the leg
-                      **({} if tokens is None else {"exchange_segment": tokens[s][0], "exchange_token": tokens[s][1]})}
+                      # W-071 (ADR-057): the stored contract's segment and token, so the browser can price the leg;
+                      # issue #500: with the catalogue's answer for it (every fixture contract is live)
+                      **({} if tokens is None else {"contract_state": "live", "exchange_segment": tokens[s][0],
+                                                    "exchange_token": tokens[s][1]})}
                      for s, side, inst, *_ in IRON_CONDOR]}
 
 
