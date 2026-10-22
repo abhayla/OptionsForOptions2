@@ -4100,14 +4100,46 @@
             "title": "Contract Id",
             "type": "integer"
           },
+          "contract_state": {
+            "anyOf": [
+              {
+                "const": "live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              }
+            ],
+            "title": "Contract State"
+          },
           "exchange_segment": {
-            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Exchange Segment",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Segment"
           },
           "exchange_token": {
-            "title": "Exchange Token",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Token"
           },
           "expiry": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -4150,6 +4182,7 @@
         "required": [
           "contract_id",
           "action",
+          "contract_state",
           "exchange_segment",
           "exchange_token",
           "instrument",

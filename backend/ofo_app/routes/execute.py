@@ -65,10 +65,9 @@ from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
 from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import entitlement_store, live_market, order_audit
+from ofo_app import entitlement_store, live_market, order_audit, tracked_contracts
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
@@ -95,8 +94,6 @@ router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
 BASKET_PRODUCT = Product(KiteOrder.__dataclass_fields__["product"].default)
-_IDS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
-            "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 
 
 class ExecuteIn(BaseModel):
@@ -349,10 +346,15 @@ def _executable(action: str, held: Mapping[str, int]) -> VersionState:
 async def _wanted(req: _Request, stored: Any, held: Mapping[str, int]) -> list[ep.LegToPrice]:
     if req.action == EXIT:
         return ep.exit_legs(held, _iid)
-    rows = (await req.db.execute(_IDS, {"ids": sorted(set(stored.saved.contract_ids))})).all()
-    ids = {int(r.id): InstrumentId(r.exchange_segment, int(r.exchange_token)) for r in rows}
-    if any(cid not in ids for cid in stored.saved.contract_ids):
+    # Issue #500: the one door from a stored contract id to the id it is priced and ordered by (tracked_contracts); a
+    # retired or delisted contract's token may now belong to another contract, so only a live leg holding its own token
+    # gets an id. Missing -> not in the catalogue; any other not-live state -> refused, nothing priced or ordered.
+    answers = await tracked_contracts.resolve(req.db, sorted(set(stored.saved.contract_ids)))
+    if any(a.state == "contract_missing" for a in answers):
         raise _refuse("strategy_contract_not_in_catalogue")
+    if any(a.feed_id is None for a in answers):
+        raise _refuse("gate_contract_not_live")
+    ids = {a.contract_id: a.feed_id for a in answers if a.feed_id is not None}
     entries = stored.saved.entries or (None,) * len(stored.saved.contract_ids)
     return [ep.LegToPrice(ids[cid], leg.action, leg.quantity, None if e is None else e.price)
             for cid, leg, e in zip(stored.saved.contract_ids, stored.saved.definition.legs, entries, strict=True)]
