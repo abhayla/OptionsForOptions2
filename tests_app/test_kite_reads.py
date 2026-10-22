@@ -111,8 +111,9 @@ def test_requests_are_exactly_the_allow_listed_reads() -> None:
 
 def test_allow_list_entry_is_exactly_the_three_reads() -> None:
     """AC-4: the module's ALLOWED_CALLS entry is the three reads and nothing else."""
-    # W-099 added the quote read, W-106 the holdings read
-    assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == READS | {("GET", "/quote"), ("GET", "/portfolio/holdings")}
+    # W-099 added the quote read, W-106 the holdings read, W-131 the profile read
+    assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == READS | {("GET", "/quote"), ("GET", "/portfolio/holdings"),
+                                                              ("GET", "/user/profile")}
 
 
 @pytest.mark.parametrize("method,path", [("POST", "/orders"), ("POST", "/orders/regular"), ("DELETE", "/orders/1"),

@@ -1,7 +1,8 @@
 """Zerodha's orders, trades and positions over HTTP for the owner's own connection (W-093, REQ-073 AC-3, ADR-054).
 
 Six reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
-(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)), ``GET /user/profile`` (W-131, REQ-054 AC-1) (the module's entry in
+(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)), ``GET /user/profile`` (W-131, REQ-054 AC-1) (the
+module's entry in
 ``ALLOWED_CALLS``). Every request goes through ``check_call`` first, so a method or path outside the allow-list is
 refused BEFORE the transport is called, and the urllib door checks it again. No call here can place, change or cancel
 an order (REQ-073 AC-4).
@@ -25,6 +26,7 @@ from decimal import Decimal
 from typing import Final
 
 from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
+
 from ofo_app import broker_sync
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
 
@@ -150,13 +152,15 @@ def _profile(data: object) -> AccountProfile:
     required key, or a list holding anything but text, is a reply we do not understand."""
     if not isinstance(data, dict):
         raise KiteReadError("kite_read_bad_reply")
-    lists = {}
+    lists = []
     for name in PROFILE_LIST_KEYS:
         value = data.get(name)
         if not isinstance(value, list):
             raise KiteReadError("kite_read_bad_reply")
-        lists[name] = tuple(_text(v) for v in value)
-    return AccountProfile(*(_text(data.get(name)) for name in PROFILE_TEXT_KEYS), **lists)
+        lists.append(tuple(_text(v) for v in value))
+    user_id, broker = (_text(data.get(name)) for name in PROFILE_TEXT_KEYS)
+    exchanges, products, order_types = lists
+    return AccountProfile(user_id, broker, exchanges, products, order_types)
 
 
 def _by_key(rows: Sequence[Holding]) -> dict[tuple[str, str, str], Holding]:
@@ -264,7 +268,7 @@ class KiteReads:
         rows = self.fetch_orders()
         by_id: dict[str, dict] = {}
         for row in rows:
-            order_id = _text(row.get("order_id"))  # type: ignore[union-attr]  # _rows refused any non-object row
+            order_id = _text(row.get("order_id"))  # type: ignore[attr-defined]  # _rows refused any non-object row
             if order_id in by_id:
                 raise KiteReadError("kite_read_bad_reply")
             by_id[order_id] = row  # type: ignore[assignment]
