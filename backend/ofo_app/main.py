@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from ofo.broker import egress as _egress
 
-from ofo_app import errors, event_loop, execute_replay_switch, live_market, pinned_clock, replay_mode
+from ofo_app import errors, event_loop, execute_replay_switch, held_switches, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
@@ -33,6 +33,7 @@ from ofo_app.routes import (
     outcome,
     planned_entry,
     positions,
+    ready_made,
     strategies,
     strategy_templates,
     tracking,
@@ -88,6 +89,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
         Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
+    held_switches.require_valid_configuration()  # W-125: a held feature on without a reference refuses to start
     live.set_replay_feed(None)
     if pinned_clock.pin_requested():  # #237 test-only; refused outside APP_ENV=test, before anything is served
         pinned_clock.require_test_env(app_env() or "")
@@ -119,6 +121,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
     app.include_router(features.router)  # W-121: which switchable features are on (the order path)
+    app.include_router(ready_made.router)  # W-125: ready-made shapes, held (Q211)
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money

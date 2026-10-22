@@ -72,9 +72,10 @@ def test_ac1_a_text_the_catalogue_does_not_hold_cannot_pass_the_door() -> None:
 
 def test_w119_template_legs_are_the_catalogue_defaults() -> None:
     """REQ-024 AC-2 (W-119): each template carries its legs at the catalogue defaults, strikes in steps from ATM.
-    Expected values from catalogue.yaml text: bull_call_spread k=0, w=2 -> BUY CE k, SELL CE k + w."""
+    Expected values from catalogue.yaml text: bull_call_spread k=0, w=4 (REQ-079 AC-3: 22,800 to 23,000 is
+    4 steps of 50) -> BUY CE k, SELL CE k + w."""
     by_id = {t.id: t for t in strategy_templates.strategy_templates().templates}
     assert [leg.model_dump() for leg in by_id["bull_call_spread"].legs] == [
         {"action": "BUY", "instrument": "CE", "strike_steps": 0, "expiry_slot": "near", "quantity_multiplier": 1},
-        {"action": "SELL", "instrument": "CE", "strike_steps": 2, "expiry_slot": "near", "quantity_multiplier": 1}]
+        {"action": "SELL", "instrument": "CE", "strike_steps": 4, "expiry_slot": "near", "quantity_multiplier": 1}]
     assert all(t.legs for t in by_id.values())

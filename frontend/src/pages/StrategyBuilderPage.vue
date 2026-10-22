@@ -23,6 +23,8 @@ import { advancedDetails } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
+import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
+import PopFigure from '@/components/strategy/PopFigure.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -230,6 +232,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
+    <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
@@ -288,6 +291,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :underlying="data.underlying"
         :last-updated="data.valuation"
       />
+      <PopFigure :pop="data.probability_of_profit ?? null" />
       <MarginLine :margin="data.margin" />
 
       <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>

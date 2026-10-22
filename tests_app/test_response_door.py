@@ -275,12 +275,14 @@ def test_the_app_models_are_all_swept() -> None:
         "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
         "TemplatesOut", "TemplateLegOut", "PositionsOut", "StrategyPositionsOut", "StrategyContractOut",
         "StatusOut", "BrokerStatusOut", "DisconnectOut", "FeaturesOut",
-        "TrackingLegOut", "TrackingIndexOut", "DetectionOut", "TrackingOut", "PreviewOut", "ChainStrikesOut"}
+        "TrackingLegOut", "TrackingIndexOut", "DetectionOut", "TrackingOut", "PreviewOut", "ChainStrikesOut",
+        "PlacedLegOut", "ReadyMadeOut", "LoadTemplateIn", "QuickPickIn"}
     # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
     # TemplatesOut; W-119 adds TemplateLegOut; W-111 adds the Positions reply's 3 models (ADR-138 (2): strategy
     # groups); W-089 adds the three broker-status models; W-121 adds FeaturesOut; W-122 adds the four tracking models
     # W-124 adds PreviewOut (the chain preview) and ChainStrikesOut (the strikes preference)
-    assert len(_app_models()) == 58
+    # W-125 adds the ready-made reply and its two request models
+    assert len(_app_models()) == 62
 
 
 @pytest.mark.parametrize("required_only", [False, True])
