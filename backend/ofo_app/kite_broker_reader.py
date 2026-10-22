@@ -15,6 +15,7 @@ from collections.abc import Callable, Sequence
 from decimal import Decimal
 
 from ofo.broker.capabilities import CapabilitySet, load_or_off
+from ofo.broker.kite_capabilities import load_zerodha_capabilities
 from ofo.execution.basket import parse_tag
 from ofo.execution.partial import BrokerOrderStatus
 from ofo.instruments.catalogue import Catalogue
@@ -23,7 +24,6 @@ from ofo.reconciliation.positions import BrokerPositionLine
 from ofo.timeutil import IST
 
 from ofo_app.checked_basket import zerodha_required_margin
-from ofo_app.kite_capabilities import load_zerodha_capabilities
 from ofo_app.kite_margin import KiteMargin
 from ofo_app.kite_reads import AccountProfile, KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, order_status_from_row, positions_from_reply

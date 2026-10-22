@@ -32,9 +32,9 @@ BACKEND = ROOT / "backend"
 
 #: The Zerodha/Kite modules (relative to ``backend/``): the whole of REQ-054 AC-2's "only the Zerodha implementation".
 KITE_MODULES: Final = frozenset({
-    "ofo/broker/kite_auth.py", "ofo/broker/kite_endpoints.py", "ofo/broker/kite_http.py",
+    "ofo/broker/kite_auth.py", "ofo/broker/kite_capabilities.py", "ofo/broker/kite_endpoints.py", "ofo/broker/kite_http.py",
     "ofo/marketdata/kite_frames.py", "ofo/marketdata/kite_provider.py",
-    "ofo_app/eligibility_from_zerodha.py", "ofo_app/kite_broker_reader.py", "ofo_app/kite_capabilities.py", "ofo_app/kite_client.py",
+    "ofo_app/eligibility_from_zerodha.py", "ofo_app/kite_broker_reader.py", "ofo_app/kite_client.py",
     "ofo_app/kite_history.py", "ofo_app/kite_http.py", "ofo_app/kite_margin.py", "ofo_app/kite_reads.py",
     "ofo_app/kite_replies.py", "ofo_app/kite_ws.py",
 })

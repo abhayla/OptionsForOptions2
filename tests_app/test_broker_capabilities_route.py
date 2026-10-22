@@ -6,7 +6,7 @@ Uses the real app (``create_app``) and the real declared data; no database is to
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from ofo_app import kite_capabilities
+from ofo.broker import kite_capabilities
 from ofo_app.main import create_app
 
 PATH = "/api/broker/capabilities"

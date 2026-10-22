@@ -1,16 +1,16 @@
 """Read-only: which broker abilities the platform may offer, for the screens (REQ-117 AC-1, AC-4, W-132).
 
 ``GET /api/broker/capabilities`` answers each of the seven named flags as on/off and nothing else (no source text,
-no broker name). The flags are declared data (``ofo_app.kite_capabilities``): no request, query parameter or header
+no broker name). The flags are declared data (``ofo.broker.kite_capabilities``): no request, query parameter or header
 changes the answer, and the route has no write method. A declaration that cannot load answers every flag off. The
 screens treat a missing flag or a failed read as off too (``frontend/src/lib/brokerCapabilities.js``).
 """
 from __future__ import annotations
 
 from fastapi import APIRouter
+from ofo.broker import kite_capabilities
 from ofo.broker.capabilities import is_supported, load_or_off
 
-from ofo_app import kite_capabilities
 from ofo_app.api_models import ApiModel
 from ofo_app.errors import ClosedRoute
 

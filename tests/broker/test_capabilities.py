@@ -25,7 +25,7 @@ from ofo.broker.capabilities import (
     load_capabilities,
     load_or_off,
 )
-from ofo_app.kite_capabilities import ZERODHA_DECLARED, load_zerodha_capabilities
+from ofo.broker.kite_capabilities import ZERODHA_DECLARED, load_zerodha_capabilities
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEVEN = ("basket_page_orders", "broker_held_triggers", "intraday_product", "order_update_stream", "funds_read",

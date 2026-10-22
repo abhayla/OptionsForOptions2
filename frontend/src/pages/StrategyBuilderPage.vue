@@ -33,9 +33,11 @@ import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
+import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
+const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
 const router = useRouter()
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
@@ -291,7 +293,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :last-updated="data.valuation"
       />
       <PopFigure :pop="data.probability_of_profit ?? null" />
-      <MarginLine :margin="data.margin" />
+      <MarginLine :margin="data.margin" :capabilities="capabilities" />
 
       <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>

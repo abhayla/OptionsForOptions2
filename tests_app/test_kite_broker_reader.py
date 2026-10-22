@@ -501,7 +501,7 @@ def test_attack7_the_reader_calls_only_the_read_methods_of_its_two_doors() -> No
                       "fetch_available_funds"}
     imported = {n.module for n in ast.walk(tree)
                 if isinstance(n, ast.ImportFrom) and (n.module or "").startswith("ofo_app")}
-    assert imported == {"ofo_app.checked_basket", "ofo_app.kite_capabilities", "ofo_app.kite_margin", "ofo_app.kite_reads", "ofo_app.kite_replies"}
+    assert imported == {"ofo_app.checked_basket", "ofo_app.kite_margin", "ofo_app.kite_reads", "ofo_app.kite_replies"}
     assert kite_broker_reader.zerodha_required_margin.__module__ == "ofo_app.checked_basket"
     assert kite_replies.order_status_from_row is order_status_from_row
 
@@ -510,7 +510,7 @@ def test_the_reader_exposes_zerodhas_declared_flags_and_fails_closed(monkeypatch
     """REQ-117 AC-1/AC-4: ``capabilities`` is Zerodha's declared set (held triggers off); a declaration that cannot
     load gives every flag off instead of an error."""
     from ofo.broker.capabilities import Capability, is_supported
-    from ofo_app import kite_capabilities
+    from ofo.broker import kite_capabilities
 
     r = reader(Replay())
     assert [is_supported(r.capabilities, c) for c in Capability] == [True, False, True, True, True, True, True]
