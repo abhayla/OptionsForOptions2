@@ -897,9 +897,35 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
           "You can build, save and track strategies."),
 )
 
+# --- W-125 (REQ-079 AC-1, AC-6, AC-7, AC-8): ready-made shapes and quick picks, held for the Q211 legal answer.
+# New: awaiting the owner's read. Nothing is placed or saved by any of these refusals.
+_READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("ready_made_held", _UI, 5,
+          "Ready-made shapes and quick picks are not available yet.",
+          "No strikes were placed and nothing was saved.", "Loading a ready-made shape or a quick pick.",
+          "Choose your strikes yourself in the builder."),
+    _gate("ready_made_expiry_missing", _UI, 6,
+          "This shape needs an expiry that {underlying} does not have in the instrument list.",
+          "No strikes were placed and nothing was saved.", "Loading this shape for the chosen expiry.",
+          "Pick another expiry or another shape.", {"underlying": Underlying}),
+    _gate("ready_made_strike_not_listed", _UI, 7,
+          "A strike this shape needs is not listed for {underlying} on the chosen expiry.",
+          "No strikes were placed and nothing was saved.", "Loading this shape or quick pick.",
+          "Pick another expiry, or choose your strikes yourself.", {"underlying": Underlying}),
+    _gate("ready_made_distance_invalid", _UI, 8,
+          "That distance is not one of the distances offered for {underlying}.",
+          "No strikes were placed and nothing was saved.", "Loading this quick pick.",
+          "Pick one of the distances shown.", {"underlying": Underlying}),
+    _gate("ready_made_spot_unavailable", _MD, 301,
+          "The {underlying} index value is missing or out of date.",
+          "Strikes are never placed from an old value, so none were placed.",
+          "Loading a ready-made shape or a quick pick.",
+          "Wait for the live data to return, then try again.", {"underlying": Underlying}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
