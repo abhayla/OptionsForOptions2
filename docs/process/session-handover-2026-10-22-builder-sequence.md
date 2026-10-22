@@ -8,8 +8,10 @@ No order was ever sent. Continue at the FIRST ROW NOT CLOSED in the table.
 - **Merged on main:** PR #511 (plan + step 0: core proof, flaky e2e fix, response-door list, W-129..W-190).
 - **Chunk 1 branch:** `build/seq-chunk-1` in the ONE sequence worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`,
   pushed as a backup (no PR yet: PR, CI and the Tier A chunk review come at row 16).
-- **Rows closed:** 1 (REQ-001), 2 (REQ-015), 3 (REQ-054), 4 (REQ-117), 5 (REQ-053). Row 6 (REQ-048) built at 73212d26,
-  verifier round 1 dispatched. Rows 7-63 not started.
+- **Rows closed:** 1 (REQ-001), 2 (REQ-015), 3 (REQ-054), 4 (REQ-117), 5 (REQ-053); row 6 (REQ-048) PARKED #517 after
+  two Tier A rounds (AC-1..AC-4 pass; AC-5 credential scans to redesign as a reply-field inventory). Meta review after
+  row 6 done and applied (Size + CI lines enforced by check_brief). Row 7 (REQ-049) brief written (expected 90 min /
+  450k), builder dispatched ~16:55 IST. Rows 8-63 not started.
 - **Owner decisions this session:** ADR-169 (connect by Zerodha login only, no own-app setup; REQ-015 AC-3 rewritten);
   strict row order kept; per-row process review (row-review.md); ofo_test reset approved -> done instead as a throwaway
   database per run (no data touched; #497 comments).
@@ -41,9 +43,11 @@ No order was ever sent. Continue at the FIRST ROW NOT CLOSED in the table.
 - `check_brief.py` needs `PYTHONUTF8=1`; a `Threat model:` line must be ONE line with both "in scope" and "out of scope".
 
 ## NEXT
-1. Row 6: act on the verifier's result (round 1); close per contract step 6 + the review (expected 60 min / 350k);
-   row 6 is a 3rd row -> META REVIEW before row 7's build (row-review step 5; the repo test enforces it).
-2. Row 7 (REQ-049 data health): measure; picks up #513 (unwanted ticks, after-hours Reconnect advice).
+1. Row 7 (REQ-049 data health, picks up #513): act on the builder's report; verifier (Opus); close with the review
+   and expected vs actual from commit times.
+2. Row 8 (REQ-050 shared computation, unmeasured), then 9 (REQ-113, owns the cross-process cache), 10, 11, 12-14
+   (verified: one shared verifier), 15-16 (one shared verifier); meta review after row 9.
+2b. The parked row 6 (#517) is retried only with a fresh independent designer for the reply-field inventory.
 3. Release the stray agent worktree `agent-a3130708769c0608b` (clean, at main's head; locked while its process ran):
    `python scripts/orchestrator/agentwt.py a3130708769c0608b release`.
 4. Rows 8-16, then chunk 1's PR: merge main once, fast checks, `regen.py` once, `land.py` with the reviewed sha,
