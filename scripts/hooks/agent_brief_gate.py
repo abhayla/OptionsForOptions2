@@ -3,7 +3,8 @@
 Only the DESIGNATED brief is checked: any `.md` under docs/process/ (subfolders included, either slash style) named
 after a line starting `Your full brief is the file`, `Your full brief:`, `Your brief is the file` or `Brief:`
 (any other mention of a brief file, e.g. "for history see ...", passes). check_brief runs with UTF-8 output; the
-dispatch is refused only when it exits non-zero AND printed a MISSING/FAIL line; a crash of the checker allows (one stderr line).
+dispatch is refused only when it exits non-zero AND printed a MISSING/FAIL line; a crash of the checker allows (one
+stderr line).
 Finding brief-rule-from-memory + 2026-10-16: unchecked briefs cost 3 CI rounds. The brief path may be absolute
 or relative (tried against CLAUDE_PROJECT_DIR, this repo, then the current directory).
 A prompt naming no brief file passes.
