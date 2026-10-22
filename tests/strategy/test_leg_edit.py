@@ -187,4 +187,4 @@ def test_refusals_are_user_facing_catalogue_text(cat):
     with pytest.raises(LegEditRefused) as err:
         leg_edit.width(cat, NIFTY, condor()[:1], 1)
     assert err.value.message.what_happened == (
-        "Width applies to straddles, strangles, iron butterflies and iron condors.")
+        "Width does not apply to this strategy.")

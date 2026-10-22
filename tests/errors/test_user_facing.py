@@ -94,7 +94,14 @@ def _disconnect_status() -> object:
     return DisconnectStatus(error=disconnect_error(AT), last_updated=AT)
 
 
+def _leg_edit_refused() -> object:
+    from ofo.strategy.leg_edit import LegEditRefused
+
+    return LegEditRefused("leg_edit_width_not_applicable")
+
+
 EXAMPLES: dict[str, Callable[[], object]] = {
+    "ofo.strategy.leg_edit.LegEditRefused": _leg_edit_refused,
     "ofo.marketdata.disconnect.DisconnectStatus": _disconnect_status,
     "ofo.execution.safety.CheckFailure": _check_failure,
     "ofo.execution.send_guard.SendRefused": _send_refused,

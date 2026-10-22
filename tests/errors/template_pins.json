@@ -1426,5 +1426,41 @@
   "explanation:confirm_to_continue": {
     "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
+  },
+  "leg_edit_strike_not_listed": {
+    "sha256": "21becd9984422a8625e39d207d906775f83b03a9ceaec619ca83b0a78f004a90",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_no_further_strike": {
+    "sha256": "eb77282c70c205296edd037592daf75988f05fa3d1db1609d5f77cb2e79dbd2f",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_futures_no_stepper": {
+    "sha256": "438868ee544b4607ccb0431be83ff4b9fc81c39427613c3ad9ea76abb4cba9bd",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_not_applicable": {
+    "sha256": "676d66a24681c7a4405b435a5ae8adf0fbf6cf7b82d879e7bad9d6cc49256dc1",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_not_applicable": {
+    "sha256": "03f9c51f5600d9b993b043b4d64a883d9bcf730a5d552f7f372ac78f8df049ac",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_below_zero": {
+    "sha256": "bbb8217813594472e6a18d09aa7b100982eef22ba0c1d78cb8a4a50cc2f68cd8",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_below_minimum": {
+    "sha256": "ef1d53091db48660b93b94c72bdd9e0d4620ade5bb8b815412d2e9c007c21ec4",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_needs_option_leg": {
+    "sha256": "3343e50e9d4f88f0d65cc9143328c0301d830b59270178a89e8a1d3c4dac62de",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_price_not_tick": {
+    "sha256": "926a63c553a31591cbd60bf47ae205fe6eb55892759dcca745d0e3b37b13c26a",
+    "reviewed": "pending owner read"
   }
 }
