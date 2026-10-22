@@ -1426,5 +1426,29 @@
   "explanation:confirm_to_continue": {
     "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
+  },
+  "ready_made_held": {
+    "sha256": "3a6088add901e711731cf015889cdfa18f26504b87d1a1b40b47b5aca2970a0b",
+    "reviewed": "pending owner read"
+  },
+  "ready_made_expiry_missing": {
+    "sha256": "76cdd55b8f6dc64a676d80bd369529ef336ccd8582ddc4b14d5641c6bd4513e0",
+    "reviewed": "pending owner read"
+  },
+  "ready_made_strike_not_listed": {
+    "sha256": "cb4fc667e89cfcda27f4154a7024a0da2cd0ab06ac24ac4167cb2ef208d642f0",
+    "reviewed": "pending owner read"
+  },
+  "ready_made_distance_invalid": {
+    "sha256": "f269f9e0952dc83aed2e72a8c62764b5ef53eca9eae01523346adc74849df6c3",
+    "reviewed": "pending owner read"
+  },
+  "ready_made_spot_unavailable": {
+    "sha256": "153711bfab1232d6e9a006a19d86c9d9b6875dcfcd914f112cbb281a4f355048",
+    "reviewed": "pending owner read"
+  },
+  "explanation:ready_made_fixed_rule_label": {
+    "sha256": "fd98968c08bd3b7eff12e3471002c112d6064cbf0596c55cdb11361337dd7a27",
+    "reviewed": "pending owner read"
   }
 }

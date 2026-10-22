@@ -10,6 +10,8 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
+
 from ofo_app import held_switches as hs
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -88,6 +90,7 @@ def test_ac11_the_production_configuration_has_every_held_feature_off():
     assert hs.features_on(env) == ()
 
 
+@pytest.mark.repo_scan
 def test_ac11_every_use_of_a_held_switch_names_a_listed_switch_by_import_source():
     """Allow-list scan over backend/: every held_on() names a listed switch; only held_switches.py reads OFO_HELD_*."""
     problems: list[str] = []

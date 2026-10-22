@@ -106,6 +106,7 @@ def test_ac3_whole_percent_half_even_and_never_a_promise(p, percent):
     assert whole_percent(p) == percent
 
 
+@pytest.mark.repo_scan
 def test_ac6_the_figure_is_never_a_sort_or_rank_key_anywhere_in_the_backend():
     """AC-6: no sorted/sort/min/max/nlargest call whose key expression names the probability (allow-list: none)."""
     bad = []

@@ -1098,6 +1098,23 @@
       "FeaturesOut": {
         "additionalProperties": false,
         "properties": {
+          "held": {
+            "items": {
+              "enum": [
+                "platform_strikes",
+                "probability_of_profit",
+                "delayed_prices",
+                "history_charts",
+                "events_calendar",
+                "fii_dii",
+                "market_event_warning",
+                "strategy_price_history"
+              ],
+              "type": "string"
+            },
+            "title": "Held",
+            "type": "array"
+          },
           "order_path": {
             "enum": [
               "on",
@@ -1108,7 +1125,8 @@
           }
         },
         "required": [
-          "order_path"
+          "order_path",
+          "held"
         ],
         "title": "FeaturesOut",
         "type": "object"
@@ -1299,6 +1317,36 @@
           "zero_pnl"
         ],
         "title": "LevelOut",
+        "type": "object"
+      },
+      "LoadTemplateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "template_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "template_id",
+          "expiry"
+        ],
+        "title": "LoadTemplateIn",
         "type": "object"
       },
       "MarginOut": {
@@ -1658,6 +1706,60 @@
         "title": "PayoffOut",
         "type": "object"
       },
+      "PlacedLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          },
+          "symbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "instrument",
+          "strike",
+          "expiry",
+          "instrument_id",
+          "symbol",
+          "label"
+        ],
+        "title": "PlacedLegOut",
+        "type": "object"
+      },
       "PlannedEntriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -1939,6 +2041,79 @@
           }
         },
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "QuickPickIn": {
+        "additionalProperties": false,
+        "properties": {
+          "distance": {
+            "title": "Distance",
+            "type": "integer"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "straddle",
+              "strangle"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "kind",
+          "distance",
+          "side",
+          "expiry"
+        ],
+        "title": "QuickPickIn",
+        "type": "object"
+      },
+      "ReadyMadeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PlacedLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs"
+        ],
+        "title": "ReadyMadeOut",
         "type": "object"
       },
       "RefusalOut": {
@@ -4050,6 +4225,44 @@
         "summary": "Market Indices"
       }
     },
+    "/api/strategies/load-template": {
+      "post": {
+        "operationId": "load_template_api_strategies_load_template_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyMadeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Template"
+      }
+    },
     "/api/strategies/outcome": {
       "post": {
         "operationId": "strategy_outcome_api_strategies_outcome_post",
@@ -4124,6 +4337,44 @@
           }
         },
         "summary": "Planned Entry"
+      }
+    },
+    "/api/strategies/quick-pick": {
+      "post": {
+        "operationId": "quick_pick_api_strategies_quick_pick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuickPickIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyMadeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quick Pick"
       }
     },
     "/api/strategy-templates": {

@@ -18,7 +18,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
 
 from ofo.engine.black_scholes import probability_below
-from ofo.engine.metrics import MultiExpiryError, _breakevens, _loss_regions, _upper_tail_slope
+from ofo.engine.metrics import MultiExpiryError, loss_regions_after_charges
 from ofo.engine.strategy import Strategy
 
 __all__ = ["MultiExpiryError", "Unavailable", "Why", "probability_of_profit", "whole_percent"]
@@ -49,10 +49,7 @@ def probability_of_profit(strategy: Strategy, *, forward: Decimal | None, years:
         raise Unavailable(Why.NO_VOLATILITY)
     if forward is None or forward <= 0:
         raise Unavailable(Why.NO_FORWARD)
-    points = [Decimal(0)] + sorted({leg.strike for leg in strategy.legs if leg.is_option})
-    values = [strategy.expiry_pnl_at(p) - charges for p in points]
-    upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
-    regions = _loss_regions(points, values, upper_slope, _breakevens(points, values, upper_slope))
+    regions = loss_regions_after_charges(strategy, charges)
     lose = Decimal(0)
     for region in regions:
         lower, upper = region[0], region[1]
