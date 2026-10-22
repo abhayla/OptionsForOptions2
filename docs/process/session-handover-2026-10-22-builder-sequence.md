@@ -1,54 +1,79 @@
-# Session handover 2026-10-22 (builder sequence, session 1) - continue with the same /goal prompt
+# Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-Read first: the goal contract `goal-contract-builder-sequence-2026-10-22.md` (step 9: the per-row process review), the
-table `builder-sequence-2026-10-22.md`, `row-review.md` (method, rules R1-R10, effect check, expected vs actual, log).
-No order was ever sent. Continue at the FIRST ROW NOT CLOSED in the table.
+The next session needs ONLY this file, the goal contract, the table and `row-review.md`. No order was ever sent.
+Continue at the FIRST ROW NOT CLOSED (row 8 - see "In flight").
 
-## State (updated as rows close)
-- **Merged on main:** PR #511 (plan + step 0: core proof, flaky e2e fix, response-door list, W-129..W-190).
-- **Chunk 1 branch:** `build/seq-chunk-1` in the ONE sequence worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`,
-  pushed as a backup (no PR yet: PR, CI and the Tier A chunk review come at row 16).
-- **Rows closed:** 1 (REQ-001), 2 (REQ-015), 3 (REQ-054), 4 (REQ-117), 5 (REQ-053); row 6 (REQ-048) PARKED #517 after
-  two Tier A rounds (AC-1..AC-4 pass; AC-5 credential scans to redesign as a reply-field inventory). Meta review after
-  row 6 done and applied (Size + CI lines enforced by check_brief). Row 7 (REQ-049) brief written (expected 90 min /
-  450k), builder dispatched ~16:55 IST. Rows 8-63 not started.
-- **Owner decisions this session:** ADR-169 (connect by Zerodha login only, no own-app setup; REQ-015 AC-3 rewritten);
-  strict row order kept; per-row process review (row-review.md); ofo_test reset approved -> done instead as a throwaway
-  database per run (no data touched; #497 comments).
-- **Deferred MINOR issues:** #512 (row 1, for row 46), #513 (row 2, for row 7), #514 (row 3, before order-path use),
-  #515 (row 4), #516 (row 5: scheduler start-up gap before 08:30 must be fixed before a deploy that restarts the API
-  07:30-08:30 IST and before the row-63 live window).
-- **Findings added:** first-live-frame-before-first-price (row 24), keepalive-counted-as-live-data (guarded),
-  guard-as-forbidden-list occurrence 4, spec/findings.md F-57 (+ note on F-56).
-- **Process tooling on the branch (Tier A, reviewed in the chunk PR):** brief gate checks every brief form;
-  check_brief enforces attack list >= 5, size budget pairs, allow-list for guards (R8); repo test for the row-review
-  log; `scripts/orchestrator/db_run_fresh.py` (throwaway database, Opus-reviewed, fixes applied);
-  `reset_test_catalogue.py` (built but cannot run: the catalogue's delete guards refuse - by design).
+## Read first, in order (all on branch `build/seq-chunk-1`, worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`)
+1. `docs/process/goal-contract-builder-sequence-2026-10-22.md` - the rules (step 9 = per-row process review).
+2. `docs/process/builder-sequence-2026-10-22.md` - the 63-row table (the checklist).
+3. `docs/process/row-review.md` - review method, standing rules R1-R13, the effect check, expected-vs-actual table, log.
+4. `docs/process/builder-brief.md` - the template every builder brief uses (updated today).
+5. `spec/decisions/ADR-168.md`, `ADR-169.md`.
+
+## State
+- **Main:** PR #511 merged (plan + step 0). Nothing else merges until chunk 1's PR (after row 16).
+- **Chunk 1 branch `build/seq-chunk-1`:** backup-pushed, NO PR. Rows closed: 1 REQ-001, 2 REQ-015, 3 REQ-054, 4 REQ-117,
+  5 REQ-053, 7 REQ-049 (Done); 6 REQ-048 PARKED #517. Work items of closed rows are `in_review` (flip to done and drop
+  their coverage lines only when the chunk PR merges - coverage drops done items).
+- **Deferred MINOR issues:** #512 (row 46), #513 (picked up by row 7), #514 (before order-path use), #515, #516
+  (scheduler start-up gap before 08:30: fix before a deploy restarting the API 07:30-08:30 IST and before the row-63 live
+  window), #518. Parked: #517 (row 6 AC-5: redesign the credential guard as a reply-field inventory; a FRESH
+  independent designer first).
+- **Owner decisions today:** ADR-169 (connect by Zerodha login only); strict row order kept; per-row review by the
+  orchestrator + meta review every 3rd row; add checks freely, ask before loosening; expected vs actual per row
+  (reason when >20% off); learnings also to the kit (`docs/process/delivery-learnings-generic.md`, harvest
+  abhayla/Startup-Factory#161); ofo_test reset approved -> done as a throwaway database per run instead.
+
+## In flight at the handover (row 8, REQ-050 shared computation, W-136)
+- Build commits 5844a0c3 + d20287f0 (shared_compute.py, outcome service/snapshot, live route, three test files).
+- An independent Opus design review decided (technical, recorded): ONE snapshot instant for the whole answer = the
+  latest frame time among the quotes read, capped at the clock; expiry/session checks stay on the real clock; drop the
+  `_newest` eviction that made IV entries stale on arrival.
+- A fix-round builder was dispatched ~18:00 with `docs/process/builder-sequence-briefs/row-08-fix-1.md` (6 items: one
+  instant, forward key, two red repo guards, the hanging M4 test, the row-2 stale test in
+  `tests_app/test_strategy_live_push.py`, R13 test selection). Its commits land on `build/seq-chunk-1`.
+- **NEXT for row 8:** `git -C <worktree> log --oneline -5` to see the fix commits; if the tree is dirty or half-done,
+  send a fresh finisher (row-review R5); then the Tier A verifier (Opus) with a `verify-row-08.md` brief (use
+  `verify-row-07.md` as the shape); then close per the checklist below. Row 8 expected 90 min / 450k (it is over).
+- Uncommitted at the handover: `knowledge/findings/dependent-tests-not-run-stale-later.json` (commit it with row 8's
+  close; regenerate the findings index once at the chunk PR).
+
+## The per-row close checklist (every row, in this order - the owner's standing rules)
+1. Before dispatch: Measure (Explore, Sonnet) returns ACs, files, items, an attack list (>= 5, each naming its test
+   file), the CI job + variables per new test, and whether the core needs real input. Write the brief from
+   `builder-brief.md` + the row part with the `Size:` line, `CI:` line, attack list, Spec basis quoted verbatim,
+   `Threat model:` on ONE line; run `check_brief.py` (PYTHONUTF8=1) and `copy_from_check.py --append`; write the row's
+   EXPECTED time/tokens into the brief and the row-review table BEFORE dispatch.
+2. Builder: Sonnet, `git add <paths>` only, hard budget, throwaway-database runner for DB tests, R13 test selection.
+3. Verifier: fresh Opus (Tier A) / Sonnet (Tier B), read-only, every AC, the attack list, known-failing tests named.
+4. Two failed rounds -> PARKED with an issue (row 6 example); a CRITICAL that breaks CI is removed the same hour.
+5. Close: `record_evidence_fp.py` (ac_fp from `fps_wt.py` in the worktree), the work item (tests_required naming real
+   files), table status, MINORs as one deferred issue (`gh_issue.py app deferred ... --stage <stage>`), findings same
+   turn, then MY self-checks: `tests/test_row_review_log.py`, `tests/test_tests_required_exist.py`,
+   `coverage.py . --check`, `ruff_ratchet.py`; commit (message via `-F` file), backup push.
+6. Review: the row's log entry (expected vs actual from commit times, causes of every extra round, what changed); apply
+   changes the same turn; meta review (fresh Sonnet) every 3rd row before the next build (next due after row 9);
+   at each meta review update `delivery-learnings-generic.md` and comment #161 (`kit_issue_comment.py`).
+7. Report to the owner: what changed for a user, expected vs actual with reasons, THE WHOLE 63-ROW TABLE (never a
+   subset), open questions, the trend table, the evidence table.
 
 ## Helper scripts (NOT in the repo): `D:\Abhay\scratch\ofo2-builder-sequence\`
-- `fresh_launch.py <checkout> <command...>`: run DB tests in a throwaway database using the MAIN checkout's .env
-  (the worktree has no .env). Use it for every DB proof: ofo_test's leftover catalogue (#497) fails ~15 tests.
-- `run_api_live_wt.py`: live API on :8765 from the worktree code (ofo_dev, LIVE_MARKET=1, order path off). The owner's
-  Kite session from 2026-10-22 10:06 is valid until ~06:00 the next day; a new day needs a new login (ask once).
-- `run_api_replay.py`: replay API on :8771 (APP_ENV=test, OUTCOME_REPLAY=1) on ofo_dev.
-- `core_replay.py`, `core_live.py`: the core proof scripts; `record_profile_door.py`: one real /user/profile through the
-  door (redacted); `fps_wt.py <checkout> REQ:AC ...`: AC fingerprints in a worktree; `kit_issue_comment.py`: comment
-  on the kit repo (its name trips the kit guard).
+- `fresh_launch.py <checkout> <command...>`: DB tests in a throwaway database with the MAIN checkout's .env (use for
+  every DB proof; ofo_test is polluted, #497).
+- `fps_wt.py <checkout> REQ:AC ...`: AC fingerprints in a worktree.
+- `run_api_live_wt.py` (live API :8765, worktree code, ofo_dev, order path off; the owner's Kite session of 2026-10-22
+  expires ~06:00 - a new day needs one login, ask once); `run_api_replay.py` (replay API :8771).
+- `kit_issue_comment.py <n> <body>`: comment on the kit repo; `record_profile_door.py`; `core_replay.py`, `core_live.py`.
 
 ## How the guards bite (save retries)
-- The kit guard blocks any shell command containing kit words (spec, tools/, .claude, factory, views), including
-  commit messages: commit with `-F <message file>`; run kit tools bare as `python tools/<x>.py <worktree-path>` from
-  the main checkout.
-- `gate_before_commit` refuses a commit after a piped step: run checks and the commit as separate calls.
-- `check_brief.py` needs `PYTHONUTF8=1`; a `Threat model:` line must be ONE line with both "in scope" and "out of scope".
+- Kit guard: no shell command may contain spec/, tools/, .claude, factory, views, .github - commit with `-F <file>`,
+  `git add -u` for tracked files, run kit tools bare as `python tools/<x>.py <worktree-path>` from the main checkout,
+  read kit files with Read/Grep.
+- `gate_before_commit` refuses a commit after a piped step: separate calls.
+- The stray agent worktree `agent-a3130708769c0608b` (empty, at main's head) is locked by a dead process; leave it.
 
-## NEXT
-1. Row 7 (REQ-049 data health, picks up #513): act on the builder's report; verifier (Opus); close with the review
-   and expected vs actual from commit times.
-2. Row 8 (REQ-050 shared computation, unmeasured), then 9 (REQ-113, owns the cross-process cache), 10, 11, 12-14
-   (verified: one shared verifier), 15-16 (one shared verifier); meta review after row 9.
-2b. The parked row 6 (#517) is retried only with a fresh independent designer for the reply-field inventory.
-3. Release the stray agent worktree `agent-a3130708769c0608b` (clean, at main's head; locked while its process ran):
-   `python scripts/orchestrator/agentwt.py a3130708769c0608b release`.
-4. Rows 8-16, then chunk 1's PR: merge main once, fast checks, `regen.py` once, `land.py` with the reviewed sha,
-   Tier A review of the chunk, then flip rows 1-16's work items from in_review to done and drop their coverage lines.
+## NEXT after row 8
+Row 9 (REQ-113 price feed in its own process - it owns the cross-process cache; Measure first), meta review after row
+9, rows 10-11, 12-14 (verified: one shared verifier, close one by one), 15-16 (one shared verifier), then chunk 1's PR:
+merge main once, fast checks, `regen.py` once, `land.py --reviewed-sha`, Tier A chunk review, CI's full app suite (83
+affected files - stale tests may surface there: fix as part of the chunk), then flip rows 1-16's work items to done.
