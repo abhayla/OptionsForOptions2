@@ -9,6 +9,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { useHeldFeature } from '@/lib/heldFeatures'
 import {
   CONCEPTS, NUMBERS_NOTE, PLATFORM, SAMPLE_LABEL, SAMPLE_NOTE, SHAPES, STRATEGY_PARTS, STRATEGY_TEXT, TABS,
 } from '@/lib/learnContent'
@@ -19,6 +20,7 @@ const LEVELS = ['Beginner', 'Intermediate', 'Advanced'] // display order only; e
 const VIEW_W = 100 // drawing box only; the points themselves are stated in the content home
 
 const route = useRoute()
+const platformStrikes = useHeldFeature('platform_strikes') // W-125: "Open in Builder" shows only when this is on
 const tab = computed(() => TABS.find((t) => route.path.endsWith(`/${t.slug}`))?.slug ?? TABS[0].slug)
 const isEducation = computed(() => tab.value === 'strategy-education')
 const templates = ref(null) // null until read
@@ -96,6 +98,9 @@ const shapePoints = computed(() => {
         <h2 class="text-lg font-semibold" data-testid="detail-title">{{ openTemplate.name }}</h2>
         <p class="mt-1 text-xs text-ink-muted" data-testid="detail-meta">{{ openTemplate.level }} - Market view: {{ openTemplate.views.join(', ') }}</p>
         <p class="mt-2" data-testid="detail-description">{{ openTemplate.description }}</p>
+        <router-link
+          v-if="platformStrikes" :to="{ path: '/strategy/builder', query: { template: openTemplate.id } }"
+          class="mt-2 inline-block text-sm underline" data-testid="open-in-builder">Open in Builder</router-link>
         <template v-if="text">
           <section v-for="[key, heading] in STRATEGY_PARTS" :key="key" class="mt-4" :data-testid="`part-${key}`">
             <h3 class="font-medium">

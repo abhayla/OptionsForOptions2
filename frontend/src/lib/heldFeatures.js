@@ -5,7 +5,7 @@
 //   not listed / `held` missing / body not an object / `held` not an array -> not shown;
 //   request failed (network, 4xx, 5xx, timeout) -> not shown.
 import { ref } from 'vue'
-import api from '../services/api'
+import { fetchFeaturesBody } from './orderPath'
 
 // The held features THIS build shows on screen (the server's list is longer; each other lane adds its own name).
 export const HELD_FEATURES = ['platform_strikes', 'probability_of_profit']
@@ -18,12 +18,7 @@ export function heldFeatureIsOn(body, name) {
 
 /** Reads the switch; any failure is "off" (fail closed). */
 export async function fetchHeldFeatureOn(name) {
-  try {
-    const { data } = await api.get('/features')
-    return heldFeatureIsOn(data, name)
-  } catch {
-    return false
-  }
+  return heldFeatureIsOn(await fetchFeaturesBody(), name)
 }
 
 /** A ref that is false until the server has listed the feature; render with `v-if`, never a disabled element. */
