@@ -34,7 +34,8 @@ from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, ro
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
-from ofo.engine.model import ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels, model_inputs
+from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
+                             leg_greeks_unrounded, model_inputs)
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
 from ofo.marketdata.forward import ForwardUnavailable, mid_price
@@ -337,6 +338,26 @@ def _leg_iv(em, leg, shared, where):
     return shared.compute(where, inputs, compute)
 
 
+def _shared_leg_greeks(model, snapshot, shared):
+    """REQ-050 AC-1: each option leg's per-unit unrounded Greeks, computed once per (feed owner, underlying, expiry,
+    snapshot instant, exact inputs) through the engine's one function; ``None`` for a futures leg or a leg with no IV
+    (nothing is computed or cached for it), and for every leg when there is no ``shared`` scope."""
+    if shared is None:
+        return None
+    out = []
+    for leg in model.legs:
+        if leg.instrument is Instrument.FUT or leg.iv is None:
+            out.append(None)
+            continue
+        em = model.expiry_model(leg.expiry)
+        f = em.forward
+        where = (snapshot.underlying, leg.expiry, snapshot.valuation, "leg_greeks", leg.contract)
+        inputs = (leg.instrument.value, leg.strike, leg.iv, em.level, f.forward, f.implied_yield, f.years, f.rate,
+                  f.days_in_year, em.dividend_yield)
+        out.append(shared.compute(where, inputs, lambda leg=leg: leg_greeks_unrounded(model, leg)))
+    return out
+
+
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
@@ -345,7 +366,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
-    market-wide IV is then computed once per feed snapshot and read back by every other reader of the same feed; the
+    market-wide IV is then computed once per feed snapshot and read back by every other reader of the same feed (so are each
+    option leg's per-unit Greeks); the
     owner is part of the key, so two users' feeds never share. Without ``shared`` every call computes itself.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
@@ -440,7 +462,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             charges = None
     # the ONE computation (AC-8)
     values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
-    table = build_table(model, level_set=level_set, scenario=values)
+    table = build_table(model, level_set=level_set, scenario=values,
+                        leg_greeks=_shared_leg_greeks(model, snapshot, shared))
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
     # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).

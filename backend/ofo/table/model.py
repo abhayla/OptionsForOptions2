@@ -237,8 +237,13 @@ def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
     return ratio.quantize(_PERCENT_STEP, rounding=ROUND_HALF_EVEN)
 
 
-def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | None, ExplanationText | None]:
+def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs,
+                         supplied: Greeks | None = None) -> tuple[Greeks | None, ExplanationText | None]:
     """The platform's UNROUNDED per-unit Black-Scholes Greeks for one leg (AC-6), or ``None`` with a reason.
+
+    ``supplied`` (REQ-050 AC-1): the caller's per-unit Greeks of an option leg that has an IV, computed once for the
+    whole feed snapshot by the engine's :func:`leg_greeks_unrounded`; used as given, never cached here. Without it
+    the engine is called here, as always.
 
     A futures leg always has a value (:data:`_FUTURES_PER_UNIT_GREEKS`, never excluded from a total). An option
     leg with no IV has none. Round-3 fix: uses ``bs_greeks_unrounded`` — rounding happens once, at the position
@@ -248,6 +253,8 @@ def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | N
         return _FUTURES_PER_UNIT_GREEKS, None
     if leg.iv is None:
         return None, _r("no_iv")
+    if supplied is not None:
+        return supplied, None
     # W-060 round 3: the engine at the gated live spot with the leg's expiry yield q (ADR-061, ADR-063)
     return leg_greeks_unrounded(inputs, leg), None
 
@@ -282,7 +289,8 @@ def _iv_cell(leg: LegInput) -> Cell:
 
 
 def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
-             scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None") -> Row:
+             scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None",
+             supplied: Greeks | None = None) -> Row:
     core = leg.leg
     entry_value = core.entry_price * core.quantity
     current_value = core.ltp * core.quantity if core.ltp is not None else None
@@ -297,7 +305,7 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
         pnl_percent = _percent(unrealized, abs(entry_value))
         pct_reason = None
 
-    per_unit, greek_reason = _leg_per_unit_greeks(leg, inputs)
+    per_unit, greek_reason = _leg_per_unit_greeks(leg, inputs, supplied)
     raw_position = _position_greeks(per_unit, core.action, core.quantity) if per_unit is not None else None
     position = (Greeks(*(_round_greek(v) for v in (raw_position.delta, raw_position.gamma, raw_position.theta,
                                                      raw_position.vega))) if raw_position is not None else None)
@@ -362,7 +370,8 @@ def _total_pnl_percent_cell(inputs: ModelInputs, unrealized: Decimal | None) -> 
 
 
 def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: Sequence[Decimal],
-               scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
+               scenario: ScenarioValues | None, health: "StrategyHealth | None",
+               supplied: Sequence[Greeks | None]) -> Row:
     legs = inputs.legs
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
     futures_reason = _r("futures_notional")
@@ -382,8 +391,8 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
     raw_totals: dict[str, Decimal] = {"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0),
                                        "vega": Decimal(0)}
     every_leg_has_greeks = True
-    for leg in legs:
-        per_unit, _reason = _leg_per_unit_greeks(leg, inputs)
+    for leg, given in zip(legs, supplied, strict=True):
+        per_unit, _reason = _leg_per_unit_greeks(leg, inputs, given)
         if per_unit is None:
             every_leg_has_greeks = False
             break
@@ -458,6 +467,7 @@ def build_table(
     scenario: ScenarioValues | None = None,
     leg_statuses: Sequence["LegStatus | None"] | None = None,
     strategy_health: StrategyHealth | None = None,
+    leg_greeks: Sequence[Greeks | None] | None = None,
 ) -> Table:
     """Build the one strategy table (AC-1): a row per leg, a TOTAL row, columns in the AC-2 locked order.
 
@@ -467,6 +477,11 @@ def build_table(
 
     ``leg_statuses`` (parallel to ``inputs.legs``, one text or ``None`` per leg) and ``strategy_health`` are the
     Status column's caller-supplied values (fix round: Status is not computed here — see the module docstring).
+
+    ``leg_greeks`` (REQ-050 AC-1, parallel to ``inputs.legs``): the per-unit unrounded Greeks of each option leg that
+    has an IV, computed once per feed snapshot by the caller; ``None`` entries are computed here as before. Only an
+    option leg with an IV may carry one (a futures leg or a leg without IV is refused). This function never caches;
+    rounding and position scaling stay here.
     """
     if not isinstance(inputs, ModelInputs):
         raise ValueError(f"inputs must be a ModelInputs (ofo.engine.model.model_inputs), got {inputs!r}")
@@ -496,6 +511,15 @@ def build_table(
         if scenario.levels != level_set.levels:
             raise ValueError("scenario was computed over a different level set")
 
+    if leg_greeks is not None:
+        if len(leg_greeks) != len(inputs.legs):
+            raise ValueError(f"leg_greeks must have one entry per leg ({len(inputs.legs)}), got {len(leg_greeks)}")
+        for leg, given in zip(inputs.legs, leg_greeks, strict=True):
+            if given is not None and (not isinstance(given, Greeks) or leg.instrument is Instrument.FUT
+                                      or leg.iv is None):
+                raise ValueError("leg_greeks may hold a Greeks only for an option leg that has an IV, "
+                                 f"got {given!r} for {leg.contract}")
+    supplied = list(leg_greeks) if leg_greeks is not None else [None] * len(inputs.legs)
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
@@ -507,13 +531,13 @@ def build_table(
     columns += [ColumnSpec(cid, HEADER_LABELS[cid], _trailing_kind(cid)) for cid in TRAILING_COLUMNS]
 
     rows = [
-        _leg_row(i, leg, inputs, level_columns, scenario, i - 1, statuses[i - 1])
+        _leg_row(i, leg, inputs, level_columns, scenario, i - 1, statuses[i - 1], supplied[i - 1])
         for i, leg in enumerate(inputs.legs, start=1)
     ]
     charges_row = _charges_row(level_columns, scenario)
     if charges_row is not None:
         rows.append(charges_row)
-    rows.append(_total_row(inputs, level_set, level_columns, scenario, strategy_health))
+    rows.append(_total_row(inputs, level_set, level_columns, scenario, strategy_health, supplied))
     return Table(tuple(columns), tuple(rows), inputs.underlying, inputs.spot_level, inputs.spot_at, inputs.label)
 
 

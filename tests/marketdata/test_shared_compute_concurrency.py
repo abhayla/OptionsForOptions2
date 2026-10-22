@@ -2,12 +2,14 @@
 touches another key. Proven with counters and events, never with timing."""
 import datetime
 import threading
+import time
 
 import pytest
 from ofo.marketdata.shared_compute import SharedCompute, SharedKey
 
 T0 = datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
 READERS = 100
+SETTLE_SECONDS = 1.0  # how long the readers get to pile up on the one key before the computation is released
 
 
 def key(instrument="X", owner="u1"):
@@ -24,18 +26,35 @@ def run_threads(targets):
 
 
 def test_100_concurrent_first_requests_for_one_key_run_one_computation():
+    """The computation blocks until every one of the 100 readers has started, so all 100 are inside get_or_compute
+    together: without the per-key lock each of them would run it (the settle wait ends at once when they all do)."""
     cache, calls, results = SharedCompute(), [], []
-    start = threading.Barrier(READERS)
+    release, started, count_lock = threading.Event(), [], threading.Lock()
 
     def compute():
-        calls.append(1)
+        with count_lock:
+            calls.append(1)
+        assert release.wait(timeout=30)
         return "figure"
 
     def reader():
-        start.wait()
+        with count_lock:
+            started.append(1)
         results.append(cache.get_or_compute(key(), compute))
 
-    run_threads([reader] * READERS)
+    threads = [threading.Thread(target=reader) for _ in range(READERS)]
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + SETTLE_SECONDS
+    while time.monotonic() < deadline:  # a wait bound, never an assertion on time
+        with count_lock:
+            if len(started) == READERS and len(calls) == READERS:
+                break
+        time.sleep(0.01)
+    release.set()
+    for t in threads:
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads)
     assert len(calls) == 1 and cache.computations == 1
     assert results == ["figure"] * READERS
 
