@@ -271,6 +271,7 @@ APP_MODELS = (
     "ofo_app.index_push.IndicesOut",
     "ofo_app.routes.broker.BrokerRedirectOut",
     "ofo_app.routes.broker.RefusalOut",
+    "ofo_app.routes.broker_capabilities.CapabilitiesOut",
     "ofo_app.routes.broker_status.BrokerStatusOut",
     "ofo_app.routes.broker_status.DisconnectOut",
     "ofo_app.routes.broker_status.StatusOut",

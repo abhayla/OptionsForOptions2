@@ -207,6 +207,50 @@
         "title": "BrokerStatusOut",
         "type": "object"
       },
+      "CapabilitiesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "basket_margin_quote": {
+            "title": "Basket Margin Quote",
+            "type": "boolean"
+          },
+          "basket_page_orders": {
+            "title": "Basket Page Orders",
+            "type": "boolean"
+          },
+          "broker_held_triggers": {
+            "title": "Broker Held Triggers",
+            "type": "boolean"
+          },
+          "funds_read": {
+            "title": "Funds Read",
+            "type": "boolean"
+          },
+          "intraday_product": {
+            "title": "Intraday Product",
+            "type": "boolean"
+          },
+          "order_update_stream": {
+            "title": "Order Update Stream",
+            "type": "boolean"
+          },
+          "positions_read": {
+            "title": "Positions Read",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "basket_page_orders",
+          "broker_held_triggers",
+          "intraday_product",
+          "order_update_stream",
+          "funds_read",
+          "positions_read",
+          "basket_margin_quote"
+        ],
+        "title": "CapabilitiesOut",
+        "type": "object"
+      },
       "CellOut": {
         "additionalProperties": false,
         "properties": {
@@ -3963,6 +4007,24 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/broker/capabilities": {
+      "get": {
+        "operationId": "broker_capabilities_api_broker_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Capabilities"
+      }
+    },
     "/api/broker/disconnect": {
       "post": {
         "description": "Ends the signed-in owner's active session. Strategies, history, entitlements and the account are not touched.",
