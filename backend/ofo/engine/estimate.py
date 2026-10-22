@@ -17,7 +17,8 @@ from typing import Final, Literal, Sequence
 from ofo.engine import legs as _legs
 from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
 from ofo.engine.inputs import StrategyInput
-from ofo.engine.legs import Instrument, require_price
+from ofo.engine.legs import Instrument, _long_value_at, require_price
+from ofo.timeutil import EXPIRY_CLOSE
 
 MODEL: Final = render_explanation("estimate_model_name")  # ADR-061, ADR-063
 
@@ -63,6 +64,11 @@ def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decim
     marks: list[Decimal] = []
     years_list: list[Decimal] = []
     for leg_input in inputs.legs:
+        if inputs.valuation_time == datetime.datetime.combine(leg_input.expiry, EXPIRY_CLOSE):
+            # W-127 (REQ-084 AC-2): a what-if date AT the expiry close has no time left: the leg is worth its expiry value
+            marks.append(_long_value_at(leg_input.leg, level))
+            years_list.append(Decimal(0))
+            continue
         years = year_fraction(inputs.valuation_time, leg_input.expiry, days_in_year=inputs.days_in_year)
         if leg_input.instrument is Instrument.FUT:
             mark = forward_price(level, years, inputs.rate, dividend_yield=dividend_yield)

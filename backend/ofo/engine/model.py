@@ -265,27 +265,78 @@ class Estimate:
     spot_at: datetime.datetime | None = None
 
 
-def estimate(model: ModelInputs, level: Decimal) -> Estimate:
-    """Estimated Now P&L if the index were at ``level`` at the valuation time (ADR-008 Q33A = C; ADR-063)."""
+class WhatIfRefused(ValueError):
+    """A what-if input the engine refuses (REQ-084 AC-3: an IV at or below 0). ``reason`` is catalogue text."""
+
+    def __init__(self, reason: ExplanationText) -> None:
+        super().__init__(str(reason))
+        self.reason = reason
+
+
+#: volatility points per 1.0 of the IV fraction (an IV offset of +2.0 points is +0.02 on 0.142)
+_POINTS_PER_UNIT: Final = Decimal(100)
+
+
+def _moved_leg(leg: LegInput, iv_offset: Decimal) -> LegInput:
+    """``leg`` with its OWN IV moved by ``iv_offset`` volatility points (REQ-084 AC-3); a result at or below 0, or
+    outside the engine's IV range, is refused with the catalogue reason. A leg with no IV stays as it is."""
+    if type(iv_offset) is not Decimal or not iv_offset.is_finite():
+        raise ValueError(f"iv_offset must be a finite Decimal, got {iv_offset!r}")
+    if leg.iv is None or iv_offset == 0:
+        return leg
+    moved = leg.iv + iv_offset / _POINTS_PER_UNIT
+    if not Decimal(repr(_bs.IV_LOWER)) <= moved <= Decimal(repr(_bs.IV_UPPER)):
+        raise WhatIfRefused(render_explanation("whatif_iv_not_positive"))
+    return dataclasses.replace(leg, iv=moved)
+
+
+def _what_if_inputs(m: ModelInputs, valuation_time: datetime.datetime | None, iv_offset: Decimal) -> StrategyInput:
+    """The strategy input at a what-if valuation time and IV offset (REQ-084 AC-3)."""
+    legs = tuple(_moved_leg(leg, iv_offset) for leg in m.legs)
+    return dataclasses.replace(m.inputs, legs=legs,
+                               valuation_time=m.inputs.valuation_time if valuation_time is None else valuation_time)
+
+
+def estimate(model: ModelInputs, level: Decimal, *, valuation_time: datetime.datetime | None = None,
+             iv_offset: Decimal = Decimal(0)) -> Estimate:
+    """Estimated Now P&L if the index were at ``level`` at the valuation time (ADR-008 Q33A = C; ADR-063).
+
+    W-127 (REQ-084): ``valuation_time`` (the target date) and ``iv_offset`` (volatility points added to every option
+    leg's own IV) are what-if inputs; the defaults are the live valuation time and no offset."""
     m = _require(model)
+    base = _what_if_inputs(m, valuation_time, iv_offset)
     marks: list[Decimal] = []
     pnls: list[Decimal] = []
     years: list[Decimal] = []
     qs: list[Decimal] = []
     sources: list[str] = []
-    for leg in m.legs:
+    for leg in base.legs:
         em = m.expiry_model(leg.expiry)
-        one = _estimate.estimate_now(dataclasses.replace(m.inputs, legs=(leg,)), level,
+        one = _estimate.estimate_now(dataclasses.replace(base, legs=(leg,)), level,
                                      dividend_yield=em.dividend_yield, yield_source=em.source)
         marks.append(one.marks[0])
         pnls.append(one.leg_pnls[0])
         years.append(one.assumptions.years_to_expiry[0])
         qs.append(em.dividend_yield)
         sources.append(em.source)
-    i = m.inputs
+    i = base
     assumptions = _estimate.EstimateAssumptions(
         model=_estimate.MODEL, valuation_time=i.valuation_time, rate=i.rate, days_in_year=i.days_in_year,
-        ivs=tuple(leg.iv for leg in m.legs), years_to_expiry=tuple(years), dividend_yields=tuple(qs),
+        ivs=tuple(leg.iv for leg in base.legs), years_to_expiry=tuple(years), dividend_yields=tuple(qs),
         yield_sources=tuple(sources))
     return Estimate(level, tuple(marks), tuple(pnls), sum(pnls, Decimal(0)), assumptions, m.label, m.spot_level,
                     m.spot_at)
+
+
+def leg_greeks_at(model: ModelInputs, leg: LegInput, level: Decimal, valuation_time: datetime.datetime,
+                  iv_offset: Decimal = Decimal(0)) -> Greeks:
+    """Per-unit UNROUNDED engine Greeks of one OPTION leg at a what-if level, date and IV offset (REQ-084 AC-4), with
+    its expiry's q (ADR-063). Refuses a leg with no IV, and a date at or after the leg's expiry close."""
+    m = _require(model)
+    if leg.iv is None:
+        raise ValueError(f"leg {leg.contract} has no IV")
+    one = _moved_leg(leg, iv_offset)
+    em = m.expiry_model(leg.expiry)
+    years = _bs.year_fraction(valuation_time, leg.expiry, days_in_year=m.inputs.days_in_year)
+    return _bs.bs_greeks_unrounded(one.instrument, level, one.strike, years, m.inputs.rate, one.iv,
+                                   days_in_year=m.inputs.days_in_year, dividend_yield=em.dividend_yield)

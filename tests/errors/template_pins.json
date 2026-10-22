@@ -1426,5 +1426,53 @@
   "explanation:confirm_to_continue": {
     "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
+  },
+  "explanation:whatif_iv_not_positive": {
+    "sha256": "86ab340e5464266d8fedd608bb2eeda4dba0b4f636fa16c1f161290b99efdbb1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_estimate_label": {
+    "sha256": "49bb1c48835e4e55738cc94b92a386dd8330dddc3755cbd083738a2478b20dc7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_target_clamped_early": {
+    "sha256": "ed469c10873809cc6e0bc9b4eb5b1a5c69fd6a6273fbc06c7d37996dcbb6fdf9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_target_clamped_late": {
+    "sha256": "9550857699cea63b538510183cab8e35cf76fc7c52c325932409edd033a59042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_curve_no_iv": {
+    "sha256": "b1168111008bef5e0d4dd5beb60eaa766f8b1f3414421fe4a7b0bb79d160d040",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_bands_unavailable": {
+    "sha256": "ebddf3f33819376e1ebbb88b1042480527b2339b30fbd191fcad07c3d63f1dbf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_oi_unavailable": {
+    "sha256": "7af57e32e516cc486ed8b96a7ef19343d6e4f5a08fd9e72ffb864f95321c39ce",
+    "reviewed": "pending owner read"
+  },
+  "explanation:whatif_greeks_at_expiry_close": {
+    "sha256": "96845c24e985bbe0007ae75a294301f254e707bbb14fb09faa5b7fc20c3829ba",
+    "reviewed": "pending owner read"
+  },
+  "explanation:greeks_example_delta": {
+    "sha256": "819fa451afb5a2ed02d98c643a61d827daadb1494de5cc6643a09005f38e4e63",
+    "reviewed": "pending owner read"
+  },
+  "explanation:greeks_example_gamma": {
+    "sha256": "43a997821de9fc62af1b021d29abbcab136a00c3e55819bd9ff9f34d3ee32439",
+    "reviewed": "pending owner read"
+  },
+  "explanation:greeks_example_theta": {
+    "sha256": "4f0ebfa7beeccd436c748bda17937d8d9c7f9d06a13dc0f22418ba2ae528a80a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:greeks_example_vega": {
+    "sha256": "89c366687820b842e55fb70c7617ca848222703865d28a19be91ac4dab0255ad",
+    "reviewed": "pending owner read"
   }
 }
