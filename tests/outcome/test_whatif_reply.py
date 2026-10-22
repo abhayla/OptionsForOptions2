@@ -222,12 +222,13 @@ def test_req083_ac3_a_leg_without_iv_gives_the_expiry_curve_only_with_the_reason
 
 
 def test_req083_ac4_an_unhealthy_atm_quote_gives_no_bands(replayed):
-    """REQ-083 AC-4 (red case): when the at-the-money call's quote is UNHEALTHY there is no ATM IV: no bands, the reason;
+    """REQ-083 AC-4 (red case): when the at-the-money call quote is UNHEALTHY there is no ATM IV: no bands, the reason;
     the same chain with a healthy quote gives four bands (test above)."""
     def sour_atm(snap):
         chain = snap.chains[next(iter(snap.chains))]
         atm = min({q.strike for q in chain}, key=lambda k: (abs(k - CURRENT), k))
-        sick = tuple(dataclasses.replace(q, health=DataHealth.UNHEALTHY) if (q.strike == atm and q.instrument_type is Instrument.CE)
+        hit = lambda q: q.strike == atm and q.instrument_type is Instrument.CE  # noqa: E731
+        sick = tuple(dataclasses.replace(q, health=DataHealth.UNHEALTHY) if hit(q)
                      else q for q in chain)
         return dataclasses.replace(snap, chains={**snap.chains, next(iter(snap.chains)): sick})
     w = build(replayed, snapshot_edit=sour_atm).whatif

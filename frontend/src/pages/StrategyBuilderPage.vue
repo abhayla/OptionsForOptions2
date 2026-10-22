@@ -29,6 +29,9 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
+import WhatIfControls from '@/components/strategy/WhatIfControls.vue'
+import GreeksPanel from '@/components/strategy/GreeksPanel.vue'
+import { DEFAULT_WHATIF, matchesWhatif, whatifFields } from '@/lib/whatifChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -75,6 +78,9 @@ function legsFromQuery() {
 const legs = ref(legsFromQuery())
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
 const choice = ref({ ...DEFAULT_CHOICE })
+// W-127 (REQ-084 AC-6): the what-if inputs live here only; never saved with the strategy or put in a draft link.
+const whatifInputs = ref({ ...DEFAULT_WHATIF })
+const requestFields = () => ({ ...choiceFields(choice.value), ...whatifFields(whatifInputs.value) })
 if (linkRefused.value) {
   state.value = 'error'
   errorParts.value = INVALID_LINK_PARTS
@@ -101,7 +107,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value), fallback })
+    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, ...requestFields(), fallback })
     if (mine !== loadSeq) return
     applyOutcome(res.data)
   } catch (e) {
@@ -143,7 +149,7 @@ function applyOutcome(body) {
 const live = useStrategyLive({
   onPush: (body) => {
     // A late push of the previous strategy (the socket was told the new one a moment ago) is dropped, never shown.
-    if (!matchesLegs(body, buildDraft(legs.value)) || !matchesChoice(body, choice.value)) return
+    if (!matchesLegs(body, buildDraft(legs.value)) || !matchesChoice(body, choice.value) || !matchesWhatif(body, whatifInputs.value)) return
     socketDropped = false
     loadSeq++
     clearTimeout(slowTimer)
@@ -158,7 +164,7 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value) })
+  if (draft) live.follow({ ...draft, ux_level: uxLevel.value, ...requestFields() })
   else live.stop()
 }
 
@@ -196,6 +202,11 @@ watch(() => route.query.ux, () => {
 })
 const setChoice = (next) => {
   choice.value = next
+  load()
+  syncLive()
+}
+const setWhatif = (next) => {
+  whatifInputs.value = next
   load()
   syncLive()
 }
@@ -289,7 +300,22 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       />
       <MarginLine :margin="data.margin" />
 
-      <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
+      <div class="mt-4">
+        <PayoffChart
+          :points="data.payoff.points"
+          :estimated="data.whatif?.estimated_points ?? []"
+          :estimate-label="data.whatif?.estimate_label ?? ''"
+          :estimated-reason="data.whatif?.estimated_reason ?? ''"
+          :bands="data.whatif?.bands ?? []"
+          :bands-reason="data.whatif?.bands_reason ?? ''"
+          :current-level="data.spot_level"
+          :oi="data.whatif?.oi ?? null"
+          :oi-reason="data.whatif?.oi_reason ?? ''"
+          :show-oi="uxLevel !== 'guided'"
+        />
+      </div>
+      <WhatIfControls v-if="data.whatif" class="mt-4" :whatif="data.whatif" :model-value="whatifInputs" :underlying="data.underlying" @update:model-value="setWhatif" />
+      <GreeksPanel v-if="uxLevel === 'advanced' && data.whatif" class="mt-4" :greeks="data.whatif.greeks" :reason="data.whatif.greeks_reason" :name-of="(id) => nameOf(data.legs.find((l) => l.instrument_id === id) ?? { instrument_id: id })" />
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
       <StrategyTable
         :table="data.table"
