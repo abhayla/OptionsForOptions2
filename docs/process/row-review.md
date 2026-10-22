@@ -54,6 +54,27 @@ both stale-test failures of rows 1-2 were exactly "untouched" ACs broken by a sh
 import-graph script that eats the saving. Final verifiers keep checking every in-scope AC. Kit harvest of the adopted
 rules: abhayla/Startup-Factory#161.
 
+## Effect check (owner 2026-10-22: prove each rule reduces time, tokens and waste; updated after every row)
+
+Each rule names the waste it targets and the counter that shows whether that waste came back. A rule whose waste
+recurs twice after it was added is rewritten or turned into a machine check at the next meta review.
+
+| Rule | Waste it targets | Counter | Rows 1-2 (before) | Rows since (after) |
+|---|---|---|---|---|
+| R1 attack list | verify round failed on an attack nobody listed | such failures per row | 1 (row 2) | 0 (row 3) |
+| R2 full test files | stale test reaching the verifier | stale tests found at verify | 2 (rows 1, 2) | 0 (row 3) |
+| R3 size by files | builder out of budget, continuation dispatch | continuations per row | 1 (row 1, 23 min / 178k) | 0 (row 3) |
+| R4 scratch mutations | in-place edits of checked-out files | in-place mutation runs reported | 2 (rows 1, 2) | 0 (row 3) |
+| R5 fresh agent for small follow-ups | resume re-sending a whole history | resume tokens on <= 3-file tasks | - | 203k (row 3, before R5 fixed) |
+| R6 orchestrator self-checks | bookkeeping turning a repo test red | red repo tests from orchestrator edits | 1 (row 1 W-129) | 0 (row 3) |
+| R7 measured table | wrong times, missing agents in totals | review claims without a record (meta review) | - | 4 (meta review after row 3) |
+
+| Row | Agents | Minutes (agents) | Tokens (agents) | Verify rounds | Notes |
+|---|---|---|---|---|---|
+| 1 | 5 + half shared start check | 52 | ~820k (+93k shared) | 2 | before R1-R7 |
+| 2 | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
+| 3 | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
+
 ## Log (newest first)
 
 ### Meta review after row 3 (2026-10-22 13:05 IST, fresh Sonnet agent, 0.7 min / 108k / 5 calls)
