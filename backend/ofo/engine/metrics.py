@@ -214,7 +214,7 @@ def loss_regions_after_charges(strategy: Strategy, charges: Decimal) -> tuple[Lo
     never inferred from breakevens alone); ``charges`` of 0 gives ``strategy_metrics(strategy).loss_regions``."""
     if not strategy.is_single_expiry:
         raise MultiExpiryError("loss regions need every leg on one expiry")
-    points = [Decimal(0)] + sorted({leg.strike for leg in strategy.legs if leg.is_option})
+    points = [Decimal(0), *sorted({leg.strike for leg in strategy.legs if leg.is_option})]
     values = [strategy.expiry_pnl_at(p) - charges for p in points]
     upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
     return _loss_regions(points, values, upper_slope, _breakevens(points, values, upper_slope))

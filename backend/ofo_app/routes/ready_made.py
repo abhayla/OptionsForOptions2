@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.engine.legs import Action
+from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
@@ -129,9 +130,6 @@ def _out(underlying: str, placed: tuple[PlacedLeg, ...], catalogues: dict[dateti
 
 
 def _refused(underlying: str, refusal: PlacementRefused) -> StrategyRefused:
-    from ofo.errors import (
-        render,  # noqa: PLC0415 - the catalogue renderer, with the underlying where the text has a slot
-    )
     template = _MESSAGE[refusal.reason]
     slots = {} if template == HELD_TEMPLATE else {"underlying": underlying}
     return StrategyRefused(template, message=render(template, **slots))
