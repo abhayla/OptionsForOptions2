@@ -133,3 +133,16 @@ async def planned_entry(body: PlannedEntryIn,
         else:
             entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source))
     return PlannedEntriesOut.model_validate({"entries": entries, "answered_at": answered_at})
+
+
+async def capture_entries(ctx: MarketContext | None, feed: LiveFeed | None, underlying: str, ids: list[str]):
+    """W-126: the same capture the route above does (one read, then the bounded hold for contracts nobody streams), for
+    a caller that already holds the answer clock: ``(valuation, {instrument id: PlannedEntry or None})``. No live
+    context, or a provider that is not connected, prices nothing (ADR-020 Q185: never a default)."""
+    if ctx is None or not ctx.provider.status().connected:
+        return None, dict.fromkeys(ids)
+    valuation, snapshot, priced = _read(ctx, underlying, ids)
+    unpriced = [i for i in ids if priced.get(i) is None]
+    if unpriced and feed is not None:
+        valuation, snapshot, priced = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
+    return valuation, {i: priced.get(i) for i in ids}

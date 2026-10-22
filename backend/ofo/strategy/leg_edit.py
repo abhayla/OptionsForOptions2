@@ -14,10 +14,11 @@ stepper's edge), futures leg (no strike), tick size known / the file has no such
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from typing import Mapping
 
+from ofo.engine.executable_price import round_to_tick
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED  # noqa: F401 - re-exported for the callers that test "Unlimited"
 from ofo.errors import LegValue, UserFacing, render
@@ -78,7 +79,7 @@ def _land(cat: Catalogue, underlying: str, legs: list[EditLeg], targets: Mapping
     return Moved(out, frozenset(targets))
 
 
-def _gap(cat: Catalogue, underlying: str, legs: list[EditLeg]) -> Decimal:
+def strike_step(cat: Catalogue, underlying: str, legs: list[EditLeg]) -> Decimal:
     """The strike step: the file's strike gap for the legs' expiry (the smallest gap across their expiries)."""
     expiries = {x.leg.expiry for x in legs if x.leg.instrument in OPTIONS}
     return min(cat.strike_gap(underlying, expiry) for expiry in expiries)
@@ -103,7 +104,7 @@ def shift(cat: Catalogue, underlying: str, legs: list[EditLeg], direction: int) 
     options = [i for i, x in enumerate(legs) if x.leg.instrument in OPTIONS]
     if not options:
         raise LegEditRefused("leg_edit_needs_option_leg")
-    step = direction * _gap(cat, underlying, legs)
+    step = direction * strike_step(cat, underlying, legs)
     return _land(cat, underlying, legs, {i: legs[i].leg.strike + step for i in options})
 
 
@@ -114,7 +115,7 @@ def width(cat: Catalogue, underlying: str, legs: list[EditLeg], direction: int) 
     calls = [x.leg.strike for x in legs if x.leg.instrument is Instrument.CE and x.leg.action is Action.SELL]
     if not puts and not calls:
         raise LegEditRefused("leg_edit_width_not_applicable")
-    step = _gap(cat, underlying, legs)
+    step = strike_step(cat, underlying, legs)
     if direction < 0 and puts and calls and min(calls) - max(puts) < 2 * step:
         raise LegEditRefused("leg_edit_width_below_zero")
     targets = {i: x.leg.strike + (direction * step if x.leg.instrument is Instrument.CE else -direction * step)
@@ -127,7 +128,7 @@ def hedge(cat: Catalogue, underlying: str, legs: list[EditLeg], protective: froz
     distance is never below one step; an even number of legs, at most 4."""
     if not protective or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
         raise LegEditRefused("leg_edit_hedge_not_applicable")
-    step = _gap(cat, underlying, legs)
+    step = strike_step(cat, underlying, legs)
     targets: dict[int, Decimal] = {}
     for i in sorted(protective):
         leg = legs[i].leg
@@ -169,7 +170,7 @@ def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index:
     leg = legs[index].leg
     kind = ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
     tick = cat.tick_size(underlying, leg.expiry, kind)
-    if type(price) is not Decimal or not price.is_finite() or price <= 0 or price % tick != 0:
+    if type(price) is not Decimal or not price.is_finite() or price <= 0 or round_to_tick(price, tick, Action.BUY) != price:
         raise LegEditRefused("leg_edit_price_not_tick", leg=_ref(underlying, legs, index), tick=tick)
     return [replace(x, leg=replace(x.leg, entry_price=price), typed=True) if i == index else x
             for i, x in enumerate(legs)]

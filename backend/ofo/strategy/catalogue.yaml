@@ -104,6 +104,7 @@ templates:
       - {name: short_call, action: SELL, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: iron_condor
+    width_adjustable: true
     name: "Iron Condor"
     description: >-
       Sell a put and a call at two different strikes, the put below the call, and buy a put and a call the
@@ -127,6 +128,7 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "q + w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: iron_butterfly
+    width_adjustable: true
     name: "Iron Fly"
     description: >-
       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
@@ -146,6 +148,7 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: short_straddle
+    width_adjustable: true
     name: "Straddle (Short)"
     description: Sell a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
@@ -158,6 +161,7 @@ templates:
       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
 
   - id: short_strangle
+    width_adjustable: true
     name: "Strangle (Short)"
     description: Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
@@ -194,6 +198,7 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "c + w", expiry_slot: near, quantity_multiplier: 1}
 
   - id: long_straddle
+    width_adjustable: true
     name: "Straddle (Long)"
     description: Buy a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
@@ -206,6 +211,7 @@ templates:
       - {name: long_put, action: BUY, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
 
   - id: long_strangle
+    width_adjustable: true
     name: "Strangle (Long)"
     description: Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
@@ -222,6 +228,7 @@ templates:
       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: reverse_iron_condor
+    width_adjustable: true
     name: "Reverse Iron Condor"
     description: >-
       Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the

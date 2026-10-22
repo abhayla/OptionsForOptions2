@@ -31,6 +31,7 @@ from ofo_app.routes import (
     indices,
     live,
     outcome,
+    leg_edit,
     planned_entry,
     positions,
     strategies,
@@ -118,6 +119,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
     app.include_router(features.router)  # W-121: which switchable features are on (the order path)
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
+    app.include_router(leg_edit.router)  # W-126: one leg edit (step, multiplier, tick, typed price, Shift/Width/Hedge)
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
     app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1

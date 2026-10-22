@@ -752,6 +752,30 @@
         "title": "ContractsOut",
         "type": "object"
       },
+      "ControlsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "hedge": {
+            "title": "Hedge",
+            "type": "boolean"
+          },
+          "shift": {
+            "title": "Shift",
+            "type": "boolean"
+          },
+          "width": {
+            "title": "Width",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shift",
+          "width",
+          "hedge"
+        ],
+        "title": "ControlsOut",
+        "type": "object"
+      },
       "CostOut": {
         "additionalProperties": false,
         "description": "W-102 (ADR-097 \"a final yes on the exact contract, side, quantity, limit price and cost\"): what the basket costs,\nevery figure computed on the server (one engine, ADR-008); the browser only shows it.",
@@ -955,6 +979,282 @@
           "disconnected"
         ],
         "title": "DisconnectOut",
+        "type": "object"
+      },
+      "EditIn": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "enum": [
+              "step",
+              "multiplier",
+              "include",
+              "price",
+              "reset_prices",
+              "shift",
+              "width",
+              "hedge"
+            ],
+            "title": "Control",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  1,
+                  -1
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "included": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 20.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "multiplier": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplier"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{1,7}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          }
+        },
+        "required": [
+          "control"
+        ],
+        "title": "EditIn",
+        "type": "object"
+      },
+      "EditLegIn": {
+        "additionalProperties": false,
+        "description": "A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry may\nbe absent (a leg whose contract has no live price yet). ``extra=\"forbid\"`` keeps any other state out (REQ-076 AC-7).",
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "base_lots": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Base Lots",
+            "type": "integer"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "included": {
+            "default": true,
+            "title": "Included",
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "examples": [
+              "NSE_FO:44624"
+            ],
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lots": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Lots",
+            "type": "integer"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "pattern": "^\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
+          },
+          "typed": {
+            "default": false,
+            "title": "Typed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "action",
+          "lots",
+          "base_lots"
+        ],
+        "title": "EditLegIn",
+        "type": "object"
+      },
+      "EditLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "base_lots": {
+            "title": "Base Lots",
+            "type": "integer"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "hedge": {
+            "title": "Hedge",
+            "type": "boolean"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
+          },
+          "price_source": {
+            "enum": [
+              "captured",
+              "typed",
+              "none"
+            ],
+            "title": "Price Source",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "action",
+          "instrument",
+          "strike",
+          "expiry",
+          "lots",
+          "base_lots",
+          "quantity",
+          "planned_entry",
+          "captured_at",
+          "price_source",
+          "included",
+          "hedge"
+        ],
+        "title": "EditLegOut",
         "type": "object"
       },
       "EntryOut": {
@@ -1275,6 +1575,115 @@
           "answered_at"
         ],
         "title": "IndicesOut",
+        "type": "object"
+      },
+      "LegEditIn": {
+        "additionalProperties": false,
+        "properties": {
+          "edit": {
+            "$ref": "#/components/schemas/EditIn"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/EditLegIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          },
+          "shift_total": {
+            "default": 0,
+            "description": "index points moved by Shift since the last strike edit",
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Shift Total",
+            "type": "integer"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "ux_level": {
+            "default": "standard",
+            "enum": [
+              "guided",
+              "standard",
+              "advanced"
+            ],
+            "title": "Ux Level",
+            "type": "string"
+          },
+          "view": {
+            "default": "at_expiry",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs",
+          "edit"
+        ],
+        "title": "LegEditIn",
+        "type": "object"
+      },
+      "LegEditOut": {
+        "additionalProperties": false,
+        "properties": {
+          "controls": {
+            "$ref": "#/components/schemas/ControlsOut"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/EditLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shape": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape"
+          },
+          "shift_total": {
+            "title": "Shift Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "legs",
+          "shape",
+          "controls",
+          "shift_total",
+          "outcome"
+        ],
+        "title": "LegEditOut",
         "type": "object"
       },
       "LevelOut": {
@@ -4048,6 +4457,44 @@
           }
         },
         "summary": "Market Indices"
+      }
+    },
+    "/api/strategies/leg-edit": {
+      "post": {
+        "operationId": "leg_edit_api_strategies_leg_edit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegEditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegEditOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Edit"
       }
     },
     "/api/strategies/outcome": {
