@@ -299,6 +299,7 @@ decisions:
   ADR-164: S6.2        # max profit and loss as a percentage of funds (owner 2026-10-21)
   ADR-165: all         # builder-first scope, no order placing in this scope (owner 2026-10-21)
   ADR-166: S6.1        # "Start tracking" is the label of REQ-109's action (owner 2026-10-21)
+  ADR-167: S6.2        # curves and scenario values before charges, charges shown once (owner 2026-10-22)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
