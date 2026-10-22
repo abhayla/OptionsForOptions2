@@ -8,7 +8,14 @@ check is applied at once; a change that removes or loosens a check, a review rou
 gets an independent reviewer's read, then goes to the owner as one question. Every change is logged below with its
 reason. Strict row order stays (owner, same session: "Keep strict order").
 
-## The review (same turn the row closes, before the next row's build)
+## Expected vs actual (owner 2026-10-22: every row, from row 5; row 4 stated after the fact)
+
+Before a row's build is dispatched, the orchestrator writes its expected time in the row's table below and in the
+status reply: measure + build (from the size: S 30, M 60, L 2 x 60 minutes) + verify (Tier B 10, Tier A 20 minutes) +
+orchestrator work (live proofs, fixtures, close: about 10 minutes) = expected minutes, and expected agent tokens
+(about 150k per dispatch). When the row closes, the actual is read from the completion notices and the commit times.
+A difference within 20% needs no comment. Over 20% either way: one line of cause (faster: which rule or change saved
+the time; slower: what went wrong), and for slower, the change that stops it next row, applied the same turn.
 
 1. **Measure** from the dispatch notifications: for each agent (start check, measure, build, fix, verify) its minutes,
    tokens and tool calls; the number of rounds; the orchestrator's own work outside agents.
@@ -72,11 +79,12 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | R6 orchestrator self-checks | bookkeeping turning a repo test red | red repo tests from orchestrator edits | 1 (row 1 W-129) | 0 (row 3) |
 | R7 measured table | wrong times, missing agents in totals | review claims without a record (meta review) | - | 4 (meta review after row 3) |
 
-| Row | Agents | Minutes (agents) | Tokens (agents) | Verify rounds | Notes |
-|---|---|---|---|---|---|
-| 1 | 5 + half shared start check | 52 | ~820k (+93k shared) | 2 | before R1-R7 |
-| 2 | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
-| 3 | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
+| Row | Expected (min / tokens) | Agents | Actual minutes (agents) | Actual tokens (agents) | Verify rounds | Notes |
+|---|---|---|---|---|---|---|
+| 1 | not set | 5 + half shared start check | 52 | ~820k (+93k shared) | 2 | before R1-R7 |
+| 2 | not set | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
+| 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
+| 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | in progress | | | | builder stopped at its 100-turn hard limit with 152 tool calls against an 80-call budget, mid-rename |
 
 ## Log (newest first)
 

@@ -78,6 +78,10 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
   tree for the old value or answer of anything you changed.
 - **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
+- **The `Budget:` is a hard stop** (row 4, 2026-10-22: a builder used 152 tool calls on an 80-call budget, hit the
+  100-turn hard limit and stopped mid-rename with uncommitted files). At 80% of the calls (64 of 80, 32 of 40):
+  start no new change; finish or revert the one in hand so the tree is consistent; commit; report done / not done /
+  next command. Never leave a rename or a refactor half applied.
 - One test per AC in `tests_required`; each test's docstring starts with the AC id (e.g. `"""AC-3: ..."""`).
 - Assert exact values (Decimal equality), not "is not None" or ranges, wherever the spec gives a number.
 - **Expected values come from the spec or an independent hand computation, never from running your own code and
