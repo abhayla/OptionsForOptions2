@@ -277,7 +277,8 @@ def test_the_app_models_are_all_swept() -> None:
         "GreeksOut", "GreekRowOut", "GreekExampleOut", "GreeksPanelOut", "BandOut", "OiStrikeOut", "OiOut", "WhatIfOut"}
     # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
     # TemplatesOut; W-119 adds TemplateLegOut; W-111 adds the Positions reply's 3 models (ADR-138 (2): strategy
-    # groups); W-127 adds the eight what-if models; W-089 adds the three broker-status models; W-121 adds FeaturesOut; W-122 adds the four tracking models
+    # groups); W-127 adds the eight what-if models; W-089 adds the three broker-status models; W-121 adds
+    # FeaturesOut; W-122 adds the four tracking models
     assert len(_app_models()) == 64
 
 

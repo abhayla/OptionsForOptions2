@@ -28,10 +28,10 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
-from ofo.scenario.whatif import WhatIfInput
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
+from ofo.scenario.whatif import WhatIfInput
 from ofo.table import UXLevel
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
@@ -167,11 +167,12 @@ class OutcomeRequest(BaseModel):
                                     description="the first scenario level in index points; sent with range_end")
     range_end: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
                                   description="the last scenario level in index points; sent with range_start")
-    # W-127 / REQ-084 AC-4: the browser sends only the what-if INPUTS; they are used for this one answer and never stored
+    # W-127 / REQ-084 AC-4: the browser sends only the what-if INPUTS; used for this one answer, never stored
     target_level: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23000"],
                                      description="the what-if index level in points (clamped to the range shown)")
-    target_time: AwareDatetime | None = Field(default=None, description="the what-if date and time (clamped between now "
-                                                                         "and the first expiry close, 15:30 IST)")
+    target_time: AwareDatetime | None = Field(
+        default=None,
+        description="the what-if date and time (clamped between now and the first expiry close, 15:30 IST)")
     iv_offset: str = Field(default="0.0", pattern=r"^-?\d{1,2}\.\d$", examples=["2.0"],
                            description="volatility points added to every option leg's own IV, steps of 0.1")
     fallback: StrictBool = Field(
@@ -329,7 +330,7 @@ class GreekExampleOut(ApiModel):
 class GreeksPanelOut(ApiModel):
     rows: list[GreekRowOut]
     total_per_position: GreeksOut
-    total_per_unit: Optional[GreeksOut]
+    total_per_unit: GreeksOut | None
     examples: list[GreekExampleOut]
 
 
@@ -340,10 +341,10 @@ class BandOut(ApiModel):
 
 class OiStrikeOut(ApiModel):
     strike: Money
-    call_oi: Optional[int]
-    put_oi: Optional[int]
-    call_oi_change: Optional[int]
-    put_oi_change: Optional[int]
+    call_oi: int | None
+    put_oi: int | None
+    call_oi_change: int | None
+    put_oi_change: int | None
 
 
 class OiOut(ApiModel):
@@ -367,16 +368,16 @@ class WhatIfOut(ApiModel):
     clamp_notes: list[CatalogueText]
     target_expiry_pnl: Money
     estimated_available: bool
-    estimated_reason: Optional[CatalogueText]
+    estimated_reason: CatalogueText | None
     estimated_points: list[PointOut]
-    target_estimated_pnl: Optional[Money]
+    target_estimated_pnl: Money | None
     estimated_breakevens: list[Money]
-    greeks: Optional[GreeksPanelOut]
-    greeks_reason: Optional[CatalogueText]
+    greeks: GreeksPanelOut | None
+    greeks_reason: CatalogueText | None
     bands: list[BandOut]
-    bands_reason: Optional[CatalogueText]
-    oi: Optional[OiOut]
-    oi_reason: Optional[CatalogueText]
+    bands_reason: CatalogueText | None
+    oi: OiOut | None
+    oi_reason: CatalogueText | None
 
 
 class MarginOut(ApiModel):
@@ -434,7 +435,7 @@ class OutcomeResponse(ApiModel):
     scenario: Optional[ScenarioOut]
     payoff: Optional[PayoffOut]
     summary: Optional[SummaryOut]
-    whatif: Optional[WhatIfOut] = None
+    whatif: WhatIfOut | None = None
     #: present ONLY at ux_level=advanced (absent, not empty, at guided/standard) and only when a snapshot was read
     advanced_details: Optional[list[AdvancedLegOut]] = None
 

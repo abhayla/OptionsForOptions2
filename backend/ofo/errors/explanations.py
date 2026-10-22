@@ -912,17 +912,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": LegRefs}),
     # W-127 / REQ-083 / REQ-084: what-if controls, the Estimated curve, the expected-move bands and the Greeks examples
     ExplanationTemplate("whatif_iv_not_positive", "values_seen",
-                        "The volatility change would make an implied volatility zero or below, so no estimate is shown."),
+                        "The volatility change would make an implied volatility zero or below, "
+                        "so no estimate is shown."),
     ExplanationTemplate("whatif_estimate_label", "values_seen",
                         "Estimate from the pricing model at your target and IV change, not a forecast."),
     ExplanationTemplate("whatif_target_clamped_early", "values_seen",
                         "The target date was before now; the estimate is shown for now."),
     ExplanationTemplate("whatif_target_clamped_late", "values_seen",
-                        "The target date was after the first expiry; the estimate is shown at that expiry's 15:30 IST close."),
+                        "The target date was after the first expiry; the estimate is shown at that "
+                        "expiry's 15:30 IST close."),
     ExplanationTemplate("whatif_level_clamped", "values_seen",
                         "The target level was outside the range shown; the nearest end of the range is used."),
     ExplanationTemplate("whatif_curve_no_iv", "values_seen",
-                        "The Estimated curve is not shown: an option leg has no implied volatility. The expiry curve is exact."),
+                        "The Estimated curve is not shown: an option leg has no implied volatility. "
+                        "The expiry curve is exact."),
     ExplanationTemplate("whatif_bands_unavailable", "values_seen",
                         "Expected-move bands are not shown: there is no at-the-money implied volatility."),
     ExplanationTemplate("whatif_oi_unavailable", "values_seen", "OI is not available for this expiry."),

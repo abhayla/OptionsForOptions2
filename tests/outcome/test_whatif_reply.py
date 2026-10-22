@@ -16,6 +16,8 @@ from ofo.scenario.whatif import WhatIfInput
 from ofo.table import UXLevel
 from outcome.test_same_engine import CONDOR, CURRENT, RATE, VALUATION, definition, formula_pnl
 
+BREAKEVEN_COUNT = 2  # an iron condor has a lower and an upper breakeven
+
 
 @pytest.fixture(scope="module")
 def replayed():
@@ -47,18 +49,18 @@ def test_req083_ac1_both_curves_come_from_one_reply_on_the_same_levels(replayed)
 
 def test_req084_ac4_default_target_is_spot_now_and_the_figures_agree(replayed):
     """REQ-084 AC-4: with no input the target is the live spot at now; the target P&L is the engine's estimate at that
-    level, equal to the curve point at the CURRENT column, and each breakeven is a sign change of the engine estimate."""
+    level, equal to the curve point at the CURRENT column, and each breakeven is a sign change of the estimate."""
     w = build(replayed).whatif
     assert (w.target_level, w.target_time, w.iv_offset, w.clamp_notes) == (CURRENT, VALUATION, Decimal("0.0"), ())
     curve = dict(w.estimated_points)
     assert w.target_estimated_pnl == curve[CURRENT]
     assert w.target_expiry_pnl == formula_pnl(CURRENT, replayed)
-    assert len(w.estimated_breakevens) == 2
+    assert len(w.estimated_breakevens) == BREAKEVEN_COUNT
     lo, hi = w.estimated_breakevens
     points = w.estimated_points
     assert lo < CURRENT < hi
     below = [p for lvl, p in points if lvl < lo][-1]
-    inside = [p for lvl, p in points if lo < lvl < hi][0]
+    inside = next(p for lvl, p in points if lo < lvl < hi)
     assert below < 0 < inside
 
 
@@ -199,8 +201,10 @@ def test_req084_ac1_a_target_level_outside_the_range_is_clamped_with_a_reason(re
     w = build(replayed, WhatIfInput(target_level=out.level_set.end + 5000)).whatif
     assert (w.level_min, w.level_max, w.level_step) == (out.level_set.start, out.level_set.end, out.level_set.step)
     assert w.target_level == out.level_set.end
-    assert str(w.clamp_notes[0]) == "The target level was outside the range shown; the nearest end of the range is used."
-    assert build(replayed, WhatIfInput(target_level=out.level_set.start - 5000)).whatif.target_level == out.level_set.start
+    assert str(w.clamp_notes[0]) == ("The target level was outside the range shown; "
+                                     "the nearest end of the range is used.")
+    below = build(replayed, WhatIfInput(target_level=out.level_set.start - 5000)).whatif
+    assert below.target_level == out.level_set.start
 
 
 def test_req083_ac3_a_leg_without_iv_gives_the_expiry_curve_only_with_the_reason(replayed):

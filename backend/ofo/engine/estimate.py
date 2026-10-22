@@ -65,7 +65,8 @@ def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decim
     years_list: list[Decimal] = []
     for leg_input in inputs.legs:
         if inputs.valuation_time == datetime.datetime.combine(leg_input.expiry, EXPIRY_CLOSE):
-            # W-127 (REQ-084 AC-2): a what-if date AT the expiry close has no time left: the leg is worth its expiry value
+            # W-127 (REQ-084 AC-2): a what-if date AT the expiry close has no time left: the leg is worth its
+            # expiry value
             marks.append(long_value_at(leg_input.leg, level))
             years_list.append(Decimal(0))
             continue

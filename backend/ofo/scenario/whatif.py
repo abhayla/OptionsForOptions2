@@ -13,7 +13,8 @@ Answer states (run-discipline B4 (d)):
 - an option leg has no IV: no Estimated curve, no Greeks, ``whatif_curve_no_iv``; the exact At Expiry figure stays.
 - IV offset makes a leg's IV zero or below: :class:`~ofo.engine.model.WhatIfRefused` (the route answers 422).
 - target date before now / after the first expiry close: clamped, with the reason in ``clamp_notes``.
-- target date at the expiry close: the leg is worth its expiry value; Greeks are not defined (``whatif_greeks_at_expiry_close``).
+- target date at the expiry close: the leg is worth its expiry value; Greeks are not defined
+  (``whatif_greeks_at_expiry_close``).
 - ATM IV absent, or no whole calendar day to the nearest expiry: no bands, ``whatif_bands_unavailable``.
 - OI: no chain read for the expiry or no strike carries OI: ``whatif_oi_unavailable``; a strike whose OI is absent has
   ``None`` (never zero); a quote that is not AVAILABLE marks the whole read ``stale``.
@@ -24,6 +25,7 @@ import datetime
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
+from itertools import pairwise
 from typing import TYPE_CHECKING, Final
 
 from ofo.charges import ChargeRates
@@ -182,7 +184,7 @@ def _breakevens(total_at: Callable[[Decimal], Decimal], points) -> tuple[Decimal
     computed points whose totals have opposite signs; a point that is exactly zero is a breakeven. Every value probed
     is the engine's own estimate (ADR-008); nothing is interpolated."""
     found: list[Decimal] = []
-    for (l0, p0), (l1, p1) in zip(points, points[1:], strict=False):
+    for (l0, p0), (l1, p1) in pairwise(points):
         if p0 == 0:
             found.append(l0)
         elif p0 * p1 < 0:
@@ -305,7 +307,7 @@ def _oi(snapshot: MarketSnapshot, expiry: datetime.date) -> tuple[OiOverlay | No
                      tuple(one(k) for k in strikes)), None
 
 
-def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelSet, now: datetime.datetime,
+def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelSet, now: datetime.datetime,  # noqa: PLR0913 - one reply block
                  inputs: WhatIfInput, expiry_total_at: Callable[[Decimal], Decimal],
                  legs_meta: Sequence[tuple[str, int | None]], charges: Decimal | None = None) -> WhatIfResult:
     """The what-if block of one reply. ``expiry_total_at(level)`` is the engine's exact At Expiry total at a level (the
@@ -318,11 +320,12 @@ def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelS
     expiry = min(leg.expiry for leg in model.legs)
     oi, oi_reason = _oi(snapshot, expiry)
     bands, bands_reason = _bands(model, snapshot, expiry if inputs.target_time is None else when.date(), now)
-    common = dict(
-        estimate_label=render_explanation("whatif_estimate_label"), level_min=level_set.start, level_max=level_set.end,
-        level_step=level_set.step, time_min=now, time_max=_first_close(model), target_level=level, target_time=when,
-        iv_offset=inputs.iv_offset, clamp_notes=(*time_notes, *level_notes), target_expiry_pnl=expiry_total_at(level),
-        bands=bands, bands_reason=bands_reason, oi=oi, oi_reason=oi_reason)
+    common = {
+        "estimate_label": render_explanation("whatif_estimate_label"), "level_min": level_set.start,
+        "level_max": level_set.end, "level_step": level_set.step, "time_min": now, "time_max": _first_close(model),
+        "target_level": level, "target_time": when, "iv_offset": inputs.iv_offset,
+        "clamp_notes": (*time_notes, *level_notes), "target_expiry_pnl": expiry_total_at(level), "bands": bands,
+        "bands_reason": bands_reason, "oi": oi, "oi_reason": oi_reason}
     refusal: ExplanationText | None = None
     if any(leg.instrument is not Instrument.FUT and leg.iv is None for leg in model.legs):
         refusal = render_explanation("whatif_curve_no_iv")

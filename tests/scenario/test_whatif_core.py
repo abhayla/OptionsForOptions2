@@ -77,7 +77,7 @@ def test_ac2_target_at_expiry_close_is_the_expiry_value() -> None:
 
 
 def test_req083_ac4_expected_move_bands() -> None:
-    """REQ-083 AC-4: NIFTY 23,047, ATM IV 12 %, 7 days: 23047 x 0.12 x sqrt(7/365) = 383.0 => 1 SD 383, 2 SD 766 points."""
+    """REQ-083 AC-4: NIFTY 23,047, ATM IV 12 %, 7 days: 23047 x 0.12 x sqrt(7/365) = 383.0 => 1 SD 383, 2 SD 766."""
     one = ExpectedMove(D("0.12"), 7).points(D("23047"))
     assert one == D("383")
     assert 2 * one == D("766")

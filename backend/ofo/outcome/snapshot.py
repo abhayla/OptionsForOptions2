@@ -53,8 +53,8 @@ class MarketSnapshot:
     forward_errors: Mapping[datetime.date, ExplanationText] = field(default_factory=dict)
     #: ADR-077: the kept last quote TIME of each input (spot index, legs) that holds no quote now; never a price.
     ended_times: Mapping[str, datetime.datetime] = field(default_factory=dict)
-    #: W-127: each read expiry's option quotes (only the expiries of the strategy's legs): today's OI and the ATM IV come
-    #: from the same chain read as the legs, never a second read
+    #: W-127: each read expiry's option quotes (only the strategy's expiries): today's OI and the ATM IV come from
+    #: the same chain read as the legs, never a second read
     chains: Mapping[datetime.date, tuple[NormalizedQuote, ...]] = field(default_factory=dict)
 
 
