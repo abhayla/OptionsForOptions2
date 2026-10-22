@@ -260,27 +260,82 @@ def _build(cls, required_only: bool = False):
     return cls.model_validate(values)
 
 
+#: The allow-list of every app ApiModel subclass, module-qualified and sorted (replaces the hand-recounted count).
+#: A model added or removed without this list changing fails the test below, naming the added and missing names.
+#: To add one: insert its `module.Name` in sorted order.
+APP_MODELS = (
+    "ofo_app.chain_push.ChainCellOut",
+    "ofo_app.chain_push.ChainOut",
+    "ofo_app.chain_push.ChainRowOut",
+    "ofo_app.index_push.IndexOut",
+    "ofo_app.index_push.IndicesOut",
+    "ofo_app.routes.broker.BrokerRedirectOut",
+    "ofo_app.routes.broker.RefusalOut",
+    "ofo_app.routes.broker_status.BrokerStatusOut",
+    "ofo_app.routes.broker_status.DisconnectOut",
+    "ofo_app.routes.broker_status.StatusOut",
+    "ofo_app.routes.catalogue.ContractOut",
+    "ofo_app.routes.catalogue.ContractsOut",
+    "ofo_app.routes.catalogue.ExpiriesOut",
+    "ofo_app.routes.execute.BasketOrderOut",
+    "ofo_app.routes.execute.CostOut",
+    "ofo_app.routes.execute.ExecuteOut",
+    "ofo_app.routes.execution_return.ReturnContractOut",
+    "ofo_app.routes.execution_return.ReturnExternalOut",
+    "ofo_app.routes.execution_return.ReturnOut",
+    "ofo_app.routes.execution_return.ReturnPlanOut",
+    "ofo_app.routes.features.FeaturesOut",
+    "ofo_app.routes.health.HealthOut",
+    "ofo_app.routes.outcome.AdvancedLegOut",
+    "ofo_app.routes.outcome.CellOut",
+    "ofo_app.routes.outcome.ColumnOut",
+    "ofo_app.routes.outcome.LegOut",
+    "ofo_app.routes.outcome.LevelOut",
+    "ofo_app.routes.outcome.MarginOut",
+    "ofo_app.routes.outcome.OutcomeResponse",
+    "ofo_app.routes.outcome.PayoffOut",
+    "ofo_app.routes.outcome.PointOut",
+    "ofo_app.routes.outcome.RowOut",
+    "ofo_app.routes.outcome.ScenarioOut",
+    "ofo_app.routes.outcome.SummaryOut",
+    "ofo_app.routes.outcome.TableOut",
+    "ofo_app.routes.planned_entry.PlannedEntriesOut",
+    "ofo_app.routes.planned_entry.PlannedEntryOut",
+    "ofo_app.routes.positions.PositionsOut",
+    "ofo_app.routes.positions.StrategyContractOut",
+    "ofo_app.routes.positions.StrategyPositionsOut",
+    "ofo_app.routes.ready_made.LoadTemplateIn",
+    "ofo_app.routes.ready_made.PlacedLegOut",
+    "ofo_app.routes.ready_made.QuickPickIn",
+    "ofo_app.routes.ready_made.ReadyMadeOut",
+    "ofo_app.routes.strategies.DefinitionOut",
+    "ofo_app.routes.strategies.EntryOut",
+    "ofo_app.routes.strategies.HistoryOut",
+    "ofo_app.routes.strategies.LegOut",
+    "ofo_app.routes.strategies.PreferencesOut",
+    "ofo_app.routes.strategies.RiskLimitsOut",
+    "ofo_app.routes.strategies.StrategyListOut",
+    "ofo_app.routes.strategies.StrategyOut",
+    "ofo_app.routes.strategies.SummaryOut",
+    "ofo_app.routes.strategy_templates.TemplateLegOut",
+    "ofo_app.routes.strategy_templates.TemplateOut",
+    "ofo_app.routes.strategy_templates.TemplatesOut",
+    "ofo_app.routes.tracking.DetectionOut",
+    "ofo_app.routes.tracking.TrackingIndexOut",
+    "ofo_app.routes.tracking.TrackingLegOut",
+    "ofo_app.routes.tracking.TrackingOut",
+)
+
+
 def test_the_app_models_are_all_swept() -> None:
     """AC-2: every app ApiModel subclass (recounted after W-068: 17; W-066 adds the outcome route's 13) is in the sweep,
     so none can skip the door tests."""
     assert {(c.__module__.rsplit(".", 1)[-1], c.__name__) for c in _app_models()} >= {
         ("outcome", n) for n in ("CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut", "ScenarioOut", "PointOut",
                                  "PayoffOut", "SummaryOut", "MarginOut", "LegOut", "AdvancedLegOut", "OutcomeResponse")}
-    assert {c.__name__ for c in _app_models()} == {
-        "BrokerRedirectOut", "RefusalOut", "ExpiriesOut", "ContractOut", "ContractsOut", "HealthOut", "PlannedEntryOut",
-        "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
-        "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
-        "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
-        "BasketOrderOut", "ExecuteOut", "CostOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut",
-        "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
-        "TemplatesOut", "TemplateLegOut", "PositionsOut", "StrategyPositionsOut", "StrategyContractOut",
-        "StatusOut", "BrokerStatusOut", "DisconnectOut", "FeaturesOut",
-        "TrackingLegOut", "TrackingIndexOut", "DetectionOut", "TrackingOut",
-        "PlacedLegOut", "ReadyMadeOut", "LoadTemplateIn", "QuickPickIn"}
-    # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
-    # TemplatesOut; W-119 adds TemplateLegOut; W-111 adds the Positions reply's 3 models (ADR-138 (2): strategy
-    # groups); W-089 adds the three broker-status models; W-121 adds FeaturesOut; W-122 adds the four tracking models
-    assert len(_app_models()) == 60  # W-125 adds the ready-made reply and its two request models
+    found = sorted(f"{c.__module__}.{c.__name__}" for c in _app_models())
+    added, missing = sorted(set(found) - set(APP_MODELS)), sorted(set(APP_MODELS) - set(found))
+    assert found == list(APP_MODELS), f"models not in APP_MODELS: {added}; in APP_MODELS but not found: {missing}"
 
 
 @pytest.mark.parametrize("required_only", [False, True])

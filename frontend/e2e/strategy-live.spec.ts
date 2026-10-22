@@ -158,11 +158,18 @@ test('AC-4 two holders (ADR-077): another socket holds the same legs, this page\
 
   const restBodies: any[] = []
   const restAnswers: any[] = []
+  // Only answers to requests this listener saw being sent count: a non-fallback refresh the page sent before the
+  // listener attached can be answered after it, and the server (correctly) answers that one COMPUTED while the other
+  // socket still holds the legs (log: ["COMPUTED","NOT_CONNECTED"]). Every request seen is still asserted fallback=true.
+  const seenRequests = new Set<unknown>()
   page.on('request', (r) => {
-    if (r.url().endsWith('/api/strategies/outcome') && r.method() === 'POST') restBodies.push(r.postDataJSON())
+    if (r.url().endsWith('/api/strategies/outcome') && r.method() === 'POST') {
+      restBodies.push(r.postDataJSON())
+      seenRequests.add(r)
+    }
   })
   page.on('response', async (r) => {
-    if (r.url().endsWith('/api/strategies/outcome') && r.request().method() === 'POST') restAnswers.push(await r.json())
+    if (seenRequests.has(r.request())) restAnswers.push(await r.json())
   })
   await sock.kill()
   await expect.poll(() => restAnswers.length, { timeout: 10000 }).toBeGreaterThan(0)

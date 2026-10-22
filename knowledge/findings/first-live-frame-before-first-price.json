@@ -1,0 +1,27 @@
+{
+ "id": "first-live-frame-before-first-price",
+ "scope": "project",
+ "class": "A live socket that computes and pushes its first frame the moment it connects, before every contract it needs has had its first tick, reports a failure state (here REFUSED: a derived input such as the forward cannot be computed yet) instead of a waiting state; the screen flashes an error on every open and every reconnect, and the error clears by itself one tick later.",
+ "mechanism": "The strategy live socket pushes an outcome on connect; the option-chain quotes the forward is derived from have not arrived on the shared fan-out yet, so the first push is 'Outcome refused: forward for <expiry>: the forward price could not be derived from the option chain'; the next push, about 1 s later, is COMPUTED.",
+ "first_seen": {
+  "date": "2026-10-22",
+  "where": "/api/strategies/live (live API, owner's Kite session, ofo_dev), builder-sequence core proof",
+  "evidence": "3 of 3 fresh sockets for a NIFTY 2026-10-27 iron condor (22750/22950 CE, 22450/22250 PE, saved strategy id 20): push 0 REFUSED at 10:09:31.74 / 10:09:36.82 / 10:09:41.98 IST with that reason; push 1 COMPUTED 1.0-1.1 s later each time ('estimated from spot')."
+ },
+ "fix": "REQ-133 AC-3 (builder-sequence row 24): a just-connected screen with no tick yet shows 'Waiting for the first live price' and draws no number; a failure state only after the REQ-049 health window. The fix must cover every derived input that needs a first tick (forward, spot, each leg's quote), not only DATA_UNHEALTHY.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test covers a refused first frame on connect; REQ-133 AC-4 names the reconnect test to add at row 24, extended to the REFUSED case."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-133.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-22",
+   "where": "live socket, 3 fresh connects",
+   "evidence": "core_live proof log, builder-sequence session 2026-10-22"
+  }
+ ]
+}
