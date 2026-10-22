@@ -74,23 +74,23 @@ async def test_the_app_role_cannot_delete_or_move_a_row(db):
     for sql in ("DELETE FROM public.user_settings WHERE user_ref = :u",
                 "UPDATE public.user_settings SET key = 'other.key' WHERE user_ref = :u",
                 "UPDATE public.user_settings SET user_ref = 'x' WHERE user_ref = :u"):
-        async with db.begin_nested():
-            with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError):
+            async with db.begin_nested():
                 await db.execute(text(sql), {"u": OWNER})
     assert await store.read(db, OWNER, KEY) == (TWENTY, False)
 
 
 async def test_the_database_refuses_a_key_off_the_closed_pattern(db):
     for key in ("Chain.Strikes", "1chain", "has space", ""):
-        async with db.begin_nested():
-            with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError):
+            async with db.begin_nested():
                 await db.execute(text("INSERT INTO public.user_settings (user_ref, key, value) "
                                       "VALUES (:u, :k, CAST('1' AS JSONB))"), {"u": OWNER, "k": key})
 
 
 async def test_updated_at_is_stamped_by_the_trigger_not_the_caller(db):
-    async with db.begin_nested():
-        with pytest.raises(DBAPIError):  # the app role has no INSERT/UPDATE grant on updated_at
+    with pytest.raises(DBAPIError):  # the app role has no INSERT/UPDATE grant on updated_at
+        async with db.begin_nested():
             await db.execute(text("INSERT INTO public.user_settings (user_ref, key, value, updated_at) "
                                   "VALUES (:u, :k, CAST('10' AS JSONB), '2001-01-01')"), {"u": OWNER, "k": KEY})
     await store.write(db, OWNER, KEY, TWENTY)
