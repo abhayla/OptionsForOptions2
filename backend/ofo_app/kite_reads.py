@@ -1,7 +1,7 @@
 """Zerodha's orders, trades and positions over HTTP for the owner's own connection (W-093, REQ-073 AC-3, ADR-054).
 
-Five reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
-(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)) (the module's entry in
+Six reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
+(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)), ``GET /user/profile`` (W-131, REQ-054 AC-1) (the module's entry in
 ``ALLOWED_CALLS``). Every request goes through ``check_call`` first, so a method or path outside the allow-list is
 refused BEFORE the transport is called, and the urllib door checks it again. No call here can place, change or cancel
 an order (REQ-073 AC-4).
@@ -20,7 +20,7 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
@@ -34,6 +34,11 @@ TRADES_PATH: Final = "/trades"
 POSITIONS_PATH: Final = "/portfolio/positions"
 QUOTE_PATH: Final = "/quote"
 HOLDINGS_PATH: Final = "/portfolio/holdings"
+PROFILE_PATH: Final = "/user/profile"
+#: The ONLY profile keys read (W-131, REQ-054 AC-1). The reply also carries the user's name, email and avatar; they are
+#: never read, kept, logged or stored: an allow-list, so a key Kite adds later is ignored, not trusted.
+PROFILE_TEXT_KEYS: Final = ("user_id", "broker")
+PROFILE_LIST_KEYS: Final = ("exchanges", "products", "order_types")
 QUANTITY_FIELDS: Final = ("quantity", "t1_quantity", "used_quantity", "authorised_quantity", "collateral_quantity")
 QUOTE_LIMIT: Final = 500  # Kite's cap on instruments per quote call
 _INSTRUMENT: Final = re.compile(QUOTE_INSTRUMENT, re.ASCII)
@@ -128,6 +133,32 @@ def _holding(row: dict) -> Holding:  # ``_rows`` has already refused any non-obj
                    *(_units(row.get(name)) for name in QUANTITY_FIELDS))
 
 
+@dataclass(frozen=True)
+class AccountProfile:
+    """What the platform keeps of the profile reply: exactly these five keys (REQ-054 AC-1 "fetch account"). Never
+    cached or written to the database. ``user_id`` is the client id: left out of ``repr`` so no log line carries it."""
+
+    user_id: str = field(repr=False)
+    broker: str
+    exchanges: tuple[str, ...]
+    products: tuple[str, ...]
+    order_types: tuple[str, ...]
+
+
+def _profile(data: object) -> AccountProfile:
+    """The closed key set out of a profile ``data`` object; any other key is dropped unread. A missing or mistyped
+    required key, or a list holding anything but text, is a reply we do not understand."""
+    if not isinstance(data, dict):
+        raise KiteReadError("kite_read_bad_reply")
+    lists = {}
+    for name in PROFILE_LIST_KEYS:
+        value = data.get(name)
+        if not isinstance(value, list):
+            raise KiteReadError("kite_read_bad_reply")
+        lists[name] = tuple(_text(v) for v in value)
+    return AccountProfile(*(_text(data.get(name)) for name in PROFILE_TEXT_KEYS), **lists)
+
+
 def _by_key(rows: Sequence[Holding]) -> dict[tuple[str, str, str], Holding]:
     keyed = {r.key: r for r in rows}
     if len(keyed) != len(rows):
@@ -213,6 +244,31 @@ class KiteReads:
         out = {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
         broker_sync.note_read()
         return out
+
+    def fetch_profile(self) -> AccountProfile:
+        """``GET /user/profile``: the five kept keys only (REQ-054 AC-1). No cache: every call reads Zerodha."""
+        profile = _profile(self._data("GET", PROFILE_PATH))
+        broker_sync.note_read()
+        return profile
+
+    def fetch_order_statuses(self, order_ids: Sequence[str]) -> dict[str, dict | None]:
+        """Each asked order id -> its row of today's orders, or ``None`` when Zerodha's list has no such id.
+
+        ONE ``GET /orders`` per call whatever the number of ids (REQ-118 rate limits; never ``/orders/{id}``, which is
+        not allow-listed). An id absent from the list is ``None``, an explicit not-found, never a default status.
+        A row with no order id, or two rows with one id, is a reply we do not understand (``kite_read_bad_reply``).
+        An id that is not non-empty text is refused before anything is sent."""
+        asked = list(dict.fromkeys(order_ids))
+        if not all(isinstance(i, str) and i.strip() for i in asked):
+            raise KiteReadError("kite_read_refused")
+        rows = self.fetch_orders()
+        by_id: dict[str, dict] = {}
+        for row in rows:
+            order_id = _text(row.get("order_id"))  # type: ignore[union-attr]  # _rows refused any non-object row
+            if order_id in by_id:
+                raise KiteReadError("kite_read_bad_reply")
+            by_id[order_id] = row  # type: ignore[assignment]
+        return {i: by_id.get(i) for i in asked}
 
     def fetch_holdings(self) -> tuple[Holding, ...]:
         """``GET /portfolio/holdings``: the eight compared fields per row (ADR-097 (4)). An empty tuple is a valid

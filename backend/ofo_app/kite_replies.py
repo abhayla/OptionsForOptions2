@@ -31,11 +31,12 @@ from decimal import Decimal
 from typing import Final
 
 from ofo.engine.legs import Action, Instrument
+from ofo.execution.partial import BrokerOrderStatus
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.money import zerodha_paise
-from ofo.orders.model import FillEvent
+from ofo.orders.model import FillEvent, OrderState
 from ofo.reconciliation.positions import BrokerPositionLine, is_flat_row, position_line_from_kite_row
 from ofo.timeutil import IST
 
@@ -341,6 +342,35 @@ def order_from_row(row: Mapping[str, object]) -> BrokerOrderRow:
     return BrokerOrderRow(_text(row, "order_id"), tag, _text(row, "tradingsymbol"), _side(row), quantity, filled,
                           kite_money(_field(row, "price"), "price"),
                           kite_money(_field(row, "average_price"), "average_price", exact=True), _text(row, "status"))
+
+
+#: Kite's order status words that mean "still working at the broker" (Kite's own list). An allow-list: a word in none of
+#: these sets and not COMPLETE / REJECTED / CANCELLED is refused, never read as pending (W-131).
+_WORKING_STATUS_WORDS: Final = frozenset({
+    "PUT ORDER REQ RECEIVED", "VALIDATION PENDING", "OPEN PENDING", "MODIFY VALIDATION PENDING", "MODIFY PENDING",
+    "TRIGGER PENDING", "CANCEL PENDING", "AMO REQ RECEIVED", "OPEN"})
+
+
+def order_status_from_row(row: Mapping[str, object]) -> BrokerOrderStatus:
+    """One orders-reply row as the broker's current view of that order (REQ-054 AC-1 "fetch order status").
+
+    COMPLETE needs every unit filled; a working word with some (not all) units filled is Partially Executed; REJECTED
+    and CANCELLED are terminal and keep the cumulative fill. ``reason`` is Kite's ``status_message`` text, or None."""
+    parsed = order_from_row(row)
+    word, filled = parsed.status, parsed.filled_quantity
+    if word == "COMPLETE":
+        if filled != parsed.quantity:
+            raise KiteReplyError(f"order {parsed.order_id!r}: COMPLETE with {filled} of {parsed.quantity} filled")
+        state = OrderState.EXECUTED
+    elif word in ("REJECTED", "CANCELLED"):
+        state = OrderState.REJECTED if word == "REJECTED" else OrderState.CANCELLED
+    elif word in _WORKING_STATUS_WORDS:
+        state = OrderState.PARTIALLY_EXECUTED if 0 < filled < parsed.quantity else OrderState.PENDING
+    else:
+        raise KiteReplyError(f"order {parsed.order_id!r}: unknown status word {word!r}")
+    message = row.get("status_message")
+    reason = message if isinstance(message, str) and message.strip() else None
+    return BrokerOrderStatus(parsed.order_id, parsed.tradingsymbol, state, filled, reason, parsed.tag)
 
 
 def orders_from_reply(data: object) -> tuple[BrokerOrderRow, ...]:

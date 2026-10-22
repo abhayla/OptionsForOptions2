@@ -34,7 +34,7 @@ _egress.install()
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 #: One instrument as Kite's quote takes it: ``EXCHANGE:TRADINGSYMBOL``, plain ASCII only (W-099).
 QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
-_BARE_TARGETS: _Final = frozenset({"/portfolio/holdings"})  # calls sent with no query, no fragment (W-106)
+_BARE_TARGETS: _Final = frozenset({"/portfolio/holdings", "/user/profile"})  # no query, no fragment (W-106, W-131)
 _QUOTE_TARGET: _Final = re.compile(rf"/quote(\?i={QUOTE_INSTRUMENT}(&i={QUOTE_INSTRUMENT})*)?", re.ASCII)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
