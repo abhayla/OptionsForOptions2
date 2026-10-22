@@ -415,6 +415,7 @@ issues:
   "#514": 4a  # Row 3 (REQ-054) MINORs: profile sync mark, one-broker scan allow-list, bare-string order id
   "#515": S6.1  # Row 4 (REQ-117) MINORs: broker-name scan gaps, ZERODHA-keyed lookups, per-entry reasons
   "#516": 4a  # Row 5 (REQ-053) MINORs: scheduler start-up gap before 08:30, scan shapes, unverified registry entries
+  "#517": 4a  # PARKED row 6 (REQ-048 AC-5): credential scans are name lists; redesign as a reply-field inventory
 
 # Work items whose status is not done.
 work_items:

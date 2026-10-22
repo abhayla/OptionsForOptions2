@@ -36,8 +36,8 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 3 | W-131 | REQ-054 | Broker adapter, read part | Prerequisite | 1 | A | Done (AC-1 basket and reconcile parts deferred: order path; MINORs #514) |
 | 4 | W-132 | REQ-117 | Broker adapter capability flags | Prerequisite | 1 | A | Done (AC-3 feature part for REQ-100/102/103 deferred: bound when built; MINORs #515) |
 | 5 | W-133 | REQ-053 | Contract eligibility: daily instrument list, valid strikes and expiries (read part) | Prerequisite | 1 | A | Done (before-execution repeat: order path; MINORs #516) |
-| 6 | W-134 | REQ-048 | Market-data pipeline (prices reach the server, never the browser directly) | Prerequisite | 1 | A | In progress |
-| 7 | W-135 | REQ-049 | Data health: fresh, stale and missing prices labelled honestly | Prerequisite | 1 | A | Not started (partly built) |
+| 6 | W-134 | REQ-048 | Market-data pipeline (prices reach the server, never the browser directly) | Prerequisite | 1 | A | PARKED (#517) - AC-1..AC-4 pass; AC-5 credential scans to redesign |
+| 7 | W-135 | REQ-049 | Data health: fresh, stale and missing prices labelled honestly | Prerequisite | 1 | A | In progress (measuring) |
 | 8 | W-136 | REQ-050 | Shared computation (market-wide figures computed once) | Prerequisite | 1 | A | Not started (unmeasured) |
 | 9 | W-137 | REQ-113 | Price feed in its own process (price socket part) | Prerequisite | 1 | A | Not started (unmeasured) |
 | 10 | W-138 | REQ-118 | Zerodha rate limits for read calls | Prerequisite | 1 | A | Not started (unmeasured) |

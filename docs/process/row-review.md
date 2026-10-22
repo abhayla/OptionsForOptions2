@@ -58,6 +58,11 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
   documented 08:30). Grep `spec/findings.md` and the requirement by the rule's key terms first; cite the finding.
 - **R10 A `verified` claim reads the code's use** (row 5: a batch constant marked verified against the basket limit
   it does not implement). Verify the value AND what the code does with it.
+- **R11 Every new test names its CI job and variables** (row 6: a test needing DATABASE_URL, a scan no CI job ran, a
+  fail-on-`CI` switch that broke the kit's job). The brief says which job/step runs it and with which variables; the
+  builder runs it with exactly those; a test that can only skip in CI is a defect.
+- **R12 Secrets are guarded by inventory** (row 6): the closed set of reply fields / build inputs that may exist,
+  asserted both ways; never a list of secret-looking names.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -95,9 +100,28 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
 | 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | 6 (measure, build, finish, verify r1, fix, verify r2) | 52 agent min; 58 wall-clock (12:57-13:55) | ~870k | 2 | time -42% (faster), tokens +93% (slower): see the row 4 log |
 | 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | 7 (build, finish x2, verify r1, research, fix, verify r2) + 3 process (reset tool, throwaway-db tool, tool review) | 61 agent min; 97 wall-clock (13:58-15:35) | ~1,010k (+316k process) | 2 | wall-clock +8% (within 20%); tokens +124%: see the row 5 log |
-| 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | | | | | |
+| 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 75 agent min; ~105 wall-clock (15:20-17:05) | ~610k | 2 (PARKED) | time +75%, tokens +74%: see the row 6 log |
 
 ## Log (newest first)
+
+### Row 6 - REQ-048 Market-data pipeline (PARKED #517, 2026-10-22 ~17:05 IST)
+- Expected 60 min / 350k. Actual: measure 1.6 min / 76k / 10 calls; build 14.6 min / 112k / 46 (budget 40); verify r1
+  18.1 min / 161k / 47; fix 12.7 min / 110k / 46; verify r2 6.2 min / 153k / 26. Agents ~53 min (+ waits), ~610k;
+  wall-clock ~105 min. Orchestrator: ESLint main-vs-branch check, the CRITICAL removal and its clean-export proof.
+- Difference: time +75%, tokens +74%, two failed rounds -> PARKED. Causes: (1) a test passed only because the builder's
+  shell had DATABASE_URL set (CI sets only TEST_DATABASE_URL); (2) a scan that could only skip in CI (no job both built
+  the frontend and ran pytest) - it looked like protection and was none; (3) the fix keyed fail-or-skip on `CI`, which
+  GitHub sets everywhere, turning the kit's job red (would have blocked every merge); (4) the credential scans were
+  name lists again (guard-as-forbidden-list, 5th occurrence) although the brief said allow-list - R8's check only sees
+  the word, not the design.
+- Right: both verifiers read the workflow files and caught what no local run could; the CRITICAL never reached a PR;
+  the park keeps AC-1..AC-4 and a concrete structural redesign (reply-field inventory).
+- Wrong: the brief did not say which CI job runs each new test, or with which variables; "allow-list" in the brief was
+  satisfied in words, not in design.
+- Changed: R11 - every new test or scan names the CI job and step that runs it and the variables it needs; the builder
+  runs it with exactly those variables (`env -u DATABASE_URL ...`); a test that can only skip in CI is a defect.
+  R12 - a credential or secret guard is designed as an inventory (the closed set of fields/values that may exist,
+  asserted both ways), never as a list of names to look for.
 
 ### Row 5 - REQ-053 Contract eligibility, read part (closed 2026-10-22 15:40 IST)
 - Expected 90 min / 450k (set before dispatch). Actual: build 15.9 min / 173k / 79 calls; finish 1 2.4 min / 104k /
