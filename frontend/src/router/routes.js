@@ -20,10 +20,15 @@ const REAL_PAGES = {
   'learn-options-concepts': () => import('../pages/LearnPage.vue'),
   'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+  // W-111: the two Positions pages that read Zerodha (REQ-044 AC-3 part 1); the other Positions items stay placeholders.
+  'positions-current-positions': () => import('../pages/PositionsPage.vue'),
+  'positions-strategy-linked-positions': () => import('../pages/PositionsPage.vue'),
   'strategies-create-strategy': () => import('../pages/CreateStrategyPage.vue'), // W-119
   'strategies-my-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109
   'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }
+// W-111: which view each Positions page shows (route meta.view).
+const POSITION_VIEWS = { 'positions/current-positions': 'current', 'positions/strategy-linked-positions': 'linked' }
 
 // Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
 const billingShell = () => import('../pages/BillingShellPage.vue')
@@ -46,7 +51,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
     component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
-    meta: { title: label, section: s.key, parent: s.label, ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
+    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}), ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
   })),
 ])
 

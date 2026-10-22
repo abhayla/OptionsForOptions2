@@ -1809,6 +1809,59 @@
         "title": "PointOut",
         "type": "object"
       },
+      "PositionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "blocked_strategy_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Blocked Strategy Ids",
+            "type": "array"
+          },
+          "has_outside": {
+            "title": "Has Outside",
+            "type": "boolean"
+          },
+          "outside_lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Lots"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyPositionsOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "read_at",
+          "strategies",
+          "has_outside",
+          "outside_lots",
+          "blocked",
+          "blocked_strategy_ids"
+        ],
+        "title": "PositionsOut",
+        "type": "object"
+      },
       "PreferencesOut": {
         "additionalProperties": false,
         "properties": {
@@ -2368,6 +2421,51 @@
         "title": "StatusOut",
         "type": "object"
       },
+      "StrategyContractOut": {
+        "additionalProperties": false,
+        "properties": {
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "pending_plans": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pending Plans",
+            "type": "array"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          },
+          "zerodha_units": {
+            "title": "Zerodha Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tradingsymbol",
+          "zerodha_units",
+          "units",
+          "pending",
+          "pending_plans"
+        ],
+        "title": "StrategyContractOut",
+        "type": "object"
+      },
       "StrategyIn": {
         "additionalProperties": false,
         "properties": {
@@ -2477,6 +2575,33 @@
           "definition"
         ],
         "title": "StrategyOut",
+        "type": "object"
+      },
+      "StrategyPositionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyContractOut"
+            },
+            "title": "Contracts",
+            "type": "array"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "blocked",
+          "contracts"
+        ],
+        "title": "StrategyPositionsOut",
         "type": "object"
       },
       "StrategyUpdateIn": {
@@ -4149,6 +4274,24 @@
           }
         },
         "summary": "Kite Callback"
+      }
+    },
+    "/positions": {
+      "get": {
+        "operationId": "read_positions_positions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Positions"
       }
     },
     "/strategies": {
