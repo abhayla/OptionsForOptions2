@@ -16,8 +16,8 @@ clock's India date (``catalogue_picker.database_today``, which honours only the 
   from its caller: a refusal can only make a contract NOT tradable (finding caller-supplied-verdict-trusted).
 
 Staleness (W-133, finding daily-load-misses-intraday-additions / F-33): a list whose latest load is before the current
-session's 08:00 IST publish time (``catalogue_picker.session_start``) is unconfirmed (``None`` / an empty registry), never trusted. A contract Zerodha lists during the day is
-eligible after the next scheduled load (``ofo_app.catalogue_refresh``, hourly 08:15-15:45 IST).
+session's 08:00 IST publish time (``catalogue_picker.session_start``) is unconfirmed (``None`` / an empty registry), never trusted. A contract Zerodha lists during the
+day is eligible after the next scheduled load (``ofo_app.catalogue_refresh``, hourly 08:15-15:45 IST).
 
 Copy from: none - the eligibility registry and the picker are this project's own; no algochanakya row covers
 eligibility.
@@ -83,7 +83,8 @@ async def leg_statuses(conn: Any, contract_ids: Sequence[int],
     reuses its token."""
     loaded_at = await _loaded_at(conn)
     wanted = sorted(set(contract_ids))
-    if loaded_before(loaded_at, await judging_instant(conn, today)) or not wanted:  # never loaded, or older than this session's publish (W-133)
+    # never loaded, or older than this session's publish (W-133)
+    if loaded_before(loaded_at, await judging_instant(conn, today)) or not wanted:
         return [None] * len(contract_ids)
     rows = (await conn.execute(_BY_IDS, {"broker": ZERODHA, "ids": wanted})).all()
     by_id = {int(r.id): status_from_list(_state(r), today=today, loaded_at=loaded_at) for r in rows}
@@ -98,7 +99,8 @@ async def fresh_registry(conn: Any, *, underlying: str | None = None,
     load ever, the registry is empty and the gate refuses every leg as unconfirmed."""
     today = await database_today(conn)
     loaded_at = await _loaded_at(conn)
-    if loaded_before(loaded_at, await judging_instant(conn, today)):  # never loaded, or older than this session's publish (W-133)
+    # never loaded, or older than this session's publish (W-133)
+    if loaded_before(loaded_at, await judging_instant(conn, today)):
         return NO_ELIGIBILITY
     rows = (await conn.execute(_LIVE, {"broker": ZERODHA, "underlying": underlying})).all()
     eligibility = registry_from_list((_state(r) for r in rows), today=today, loaded_at=loaded_at)

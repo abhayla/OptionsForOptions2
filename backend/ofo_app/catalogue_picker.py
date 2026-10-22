@@ -55,7 +55,8 @@ def session_start(now: datetime.datetime) -> datetime.datetime:
 def loaded_before(loaded_at: datetime.datetime | None, now: datetime.datetime) -> bool:
     """True when the list was never loaded or its latest load is before the current session's publish time (W-133,
     REQ-053 AC-3, finding daily-load-misses-intraday-additions): such a list is unconfirmed, never trusted. A list
-    loaded Friday 09:00 is current on Saturday 11:00 and on Monday 07:30. ``now`` and ``loaded_at`` are database times."""
+    loaded Friday 09:00 is current on Saturday 11:00 and on Monday 07:30. ``now`` and ``loaded_at`` are database
+    times."""
     return loaded_at is None or loaded_at < session_start(now)
 
 
@@ -85,7 +86,8 @@ _PICKABLE = (
 )
 _EXPIRIES = text(f"SELECT DISTINCT c.expiry {_PICKABLE} ORDER BY c.expiry")
 _CONTRACTS = text(
-    f"SELECT c.id AS contract_id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.strike, b.lot_size, b.broker_symbol "
+    f"SELECT c.id AS contract_id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.strike, "
+    f"b.lot_size, b.broker_symbol "
     f"{_PICKABLE} AND (CAST(:expiry AS DATE) IS NULL OR c.expiry = CAST(:expiry AS DATE)) "
     f"ORDER BY c.expiry, c.strike, c.instrument_type, c.exchange_token"
 )
@@ -105,8 +107,8 @@ class PickableContract:
 
 
 async def database_today(conn: Any) -> datetime.date:
-    """Today's date in India on the DATABASE clock (the one clock every expiry judgement uses). The single exception is the
-    TEST-ONLY pin (``TEST_CATALOGUE_DATE`` under APP_ENV=test, ofo_app.pinned_clock, issue #237)."""
+    """Today's date in India on the DATABASE clock (the one clock every expiry judgement uses). The single exception is
+    the TEST-ONLY pin (``TEST_CATALOGUE_DATE`` under APP_ENV=test, ofo_app.pinned_clock, issue #237)."""
     pinned = pinned_today()
     if pinned is not None:
         return pinned
@@ -134,7 +136,8 @@ async def pickable_contracts(conn: Any, underlying: str, today: datetime.date,
     for r in rows.all():
         is_future = r.instrument_type == "FUT"
         out.append(PickableContract(
-            contract_id=int(r.contract_id), instrument_id=f"{r.exchange_segment}:{r.exchange_token}", exchange_segment=r.exchange_segment,
-            exchange_token=int(r.exchange_token), instrument_type=r.instrument_type, expiry=r.expiry,
+            contract_id=int(r.contract_id), instrument_id=f"{r.exchange_segment}:{r.exchange_token}",
+            exchange_segment=r.exchange_segment, exchange_token=int(r.exchange_token),
+            instrument_type=r.instrument_type, expiry=r.expiry,
             strike=None if is_future else r.strike, lot_size=int(r.lot_size), symbol=r.broker_symbol))
     return out

@@ -16,7 +16,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-from ofo_app.order_limits_registry import NOT_A_ZERODHA_RULE, RULES
+from ofo_app.order_limits_registry import NOT_A_ZERODHA_RULE, RULES, ZerodhaRule
 
 pytestmark = pytest.mark.repo_scan
 
@@ -33,13 +33,29 @@ _ORDER_TYPES = frozenset({"LIMIT", "MARKET", "SL", "SL-M"})
 #: site is red until it is listed here with a reason. "Options are limit-only" is not a rule in any of them: each site
 #: either carries the type through (a schema/validator) or is the product's own choice, labelled below.
 ORDER_TYPE_SITES: dict[tuple[str, str], tuple[int, str]] = {
-    ("backend/ofo/execution/basket.py", "LIMIT"): (1, "the basket order's field default; the order type is carried on the order, and the module is where a Zerodha basket line is formed"),
-    ("backend/ofo_app/basket_post.py", "LIMIT"): (2, "builds and re-checks the checked basket's lines: this product places LIMIT orders only (ADR-094: the user pays up to the planned price) - a product choice, not a Zerodha rule"),
-    ("backend/ofo_app/checked_basket.py", "LIMIT"): (1, "the checked basket's line: LIMIT per ADR-094, a product choice"),
-    ("backend/ofo_app/kite_margin.py", "LIMIT"): (1, "the order types the margin call accepts (registry entry ofo_app.kite_margin:_ORDER_TYPES)"),
-    ("backend/ofo_app/kite_margin.py", "MARKET"): (1, "the order types the margin call accepts (registry entry ofo_app.kite_margin:_ORDER_TYPES)"),
-    ("backend/ofo_app/outcome_margin.py", "LIMIT"): (1, "margin preview of a planned price: LIMIT per ADR-094, a product choice"),
-    ("backend/ofo_app/routes/execute.py", "LIMIT"): (2, "the Execute request schema (Literal) and the review lines: LIMIT per ADR-094, a product choice"),
+    ("backend/ofo/execution/basket.py", "LIMIT"): (1, (
+        "the basket order's field default; the order type is carried on the order, and the module is "
+        "where a Zerodha basket line is formed"
+    )),
+    ("backend/ofo_app/basket_post.py", "LIMIT"): (2, (
+        "builds and re-checks the checked basket's lines: this product places LIMIT orders only "
+        "(ADR-094: the user pays up to the planned price) - a product choice, not a Zerodha rule"
+    )),
+    ("backend/ofo_app/checked_basket.py", "LIMIT"): (1, (
+        "the checked basket's line: LIMIT per ADR-094, a product choice"
+    )),
+    ("backend/ofo_app/kite_margin.py", "LIMIT"): (1, (
+        "the order types the margin call accepts (registry entry ofo_app.kite_margin:_ORDER_TYPES)"
+    )),
+    ("backend/ofo_app/kite_margin.py", "MARKET"): (1, (
+        "the order types the margin call accepts (registry entry ofo_app.kite_margin:_ORDER_TYPES)"
+    )),
+    ("backend/ofo_app/outcome_margin.py", "LIMIT"): (1, (
+        "margin preview of a planned price: LIMIT per ADR-094, a product choice"
+    )),
+    ("backend/ofo_app/routes/execute.py", "LIMIT"): (2, (
+        "the Execute request schema (Literal) and the review lines: LIMIT per ADR-094, a product choice"
+    )),
 }
 
 
@@ -151,7 +167,8 @@ def registry_problems(root: Path, rules=RULES, other=NOT_A_ZERODHA_RULE) -> list
         if not _defined(root, constant):
             problems.append(f"{constant}: names a constant that no longer exists (stale)")
     listed = {r.constant for r in rules} | set(other)
-    problems += [f"{c}: a Zerodha-rule-shaped constant that is not in the registry" for c in sorted(module_constants(root) - listed)]
+    problems += [f"{c}: a Zerodha-rule-shaped constant that is not in the registry"
+                 for c in sorted(module_constants(root) - listed)]
     return problems
 
 
@@ -205,15 +222,17 @@ def test_a_rule_constant_planted_without_a_registry_entry_is_red(tmp_path):
 
 
 def test_a_registry_entry_without_a_source_or_date_or_naming_a_removed_constant_is_red(tmp_path):
-    from ofo_app.order_limits_registry import ZerodhaRule
     root = _tree(tmp_path, {"ofo/execution/planted.py": "FREEZE_UNITS = 900\n"})
     ok = ZerodhaRule("ofo.execution.planted:FREEZE_UNITS", "freeze", "https://kite.trade/docs", "2026-10-22", False)
     assert registry_problems(root, rules=(ok,), other={}) == []
-    assert any("no source" in p for p in registry_problems(root, rules=(ZerodhaRule(ok.constant, "r", " ", "2026-10-22", False),), other={}))
-    assert any("no ISO date" in p for p in registry_problems(root, rules=(ZerodhaRule(ok.constant, "r", "s", "", False),), other={}))
+    no_source = ZerodhaRule(ok.constant, "r", " ", "2026-10-22", False)
+    assert any("no source" in p for p in registry_problems(root, rules=(no_source,), other={}))
+    no_date = ZerodhaRule(ok.constant, "r", "s", "", False)
+    assert any("no ISO date" in p for p in registry_problems(root, rules=(no_date,), other={}))
     gone = ZerodhaRule("ofo.execution.planted:REMOVED", "freeze", "s", "2026-10-22", False)
     assert any("stale" in p for p in registry_problems(root, rules=(ok, gone), other={}))
-    assert any("no reason" in p for p in registry_problems(root, rules=(ok,), other={"ofo.execution.planted:FREEZE_UNITS": " "}))
+    blank = {"ofo.execution.planted:FREEZE_UNITS": " "}
+    assert any("no reason" in p for p in registry_problems(root, rules=(ok,), other=blank))
 
 
 def test_a_new_order_type_call_site_is_red_until_listed(tmp_path):

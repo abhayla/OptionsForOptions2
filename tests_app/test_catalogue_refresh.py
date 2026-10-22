@@ -1,8 +1,9 @@
 """W-133 (REQ-053 AC-3, finding daily-load-misses-intraday-additions / F-33): the scheduled catalogue refresh.
 
-Spec basis (quoted): REQ-053 AC-3 "Before a leg is added, the builder checks what Zerodha data allows"; F-33 "a once-a-day
-catalogue load misses strikes listed after it ran". The scheduler runs ``catalogue_load.load_once`` unchanged, so the
-guards of ``apply_update`` apply; these tests use the real-instrument slice (tests/fixtures/instruments) and a fake clock.
+Spec basis (quoted): REQ-053 AC-3 "Before a leg is added, the builder checks what Zerodha data allows"; F-33 "a
+once-a-day catalogue load misses strikes listed after it ran". The scheduler runs ``catalogue_load.load_once``
+unchanged, so the guards of ``apply_update`` apply; these tests use the real-instrument slice
+(tests/fixtures/instruments) and a fake clock.
 Scheduler tests need no database; the list tests run on real PostgreSQL inside a transaction that is rolled back.
 """
 
@@ -34,9 +35,11 @@ class Clock:
         return self.at
 
 
-#: The shared test catalogue may already hold a real list (#497), and loading the slice onto it delists most of it, which
-#: the 10% guard rightly refuses. A FIRST load in these tests lifts the guard (the work rolls back); every later load, and
-#: every refusal asserted, runs under the real 10%.
+TWO_RUNS, THREE_RUNS, FIVE_TICKS = 2, 3, 5
+
+#: The shared test catalogue may already hold a real list (#497), and loading the slice onto it delists most of it,
+#: which the 10% guard rightly refuses. A FIRST load in these tests lifts the guard (the work rolls back); every later
+#: load, and every refusal asserted, runs under the real 10%.
 _ONTO_ANY_CATALOGUE = _settings("100")
 
 
@@ -82,11 +85,11 @@ async def test_it_loads_at_start_up_on_any_day_then_only_inside_the_window_one_i
     clock.at = MONDAY - timedelta(minutes=46)  # 08:14 Monday
     assert await sch.step() is None
     clock.at = MONDAY - timedelta(minutes=45)  # 08:15 Monday: in the window, > 60 min since the last start
-    assert await sch.step() == LOADED and len(calls) == 2
+    assert await sch.step() == LOADED and len(calls) == TWO_RUNS
     clock.at += timedelta(minutes=59)
     assert await sch.step() is None
     clock.at += timedelta(minutes=1)
-    assert await sch.step() == LOADED and len(calls) == 3
+    assert await sch.step() == LOADED and len(calls) == THREE_RUNS
     clock.at = MONDAY.replace(hour=16)  # after 15:45
     assert await sch.step() is None
 
@@ -122,7 +125,7 @@ async def test_a_failing_run_logs_its_code_only_and_retries_on_schedule(caplog):
     clock.at += timedelta(minutes=30)
     assert await sch.step() is None  # not a retry loop
     clock.at += timedelta(minutes=30)
-    assert await sch.step() == FAILED and len(calls) == 2  # on schedule
+    assert await sch.step() == FAILED and len(calls) == TWO_RUNS  # on schedule
 
 
 async def test_a_refused_list_is_reported_as_refused():
@@ -141,13 +144,13 @@ async def test_a_hung_load_times_out_and_never_blocks_other_work():
         return 0
 
     async def other_work() -> None:
-        for _ in range(5):
+        for _ in range(FIVE_TICKS):
             ticks.append(1)
             await asyncio.sleep(0.005)
 
     sch = _scheduler(hung, Clock(MONDAY), timeout=0.05)
     outcome, _ = await asyncio.gather(sch.attempt(), other_work())
-    assert outcome == TIMED_OUT and len(ticks) == 5
+    assert outcome == TIMED_OUT and len(ticks) == FIVE_TICKS
     assert await sch.attempt() == TIMED_OUT  # the lock was released: the next run is not stuck BUSY
 
 
@@ -257,7 +260,7 @@ async def test_a_list_loaded_twice_in_a_day_offers_the_additions_with_no_duplica
                 conn, "NIFTY", today, datetime.date(2026, 10, 6)) if c.instrument_type == "CE"}
             assert strikes <= offered  # the held-back contracts are offered after the second load
             duplicates = (await conn.execute(text(
-                f"SELECT count(*) FROM (SELECT exchange_segment, exchange_token FROM {TABLE} "
+                f"SELECT count(*) FROM (SELECT exchange_segment, exchange_token FROM {TABLE} "  # noqa: S608 constant table name
                 f"GROUP BY 1, 2 HAVING count(*) > 1) d"))).scalar_one()
             assert duplicates == 0
         finally:
@@ -293,7 +296,7 @@ async def test_a_truncated_list_from_the_scheduler_path_is_refused_and_the_previ
         try:
             assert await catalogue_load.run(conn, _csv(), _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
             snapshot = tuple((await conn.execute(text(
-                f"SELECT count(*), count(*) FILTER (WHERE currently_listed), count(*) FILTER (WHERE delisted) "
+                f"SELECT count(*), count(*) FILTER (WHERE currently_listed), count(*) FILTER (WHERE delisted) "  # noqa: S608 constant table name
                 f"FROM {TABLE}"))).one())
 
             async def load() -> int:
@@ -303,7 +306,7 @@ async def test_a_truncated_list_from_the_scheduler_path_is_refused_and_the_previ
                 assert await _scheduler(load, Clock(MONDAY)).attempt() == REFUSED
             assert "refused" in caplog.text and "NIFTY" not in caplog.text  # a code, never the rows
             after = tuple((await conn.execute(text(
-                f"SELECT count(*), count(*) FILTER (WHERE currently_listed), count(*) FILTER (WHERE delisted) "
+                f"SELECT count(*), count(*) FILTER (WHERE currently_listed), count(*) FILTER (WHERE delisted) "  # noqa: S608 constant table name
                 f"FROM {TABLE}"))).one())
             assert after == snapshot
         finally:
@@ -320,7 +323,8 @@ async def test_an_empty_list_is_refused_and_writes_nothing(app_engine):
             out = io.StringIO()
             assert await catalogue_load.run(conn, header, _settings("10"), out, as_of=AS_OF) == 1, out.getvalue()
             assert await _count(conn) == before
-            listed = (await conn.execute(text(f"SELECT count(*) FROM {TABLE} WHERE currently_listed"))).scalar_one()
+            listed = (await conn.execute(text(
+                f"SELECT count(*) FROM {TABLE} WHERE currently_listed"))).scalar_one()  # noqa: S608 constant table name
             assert listed == before
         finally:
             await trans.rollback()
@@ -334,7 +338,7 @@ async def test_an_old_list_loaded_today_offers_no_expired_contract(app_engine):
         try:
             assert await catalogue_load.run(conn, _csv(), _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
             today = await catalogue_picker.database_today(conn)
-            future = [e for e in await catalogue_picker.pickable_expiries(conn, "NIFTY", today)]
+            future = list(await catalogue_picker.pickable_expiries(conn, "NIFTY", today))
             assert all(e >= today for e in future)
             assert await catalogue_picker.pickable_expiries(conn, "NIFTY", datetime.date(2099, 1, 1)) == []
         finally:

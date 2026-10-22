@@ -59,8 +59,8 @@ async def load_once(settings: Any, out: TextIO | None = None) -> int:
     shared body of the command and the scheduler (``ofo_app.catalogue_refresh``); the download goes through the Kite
     door (``ofo.broker.kite_http.open_url``, checked against ALLOWED_CALLS and the egress gate). A download failure
     raises (the caller logs its type only); a guard refusal returns 1."""
-    from ofo.instruments.downloader import download_instruments_csv
-    from ofo_app.db import get_engine
+    from ofo.instruments.downloader import download_instruments_csv  # noqa: PLC0415 - kept off the import path
+    from ofo_app.db import get_engine  # noqa: PLC0415
 
     csv_text = await asyncio.to_thread(download_instruments_csv)
     async with get_engine().connect() as conn:
@@ -74,8 +74,8 @@ async def load_once(settings: Any, out: TextIO | None = None) -> int:
 
 
 async def main() -> int:
-    from ofo_app.config import get_settings
-    from ofo_app.db import close_db
+    from ofo_app.config import get_settings  # noqa: PLC0415 - kept off the import path
+    from ofo_app.db import close_db  # noqa: PLC0415
 
     settings = get_settings()
     try:

@@ -120,6 +120,21 @@ def test_expired_is_not_tradable_even_when_the_list_still_carries_it():
     assert _registry(datetime.date(2026, 10, 19)).is_tradable(CORE_ID)  # the expiry day itself is still tradable
 
 
+def test_attack_4_an_expired_contract_still_in_the_list_is_refused_at_the_gate_and_one_expiring_today_is_offered():
+    """Attack 4 (F-33): the list still carries the contract on 2026-10-20, the day after its expiry (2026-10-19). The
+    gate, judged on that day with the list's own row, refuses it as unavailable; on the expiry day itself it passes."""
+    after = datetime.datetime(2026, 10, 20, 12, 30, tzinfo=IST)
+    on_expiry = datetime.datetime(2026, 10, 19, 12, 30, tzinfo=IST)
+    assert CORE_ZERODHA_TOKEN in DATA["list"]  # the list row is present: only the date refuses it
+    registry = _registry(after.date())
+    assert (registry.get(CORE_ID).tradable, registry.get(CORE_ID).reason) == (False, el.REASON_EXPIRED)
+    refused = check(Strategy((_leg("23650"),)), all_true_context(as_of=after), _catalogue(), registry)
+    assert refused.blocked and CheckCode.EXPIRY_PASSED in refused.failed_codes  # the gate's expiry check refuses too
+    offered = check(Strategy((_leg("23650"),)), all_true_context(as_of=on_expiry), _catalogue(),
+                    _registry(on_expiry.date()))
+    assert CheckCode.CONTRACT_NOT_ELIGIBLE in offered.passed, [f.text for f in offered.failures]
+
+
 @pytest.mark.parametrize("flags, reason", [
     ({"delisted": True}, el.REASON_DELISTED),
     ({"retired": True}, el.REASON_RETIRED),

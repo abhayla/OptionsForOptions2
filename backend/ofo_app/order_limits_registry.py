@@ -6,7 +6,7 @@ are limit-only' is never hard-coded." Finding guard-as-forbidden-list: this is a
 the scoped trees (``backend/ofo/execution``, ``backend/ofo/broker``, ``backend/ofo_app/kite_*``) whose value is an order
 type, a product, an exchange segment or a quantity/price limit must be listed here, either as a Zerodha rule with its
 source (``RULES``) or as a constant that is not a Zerodha rule, with the reason (``NOT_A_ZERODHA_RULE``).
-``tests/test_zerodha_rules_cited.py`` discovers the constants by AST and fails closed.
+``tests_app/test_zerodha_rules_cited.py`` discovers the constants by AST and fails closed.
 
 Honesty about dates: ``recorded_on`` is the day the entry was written; ``verified`` is True only when someone read the
 cited source and compared the value. Every entry below is ``verified=False`` today: none of the values has been
@@ -57,6 +57,6 @@ RULES: tuple[ZerodhaRule, ...] = (
 #: Constants the scan matches by shape that are NOT a Zerodha rule: constant -> why. A reason is required.
 NOT_A_ZERODHA_RULE: dict[str, str] = {
     "ofo.execution.sequence:MAX_BATCH_SIZE": "this product's sanity cap on a provider's answer, not a Zerodha limit",
-    "ofo.execution.partial:MAX_ORDER_STATUSES": "this product's cap on order statuses read in one pass (orchestrator default OD-g)",
+    "ofo.execution.partial:MAX_ORDER_STATUSES": "this product's cap on order statuses read in one pass (orchestrator default OD-g)",  # noqa: E501
     "ofo.execution.sequence:MAX_SLICES_PER_LEG": "this product's cap on how many slices one leg is split into",
 }
