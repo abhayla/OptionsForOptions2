@@ -107,6 +107,9 @@ jobs:
               - 'tests/fixtures/**'
               - 'requirements-app.txt'
               - 'docs/api/**'
+              # REQ-048 AC-5: the bundle scan runs in this job on the built output, so its files start this job
+              - 'tests/test_bundle_secret_scan.py'
+              - 'tests/test_app_workflow_bundle_scan.py'
               - '.github/workflows/app-tests.yml'
             # execute-screen-e2e: the Execute screen against the real ofo_app replay API, so API code also feeds it.
             e2e:
@@ -318,6 +321,12 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+      # REQ-048 AC-5 (W-134): the bundle and reply scans on the REAL build output. pytest comes from the "Install
+      # backend dependencies" step above (requirements-app.txt); with CI set the scan fails, never skips, when
+      # frontend/dist is missing. tests/test_app_workflow_bundle_scan.py asserts this step sits after both.
+      - name: Bundle and reply secret scan (REQ-048 AC-5)
+        run: python -m pytest -q -p no:cacheprovider tests/test_bundle_secret_scan.py
 
       # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the
       # @playwright/test version), and cap the step.

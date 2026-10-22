@@ -49,7 +49,18 @@ async def test_a_browser_claim_on_planned_entry_is_refused_and_the_answer_is_unc
 async def test_a_browser_claim_on_execute_is_refused_and_no_basket_is_made(replay_ctx, claim, monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("OFO_ORDER_PATH", "1")
-    resp = await _post(_app(replay_ctx), "/strategies/1/execute", {"action": "ENTRY", claim: True})
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    app = _app(replay_ctx)
+    # CI's api job sets only TEST_DATABASE_URL, so Settings() cannot be built: every dependency that reads settings or
+    # the database is replaced by a stub; the body is validated before any of them is used.
+    app.dependency_overrides[route.get_db] = lambda: None
+    app.dependency_overrides[route.get_kite_session] = lambda: None
+    app.dependency_overrides[route.get_quote_reader] = lambda: None
+    app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: None)
+    app.dependency_overrides[route.load_charge_rates] = lambda: None
+    app.dependency_overrides[route.current_user_ref] = lambda: "u"
+    resp = await _post(app, "/strategies/1/execute", {"action": "ENTRY", claim: True})
     assert resp.status_code == 422, resp.text  # noqa: PLR2004
     assert resp.json()["code"] == INPUT_REFUSED
     assert "basket" not in resp.json()  # the decision stays the server's: nothing was prepared for a claimant
