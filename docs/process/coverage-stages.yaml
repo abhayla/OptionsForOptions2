@@ -409,6 +409,7 @@ issues:
   "#499": S6.1  # History scan ignores prose text in templates (follow-up to #409)
   "#500": S6.1  # Stored contract priced by a reused exchange token: _with_tokens and execute _IDS
   "#502": S6.1  # Create Strategy: a templates failure before the view pick is wiped; none-listed beside the error
+  "#512": S6.1  # Row 1 (REQ-001) MINORs: underlying table scan shapes, migration lists, index-leg save test
 
 # Work items whose status is not done.
 work_items:
