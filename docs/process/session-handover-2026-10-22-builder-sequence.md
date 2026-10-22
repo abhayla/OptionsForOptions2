@@ -32,7 +32,22 @@ Continue at the FIRST ROW NOT CLOSED (row 8 - see "In flight").
 - A fix-round builder was dispatched ~18:00 with `docs/process/builder-sequence-briefs/row-08-fix-1.md` (6 items: one
   instant, forward key, two red repo guards, the hanging M4 test, the row-2 stale test in
   `tests_app/test_strategy_live_push.py`, R13 test selection). Its commits land on `build/seq-chunk-1`.
-- **NEXT for row 8:** `git -C <worktree> log --oneline -5` to see the fix commits; if the tree is dirty or half-done,
+- **UPDATE ~19:45 IST:** fix round 1 committed at 85de202e (pushed). Tier A verify ROUND 1 = PARTIAL (one more round
+  allowed). Passes: second reader of one snapshot computes nothing on the real recorded frames; a new frame gives
+  fresh IVs equal to an unshared read; no mixed-instant hole; 15:30 check on the real clock; guards fixed in code. AC-4
+  deferred (ADR-053). FIX ROUND 2 (fresh builder, `row-08-fix-2.md`, Size M): (1) pass
+  `FeedScope(SHARED_COMPUTE, ctx.feed_owner)` into `read_snapshot` in `ofo_app/routes/planned_entry.py:79` and
+  `ofo_app/routes/tracking.py:120`; (2) make `test_100_concurrent_first_requests_for_one_key_run_one_computation`
+  discriminate (compute blocks on an event set after the threads start: 100 calls without the per-key lock, 1 with -
+  verifier probe `scratchpad/verify-08/coalesce_probe.py`); (3) AC-1 Greeks: per-contract Greeks are still per strategy
+  (`table/model.py:252`) - share them through a market-wide entry point outside `table/`, or record the narrowing as a
+  decision (technical call; get an independent reviewer if unsure); (4) a test where only the spot changes at the same
+  instant and the forward recomputes (kills M15); (5) the 3 app files that failed on a dropped DB tunnel
+  (`test_db_pool_core_proof`, `test_strategy_shape_matrix`, `test_strategy_store`) run green through the launcher. Then
+  verify ROUND 2 (fresh Opus) - the last; a CRITICAL/MAJOR after it = PARK. Row 8 is over its 90 min / 450k estimate.
+  Known local failure, not row 8: `tests_app/test_broker_status_route.py::test_core_proof_a_stored_session_reads_connected_and_ending_it_reads_disconnected`
+  fails identically on main (clock skew).
+- **NEXT for row 8 (older note):** `git -C <worktree> log --oneline -5` to see the fix commits; if the tree is dirty or half-done,
   send a fresh finisher (row-review R5); then the Tier A verifier (Opus) with a `verify-row-08.md` brief (use
   `verify-row-07.md` as the shape); then close per the checklist below. Row 8 expected 90 min / 450k (it is over).
 - Uncommitted at the handover: `knowledge/findings/dependent-tests-not-run-stale-later.json` (commit it with row 8's
