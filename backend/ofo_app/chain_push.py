@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
+from ofo.chain_values import CellValues, ChainGreeks, cell_values, chain_greeks
 from ofo.errors import render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
@@ -115,6 +116,17 @@ class ChainCellOut(ApiModel):
     #: REQ-030 AC-16: True only when Zerodha's eligibility says this contract is tradable now (fail closed)
     permitted: bool
     unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
+    #: W-124 (REQ-087 AC-1/AC-4/AC-5, REQ-029 AC-3): server-computed extras; None = a dash on the screen, never 0.
+    lot_size: int  # the instrument file's lot size: the "per lot" heading and multiplier (REQ-087 AC-1)
+    per_lot: Money | None  # LTP x lot size
+    intrinsic: Money | None  # against the spot (the index), labelled so
+    time_value: Money | None  # LTP minus intrinsic
+    breakeven: Money | None
+    breakeven_pct: Money | None  # signed, against the spot
+    delta: Money | None  # the engine's Greeks (not the vendor's), 4 dp
+    gamma: Money | None
+    theta: Money | None
+    vega: Money | None
 
 
 class ChainRowOut(ApiModel):
@@ -287,18 +299,32 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
     return False, value if value in _PERMISSIONS else "unknown"  # type: ignore[return-value]
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,
-          catalogue: ChainCatalogue) -> ChainCellOut:
+def _extras(contract: PickableContract, ltp: Decimal | None, spot: Decimal | None,
+            greeks: Mapping[str, ChainGreeks]) -> dict[str, Any]:
+    """The W-124 fields of one cell: the pure maths of ``ofo.chain_values`` (per-lot, intrinsic, time value, breakeven)
+    and the engine's Greeks for this contract when its price gave an implied volatility."""
+    v: CellValues = cell_values(contract.instrument_type, contract.strike, ltp, spot, contract.lot_size)
+    g = greeks.get(contract.instrument_id)
+    return {"lot_size": contract.lot_size, "per_lot": v.per_lot, "intrinsic": v.intrinsic, "time_value": v.time_value,
+            "breakeven": v.breakeven, "breakeven_pct": v.breakeven_pct,
+            "delta": None if g is None else g.delta, "gamma": None if g is None else g.gamma,
+            "theta": None if g is None else g.theta, "vega": None if g is None else g.vega}
+
+
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
+          catalogue: ChainCatalogue, spot: Decimal | None = None,
+          greeks: Mapping[str, ChainGreeks] | None = None) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
                             oi_change=None, volume=None, health="unavailable", at=None, permitted=permitted,
-                            unavailable_reason=reason)
+                            unavailable_reason=reason, **_extras(contract, None, spot, {}))
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
-                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason)
+                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason,
+                        **_extras(contract, _given_money(quote.ltp), spot, greeks or {}))
 
 
 def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
@@ -308,7 +334,11 @@ def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, Normalized
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
           unknown: frozenset[str]) -> list[ChainRowOut]:
-    quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
+    every = window_quotes(ctx, req)
+    spot = live_spot(ctx, req.underlying)
+    greeks = (chain_greeks(every.values(), _spot_quote(ctx, req.underlying), req.expiry, ctx.clock(), ctx.rate)
+              if spot is not None else {})
+    quotes = {i: q for i, q in every.items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
         if c.strike in by_strike and c.instrument_type in _SIDES:
@@ -318,8 +348,9 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue),
-                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue)))
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue, spot, greeks),
+                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue, spot,
+                                                                greeks)))
     return out
 
 
