@@ -9,8 +9,8 @@ source (``RULES``) or as a constant that is not a Zerodha rule, with the reason 
 ``tests_app/test_zerodha_rules_cited.py`` discovers the constants by AST and fails closed.
 
 Honesty about dates: ``recorded_on`` is the day the entry was written; ``verified`` is True only when someone read the
-cited source and compared the value. Every entry below is ``verified=False`` today: none of the values has been
-re-checked against Zerodha's current documentation (REQ-056 AC-10 is the check). That is visible here, not hidden.
+cited source and compared the value (2026-10-22, spec/findings.md F-57: five entries match Zerodha's current docs;
+the others say why they are not verified). REQ-056 AC-10 keeps re-checking them.
 """
 
 from __future__ import annotations
@@ -28,38 +28,48 @@ class ZerodhaRule:
 
 
 RULES: tuple[ZerodhaRule, ...] = (
+    # Checked against Zerodha's current docs on 2026-10-22 (spec/findings.md F-57; WebFetch summaries of each page).
     ZerodhaRule("ofo.execution.sequence:DEFAULT_FREEZE_UNITS",
-                "freeze quantity per order (NIFTY): the largest one-lot multiple under NSE's historical 1,800 units",
-                "NSE freeze quantity circular for NIFTY; Kite Connect order-placement documentation "
-                "https://kite.trade/docs/connect/v3/orders/", "2026-10-22", False),
+                "fallback freeze quantity per order (NIFTY) when NSE's daily file is missing: 27 lots x 65 = 1,755, "
+                "the largest lot multiple under 1,800 - 1 (ADR-081); the live value comes from NSE's daily file",
+                "Zerodha bulletin 'Quantity freeze limits for indices from April 01, 2026' (NIFTY 1,800) "
+                "https://zerodha.com/marketintel/bulletin/445684/"
+                "quantity-freeze-limits-for-indices-from-april-01-2026; "
+                "a reported NSE rise to 3,510 from 2026-10-05 is unconfirmed (F-57)", "2026-10-22", False),
     ZerodhaRule("ofo.execution.sequence:DEFAULT_MAX_ORDERS_PER_BATCH",
-                "orders per batch placed in one go (placeholder, labelled UNVERIFIED in the code)",
-                "Kite Connect order-placement documentation https://kite.trade/docs/connect/v3/orders/",
+                "orders in one Publisher basket (at most 10)",
+                "Kite Publisher docs: 'You can add one or more stocks to the basket (maximum 10)' "
+                "https://kite.trade/docs/connect/v3/publisher/ (fetched 2026-10-22)", "2026-10-22", True),
+    ZerodhaRule("ofo_app.kite_reads:QUOTE_LIMIT", "instruments per GET /quote call (500)",
+                "Kite market quotes docs: 'complete market data snapshot of up to 500 instruments in one go' "
+                "https://kite.trade/docs/connect/v3/market-quotes/ (fetched 2026-10-22)", "2026-10-22", True),
+    ZerodhaRule("ofo_app.kite_ws:MAX_TOKENS_PER_CONNECTION", "instrument tokens per websocket connection (3000)",
+                "Kite websocket docs: 'up to 3000 instruments on a single WebSocket connection' "
+                "https://kite.trade/docs/connect/v3/websocket/ (fetched 2026-10-22)", "2026-10-22", True),
+    ZerodhaRule("ofo_app.kite_margin:_ORDER_TYPES", "order types this platform sends to the order-margins call",
+                "Kite margins docs list only 'Order type (MARKET, LIMIT etc.)' "
+                "https://kite.trade/docs/connect/v3/margins/ (fetched 2026-10-22): the full list is not stated",
                 "2026-10-22", False),
-    ZerodhaRule("ofo_app.kite_reads:QUOTE_LIMIT", "instruments per quote call",
-                "Kite Connect market quotes documentation https://kite.trade/docs/connect/v3/market-quotes/",
-                "2026-10-22", False),
-    ZerodhaRule("ofo_app.kite_ws:MAX_TOKENS_PER_CONNECTION", "instrument tokens per websocket connection",
-                "Kite Connect websocket streaming documentation https://kite.trade/docs/connect/v3/websocket/",
-                "2026-10-22", False),
-    ZerodhaRule("ofo_app.kite_margin:_ORDER_TYPES", "order types the order-margins call accepts",
-                "Kite Connect margin calculation documentation https://kite.trade/docs/connect/v3/margins/",
-                "2026-10-22", False),
-    ZerodhaRule("ofo_app.kite_margin:_PRODUCTS", "products the order-margins call accepts",
-                "Kite Connect margin calculation documentation https://kite.trade/docs/connect/v3/margins/",
-                "2026-10-22", False),
+    ZerodhaRule("ofo_app.kite_margin:_PRODUCTS", "products this platform sends to the order-margins call",
+                "Kite margins docs: 'Margin product to use for the order', no list (CNC, NRML in examples) "
+                "https://kite.trade/docs/connect/v3/margins/ (fetched 2026-10-22): not stated", "2026-10-22", False),
     ZerodhaRule("ofo_app.kite_replies:_NEVER_OURS_EXCHANGES",
                 "exchange codes Kite reports whose rows this platform never owns (the exchange list itself)",
-                "Kite Connect user profile documentation (exchanges) https://kite.trade/docs/connect/v3/user/",
+                "Kite user docs list NSE, NFO, BFO, CDS, BSE, MCX, BCD, MF as enabled exchanges "
+                "https://kite.trade/docs/connect/v3/user/ (fetched 2026-10-22); NCO is not stated there",
                 "2026-10-22", False),
     ZerodhaRule("ofo.execution.basket:MAX_TAG_LENGTH",
                 "longest `tag` the Kite Publisher basket accepts (8 characters)",
-                "Kite Publisher InputException \"`tag` should be max 8 characters\", measured 2026-10-19 10:19:48 IST "
-                "(cited in ofo/execution/basket.py; finding basket-tag-exceeds-publisher-limit)", "2026-10-22", False),
+                "Kite Publisher docs: 'alphanumeric, max 8 chars' https://kite.trade/docs/connect/v3/publisher/ "
+                "(fetched 2026-10-22); also measured as an InputException 2026-10-19 10:19:48 IST", "2026-10-22", True),
     ZerodhaRule("ofo.execution.basket:_LEGACY_TAG_MAX_LENGTH",
-                "longest tag of the legacy grammar (the earlier API-order tag cap of 20), decode only",
-                "Kite Publisher InputException \"`tag` should be max 8 characters\", measured 2026-10-19 10:19:48 IST "
-                "(the old 20 was the API-order cap; cited in ofo/execution/basket.py)", "2026-10-22", False),
+                "longest tag of the legacy grammar (the API-order tag cap of 20), decode only",
+                "Kite orders docs: 'alphanumeric, max 20 chars' https://kite.trade/docs/connect/v3/orders/ "
+                "(fetched 2026-10-22)", "2026-10-22", True),
+    ZerodhaRule("ofo.broker.session:KITE_EXPIRY_TIME_IST",
+                "the daily Kite session lapses at 06:00 IST the next day",
+                "Kite Connect login-flow docs https://kite.trade/docs/connect/v3/user/ - not fetched on 2026-10-22 "
+                "(follow-up REQ-056 AC-10)", "2026-10-22", False),
 )
 
 
@@ -129,10 +139,6 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.execution.alternatives:_ZERO", "ofo.execution.safety:_ZERO_PREMIUM",
             "ofo.broker.session:BROKER_ZERODHA", "ofo.execution.review:BROKER",
             "ofo.broker.kite_flags:FLAG_FILE", "ofo_app.kite_client:SESSION_TOKEN_PATH",
-        ),
-        "a Zerodha-derived fact (the Kite session lapses at 06:00 IST) held in ofo/broker/session.py; NOT yet cited as "
-        "a RULES entry with its source - follow-up for REQ-056 AC-10": (
-            "ofo.broker.session:KITE_EXPIRY_TIME_IST",
         ),
     }),
 }

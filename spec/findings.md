@@ -830,3 +830,31 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (setting `INSTRUMENT_LIST_PUBLISH_IST`, backend/ofo/timeutil.py on branch gc6/instr-fresh). No exact generation time
   is published; 08:30 is the documented fetch time. Not a rule change. Status: **measured from documentation; no live
   timing captured**.
+- Note 2026-10-22 (builder sequence row 5): the "not updated intraday" forum line conflicts with F-33, which MEASURED
+  108 NIFTY 13-Oct strikes at 08:05 and 236 at 14:39 in Kite's own list (2026-10-08). Measured data wins: REQ-053's
+  catalogue refresh keeps an hourly reload during market hours; its publish time and first load follow this finding
+  (session current from 08:30 IST, first scheduled load 08:35).
+
+## F-57 - Zerodha rule constants checked against Zerodha's current docs; a reported NIFTY freeze-limit rise to 3,510 is unconfirmed
+- Fetched 2026-10-22 (builder sequence row 5, REQ-053 AC-5; WebFetch summaries, not raw page reads):
+  - Matches: `QUOTE_LIMIT` 500 ("complete market data snapshot of up to 500 instruments in one go",
+    https://kite.trade/docs/connect/v3/market-quotes/; `/quote/ohlc` and `/quote/ltp` allow 1000);
+    `MAX_TOKENS_PER_CONNECTION` 3000 ("up to 3000 instruments on a single WebSocket connection", up to 3 connections
+    per API key, https://kite.trade/docs/connect/v3/websocket/); basket tag 8 ("alphanumeric, max 8 chars",
+    https://kite.trade/docs/connect/v3/publisher/); API order tag 20 ("alphanumeric, max 20 chars",
+    https://kite.trade/docs/connect/v3/orders/); Publisher basket at most 10 items (publisher page); order rate limits
+    400/minute, 10/second, 5000/day, 25 modifications per order (https://kite.trade/docs/connect/v3/exceptions/).
+  - Not stated: the order types and products the margins call accepts (the page says "MARKET, LIMIT etc." and gives
+    CNC/NRML examples; https://kite.trade/docs/connect/v3/margins/); exchange code NCO (absent from the user page).
+  - Freeze limit: Zerodha's bulletin for 2026-04-01 gives NIFTY 1,800
+    (https://zerodha.com/marketintel/bulletin/445684/quantity-freeze-limits-for-indices-from-april-01-2026), which the
+    code's fallback `DEFAULT_FREEZE_UNITS` = 1,755 follows (27 lots x 65, the largest lot multiple under 1,800 - 1, per
+    ADR-081). A third-party page (Choice India) reports NSE circular NSE/FAOP/76693 raising NIFTY to 3,510 from
+    2026-10-05; not confirmed on NSE or Zerodha. The live value comes from NSE's daily contract file (ADR-081), so the
+    fallback matters only when that file is missing.
+  - Market orders on options: Zerodha allows them only for the current and next weekly and monthly NIFTY/BANKNIFTY
+    contracts, not for deep ITM (> 5%) contracts, and on SENSEX only with OI over 500 lots
+    (https://support.zerodha.com/category/trading-and-markets/trading-faqs/articles/market-orders-monthly-options).
+    No source says options are limit-only.
+- Bears on: REQ-053 AC-5, ADR-081, REQ-073. Status: **measured from documentation; the 3,510 freeze limit open until
+  NSE's own file or circular is read** (the daily-file loader reads it live).

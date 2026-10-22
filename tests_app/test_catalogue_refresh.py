@@ -14,7 +14,7 @@ import datetime
 import functools
 import io
 import logging
-import time
+import threading
 from datetime import timedelta, timezone
 from decimal import Decimal
 
@@ -205,9 +205,14 @@ async def test_a_hung_download_carries_a_socket_timeout_so_its_thread_ends_and_t
 
 @fail_fast
 async def test_the_parse_of_a_full_list_runs_off_the_event_loop(monkeypatch):
-    """Standing item (a), attack 2: a parse that takes 2 s (fake, blocking) leaves the loop free to serve a request."""
+    """Standing item (a), attack 2: a blocking parse leaves the loop free to serve requests. The parse blocks until the
+    requests have been served; if the parse ran ON the loop they could never run and the wait would time out (no
+    wall-clock threshold: the order of events is the proof)."""
+    served = threading.Event()
+    parse_saw_served = []
+
     def slow_parse(_stream):
-        time.sleep(2)
+        parse_saw_served.append(served.wait(5))
         raise ValueError("stop after the parse")
 
     monkeypatch.setattr(catalogue_load, "parse_rows_naming_the_row", slow_parse)
@@ -215,13 +220,14 @@ async def test_the_parse_of_a_full_list_runs_off_the_event_loop(monkeypatch):
 
     async def request_served_meanwhile() -> None:
         for _ in range(FIVE_TICKS):
-            ticks.append(time.monotonic())
-            await asyncio.sleep(0.01)
+            ticks.append(len(ticks))
+            await asyncio.sleep(0)
+        served.set()
 
     code, _ = await asyncio.gather(catalogue_load.run(None, "x", _settings("10"), io.StringIO()),
                                    request_served_meanwhile())
     assert code == 1  # the parse's refusal, nothing written
-    assert len(ticks) == FIVE_TICKS and ticks[-1] - ticks[0] < 1.0  # all served while the parse was still running
+    assert len(ticks) == FIVE_TICKS and parse_saw_served == [True]  # served while the parse was still blocking
 
 
 @fail_fast
