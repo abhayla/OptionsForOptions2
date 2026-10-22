@@ -11,7 +11,6 @@ import ast
 import pathlib
 
 import pytest
-
 from ofo_app import held_switches as hs
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -25,14 +24,9 @@ USERS = {"held_on", "features_on"}
 
 def _example_environment() -> dict[str, str]:
     """The committed example configuration read as KEY=VALUE lines, forced to production."""
-    out: dict[str, str] = {}
-    for line in (ROOT / ".env.example").read_text(encoding="utf8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            out[key.strip()] = value.strip()
-    out["APP_ENV"] = "production"
-    return out
+    lines = [raw.strip() for raw in (ROOT / ".env.example").read_text(encoding="utf8").splitlines()]
+    pairs = [line.partition("=") for line in lines if line and not line.startswith("#") and "=" in line]
+    return {**{key.strip(): value.strip() for key, _, value in pairs}, "APP_ENV": "production"}
 
 
 def _imports_switch_module(tree: ast.AST) -> tuple[set[str], set[str]]:
@@ -54,9 +48,9 @@ def _problems(rel: str, source: str) -> list[str]:
     found: list[str] = []
     tree = ast.parse(source)
     if rel != SWITCH_FILE:
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) and "OFO_HELD" in node.value:
-                found.append(f"{rel}:{node.lineno} reads a held-switch variable outside the one function")
+        found += [f"{rel}:{node.lineno} reads a held-switch variable outside the one function"
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Constant) and isinstance(node.value, str) and "OFO_HELD" in node.value]
     modules, functions = _imports_switch_module(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -84,7 +78,7 @@ def test_ac11_the_closed_list_is_exactly_the_pinned_list():
 
 
 def test_ac11_the_production_configuration_has_every_held_feature_off():
-    """AC-11 / AC-7: the committed example configuration, as production, turns no held feature on without a reference."""
+    """AC-11 / AC-7: the committed example configuration, as production, turns no held feature on."""
     env = _example_environment()
     hs.require_valid_configuration(env)
     assert hs.features_on(env) == ()

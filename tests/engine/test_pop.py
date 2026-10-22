@@ -24,8 +24,17 @@ FORWARD, YEARS, VOL = D(22900), D(7) / D(365), D("0.15")
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _leg(action, kind, strike, price, expiry=EXPIRY, qty=75):
-    return Leg(action=action, instrument=kind, strike=D(strike), expiry=expiry, quantity=qty, entry_price=D(price))
+TOLERANCE = 0.001  # 0.1 percentage point, before rounding (AC-4)
+LOW, HIGH = 0.4, 0.9  # the core case is a real, non-trivial probability, not a corner
+UNITS = 75
+
+
+def _leg(action, kind, strike, price, expiry=EXPIRY):
+    return Leg(action=action, instrument=kind, strike=D(strike), expiry=expiry, quantity=UNITS, entry_price=D(price))
+
+
+def _close(actual, expected) -> bool:
+    return abs(float(actual) - expected) < TOLERANCE
 
 
 def _cdf(x: float) -> float:
@@ -46,37 +55,39 @@ def test_core_ac4_single_sold_put_matches_the_independent_calculation_within_a_t
     """Core / AC-4: sold 22,800 PE at 100 -> P(S_T > 22,700), independent erf calculation, |diff| < 0.001."""
     sold_put = Strategy(legs=(_leg(Action.SELL, Instrument.PE, 22800, 100),))
     expected = _p_above(22700)
-    assert 0.4 < expected < 0.9  # a real, non-trivial case, not a corner
-    assert abs(float(_pop(sold_put)) - expected) < 0.001
+    assert LOW < expected < HIGH
+    assert _close(_pop(sold_put), expected)
 
 
 def test_ac2_charges_move_the_breakeven_the_probability_is_net_of_charges():
     """AC-2: 150 rupees round trip on 75 units = 2 points: breakeven 22,702, so the figure is P(S_T > 22,702)."""
     sold_put = Strategy(legs=(_leg(Action.SELL, Instrument.PE, 22800, 100),))
-    assert abs(float(_pop(sold_put, D(150))) - _p_above(22702)) < 0.001
+    assert _close(_pop(sold_put, D(150)), _p_above(22702))
     assert _pop(sold_put, D(150)) < _pop(sold_put)
 
 
 def test_ac2_a_loss_between_two_zeros_counts_both_tails():
     """AC-2 (finding loss-region-inferred-from-breakevens): a bought straddle at 22,800 for 100 + 100 loses BETWEEN
     22,600 and 23,000; it profits in both tails: P(S<22,600) + P(S>23,000)."""
-    straddle = Strategy(legs=(_leg(Action.BUY, Instrument.CE, 22800, 100), _leg(Action.BUY, Instrument.PE, 22800, 100)))
+    straddle = Strategy(legs=(_leg(Action.BUY, Instrument.CE, 22800, 100),
+                              _leg(Action.BUY, Instrument.PE, 22800, 100)))
     expected = (1 - _p_above(22600)) + _p_above(23000)
-    assert abs(float(_pop(straddle)) - expected) < 0.001
+    assert _close(_pop(straddle), expected)
 
 
 def test_ac2_a_sold_straddle_profits_only_between_the_breakevens():
     """AC-2: the same legs sold: P(22,600 < S < 23,000), the complement of the bought straddle."""
-    straddle = Strategy(legs=(_leg(Action.SELL, Instrument.CE, 22800, 100), _leg(Action.SELL, Instrument.PE, 22800, 100)))
-    assert abs(float(_pop(straddle)) - (_p_above(22600) - _p_above(23000))) < 0.001
+    straddle = Strategy(legs=(_leg(Action.SELL, Instrument.CE, 22800, 100),
+                              _leg(Action.SELL, Instrument.PE, 22800, 100)))
+    assert _close(_pop(straddle), (_p_above(22600) - _p_above(23000)))
 
 
 def test_ac2_a_covered_call_uses_the_open_upper_tail():
     """AC-2: bought future at 22,900 + sold 23,000 CE at 60: profit when S > 22,840 (open tail capped, still profit)."""
-    future = Leg(action=Action.BUY, instrument=Instrument.FUT, strike=None, expiry=EXPIRY, quantity=75,
+    future = Leg(action=Action.BUY, instrument=Instrument.FUT, strike=None, expiry=EXPIRY, quantity=UNITS,
                  entry_price=D(22900))
     covered = Strategy(legs=(future, _leg(Action.SELL, Instrument.CE, 23000, 60)))
-    assert abs(float(_pop(covered)) - _p_above(22840)) < 0.001
+    assert _close(_pop(covered), _p_above(22840))
 
 
 @pytest.mark.parametrize(("forward", "years", "vol", "why"), [
@@ -106,18 +117,26 @@ def test_ac3_whole_percent_half_even_and_never_a_promise(p, percent):
     assert whole_percent(p) == percent
 
 
+def _name(node: ast.AST) -> str:
+    return node.id if isinstance(node, ast.Name) else getattr(node, "attr", "")
+
+
+def _sort_key_hits(source: str) -> list[int]:
+    """Lines of calls whose ``key=`` expression names the probability (``probability_of_profit`` or ``pop``)."""
+    hits = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            hits += [node.lineno for kw in node.keywords if kw.arg == "key" and any(
+                _name(n) in ("probability_of_profit", "pop") for n in ast.walk(kw.value))]
+    return hits
+
+
 @pytest.mark.repo_scan
 def test_ac6_the_figure_is_never_a_sort_or_rank_key_anywhere_in_the_backend():
-    """AC-6: no sorted/sort/min/max/nlargest call whose key expression names the probability (allow-list: none)."""
-    bad = []
-    for path in sorted((ROOT / "backend").rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf8"))):
-            if isinstance(node, ast.Call):
-                for kw in node.keywords:
-                    if kw.arg == "key" and any(
-                            isinstance(n, (ast.Name, ast.Attribute)) and "probability_of_profit" in
-                            (n.id if isinstance(n, ast.Name) else n.attr) or "pop" == (
-                                n.id if isinstance(n, ast.Name) else getattr(n, "attr", ""))
-                            for n in ast.walk(kw.value)):
-                        bad.append(f"{path.name}:{node.lineno}")
+    """AC-6: no sorted/sort/min/max call whose key expression names the probability; the scan catches a planted one."""
+    assert _sort_key_hits("rows.sort(key=lambda r: r.probability_of_profit)") == [1]
+    assert _sort_key_hits("sorted(rows, key=lambda r: pop(r))") == [1]
+    assert _sort_key_hits("sorted(rows, key=lambda r: r.name)") == []
+    bad = [f"{path.name}:{line}" for path in sorted((ROOT / "backend").rglob("*.py"))
+           for line in _sort_key_hits(path.read_text(encoding="utf8"))]
     assert bad == []

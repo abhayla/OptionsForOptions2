@@ -1,4 +1,4 @@
-"""W-125 (REQ-079 AC-3, AC-6, AC-7, AC-8; ADR-150 (2), ADR-157): strikes placed by a fixed rule, on the real instrument file.
+"""W-125 (REQ-079 AC-3, AC-6, AC-7, AC-8; ADR-150 (2), ADR-157): strikes placed by a rule, on the real instrument file.
 
 Core proof (step 1): NIFTY at spot 22,810 (strike gap 50 from the recorded file), "Bull call spread" loads
 BUY 22,800 CE / SELL 23,000 CE; strangle distance 100, SELL side, loads SELL 22,700 PE / SELL 22,900 CE (REQ-079 AC-3
@@ -19,8 +19,10 @@ from ofo.instruments.parser import parse_instruments_csv
 from ofo.strategy.loader import load_templates
 from ofo.strategy.placement import (
     QUICK_PICK_DISTANCES,
+    Market,
     PlacedLeg,
     PlacementRefused,
+    QuickPick,
     Refusal,
     expiry_slots,
     listed_atm,
@@ -33,6 +35,8 @@ NEAR, NEXT = date(2026, 9, 29), date(2026, 10, 6)
 GAP = Decimal(50)
 SPOT = Decimal("22810")
 D = Decimal
+TEMPLATE_COUNT = 21
+LIVE = Market(SPOT, True, GAP)
 BY_ID = {t.id: t for t in load_templates()}
 
 
@@ -49,8 +53,11 @@ def listed() -> dict[date, set[Decimal]]:
 
 
 def _place(template_id, listed, *, spot=SPOT, fresh=True, chosen=NEAR):
-    return place_template(BY_ID[template_id], expiries=expiry_slots(chosen, sorted(listed)), spot=spot,
-                          spot_fresh=fresh, strike_gap=GAP, listed_strikes=listed)
+    return place_template(BY_ID[template_id], expiry_slots(chosen, sorted(listed)), Market(spot, fresh, GAP), listed)
+
+
+def _qp(listed, kind="strangle", underlying="NIFTY", distance=100, market=LIVE):
+    return place_quick_pick(QuickPick(kind, underlying, distance, Action.SELL, NEAR), market, listed[NEAR])
 
 
 def _legs(placed):
@@ -58,10 +65,9 @@ def _legs(placed):
 
 
 def test_core_bull_call_spread_and_strangle_load_the_spec_examples_on_the_real_file(listed):
-    """Core / AC-3 / AC-7: NIFTY 22,810 -> BUY 22800 CE / SELL 23000 CE; strangle 100 SELL -> SELL 22700 PE / SELL 22900 CE."""
+    """Core (AC-3, AC-7): NIFTY 22,810 -> BUY 22800 CE / SELL 23000 CE; strangle 100 SELL -> 22700 PE / 22900 CE."""
     assert _legs(_place("bull_call_spread", listed)) == [("BUY", "CE", D(22800)), ("SELL", "CE", D(23000))]
-    pick = place_quick_pick("strangle", underlying="NIFTY", distance=100, side=Action.SELL, expiry=NEAR, spot=SPOT,
-                            spot_fresh=True, strike_gap=GAP, listed_strikes=listed[NEAR])
+    pick = _qp(listed)
     assert _legs(pick) == [("SELL", "PE", D(22700)), ("SELL", "CE", D(22900))]
 
 
@@ -80,7 +86,7 @@ def test_ac3_atm_is_taken_from_the_listed_strikes_not_a_regular_grid():
 
 def test_ac3_every_template_places_on_listed_strikes_at_its_catalogue_offsets(listed):
     """AC-3: all 21 templates place; each strike is a listed strike of its expiry; offsets are the template data."""
-    assert len(BY_ID) == 21
+    assert len(BY_ID) == TEMPLATE_COUNT
     for tid, template in BY_ID.items():
         defaults = {p.name: p.default for p in template.params}
         placed = _place(tid, listed)
@@ -121,8 +127,7 @@ def test_ac8_a_missing_or_stale_spot_places_nothing(listed, spot, fresh, reason)
         _place("bull_call_spread", listed, spot=spot, fresh=fresh)
     assert e.value.reason is reason
     with pytest.raises(PlacementRefused) as e2:
-        place_quick_pick("straddle", underlying="NIFTY", distance=0, side=Action.BUY, expiry=NEAR, spot=spot,
-                         spot_fresh=fresh, strike_gap=GAP, listed_strikes=listed[NEAR])
+        place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(spot, fresh, GAP), listed[NEAR])
     assert e2.value.reason is reason
 
 
@@ -138,9 +143,9 @@ def test_ac8_a_strike_the_file_does_not_list_is_refused_never_snapped(listed):
 
 def test_ac7_straddle_is_both_legs_at_atm_on_the_users_side(listed):
     """AC-7: a straddle at ATM; BUY side is the user's choice."""
-    pick = place_quick_pick("straddle", underlying="NIFTY", distance=0, side=Action.BUY, expiry=NEAR, spot=SPOT,
-                            spot_fresh=True, strike_gap=GAP, listed_strikes=listed[NEAR])
-    assert pick == (PlacedLeg(Action.BUY, Instrument.PE, D(22800), NEAR), PlacedLeg(Action.BUY, Instrument.CE, D(22800), NEAR))
+    pick = place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(SPOT, True, GAP), listed[NEAR])
+    pe, ce = PlacedLeg(Action.BUY, Instrument.PE, D(22800), NEAR), PlacedLeg(Action.BUY, Instrument.CE, D(22800), NEAR)
+    assert pick == (pe, ce)
 
 
 def test_ac7_default_distances_are_the_spec_lists():
@@ -152,24 +157,20 @@ def test_ac7_default_distances_are_the_spec_lists():
 def test_ac7_a_distance_not_offered_for_the_underlying_is_refused(listed, distance):
     """AC-7: 400 is a SENSEX distance; 75 is not a multiple of 50 and not offered; negatives are refused."""
     with pytest.raises(PlacementRefused) as e:
-        place_quick_pick("strangle", underlying="NIFTY", distance=distance, side=Action.SELL, expiry=NEAR, spot=SPOT,
-                         spot_fresh=True, strike_gap=GAP, listed_strikes=listed[NEAR])
+        _qp(listed, distance=distance)
     assert e.value.reason is Refusal.DISTANCE_NOT_OFFERED
 
 
 def test_ac7_an_offered_distance_that_is_not_a_multiple_of_the_strike_step_is_refused(listed):
     """AC-7: distances must be multiples of the strike step: 100 with a step of 30 is refused."""
     with pytest.raises(PlacementRefused) as e:
-        place_quick_pick("strangle", underlying="NIFTY", distance=100, side=Action.SELL, expiry=NEAR, spot=SPOT,
-                         spot_fresh=True, strike_gap=D(30), listed_strikes=listed[NEAR])
+        _qp(listed, market=Market(SPOT, True, D(30)))
     assert e.value.reason is Refusal.DISTANCE_NOT_OFFERED
 
 
 def test_ac7_an_unknown_underlying_has_no_distances_and_a_bad_kind_raises(listed):
     """AC-7: no distances for an underlying outside the list; a kind other than straddle/strangle raises."""
     with pytest.raises(PlacementRefused):
-        place_quick_pick("strangle", underlying="BANKNIFTY", distance=100, side=Action.SELL, expiry=NEAR, spot=SPOT,
-                         spot_fresh=True, strike_gap=GAP, listed_strikes=listed[NEAR])
+        _qp(listed, underlying="BANKNIFTY")
     with pytest.raises(ValueError, match="straddle"):
-        place_quick_pick("iron", underlying="NIFTY", distance=100, side=Action.SELL, expiry=NEAR, spot=SPOT,
-                         spot_fresh=True, strike_gap=GAP, listed_strikes=listed[NEAR])
+        place_quick_pick(QuickPick("iron", "NIFTY", 100, Action.SELL, NEAR), Market(SPOT, True, GAP), listed[NEAR])

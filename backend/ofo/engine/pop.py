@@ -2,7 +2,7 @@
 
 The probability that the underlying at the strategy's expiry lies where the expiry P&L, INCLUDING the round-trip charges
 (ADR-082), is above zero. Under the engine's own pricing model (``black_scholes.probability_below``: lognormal about the
-expiry's parity forward with the expiry's ATM implied volatility). The loss regions come from the same region logic as the
+expiry's parity forward with the expiry's ATM implied volatility). The loss regions come from the same logic as the
 outcome's "where do I start losing" (``metrics._loss_regions``), computed on the net-of-charges P&L; they are NEVER
 inferred from breakevens alone (finding loss-region-inferred-from-breakevens: a strategy can lose between two zeros).
 

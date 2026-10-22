@@ -1,5 +1,5 @@
-"""W-125 (REQ-079 AC-2..AC-9; ADR-150 (2), ADR-157, ADR-015): load a catalogue template or a straddle / strangle quick pick
-at strikes placed by a fixed rule. HELD for the Q211 legal answer (``held_switches.PLATFORM_STRIKES``).
+"""W-125 (REQ-079 AC-2..AC-9; ADR-150 (2), ADR-157, ADR-015): load a catalogue template or a straddle / strangle
+quick pick at strikes placed by a fixed rule. HELD for the Q211 legal answer (``held_switches.PLATFORM_STRIKES``).
 
 ``POST /api/strategies/load-template`` and ``POST /api/strategies/quick-pick``: the server reads the live spot and the
 stored catalogue, places strikes with ``ofo.strategy.placement`` and answers legs the builder can edit. Nothing is saved
@@ -9,6 +9,7 @@ and no order is touched. With the switch off both routes refuse with the held re
 from __future__ import annotations
 
 import datetime
+import itertools
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -19,8 +20,10 @@ from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
 from ofo.strategy.loader import load_templates
 from ofo.strategy.placement import (
+    Market,
     PlacedLeg,
     PlacementRefused,
+    QuickPick,
     Refusal,
     expiry_slots,
     place_quick_pick,
@@ -49,7 +52,7 @@ _UNUSABLE_SPOT = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 
 
 def require_platform_strikes() -> None:
-    """The held refusal (409, catalogue message ``ready_made_held``) while the switch is off; runs before the handler."""
+    """The held refusal (409, catalogue message ``ready_made_held``) while off; runs before the handler."""
     if not held_switches.held_on(held_switches.PLATFORM_STRIKES):
         raise StrategyRefused(HELD_TEMPLATE, Failure.CONFLICT)
 
@@ -99,7 +102,7 @@ def _spot(ctx: MarketContext | None, underlying: str) -> tuple[Decimal | None, b
 
 def _gap(strikes: set[Decimal]) -> Decimal:
     ordered = sorted(strikes)
-    gaps = [b - a for a, b in zip(ordered, ordered[1:], strict=False)]
+    gaps = [b - a for a, b in itertools.pairwise(ordered)]
     if not gaps:
         raise PlacementRefused(Refusal.STRIKE_NOT_LISTED)
     return min(gaps)
@@ -109,7 +112,8 @@ def _strikes(catalogue: ChainCatalogue) -> set[Decimal]:
     return {c.strike for c in catalogue.contracts if c.strike is not None}
 
 
-def _out(underlying: str, placed: tuple[PlacedLeg, ...], catalogues: dict[datetime.date, ChainCatalogue]) -> ReadyMadeOut:
+def _out(underlying: str, placed: tuple[PlacedLeg, ...], catalogues: dict[datetime.date, ChainCatalogue],
+         ) -> ReadyMadeOut:
     label = render_explanation("ready_made_fixed_rule_label")
     legs = []
     for leg in placed:
@@ -118,13 +122,16 @@ def _out(underlying: str, placed: tuple[PlacedLeg, ...], catalogues: dict[dateti
         if leg.strike is None or len(match) != 1:  # a future, or a contract the stored list does not hold exactly once
             raise PlacementRefused(Refusal.STRIKE_NOT_LISTED)
         legs.append(PlacedLegOut(action=leg.action.value, instrument=leg.instrument.value,  # type: ignore[arg-type]
-                                 strike=leg.strike.quantize(PAISE), expiry=leg.expiry, instrument_id=match[0].instrument_id,
+                                 strike=leg.strike.quantize(PAISE), expiry=leg.expiry,
+                                 instrument_id=match[0].instrument_id,
                                  symbol=match[0].symbol, label=label))
     return ReadyMadeOut(underlying=underlying, legs=legs)  # type: ignore[arg-type]
 
 
 def _refused(underlying: str, refusal: PlacementRefused) -> StrategyRefused:
-    from ofo.errors import render  # noqa: PLC0415 - the catalogue renderer, with the underlying where the text has a slot
+    from ofo.errors import (
+        render,  # noqa: PLC0415 - the catalogue renderer, with the underlying where the text has a slot
+    )
     template = _MESSAGE[refusal.reason]
     slots = {} if template == HELD_TEMPLATE else {"underlying": underlying}
     return StrategyRefused(template, message=render(template, **slots))
@@ -148,9 +155,8 @@ async def load_template(
         catalogues = {body.expiry: near}
         for day in {d for d in slots.values() if d is not None and d != body.expiry}:
             catalogues[day] = await reader(body.underlying, day)
-        placed = place_template(template, expiries=slots, spot=spot, spot_fresh=fresh,
-                                strike_gap=_gap(_strikes(near)),
-                                listed_strikes={d: _strikes(c) for d, c in catalogues.items()})
+        placed = place_template(template, slots, Market(spot, fresh, _gap(_strikes(near))),
+                                {d: _strikes(c) for d, c in catalogues.items()})
         return _out(body.underlying, placed, catalogues)
     except PlacementRefused as refusal:
         raise _refused(body.underlying, refusal) from None
@@ -168,9 +174,8 @@ async def quick_pick(
         if catalogue.unreadable or body.expiry not in catalogue.expiries:
             raise PlacementRefused(Refusal.EXPIRY_MISSING)
         strikes = _strikes(catalogue)
-        placed = place_quick_pick(body.kind, underlying=body.underlying, distance=body.distance,
-                                  side=Action(body.side), expiry=body.expiry, spot=spot, spot_fresh=fresh,
-                                  strike_gap=_gap(strikes), listed_strikes=strikes)
+        pick = QuickPick(body.kind, body.underlying, body.distance, Action(body.side), body.expiry)
+        placed = place_quick_pick(pick, Market(spot, fresh, _gap(strikes)), strikes)
         return _out(body.underlying, placed, {body.expiry: catalogue})
     except PlacementRefused as refusal:
         raise _refused(body.underlying, refusal) from None

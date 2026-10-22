@@ -5,7 +5,7 @@ switch names, one function (``_read``) that reads the configuration, no other co
 (finding setting-read-from-two-sources). The pattern is ``order_path_switch``: server side, fail closed.
 
 A switch is ON when ``APP_ENV`` is exactly ``development`` or ``test``; in any other environment (production, staging,
-unset, a case or space variant) it is ON only when ``OFO_HELD_<NAME>`` is in the true set AND ``OFO_HELD_<NAME>_REF`` is a
+unset, a case or space variant) it is ON only when ``OFO_HELD_<NAME>`` is on AND ``OFO_HELD_<NAME>_REF`` is a
 non-blank reference to the written answer. A request never carries a value into this module. An unknown switch name
 raises; a configuration that sets a switch on without a reference, or names an unknown switch, is refused at start-up
 (``require_valid_configuration``). Answer states (standing item d): on / off / setting unreadable (off) / reference
@@ -82,7 +82,7 @@ def features_on(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
 
 
 def require_valid_configuration(environ: Mapping[str, str] | None = None) -> None:
-    """Start-up check: refuse a held switch set on without a reference, or an ``OFO_HELD_*`` variable of an unknown name."""
+    """Start-up check: refuse a switch on without a reference, or an ``OFO_HELD_*`` variable of an unknown name."""
     _, source = _read(environ)
     known = {_variable(n) for n in SWITCH_NAMES}
     for key in source:

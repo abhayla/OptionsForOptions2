@@ -1,9 +1,9 @@
-"""W-125 (REQ-079 AC-3, AC-6, AC-7, AC-8; ADR-150 (2), ADR-157, ADR-015): strikes placed by a fixed rule.
+"""W-125 (REQ-079 AC-3, AC-6, AC-7, AC-8; ADR-150 (2), ADR-157, ADR-015): strikes placed by a rule.
 
 Held for the Q211 legal answer: the caller (``ofo_app.routes.ready_made``) checks the switch first. This module is the
 rule itself, pure and clock-free:
 
-- ATM is the LISTED strike nearest the spot; a tie takes the lower strike (AC-3, unlike ``atm_strike``'s half-up default).
+- ATM is the LISTED strike nearest the spot; a tie takes the lower strike (AC-3; ``atm_strike`` rounds a tie up).
 - every other strike sits the template's number of strike steps from ATM (``resolve_template`` does the arithmetic on
   the listed ATM, so the formula lives in one place); each strike must be a listed strike of that expiry.
 - a stale or missing spot refuses (AC-8); a slot with no expiry refuses (AC-6); nothing is silently replaced.
@@ -22,10 +22,10 @@ from enum import Enum
 from ofo.engine.legs import Action, Instrument
 from ofo.strategy.model import EXPIRY_SLOTS, Template, resolve_template
 
-#: REQ-079 AC-7 defaults: the quick-pick distances in index points, per underlying (admin-changeable later; each must be
-#: a multiple of the strike step, checked on use).
+#: REQ-079 AC-7 defaults: quick-pick distances in index points per underlying (admin-changeable later; each a
+#: multiple of the strike step, checked on use).
 QUICK_PICK_DISTANCES: Mapping[str, tuple[int, ...]] = {"NIFTY": (50, 100, 150, 200), "SENSEX": (100, 200, 300, 400)}
-#: The one-cent entry price handed to ``resolve_template`` (it prices legs; placement places strikes and prices nothing).
+#: The entry price handed to ``resolve_template`` (placement places strikes and prices nothing).
 _UNPRICED = Decimal("1")
 
 
@@ -46,6 +46,26 @@ class PlacementRefused(Exception):
 
 
 @dataclass(frozen=True)
+class Market:
+    """What the live read gives: the index value (None when missing), whether it is fresh, the strike gap."""
+
+    spot: Decimal | None
+    spot_fresh: bool
+    strike_gap: Decimal
+
+
+@dataclass(frozen=True)
+class QuickPick:
+    """A straddle or strangle request: the user's side and expiry, the distance in points (0 for a straddle)."""
+
+    kind: str
+    underlying: str
+    distance: int
+    side: Action
+    expiry: datetime.date
+
+
+@dataclass(frozen=True)
 class PlacedLeg:
     action: Action
     instrument: Instrument
@@ -60,12 +80,12 @@ def listed_atm(spot: Decimal, listed: Collection[Decimal]) -> Decimal:
     return min(listed, key=lambda strike: (abs(strike - spot), strike))
 
 
-def _usable_spot(spot: Decimal | None, spot_fresh: bool) -> Decimal:
-    if spot is None or spot <= 0:
+def _usable_spot(market: Market) -> Decimal:
+    if market.spot is None or market.spot <= 0:
         raise PlacementRefused(Refusal.SPOT_MISSING)
-    if not spot_fresh:
+    if not market.spot_fresh:
         raise PlacementRefused(Refusal.SPOT_STALE)
-    return spot
+    return market.spot
 
 
 def expiry_slots(chosen: datetime.date, available: Sequence[datetime.date]) -> dict[str, datetime.date | None]:
@@ -75,22 +95,20 @@ def expiry_slots(chosen: datetime.date, available: Sequence[datetime.date]) -> d
             for i, slot in enumerate(EXPIRY_SLOTS)}
 
 
-def place_template(template: Template, *, expiries: Mapping[str, datetime.date | None], spot: Decimal | None,
-                   spot_fresh: bool, strike_gap: Decimal,
+def place_template(template: Template, expiries: Mapping[str, datetime.date | None], market: Market,
                    listed_strikes: Mapping[datetime.date, Collection[Decimal]]) -> tuple[PlacedLeg, ...]:
     """The template's legs at the template's own default step counts from the listed ATM of its first expiry.
 
     ``expiries`` maps each slot to a date or None; ``listed_strikes`` maps an expiry to the strikes the instrument file
     lists for it. Raises ``PlacementRefused`` (spot, expiry, strike) and places nothing.
     """
-    live_spot = _usable_spot(spot, spot_fresh)
+    live_spot = _usable_spot(market)
     used = {leg.expiry_slot for leg in template.legs}
-    if any(expiries.get(slot) is None for slot in used):
+    near = expiries.get("near")
+    if near is None or any(expiries.get(slot) is None for slot in used):
         raise PlacementRefused(Refusal.EXPIRY_MISSING)
-    near = expiries["near"]
-    assert near is not None  # every template uses the "near" slot (prefix rule)
     atm = listed_atm(live_spot, listed_strikes.get(near, ()))
-    strategy = resolve_template(template, spot=atm, strike_gap=strike_gap, expiries=expiries,
+    strategy = resolve_template(template, spot=atm, strike_gap=market.strike_gap, expiries=expiries,
                                 prices=[_UNPRICED] * len(template.legs))
     placed = tuple(PlacedLeg(leg.action, leg.instrument, leg.strike, leg.expiry) for leg in strategy.legs)
     for leg in placed:
@@ -99,23 +117,21 @@ def place_template(template: Template, *, expiries: Mapping[str, datetime.date |
     return placed
 
 
-def place_quick_pick(kind: str, *, underlying: str, distance: int, side: Action, expiry: datetime.date,
-                     spot: Decimal | None, spot_fresh: bool, strike_gap: Decimal,
-                     listed_strikes: Collection[Decimal]) -> tuple[PlacedLeg, ...]:
-    """A straddle (both legs at ATM) or a strangle (PE at ATM - distance, CE at ATM + distance), both legs on ``side``.
+def place_quick_pick(pick: QuickPick, market: Market, listed_strikes: Collection[Decimal]) -> tuple[PlacedLeg, ...]:
+    """A straddle (both legs at ATM) or a strangle (PE at ATM - distance, CE at ATM + distance), both legs on the side.
 
-    ``distance`` must be one of the underlying's offered distances and a multiple of the strike step. The user picks the
-    side and the lots; the platform never does (AC-7).
+    A strangle's distance must be one of the underlying's offered distances and a multiple of the strike step. The user
+    picks the side and the lots; the platform never does (AC-7).
     """
-    if kind not in ("straddle", "strangle"):
-        raise ValueError(f"quick pick kind must be 'straddle' or 'strangle', got {kind!r}")
-    live_spot = _usable_spot(spot, spot_fresh)
-    if kind == "strangle" and (distance not in QUICK_PICK_DISTANCES.get(underlying, ())
-                               or Decimal(distance) % strike_gap != 0):
+    if pick.kind not in ("straddle", "strangle"):
+        raise ValueError(f"quick pick kind must be 'straddle' or 'strangle', got {pick.kind!r}")
+    live_spot = _usable_spot(market)
+    if pick.kind == "strangle" and (pick.distance not in QUICK_PICK_DISTANCES.get(pick.underlying, ())
+                                    or Decimal(pick.distance) % market.strike_gap != 0):
         raise PlacementRefused(Refusal.DISTANCE_NOT_OFFERED)
     atm = listed_atm(live_spot, listed_strikes)
-    reach = Decimal(distance) if kind == "strangle" else Decimal(0)
+    reach = Decimal(pick.distance) if pick.kind == "strangle" else Decimal(0)
     pe, ce = atm - reach, atm + reach
     if pe not in listed_strikes or ce not in listed_strikes:
         raise PlacementRefused(Refusal.STRIKE_NOT_LISTED)
-    return (PlacedLeg(side, Instrument.PE, pe, expiry), PlacedLeg(side, Instrument.CE, ce, expiry))
+    return (PlacedLeg(pick.side, Instrument.PE, pe, pick.expiry), PlacedLeg(pick.side, Instrument.CE, ce, pick.expiry))
