@@ -46,25 +46,33 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
+from ofo.engine.chain_values import CellValues, ChainGreeks, cell_values, chain_greeks, in_the_money
+from ofo.engine.model import data_label
 from ofo.errors import render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+from ofo.rules.inputs import DataHealth
+from ofo.scenario.spot import spot_reading
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext
 
 log = logging.getLogger(__name__)
 
-#: The most strikes either side of ATM a chain may ask for, and the default (design: "15 strikes either side at first
-#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 62 contracts (31
+#: The most strikes either side of ATM a chain may ask for (REQ-087 AC-3: 10, 20, 30 or 40; was 15 at W-116,
+#: design: "15 strikes either side at first open", docs/design/screens-research-2026-10-19.md).
+#: It bounds one socket's subscription to 162 contracts (81
 #: strikes, CE and PE) and the index.
-MAX_STRIKES_EACH_SIDE = 15
+MAX_STRIKES_EACH_SIDE = 40
+#: REQ-087 AC-3: the user's choices for strikes either side of ATM, and the default for a user who never chose.
+STRIKES_CHOICES = (10, 20, 30, 40)
+DEFAULT_STRIKES_EACH_SIDE = 10
 #: REQ-029 AC-4 / Q46: "OI and IV update at a lower frequency" than LTP and bid/ask. Q46 names no number; 5 s is the
 #: orchestrator's technical decision (W-116 round 2). The same interval bounds how often the window re-centres.
 OI_REFRESH_SECONDS = 5.0
@@ -98,7 +106,7 @@ class ChainRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     underlying: Literal["NIFTY", "SENSEX"]
     expiry: datetime.date
-    strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
+    strikes_each_side: StrictInt = Field(default=DEFAULT_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
 
 
 class ChainCellOut(ApiModel):
@@ -115,6 +123,18 @@ class ChainCellOut(ApiModel):
     #: REQ-030 AC-16: True only when Zerodha's eligibility says this contract is tradable now (fail closed)
     permitted: bool
     unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
+    #: W-124 (REQ-087 AC-1/AC-4/AC-5, REQ-029 AC-3): server-computed extras; None = a dash on the screen, never 0.
+    lot_size: int  # the instrument file's lot size: the "per lot" heading and multiplier (REQ-087 AC-1)
+    in_the_money: bool | None  # REQ-087 AC-2, decided on the server against the live spot; None without a spot
+    per_lot: Money | None  # LTP x lot size
+    intrinsic: Money | None  # against the spot (the index), labelled so
+    time_value: Money | None  # LTP minus intrinsic
+    breakeven: Money | None
+    breakeven_pct: Money | None  # signed, against the spot
+    delta: Money | None  # the engine's Greeks (not the vendor's), 4 dp
+    gamma: Money | None
+    theta: Money | None
+    vega: Money | None
 
 
 class ChainRowOut(ApiModel):
@@ -130,6 +150,10 @@ class ChainOut(ApiModel):
     spot: Money | None  # the underlying index price (REQ-029 AC-8); None when missing or not live
     spot_at: datetime.datetime | None
     spot_health: HealthCode | None
+    #: REQ-087 AC-2 / REQ-049: why the spot-based values (shading, intrinsic, time value,
+    #: breakeven %, ATM) are off, as the
+    #: catalogue's own data label ("stale since HH:MM IST"); None when the spot is available or missing
+    spot_label: CatalogueText | None = None
     atm_strike: Money | None  # the catalogue strike nearest the live spot (REQ-029 AC-8); None without a live spot
     rows_missing: RowsMissing | None
     rows: list[ChainRowOut]  # ascending strike (REQ-029 AC-1: Calls | Strike | Puts)
@@ -243,6 +267,24 @@ def live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
     return quote.ltp if quote is not None and is_live_price(quote.ltp) else None
 
 
+def fresh_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
+    """REQ-087 AC-2 (ADR-015): the spot that spot-based VALUES may use: the live price of the index quote ONLY while the
+    quote's health is available. A stale or delayed spot still picks the window (``live_spot``) but is never drawn
+    from."""
+    quote = None if ctx is None else _spot_quote(ctx, underlying)
+    if quote is None or quote.health is not DataHealth.AVAILABLE:
+        return None
+    return live_spot(ctx, underlying)
+
+
+def spot_label(ctx: MarketContext | None, underlying: str) -> CatalogueText | None:
+    """The REQ-049 data label of a stale or delayed spot (the engine's ``data_label``); None otherwise."""
+    quote = None if ctx is None else _spot_quote(ctx, underlying)
+    if quote is None or not is_live_price(quote.ltp):
+        return None
+    return data_label(spot_reading(quote))
+
+
 def pick_window(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue) -> tuple[Decimal, ...] | None:
     """The strikes to show around the ATM of the live spot; None when there is no live spot or no strike."""
     grid = strike_grid(catalogue)
@@ -287,18 +329,34 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
     return False, value if value in _PERMISSIONS else "unknown"  # type: ignore[return-value]
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,
-          catalogue: ChainCatalogue) -> ChainCellOut:
+def _extras(contract: PickableContract, ltp: Decimal | None, spot: Decimal | None,
+            greeks: Mapping[str, ChainGreeks]) -> dict[str, Any]:
+    """The W-124 fields of one cell: the pure maths of ``ofo.engine.chain_values`` (per-lot, intrinsic, time value,
+    breakeven) and the engine's Greeks for this contract when its price gave an implied volatility."""
+    v: CellValues = cell_values(contract.instrument_type, contract.strike, ltp, spot, contract.lot_size)
+    g = greeks.get(contract.instrument_id)
+    itm = in_the_money(contract.instrument_type, contract.strike, spot)
+    return {"lot_size": contract.lot_size, "in_the_money": itm,
+            "per_lot": v.per_lot, "intrinsic": v.intrinsic, "time_value": v.time_value,
+            "breakeven": v.breakeven, "breakeven_pct": v.breakeven_pct,
+            "delta": None if g is None else g.delta, "gamma": None if g is None else g.gamma,
+            "theta": None if g is None else g.theta, "vega": None if g is None else g.vega}
+
+
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
+          catalogue: ChainCatalogue, spot: Decimal | None = None,
+          greeks: Mapping[str, ChainGreeks] | None = None) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
                             oi_change=None, volume=None, health="unavailable", at=None, permitted=permitted,
-                            unavailable_reason=reason)
+                            unavailable_reason=reason, **_extras(contract, None, spot, {}))
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
-                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason)
+                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason,
+                        **_extras(contract, _given_money(quote.ltp), spot, greeks or {}))
 
 
 def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
@@ -308,7 +366,11 @@ def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, Normalized
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
           unknown: frozenset[str]) -> list[ChainRowOut]:
-    quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
+    every = window_quotes(ctx, req)
+    spot = fresh_spot(ctx, req.underlying)
+    greeks = (chain_greeks(every.values(), _spot_quote(ctx, req.underlying), req.expiry, ctx.clock(), ctx.rate)
+              if spot is not None else {})
+    quotes = {i: q for i, q in every.items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
         if c.strike in by_strike and c.instrument_type in _SIDES:
@@ -318,8 +380,10 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue),
-                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue)))
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue, spot,
+                                                                greeks),
+                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue, spot,
+                                                                greeks)))
     return out
 
 
@@ -338,6 +402,7 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
                         atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at)
     spot = live_spot(ctx, req.underlying)
+    fresh = fresh_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
     missing = _rows_missing(catalogue, req.expiry, window)
     return ChainOut(
@@ -345,7 +410,8 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot=None if spot is None else spot.quantize(PAISE),
         spot_at=None if spot_quote is None else spot_quote.timestamp,
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
-        atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
+        spot_label=spot_label(ctx, req.underlying),
+        atm_strike=atm_strike(grid, fresh).quantize(PAISE) if fresh is not None and grid else None,
         rows_missing=missing,
         rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
         answered_at=answered_at)

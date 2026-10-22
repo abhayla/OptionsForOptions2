@@ -37,6 +37,7 @@ from ofo_app.routes import (
     strategies,
     strategy_templates,
     tracking,
+    user_settings,
 )
 
 log = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(user_settings.router)  # W-124: the chain strikes preference (REQ-087 AC-3)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
     app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
     app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback

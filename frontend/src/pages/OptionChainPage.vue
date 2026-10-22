@@ -13,10 +13,12 @@ import { useRouter } from 'vue-router'
 import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import api from '@/services/api'
+import { readChainPreview } from '@/composables/useChainPreview'
+import PayoffChart from '@/components/strategy/PayoffChart.vue'
+import { DEFAULT_STRIKES, SETTING_PATH, STRIKE_CHOICES, UX_LEVELS, fieldsFor, lotSizeOf, previewLegs, previewLines } from '@/lib/chainDisplay'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 
 const UNDERLYINGS = ['NIFTY', 'SENSEX']
-const SIDE_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume']]
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -61,9 +63,35 @@ watch(underlying, () => {
   loadExpiries()
 }, { flush: 'sync' })
 watch(expiry, (value) => {
-  if (value) follow(chainRequest(underlying.value, value))
+  if (value) follow(chainRequest(underlying.value, value, strikes.value))
   else clear()
 }, { flush: 'sync' })
+
+// REQ-087 AC-3: how many strikes either side of ATM, kept per user on the server (default 10 for a user who never chose).
+const strikes = ref(DEFAULT_STRIKES)
+const strikesSaved = ref(true)
+async function loadStrikes() {
+  try {
+    const { data } = await api.get(SETTING_PATH)
+    if (STRIKE_CHOICES.includes(data?.strikes_each_side)) strikes.value = data.strikes_each_side
+  } catch {
+    strikes.value = DEFAULT_STRIKES
+  }
+}
+async function chooseStrikes() {
+  strikesSaved.value = true
+  if (expiry.value) follow(chainRequest(underlying.value, expiry.value, strikes.value))
+  try {
+    await api.put(SETTING_PATH, { strikes_each_side: strikes.value })
+  } catch {
+    strikesSaved.value = false // shown, not hidden: the choice works now but was not kept
+  }
+}
+onMounted(loadStrikes)
+
+// REQ-087 AC-1 / REQ-029 AC-9: per-lot prices and the UX level's columns (the server computed every value).
+const perLot = ref(false)
+const uxLevel = ref('standard')
 
 const router = useRouter()
 const selection = useChainSelection()
@@ -106,6 +134,40 @@ watch(() => legs.value.map((e) => e.expiry).join(), () => (askExpiries.value = f
 onBeforeUnmount(() => clearTimeout(undoTimer))
 
 const view = computed(() => shown())
+const lotSize = computed(() => lotSizeOf(view.value))
+const sideFields = computed(() => fieldsFor(uxLevel.value, perLot.value, lotSize.value))
+const colspan = computed(() => sideFields.value.length)
+// REQ-087 AC-2 / REQ-049: shading and the spot-based columns are on only while the spot is AVAILABLE; the reason is the
+// server's own data label ("stale since HH:MM IST"), or the missing-price line when there is no spot at all.
+const showsItm = computed(() => view.value?.spot != null && view.value?.spot_health === 'available')
+const itmOffReason = computed(() => (typeof view.value?.spot_label === 'string' ? view.value.spot_label : ''))
+
+// REQ-031: the live preview of the selected legs, from the server's outcome numbers (one engine). A failed or
+// not-connected read shows NO numbers (only that the preview is unavailable): a last answer is never kept under a banner.
+const preview = ref(null)
+const previewStale = ref(false)
+let previewSeq = 0
+async function readPreview() {
+  const mine = ++previewSeq
+  const body = previewLegs(legs.value)
+  if (!body.length) {
+    preview.value = null
+    previewStale.value = false
+    return
+  }
+  const data = await readChainPreview(underlying.value, body)
+  if (mine !== previewSeq) return
+  if (data && data.state === 'COMPUTED') {
+    preview.value = data
+    previewStale.value = false
+  } else {
+    preview.value = null
+    previewStale.value = true
+  }
+}
+const previewKey = computed(() => JSON.stringify([underlying.value, previewLegs(legs.value), view.value?.answered_at ?? null]))
+watch(previewKey, readPreview, { immediate: true })
+const previewText = computed(() => previewLines(preview.value))
 // REQ-030 AC-16: every chain answer tells the selection which of its contracts Zerodha permits right now.
 const cellsOf = (v) => (v ? v.rows.flatMap((r) => [r.ce, r.pe]).filter(Boolean) : [])
 const anyUnavailable = computed(() => cellsOf(view.value).some((c) => !isPermitted(c)))
@@ -147,7 +209,22 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
         <span v-if="spotTime" class="ml-1 text-ink-muted" data-testid="spot-time">as of {{ spotTime }}</span>
         <span v-if="view && view.spot_health && view.spot_health !== 'available'" class="ml-1 text-ink-muted" data-testid="spot-health">{{ view.spot_health }}</span>
       </p>
+      <label class="text-sm">
+        Strikes each side
+        <select v-model.number="strikes" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="strikes-select" @change="chooseStrikes">
+          <option v-for="n in STRIKE_CHOICES" :key="n" :value="n">{{ n }}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        Level
+        <select v-model="uxLevel" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="ux-level-select">
+          <option v-for="l in UX_LEVELS" :key="l" :value="l">{{ l }}</option>
+        </select>
+      </label>
+      <label class="text-sm"><input v-model="perLot" type="checkbox" data-testid="per-lot-toggle" /> Per lot</label>
       <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
+      <p v-if="!strikesSaved" class="text-xs" data-testid="strikes-not-saved">Your choice works now but could not be saved.</p>
+      <p v-if="view && !showsItm" class="text-xs" data-testid="itm-off">In-the-money shading is off: {{ itmOffReason || 'the underlying price is missing or not live.' }}</p>
     </div>
 
     <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>
@@ -167,16 +244,16 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
         <thead>
           <tr>
             <th class="px-1 py-1" data-testid="ce-select-head"></th>
-            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center" data-testid="calls-head">Calls</th>
+            <th :colspan="colspan" class="px-2 py-1 text-center" data-testid="calls-head">Calls</th>
             <th class="px-2 py-1 text-center" data-testid="strike-head">Strike</th>
-            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center" data-testid="puts-head">Puts</th>
+            <th :colspan="colspan" class="px-2 py-1 text-center" data-testid="puts-head">Puts</th>
             <th class="px-1 py-1" data-testid="pe-select-head"></th>
           </tr>
           <tr class="text-xs text-ink-muted" data-testid="chain-columns">
             <th class="px-1 py-1"></th>
-            <th v-for="[key, label] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right">{{ label }}</th>
+            <th v-for="[key, label] in sideFields" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'head-' + key">{{ label }}</th>
             <th class="px-2 py-1 text-center">Strike</th>
-            <th v-for="[key, label] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right">{{ label }}</th>
+            <th v-for="[key, label] in sideFields" :key="'p' + key" class="px-2 py-1 text-right">{{ label }}</th>
             <th class="px-1 py-1"></th>
           </tr>
         </thead>
@@ -198,12 +275,12 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
                 </p>
               </template>
             </td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key">
-              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthWord(row.ce) }}</span>
+            <td v-for="[key] in sideFields" :key="'c' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': showsItm && row.ce && row.ce.in_the_money === true }" :data-itm="showsItm && row.ce && row.ce.in_the_money === true ? 'true' : 'false'" :data-testid="'ce-' + key">
+              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="(key === 'ltp' || key === 'per_lot') && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthWord(row.ce) }}</span>
             </td>
             <td class="px-2 py-1 text-center" data-testid="strike">{{ row.strike }}</td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right" :data-testid="'pe-' + key">
-              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthWord(row.pe) }}</span>
+            <td v-for="[key] in sideFields" :key="'p' + key" class="px-2 py-1 text-right" :class="{ 'bg-accent-soft/40': showsItm && row.pe && row.pe.in_the_money === true }" :data-itm="showsItm && row.pe && row.pe.in_the_money === true ? 'true' : 'false'" :data-testid="'pe-' + key">
+              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="(key === 'ltp' || key === 'per_lot') && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthWord(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">
@@ -242,6 +319,18 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
         <p>Multiple expiries detected — Continue / Review Selection</p>
         <button type="button" class="mr-2 rounded border border-line px-2" data-testid="multi-expiry-continue" @click="openBuilder">Continue</button>
         <button type="button" class="rounded border border-line px-2" data-testid="multi-expiry-review" @click="reviewSelection">Review Selection</button>
+      </div>
+      <div v-if="preview || previewStale" class="mt-2 rounded border border-line p-2 text-sm" data-testid="chain-preview">
+        <p v-if="previewStale" class="text-xs" data-testid="preview-stale">Preview unavailable: not connected to live data.</p>
+        <template v-if="previewText">
+          <p data-testid="preview-net">Net premium: {{ previewText.net }}</p>
+          <p data-testid="preview-max-profit">Max profit: {{ previewText.maxProfit }}</p>
+          <p data-testid="preview-max-loss">Max loss: {{ previewText.maxLoss }}</p>
+          <p data-testid="preview-breakevens">Breakevens: {{ previewText.breakevens }}</p>
+          <p v-if="preview.matched_template" data-testid="preview-template">Matches: {{ preview.matched_template }}</p>
+          <div v-if="preview.payoff.length" class="mt-1 h-24 w-64" data-testid="preview-payoff"><PayoffChart :points="preview.payoff" /></div>
+        </template>
+        <p class="text-xs text-ink-muted">The full scenario table, Greeks and analysis are in the Strategy Builder.</p>
       </div>
       <button type="button" class="mt-2 rounded border border-line px-3 py-1 text-sm font-medium" :disabled="!canAdd" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
     </div>

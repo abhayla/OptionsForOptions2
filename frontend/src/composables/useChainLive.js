@@ -10,7 +10,7 @@ import { createLiveSocket } from './useStrategyLive'
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
 export const CHAIN_REST_PATH = '/market/chain' // relative to the api base (/api)
-export const STRIKES_EACH_SIDE = 15 // the server's own maximum and default (chain_push.MAX_STRIKES_EACH_SIDE)
+export const STRIKES_EACH_SIDE = 10 // REQ-087 AC-3: the default for a user who never chose (chain_push.DEFAULT_STRIKES_EACH_SIDE)
 export const NOT_LIVE_LABEL = 'Option chain unavailable: not connected to live data.'
 export const VALUE_UNAVAILABLE = '-'
 
@@ -25,8 +25,8 @@ export function isChainAnswer(msg) {
 }
 
 /** The request body for the socket and the REST read. */
-export function chainRequest(underlying, expiry) {
-  return { underlying, expiry, strikes_each_side: STRIKES_EACH_SIDE }
+export function chainRequest(underlying, expiry, strikes = STRIKES_EACH_SIDE) {
+  return { underlying, expiry, strikes_each_side: strikes }
 }
 
 const sameRequest = (msg, req) => !!req && msg.underlying === req.underlying && msg.expiry === req.expiry

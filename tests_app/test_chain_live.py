@@ -48,6 +48,8 @@ NIFTY_ID = "NSE_INDEX:256265"
 GRID = [Decimal(25000 + 50 * i) for i in range(9)]  # 25000 .. 25400
 WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
+W124_KEYS = ("lot_size", "in_the_money", "per_lot", "intrinsic", "time_value", "breakeven", "breakeven_pct",
+             "delta", "gamma", "theta", "vega")  # the keys W-124 added to every cell (REQ-087, REQ-029 AC-3)
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
@@ -218,9 +220,15 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
         assert row["pe"]["instrument_id"] == cid(row["strike"], "PE") and row["pe"]["ltp"] == f"{200 + k}.25"
         assert row["ce"]["health"] == row["pe"]["health"] == "available"
     atm_row = second["rows"][2]
-    assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
-                             "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
-                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown"}
+    assert {k: v for k, v in atm_row["ce"].items() if k not in W124_KEYS} == {
+        "instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None, "change": None, "oi": 1000,
+        "oi_change": None, "volume": 500, "health": "stale", "at": T0.isoformat(), "permitted": False,
+        "unavailable_reason": "unknown"}
+    # W-124 by hand: strike 25150 call, LTP 131.00, spot 25162.30, lot 75 -> per lot 9825.00, intrinsic 12.30,
+    # time value 118.70, breakeven 25281.00, 118.70 / 25162.30 x 100 = 0.4717 -> 0.47
+    assert (atm_row["ce"]["lot_size"], atm_row["ce"]["per_lot"], atm_row["ce"]["intrinsic"],
+            atm_row["ce"]["time_value"], atm_row["ce"]["breakeven"], atm_row["ce"]["breakeven_pct"]) == (
+        75, "9825.00", "12.30", "118.70", "25281.00", "0.47")
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
@@ -235,10 +243,10 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
     assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
                                                         "oi_change", "volume", "health", "at", "permitted",
-                                                        "unavailable_reason"})}
+                                                        "unavailable_reason", *W124_KEYS})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
-                                    "rows_missing", "rows", "answered_at"}
+                                    "rows_missing", "rows", "answered_at", "spot_label"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
@@ -297,11 +305,11 @@ async def test_ac8_atm_is_the_catalogue_strike_nearest_the_spot(spot, atm):
 
 
 def test_ac8_pure_atm_and_window_on_the_grid():
-    """AC-8: the helpers on the grid itself; a window outside 1..15 is refused."""
+    """AC-8: the helpers on the grid itself; a window outside 1..40 is refused (REQ-087 AC-3)."""
     assert atm_strike(GRID, Decimal("25124.99")) == Decimal("25100")
     assert atm_strike(GRID, Decimal("25125")) == Decimal("25100")
     assert list(strike_window(GRID, Decimal("25000"), 1)) == [Decimal("25000"), Decimal("25050")]
-    for bad in (0, 16):
+    for bad in (0, 41):
         with pytest.raises(ValueError):
             strike_window(GRID, Decimal("25000"), bad)
 
@@ -323,15 +331,20 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     provider.tick(index_quote("25162.30"))
     task = await start(push, channel)
     await close(channel, task)
-    assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
-                                                "ask": None, "change": None, "oi": None, "oi_change": None,
-                                                "volume": None, "health": "unavailable", "at": None,
-                                                    "permitted": False, "unavailable_reason": "unknown"}
+    cell = channel.sent[0]["rows"][0]["ce"]
+    assert {k: v for k, v in cell.items() if k not in W124_KEYS} == {
+        "instrument_id": cid("25050", "CE"), "ltp": None, "bid": None, "ask": None, "change": None, "oi": None,
+        "oi_change": None, "volume": None, "health": "unavailable", "at": None, "permitted": False,
+        "unavailable_reason": "unknown"}
+    # no price: every price-dependent extra is absent (a dash), never 0; the lot size is the catalogue's
+    # (the intrinsic value needs only the spot: 25162.30 - 25050 = 112.30)
+    assert [cell[k] for k in W124_KEYS if k not in ("lot_size", "intrinsic", "in_the_money")] == [None] * 8
+    assert (cell["lot_size"], cell["intrinsic"], cell["in_the_money"]) == (75, "112.30", True)  # call 25050 < spot
 
 
-@pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
+@pytest.mark.parametrize("bad", [0, 41, -1, "x", "5", True, 2.0, None])
 async def test_strikes_each_side_out_of_range_is_refused(bad):
-    """Threat model (unbounded strike range): 0, 16, -1, 'x', a numeric string, a bool, a float and null are refused
+    """Threat model (unbounded strike range): 0, 41, -1, 'x', a numeric string, a bool, a float and null are refused
     with the one input message, and nothing is subscribed or read."""
     reader = Reader()
     provider, _feed, channel, _mono, push = make_rig(reader)
@@ -497,7 +510,9 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
-                   "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
+                   "ofo.marketdata.quote", "ofo.money", "ofo.engine.model", "ofo.rules.inputs", "ofo.scenario.spot",
+                   "ofo_app.chain_preview",
+                   "ofo.engine.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
@@ -529,7 +544,7 @@ def test_rest_route_answers_the_chain_and_refuses_a_bad_strike_count():
     assert ok.status_code == HTTP_OK, ok.text
     assert ok.json()["state"] == "LIVE" and ok.json()["atm_strike"] == "25150.00" and len(ok.json()["rows"]) == FIVE
     assert client.get("/api/market/chain", params={**query, "fallback": "1"}).json()["state"] == "NOT_CONNECTED"
-    for bad in ("0", "16", "x", "-1"):
+    for bad in ("0", "41", "x", "-1"):
         refused = client.get("/api/market/chain", params={**query, "strikes_each_side": bad})
         assert refused.status_code == HTTP_UNPROCESSABLE and refused.json() == ERROR, (bad, refused.text)
 

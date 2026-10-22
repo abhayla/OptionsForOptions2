@@ -441,6 +441,7 @@ work_items:
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-122: S6.4         # builder scope Step 2: paper tracking + Q253 condition 1 (REQ-109, REQ-045)
   W-123: S6.4         # builder scope Step 2: Q253 condition 1 detection (REQ-045), built with W-122
+  W-124: 4b           # builder scope lane A3: Option Chain remainder (REQ-087, REQ-029/030/031 parts)
   W-120: 4b           # GC-6: Option Chain leg selection and import (REQ-030)
   W-125: S6.1         # builder scope lane B4: held-feature switch, ready-made shapes and quick picks, probability of profit (REQ-079, REQ-082)
   W-128: S6.2         # builder scope lane B4: probability of profit from the engine, held (REQ-082)
