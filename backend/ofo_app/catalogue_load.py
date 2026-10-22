@@ -9,7 +9,8 @@ rules) applies exactly as for any other caller. The ADR-058 admin setting ``CATA
 Notifier alert and audit record for a refusal are not built here.
 
 ``as_of`` is the DATABASE clock (``clock_timestamp()``), never the application's. On success it commits and prints the
-StoreUpdateResult counts; on a guard refusal it prints the refusal, writes nothing and exits non-zero. No scheduler.
+StoreUpdateResult counts; on a guard refusal it prints the refusal, writes nothing and exits non-zero. The scheduler
+(``ofo_app.catalogue_refresh``, W-133) calls ``load_once`` and so applies every guard unchanged.
 """
 
 from __future__ import annotations
@@ -53,22 +54,32 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
     return 0
 
 
-async def main() -> int:
+async def load_once(settings: Any, out: TextIO | None = None) -> int:
+    """Download today's list and apply it through ``run`` in one transaction (commit on 0, roll back otherwise). The
+    shared body of the command and the scheduler (``ofo_app.catalogue_refresh``); the download goes through the Kite
+    door (``ofo.broker.kite_http.open_url``, checked against ALLOWED_CALLS and the egress gate). A download failure
+    raises (the caller logs its type only); a guard refusal returns 1."""
     from ofo.instruments.downloader import download_instruments_csv
+    from ofo_app.db import get_engine
+
+    csv_text = await asyncio.to_thread(download_instruments_csv)
+    async with get_engine().connect() as conn:
+        trans = await conn.begin()
+        code = await run(conn, csv_text, settings, out)
+        if code == 0:
+            await trans.commit()
+        else:
+            await trans.rollback()
+        return code
+
+
+async def main() -> int:
     from ofo_app.config import get_settings
-    from ofo_app.db import close_db, get_engine
+    from ofo_app.db import close_db
 
     settings = get_settings()
-    csv_text = await asyncio.to_thread(download_instruments_csv)
     try:
-        async with get_engine().connect() as conn:
-            trans = await conn.begin()
-            code = await run(conn, csv_text, settings)
-            if code == 0:
-                await trans.commit()
-            else:
-                await trans.rollback()
-            return code
+        return await load_once(settings)
     finally:
         await close_db()
 

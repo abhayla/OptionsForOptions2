@@ -15,7 +15,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from ofo.broker import egress as _egress
 
-from ofo_app import errors, event_loop, execute_replay_switch, held_switches, live_market, pinned_clock, replay_mode
+from ofo_app import (
+    catalogue_refresh,
+    errors,
+    event_loop,
+    execute_replay_switch,
+    held_switches,
+    live_market,
+    pinned_clock,
+    replay_mode,
+)
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
@@ -61,7 +70,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.  # noqa: BLE001
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
+    refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
     yield
+    await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
     if market is not None:
         live_market.set_current(None)  # a login arriving now finds no market (#296)
         await market.close()

@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from ofo.instruments.models import ZERODHA
+from ofo.timeutil import IST
 from sqlalchemy import text
 
-from ofo.instruments.models import ZERODHA
 from ofo_app.pinned_clock import pinned_today
 from ofo_app.sql_time import IST_SQL_ZONE
 
@@ -26,6 +27,20 @@ CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
 
 _TODAY = text(f"SELECT (now() {IST_SQL_ZONE})::date")
+#: The latest load's time: the newest moment a load saw a live Zerodha row (the database stamps last_seen_at).
+LOADED_AT = text(f"SELECT max(last_seen_at) FROM {BROKER_ROWS} WHERE broker = :broker AND NOT retired")  # noqa: S608 constant table name
+
+
+def loaded_before(loaded_at: datetime.datetime | None, today: datetime.date) -> bool:
+    """True when the list was never loaded or its latest load is on an earlier India date than ``today`` (W-133,
+    REQ-053 AC-3, finding daily-load-misses-intraday-additions): such a list is unconfirmed, never trusted. A load on
+    ``today`` (any hour) is current. ``loaded_at`` is a database timestamp; ``today`` is the database clock's date."""
+    return loaded_at is None or loaded_at.astimezone(IST).date() < today
+
+
+async def list_is_current(conn: Any, today: datetime.date) -> bool:
+    """Whether the latest successful load is not older than ``today`` (India date, database clock)."""
+    return not loaded_before((await conn.execute(LOADED_AT, {"broker": ZERODHA})).scalar_one(), today)
 
 _PICKABLE = (
     f"FROM {CONTRACTS} AS c JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id AND b.broker = :broker "
@@ -63,7 +78,10 @@ async def database_today(conn: Any) -> datetime.date:
 
 
 async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) -> list[datetime.date]:
-    """Expiry dates (ascending) that hold at least one pickable contract of ``underlying``."""
+    """Expiry dates (ascending) that hold at least one pickable contract of ``underlying``; none from a list that was
+    not loaded today (unconfirmed)."""
+    if not await list_is_current(conn, today):
+        return []
     rows = await conn.execute(_EXPIRIES, {"broker": ZERODHA, "underlying": underlying, "today": today})
     return [r.expiry for r in rows.all()]
 
@@ -71,7 +89,9 @@ async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) ->
 async def pickable_contracts(conn: Any, underlying: str, today: datetime.date,
                              expiry: datetime.date | None = None) -> list[PickableContract]:
     """Pickable contracts of ``underlying`` ordered by expiry, strike, type; one expiry when ``expiry`` is given
-    (a past or unknown expiry gives an empty list)."""
+    (a past or unknown expiry gives an empty list); none from a list that was not loaded today (unconfirmed)."""
+    if not await list_is_current(conn, today):
+        return []
     rows = await conn.execute(_CONTRACTS, {"broker": ZERODHA, "underlying": underlying, "today": today,
                                            "expiry": expiry})
     out = []

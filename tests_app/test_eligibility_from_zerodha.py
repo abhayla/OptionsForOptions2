@@ -20,10 +20,11 @@ import inspect
 from ofo.engine import Action
 from ofo.instruments import eligibility as el
 from ofo.instruments.models import InstrumentId
+from ofo_app import catalogue_picker as picker
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
-from ofo_app.routes import strategies as strategies_route
 from ofo_app.catalogue_store import apply_update
+from ofo_app.routes import strategies as strategies_route
 from sqlalchemy import text
 from sqlalchemy.sql.elements import TextClause
 from test_strategy_followups import _ConnMaker
@@ -243,3 +244,75 @@ def test_the_eligibility_reader_never_writes():
     statements = [v.text for v in vars(elig).values() if isinstance(v, TextClause)]
     assert len(statements) == 4, statements
     assert all(s.lstrip().upper().startswith("SELECT") for s in statements), statements
+
+
+# ---- W-133 (REQ-053 AC-3, finding daily-load-misses-intraday-additions): a list not loaded today is unconfirmed -------
+
+async def _loaded_india_date(conn) -> datetime.date:
+    """The India date of the latest load on the database clock (the load stamps last_seen_at with clock_timestamp())."""
+    return (await conn.execute(text(
+        "SELECT (max(last_seen_at) AT TIME ZONE 'Asia/Kolkata')::date FROM public.broker_instruments "
+        "WHERE broker = 'zerodha' AND NOT retired"))).scalar_one()
+
+
+async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_nothing(app_engine):
+    """Attack 1: today is the day after the latest load -> the leg is unconfirmed (status None) and the save is refused
+    with the unconfirmed text (not the 'unavailable' text); nothing is stored."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, user = await _seeded(conn), _user()
+            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
+            first = ids[IRON_CONDOR[0][0]]
+            assert await elig.leg_statuses(conn, [first], tomorrow) == [None]
+            async with _client(_on(_app(_ConnMaker(conn), user), tomorrow)) as ac:
+                resp = await ac.post("/strategies", json=_body(ids))
+            assert resp.status_code == 403, resp.text
+            assert UNAVAILABLE not in resp.text, resp.text
+            assert (await conn.execute(COUNT, {"u": user})).scalar_one() == 0
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_a_list_loaded_earlier_today_is_current(app_engine):
+    """Attack 1, positive control: today == the load's India date -> the leg has a status (the refusal above is the date)."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _seeded(conn)
+            today = await _loaded_india_date(conn)
+            assert today == await picker.database_today(conn)
+            status = (await elig.leg_statuses(conn, [ids[IRON_CONDOR[0][0]]], LIST_DAY))[0]
+            assert status is not None and status.tradable
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_the_picker_offers_nothing_from_a_list_not_loaded_today(app_engine):
+    """Same class, the other read: the picker's offer treats a list not loaded today as unconfirmed (nothing offered)."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _seeded(conn)
+            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
+            assert await picker.pickable_expiries(conn, "NIFTY", LIST_DAY)  # loaded today: offered
+            assert await picker.pickable_expiries(conn, "NIFTY", tomorrow) == []
+            assert await picker.pickable_contracts(conn, "NIFTY", tomorrow) == []
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_the_pre_execution_registry_is_empty_for_a_list_not_loaded_today(app_engine, monkeypatch):
+    """The gate's own read: with no load today the registry is empty, so the gate refuses every leg as unconfirmed."""
+    monkeypatch.setenv("APP_ENV", "test")
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _seeded(conn)
+            monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())
+            assert len(await elig.fresh_registry(conn, underlying="NIFTY")) > 0
+            tomorrow = await _loaded_india_date(conn) + datetime.timedelta(days=1)
+            monkeypatch.setenv("TEST_CATALOGUE_DATE", tomorrow.isoformat())
+            assert len(await elig.fresh_registry(conn, underlying="NIFTY")) == 0
+        finally:
+            await trans.rollback()
