@@ -1,7 +1,8 @@
 """PostgreSQL store for small per-user settings: one JSON value per (user, key) (W-124; REQ-087 AC-3). Schema: 0022.
 
-Generic on purpose: the margin preference (cluster B1) and the strategy preferences (A4) register their own key here. The
-database fixes only the table shape; WHICH keys exist and what each value may be is this module's ``SETTINGS`` registry,
+Generic on purpose: the margin preference (cluster B1) and the strategy preferences (A4) register their own key
+here. The database fixes only the table shape;
+WHICH keys exist and what each value may be is this module's ``SETTINGS`` registry,
 so an unknown key or a value off its list is refused before any SQL (fail closed), never stored.
 
 - read: the stored value, else the key's DEFAULT (a user who never set one gets the default, REQ-087 AC-3: 10). A stored
@@ -48,7 +49,8 @@ def _is_choice(value: Any) -> bool:
 SETTINGS: dict[str, SettingSpec] = {CHAIN_STRIKES_EACH_SIDE: SettingSpec(DEFAULT_STRIKES_EACH_SIDE, _is_choice)}
 
 _SELECT = text("SELECT value::text AS value_text FROM public.user_settings WHERE user_ref = :user_ref AND key = :key")
-_UPSERT = text("INSERT INTO public.user_settings (user_ref, key, value) VALUES (:user_ref, :key, CAST(:value AS JSONB)) "
+_UPSERT = text("INSERT INTO public.user_settings (user_ref, key, value) "
+               "VALUES (:user_ref, :key, CAST(:value AS JSONB)) "
                "ON CONFLICT (user_ref, key) DO UPDATE SET value = EXCLUDED.value")
 
 

@@ -1,8 +1,9 @@
 """W-124 (REQ-031 AC-1/AC-2/AC-3, REQ-030 AC-14): POST /api/market/chain/preview on the recorded 2026-10-08 replay.
 
 Core: the NIFTY 13-Oct iron condor (the same four legs as tests_app/test_outcome_route.py) previewed from the chain
-carries exactly the outcome route's own net premium, max profit, max loss, breakevens and payoff points - the one engine,
-no second call path. Expected values are READ from the outcome route's reply for the same legs (two doors, one engine),
+carries exactly the outcome route's own net premium, max profit, max loss, breakevens and payoff points - the one
+engine, no second call path.
+Expected values are READ from the outcome route's reply for the same legs (two doors, one engine),
 and the fixed ones (4 legs) are the recorded replay's. The full table, Greeks and scenarios are NOT in the reply
 (REQ-031 AC-3). No database, no network.
 """
@@ -20,7 +21,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
@@ -30,6 +30,7 @@ SHORT_CALL = (("NSE_FO:44624", "SELL"),)
 PATH = "/api/market/chain/preview"
 OUTCOME_PATH = "/api/strategies/outcome"
 FOUR = 4
+HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
 
 @pytest.fixture(scope="module")
@@ -61,7 +62,7 @@ async def test_core_condor_preview_equals_the_outcome_routes_own_numbers(replaye
     legs = _legs(replayed, CONDOR)
     prev = await _post(PATH, {"underlying": "NIFTY", "legs": legs}, replayed)
     full = await _post(OUTCOME_PATH, {"underlying": "NIFTY", "legs": legs}, replayed)
-    assert prev.status_code == full.status_code == 200, (prev.text, full.text)
+    assert prev.status_code == full.status_code == HTTP_OK, (prev.text, full.text)
     p, f = prev.json(), full.json()
     assert p["state"] == "COMPUTED" and len(f["legs"]) == FOUR
     summary = f["summary"]
@@ -103,4 +104,4 @@ async def test_socket_down_fallback_is_not_live_whatever_else_streams(replayed):
 @pytest.mark.parametrize("bad", [{"underlying": "NIFTY", "legs": []}, {"underlying": "BANKNIFTY", "legs": [1]},
                                  {"underlying": "NIFTY", "legs": [], "ux_level": "advanced"}])
 async def test_a_bad_body_is_refused_422(replayed, bad):
-    assert (await _post(PATH, bad, replayed)).status_code == 422
+    assert (await _post(PATH, bad, replayed)).status_code == HTTP_UNPROCESSABLE

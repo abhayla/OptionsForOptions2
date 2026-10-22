@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime
 from collections.abc import Callable, Mapping
 from decimal import Decimal
+from itertools import pairwise
 from typing import Literal
 
 from ofo.engine.legs import Action, Instrument, Leg
@@ -62,7 +63,7 @@ def _strike_gap(ctx: MarketContext, underlying: str, expiry: datetime.date) -> D
     """The near-the-money strike gap of the expiry: the smallest positive step between its listed strikes (the rule of
     ``Catalogue.strike_gap``, ADR-007 Q36), read from the provider's own chain; None when it lists fewer than two."""
     strikes = sorted({q.strike for q in ctx.provider.option_chain_snapshot(underlying, expiry) if q.strike is not None})
-    steps = [b - a for a, b in zip(strikes, strikes[1:], strict=False) if b > a]
+    steps = [b - a for a, b in pairwise(strikes) if b > a]
     return min(steps) if steps else None
 
 

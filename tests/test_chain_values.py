@@ -1,6 +1,7 @@
 """W-124 (REQ-087 AC-1/AC-4/AC-5, REQ-029 AC-3): the extra Option Chain values, computed once on the server.
 
-Hand computation (written before the code), the REQ-087 AC-4 example: NIFTY 22,900 CE, LTP 150.00, spot 22,976.85, lot 65.
+Hand computation (written before the code), the REQ-087 AC-4 example:
+NIFTY 22,900 CE, LTP 150.00, spot 22,976.85, lot 65.
   intrinsic = 22976.85 - 22900 = 76.85;  time value = 150.00 - 76.85 = 73.15;  breakeven = 22900 + 150 = 23050;
   breakeven % = (23050 - 22976.85) / 22976.85 x 100 = 73.15 / 22976.85 x 100 = 0.31837... -> 0.32;
   per lot = 150.00 x 65 = 9750.00.
@@ -9,6 +10,7 @@ Put 23,100 PE, LTP 80.00, same spot: intrinsic = 23100 - 22976.85 = 123.15; time
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 import pytest
@@ -63,7 +65,8 @@ def test_a_future_is_not_an_option_side():
 
 
 @pytest.mark.parametrize(("kind", "strike", "spot", "expected"), [
-    ("CE", "22900", SPOT, True), ("CE", "23000", SPOT, False), ("PE", "23000", SPOT, True), ("PE", "22900", SPOT, False),
+    ("CE", "22900", SPOT, True), ("CE", "23000", SPOT, False), ("PE", "23000", SPOT, True),
+    ("PE", "22900", SPOT, False),
     ("CE", "22976.85", SPOT, False), ("PE", "22976.85", SPOT, False),  # at the money: neither side is in the money
     ("CE", "22900", None, None), ("PE", "23000", None, None), ("CE", "22900", D("0"), None)])
 def test_req_087_ac_2_calls_below_spot_and_puts_above_spot_are_in_the_money(kind, strike, spot, expected):
@@ -71,6 +74,5 @@ def test_req_087_ac_2_calls_below_spot_and_puts_above_spot_are_in_the_money(kind
 
 
 def test_greeks_without_a_spot_quote_are_empty_not_guessed():
-    import datetime
-    now = datetime.datetime(2026, 10, 22, 10, 0, tzinfo=datetime.timezone.utc)
+    now = datetime.datetime(2026, 10, 22, 10, 0, tzinfo=datetime.UTC)
     assert chain_greeks([], None, datetime.date(2026, 10, 27), now, D("0.065")) == {}

@@ -48,8 +48,8 @@ NIFTY_ID = "NSE_INDEX:256265"
 GRID = [Decimal(25000 + 50 * i) for i in range(9)]  # 25000 .. 25400
 WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
-W124_KEYS = ("lot_size", "in_the_money", "per_lot", "intrinsic", "time_value", "breakeven", "breakeven_pct", "delta", "gamma", "theta",
-             "vega")  # the keys W-124 added to every cell (REQ-087, REQ-029 AC-3)
+W124_KEYS = ("lot_size", "in_the_money", "per_lot", "intrinsic", "time_value", "breakeven", "breakeven_pct",
+             "delta", "gamma", "theta", "vega")  # the keys W-124 added to every cell (REQ-087, REQ-029 AC-3)
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
@@ -510,7 +510,8 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
-                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview", "ofo.engine.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
+                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview",
+                   "ofo.engine.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)

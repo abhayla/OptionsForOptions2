@@ -9,8 +9,8 @@ Copy from: none - modelled on 0021's table, guard trigger, grants and allowlist 
 
 Changes (owner-run, one transaction):
 - public.user_settings: PRIMARY KEY (user_ref, key); ``key`` is a closed lower-case dotted word (CHECK); ``value`` JSONB
-  (an object, array, string, number or boolean the store validated); ``updated_at`` stamped by the guard trigger from the
-  database clock on every write (the application cannot set it).
+  (an object, array, string, number or boolean the store validated); ``updated_at`` stamped by the guard trigger from
+  the database clock on every write (the application cannot set it).
 - Guard trigger (SQLSTATE OF022): a row is never deleted, and an update changes ONLY ``value`` (user_ref and key are
   fixed; updated_at is re-stamped).
 - Grants: the application role gets SELECT, INSERT (user_ref, key, value) and UPDATE (value); no DELETE or TRUNCATE.
@@ -71,7 +71,8 @@ def _guard_sql() -> str:
             IF TG_OP = 'DELETE' THEN
                 RAISE EXCEPTION 'user settings are never deleted' USING ERRCODE = '{SQLSTATE}';
             END IF;
-            IF TG_OP = 'UPDATE' AND (NEW.user_ref IS DISTINCT FROM OLD.user_ref OR NEW.key IS DISTINCT FROM OLD.key) THEN
+            IF TG_OP = 'UPDATE' AND (NEW.user_ref IS DISTINCT FROM OLD.user_ref
+                                     OR NEW.key IS DISTINCT FROM OLD.key) THEN
                 RAISE EXCEPTION 'a user setting changes only its value' USING ERRCODE = '{SQLSTATE}';
             END IF;
             NEW.updated_at := clock_timestamp();

@@ -1,8 +1,10 @@
-"""W-124 (REQ-087 AC-3): the per-user setting store on the real database, as the limited ``ofo_app`` role (migration 0022).
+"""W-124 (REQ-087 AC-3): the per-user setting store on the real database, as the limited ``ofo_app`` role
+(migration 0022).
 
-Core: a user who never chose reads the default 10; a write of 20 reads back 20 for that user only; a second write changes
-the one row in place. Every test runs inside an outer transaction that is rolled back, so the shared ofo_test is left with
-0 rows (finding branch-migration-tests-move-shared-db). This file runs its own tests because it is a migration / DB store.
+Core: a user who never chose reads the default 10; a write of 20 reads back 20 for that user only; a second write
+changes the one row in place. Every test runs inside an outer transaction that is rolled back, so the shared ofo_test
+is left with 0 rows (finding branch-migration-tests-move-shared-db). This file runs its own tests because it is a
+migration / DB store.
 
 Guards, each with the test that kills it: no DELETE for the app role; no UPDATE of user_ref / key; a key off the closed
 pattern refused by the database; an unknown key and a value off the list refused by the store before any SQL; a bool is
@@ -11,14 +13,14 @@ not an int choice (True == 1 never passes); updated_at is stamped by the databas
 from __future__ import annotations
 
 import pytest
+from ofo_app import user_setting_store as store
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-
-from ofo_app import user_setting_store as store
 
 KEY = store.CHAIN_STRIKES_EACH_SIDE
 OWNER, OTHER = "u-owner", "u-other"
 DEFAULT, TWENTY = 10, 20
+FIRST_YEAR = 2026
 
 
 @pytest.fixture
@@ -64,7 +66,8 @@ async def test_an_unknown_key_and_an_empty_user_are_refused(db):
 
 async def test_a_stored_value_no_longer_allowed_reads_as_the_default_not_an_error(db):
     """The allowed list can change later; an old stored 15 must not break the screen."""
-    await db.execute(text("INSERT INTO public.user_settings (user_ref, key, value) VALUES (:u, :k, CAST('15' AS JSONB))"),
+    await db.execute(text("INSERT INTO public.user_settings (user_ref, key, value) "
+                          "VALUES (:u, :k, CAST('15' AS JSONB))"),
                      {"u": OWNER, "k": KEY})
     assert await store.read(db, OWNER, KEY) == (DEFAULT, True)
 
@@ -96,4 +99,4 @@ async def test_updated_at_is_stamped_by_the_trigger_not_the_caller(db):
     await store.write(db, OWNER, KEY, TWENTY)
     year = (await db.execute(text("SELECT EXTRACT(YEAR FROM updated_at) FROM public.user_settings "
                                   "WHERE user_ref = :u"), {"u": OWNER})).scalar_one()
-    assert int(year) >= 2026
+    assert int(year) >= FIRST_YEAR

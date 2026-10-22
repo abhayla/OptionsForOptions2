@@ -62,8 +62,9 @@ from ofo_app.routes.outcome import HealthCode, MarketContext
 
 log = logging.getLogger(__name__)
 
-#: The most strikes either side of ATM a chain may ask for (REQ-087 AC-3: 10, 20, 30 or 40; was 15 at W-116, design: "15 strikes either side at first
-#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 162 contracts (81
+#: The most strikes either side of ATM a chain may ask for (REQ-087 AC-3: 10, 20, 30 or 40; was 15 at W-116,
+#: design: "15 strikes either side at first open", docs/design/screens-research-2026-10-19.md).
+#: It bounds one socket's subscription to 162 contracts (81
 #: strikes, CE and PE) and the index.
 MAX_STRIKES_EACH_SIDE = 40
 #: REQ-087 AC-3: the user's choices for strikes either side of ATM, and the default for a user who never chose.
@@ -305,11 +306,12 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
 
 def _extras(contract: PickableContract, ltp: Decimal | None, spot: Decimal | None,
             greeks: Mapping[str, ChainGreeks]) -> dict[str, Any]:
-    """The W-124 fields of one cell: the pure maths of ``ofo.engine.chain_values`` (per-lot, intrinsic, time value, breakeven)
-    and the engine's Greeks for this contract when its price gave an implied volatility."""
+    """The W-124 fields of one cell: the pure maths of ``ofo.engine.chain_values`` (per-lot, intrinsic, time value,
+    breakeven) and the engine's Greeks for this contract when its price gave an implied volatility."""
     v: CellValues = cell_values(contract.instrument_type, contract.strike, ltp, spot, contract.lot_size)
     g = greeks.get(contract.instrument_id)
-    return {"lot_size": contract.lot_size, "in_the_money": in_the_money(contract.instrument_type, contract.strike, spot),
+    itm = in_the_money(contract.instrument_type, contract.strike, spot)
+    return {"lot_size": contract.lot_size, "in_the_money": itm,
             "per_lot": v.per_lot, "intrinsic": v.intrinsic, "time_value": v.time_value,
             "breakeven": v.breakeven, "breakeven_pct": v.breakeven_pct,
             "delta": None if g is None else g.delta, "gamma": None if g is None else g.gamma,
@@ -353,7 +355,8 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue, spot, greeks),
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue, spot,
+                                                                greeks),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue, spot,
                                                                 greeks)))
     return out

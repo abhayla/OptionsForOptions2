@@ -24,6 +24,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from ofo_app.chain_preview import PreviewOut, PreviewRequest, preview_answer
 from ofo_app.chain_push import (
     DEFAULT_STRIKES_EACH_SIDE,
     MAX_STRIKES_EACH_SIDE,
@@ -38,7 +39,6 @@ from ofo_app.chain_push import (
     stored_chain,
     window_ids,
 )
-from ofo_app.chain_preview import PreviewOut, PreviewRequest, preview_answer
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
@@ -92,7 +92,7 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
 
 
 @router.post(PREVIEW_PATH, response_model=PreviewOut)
-def market_chain_preview(  # noqa: PLR0913 - one request body or seam each
+def market_chain_preview(
         req: PreviewRequest,
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
