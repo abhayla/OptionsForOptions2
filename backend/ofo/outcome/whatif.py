@@ -25,12 +25,14 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Callable, Final, Sequence
 
+from ofo.charges import ChargeRates
+from ofo.charges.round_trip import exercise_stt_at, round_trip_charges
+from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.model import ModelInputs, WhatIfRefused, estimate, expiry_model, implied_vol, leg_greeks_at
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.marketdata.forward import mid_price
-from ofo.marketdata.quote import NormalizedQuote
 from ofo.money import PAISE
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
@@ -39,7 +41,7 @@ from ofo.scenario.spot import spot_reading
 from ofo.table.model import _FUTURES_PER_UNIT_GREEKS
 from ofo.timeutil import EXPIRY_CLOSE
 
-__all__ = ["WhatIfInput", "WhatIfResult", "WhatIfRefused", "build_whatif"]
+__all__ = ["WhatIfInput", "WhatIfResult", "WhatIfRefused", "build_whatif", "expiry_total_at"]
 
 #: the rupee examples use this index move (REQ-084 AC-9: "if NIFTY rises 10 points")
 EXAMPLE_POINTS: Final = 10
@@ -134,6 +136,16 @@ class WhatIfResult:
     bands_reason: ExplanationText | None
     oi: OiOverlay | None
     oi_reason: ExplanationText | None
+
+
+def expiry_total_at(model: ModelInputs, level: Decimal, rates: ChargeRates | None = None) -> Decimal:
+    """The exact At Expiry total at ONE level: the engine's expiry grid and the same charge rule as the At Expiry view
+    (ADR-082 (2)). REQ-084 AC-7: this is what the target-level control gives with no live IV."""
+    total = scenario_grid(model.strategy, (level,)).totals[0]
+    if rates is None:
+        return total
+    return (total - round_trip_charges(model.strategy.legs, model.underlying, rates)
+            - exercise_stt_at(model.strategy.legs, level, rates))
 
 
 def _first_close(model: ModelInputs) -> datetime.datetime:
@@ -256,11 +268,11 @@ def _atm_iv(model: ModelInputs, snapshot: MarketSnapshot, expiry: datetime.date)
     return sum(ivs, Decimal(0)) / len(ivs)
 
 
-def _bands(model: ModelInputs, snapshot: MarketSnapshot, when: datetime.datetime, now: datetime.datetime):
+def _bands(model: ModelInputs, snapshot: MarketSnapshot, until: datetime.date, now: datetime.datetime):
     """REQ-083 AC-4: spot x ATM IV x sqrt(calendar days / 365), 1 SD and 2 SD each side of the live spot. Days run from
-    today to the earlier of the target date and the first expiry."""
+    today to ``until``: the first expiry, or the target date when the user set one (already clamped to the expiry)."""
     expiry = min(leg.expiry for leg in model.legs)
-    days = (min(when.date(), expiry) - now.date()).days
+    days = (until - now.date()).days
     reason = render_explanation("whatif_bands_unavailable")
     if days < 1 or expiry not in snapshot.forwards:
         return (), reason
@@ -275,21 +287,20 @@ def _bands(model: ModelInputs, snapshot: MarketSnapshot, when: datetime.datetime
 def _oi(snapshot: MarketSnapshot, expiry: datetime.date) -> tuple[OiOverlay | None, ExplanationText | None]:
     """Today's OI per strike for ``expiry`` (ADR-066: no history). A strike with no OI figure keeps None, never 0."""
     chain = snapshot.chains.get(expiry, ())
-    rows: dict[Decimal, dict[str, NormalizedQuote]] = {}
-    for q in chain:
-        if q.strike is not None and q.instrument_type in (Instrument.CE, Instrument.PE):
-            rows.setdefault(q.strike, {})[q.instrument_type.value] = q
+    sides = {kind: {q.strike: q for q in chain if q.strike is not None and q.instrument_type is kind}
+             for kind in (Instrument.CE, Instrument.PE)}
+    strikes = sorted(set(sides[Instrument.CE]) | set(sides[Instrument.PE]))
     if not any(q.oi is not None for q in chain):
         return None, render_explanation("whatif_oi_unavailable")
 
     def one(strike: Decimal) -> OiStrike:
-        ce, pe = rows[strike].get("CE"), rows[strike].get("PE")
+        ce, pe = sides[Instrument.CE].get(strike), sides[Instrument.PE].get(strike)
         return OiStrike(strike, None if ce is None else ce.oi, None if pe is None else pe.oi,
                         None if ce is None else ce.oi_change, None if pe is None else pe.oi_change)
 
     return OiOverlay(expiry, max(q.timestamp for q in chain),
                      any(q.health is not DataHealth.AVAILABLE for q in chain),
-                     tuple(one(k) for k in sorted(rows))), None
+                     tuple(one(k) for k in strikes)), None
 
 
 def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelSet, now: datetime.datetime,
@@ -304,16 +315,23 @@ def build_whatif(model: ModelInputs, snapshot: MarketSnapshot, level_set: LevelS
     level = _quote_level(level)
     expiry = min(leg.expiry for leg in model.legs)
     oi, oi_reason = _oi(snapshot, expiry)
-    bands, bands_reason = _bands(model, snapshot, when, now)
+    bands, bands_reason = _bands(model, snapshot, expiry if inputs.target_time is None else when.date(), now)
     common = dict(
         estimate_label=render_explanation("whatif_estimate_label"), level_min=level_set.start, level_max=level_set.end,
         level_step=level_set.step, time_min=now, time_max=_first_close(model), target_level=level, target_time=when,
         iv_offset=inputs.iv_offset, clamp_notes=(*time_notes, *level_notes), target_expiry_pnl=expiry_total_at(level),
         bands=bands, bands_reason=bands_reason, oi=oi, oi_reason=oi_reason)
+    refusal: ExplanationText | None = None
     if any(leg.instrument is not Instrument.FUT and leg.iv is None for leg in model.legs):
-        no_iv = render_explanation("whatif_curve_no_iv")
-        return WhatIfResult(estimated_available=False, estimated_reason=no_iv, estimated_points=(),
-                            target_estimated_pnl=None, estimated_breakevens=(), greeks=None, greeks_reason=no_iv,
+        refusal = render_explanation("whatif_curve_no_iv")
+    else:
+        try:  # AC-3: an IV at or below 0 after the offset is a stated refusal of the estimate, never an error page
+            estimate(model, level, valuation_time=when, iv_offset=inputs.iv_offset)
+        except WhatIfRefused as err:
+            refusal = err.reason
+    if refusal is not None:
+        return WhatIfResult(estimated_available=False, estimated_reason=refusal, estimated_points=(),
+                            target_estimated_pnl=None, estimated_breakevens=(), greeks=None, greeks_reason=refusal,
                             **common)
     charge = Decimal(0) if charges is None else charges
 

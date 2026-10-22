@@ -42,6 +42,7 @@ from ofo.marketdata.forward import ForwardUnavailable, mid_price
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
+from ofo.outcome.whatif import WhatIfInput, WhatIfResult, build_whatif, expiry_total_at
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set
@@ -167,6 +168,7 @@ class Outcome:
     visible_columns: tuple[ColumnSpec, ...] = ()
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
+    whatif: WhatIfResult | None = None  # W-127: Estimated curve, target figures, bands, OI and Greeks in the one reply
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -321,7 +323,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
-                  override: RangeOverride | None = None) -> Outcome:
+                  override: RangeOverride | None = None, whatif: WhatIfInput | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
@@ -424,4 +426,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table, ux_level),
         payoff_points=points,
-        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))
+        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
+        whatif=build_whatif(model, snapshot, level_set, valuation, whatif or WhatIfInput(),
+                            lambda lvl: expiry_total_at(model, lvl, None if charges is None else rates),
+                            [(leg.instrument_id, leg.lot_size) for leg in legs], charges))

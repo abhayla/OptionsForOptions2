@@ -28,6 +28,7 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
+from ofo.outcome.whatif import WhatIfInput
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
@@ -166,6 +167,13 @@ class OutcomeRequest(BaseModel):
                                     description="the first scenario level in index points; sent with range_end")
     range_end: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
                                   description="the last scenario level in index points; sent with range_start")
+    # W-127 / REQ-084 AC-4: the browser sends only the what-if INPUTS; they are used for this one answer and never stored
+    target_level: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23000"],
+                                     description="the what-if index level in points (clamped to the range shown)")
+    target_time: AwareDatetime | None = Field(default=None, description="the what-if date and time (clamped between now "
+                                                                         "and the first expiry close, 15:30 IST)")
+    iv_offset: str = Field(default="0.0", pattern=r"^-?\d{1,2}\.\d$", examples=["2.0"],
+                           description="volatility points added to every option leg's own IV, steps of 0.1")
     fallback: StrictBool = Field(
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
@@ -177,6 +185,10 @@ class OutcomeRequest(BaseModel):
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
         self.scenario_choice()
         return self
+
+    def whatif_input(self) -> WhatIfInput:
+        return WhatIfInput(None if self.target_level is None else Decimal(self.target_level), self.target_time,
+                           Decimal(self.iv_offset))
 
     def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
@@ -296,6 +308,77 @@ class SummaryOut(ApiModel):
     charges_unavailable: bool = False
 
 
+class GreeksOut(ApiModel):
+    delta: Money
+    gamma: Money
+    theta: Money
+    vega: Money
+
+
+class GreekRowOut(ApiModel):
+    instrument_id: InstrumentId
+    per_unit: GreeksOut
+    per_position: GreeksOut
+
+
+class GreekExampleOut(ApiModel):
+    greek: Literal["delta", "gamma", "theta", "vega"]
+    sentence: CatalogueText
+
+
+class GreeksPanelOut(ApiModel):
+    rows: list[GreekRowOut]
+    total_per_position: GreeksOut
+    total_per_unit: Optional[GreeksOut]
+    examples: list[GreekExampleOut]
+
+
+class BandOut(ApiModel):
+    label: Literal["-2SD", "-1SD", "1SD", "2SD"]
+    level: Money
+
+
+class OiStrikeOut(ApiModel):
+    strike: Money
+    call_oi: Optional[int]
+    put_oi: Optional[int]
+    call_oi_change: Optional[int]
+    put_oi_change: Optional[int]
+
+
+class OiOut(ApiModel):
+    expiry: datetime.date
+    read_at: datetime.datetime
+    stale: bool
+    strikes: list[OiStrikeOut]
+
+
+class WhatIfOut(ApiModel):
+    """W-127 (REQ-083, REQ-084): the Estimated curve and every what-if figure, from the ONE engine reply."""
+    estimate_label: CatalogueText
+    level_min: Money
+    level_max: Money
+    level_step: Money
+    time_min: datetime.datetime
+    time_max: datetime.datetime
+    target_level: Money
+    target_time: datetime.datetime
+    iv_offset: Money
+    clamp_notes: list[CatalogueText]
+    target_expiry_pnl: Money
+    estimated_available: bool
+    estimated_reason: Optional[CatalogueText]
+    estimated_points: list[PointOut]
+    target_estimated_pnl: Optional[Money]
+    estimated_breakevens: list[Money]
+    greeks: Optional[GreeksPanelOut]
+    greeks_reason: Optional[CatalogueText]
+    bands: list[BandOut]
+    bands_reason: Optional[CatalogueText]
+    oi: Optional[OiOut]
+    oi_reason: Optional[CatalogueText]
+
+
 class MarginOut(ApiModel):
     """ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."""
     state: Literal["NOT_AVAILABLE_YET", "CHECKED", "UNREADABLE", "NO_BASKET"]
@@ -351,6 +434,7 @@ class OutcomeResponse(ApiModel):
     scenario: Optional[ScenarioOut]
     payoff: Optional[PayoffOut]
     summary: Optional[SummaryOut]
+    whatif: Optional[WhatIfOut] = None
     #: present ONLY at ux_level=advanced (absent, not empty, at guided/standard) and only when a snapshot was read
     advanced_details: Optional[list[AdvancedLegOut]] = None
 
@@ -441,7 +525,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+                                config=config, override=override, whatif=req.whatif_input())
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)

@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from ofo.outcome.service import Outcome, OutcomeLeg
+from ofo.outcome.whatif import GreeksPanel, WhatIfResult
 from ofo.table import Cell, ColumnSpec, Table
 
 
@@ -65,6 +66,43 @@ def _leg(leg: OutcomeLeg) -> dict[str, Any]:
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 
+def _greeks(g: Any) -> dict[str, Any]:
+    return {"delta": _s(g.delta), "gamma": _s(g.gamma), "theta": _s(g.theta), "vega": _s(g.vega)}
+
+
+def _panel(panel: GreeksPanel | None) -> dict[str, Any] | None:
+    if panel is None:
+        return None
+    return {"rows": [{"instrument_id": r.instrument_id, "per_unit": _greeks(r.per_unit),
+                      "per_position": _greeks(r.per_position)} for r in panel.rows],
+            "total_per_position": _greeks(panel.total_per_position),
+            "total_per_unit": None if panel.total_per_unit is None else _greeks(panel.total_per_unit),
+            "examples": [{"greek": e.greek, "sentence": e.sentence} for e in panel.examples]}
+
+
+def _whatif(w: WhatIfResult | None) -> dict[str, Any] | None:
+    """W-127: the what-if block. Every figure is the engine's own Decimal string (ADR-008)."""
+    if w is None:
+        return None
+    return {
+        "estimate_label": w.estimate_label, "level_min": _s(w.level_min), "level_max": _s(w.level_max),
+        "level_step": _s(w.level_step), "time_min": _t(w.time_min), "time_max": _t(w.time_max),
+        "target_level": _s(w.target_level), "target_time": _t(w.target_time), "iv_offset": _s(w.iv_offset),
+        "clamp_notes": list(w.clamp_notes), "target_expiry_pnl": _s(w.target_expiry_pnl),
+        "estimated_available": w.estimated_available, "estimated_reason": w.estimated_reason,
+        "estimated_points": [{"level": _s(lvl), "pnl": _s(p)} for lvl, p in w.estimated_points],
+        "target_estimated_pnl": _s(w.target_estimated_pnl),
+        "estimated_breakevens": [_s(b) for b in w.estimated_breakevens],
+        "greeks": _panel(w.greeks), "greeks_reason": w.greeks_reason,
+        "bands": [{"label": b.label, "level": _s(b.level)} for b in w.bands], "bands_reason": w.bands_reason,
+        "oi": None if w.oi is None else {
+            "expiry": w.oi.expiry.isoformat(), "read_at": _t(w.oi.read_at), "stale": w.oi.stale,
+            "strikes": [{"strike": _s(k.strike), "call_oi": k.call_oi, "put_oi": k.put_oi,
+                         "call_oi_change": k.call_oi_change, "put_oi_change": k.put_oi_change} for k in w.oi.strikes]},
+        "oi_reason": w.oi_reason,
+    }
+
+
 def outcome_to_dict(out: Outcome) -> dict[str, Any]:
     scenario = payoff = summary = table = None
     if out.scenario is not None and out.level_set is not None:
@@ -96,5 +134,5 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
-        "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
+        "table": table, "scenario": scenario, "payoff": payoff, "summary": summary, "whatif": _whatif(out.whatif),
     }
