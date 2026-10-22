@@ -101,3 +101,30 @@ async def test_an_index_row_as_a_leg_is_refused_not_a_500() -> None:
         "underlying": "NIFTY", "legs": [{"instrument_id": "NSE_INDEX:256265", "action": "BUY", "lots": 1,
                                          "planned_entry": "100.00", "captured_at": "2026-10-22T09:20:00+05:30"}]})
     assert resp.status_code < SERVER_ERROR, resp.text
+
+
+async def test_an_index_row_as_a_leg_with_a_provider_is_refused_with_a_catalogue_message() -> None:
+    """AC-2: the catalogue's INDEX row (NSE_INDEX:1001) is not a CE/PE/FUT leg; with a live provider the outcome route
+    must answer a catalogue refusal, not a 500."""
+    import pathlib
+    import sys
+    from decimal import Decimal
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
+    from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+
+    from ofo.marketdata.kite_provider import IST
+    from ofo_app.routes.outcome import MarketContext, get_market_context
+
+    valuation = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    app = create_app()
+    app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: valuation, Decimal("0.065"))
+    leg = {"instrument_id": provider.index_id("NIFTY"), "action": "BUY", "lots": 1, "planned_entry": "100.00",
+           "captured_at": valuation.isoformat()}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.post("/api/strategies/outcome", json={"underlying": "NIFTY", "legs": [leg]})
+    assert resp.status_code < SERVER_ERROR, resp.text
+    assert "unknown instrument" in resp.text, resp.text  # the leg is named unvalued by the catalogue explanation

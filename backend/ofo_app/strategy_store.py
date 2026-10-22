@@ -120,6 +120,8 @@ async def catalogue_resolver(conn: Any, contract_ids: Iterable[int]) -> sf.Resol
     for contract_id in sorted(existing):
         stored = await load_contract(conn, contract_id)
         contract = stored.listed.contract
+        if contract.instrument_type not in {i.value for i in Instrument}:
+            continue  # an INDEX row is not a leg: the resolver does not hold it, so the save refuses it (REQ-001 AC-2)
         future = contract.instrument_type == FUTURE_TYPE
         terms[contract_id] = sf.CatalogueTerms(
             underlying=contract.name, instrument=Instrument(contract.instrument_type),

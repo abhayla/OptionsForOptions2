@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Mapping
 
+from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import ListedContract
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
@@ -55,6 +56,10 @@ class MarketSnapshot:
     ended_times: Mapping[str, datetime.datetime] = field(default_factory=dict)
 
 
+#: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
+_LEG_TYPES = frozenset(i.value for i in Instrument)
+
+
 def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],
                   valuation: datetime.datetime, rate: Decimal) -> MarketSnapshot:
     """Read every input the outcome needs from ``provider`` in one pass (one status, one spot, one chain/expiry)."""
@@ -67,7 +72,7 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
     legs: dict[str, LegMarket] = {}
     for iid in instrument_ids:
         lc = master.get(iid)
-        if lc is None:
+        if lc is None or lc.contract.instrument_type not in _LEG_TYPES:  # an INDEX row is not a leg (REQ-001 AC-2)
             legs[iid] = LegMarket(iid, None, None, render_explanation("outcome_why_unknown_instrument"))
             continue
         c = lc.contract
