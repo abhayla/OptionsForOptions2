@@ -11,10 +11,8 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 describe('AC-1: the held-feature read', () => {
-  it('the closed list is the server list', () => {
-    expect(HELD_FEATURES).toEqual([
-      'platform_strikes', 'probability_of_profit', 'delayed_prices', 'history_charts',
-      'events_calendar', 'fii_dii', 'market_event_warning', 'strategy_price_history'])
+  it('the shown list is the two features of this build', () => {
+    expect(HELD_FEATURES).toEqual(['platform_strikes', 'probability_of_profit'])
   })
 
   it('only an exactly listed name is on', () => {

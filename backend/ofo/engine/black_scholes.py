@@ -173,7 +173,7 @@ def probability_below(level: Decimal, forward: Decimal, years: Decimal, vol: Dec
     """W-125 (REQ-082 AC-2): the model probability that the underlying ends BELOW ``level`` at expiry.
 
     The model is the one that prices the options: ``ln S_T`` is normal with variance ``vol^2 T`` and a mean that makes
-    ``E[S_T]`` equal the expiry's parity ``forward`` (the carry, rate and implied yield, is inside the forward, ADR-063).
+    ``E[S_T]`` equal the expiry's parity ``forward`` (carry, rate and implied yield are inside it, ADR-063).
     ``level`` of 0 or less gives 0. Returned to 1e-9, half-even; callers round it to a whole percent for display.
     """
     f, t, v = _paise(forward, "forward"), _positive(years, "years"), _positive(vol, "vol")

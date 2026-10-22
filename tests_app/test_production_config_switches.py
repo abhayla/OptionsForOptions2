@@ -13,6 +13,7 @@ import pathlib
 import pytest
 from ofo_app import held_switches as hs
 
+pytestmark = pytest.mark.repo_scan  # the allow-list scan walks backend/
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 PINNED_NAMES = ("platform_strikes", "probability_of_profit", "delayed_prices", "history_charts", "events_calendar",
@@ -84,7 +85,6 @@ def test_ac11_the_production_configuration_has_every_held_feature_off():
     assert hs.features_on(env) == ()
 
 
-@pytest.mark.repo_scan
 def test_ac11_every_use_of_a_held_switch_names_a_listed_switch_by_import_source():
     """Allow-list scan over backend/: every held_on() names a listed switch; only held_switches.py reads OFO_HELD_*."""
     problems: list[str] = []

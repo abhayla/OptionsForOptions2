@@ -7,10 +7,8 @@
 import { ref } from 'vue'
 import api from '../services/api'
 
-export const HELD_FEATURES = [
-  'platform_strikes', 'probability_of_profit', 'delayed_prices', 'history_charts',
-  'events_calendar', 'fii_dii', 'market_event_warning', 'strategy_price_history',
-]
+// The held features THIS build shows on screen (the server's list is longer; each other lane adds its own name).
+export const HELD_FEATURES = ['platform_strikes', 'probability_of_profit']
 
 /** True only when `name` is a known held feature and the body's `held` array lists that exact string. */
 export function heldFeatureIsOn(body, name) {

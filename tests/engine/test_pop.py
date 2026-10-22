@@ -17,6 +17,7 @@ from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.pop import Unavailable, Why, probability_of_profit, whole_percent
 from ofo.engine.strategy import Strategy
 
+pytestmark = pytest.mark.repo_scan  # the AC-6 scan walks backend/
 D = Decimal
 ZERO = D(0)
 EXPIRY = datetime.date(2026, 10, 6)
@@ -131,7 +132,6 @@ def _sort_key_hits(source: str) -> list[int]:
     return hits
 
 
-@pytest.mark.repo_scan
 def test_ac6_the_figure_is_never_a_sort_or_rank_key_anywhere_in_the_backend():
     """AC-6: no sorted/sort/min/max call whose key expression names the probability; the scan catches a planted one."""
     assert _sort_key_hits("rows.sort(key=lambda r: r.probability_of_profit)") == [1]
