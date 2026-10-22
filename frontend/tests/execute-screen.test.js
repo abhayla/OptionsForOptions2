@@ -48,7 +48,7 @@ const REPLY = {
   cost: { net_premium: '-217.75', charges: '41.27', charges_note: null, funds_available: '25000.00', margin_required: '217.75',
     figures_read_at: '2026-10-16T15:07:20+05:30' },
 }
-const DEF = { underlying: 'NIFTY', legs: [{ contract_id: 7, exchange_segment: 'NSE_FO', exchange_token: 12080386, action: 'BUY',
+const DEF = { underlying: 'NIFTY', legs: [{ contract_id: 7, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 12080386, action: 'BUY',
   instrument: 'CE', strike: '23650', expiry: '2026-10-19', quantity: 65, planned_entry: '3.35', captured_at: '2026-10-16T15:07:00+05:30' }] }
 const CONTRACT = { contract_id: 7, exchange_segment: 'NSE_FO', exchange_token: 12080386, instrument_type: 'CE', expiry: '2026-10-19',
   strike: '23650.00', lot_size: 65, symbol: 'NIFTY26O1923650CE' }

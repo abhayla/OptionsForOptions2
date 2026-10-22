@@ -9,6 +9,12 @@ export const NOT_CONNECTED_LABEL = 'Draft — Live data not connected'
 /** Catalogue template `draft_leg_needs_reprice` (owner-approved 2026-10-15). A reopened leg saved without a planned entry (pre-ADR-075 draft): nothing is captured until the user reprices it. */
 export const REPRICE_PROMPT = 'This leg was saved without a planned entry. Reprice it to see its numbers.'
 
+/** Issue #500: a reopened leg whose stored contract is no longer live (the server's contract_state: contract_retired,
+ *  contract_delisted, token_reassigned, contract_missing). It carries no instrument id, so it is never priced; the words
+ *  follow the catalogue template `tracking_contract_not_live`. */
+export const LEG_NOT_LIVE_LABEL =
+  'This leg is no longer a live contract (expired, delisted, or its exchange token now belongs to another contract). It is not priced.'
+
 /** The outcome API's instrument id. The catalogue API sends segment and token apart (its Identifier type forbids ':'),
  *  so the browser joins the two strings. This is identifier assembly, not a calculation. */
 export function instrumentId(exchangeSegment, exchangeToken) {
@@ -42,6 +48,9 @@ export function selectedContract(contracts, type, strike) {
 /** The body the outcome API takes. Only legs that carry a planned entry and its capture time can be sent (its leg model
  *  requires both); a leg without them stays in the picker's list and is shown as not connected. null when none can be sent. */
 export function buildDraft(legs) {
+  // Issue #500 (fail closed): a strategy with a leg that is no longer live sends no outcome request at all; pricing the
+  // other legs alone would show a P&L that is not the strategy's.
+  if (legs.some((l) => l.not_live)) return null
   const priced = legs.filter((l) => l.planned_entry != null && l.captured_at != null)
   if (!priced.length) return null
   return {

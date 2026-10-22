@@ -11,6 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import {
+  LEG_NOT_LIVE_LABEL,
   NOT_CONNECTED_LABEL,
   REPRICE_PROMPT,
   UNDERLYINGS,
@@ -235,7 +236,8 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
         <span>{{ l.action }} {{ l.lots }} lot, <span data-testid="leg-name">{{ legName(l) }}</span></span>
         <span v-if="l.planned_entry != null" data-testid="leg-entry">planned entry {{ l.planned_entry }}</span>
         <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ istTime(l.captured_at) }}</span>
-        <span v-if="l.planned_entry == null" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
+        <span v-if="l.not_live" data-testid="leg-not-live" :data-reason="l.reason_code">{{ LEG_NOT_LIVE_LABEL }}</span>
+        <span v-else-if="l.planned_entry == null" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
         <template v-if="l.planned_entry == null && l.reason_code === 'needs_reprice'">
           <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
           <button type="button" data-testid="reprice-leg" class="underline" @click="startEdit(l)">Reprice</button>
