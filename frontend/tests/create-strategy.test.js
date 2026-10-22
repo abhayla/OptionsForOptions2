@@ -9,6 +9,7 @@ const posts = []
 let plannedPrice = '120.50'
 let level = '22812.40' // the fake index level
 let contractsNow = null // null = CONTRACTS
+let templatesReply = null // null = answer at once; else a promise the test settles (a slow templates route)
 const leg = (action, instrument, strike_steps) => ({ action, instrument, strike_steps, expiry_slot: 'near', quantity_multiplier: 1 })
 const TEMPLATES = { templates: [
   { id: 'bull_call_spread', name: 'Bull Call Spread', description: 'd', level: 'Beginner', views: ['bullish'], objectives: ['directional'],
@@ -29,7 +30,7 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: {
     get: (url) => {
-      if (url === '/strategy-templates') return Promise.resolve({ data: TEMPLATES })
+      if (url === '/strategy-templates') return templatesReply ?? Promise.resolve({ data: TEMPLATES })
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
       if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: contractsNow ?? CONTRACTS } })
       if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: level }] } })
@@ -67,7 +68,42 @@ async function toResults(w, objective, view) {
   await flushPromises()
 }
 
-beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null })
+beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null })
+
+// Main red 2026-10-21 (CI run 39652948521): the templates route answered 220-1010 ms after mount, the e2e clicked Show
+// strategies before that, and the page built its cards from the still-empty template list: "No strategy in the library
+// can be set up ..." for good. The cards must wait for the templates; a templates failure shows the error, no cards.
+describe('Show strategies waits for the template list (slow templates route)', () => {
+  const slowTemplates = () => {
+    let settle
+    templatesReply = new Promise((resolve, reject) => { settle = { resolve, reject } })
+    return settle
+  }
+
+  it('a click before the templates arrive still yields the cards, priced by the engine', async () => {
+    const settle = slowTemplates()
+    const { w } = await mountPage()
+    await toResults(w, 'know', null) // clicked while /strategy-templates is still pending
+    expect(w.find('[data-testid="results-loading"]').exists()).toBe(true) // stated as loading, never "none listed"
+    expect(w.find('[data-testid="none-listed"]').exists()).toBe(false)
+    settle.resolve({ data: TEMPLATES })
+    await flushPromises()
+    expect(w.findAll('[data-testid="strategy-card"]').map((c) => c.attributes('data-template-id')))
+      .toEqual(['bull_call_spread', 'cash_secured_put', 'iron_condor'])
+    expect(w.find('[data-testid="strategy-card"][data-template-id="cash_secured_put"] [data-testid="card-max-loss"]').text()).toBe('-6825.00')
+  })
+
+  it('a templates failure after the click shows the error and no cards', async () => {
+    const settle = slowTemplates()
+    const { w } = await mountPage()
+    await toResults(w, 'know', null)
+    settle.reject(new Error('templates down'))
+    await flushPromises()
+    expect(w.find('[data-testid="create-error"]').exists()).toBe(true)
+    expect(w.findAll('[data-testid="strategy-card"]').length).toBe(0)
+    expect(posts.length).toBe(0) // nothing priced from a list the page never received
+  })
+})
 
 describe('Create Strategy page', () => {
   it('REQ-024 AC-6: offers the two paths with their exact titles', async () => {
