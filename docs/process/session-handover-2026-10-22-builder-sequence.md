@@ -1,5 +1,21 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
+## UPDATE session 2 (~21:45 IST) - read this first
+- **Row 8 CLOSED as PARKED #519** (commit 1cee0593, pushed): AC-2 pass; AC-1/AC-3 correct in code but 30 of 40 cache-key
+  parts have no killing test (MAJOR, final round); AC-4 deferred. Rules R14-R16 added (row-review.md, builder-brief.md).
+- **Row 9 (REQ-113) In progress**, split into parts A0 (core: feed process + Redis Streams bus, API restart keeps the
+  socket), A1 (bus loss, login/Disconnect control, positions re-read in bus mode), B (per-user sockets, caps, 06:00
+  end), C (browser "reconnecting"). Design: independent Opus review ADOPT WITH CHANGES (proposal in session-2 scratch
+  `row09-design-proposal.md`); F-58 (stand-in has no pub/sub, Streams work); Q273 (where Redis runs in production - ask at
+  the first two-process deploy brief). A0 built 495c0af7; openapi regenerated 117f38dc (row 7 left it stale); A0 verify
+  r1 PARTIAL (no code defect; 5 of 22 mutants survived, MAJOR = late-frame test blind to the API clock). Fix round 1
+  brief `row-09a0-fix-1.md` dispatched 21:40; verify r2 brief ready `verify-row-09a0-r2.md` (fill <HEAD>). A failed r2
+  = PARK row 9 with an issue. Note: production with LIVE_MARKET now requires `bus` mode, which lacks A1's control
+  messages - production live is blocked until A1 (no deploy is planned).
+- **NEXT:** A0 r2 -> then parts A1, B, C (each its own brief, Measure already done), close row 9, then the META REVIEW
+  (due after row 9, before row 10's build), then row 10.
+- Tier A verifiers: dispatch as `general-purpose` (the `verifier` type stops at 40 turns; the budget hook refuses 70).
+
 The next session needs ONLY this file, the goal contract, the table and `row-review.md`. No order was ever sent.
 Continue at the FIRST ROW NOT CLOSED (row 8 - see "In flight").
 
