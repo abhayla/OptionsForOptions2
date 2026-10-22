@@ -199,3 +199,64 @@ async def test_the_route_answers_from_the_feed_not_the_task(market, provider, cl
     _frame(provider, clock.now)
     flowing = await broker_status(_Db(), "owner")
     assert flowing.live_market_data.state == "connected"
+
+
+# ---- fix round 1: heartbeats never keep the row Connected --------------------------------------------------------
+
+
+def _heartbeats_for(provider, clock, seconds: int) -> None:
+    """Kite's 1-byte heartbeat, once a second, as the real socket delivers it."""
+    for _ in range(seconds):
+        clock.now = clock.now + datetime.timedelta(seconds=1)
+        provider.on_frame(b"\x00", clock.now)
+
+
+def test_one_price_frame_then_only_heartbeats_past_the_window_is_waiting_not_connected(market, provider, clock):
+    """The verifier's probe shape: one price frame, then 70 s of heartbeats - the row must not stay Connected."""
+    provider.on_connected(clock.now)
+    _frame(provider, clock.now)
+    assert _live_row()[:2] == ("connected", None)
+    _heartbeats_for(provider, clock, 70)
+    assert _live_row()[:2] == ("partial", "live_feed_waiting")
+
+
+def test_after_unsubscribe_the_heartbeats_leave_the_row_idle(market, provider, clock):
+    """The same probe with the subscription released (no screen open): idle, with its own fix, never Connected."""
+    provider.on_connected(clock.now)
+    _frame(provider, clock.now)
+    provider.unsubscribe([INSTRUMENT_ID])
+    _heartbeats_for(provider, clock, 70)
+    assert _live_row()[:2] == ("partial", "live_feed_idle")
+
+
+def test_connected_with_nothing_subscribed_is_idle_not_waiting(market, provider, clock):
+    provider.unsubscribe([INSTRUMENT_ID])
+    provider.on_connected(clock.now)
+    assert _live_row()[:2] == ("partial", "live_feed_idle")
+
+
+def test_price_frames_flowing_between_heartbeats_stay_connected(market, provider, clock):
+    provider.on_connected(clock.now)
+    for _ in range(10):
+        _frame(provider, clock.now)
+        _heartbeats_for(provider, clock, 1)
+        assert _live_row()[:2] == ("connected", None)
+
+
+def test_a_price_frame_after_a_reconnect_is_needed_again(market, provider, clock):
+    provider.on_connected(clock.now)
+    _frame(provider, clock.now)
+    provider.on_disconnected(clock.now)
+    provider.on_connected(clock.now)  # back up with the OLD price frame still inside the window
+    assert _live_row()[:2] == ("partial", "live_feed_waiting")
+    _frame(provider, clock.now)
+    assert _live_row()[:2] == ("connected", None)
+
+
+def test_the_quiet_contract_rule_is_unchanged_health_still_counts_heartbeats(provider, clock):
+    """F-32: ``health`` (contract availability) keeps its heartbeat rule; only the status row's phase is stricter."""
+    from ofo.rules.inputs import DataHealth
+    provider.on_connected(clock.now)
+    _frame(provider, clock.now)
+    _heartbeats_for(provider, clock, 70)
+    assert provider.feed.health(clock.now) is DataHealth.AVAILABLE

@@ -28,6 +28,7 @@ from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
 from ofo.marketdata.kite_provider import IST, KiteProvider
 
 from ofo_app.config import app_env, get_settings
@@ -273,7 +274,13 @@ def feed_phase() -> str | None:
         return None
     feed = getattr(market.feed.ctx.provider, "feed", None)
     phase = getattr(feed, "phase", None)
-    return None if phase is None else phase(market.feed.ctx.clock())
+    if phase is None:
+        return None
+    word = phase(market.feed.ctx.clock())
+    wanted = getattr(market.feed.ctx.provider, "subscribed_tokens", None)
+    if word == FEED_WAITING and wanted is not None and not wanted():
+        return FEED_IDLE  # socket up, nothing subscribed: no screen is open, nothing is expected to arrive
+    return word
 
 
 def current_state() -> str:

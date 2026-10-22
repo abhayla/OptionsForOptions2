@@ -27,7 +27,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
-from ofo.marketdata.feed_health import FEED_ENDED, FEED_HEALTHY, FEED_RECONNECTING, FEED_WAITING
+from ofo.marketdata.feed_health import FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
 from sqlalchemy import text
 
 from ofo_app import broker_sync, live_market
@@ -42,7 +42,7 @@ router = APIRouter(route_class=ClosedRoute)
 Level = Literal["connected", "partial", "disconnected"]
 Fix = Literal["connect_zerodha", "session_expired", "live_feed_off", "live_feed_not_running", "live_feed_session_ended",
               "no_read_yet", "live_data_not_connected", "positions_not_synced", "live_feed_waiting",
-              "live_feed_reconnecting"]
+              "live_feed_reconnecting", "live_feed_idle"]
 
 _ACTIVE = text(
     "SELECT started_at, expected_expiry <= clock_timestamp() AS past FROM public.broker_sessions "
@@ -74,10 +74,11 @@ def _status(state: Level, fix: Fix | None = None) -> StatusOut:
 def _live_status(live_state: str, phase: str | None) -> StatusOut:
     """``phase`` is the provider's feed phase while the socket runs, None when it does not. Connected only when prices
     are arriving (``healthy``); a running socket with no frame yet, or frames stopped, is waiting; a socket in backoff
-    is reconnecting; the answer never comes from the socket task being alive."""
+    is reconnecting; a socket up with nothing subscribed is idle; never from the socket task being alive."""
     by_phase = {FEED_HEALTHY: _status("connected"), FEED_WAITING: _status("partial", "live_feed_waiting"),
                 FEED_RECONNECTING: _status("partial", "live_feed_reconnecting"),
-                FEED_ENDED: _status("partial", "live_feed_session_ended")}
+                FEED_ENDED: _status("partial", "live_feed_session_ended"),
+                FEED_IDLE: _status("partial", "live_feed_idle")}
     if phase in by_phase:
         return by_phase[phase]
     if live_state == live_market.SESSION_ENDED:

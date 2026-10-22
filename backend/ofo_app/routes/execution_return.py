@@ -137,7 +137,7 @@ async def return_from_kite(
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
-            raise _refuse("gate_broker_unconfirmed")
+            raise _refuse("gate_broker_not_connected")
         await store.lock_strategy(db, user_ref, strategy_id)  # held to commit: one return closes a plan once
         req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db))
         out = await _return(req, stored.saved.definition.underlying)

@@ -30,11 +30,13 @@ RECONNECT_WINDOW = datetime.timedelta(seconds=30)
 MAX_KEPT_TIMES = 20_000
 
 
-#: What the live feed is doing, in closed words (REQ-015 AC-4 live-data row, REQ-049 window): ``healthy`` = connected and
+#: What the live feed is doing, in closed words (REQ-015 AC-4 live row, REQ-049 window): ``healthy`` = connected and
 #: a price frame inside ``feed_stale``; ``waiting`` = connected but no price frame yet (a heartbeat alone proves
 #: nothing about prices) or frames stopped beyond ``feed_stale``; ``reconnecting`` = not connected (backoff, or never
 #: connected); ``ended`` = the Zerodha session ended (403).
 FEED_HEALTHY, FEED_WAITING, FEED_RECONNECTING, FEED_ENDED = "healthy", "waiting", "reconnecting", "ended"
+#: connected with nothing subscribed (the caller knows the subscriptions): nothing is expected to arrive.
+FEED_IDLE = "idle"
 
 
 class FeedState:
@@ -47,6 +49,7 @@ class FeedState:
         self.connected = False
         self.session_ended = False
         self._last_activity: datetime.datetime | None = None
+        self._last_tick_frame: datetime.datetime | None = None  # a PRICE frame only; heartbeats never move it (``phase``)
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
 
@@ -63,6 +66,7 @@ class FeedState:
     def on_data(self, now: datetime.datetime) -> None:
         """A well-formed data frame with at least one tick arrived: quotes are current again."""
         self._last_activity = now
+        self._last_tick_frame = now
         self._awaiting_data = False
 
     def on_disconnected(self, now: datetime.datetime) -> None:
@@ -77,13 +81,15 @@ class FeedState:
         self._disconnected_at = now
 
     def phase(self, now: datetime.datetime) -> str:
-        """One of the four ``FEED_*`` words. ``healthy`` only when ``health`` is AVAILABLE, never from the socket task
-        being alive."""
+        """One of ``FEED_HEALTHY / WAITING / RECONNECTING / ENDED``. ``healthy`` only when a PRICE frame arrived within
+        ``feed_stale``: heartbeats (1 byte, every second) prove the link, never prices, so they cannot keep it healthy
+        (unlike ``health``, which a quiet contract may keep AVAILABLE on heartbeats, F-32)."""
         if self.session_ended:
             return FEED_ENDED
         if not self.connected:
             return FEED_RECONNECTING
-        return FEED_HEALTHY if self.health(now) is DataHealth.AVAILABLE else FEED_WAITING
+        fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale
+        return FEED_HEALTHY if fresh and not self._awaiting_data else FEED_WAITING
 
     def health(self, now: datetime.datetime) -> DataHealth:
         if self.session_ended:

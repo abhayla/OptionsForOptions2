@@ -151,9 +151,14 @@ class _Session:
 
 
 async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
-    """The owner's Zerodha session (the stored token, as ``owner_margin_client``), or None (not connected)."""
-    margin = await live_market.owner_margin_client()
-    reads = await live_market.owner_kite_reads()
+    """The owner's Zerodha session (the stored token, as ``owner_margin_client``), or None: no stored session (the
+    routes answer ``gate_broker_not_connected``, REQ-015 AC-2). A stored session that cannot be read (the store or
+    decryption failed) answers ``gate_broker_unconfirmed`` here, never None and never a bare 500."""
+    try:
+        margin = await live_market.owner_margin_client()
+        reads = await live_market.owner_kite_reads()
+    except Exception:  # noqa: BLE001 - the class name only; a stored token is never in a message
+        raise _refuse("gate_broker_unconfirmed") from None
     if margin is None or reads is None:
         return None
     return _Session(reads[0], reads[1], margin)
@@ -290,7 +295,7 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
-            raise _refuse("gate_broker_unconfirmed")
+            raise _refuse("gate_broker_not_connected")
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
         await db.commit()
