@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 
 import pytest
 
@@ -42,7 +43,7 @@ def _raw_identity_uses(path: pathlib.Path) -> list[str]:
                 found.append(f"{node.lineno}: from {node.module} import {sorted(names)}")
         elif isinstance(node, ast.Import):
             found += [f"{node.lineno}: import {a.name}" for a in node.names
-                      if "catalogue_store" in a.name or a.name == "importlib"]
+                      if "catalogue_store" in a.name or a.name.split(".")[0] == "importlib"]
         elif isinstance(node, ast.Name) and node.id in {"__import__", "import_module"}:
             found.append(f"{node.lineno}: dynamic import {node.id}")
         elif isinstance(node, ast.Attribute) and node.attr in RAW_IDENTITY:
@@ -114,44 +115,101 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/live_market.py": "imports the store for load_catalogue (live rows by key); no stored id read",
     "backend/ofo_app/routes/outcome.py": "key -> LIVE holder -> its row (live_contract_id first): never id -> key",
     "backend/ofo_app/strategy_store.py": "save-time validation of a picked id (live, terms); returns no feed key",
+    # review round 1 (table constants and f-string SQL now seen):
+    "backend/ofo_app/eligibility_from_zerodha.py": "by id -> that row's own eligibility status (no key out); the "
+                                                   "registry reads LIVE rows only (not retired, not delisted)",
+    "backend/ofo_app/freeze_store.py": "exchange_freeze_limits keyed by the exchange file's token; no stored id",
+    "backend/ofo_app/audit_allowlist.py": "docstring only (exchange_token is not in the order reply); no query",
+    "backend/ofo_app/routes/catalogue.py": "docstring names the fields; lists live contracts via catalogue_picker",
 }
-
-
-def _reviewed(rel: str) -> bool:
-    return any(rel == k or (k.endswith("/") and rel.startswith(k)) for k in REVIEWED_RAW_IDENTITY)
 #: Paths that must never be in the reviewed list: the callers issue #500 moved onto resolve.
 MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/routes/execute.py",
                     "backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py")
 
 
+def _reviewed(rel: str) -> bool:
+    return any(rel == k or (k.endswith("/") and rel.startswith(k)) for k in REVIEWED_RAW_IDENTITY)
+
+
+def _import_from_uses(node: ast.ImportFrom) -> list[str]:
+    """The ``from X import ...`` shapes of _stored_identity_uses, judged by import source (any local alias)."""
+    names = {a.name for a in node.names}
+    if node.level or node.module is None:
+        return [f"{node.lineno}: relative import (unresolvable)"]
+    if node.module.split(".")[0] == "importlib":
+        return [f"{node.lineno}: from {node.module} import {sorted(names)} (dynamic import)"]
+    if node.module in TABLE_MODULES and (constants := sorted(n for n in names if n.isupper())):
+        # a table-name constant by import source, whatever it is called there or aliased to here
+        return [f"{node.lineno}: table constant {constants} from {node.module}"]
+    if "*" in names or (node.module == "ofo_app" and "catalogue_store" in names) or (
+            node.module.startswith("ofo_app.catalogue_store")
+            and (names & set(STORED_IDENTITY) or node.module != "ofo_app.catalogue_store")):
+        # the whole store, a star, a submodule, or an id -> identity read; its other names (load_catalogue: live rows
+        # by key, apply_update) never turn a stored id into a key
+        return [f"{node.lineno}: from {node.module} import {sorted(names)}"]
+    return []
+
+
 def _stored_identity_uses(path: pathlib.Path) -> list[str]:
     """Every way ``path`` could read a stored contract's exchange identity without ofo_app.tracked_contracts: an
-    import of the catalogue store by import source (any local name), a relative or dynamic import (unresolvable:
-    fails closed), a name or attribute naming load_contract / live_contract_id, and a string naming the catalogue
-    table (raw SQL)."""
+    import of the catalogue store or a catalogue table constant by import source (any local name), a relative or
+    dynamic import (unresolvable: fails closed), a name or attribute naming load_contract / live_contract_id or a
+    table constant, and SQL text (a string or any f-string part) naming a catalogue table or the exchange identity."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     found = []
     for node in ast.walk(tree):
+        text_ = _sql_text(node)
+        if text_ is not None and _names_stored_identity(text_):
+            found.append(f"{node.lineno}: SQL text naming the identity {text_[:60]!r}")
         if isinstance(node, ast.ImportFrom):
-            names = {a.name for a in node.names}
-            if node.level or node.module is None:
-                found.append(f"{node.lineno}: relative import (unresolvable)")
-            elif "*" in names or (node.module == "ofo_app" and "catalogue_store" in names) or (
-                    node.module.startswith("ofo_app.catalogue_store")
-                    and (names & set(STORED_IDENTITY) or node.module != "ofo_app.catalogue_store")):
-                # the whole store, a star, a submodule, or an id -> identity read (by import source, any alias);
-                # its other names (load_catalogue: live rows by key, apply_update) never turn a stored id into a key
-                found.append(f"{node.lineno}: from {node.module} import {sorted(names)}")
+            found += _import_from_uses(node)
         elif isinstance(node, ast.Import):
             found += [f"{node.lineno}: import {a.name}" for a in node.names
-                      if "catalogue_store" in a.name or a.name == "importlib"]
+                      if "catalogue_store" in a.name or a.name.split(".")[0] == "importlib"]
         elif isinstance(node, ast.Name) and node.id in {"__import__", "import_module", *STORED_IDENTITY}:
             found.append(f"{node.lineno}: {node.id}")
-        elif isinstance(node, ast.Attribute) and node.attr in {"import_module", *STORED_IDENTITY}:
+        elif isinstance(node, ast.Attribute) and node.attr in {"import_module", *STORED_IDENTITY, *TABLE_CONSTANTS}:
             found.append(f"{node.lineno}: .{node.attr}")
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and RAW_IDENTITY[1] in node.value:
-            found.append(f"{node.lineno}: string naming {node.value[:40]!r}")
     return found
+
+
+#: Modules that define the catalogue's table-name constants (CONTRACTS, BROKER_ROWS, ...).
+TABLE_MODULES = ("ofo_app.catalogue_picker", "ofo_app.catalogue_store")
+#: The catalogue's tables: any SQL naming one of them reads the raw catalogue.
+CATALOGUE_TABLES = ("catalogue_contracts", "broker_instruments")
+_SQL_WORD = re.compile(r"\b(select|from|join|where|update|insert|returning)\b", re.IGNORECASE)
+
+
+def _table_constants() -> frozenset[str]:
+    """Every module-level name in TABLE_MODULES bound to a string naming a catalogue table (read from the source, so a
+    new constant is covered without editing this list)."""
+    out = set()
+    for module in TABLE_MODULES:
+        source = ROOT / "backend" / (module.replace(".", "/") + ".py")
+        for node in ast.parse(source.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(
+                    node.value.value, str) and any(t in node.value.value for t in CATALOGUE_TABLES):
+                out |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return frozenset(out)
+
+
+TABLE_CONSTANTS = _table_constants()
+
+
+def _sql_text(node: ast.AST) -> str | None:
+    """A string's text: a plain constant, or every literal part of an f-string joined (the parts a JoinedStr holds)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return " ".join(v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str))
+    return None
+
+
+def _names_stored_identity(text_: str) -> bool:
+    """A catalogue table named anywhere, or the exchange identity (exchange_token / exchange_segment) in SQL text."""
+    if any(t in text_ for t in CATALOGUE_TABLES):
+        return True
+    return ("exchange_token" in text_ or "exchange_segment" in text_) and bool(_SQL_WORD.search(text_))
 
 
 def test_app_wide_a_stored_contract_reaches_a_feed_key_only_through_resolve():
@@ -183,13 +241,42 @@ def test_app_wide_a_stored_contract_reaches_a_feed_key_only_through_resolve():
     "q = 'SELECT exchange_token FROM public.catalogue_contracts WHERE id = :id'\n",
     "row = await store.load_contract(db, cid)\n",
     "holder = await live_contract_id(db, key)\n",
+    # review round 1 (#500 MAJOR): the table by an imported constant, the identity in an f-string, an importlib alias
+    "from ofo_app.catalogue_picker import CONTRACTS\n",
+    "from ofo_app.catalogue_picker import BROKER_ROWS as B\n",
+    "from ofo_app.catalogue_store import CONTRACTS as T\n",
+    "q = f'SELECT c.id, c.exchange_token FROM {T} AS c WHERE c.id = :id'\n",
+    "q = f'SELECT c.exchange_segment FROM {t} c'\n",
+    "from ofo_app import catalogue_picker\nq = catalogue_picker.CONTRACTS\n",
+    "from importlib import import_module as im\n",
+    "import importlib as il\n",
+    "import importlib.util\n",
 ])
 def test_the_app_wide_scan_fails_closed_on_every_bypass_shape(tmp_path, snippet):
-    """Mutation check of the app-wide scan: each bypass shape (by import source, raw SQL, the store's reads by any
-    receiver name) is flagged."""
+    """Mutation check of the app-wide scan: each bypass shape (by import source, raw SQL in a string or any f-string
+    part, an imported table constant, the store's reads by any receiver name, any dynamic import) is flagged."""
     path = tmp_path / "bypass.py"
     path.write_text(snippet, encoding="utf-8")
     assert _stored_identity_uses(path) != []
+
+
+@pytest.mark.parametrize("snippet", [
+    "leg['exchange_token'] = feed_id.exchange_token\n",  # a response key, not a catalogue read
+    "from ofo_app.catalogue_picker import database_today\n",
+    "from ofo_app.catalogue_store import load_catalogue\n",
+])
+def test_the_app_wide_scan_passes_shapes_that_read_no_stored_identity(tmp_path, snippet):
+    """Discrimination: a dict key named exchange_token and the picker's / store's non-identity helpers pass."""
+    path = tmp_path / "plain.py"
+    path.write_text(snippet, encoding="utf-8")
+    assert _stored_identity_uses(path) == []
+
+
+def test_the_real_eligibility_reader_is_seen_by_the_scan():
+    """The review's real miss: eligibility_from_zerodha imports CONTRACTS / BROKER_ROWS from the picker and selects
+    c.exchange_token in an f-string. The scan flags it (so it must be reviewed or routed through resolve)."""
+    uses = _stored_identity_uses(ROOT / APP / "eligibility_from_zerodha.py")
+    assert any("CONTRACTS" in u for u in uses) and any("exchange_token" in u for u in uses), uses
 
 
 ORDER_PATH = ("backend/ofo/execution", "backend/ofo/orders", "backend/ofo_app/basket_post.py",

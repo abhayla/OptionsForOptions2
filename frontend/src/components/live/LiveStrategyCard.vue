@@ -8,7 +8,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
+import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs } from '@/lib/saveDraft'
 import { istTime, maxLine } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -30,6 +30,7 @@ const data = ref(null) // the newest outcome answer, as the server sent it
 const errorParts = ref(NEUTRAL_PARTS)
 let gone = false // set on unmount: a late push or answer is dropped
 let draft = null
+const notLive = ref(false) // issue #500: a leg's stored contract is no longer live; nothing is priced
 const wasLive = ref(false) // a live push arrived at least once: from then on a socket that is not live pauses the card
 let seq = 0 // only the newest REST answer is shown
 
@@ -68,6 +69,7 @@ async function begin() {
     if (gone) return
     draft = buildDraft(legs)
     if (!draft) {
+      notLive.value = legs.some((l) => l.not_live)
       state.value = 'unpriced'
       settle()
       return
@@ -123,7 +125,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">Waiting to start...</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />
-    <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label">{{ NOT_CONNECTED_LABEL }}</p>
+    <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL }}</p>
 
     <template v-else>
       <p v-if="notConnected || refused" class="mt-2 text-sm font-medium" data-testid="live-status-label">{{ data.status_label }}</p>

@@ -8,6 +8,7 @@ const posts = []
 let listAnswer
 let postAnswer
 let failDetailFor = new Set()
+let notLiveFor = new Set() // issue #500: drafts whose leg's stored contract is no longer live
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
@@ -17,7 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
       const id = Number(detail[1])
       detailGets.push(id)
       if (failDetailFor.has(id)) return Promise.reject({ parts: { what_happened: `Server says draft ${id} failed`, impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
-      return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1000 + id,
+      return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, ...(notLiveFor.has(id) ? { contract_state: 'token_reassigned', exchange_segment: null, exchange_token: null } : { contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1000 + id }),
         action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' }] } } })
     }
     const cat = /^\/catalogue\/NIFTY\/contracts/.exec(url)
@@ -34,6 +35,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get, post } }
 })
 import LiveStrategiesPage from '@/pages/LiveStrategiesPage.vue'
+import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 
 class FakeSocket {
   static all = []
@@ -85,6 +87,7 @@ beforeEach(() => {
   detailGets.length = 0
   vi.useRealTimers()
   failDetailFor = new Set()
+  notLiveFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
@@ -141,6 +144,18 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     await flushPromises()
     expect(cards(w)[0].find('[data-testid="live-error-what"]').text()).toBe('Server says draft 1 failed')
     expect(cards(w)[1].find('[data-testid="live-spot"]').text()).toBe('25123.45')
+  })
+
+  it('issue #500: a strategy with a leg no longer live shows that reason, opens no socket, sends no outcome', async () => {
+    notLiveFor = new Set([1])
+    listAnswer = { strategies: [row(1)] }
+    const w = await mountPage()
+    const label = cards(w)[0].find('[data-testid="live-status-label"]')
+    expect(label.attributes('data-not-live')).toBe('true')
+    expect(label.text()).toBe(LEG_NOT_LIVE_LABEL)
+    expect(label.text()).not.toBe(NOT_CONNECTED_LABEL)
+    expect(FakeSocket.all).toHaveLength(0)
+    expect(posts).toHaveLength(0)
   })
 })
 
