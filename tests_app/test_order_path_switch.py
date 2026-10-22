@@ -182,14 +182,19 @@ async def test_ac6_no_execution_plan_row_and_no_plan_number_when_off(no_dotenv, 
 
 
 async def test_features_read_says_off_and_on(no_dotenv, monkeypatch):
-    """The screens' read: ``off`` by default, ``on`` only under APP_ENV=test + the flag; body is exactly one key."""
+    """The screens' read: ``off`` by default, ``on`` only under APP_ENV=test + the flag; the body is exactly order_path
+    + the W-125 held list
+    (nothing listed outside development/test; under APP_ENV=test every held feature is on)."""
     monkeypatch.setenv(switch.ENV_NAME, "1")
     async with _client(create_app()) as ac:
         off = await ac.get("/features")
         monkeypatch.setenv("APP_ENV", "test")
         on = await ac.get("/features")
     assert off.status_code == on.status_code == HTTPStatus.OK
-    assert off.json() == {"order_path": "off"} and on.json() == {"order_path": "on"}
+    held_in_test = ["platform_strikes", "probability_of_profit", "delayed_prices", "history_charts", "events_calendar",
+                    "fii_dii", "market_event_warning", "strategy_price_history"]
+    assert off.json() == {"order_path": "off", "held": []}
+    assert on.json() == {"order_path": "on", "held": held_in_test}
 
 
 # ---- the structural second layer -----------------------------------------------------------------------------------
