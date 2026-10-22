@@ -155,6 +155,57 @@ def test_the_market_data_process_has_the_egress_gate_and_refuses_a_loopback_kite
     assert out == {"installed": True, "test_mode": False, "loopback": "KiteCallRefused", "seam": "EgressRefused"}
 
 
+def test_the_market_data_process_installs_the_egress_gate_before_it_exits_for_want_of_a_session():
+    """Attack 5: ``feed_main._main`` with no stored session exits with code 3 and builds no Kite socket, and the egress
+    gate (``prepare_process``) had run and was installed at the very first step after it (no Kite call can precede it).
+    Only the database, config and token-store reads are stood in; the order of start-up steps is the real ``_main``."""
+    code = (
+        "import json, sys, types\n"
+        "from ofo.broker import egress\n"
+        "from ofo_app import broker_config, broker_crypto, broker_token_store, db, event_loop, feed_main, feed_mode\n"
+        "from ofo_app import live_market\n"
+        "seen = {'prepared': False, 'built': 0}\n"
+        "real_prepare = feed_main.prepare_process\n"
+        "def prepare():\n"
+        "    seen['prepared'] = True\n"
+        "    real_prepare()\n"
+        "real_loop_check = event_loop.require_selector_loop\n"
+        "def first_step():\n"
+        "    seen['prepared_first'] = seen['prepared']\n"
+        "    seen['at_first_step'] = egress.installed()\n"
+        "    real_loop_check()\n"
+        "class Conn:\n"
+        "    async def __aenter__(self): return self\n"
+        "    async def __aexit__(self, *exc): return False\n"
+        "class Engine:\n"
+        "    def connect(self): return Conn()\n"
+        "async def noop(*a, **k): return None\n"
+        "def built(*a, **k):\n"
+        "    seen['built'] += 1\n"
+        "feed_main.prepare_process = prepare\n"
+        "event_loop.require_selector_loop = first_step\n"
+        "feed_main.feed_settings = lambda: types.SimpleNamespace(KITE_WS_URL='wss://ws.kite.trade')\n"
+        "live_market.require_safe = lambda *a: None\n"
+        "feed_mode.redis_url = lambda: 'redis://127.0.0.1:1/0'\n"
+        "broker_config.load_broker_config = lambda: types.SimpleNamespace(token_key=b'k', api_key='K')\n"
+        "broker_crypto.TokenCipher = lambda key: None\n"
+        "broker_token_store.access_token_for = noop\n"
+        "db.verify_pool_budget, db.close_db, db.get_engine = noop, noop, Engine\n"
+        "feed_main.build_socket = built\n"
+        "feed_main.run_feed = built\n"
+        "code = feed_main.main()\n"
+        "print(json.dumps({**seen, 'code': code, 'installed_after': egress.installed()}))\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(BACKEND)}
+    with subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,  # noqa: S603
+                          stderr=subprocess.PIPE, text=True) as child:
+        stdout, stderr = child.communicate(timeout=120)
+    assert child.returncode == 0, stderr[-1500:]
+    out = json.loads(stdout.strip().splitlines()[-1])
+    assert out == {"prepared": True, "prepared_first": True, "built": 0, "at_first_step": True,
+                   "code": feed_main.EXIT_NO_SESSION, "installed_after": True}
+
+
 async def test_no_token_appears_in_any_bus_value_or_log_line(redis_url, caplog):
     """AC-7: the REAL feed code over the real KiteSocket (loopback, test mode): after frames flowed, no key the
     feed wrote (stream entries, status, wanted snapshot) and no log line contains the Kite token."""

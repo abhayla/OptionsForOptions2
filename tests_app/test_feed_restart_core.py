@@ -17,12 +17,11 @@ import pathlib
 import subprocess
 import sys
 import time
-import uuid
 
 import pytest
 import redis.asyncio as aioredis
 from ofo.marketdata.kite_frames import iter_recording
-from ofo_app import feed_bus
+from ofo_app import feed_bus, live_market
 from websockets.asyncio.server import serve
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -93,7 +92,7 @@ def _start(role: str, cfg_path: pathlib.Path, env: dict) -> subprocess.Popen:
 async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_the_new_api(redis_url, tmp_path):
     """AC-2: across a real API process restart the feed's Kite connection count stays 1 (and the server accepted exactly
     one), the feed process keeps running, and frames received by the NEW API are newer than the restart."""
-    user = f"core{uuid.uuid4().hex[:12]}"
+    user = live_market.OWNER_REF  # LiveMarket.start addresses the bus as this user
     kite = LoopingKite()
     server = await serve(kite.handler, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
@@ -101,7 +100,7 @@ async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_th
            "state_file": str(tmp_path / "api.json")}
     cfg_path = tmp_path / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))
-    env = {**os.environ, "OFO_TEST_KITE_TOKEN": TOKEN}
+    env = {**os.environ, "OFO_TEST_KITE_TOKEN": TOKEN, "FEED_MODE": "bus", "REDIS_URL": redis_url}
     bus = aioredis.Redis.from_url(redis_url)
     children: dict[str, subprocess.Popen] = {}
     seen_connections: list[int] = []
@@ -130,6 +129,9 @@ async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_th
         children["api"].kill()
         children["api"].wait(timeout=30)
         pathlib.Path(cfg["state_file"]).unlink()  # noqa: ASYNC240 - a tiny local file
+        # the API stays down until its wanted snapshot has lapsed: the feed then wants nothing, yet keeps its socket
+        await until(lambda: _absent(bus, feed_bus.want_key(user)), "the dead API's wanted snapshot to lapse",
+                    {"feed": children["feed"]})
         restart_us = feed_bus.to_micros(feed_bus.from_micros(int(time.time() * 1_000_000)))
         children["api"] = _start("api", cfg_path, env)
         second = await until(lambda: _is(api_state, lambda s: s["ticks"] > 0 and s["last_frame_us"] is not None),
@@ -139,6 +141,7 @@ async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_th
         assert second["pid"] != first["pid"]
         assert second["last_frame_us"] > restart_us, "a frame the new API holds is older than the restart"
         assert second["phase"] in {"healthy", "waiting"}
+        assert second["socket"] == "BusSocket", "LiveMarket.start in bus mode built another socket"
         assert children["feed"].poll() is None, "the feed process stopped"
         assert kite.accepted == 1, f"Kite saw {kite.accepted} connections; an API restart must not reconnect"
         assert seen_connections
@@ -151,7 +154,12 @@ async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_th
             child.wait(timeout=30)
         server.close()
         await server.wait_closed()
+        await bus.delete(*(k(user) for k in (feed_bus.ticks_key, feed_bus.want_key, feed_bus.status_key)))
         await bus.aclose()
+
+
+async def _absent(bus, key):
+    return not await bus.exists(key) or None
 
 
 async def _is(read, ok):

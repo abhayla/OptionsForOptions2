@@ -3,7 +3,8 @@ pure-Python stand-in (a developer PC). Every Redis answer state has one behaviou
 
 value present -> used | status key absent or expired -> feed down | connection refused -> stale, retried |
 connection dropped mid-read -> stale, retried | empty stream -> keep waiting |
-malformed / foreign-user message -> counted.
+malformed / foreign-user message -> counted | want key not refreshed -> expires, feed unsubscribes |
+feed status not refreshed -> expires, feed down.
 
 Frames come from the REAL 2026-10-08 recording. Readiness is polled, never slept.
 """
@@ -114,15 +115,21 @@ async def go_live(w: World) -> None:
 
 
 async def test_a_frame_is_stamped_with_the_feed_receive_time_so_a_late_one_is_never_live(world):
-    """Attack 4: a frame published late (the feed received it T0, the API reads it 10 s on) is judged by T0."""
+    """Attack 1: the feed received a frame at T0; it reaches the API when the API's clock reads T0 + 10 s (beyond the
+    stale window). It is judged by T0: the quote reads STALE (stamped with the API's own clock it would read live)."""
     w = world
-    await go_live(w)
-    w.clock.now = T0 + datetime.timedelta(seconds=1)
-    assert w.provider.feed.health(w.clock.now) is DataHealth.AVAILABLE  # control: the same frame, read in time, is live
-    w.clock.now = T0 + datetime.timedelta(seconds=10)  # the frame sat on the bus; feed time is T0
+    await w.start()
+    await w.status()
+    await w.publish("connected", T0)
+    await poll(lambda: w.provider.feed.connected, "the feed to be seen connected")
+    w.clock.now = T0 + datetime.timedelta(seconds=10)  # the API reads the frame 10 s after the feed received it
+    await w.publish("frame", T0, PRICE_FRAME)
+    await poll(lambda: w.provider.counters["frames"] >= 1, "the late frame to reach the provider")
+    assert w.socket.last_frame_at == T0
     assert w.provider.feed.health(w.clock.now) is DataHealth.STALE
     assert w.provider.feed.phase(w.clock.now) == "waiting"
-    assert w.socket.last_frame_at == T0
+    await w.publish("frame", w.clock.now, PRICE_FRAME)  # control: a frame the feed received just now is live
+    await poll(lambda: w.provider.feed.health(w.clock.now) is DataHealth.AVAILABLE, "a fresh frame to read live")
 
 
 async def test_redis_dropped_mid_read_reads_stale_then_recovers_only_on_a_fresh_frame(world):
@@ -223,6 +230,61 @@ async def test_an_expired_or_malformed_status_key_means_the_feed_is_down(world):
     assert w.provider.feed.connected is False
 
 
+async def test_the_api_that_stops_refreshing_its_want_key_makes_the_feed_unsubscribe(world, redis_url, monkeypatch):
+    """Attack 2: the API's wanted snapshot carries an expiry; once the API stops refreshing it (dead or stopped) the key
+    lapses and the feed drops those tokens. A snapshot without an expiry would keep them subscribed for ever."""
+    monkeypatch.setattr(feed_bus, "WANT_TTL_MS", 300)
+    w = world
+    bus = feed_bus.new_client(redis_url)
+    relay = feed_bus.FeedRelay(w.user, lambda: T0)
+    try:
+        await w.start()
+        await relay.refresh_want(bus)
+        wanted = relay.subscribed_tokens()
+        assert wanted == w.provider.subscribed_tokens() != []
+        relay.drain_subscription_changes()
+        await w.stop()  # the API stops refreshing the key
+        await poll(lambda: _gone(bus, feed_bus.want_key(w.user)), "the unrefreshed want key to expire", limit=5.0)
+        await relay.refresh_want(bus)
+        assert relay.drain_subscription_changes() == ([], wanted)
+    finally:
+        await bus.aclose()
+
+
+async def test_a_dead_feed_status_lapses_and_the_api_reads_it_as_not_connected(world, redis_url, monkeypatch):
+    """Attack 3: the feed writes its status with an expiry; when the feed dies the key lapses and the API reads the feed
+    as down (stale), never as the last status it saw. A status without an expiry would read 'connected' for ever."""
+    monkeypatch.setattr(feed_bus, "STATUS_TTL_MS", 1500)  # longer than one status read cycle
+    w = world
+    bus = feed_bus.new_client(redis_url)
+    relay = feed_bus.FeedRelay(w.user, lambda: T0)
+    relay.on_connected(T0)
+    try:
+        await w.start()
+        await relay.publish_status(bus)  # the feed's one and only status: then it dies
+        await poll(lambda: w.provider.feed.connected, "the feed's status to read connected")
+        await poll(lambda: _gone(bus, feed_bus.status_key(w.user)), "the dead feed's status to lapse", limit=5.0)
+        await poll(lambda: w.provider.feed.connected is False, "the API to read the feed as not connected", limit=5.0)
+        assert w.socket.counters["status_missing"] >= 1
+        assert w.provider.feed.health(T0) is not DataHealth.AVAILABLE
+    finally:
+        await bus.aclose()
+
+
+async def test_another_users_status_key_is_never_read_as_this_users_status(world):
+    """Attack 4: a status body that names another user, found under this user's key, reads the feed as down and is
+    counted; it is never taken as this user's status (AC-5)."""
+    w = world
+    await w.start()
+    await w.status()
+    await poll(lambda: w.provider.feed.connected, "the status key to mark the feed connected")
+    foreign = {"u": "someone-else", "connected": True, "ended": False, "connections": 1, "last_frame_us": None}
+    await w.bus.set(feed_bus.status_key(w.user), json.dumps(foreign), px=60_000)
+    await poll(lambda: w.provider.feed.connected is False, "the foreign status to mark the feed down")
+    assert w.socket.counters["bus_malformed"] >= 1
+    assert feed_bus.decode_status(w.user, json.dumps(foreign)) is None
+
+
 async def test_a_session_ended_event_ends_the_socket_and_the_feed_reads_ended(world):
     """The feed's 'ended' event: the socket returns the same word KiteSocket does and the provider reads ended."""
     w = world
@@ -233,6 +295,17 @@ async def test_a_session_ended_event_ends_the_socket_and_the_feed_reads_ended(wo
     assert w.provider.feed.health(T0) is DataHealth.UNAVAILABLE
     await w.bus.aclose()
 
+
+async def test_a_status_that_says_ended_ends_the_socket_and_the_feed_reads_ended(world):
+    """The feed's status key says ``ended`` (the event may have been missed): the socket returns the same word
+    KiteSocket does at its next status read, and the provider reads ended, never live."""
+    w = world
+    await go_live(w)
+    await w.status(ended=True)
+    assert await asyncio.wait_for(w.task, 20) == feed_bus.SESSION_ENDED
+    assert w.provider.feed.session_ended is True
+    assert w.provider.feed.health(T0) is DataHealth.UNAVAILABLE
+    await w.bus.aclose()
 
 async def test_the_want_key_expiring_makes_the_feed_unsubscribe_and_a_restarted_api_rebuilds_it(redis_url):
     """Attack 6: the wanted snapshot has an expiry; when it lapses the feed wants nothing, and a restarted API
