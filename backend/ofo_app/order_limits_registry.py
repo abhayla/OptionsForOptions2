@@ -37,9 +37,10 @@ RULES: tuple[ZerodhaRule, ...] = (
                 "quantity-freeze-limits-for-indices-from-april-01-2026; "
                 "a reported NSE rise to 3,510 from 2026-10-05 is unconfirmed (F-57)", "2026-10-22", False),
     ZerodhaRule("ofo.execution.sequence:DEFAULT_MAX_ORDERS_PER_BATCH",
-                "orders in one Publisher basket (at most 10)",
-                "Kite Publisher docs: 'You can add one or more stocks to the basket (maximum 10)' "
-                "https://kite.trade/docs/connect/v3/publisher/ (fetched 2026-10-22)", "2026-10-22", True),
+                "orders per batch in the order planner (sequence.py; the code labels it an UNVERIFIED placeholder)",
+                "not verified: the Kite Publisher basket allows 'maximum 10' items "
+                "https://kite.trade/docs/connect/v3/publisher/ (fetched 2026-10-22), but this constant is the "
+                "planner's batch size, not the basket limit (row 5 verifier round 2)", "2026-10-22", False),
     ZerodhaRule("ofo_app.kite_reads:QUOTE_LIMIT", "instruments per GET /quote call (500)",
                 "Kite market quotes docs: 'complete market data snapshot of up to 500 instruments in one go' "
                 "https://kite.trade/docs/connect/v3/market-quotes/ (fetched 2026-10-22)", "2026-10-22", True),

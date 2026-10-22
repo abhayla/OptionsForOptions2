@@ -414,6 +414,7 @@ issues:
   "#513": 4a  # Row 2 (REQ-015) MINORs: unwanted ticks count for ~3 s, unreadable session not logged, after-hours Reconnect advice
   "#514": 4a  # Row 3 (REQ-054) MINORs: profile sync mark, one-broker scan allow-list, bare-string order id
   "#515": S6.1  # Row 4 (REQ-117) MINORs: broker-name scan gaps, ZERODHA-keyed lookups, per-entry reasons
+  "#516": 4a  # Row 5 (REQ-053) MINORs: scheduler start-up gap before 08:30, scan shapes, unverified registry entries
 
 # Work items whose status is not done.
 work_items:
@@ -580,6 +581,7 @@ findings:
   F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
   F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
   F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
+  F-57: 4a        # Zerodha rule constants checked against current docs; NIFTY freeze 3,510 reported, unconfirmed (row 5)
 
 hypotheses:
   H1: done

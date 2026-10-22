@@ -54,6 +54,10 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
 - **R8 Every guard in a brief is an allow-list** (row 4: the orchestrator's brief listed forbidden shapes and 19 others
   passed). The build section names what IS allowed and refuses the rest; forbidden shapes belong in the attack list
   only. check_brief refuses a builder brief whose build section names a scan/guard/gate/detector without "allow-list".
+- **R9 Read the findings before a time, date or limit rule** (row 5: an 08:00 publish time contradicted F-56's
+  documented 08:30). Grep `spec/findings.md` and the requirement by the rule's key terms first; cite the finding.
+- **R10 A `verified` claim reads the code's use** (row 5: a batch constant marked verified against the basket limit
+  it does not implement). Verify the value AND what the code does with it.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -90,9 +94,34 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 2 | not set | 4 + half shared start check | 42 | ~650k (+93k shared) | 2 | before R1-R7 |
 | 3 | not set | 4 (+1 process builder, 7.5 min / 111k, separate) | 37 | ~650k (~450k without the resume) | 1 | first row under R1-R4 |
 | 4 | 100 / 450k (set after the fact from size M: measure 1 + build 60 + verify 20 + orchestrator 10 + slack) | 6 (measure, build, finish, verify r1, fix, verify r2) | 52 agent min; 58 wall-clock (12:57-13:55) | ~870k | 2 | time -42% (faster), tokens +93% (slower): see the row 4 log |
-| 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | | | | | |
+| 5 | 90 / 450k (set 13:35 IST before dispatch: measure 1 + build 60 + verify 20 + orchestrator 10; core already proven live at 13:31) | 7 (build, finish x2, verify r1, research, fix, verify r2) + 3 process (reset tool, throwaway-db tool, tool review) | 61 agent min; 97 wall-clock (13:58-15:35) | ~1,010k (+316k process) | 2 | wall-clock +8% (within 20%); tokens +124%: see the row 5 log |
+| 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | | | | | |
 
 ## Log (newest first)
+
+### Row 5 - REQ-053 Contract eligibility, read part (closed 2026-10-22 15:40 IST)
+- Expected 90 min / 450k (set before dispatch). Actual: build 15.9 min / 173k / 79 calls; finish 1 2.4 min / 104k /
+  48 (budget 40); finish 2 14.7 min / 154k / 80; verify r1 12.1 min / 188k / 45; research 1.0 min / 109k / 15; fix 5.9
+  min / 114k / 33; verify r2 8.6 min / 170k / 23. Row agents 61 min, ~1,010k tokens; wall-clock 97 min (13:58-15:35).
+  Process agents (separate): reset tool 9.0 min / 98k, throwaway-db tool 6.1 min / 103k, its review 0.9 min / 115k.
+  Orchestrator: live catalogue load, two throwaway-db runs (5 + 6 min), registry sources, test fix; ~70 tool calls.
+- Difference: wall-clock 97 vs 90 = +8%, within 20% (the estimate covers everything; agent minutes alone are 61 =
+  -32%, the rest is the orchestrator's live load and two 5-6 min throwaway-database runs). Tokens +124%: (1) the first builder ran
+  out at 79 calls with half the brief left (7 attacks + 4 build items was L-sized work in an M budget - sizing, R3);
+  (2) finish 1 got 5 items on an S budget (orchestrator sizing again) and stopped at 48 calls; (3) the orchestrator's
+  own "loaded today" rule was wrong for weekends and its 08:00 publish time contradicted F-56 (spec not read by every
+  key term: "publish", "08:30" - spec-first R1), costing a finish round; (4) #497 made DB proofs impossible until the
+  throwaway-database tool existed.
+- Right: the core was proven live before the build (today's list loaded at 13:31); the throwaway-database tool turned
+  15 "known failures" + 5 unrunnable tests into 137 passing; the research found a real open finding (NIFTY freeze 3,510
+  reported) and the orchestrator's own wrong verified flag was caught by the verifier.
+- Wrong: three sizing misses by the orchestrator in one row; a spec finding (F-56) not read before designing a time
+  rule; a `verified=True` written from a summary without matching the constant's actual use; the threat-model line
+  wrapped across two lines three times (check_brief refuses it each time).
+- Changed: R9 - before any time/date/limit rule in a brief, grep spec/findings.md and the requirement by the rule's
+  key terms (publish, fetch, window, expiry, limit, freeze); R3 applied to finish/fix briefs too (count the items x
+  files, not only files); R10 - a registry `verified=True` needs the constant's use in code read, not only its name;
+  DB proofs default to the throwaway-database runner (`D:\Abhay\scratch\ofo2-builder-sequence\fresh_launch.py`).
 
 ### Row 4 - REQ-117 Broker capability flags (closed 2026-10-22 13:57 IST)
 - Expected 100 min / 450k (stated after the fact). Actual: measure 0.6 min / 75k / 11 calls; build 22.8 min / 258k /
