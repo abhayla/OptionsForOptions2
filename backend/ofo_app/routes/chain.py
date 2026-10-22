@@ -25,6 +25,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query
 
 from ofo_app.chain_push import (
+    DEFAULT_STRIKES_EACH_SIDE,
     MAX_STRIKES_EACH_SIDE,
     ChainCatalogue,
     ChainOut,
@@ -82,7 +83,7 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
         streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
-        strikes_each_side: Annotated[int, Query(ge=1, le=MAX_STRIKES_EACH_SIDE)] = MAX_STRIKES_EACH_SIDE,
+        strikes_each_side: Annotated[int, Query(ge=1, le=MAX_STRIKES_EACH_SIDE)] = DEFAULT_STRIKES_EACH_SIDE,
         fallback: Annotated[bool, Query(description="true when the screen's own chain socket is down (ADR-077): the "
                                                     "answer is then not live whoever else subscribes")] = False,
 ) -> ChainOut:

@@ -305,11 +305,11 @@ async def test_ac8_atm_is_the_catalogue_strike_nearest_the_spot(spot, atm):
 
 
 def test_ac8_pure_atm_and_window_on_the_grid():
-    """AC-8: the helpers on the grid itself; a window outside 1..15 is refused."""
+    """AC-8: the helpers on the grid itself; a window outside 1..40 is refused (REQ-087 AC-3)."""
     assert atm_strike(GRID, Decimal("25124.99")) == Decimal("25100")
     assert atm_strike(GRID, Decimal("25125")) == Decimal("25100")
     assert list(strike_window(GRID, Decimal("25000"), 1)) == [Decimal("25000"), Decimal("25050")]
-    for bad in (0, 16):
+    for bad in (0, 41):
         with pytest.raises(ValueError):
             strike_window(GRID, Decimal("25000"), bad)
 
@@ -342,9 +342,9 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     assert (cell["lot_size"], cell["intrinsic"]) == (75, "112.30")
 
 
-@pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
+@pytest.mark.parametrize("bad", [0, 41, -1, "x", "5", True, 2.0, None])
 async def test_strikes_each_side_out_of_range_is_refused(bad):
-    """Threat model (unbounded strike range): 0, 16, -1, 'x', a numeric string, a bool, a float and null are refused
+    """Threat model (unbounded strike range): 0, 41, -1, 'x', a numeric string, a bool, a float and null are refused
     with the one input message, and nothing is subscribed or read."""
     reader = Reader()
     provider, _feed, channel, _mono, push = make_rig(reader)
@@ -510,7 +510,7 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
-                   "ofo.marketdata.quote", "ofo.money", "ofo.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
+                   "ofo.marketdata.quote", "ofo.money", "ofo_app.chain_preview", "ofo.chain_values", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
@@ -542,7 +542,7 @@ def test_rest_route_answers_the_chain_and_refuses_a_bad_strike_count():
     assert ok.status_code == HTTP_OK, ok.text
     assert ok.json()["state"] == "LIVE" and ok.json()["atm_strike"] == "25150.00" and len(ok.json()["rows"]) == FIVE
     assert client.get("/api/market/chain", params={**query, "fallback": "1"}).json()["state"] == "NOT_CONNECTED"
-    for bad in ("0", "16", "x", "-1"):
+    for bad in ("0", "41", "x", "-1"):
         refused = client.get("/api/market/chain", params={**query, "strikes_each_side": bad})
         assert refused.status_code == HTTP_UNPROCESSABLE and refused.json() == ERROR, (bad, refused.text)
 

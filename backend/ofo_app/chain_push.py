@@ -62,10 +62,13 @@ from ofo_app.routes.outcome import HealthCode, MarketContext
 
 log = logging.getLogger(__name__)
 
-#: The most strikes either side of ATM a chain may ask for, and the default (design: "15 strikes either side at first
-#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 62 contracts (31
+#: The most strikes either side of ATM a chain may ask for (REQ-087 AC-3: 10, 20, 30 or 40; was 15 at W-116, design: "15 strikes either side at first
+#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 162 contracts (81
 #: strikes, CE and PE) and the index.
-MAX_STRIKES_EACH_SIDE = 15
+MAX_STRIKES_EACH_SIDE = 40
+#: REQ-087 AC-3: the user's choices for strikes either side of ATM, and the default for a user who never chose.
+STRIKES_CHOICES = (10, 20, 30, 40)
+DEFAULT_STRIKES_EACH_SIDE = 10
 #: REQ-029 AC-4 / Q46: "OI and IV update at a lower frequency" than LTP and bid/ask. Q46 names no number; 5 s is the
 #: orchestrator's technical decision (W-116 round 2). The same interval bounds how often the window re-centres.
 OI_REFRESH_SECONDS = 5.0
@@ -99,7 +102,7 @@ class ChainRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     underlying: Literal["NIFTY", "SENSEX"]
     expiry: datetime.date
-    strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
+    strikes_each_side: StrictInt = Field(default=DEFAULT_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
 
 
 class ChainCellOut(ApiModel):
