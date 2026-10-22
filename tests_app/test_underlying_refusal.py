@@ -3,18 +3,26 @@ with the same catalogue message (gate_underlying_unsupported, USER_INPUT_101), w
 from __future__ import annotations
 
 import datetime
+import pathlib
+import sys
+from decimal import Decimal
 from typing import get_args
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.marketdata.kite_provider import IST
 from ofo_app.db import get_db
 from ofo_app.main import create_app
 from ofo_app.routes.catalogue import get_today
 from ofo_app.routes.chain import REST_PATH
+from ofo_app.routes.outcome import MarketContext, get_market_context
 from ofo_app.routes.ready_made import LoadTemplateIn, QuickPickIn
 from ofo_app.underlying import Underlying, refusal_of
 from pydantic import ValidationError
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 
 
 @pytest.fixture(autouse=True)
@@ -96,26 +104,9 @@ def test_the_held_ready_made_bodies_refuse_it_too(value: str, model: type, body:
     assert message is not None and message.code == CODE
 
 
-async def test_an_index_row_as_a_leg_is_refused_not_a_500() -> None:
-    resp = await _send("POST", "/api/strategies/outcome", {
-        "underlying": "NIFTY", "legs": [{"instrument_id": "NSE_INDEX:256265", "action": "BUY", "lots": 1,
-                                         "planned_entry": "100.00", "captured_at": "2026-10-22T09:20:00+05:30"}]})
-    assert resp.status_code < SERVER_ERROR, resp.text
-
-
 async def test_an_index_row_as_a_leg_with_a_provider_is_refused_with_a_catalogue_message() -> None:
     """AC-2: the catalogue's INDEX row (NSE_INDEX:1001) is not a CE/PE/FUT leg; with a live provider the outcome route
     must answer a catalogue refusal, not a 500."""
-    import pathlib
-    import sys
-    from decimal import Decimal
-
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
-    from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
-
-    from ofo.marketdata.kite_provider import IST
-    from ofo_app.routes.outcome import MarketContext, get_market_context
-
     valuation = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))

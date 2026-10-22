@@ -255,6 +255,19 @@ async def test_a_task_cancelled_mid_run_also_unsubscribes(rig):
     assert none_held(provider, strategy_ids(provider))
 
 
+async def test_an_unsupported_underlying_gets_the_unsupported_underlying_message(rig):
+    """W-129 (REQ-001 AC-1): the strategy socket answers the same catalogue message as the routes, as typed."""
+    _provider, _feed, channel, _mono, push = rig
+    task = asyncio.create_task(push.run())
+    await channel.inbound.put({"underlying": "BANKNIFTY", "legs": []})
+    await channel.inbound.put({"underlying": "nifty", "legs": []})
+    await settle()
+    assert channel.sent == [render("gate_underlying_unsupported", symbol="BANKNIFTY").as_dict(),
+                            render("gate_underlying_unsupported", symbol="nifty").as_dict()]
+    await channel.inbound.put(ChannelClosed)
+    await task
+
+
 async def test_bad_input_gets_the_one_catalogue_message_and_the_connection_goes_on(rig):
     provider, feed, channel, mono, push = rig
     good = request(provider)  # built first: the failed subscribe un-subscribes (and so forgets) the replayed quotes
