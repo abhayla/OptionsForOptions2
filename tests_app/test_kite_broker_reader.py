@@ -415,6 +415,14 @@ def test_reader_status_by_id_gives_not_found_as_none() -> None:
     assert got["Z"] is None and got["A"].state is OrderState.EXECUTED and len(fake.calls) == 1
 
 
+def test_reader_refuses_a_naive_read_time() -> None:
+    """AC-1: the read time comes back tz-aware or the read fails (a naive time would be read as the wrong zone)."""
+    naive = KiteBrokerReader(door(Replay({"/orders": orders_reply()})), KiteMargin(api_key="k", access_token=SECRET),
+                             Catalogue(), now=lambda: NOW.replace(tzinfo=None))
+    with pytest.raises(ValueError, match="timezone-aware"):
+        naive.fetch_order_statuses("9")
+
+
 def test_reader_available_margin_is_zerodhas_recorded_funds() -> None:
     """AC-1: fetch_available_margin = Zerodha's equity.net from the recorded 2026-10-16 funds reply (671.50)."""
     fake = Replay({"/user/margins": json.dumps(FUNDS["reply"])})
