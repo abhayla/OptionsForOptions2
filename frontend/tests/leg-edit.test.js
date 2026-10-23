@@ -23,7 +23,7 @@ import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import {
   CUSTOM_STRATEGY, EXECUTE_NEEDS_ALL_TICKED, LEFT_OUT_LABEL, NO_LEGS_YET, applyEditReply, buildEditRequest, canStep, executeRefusal,
-  multiplierShape, shapeLabel,
+  MULTIPLIER_CHOICES, shapeLabel,
 } from '@/lib/legEdit'
 import { buildDraft } from '@/lib/legPicker'
 import real from './fixtures/outcome-condor.json'
@@ -41,6 +41,10 @@ const STEPPED = {
   shape: null, shape_name: null,
   outcome: { ...real, summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
 }
+// The server's answer to the read control on load: the legs as sent, the matched name and the two Hedge marks (the wings).
+const READ = {
+  legs: real.legs.map((l, i) => replyLeg(l, { hedge: i === 0 || i === 3 })), shape: 'iron_condor', shape_name: 'Short Iron Condor', outcome: real,
+}
 const REFUSED = { parts: { what_happened: 'That strike is not listed.', impact: 'Nothing changed.', what_is_blocked: 'No step was made.',
   next_action: 'Pick another strike.' } }
 
@@ -51,6 +55,7 @@ beforeEach(() => {
 
 async function openPage() {
   answers['POST /strategies/outcome'] = real
+  answers['POST /strategies/leg-edit'] = READ
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
   await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
   await router.isReady()
@@ -58,7 +63,26 @@ async function openPage() {
   await flushPromises()
   return w
 }
-const edits = () => calls.filter((c) => c.url === '/strategies/leg-edit')
+const edits = () => calls.filter((c) => c.url === '/strategies/leg-edit' && c.body.edit.control !== 'read')
+const reads = () => calls.filter((c) => c.url === '/strategies/leg-edit' && c.body.edit.control === 'read')
+
+describe('REQ-076 AC-8 / one leg list: the page draws the shape name on load and exactly one leg list', () => {
+  it('AC-8: a saved iron condor shows its name and two Hedge marks before any edit, from the read control', async () => {
+    const w = await openPage()
+    expect(reads().length).toBeGreaterThan(0)
+    expect(reads()[0].body.edit).toEqual({ control: 'read' })
+    expect(t(w, 'shape-name').text()).toContain(READ.shape_name)
+    expect(all(w, 'hedge-mark')).toHaveLength(2)
+    expect(edits()).toHaveLength(0)
+  })
+  it('one list: the builder renders LegList only; the picker draws no leg list of its own', async () => {
+    const w = await openPage()
+    expect(all(w, 'leg-edit-list')).toHaveLength(1)
+    expect(all(w, 'leg-list')).toHaveLength(0)
+    expect(all(w, 'leg-row')).toHaveLength(0)
+    expect(all(w, 'leg-edit-row-0')).toHaveLength(1)
+  })
+})
 
 describe('Core: a + on an option leg sends one leg-edit request and the page is redrawn from the reply', () => {
   it('AC-1/AC-3: + posts {control: step} once; the strike and the summary are the reply\'s', async () => {
@@ -96,9 +120,10 @@ describe('the request carries one edit and nothing computed', () => {
     const body = buildEditRequest('NIFTY', legs.map((l, i) => (i === 2 ? { ...l, included: false } : l)), { control: 'include', index: 2, included: false })
     expect(body.legs.map((l) => l.included)).toEqual([true, true, false, true])
   })
-  it('AC-4: the multiplier shape is digits only; the 1 to 50 bound is the server\'s', () => {
-    for (const ok of ['1', '50', '0', '51', '07']) expect(multiplierShape(ok)).toBe(true)
-    for (const bad of ['1.5', '-1', '', 'x', '2 3']) expect(multiplierShape(bad)).toBe(false)
+  it('AC-4: the multiplier is chosen from the fixed list 1 to 50, nothing is parsed from text', () => {
+    expect(MULTIPLIER_CHOICES).toHaveLength(50)
+    expect([MULTIPLIER_CHOICES[0], MULTIPLIER_CHOICES[49]]).toEqual([1, 50])
+    expect(new Set(MULTIPLIER_CHOICES).size).toBe(50)
   })
 })
 
@@ -131,24 +156,14 @@ describe('LegList rows (screens 011, 012)', () => {
     expect(all(w, 'leg-strike')[0].text()).toBe('22800') // nothing changed
   })
 
-  it('AC-4: the multiplier is sent as typed (51 too) and the server\'s refusal is shown; non-digits send nothing', async () => {
+  it('AC-4: the multiplier is a choice from the list: choosing 3 and 50 emits those numbers', async () => {
     const w = mount(LegList, { props: { legs: rows } })
-    for (const text of ['3', '51', '0']) {
-      t(w, 'multiplier').element.value = text
+    expect(t(w, 'multiplier').findAll('option')).toHaveLength(50)
+    for (const index of [2, 49]) {
+      t(w, 'multiplier').element.selectedIndex = index
       await t(w, 'multiplier').trigger('change')
     }
-    expect(w.emitted('edit')).toEqual([[{ control: 'multiplier', multiplier: 3 }], [{ control: 'multiplier', multiplier: 51 }], [{ control: 'multiplier', multiplier: 0 }]])
-    t(w, 'multiplier').element.value = '2.5'
-    await t(w, 'multiplier').trigger('change')
-    expect(w.emitted('edit')).toHaveLength(3)
-    expect(t(w, 'multiplier-shape').exists()).toBe(true)
-    const page = await openPage()
-    answers['POST /strategies/leg-edit'] = Object.assign(new Error('refused'), { parts: { ...REFUSED.parts, what_happened: 'The multiplier must be from 1 to 50.' } })
-    t(page, 'multiplier').element.value = '51'
-    await t(page, 'multiplier').trigger('change')
-    await flushPromises()
-    expect(edits().at(-1).body.edit).toEqual({ control: 'multiplier', multiplier: 51 })
-    expect(t(page, 'edit-error-what').text()).toBe('The multiplier must be from 1 to 50.')
+    expect(w.emitted('edit')).toEqual([[{ control: 'multiplier', multiplier: 3 }], [{ control: 'multiplier', multiplier: 50 }]])
   })
 
   it('AC-6: the tick emits an include edit; an unticked leg is greyed and labelled', async () => {
@@ -256,8 +271,8 @@ describe('the reply is drawn as sent', () => {
     expect(next.map((l) => l.strike)).toEqual(['22850.00', '22800', '23000', '23200'].map((s, i) => STEPPED.legs[i].strike))
     expect(next[0].planned_entry).toBeNull()
     expect(next[0].instrument_id).toBe('NSE_FO:44625')
-    expect(next[0].contract_id).toBeNull() // another contract: Save Draft cannot send the old one
-    expect(next[1].contract_id).toBe(101)
+    expect(next[0].contract_id).toBeNull() // the reply named no id: Save Draft cannot send the old one
+    expect(next[1].contract_id).toBeNull()
     expect(next[1].id).toBe(2)
   })
 
