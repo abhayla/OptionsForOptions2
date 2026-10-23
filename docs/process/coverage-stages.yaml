@@ -435,6 +435,7 @@ issues:
   "#524": S6.7  # Reference register: 6 deferred MINORs from the Tier A check (ADR-176)
   "#526": 4a  # Chunk 1 rows 11-15 MINORs: banner time formats, SpotRefused net, surviving engine mutants, brief-path fail-open
   "#527": 4a  # Row 16 (REQ-038) round 2 MINORs: time filter untested, flag never clears, Execute ignores the flag, PARTIAL vs domain - fix before the adjustments row
+  "#528": 4a  # Row 15 (REQ-028 AC-2) partial: modification, adjustment proposal and exit domain types are not on the app path
 
 # Work items whose status is not done.
 work_items:

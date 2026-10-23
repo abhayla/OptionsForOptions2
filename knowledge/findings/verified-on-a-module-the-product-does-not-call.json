@@ -30,6 +30,11 @@
    "date": "2026-10-23",
    "where": "builder sequence row 16, REQ-038 (status Verified) start check on chunk head 0e574b58",
    "evidence": "AC-2/AC-3 versions-after-execution live only in the domain StrategyRecord (versions.py); PUT /strategies/{id} (routes/strategies.py:353) calls strategy_store.update with no execution check, migration 0008 allows status 'draft' only, no versions table; the app never calls propose_execution/confirm/apply_result - an edit after a fill becomes a history entry. Mutants M1-M4 on the domain killed, so domain tests were green while the product path lacked the rule."
+  },
+  {
+   "date": "2026-10-23",
+   "where": "builder sequence row 15, REQ-028 AC-2 check on chunk head 025a22cf (session 5db71e90)",
+   "evidence": "modification (LegChange/propose_modification, modification.py:79,:232), adjustment proposal (rules/actions.py:29 Proposal; respond() raises for RuleKind.ADJUSTMENT at :67) and exit (StrategyRecord.mark_exited, versions.py:673) are domain types with green tests that no file under backend/ofo_app calls; the app exits through ep.exit_legs (execute_plan.py:230) and routes only ENTRY/EXIT plans (routes/execute.py:98). Proposal('', 'r', ()) and ProposedOrder(qty=-3, strike=-5) are accepted with no validation. Caught because the check brief asked 'which app path uses this type?' for each thing. Third occurrence: the automated check above is chunk 2's one process item (ADR-178 process freeze); issue #528 tracks the AC-2 gap."
   }
  ]
 }
