@@ -89,22 +89,17 @@ class PeriodAnswer[T]:
 
 @dataclass(frozen=True)
 class _Failure:
-    """A failed read kept as its recipe (class, arguments, attributes), never the raised object: each ask inside the
-    period raises a NEW exception, so tracebacks never pile up on one shared object (review F2 item 3)."""
+    """A failed read kept as a pattern, never re-raised itself: each ask inside the period raises a NEW copy (same
+    class, arguments and code; no traceback), so tracebacks never pile up on one shared object (review F2 item 3)."""
 
-    cls: type[BaseException]
-    args: tuple[object, ...]
-    state: Mapping[str, object]
+    pattern: BaseException
 
     @classmethod
     def of(cls, exc: BaseException) -> _Failure:
-        return cls(type(exc), tuple(exc.args), MappingProxyType(dict(getattr(exc, "__dict__", {}))))
+        return cls(copy.copy(exc))
 
     def new(self) -> BaseException:
-        fresh = self.cls.__new__(self.cls)
-        fresh.args = self.args
-        fresh.__dict__.update({k: copy.copy(v) for k, v in self.state.items()})
-        return fresh
+        return copy.copy(self.pattern)
 
 
 @dataclass(frozen=True)
@@ -115,8 +110,8 @@ class _LastRead:
     error: _Failure | None
 
 _BACKGROUND: Final = contextvars.ContextVar("ofo_kite_background", default=False)
-#: inside one periodic read (``read_once_per_period``): [slots granted, limiter refusals]; a refusal with no slot granted
-#: means the limiter refused and nothing was sent to Kite
+#: inside one periodic read (``read_once_per_period``): [slots granted, limiter refusals]; a refusal and no slot
+#: granted means the limiter refused and nothing was sent to Kite
 _SENDS: Final[contextvars.ContextVar[list[int] | None]] = contextvars.ContextVar("ofo_kite_sends", default=None)
 _SENT, _REFUSED = 0, 1
 
@@ -241,7 +236,7 @@ class RateLimiter:
 
         Review F2 item 2: a refusal where NOTHING was sent (the limiter's own busy, however the caller wrapped it) is
         never kept as the period's answer, and a user's ask never waits on the lock while a background read holds it
-        (that read may sit in the limiter's queue for up to 30 s): the user reads for itself, through the same bucket."""
+        (that read may sit in the limiter's queue up to 30 s): the user reads for itself, through the same bucket."""
         if kind not in READ_PERIOD_SECONDS:
             raise ValueError(f"unknown read kind {kind!r}")  # fail closed: no unbounded read
         if not call or not isinstance(call, str) or not user_ref or not isinstance(user_ref, str) or user_ref == NO_KEY:
@@ -329,8 +324,8 @@ class RateLimiter:
         return self._pacer.now() + (BACKGROUND_MAX_WAIT_SECONDS if background else USER_MAX_WAIT_SECONDS)
 
     def acquire(self, group: str, key: str, *, background: bool = False, deadline: float | None = None) -> None:
-        """Block until this request may be sent, or raise ``KiteBusy`` (nothing is sent). ``deadline`` is the call's
-        own (``DoorCall``: one limit across a read's retries); none given = this context's limit from now."""
+        """Block until this request may be sent, or raise ``KiteBusy`` (nothing is sent). ``deadline``: the call's own
+        (``DoorCall``, one limit across a read's retries); none = this context's limit from now."""
         limit = self._deadline(background) if deadline is None else deadline
         while True:
             self._pacer.sleep_until(self._counted_reserve(group, key, background, limit))
@@ -460,18 +455,22 @@ class DoorCall:
         self._is_read = is_read is True
         self._background = _BACKGROUND.get()
         self._deadline: float | None = None
+        self._token: contextvars.Token[DoorCall | None] | None = None
         self.retries = 0
 
-    def _limit(self) -> float:
+    def __enter__(self) -> DoorCall:
+        self._token = _CALL.set(self)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._token is not None:
+            _CALL.reset(self._token)
+
+    def limit(self) -> float:
+        """The call's one deadline, fixed at its first ``acquire``."""
         if self._deadline is None:
             self._deadline = self._limiter._deadline(self._background)
         return self._deadline
-
-    def acquire(self) -> None:
-        self._limiter.acquire(self._group, self._key, background=self._background, deadline=self._limit())
-
-    async def aacquire(self) -> None:
-        await self._limiter.aacquire(self._group, self._key, background=self._background, deadline=self._limit())
 
     def retry(self, retry_after: str | None) -> bool:
         self._limiter.note_429(self._group, self._key, self._user, stated_wait(retry_after))
@@ -481,13 +480,19 @@ class DoorCall:
         return True
 
 
+_CALL: Final[contextvars.ContextVar[DoorCall | None]] = contextvars.ContextVar("ofo_kite_door_call", default=None)
+
+
 def acquire(group: str, key: str) -> None:
-    """The door's call: wait for a slot (user or background by context) or raise ``KiteBusy``."""
-    current().acquire(group, key, background=_BACKGROUND.get())
+    """The door's call: wait for a slot (user or background by context) or raise ``KiteBusy``; inside a ``DoorCall``
+    every retry shares the call's one deadline."""
+    call = _CALL.get()
+    current().acquire(group, key, background=_BACKGROUND.get(), deadline=None if call is None else call.limit())
 
 
 async def aacquire(group: str, key: str) -> None:
-    await current().aacquire(group, key, background=_BACKGROUND.get())
+    call = _CALL.get()
+    await current().aacquire(group, key, background=_BACKGROUND.get(), deadline=None if call is None else call.limit())
 
 
 def note_429(group: str, key: str, user_ref: str) -> None:

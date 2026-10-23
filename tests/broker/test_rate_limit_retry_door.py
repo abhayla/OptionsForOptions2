@@ -155,7 +155,7 @@ def test_ac5_a_write_is_never_retried_even_with_a_stated_wait() -> None:
 
 @pytest.mark.parametrize(("header", "seconds"), [("1", 1.0), ("0", 0.0), ("7", 7.0), (None, 10.0), ("", 10.0),
                                                  ("-1", 10.0), ("1.5", 10.0), ("Wed, 21 Oct 2026 07:28:00 GMT", 10.0),
-                                                 ("１", 10.0), ("999999", 10.0), (" 2 ", 2.0)])
+                                                 ("\N{FULLWIDTH DIGIT ONE}", 10.0), ("999999", 10.0), (" 2 ", 2.0)])
 def test_ac4_stated_wait_reads_only_plain_seconds_else_kites_10_s(header: str | None, seconds: float) -> None:
     """The stated wait is Retry-After as plain ASCII delta-seconds (up to 5 digits); anything else is Kite's
     documented 10 s (F-60) - fail safe: never a shorter wait than Kite asked."""

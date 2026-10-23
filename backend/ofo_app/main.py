@@ -91,7 +91,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     no environment value or flag skips it, and an audit hook cannot be removed."""
     _egress.install()
     config = broker_config if broker_config is not None else load_broker_config()
-    _rate_limit.install_app_key(config.api_key)  # REQ-118 AC-1: keyless calls (the instrument file) use the app's bucket
+    _rate_limit.install_app_key(config.api_key)  # REQ-118 AC-1: a keyless call (instrument file) uses the app's bucket
     # ADR-073: the framework docs page and API description exist only in development and test; in production
     # (and any other APP_ENV) they are not mounted, so they answer 404.
     docs: dict[str, None] = {} if app_env() in DOCS_ENVS else {
