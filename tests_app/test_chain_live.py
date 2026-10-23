@@ -239,7 +239,7 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
                                                         "unavailable_reason"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
-                                    "rows_missing", "rows", "answered_at"}
+                                    "rows_missing", "rows", "answered_at", "market_closed", "last_price_at"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():

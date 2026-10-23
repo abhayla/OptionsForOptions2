@@ -24,6 +24,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
+from ofo.market_calendar import is_market_open
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
@@ -143,6 +144,26 @@ class MarketContext:
     #: whose Zerodha feed this is (ADR-053): part of every shared-cache key, so two users' feeds never share. None (a
     #: test or replay context with no owner) means nothing is shared: every reader computes for itself.
     feed_owner: str | None = None
+
+
+@dataclass(frozen=True)
+class MarketState:
+    """REQ-114 AC-7 / ADR-177: what every price answer carries about the market. ``closed``: the ADR-119 calendar says
+    the market is not open at the answer's time (a date it cannot answer reads closed); ``last_price_at``: when the
+    feed's last PRICE frame arrived (never a heartbeat), the time the market-closed and reconnecting texts show."""
+
+    closed: bool
+    last_price_at: datetime.datetime | None
+
+
+def market_state(ctx: Optional[MarketContext], at: datetime.datetime) -> MarketState:
+    """The ONE market-state read behind the outcome, chain and index answers (class market-state-decided-per-surface):
+    the provider's own feed answers (``FeedState.market_closed``, which also sets every quote's health); a provider
+    with no feed state, or no context at all, gets the same calendar function the feed defaults to (fail closed)."""
+    feed = None if ctx is None else getattr(ctx.provider, "feed", None)
+    closed = getattr(feed, "market_closed", None)
+    return MarketState(closed=(not is_market_open(at)) if closed is None else bool(closed(at)),
+                       last_price_at=getattr(feed, "last_price_at", None))
 
 
 def feed_scope(ctx: MarketContext) -> FeedScope | None:
@@ -357,6 +378,10 @@ class OutcomeResponse(ApiModel):
     valuation: Optional[datetime.datetime]
     #: ADR-088: when the server produced THIS answer (aware, UTC) in every state; the page shows it as "Checked at"
     answered_at: datetime.datetime
+    #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the page shows the one market-closed banner)
+    market_closed: bool
+    #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
+    last_price_at: Optional[datetime.datetime]
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     legs: list[LegOut]
@@ -461,6 +486,8 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)
     body["answered_at"] = answered_at
+    state = market_state(ctx, answered_at)
+    body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if ctx is not None and ux is UXLevel.ADVANCED and not live_blocked:  # not live: no frozen bid/ask either  # the UX gate: nothing else ever carries bid/ask

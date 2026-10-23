@@ -551,6 +551,22 @@
             "title": "Expiry",
             "type": "string"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
+          "market_closed": {
+            "title": "Market Closed",
+            "type": "boolean"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/ChainRowOut"
@@ -643,7 +659,9 @@
           "atm_strike",
           "rows_missing",
           "rows",
-          "answered_at"
+          "answered_at",
+          "market_closed",
+          "last_price_at"
         ],
         "title": "ChainOut",
         "type": "object"
@@ -1355,6 +1373,22 @@
             "title": "Indices",
             "type": "array"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
+          "market_closed": {
+            "title": "Market Closed",
+            "type": "boolean"
+          },
           "state": {
             "enum": [
               "LIVE",
@@ -1367,7 +1401,9 @@
         "required": [
           "state",
           "indices",
-          "answered_at"
+          "answered_at",
+          "market_closed",
+          "last_price_at"
         ],
         "title": "IndicesOut",
         "type": "object"
@@ -1574,6 +1610,18 @@
             "title": "Answered At",
             "type": "string"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/ofo_app__routes__outcome__LegOut"
@@ -1583,6 +1631,10 @@
           },
           "margin": {
             "$ref": "#/components/schemas/ofo_app__routes__outcome__MarginOut"
+          },
+          "market_closed": {
+            "title": "Market Closed",
+            "type": "boolean"
           },
           "output_label": {
             "anyOf": [
@@ -1722,6 +1774,8 @@
           "output_label",
           "valuation",
           "answered_at",
+          "market_closed",
+          "last_price_at",
           "spot_level",
           "spot_at",
           "legs",
