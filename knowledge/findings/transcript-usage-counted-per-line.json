@@ -1,0 +1,27 @@
+{
+ "id": "transcript-usage-counted-per-line",
+ "scope": "generic",
+ "class": "A script that sums token usage from a Claude Code transcript (.jsonl) line by line over-counts, because the transcript writes one line per content block of the same assistant message and every such line repeats the message's full usage; any per-line total (tokens, turns) is inflated by the blocks-per-message ratio, while a per-line average stays roughly right, which hides the error.",
+ "mechanism": "Assistant messages with text + tool_use blocks are split into several .jsonl lines sharing one message.id, each carrying the identical usage object; summing usage per line counts that message 2-3 times.",
+ "first_seen": {
+  "date": "2026-10-23",
+  "where": "scripts/orchestrator/row_actuals.py:75-81 transcript_tokens (commit f441b87d), process-tools check in session 5db71e90",
+  "evidence": "newest real session .jsonl: tool total 408383 vs a per-message-id recount 176261 (124 assistant lines, 53 distinct ids, 42 ids repeated with identical usage); row 16 agent output: 1041991 vs 494203 (135 lines, 70 ids)"
+ },
+ "fix": "Count usage once per message.id (keep the last line per id); a test feeds a transcript where one id appears three times. Swept: scripts/orchestrator/measure_process.py read_session (lines 152-155) counts turns and ctx per line too - same fix; its avg_ctx is ratio-stable, its turns/ctx totals are not.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Found by an independent recount in a findings-only check. Guarded once both scripts carry the per-id test."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-23",
+   "where": "row_actuals.py and measure_process.py (same session)",
+   "evidence": "as first_seen; measure_process read_session sums per line (read of lines 149-163)"
+  }
+ ]
+}

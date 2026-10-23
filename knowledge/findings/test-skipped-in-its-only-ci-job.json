@@ -1,0 +1,27 @@
+{
+ "id": "test-skipped-in-its-only-ci-job",
+ "scope": "generic",
+ "class": "A CI fix that makes a red job green with a skip-if-missing (importorskip, skipif on a package or env var) silently drops the test from CI whenever the job that skips it is the only job whose test paths include the file; the job turns green with the tests unrun, and nothing reports that the file now runs nowhere.",
+ "mechanism": "The kit job runs tests/ with only pyyaml, jsonschema and pytest installed; the app job (pytest-app.ini, testpaths = tests_app) has asyncpg but never collects tests/. pytest.importorskip('asyncpg') in tests/orchestrator/test_db_run_fresh.py therefore skips it in the one job that collects it.",
+ "first_seen": {
+  "date": "2026-10-23",
+  "where": "CI fix 1 (5d5534d0), tests/orchestrator/test_db_run_fresh.py:13 - 18 tests of a script that DROPs databases",
+  "evidence": "findings-only check (Opus, session 5db71e90): the only pytest over tests/ is the kit workflow after 'pip install pyyaml jsonschema pytest'; pytest-app.ini testpaths = tests_app; app-tests.yml runs only tests/test_bundle_secret_scan.py from tests/. Locally with asyncpg the file passes."
+ },
+ "fix": "Run the skipped file explicitly in a job that installs the dependency (app-tests.yml, after pip install -r requirements-app.txt). Class-level: a repo test that lists every importorskip/skipif-on-dependency file under tests/ and asserts each is named in some app-tests.yml step.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Found by a findings-only review of the CI fix. The class-level repo test above is the detection upgrade."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-23",
+   "where": "CI fix 1, chunk 1",
+   "evidence": "as first_seen"
+  }
+ ]
+}

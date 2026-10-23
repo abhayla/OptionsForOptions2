@@ -433,6 +433,7 @@ issues:
   "#522": 4a  # Row 10 (REQ-118) MINORs: rate_limit.py Kite-specific, 429 typed twice, background waits real timing
   "#523": 4a  # Kill-by-name hook MINORs: false refusals on PID-file/variable forms, 4 untested paths
   "#524": S6.7  # Reference register: 6 deferred MINORs from the Tier A check (ADR-176)
+  "#526": 4a  # Chunk 1 rows 11-15 MINORs: banner time formats, SpotRefused net, surviving engine mutants, brief-path fail-open
 
 # Work items whose status is not done.
 work_items:

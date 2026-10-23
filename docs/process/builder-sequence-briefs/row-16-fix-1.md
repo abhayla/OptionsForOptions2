@@ -1,0 +1,44 @@
+# Row 16 fix 1: REQ-038 (W-144) - verifier round 1 findings (versions after execution)
+
+Common brief: docs/process/builder-brief.md (Budget hard stop: at 72 calls start nothing new, commit, report).
+Size: M, about 6 files, 6 items
+CI: app tests job `api` (`tests_app/test_strategy_versions_app.py`, `tests_app/test_strategy_store.py`, `tests_app/test_strategy_followups.py`; vars: DATABASE_URL via CI); kit tests job (`tests/strategy/`; vars: none).
+Expected (orchestrator, before dispatch): 45 min / ~350k.
+
+Core: a version becomes active ONLY from a reconciled return of a plan that was built for THAT version, and a broker mismatch keeps the strategy blocked (reconciliation required) across requests until it is resolved.
+Proof: step 1 is two failing DB tests on the REAL store, in `tests_app/test_strategy_versions_app.py`: (1) confirm version 2, then store an ENTRY plan built from version 1 (no version link, or link = 1) and return it reconciled: today version 2 becomes active (verifier: `strategy_store.py:468` matches plans by time only); after the fix it stays proposed. (2) a return whose broker units differ from the active version: a later `PUT` and `confirm` in a NEW request are refused with the reconciliation template; today they go through because `_replay` (`strategy_store.py:360-368`) drops the domain's `reconciliation_required` flag (`backend/ofo/strategy/versions.py:817-829`).
+Class: version-state-decided-without-its-own-evidence - every path in `backend/ofo_app/strategy_store.py` that moves a version's state or allows an edit after execution (activate, supersede, propose, confirm, restore, the execution-state check): 4 known gaps before (time-only plan match, flag not persisted, open-plan check skipped once versions exist at :345, INSERT of an `active` row not checked by the 0022 trigger), 0 after.
+
+Spec basis: REQ-038 AC-3: "A proposed version is separate from the active version". REQ-038 AC-4: "the broker's actual state wins". ADR-019 (versions after execution). ADR-016 to ADR-018 (Zerodha is the authority; no automatic retry; an unresolved mismatch blocks execution).
+Copy from: none - the version rules exist in this project's domain (`backend/ofo/strategy/versions.py`); this fix wires them, it does not rewrite them.
+Reference: screen 119 - copy nothing: RD-114 (what a save stores) is a SPEC CHANGE record waiting for the owner (Q282) and is not built here.
+Findings checked: `verified-on-a-module-the-product-does-not-call`, `transcript-usage-counted-per-line` (not relevant), `test-skipped-in-its-only-ci-job` (do not add importorskip).
+
+## Where you work
+Worktree `D:\Abhay\Ventures\OptionsForOptions2-row-16`, branch `build/seq-row-16`, already at the chunk head d99b2097. Commit with `git commit -F <msg> -- <your paths>`, and do NOT push. Put the migration in its own commit. BINDING: never stop a process by name; stop only PIDs you started. Database: ONE local run only, of your test file plus the two store files, through
+`python D:/Abhay/scratch/ofo2-builder-sequence/fresh_launch.py D:/Abhay/Ventures/OptionsForOptions2-row-16 python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini -o faulthandler_timeout=60 <files>`.
+If the tunnel or that launcher is unavailable, say so and stop at the DB step; CI runs the rest. If a write is refused by `verifier_inflight_gate`, wait 2 minutes, retry once, then keep editing and report the pending commit. Scratch:
+`C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\5db71e90-61e3-4f1b-8a6c-a0ee38c54e11\scratchpad\row16-fix1`.
+
+## What to do
+1. Migration 0023 (own commit; grant to `ofo_app` per ADR-048): `execution_plans.strategy_version` (nullable integer; the version number the plan was built from) and `strategy_versions.reconciliation_required` (boolean, default false) - or derive the flag from a stored last outcome if that is simpler and you say why. Extend the 0022 state trigger (or add a CHECK) so an INSERT of an `active` row needs `confirmed_at` and `reconciled_at` too. Down drops what up adds.
+2. Plan-version link: wherever an ENTRY/adjustment plan is created for a strategy (`backend/ofo_app/routes/execute.py` around :294, `execute_plan.py`), record the version number of the definition it was built from (today always the active version, from `store.load`). Activation (`strategy_store.py` ~:455-490) requires a confirmed pending version AND a reconciled return of a plan whose `strategy_version` equals that pending version; a plan with another or no version never activates it (fail closed). NOTE: Execute still builds only from the active version (known limit: an ENTRY is refused while units are held, `execute.py:338-346`); building from a confirmed proposal is the adjustments row's job - do NOT change that here, so after this fix no live plan can activate a proposal yet. Say so in your report.
+3. Sticky reconciliation: persist the domain's `reconciliation_required` when an outcome leaves the broker away from the active version (MISMATCH, PARTIAL, REJECTED/FAILED with units changed, broker units unknown = None), restore it in `_replay`, and refuse `update`/`confirm` while it is set, with an explanation template (one home: `backend/ofo/errors/templates.py`; add its pin in `tests/errors/template_pins.json` the way existing pins are added). Unexplained broker units (manual trades, `execution_return.py:~363`) are never counted as this strategy's: they set the flag instead.
+4. Execution-state check (`strategy_store.py` ~:345): check for an open plan BEFORE the early EXECUTED return, so an in-flight plan is refused (IN_FLIGHT) even after versions exist.
+5. Read-back: `VersionOut` (`backend/ofo_app/routes/strategies.py`) carries each version's definition, so a proposed version can be read back; `PUT` after execution answers the saved proposal in `versions` (the top-level definition stays the active one). Regenerate `docs/api/openapi.json` with `python scripts/generate_openapi.py` and keep `tests_app/test_response_door.py` green (add `VersionOut`'s new fields to any door test that lists fields; add one golden case with one stored version).
+6. Tests for the verifier's four surviving mutants, each failing on its mutant: remove the drift/undecidable check (`execution_return.py:~361`); PARTIAL treated as superseded (`strategy_store.py:~486`); the after-confirmation filter dropped (`:~468`, now the version link); `nothing_placed` treated as complete (`:~323`). Also make the existing unconfirmed-proposal test fail on its assertion, not on a None comparison error.
+
+Attack list: (each names its test file - all `tests_app/test_strategy_versions_app.py` unless said)
+1. A reconciled plan built from version 1 never activates confirmed version 2.
+2. MISMATCH, PARTIAL, REJECTED with units changed, broker units None: flag set, persisted, and a new request's `PUT`/`confirm` refused; a clean reconciled return of the version's own plan clears it.
+3. Manual units on the broker are not counted as the strategy's; they set the flag.
+4. An open plan is refused after versions exist.
+5. Direct INSERT of an `active` row without confirmed_at/reconciled_at is refused by the database (migration test).
+6. The four mutants above are killed (list each with its killing test).
+
+Standing items: (a) n/a: no time-budgeted job; (b) n/a: no CI step changes; (c) every "may this activate / may this edit" check fails closed on an unreadable store, a missing link or an unknown outcome; (d) the broker's answer states (complete+match, complete+different, partial, rejected, failed, nothing placed, units unknown) each have a stated effect on the version and the flag - list them in the report as a table.
+Mutation gate: before reporting, write the six attack mutants to `row16-fix1\mutants.json` in the scratch folder and run `python scripts/orchestrator/mutation_gate.py` on them (read `--help`; DB-backed mutants need the one DB run - if it is not possible, say so per mutant); quote the results from its output file.
+Tests: python -m pytest -q -p no:cacheprovider tests/strategy tests/reconciliation tests/errors/test_template_pins.py; python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_response_door.py tests_app/test_openapi_drift.py; python -m pytest -q -p no:cacheprovider tests/test_*.py tests/errors/test_write_allowlist.py tests/errors/test_producer_inventory.py; python -m pytest -q -p no:cacheprovider -m repo_scan tests
+No new duplicated literal; reuse the existing helper; ruff/mypy baselines must not rise; targeted tests only; no regenerated files in the PR other than `docs/api/openapi.json` (the drift test needs it).
+Budget: 60 min wall-clock, 80 tool calls
+Report: evidence-table (one row per item 1-6 and per attack, with command + result line; the DB run's summary line or "DB not run: <reason>"; commit shas)
