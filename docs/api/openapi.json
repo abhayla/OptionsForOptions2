@@ -2965,6 +2965,11 @@
             "title": "Rows",
             "type": "array"
           },
+          "scenario_heading": {
+            "items": {},
+            "title": "Scenario Heading",
+            "type": "array"
+          },
           "spot_at": {
             "anyOf": [
               {
@@ -3002,6 +3007,7 @@
           "spot_level",
           "spot_at",
           "output_label",
+          "scenario_heading",
           "columns",
           "rows"
         ],

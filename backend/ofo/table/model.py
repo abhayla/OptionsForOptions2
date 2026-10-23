@@ -597,13 +597,18 @@ def scenario_header(underlying: str, value: Decimal, markers: Sequence[str] = ()
     return render_explanation(f"scenario_header_{key}", level=value)
 
 
-def scenario_caption(table: Table) -> str:
-    """The scenario section's caption (AC-7, Q227): the pair "<underlying> at expiry | You make/lose" — SENSEX for a
-    SENSEX strategy."""
+def scenario_caption_parts(table: Table) -> tuple[ExplanationText, ExplanationText]:
+    """The two halves of the scenario caption (AC-7, Q227): "<underlying> at expiry" and "You make/lose" - SENSEX for a
+    SENSEX strategy. The screen draws them over the scenario columns; both are catalogue renders."""
     if not isinstance(table, Table):
         raise ValueError(f"table must be a Table, got {table!r}")
-    return " | ".join((render_explanation("scenario_caption_left", underlying=table.underlying),
-                      render_explanation("scenario_caption_right")))
+    return (render_explanation("scenario_caption_left", underlying=table.underlying),
+            render_explanation("scenario_caption_right"))
+
+
+def scenario_caption(table: Table) -> str:
+    """The scenario section's caption (AC-7, Q227): the pair "<underlying> at expiry | You make/lose"."""
+    return " | ".join(scenario_caption_parts(table))
 
 
 def visible_columns(table: Table) -> tuple[ColumnSpec, ...]:

@@ -290,6 +290,7 @@ class TableOut(ApiModel):
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     output_label: Optional[CatalogueText]
+    scenario_heading: list[CatalogueText]  # AC-7: [left, right]
     columns: list[ColumnOut]
     rows: list[RowOut]
 

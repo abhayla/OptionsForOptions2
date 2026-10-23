@@ -161,3 +161,10 @@ async def test_leg_quotes_carry_bid_ask_for_everyone(replayed):
 async def test_no_provider_has_no_leg_quotes(replayed):
     out = (await _post(_body(replayed))).json()
     assert out["state"] == "NOT_CONNECTED" and "leg_quotes" not in out
+
+
+async def test_route_returns_the_scenario_heading_pair(replayed):
+    """REQ-035 AC-7: the route's table carries the heading pair as two parts (no database needed)."""
+    resp = await _post(_body(replayed), replayed)
+    assert resp.is_success, resp.text
+    assert resp.json()["table"]["scenario_heading"] == ["NIFTY at expiry", "You make/lose"]

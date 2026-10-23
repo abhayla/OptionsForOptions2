@@ -14,6 +14,14 @@ const props = defineProps({
   maxLoss: { type: String, default: null },
 })
 const cols = computed(() => props.table.columns)
+// AC-7: the API's heading pair ("<underlying> at expiry", "You make/lose") sits over the scenario columns, one cell spanning them.
+const heading = computed(() => {
+  const pair = props.table.scenario_heading
+  const first = cols.value.findIndex((c) => c.is_scenario_level)
+  if (!Array.isArray(pair) || pair.length !== 2 || first < 0) return null
+  const span = cols.value.filter((c) => c.is_scenario_level).length
+  return { left: pair[0], right: pair[1], before: first, span, after: cols.value.slice(first).filter((c) => !c.is_scenario_level).length }
+})
 </script>
 
 <template>
@@ -21,6 +29,13 @@ const cols = computed(() => props.table.columns)
     <div class="table-scroll" data-h-scroll data-testid="strategy-table-scroll">
       <table class="strategy-table" data-testid="strategy-table">
         <thead>
+          <tr v-if="heading" data-testid="scenario-caption-row">
+            <th v-if="heading.before" :colspan="heading.before" scope="colgroup" aria-hidden="true"></th>
+            <th :colspan="heading.span" scope="colgroup" data-testid="scenario-caption">
+              <span data-testid="scenario-caption-left">{{ heading.left }}</span> | <span data-testid="scenario-caption-right">{{ heading.right }}</span>
+            </th>
+            <th v-if="heading.after" :colspan="heading.after" scope="colgroup" aria-hidden="true"></th>
+          </tr>
           <tr>
             <th
               v-for="(c, i) in cols"

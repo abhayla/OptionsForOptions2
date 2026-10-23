@@ -16,6 +16,7 @@ from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outc
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
 from ofo.table import TOTAL_ROW_ID
+from ofo.table.model import scenario_caption
 
 RATE = Decimal("0.065")
 LEGS = ("NSE_FO:44614", "NSE_FO:44615")  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -89,3 +90,21 @@ def test_the_serialized_outcome_carries_no_level_and_the_full_column_set(feed):
     shown = {c["id"] for c in body["table"]["columns"] if c["visible"]}
     assert {"iv", "delta", "gamma", "theta", "vega", "pnl_percent", "lower_be", "upper_be"} <= shown
     assert all(c["visible"] for c in body["table"]["columns"])
+
+
+def test_the_serialized_table_carries_the_scenario_heading_pair_for_nifty_and_sensex(feed):
+    """REQ-035 AC-7: the serialized table carries the pair "<underlying> at expiry" / "You make/lose" (Q227), for
+    NIFTY and for SENSEX; the wording is the catalogue's (scenario_caption_parts), the underlying is the strategy's."""
+    provider, at = feed
+    snap = read_snapshot(provider, "NIFTY", list(LEGS), at, RATE)
+    out = build_outcome(definition(provider, at), snap, snap.valuation)
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    assert outcome_to_dict(out)["table"]["scenario_heading"] == ["NIFTY at expiry", "You make/lose"]
+    assert " | ".join(outcome_to_dict(out)["table"]["scenario_heading"]) == scenario_caption(out.table)
+    sensex = ("BSE_FO:889331", "BSE_FO:889150")  # a SENSEX CE and PE in the same recording
+    sd = StrategyDefinition("SENSEX", tuple(PlannedLeg(i, Action.SELL, 1, provider.book.get(i, at).ltp, T0)
+                                            for i in sensex))
+    ssnap = read_snapshot(provider, "SENSEX", list(sensex), at, RATE)
+    sout = build_outcome(sd, ssnap, ssnap.valuation)
+    assert sout.state is OutcomeState.COMPUTED, sout.reason
+    assert outcome_to_dict(sout)["table"]["scenario_heading"] == ["SENSEX at expiry", "You make/lose"]

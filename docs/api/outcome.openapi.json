@@ -1174,6 +1174,11 @@
             ],
             "title": "Output Label"
           },
+          "scenario_heading": {
+            "items": {},
+            "type": "array",
+            "title": "Scenario Heading"
+          },
           "columns": {
             "items": {
               "$ref": "#/components/schemas/ColumnOut"
@@ -1196,6 +1201,7 @@
           "spot_level",
           "spot_at",
           "output_label",
+          "scenario_heading",
           "columns",
           "rows"
         ],

@@ -111,6 +111,81 @@ describe('AC-3 helpers', () => {
   })
 })
 
+// AC-7 / AC-2 / AC-3: the table as drawn. The heading pair is what the API sends (backend tests assert the wording from
+// scenario_caption_parts); the fixture predates the field, so the pair is added here, as the API now sends it.
+import StrategyTable from '@/components/strategy/StrategyTable.vue'
+const HEADING = ['NIFTY at expiry', 'You make/lose']
+const withHeading = (t, pair = HEADING) => ({ ...t, scenario_heading: pair })
+const drawn = (table) => mount(StrategyTable, { props: { table }, global: { plugins: [] } })
+
+describe('REQ-035 AC-7, AC-2, AC-3: the rendered table', () => {
+  it('AC-2: the header cells appear in exactly the API column order', () => {
+    const w = drawn(withHeading(real.table))
+    expect(w.findAll('[data-testid="col-head"]').map((h) => h.attributes('data-col'))).toEqual(ids(real.table.columns))
+    w.unmount()
+  })
+  it('AC-2: swapping two columns in the API order changes the drawn order (the screen never reorders)', () => {
+    const cols = [...real.table.columns]
+    ;[cols[1], cols[2]] = [cols[2], cols[1]]
+    const w = drawn(withHeading({ ...real.table, columns: cols }))
+    expect(w.findAll('[data-testid="col-head"]').map((h) => h.attributes('data-col'))).toEqual(ids(cols))
+    expect(ids(cols)).not.toEqual(ids(real.table.columns))
+    w.unmount()
+  })
+  it('AC-3: exactly one header carries current-col and it is the current level', () => {
+    const w = drawn(withHeading(real.table))
+    const current = w.findAll('th.current-col')
+    expect(current).toHaveLength(1)
+    expect(current[0].attributes('data-col')).toBe(real.spot_level)
+    w.unmount()
+  })
+  it('AC-3: the highlight moves when the current level changes', () => {
+    const cols = real.table.columns.map((c) => ({ ...c, markers: (c.markers || []).filter((m) => m !== 'CURRENT') }))
+    const i = cols.findIndex((c) => c.id === '22600')
+    cols[i] = { ...cols[i], markers: ['CURRENT'] }
+    const w = drawn(withHeading({ ...real.table, columns: cols }))
+    const current = w.findAll('th.current-col')
+    expect(current).toHaveLength(1)
+    expect(current[0].attributes('data-col')).toBe('22600')
+    w.unmount()
+  })
+  it('AC-7: the heading pair renders once, in one cell spanning every scenario column, above the column heads', () => {
+    const w = drawn(withHeading(real.table))
+    const caption = w.find('[data-testid="scenario-caption"]')
+    expect(w.findAll('[data-testid="scenario-caption"]')).toHaveLength(1)
+    expect(w.find('[data-testid="scenario-caption-left"]').text()).toBe('NIFTY at expiry')
+    expect(w.find('[data-testid="scenario-caption-right"]').text()).toBe('You make/lose')
+    expect(caption.attributes('colspan')).toBe(String(real.table.columns.filter((c) => c.is_scenario_level).length))
+    const rows = w.findAll('thead tr')
+    expect(rows[0].find('[data-testid="scenario-caption"]').exists()).toBe(true)
+    expect(rows[1].findAll('[data-testid="col-head"]')).toHaveLength(real.table.columns.length)
+    w.unmount()
+  })
+  it('AC-7: a SENSEX table shows the SENSEX heading the API sent, not a NIFTY one', () => {
+    const w = drawn(withHeading({ ...real.table, underlying: 'SENSEX' }, ['SENSEX at expiry', 'You make/lose']))
+    expect(w.find('[data-testid="scenario-caption-left"]').text()).toBe('SENSEX at expiry')
+    expect(w.text()).not.toContain('NIFTY at expiry')
+    w.unmount()
+  })
+  it('AC-7: a table with no heading from the API draws no caption (nothing invented)', () => {
+    const w = drawn(real.table)
+    expect(w.find('[data-testid="scenario-caption-row"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('You make/lose')
+    w.unmount()
+  })
+  it('AC-7: not connected / not live draws no table and no heading', async () => {
+    apiAnswer = { state: 'NOT_CONNECTED', underlying: 'NIFTY', reason: null, table: null }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(w.find('[data-testid="strategy-table"]').exists()).toBe(false)
+    expect(w.find('[data-testid="scenario-caption"]').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
 describe('W-075: the Charges and taxes row is drawn from the API like every other row', () => {
   it('cellText gives the API label and the API money display, and the browser adds nothing', () => {
     const row = {
