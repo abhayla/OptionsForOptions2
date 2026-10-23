@@ -1,6 +1,15 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 2 END, 2026-10-23 12:36 IST (clock) - READ THIS FIRST (newest)
+## UPDATE session 3, 2026-10-23 12:51 IST (clock) - READ THIS FIRST (newest)
+- **New binding rule ADR-173 (owner 12:48-12:50):** Sensibull first for every requirement, enforced by `check_brief.py`
+  (process item `process-sensibull-line.md` on build/seq-process); rows 1-14 ALL re-studied against the study and
+  fixed wherever they differ (study output: session scratchpad `sensibull-study/rows-01-07.md`, `rows-08-14.md`).
+  A row in flight closes only after its study is done and its gaps are fixed or recorded.
+- Process branch merged into the chunk branch (7d93c1bd). Row 11 verify r1 dispatched 12:46 (b04d47f0); row 12 fix 1
+  dispatched 12:46 in `-builder-next-12` (overlap gate OK). Known red: one hook test whose sample brief predates the
+  mutation-gate rule - fixed in the Sensibull process item.
+
+## UPDATE session 2 END, 2026-10-23 12:36 IST (clock) - older
 - **Closed:** rows 1-5, 7, 9 (REQ-113), 10 (REQ-118, fb9a3702: Done, AC-6 sender deferred #521, MINORs #522). PARKED:
   6 (#517), 8 (#519). Chunk branch `build/seq-chunk-1` head fb9a3702, pushed; no PR until row 16.
 - **In flight - four worktrees (ADR-171: four rows in flight, rows close in order, no shared files, ONE db run at a time,
