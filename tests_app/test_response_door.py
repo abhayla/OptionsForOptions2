@@ -343,6 +343,8 @@ APP_MODELS = (
     "ofo_app.routes.execution_return.ReturnPlanOut",
     "ofo_app.routes.features.FeaturesOut",
     "ofo_app.routes.health.HealthOut",
+    "ofo_app.routes.leg_edit.EditLegOut",
+    "ofo_app.routes.leg_edit.LegEditOut",
     "ofo_app.routes.leg_picker.DepthLevelOut",
     "ofo_app.routes.leg_picker.DepthOut",
     "ofo_app.routes.leg_picker.ForwardOut",

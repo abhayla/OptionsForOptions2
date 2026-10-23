@@ -94,7 +94,18 @@ def _disconnect_status() -> object:
     return DisconnectStatus(error=disconnect_error(AT), last_updated=AT)
 
 
+def _leg_edit_refused() -> object:
+    from decimal import Decimal
+
+    from ofo.engine.legs import Action, Instrument, Leg
+    from ofo.errors import LegValue
+    from ofo.strategy.leg_edit import LegEditRefused
+    leg = Leg(Action.BUY, Instrument.FUT, None, AT.date(), 65, Decimal("23100"))
+    return LegEditRefused("leg_edit_futures_no_stepper", leg=LegValue(1, leg, "NIFTY"))
+
+
 EXAMPLES: dict[str, Callable[[], object]] = {
+    "ofo.strategy.leg_edit.LegEditRefused": _leg_edit_refused,
     "ofo.marketdata.disconnect.DisconnectStatus": _disconnect_status,
     "ofo.execution.safety.CheckFailure": _check_failure,
     "ofo.execution.send_guard.SendRefused": _send_refused,

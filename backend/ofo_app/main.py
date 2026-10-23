@@ -41,6 +41,7 @@ from ofo_app.routes import (
     features,
     health,
     indices,
+    leg_edit,
     leg_picker,
     live,
     outcome,
@@ -90,6 +91,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(leg_edit.router)  # W-148: one leg edit (step, multiplier, tick, typed price) answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
     app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
