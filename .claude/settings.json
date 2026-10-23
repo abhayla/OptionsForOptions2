@@ -162,6 +162,15 @@
         ]
       },
       {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/question_night_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
+      {
         "matcher": "Agent|Task",
         "hooks": [
           {

@@ -248,7 +248,8 @@ def test_threat_model_bullet_and_lowercase_forms_pass(tmp_path):
 
 
 # ---- row-review R1 (attack list) and R3 (size budget): builder briefs only
-STANDING = "Standing items: (a) n/a: x (b) n/a: y (c) n/a: z (d) n/a: w\n"
+STANDING = ("Standing items: (a) n/a: x (b) n/a: y (c) n/a: z (d) n/a: w\n"
+            "Run `python scripts/orchestrator/mutation_gate.py` before reporting.\n")
 GOOD_BUDGET = "Budget: 60 min wall-clock, 80 tool calls\n"
 FIVE = "1. a\n2. b\n3. c\n4. d\n5. e\n"
 
@@ -327,8 +328,8 @@ def test_non_builder_brief_is_unaffected(tmp_path):
 
 def test_real_row_7_brief_passes_and_row_1_predates_the_rules(capsys):
     d = ROOT / "docs" / "process" / "builder-sequence-briefs"
-    assert check_brief.main([str(d / "row-07-REQ-049-data-health.md"), "--root", str(ROOT)]) == 0
-    capsys.readouterr()
+    assert check_brief.main([str(d / "row-07-REQ-049-data-health.md"), "--root", str(ROOT)]) == 1
+    assert "MISSING mutation gate" in capsys.readouterr().out  # row 7 predates the gate (meta review after row 9)
     assert check_brief.main([str(d / "row-01-REQ-001-underlyings.md"), "--root", str(ROOT)]) == 1
     assert "MISSING Attack list" in capsys.readouterr().out
 
@@ -372,3 +373,11 @@ def test_a_row_ahead_brief_names_only_the_row_ahead_worktree_and_no_overlap(tmp_
     code, out = _out(tmp_path, head + "Row-ahead: yes\nWork in OptionsForOptions2-builder-next.\n", capsys)
     assert code == 1 and "ROW-AHEAD overlap" in out
     assert run(tmp_path, head + "Worktree OptionsForOptions2-builder-reqs.\n") == 0
+
+
+def test_a_builder_brief_must_require_the_mutation_gate(tmp_path, capsys):
+    """Meta review after row 9: builders left guards unproven; a builder brief without `mutation_gate.py` is refused."""
+    text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET).replace(
+        "Run `python scripts/orchestrator/mutation_gate.py` before reporting.\n", "")
+    code, out = _out(tmp_path, text, capsys)
+    assert code == 1 and "MISSING mutation gate" in out

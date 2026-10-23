@@ -233,6 +233,10 @@ def check_builder_brief(brief: str) -> list[str]:
         misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
                       "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
     misses.extend(_row_ahead_misses(brief))
+    if "mutation_gate.py" not in brief:
+        misses.append("MISSING mutation gate: a builder brief requires `python scripts/orchestrator/mutation_gate.py` "
+                      "on its attack-list mutants before reporting, results quoted from its file (meta review after "
+                      "row 9: builders left guards unproven in 4 of 5 build parts)")
     return misses
 
 

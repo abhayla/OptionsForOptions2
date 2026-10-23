@@ -3,7 +3,7 @@
 Common brief: docs/process/builder-brief.md (Budget hard stop: at 64 calls start nothing new, commit, report).
 Size: M, 7 files, 2 items
 CI: kit tests job (`tests/orchestrator/test_mutation_gate.py`, `tests/hooks/test_question_night_guard.py`; vars: none).
-Expected (orchestrator, before dispatch ~09:40 IST): build 45 min / ~170k; Tier A check (hook) 20 min / ~150k.
+Expected (orchestrator, before dispatch ~09:06 IST): build 45 min / ~170k; Tier A check (hook) 20 min / ~150k.
 
 Core: a builder cannot report a row while a listed guard mutant survives, because a script - not the builder's memory -
 runs every mutant and fails.

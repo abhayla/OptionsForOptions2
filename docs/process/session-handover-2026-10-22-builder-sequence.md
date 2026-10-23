@@ -1,17 +1,17 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 2, 2026-10-23 ~09:45 IST - read this first (newer than the block below)
+## UPDATE session 2, 2026-10-23 09:06 IST (commit 83707b70) - read this first (newer than the block below)
 - **Closed:** row 8 PARKED #519; row 9 (REQ-113) Done 08:59 (9dcd471c; MINORs #520). Meta review after row 9 applied
   (335485c7). Owner decisions: ADR-170 (keep per-user feeds, ask Zerodha at the demo; F-59), ADR-171 (one row may be
   built ahead, rows close in order, NO shared files between rows in flight, ONE database run at a time, older row
   first, a separate worktree for the row ahead - `check_brief` enforces `Row-ahead: yes` briefs).
-- **In flight:** row 10 (REQ-118 rate limits, W-138) builder dispatched ~09:45 from `row-10-REQ-118-rate-limits.md`;
+- **In flight:** row 10 (REQ-118 rate limits, W-138) builder dispatched ~09:07 from `row-10-REQ-118-rate-limits.md`;
   a process builder (`process-mutation-gate-night-hook.md`: `mutation_gate.py` + the 22:00-08:00 question hook) in
   the same tree on disjoint files - the hook needs a Tier A check (Opus) before it counts.
 - **NEXT:** row 10 verify (Tier A); while it runs, build row 11 AHEAD in `OptionsForOptions2-builder-next` (make it
   with wt-new.ps1) only if row 11's Measure file list shares no file with row 10's changes; row 11 (REQ-114 feed
   health) touches row 9's feed files, which are closed, so check only against row 10.
-- **Kite:** the owner logged in 2026-10-23 ~09:35 (live API on :8765 via run_api_live_wt.py, ofo_dev, order path
+- **Kite:** the owner logged in 2026-10-23 before 09:03 (exact time not recorded) (live API on :8765 via run_api_live_wt.py, ofo_dev, order path
   off); valid until 06:00 tomorrow; read calls only, never a burst that could draw a 429.
 - **R17:** no question box 22:00-08:00 IST or when the owner is away - write `owner-questions-<date>.md`.
 

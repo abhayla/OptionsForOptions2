@@ -83,10 +83,22 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
 - **R18 Mutation results go to a file as they run** (row 9: part B's mutation output was lost when its run was killed,
   so no guard was proven and a finisher had to redo it). Each mutant's result is appended to a results file in the
   agent's scratch folder the moment it finishes; the report quotes that file, never memory.
-- **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
+- **R19 Every time written is read, never typed** (2026-10-23 09:11: the owner found five times in a report and four
+  files 9-34 minutes in the future - 09:20, 09:30, 09:35, 09:40, 09:45 written at 09:06-09:11 - minutes after the meta
+  review had flagged typed times; second occurrence). Any clock time in a report, log, brief or handover comes from
+  `date` run in the same step or from a commit's time (`git log --format=%ad`), written with its source when it is not
+  "now"; an unknown time is written as "not recorded", never estimated. Mechanism candidate (Learn-or-block, 2nd
+  occurrence): a check in `tests/test_row_review_log.py` that refuses a log time later than the commit adding it.
+- **R7 Measured table per row** (+ 2026-10-23, owner asked whether R5 still holds: each row's log states "resumes: N"
+  - a finished agent resumed for more work - and "notes: N" - a short fact sent to a still-running agent; R5 allows
+  notes only to a running agent for a fact it cannot see, never a resume for a small follow-up): every agent of the
+  row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
-- **R6 The orchestrator runs its own checks after every bookkeeping edit**: `tests/test_tests_required_exist.py` after
+- **R6 The orchestrator runs its own checks after every bookkeeping edit** (+ 2026-10-23: also
+  `python -m pytest -q -p no:cacheprovider tests/orchestrator` at every row close - its selector test pins which app
+  tests a diff selects and went red at row 1 when the app tests grew; no brief's guard line runs it, so it stayed red
+  unseen until row 10's close; CI's kit job would have failed at the chunk PR): `tests/test_tests_required_exist.py` after
   any work-item edit, `coverage.py . --check` after any status or stage change (rows 1-3: a W-129 entry naming no file,
   and `status: done` making coverage drop W-129/W-130; work items stay `in_review` until the chunk PR merges).
 
@@ -135,7 +147,7 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
-### Meta review after row 9 (2026-10-23 ~09:20 IST, fresh Sonnet agent, 1.0 min / 121k / 5 calls)
+### Meta review after row 9 (2026-10-23 ~09:00 IST, applied in 335485c7 at 09:03, fresh Sonnet agent, 1.0 min / 121k / 5 calls)
 - Found: waste is NOT shrinking in tokens (rows 4-9: +93%, +124%, +74%, -18%, over, +96%; only row 7 won); time is
   near the estimate. Row 9: the follow-ups closing builder-unfinished tests cost 638k of 2,745k (23%), in 3 parts (A0,
   C, B; not 4 - A1 had none). Rules broken after they were written: the Budget hard stop 3 more times (row 7 88/80, row

@@ -457,6 +457,11 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
 - Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.
 
+## Q275 — DECIDED → ADR-172 (owner, 2026-10-23: mid when two-sided, else LTP) — Is each leg's IV implied from its LTP or its bid-ask mid?
+- `spec/business-rules/scenario-calculations.md` section 4 says "implied from its LTP"; section 2 lists LTP vs mid as
+  open (§95); the code uses the mid with an LTP fallback (`service.py:420`). Real case: 22450 PE mid 100.40 vs last trade
+  102.35 (2026-10-08 09:20:09). Recommendation: mid when two-sided, else LTP. Not blocking rows 12-14.
+
 ## Q274 — DECIDED → ADR-170 (owner, 2026-10-23: ask Zerodha at the demo) — Kite allows 3 websockets per API key across all users (F-59): what do we plan for per-user feeds past 3 users?
 - ADR-053 gives each user their own Kite feed in V1; F-59 shows one Kite Connect app may hold only 3 websocket
   connections in total. F-31: Zerodha's multi-user access comes after a demo, and the owner's limits question was not

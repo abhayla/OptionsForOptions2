@@ -1,0 +1,24 @@
+{
+ "id": "process-kill-by-name-hits-others",
+ "scope": "generic",
+ "class": "An agent stops its own stale process by NAME (`taskkill /IM python.exe`, `Stop-Process -Name python`, `pkill python`, `pkill -f <pattern in its own argv>`) instead of by the PID it recorded at start; every matching process on the machine dies - another agent's test run, the owner's live server, or the agent's own shell.",
+ "mechanism": "The agent did not record the PID of the background process it started, so at clean-up time it could only match by name; nothing refuses a name-based kill.",
+ "first_seen": {
+  "date": "2026-09-05",
+  "where": "user-level standing rule 'Production hosts' R5 (two calling-shell kills that week)",
+  "evidence": "`pkill -f <pattern>` matching its own command line killed the calling shell twice"
+ },
+ "fix": "Stop only PIDs recorded when the process was started; a PreToolUse hook refuses a Bash/PowerShell command that kills by process name or by a pattern, and names the rule (kill by PID).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Mechanism due (third occurrence): a project PreToolUse hook on Bash and PowerShell refusing `taskkill ... /IM`, `Stop-Process -Name`, `pkill`, `killall`, `Get-Process <name> | Stop-Process`; fail open on a crash; Tier A check before wiring."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-075.md"
+ ],
+ "occurrences": [
+  {"date": "2026-09-05", "where": "another project, calling shell killed twice", "evidence": "user-level rule R5"},
+  {"date": "2026-10-23", "where": "builder sequence process item (mutation gate fix round 1), ~09:47 IST", "evidence": "`taskkill //F //IM python.exe` killed the owner's live API on :8765 and any other agent's python run; the agent confirmed it; API restarted 09:48, Kite session intact"}
+ ]
+}
