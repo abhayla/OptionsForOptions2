@@ -34,6 +34,8 @@ REQUIRED = ("id", "kind", "title", "reference_behaviour", "reference_screens", "
 OPTIONAL = ("reference_label", "ac", "adr", "issue")
 MAX_LEN = {"title": 120, "reference_behaviour": 400, "reference_label": 40, "ours": 400}
 MAX_SCREENS = 20
+EXIT_UNREADABLE = 2  # bad usage, or a register the gates cannot trust
+INT_FIELDS = (("row", "a builder row number"), ("issue", "an issue number"))
 # ADR-176 (4): the reference product's name never enters public text. Compared as a hash of whole lower-cased words.
 BANNED_WORD_SHA256 = "51eb0a649e8ea998a8e8527a47858a91d20b263772281af86fffa67f898ca33a"
 
@@ -106,41 +108,51 @@ def _field_errors(rec: dict) -> list[str]:
     """Shape of every field (allow-list): unknown keys, missing keys, types, enums, lengths."""
     errs = [f"unknown field `{k}`" for k in sorted(set(rec) - set(REQUIRED) - set(OPTIONAL))]
     errs += [f"missing field `{k}`" for k in REQUIRED if k not in rec]
+    return errs + _text_errors(rec) + _value_errors(rec) + _screen_errors(rec)
+
+
+def _text_errors(rec: dict) -> list[str]:
+    errs: list[str] = []
     for key in ("title", "reference_behaviour", "ours", "reference_label"):
         if key in rec and not _is_str(rec[key]):
             errs.append(f"`{key}` must be non-empty text")
         elif key in rec and len(rec[key]) > MAX_LEN[key]:
             errs.append(f"`{key}` is {len(rec[key])} characters, at most {MAX_LEN[key]}")
+    return errs
+
+
+def _value_errors(rec: dict) -> list[str]:
     checks = (("id", ID_RE), ("req", REQ_RE), ("ac", AC_RE), ("adr", ADR_RE), ("recorded", DATE_RE))
-    for key, pattern in checks:
-        if key in rec and not (isinstance(rec[key], str) and pattern.match(rec[key])):
-            errs.append(f"`{key}` has the wrong shape")
+    errs = [f"`{key}` has the wrong shape" for key, pattern in checks
+            if key in rec and not (isinstance(rec[key], str) and pattern.match(rec[key]))]
     if "kind" in rec and rec["kind"] not in KINDS:
         errs.append(f"`kind` must be one of {', '.join(KINDS)}")
     if "status" in rec and rec["status"] not in STATUSES:
         errs.append(f"`status` must be one of {', '.join(STATUSES)}")
-    for key in ("spec_change", "bug"):
-        if key in rec and not isinstance(rec[key], bool):
-            errs.append(f"`{key}` must be true or false")
-    if "row" in rec and not (_is_int(rec["row"]) and rec["row"] >= 1):
-        errs.append("`row` must be a builder row number (integer >= 1)")
-    if "issue" in rec and not (_is_int(rec["issue"]) and rec["issue"] >= 1):
-        errs.append("`issue` must be an issue number (integer >= 1)")
+    errs += [f"`{key}` must be true or false" for key in ("spec_change", "bug")
+             if key in rec and not isinstance(rec[key], bool)]
+    errs += [f"`{key}` must be a positive whole number ({what})" for key, what in INT_FIELDS
+             if key in rec and not (_is_int(rec[key]) and rec[key] >= 1)]
     if "recorded" in rec and isinstance(rec["recorded"], str) and DATE_RE.match(rec["recorded"]):
         try:
             dt.date.fromisoformat(rec["recorded"])
         except ValueError:
             errs.append("`recorded` is not a real date")
-    screens = rec.get("reference_screens")
-    if "reference_screens" in rec:
-        if not isinstance(screens, list) or len(screens) > MAX_SCREENS or \
-                not all(isinstance(s, str) and SCREEN_RE.match(s) for s in screens):
-            errs.append(f"`reference_screens` must be a list of at most {MAX_SCREENS} `screen NNN` / `catalogue NNN`")
-        elif len(set(screens)) != len(screens):
-            errs.append("`reference_screens` lists a screen twice")
-        elif not screens and rec.get("kind") != "NO-SCREEN":
-            errs.append("`reference_screens` is empty: only a NO-SCREEN record has no screen")
     return errs
+
+
+def _screen_errors(rec: dict) -> list[str]:
+    if "reference_screens" not in rec:
+        return []
+    screens = rec["reference_screens"]
+    if not isinstance(screens, list) or len(screens) > MAX_SCREENS or \
+            not all(isinstance(s, str) and SCREEN_RE.match(s) for s in screens):
+        return [f"`reference_screens` must be a list of at most {MAX_SCREENS} `screen NNN` / `catalogue NNN`"]
+    if len(set(screens)) != len(screens):
+        return ["`reference_screens` lists a screen twice"]
+    if not screens and rec.get("kind") != "NO-SCREEN":
+        return ["`reference_screens` is empty: only a NO-SCREEN record has no screen"]
+    return []
 
 
 def _link_errors(rec: dict, root: Path, rows: dict[int, set[str]]) -> list[str]:
@@ -255,39 +267,38 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--open", nargs="+", metavar="REQ")
     mode.add_argument("--close-check", nargs="+", metavar="REQ")
     args = ap.parse_args(argv)
-    root = Path(args.root)
     reqs = args.open or args.close_check or []
     if _bad_reqs(reqs):
         sys.stderr.write(f"not a requirement id: {', '.join(_bad_reqs(reqs))}\n")
-        return 2
+        return EXIT_UNREADABLE
     try:
-        errors = validate(root)
-        if reqs and errors:  # a gate never reads an invalid register (fail closed)
-            sys.stderr.write("register invalid:\n" + "".join(f"{e}\n" for e in errors))
-            return 2
-        if args.open:
-            ids = open_records(root, reqs)
-            sys.stdout.write("".join(f"{i}\n" for i in ids))
-            return 0
-        if args.close_check:
-            ids = open_records(root, reqs)
-            for i in ids:
-                sys.stdout.write(f"BLOCKED: {i} is open for {', '.join(reqs)} (ADR-176 (2)): verify, decide or "
-                                 "defer it with an issue before the row closes\n")
-            return 1 if ids else 0
-        page = root / PAGE
-        if args.render:
-            if errors:
-                sys.stdout.write("".join(f"{e}\n" for e in errors))
-                return 1
-            page.write_text(render(root), encoding="utf-8", newline="\n")
-            sys.stdout.write(f"wrote {PAGE.as_posix()}\n")
-            return 0
-        if not errors and (not page.is_file() or page.read_text(encoding="utf-8") != render(root)):
-            errors.append(f"{PAGE.as_posix()} is stale: run reference_register.py --render")
+        return _run(args, Path(args.root), reqs)
     except RegisterError as exc:
         sys.stderr.write(f"register unreadable: {exc}\n")
-        return 2
+        return EXIT_UNREADABLE
+
+
+def _run(args: argparse.Namespace, root: Path, reqs: list[str]) -> int:
+    errors = validate(root)
+    if reqs and errors:  # a gate never reads an invalid register (fail closed)
+        sys.stderr.write("register invalid:\n" + "".join(f"{e}\n" for e in errors))
+        return EXIT_UNREADABLE
+    if reqs:
+        ids = open_records(root, reqs)
+        if args.open:
+            sys.stdout.write("".join(f"{i}\n" for i in ids))
+            return 0
+        for i in ids:
+            sys.stdout.write(f"BLOCKED: {i} is open for {', '.join(reqs)} (ADR-176 (2)): verify, decide or "
+                             "defer it with an issue before the row closes\n")
+        return 1 if ids else 0
+    page = root / PAGE
+    if args.render and not errors:
+        page.write_text(render(root), encoding="utf-8", newline="\n")
+        sys.stdout.write(f"wrote {PAGE.as_posix()}\n")
+        return 0
+    if not errors and (not page.is_file() or page.read_text(encoding="utf-8") != render(root)):
+        errors.append(f"{PAGE.as_posix()} is stale: run reference_register.py --render")
     sys.stdout.write("".join(f"{e}\n" for e in errors) or f"{len(load_records(root))} record(s) ok, page current\n")
     return 1 if errors else 0
 

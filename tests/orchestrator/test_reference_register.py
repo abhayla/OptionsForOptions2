@@ -199,20 +199,20 @@ def test_a_stray_file_in_the_register_fails_closed(root, name):
     (root / "spec" / "reference-diffs" / name).write_text("{}", encoding="utf-8")
     with pytest.raises(rr.RegisterError):
         rr.validate(root)
-    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 2
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == rr.EXIT_UNREADABLE
 
 
 @pytest.mark.parametrize("raw", ["{not json", "[]", "\"x\"", ""])
 def test_an_unreadable_record_fails_closed(root, raw):
     (root / "spec" / "reference-diffs" / "RD-001.json").write_text(raw, encoding="utf-8")
-    assert rr.main(["--root", str(root), "--check"]) == 2
-    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 2
+    assert rr.main(["--root", str(root), "--check"]) == rr.EXIT_UNREADABLE
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == rr.EXIT_UNREADABLE
 
 
 def test_an_invalid_record_makes_the_gates_fail_closed(root):
     put(root, good(kind="copy"))  # would otherwise read as non-blocking
-    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 2
-    assert rr.main(["--root", str(root), "--open", "REQ-135"]) == 2
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == rr.EXIT_UNREADABLE
+    assert rr.main(["--root", str(root), "--open", "REQ-135"]) == rr.EXIT_UNREADABLE
 
 
 # ---------------------------------------------------------------- close gate: every state (standing item (d))
@@ -247,7 +247,7 @@ def test_deferred_without_an_issue_is_invalid_and_still_blocks(root):
     put(root, rec)
     assert any("names its `issue`" in e for e in errors(root))
     assert rr.is_blocking(rec) is True
-    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 2
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == rr.EXIT_UNREADABLE
 
 
 def test_close_check_only_reads_the_named_requirements(root, capsys):
@@ -260,7 +260,7 @@ def test_close_check_only_reads_the_named_requirements(root, capsys):
 
 
 def test_a_bad_requirement_argument_is_a_usage_error(root):
-    assert rr.main(["--root", str(root), "--close-check", "135"]) == 2
+    assert rr.main(["--root", str(root), "--close-check", "135"]) == rr.EXIT_UNREADABLE
 
 
 # ---------------------------------------------------------------- the page
@@ -294,8 +294,9 @@ def test_render_is_deterministic_regardless_of_file_order(root, tmp_path):
     first = rr.render(root)
     other = tmp_path / "other"
     shutil.copytree(root, other)
-    for p in sorted((other / "spec" / "reference-diffs").iterdir(), reverse=True):
-        p.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")  # rewrite in reverse order
+    for rid in ("RD-006", "RD-005", "RD-004", "RD-003", "RD-002", "RD-001"):  # rewrite in reverse order
+        p = other / "spec" / "reference-diffs" / f"{rid}.json"
+        p.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
     assert rr.render(other) == first == rr.render(root)
 
 
