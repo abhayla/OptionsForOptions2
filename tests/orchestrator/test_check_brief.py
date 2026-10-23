@@ -1,5 +1,7 @@
 """AC-1 (REQ-067, process tooling): a brief's spec quotes are checked verbatim against the spec before dispatch."""
 import importlib.util
+import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,9 +19,12 @@ GUARD_LINE = ("Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.
 THREAT_LINE = "Threat model: in scope: a forged id; out of scope: a stolen token.\n"
 
 
-def run(tmp_path, text, *extra):
+REFERENCE_LINE = "Reference: none - searched order retry, failed order\n"  # ADR-173 (2): any brief naming a REQ-###
+
+
+def run(tmp_path, text, *extra, reference=True):
     brief = tmp_path / "brief.md"
-    brief.write_text(text + "\n" + GUARD_LINE, encoding="utf-8")
+    brief.write_text(text + "\n" + GUARD_LINE + (REFERENCE_LINE if reference else ""), encoding="utf-8")
     return check_brief.main([str(brief), "--root", str(ROOT), *extra])
 
 
@@ -142,7 +147,7 @@ def test_guard_set_fixed_w080_copy_passes(tmp_path):
     """W-080 r9 plus the guard line and two real finding ids passes (quotes unchanged)."""
     text = (ROOT / "docs" / "process" / "brief-W-080-r9.md").read_text(encoding="utf-8")
     text += "\nFindings checked: guard-by-banned-shapes, targeted-tests-miss-dependent-files\n" + GUARD_LINE
-    text += THREAT_LINE
+    text += THREAT_LINE + REFERENCE_LINE
     brief = tmp_path / "b.md"
     brief.write_text(text, encoding="utf-8")
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
@@ -266,8 +271,8 @@ def _builder(attack: str, budget: str, size: str | None = None, ci: str = CI_LIN
     return "# Row 99\n" + STANDING + attack + budget + size + ci
 
 
-def _out(tmp_path, text, capsys):
-    code = run(tmp_path, text)
+def _out(tmp_path, text, capsys, **kw):
+    code = run(tmp_path, text, **kw)
     return code, capsys.readouterr().out
 
 
@@ -375,9 +380,168 @@ def test_a_row_ahead_brief_names_only_the_row_ahead_worktree_and_no_overlap(tmp_
     assert run(tmp_path, head + "Worktree OptionsForOptions2-builder-reqs.\n") == 0
 
 
+REQ_LINE = "Spec basis: REQ-072 AC-1.\n"
+
+
+@pytest.mark.parametrize("line", [
+    "Reference: screens 209-211 - copy the price-changed marker\n",
+    "- Reference: 012 same as the strategy list\n",
+    "reference: screen 044, 045 copied unchanged\n",
+    "Reference: none - searched reconnect, stale feed\n",
+    "Reference: none \u2013 searched payoff, breakeven, margin\n",
+])
+def test_reference_req_brief_with_a_valid_line_passes(tmp_path, line):
+    """ADR-173 (2): both accepted forms pass, label case and bullet ignored."""
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE + line, reference=False) == 0
+
+
+def test_reference_req_brief_without_the_line_is_refused(tmp_path, capsys):
+    """ADR-173 (2): a REQ brief with no `Reference:` line is refused naming ADR-173; loose words do not count."""
+    base = _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE
+    code, out = _out(tmp_path, base, capsys, reference=False)
+    assert code == 1 and "MISSING Reference line (ADR-173)" in out
+    loose = base + "We copy screen 209 from the Reference study.\n"  # not on a `Reference:` line
+    code, out = _out(tmp_path, loose, capsys, reference=False)
+    assert code == 1 and "MISSING Reference line" in out
+
+
+@pytest.mark.parametrize("line", [
+    "Reference:\n", "Reference: n/a\n", "Reference: none\n", "Reference: none - searched\n",
+    "Reference: none - searched reconnect\n", "Reference: none, no screen\n",
+    "Reference: screens 209-211\n", "Reference: copy the price-changed marker\n",
+    "Reference: screens 12 - copy the marker\n", "Reference: none - screen 209 copied\n",
+])
+def test_reference_malformed_line_is_refused(tmp_path, capsys, line):
+    """ADR-173 (2): empty, n/a, bare none, one search term, screens without a copy word, a copy word without a screen
+    number: all refused (fail closed on any line it cannot classify)."""
+    text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE + line
+    code, out = _out(tmp_path, text, capsys, reference=False)
+    assert code == 1 and "MISSING Reference line" in out
+
+
+def test_reference_a_brief_naming_no_requirement_is_exempt(tmp_path):
+    """ADR-173 (2): process tooling briefs (no REQ-###) need no line; a malformed one still does not matter."""
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET)) == 0
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + "Reference: n/a\n") == 0
+
+
+def test_reference_a_verifier_brief_naming_a_req_needs_the_line(tmp_path, capsys):
+    """ADR-173 (2): verifier briefs (no `Standing items:`) are covered too."""
+    code, out = _out(tmp_path, "# Verify row 99\n" + REQ_LINE, capsys, reference=False)
+    assert code == 1 and "MISSING Reference line" in out
+    ok = "# Verify row 99\n" + REQ_LINE + "Reference: none - searched strike, expiry\n"
+    assert run(tmp_path, ok, reference=False) == 0
+
+
+def test_the_real_row_12_fix_1_brief_is_refused_for_the_missing_line(capsys):
+    """ADR-173 proof: the real brief citing REQ-072 with no Reference line exits non-zero."""
+    d = ROOT / "docs" / "process" / "builder-sequence-briefs"
+    assert check_brief.main([str(d / "row-12-fix-1.md"), "--root", str(ROOT)]) == 1
+    assert "MISSING Reference line" in capsys.readouterr().out
+
+
 def test_a_builder_brief_must_require_the_mutation_gate(tmp_path, capsys):
     """Meta review after row 9: builders left guards unproven; a builder brief without `mutation_gate.py` is refused."""
     text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET).replace(
         "Run `python scripts/orchestrator/mutation_gate.py` before reporting.\n", "")
     code, out = _out(tmp_path, text, capsys)
     assert code == 1 and "MISSING mutation gate" in out
+
+
+# ---------------------------------------------------------------- ADR-176: label rename and the open-record rule
+OLD_LABEL = bytes([115, 101, 110, 115, 105, 98, 117, 108, 108]).decode().capitalize()  # never written as text
+
+
+def test_the_old_label_no_longer_satisfies_the_rule_and_reference_does(tmp_path, capsys):
+    """ADR-176 (4): the label is `Reference:`; a line under the old label is a loose line and is refused."""
+    base = _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE
+    code, out = _out(tmp_path, base + f"{OLD_LABEL}: screens 209-211 - copy the price-changed marker\n", capsys,
+                     reference=False)
+    assert code == 1 and "MISSING Reference line (ADR-173)" in out
+    assert run(tmp_path, base + "Reference: screens 209-211 - copy the price-changed marker\n", reference=False) == 0
+
+
+def _register_root(tmp_path, status="open", kind="COPY", extra=None, raw=None):
+    """A temp repo root: the real REQ-135 and builder table, plus one record RD-001 for REQ-135 (row 27)."""
+    root = tmp_path / "root"
+    (root / "spec" / "requirements").mkdir(parents=True)
+    (root / "spec" / "reference-diffs").mkdir(parents=True)
+    (root / "docs" / "process").mkdir(parents=True)
+    shutil.copy(ROOT / "spec" / "requirements" / "REQ-135.md", root / "spec" / "requirements")
+    shutil.copy(ROOT / "docs" / "process" / "builder-sequence-2026-10-22.md", root / "docs" / "process")
+    rec = {"id": "RD-001", "kind": kind, "title": "Days left beside each expiry",
+           "reference_behaviour": "Shows a short date and the days left.", "reference_screens": ["catalogue 100"],
+           "ours": "REQ-135 AC-2", "req": "REQ-135", "row": 27, "status": status, "spec_change": False,
+           "bug": False, "recorded": "2026-10-23", **(extra or {})}
+    (root / "spec" / "reference-diffs" / "RD-001.json").write_text(raw if raw is not None else json.dumps(rec),
+                                                                 encoding="utf-8")
+    return root
+
+
+def _req135_brief(tmp_path, root, reference_line):
+    brief = tmp_path / "b135.md"
+    brief.write_text("# Verify row 27\nSpec basis: REQ-135 AC-2.\n" + GUARD_LINE + reference_line, encoding="utf-8")
+    return check_brief.main([str(brief), "--root", str(root)])
+
+
+def test_a_brief_dropping_an_open_record_of_its_requirement_is_refused(tmp_path, capsys):
+    """ADR-176 (2): a REQ-135 brief whose Reference line omits open RD-001 is refused naming it; naming it passes."""
+    root = _register_root(tmp_path)
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the days-left label\n") == 1
+    assert "MISSING open record RD-001" in capsys.readouterr().out
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the days-left label; open RD-001\n") == 0
+    # the id on some other line does not count: it must be on a valid Reference line
+    assert _req135_brief(tmp_path, root, "Open: RD-001\nReference: catalogue 100 - copy the label\n") == 1
+    assert _req135_brief(tmp_path, root, "Reference: n/a RD-001\n") == 1
+
+
+@pytest.mark.parametrize("status,extra", [("verified", None), ("decided", {"bug": True}), ("deferred", {"issue": 12})])
+def test_a_cleared_record_is_not_required_on_the_line(tmp_path, status, extra):
+    """ADR-176 (2): a verified, decided or deferred-with-issue record is not open; the plain forms still pass."""
+    root = _register_root(tmp_path, status=status, extra=extra)
+    assert _req135_brief(tmp_path, root, "Reference: none - searched expiry, days left\n") == 0
+
+
+def test_an_invalid_or_unreadable_register_refuses_a_req_brief(tmp_path, capsys):
+    """Standing item (c): the brief check fails closed when the register cannot be trusted."""
+    bad = _register_root(tmp_path, kind="copy")
+    assert _req135_brief(tmp_path, bad, "Reference: catalogue 100 - copy it; RD-001\n") == 1
+    assert "REFERENCE register invalid" in capsys.readouterr().out
+    unreadable = _register_root(tmp_path / "u", raw="{not json")
+    assert _req135_brief(tmp_path, unreadable, "Reference: catalogue 100 - copy it; RD-001\n") == 1
+    assert "REFERENCE register unreadable" in capsys.readouterr().out
+
+
+def test_a_fenced_reference_line_does_not_satisfy_the_rule(tmp_path, capsys):
+    """Fix 1: an example `Reference:` line inside a code fence is not the brief's own line."""
+    root = _register_root(tmp_path, status="verified")
+    fenced = "```\nReference: none - searched expiry, days left\n```\n"
+    assert _req135_brief(tmp_path, root, fenced) == 1
+    assert "MISSING Reference line" in capsys.readouterr().out
+    tilde = "~~~\nReference: none - searched expiry, days left\n~~~\n"
+    assert _req135_brief(tmp_path, root, tilde) == 1
+    assert _req135_brief(tmp_path, root, fenced + "Reference: none - searched expiry, days left\n") == 0
+
+
+def test_a_lower_case_requirement_id_still_names_the_requirement(tmp_path, capsys):
+    """Fix 1: `req-135` is REQ-135, so its open record RD-001 is required on the line."""
+    root = _register_root(tmp_path)
+    brief = tmp_path / "lower.md"
+    head = "# Verify row 27\nSpec basis: req-135 AC-2.\n" + GUARD_LINE
+    brief.write_text(head + "Reference: none - searched expiry, days left\n", encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(root)]) == 1
+    assert "MISSING open record RD-001" in capsys.readouterr().out
+    brief.write_text(head + "Reference: none - searched expiry, days left; RD-001\n", encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(root)]) == 0
+    bare = tmp_path / "bare.md"
+    bare.write_text("# Verify\nSpec basis: req-135.\n" + GUARD_LINE, encoding="utf-8")
+    assert check_brief.main([str(bare), "--root", str(root)]) == 1  # naming it needs a Reference line at all
+
+
+def test_a_longer_record_id_does_not_satisfy_an_open_record(tmp_path, capsys):
+    """Fix 1 (kills V19): RD-0010 or RD-0011 on the line is not RD-001."""
+    root = _register_root(tmp_path)
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; RD-0010\n") == 1
+    assert "MISSING open record RD-001" in capsys.readouterr().out
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; XRD-001 RD-0011\n") == 1
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; RD-001, RD-0010\n") == 0

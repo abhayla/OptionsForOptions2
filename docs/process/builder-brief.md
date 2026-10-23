@@ -55,6 +55,20 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
   what is in scope; a finding outside it is recorded, not a new round.
 
+- A brief naming any `REQ-###` (builder or verifier) carries a `Reference:` line right after `Copy from:` (ADR-173,
+  label per ADR-176 (4); check_brief.py refuses the brief without it; a brief naming no requirement is exempt). New
+  text says "reference product", never its name. Two accepted forms:
+  `Reference: screens 209-211 - copy the price-changed marker` (study screen numbers, three digits, plus a word
+  saying what is copied: copy / copies / copied / same as), or
+  `Reference: none - searched reconnect, stale feed` (at least two search terms) when the study has no such screen.
+  `none`, `n/a` or an empty line is refused.
+  Open-record rule (ADR-176 (2)): every open record that `python scripts/orchestrator/reference_register.py --open
+  REQ-###` returns for a requirement the brief names is written on the `Reference:` line, e.g.
+  `Reference: catalogue 100, 134 - copy the days-left label; open RD-001`. A brief that drops one is refused, and so
+  is any brief naming a requirement while the register is invalid. The records live one per file in
+  `spec/reference-diffs/`; the owner's page is `docs/process/reference-differences.md` (`--render`; CI fails a stale
+  page). A row does not close while `--close-check REQ-###` exits 1.
+
 ## Standing items (kit run-discipline C4 (a)-(d), #444): every build brief carries these four
 Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Standing items: (a) ... (b) ... (c) ...
 (d) ...`, each item either applied to this work or `n/a: <reason>` (e.g. "(a) n/a: no time-budgeted job"); a bare

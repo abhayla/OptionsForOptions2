@@ -16,12 +16,17 @@ each exist as knowledge/findings/<id>.json;
 (d) a BUILDER brief (it has a `Standing items:` line; verifier and measure briefs do not) needs `Attack list:` followed
 by a numbered item (`1.`), and a `Budget:` line whose minutes/calls are a size pair from docs/process/row-review.md R3
 (30/40 S, 60/80 M or each part of an L, or a fix/re-check pair of at most half: 15/20, 20/30, 30/40).
+(e) any brief naming a `REQ-###` needs a `Reference:` line (ADR-173, label per ADR-176 (4)): study screen numbers
+plus what is copied, or `none - searched <term>, <term>`; a brief naming no requirement is exempt. Every open record
+of the named requirements in the difference register (`reference_register.py --open`) is named on that line (ADR-176
+(2)); an unreadable or invalid register refuses the brief.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
 
 import argparse
 import difflib
+import importlib.util
 import re
 import sys
 from dataclasses import dataclass
@@ -240,6 +245,81 @@ def check_builder_brief(brief: str) -> list[str]:
     return misses
 
 
+REQ_NAMED_RE = re.compile(r"\bREQ-\d{3}\b", re.I)  # `req-135` names REQ-135
+REFERENCE_RE = re.compile(r"^\W*Reference:(.*)$", re.I | re.M)
+REFERENCE_NONE_RE = re.compile(r"^none\s*[-\u2013\u2014]\s*searched\s+(.+)$", re.I)
+REFERENCE_SCREEN_RE = re.compile(r"(?<![\w.-])\d{3}(?![\w.])")  # a study screen number: three digits, e.g. 012, 209-211
+REFERENCE_COPY_RE = re.compile(r"\b(copy|copies|copied|same as)\b", re.I)
+RECORD_ID_RE = re.compile(r"\bRD-\d{3}\b")
+MIN_SEARCH_TERMS = 2
+
+
+def _reference_line_ok(rest: str) -> bool:
+    """ADR-173 (2): `none - searched <term>, <term>` (at least two terms), or a study screen number AND a word saying
+    what is copied. Anything else - empty, `n/a`, a bare `none`, screens with no copy word - is not accepted."""
+    rest = rest.strip()
+    none = REFERENCE_NONE_RE.match(rest)
+    if none:
+        return len([t for t in none.group(1).split(",") if t.strip(" .")]) >= MIN_SEARCH_TERMS
+    if rest.lower().startswith("none"):
+        return False
+    return bool(REFERENCE_SCREEN_RE.search(rest) and REFERENCE_COPY_RE.search(rest))
+
+
+def _register():
+    """The difference register module, loaded from this script's folder (no package install)."""
+    path = Path(__file__).resolve().parent / "reference_register.py"
+    spec = importlib.util.spec_from_file_location("reference_register", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _outside_fences(brief: str) -> str:
+    """The brief without its ``` / ~~~ fenced blocks: a quoted example line never counts as the real one."""
+    out, fence = [], None
+    for line in brief.splitlines():
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence = m.group(1)
+        elif m and m.group(1) == fence:
+            fence = None
+        elif fence is None:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _open_record_misses(brief: str, lines: list[str], root: Path) -> list[str]:
+    """ADR-176 (2): every open record of every requirement the brief names appears on a valid `Reference:` line.
+    A register that cannot be read or is invalid refuses the brief (fail closed)."""
+    reg = _register()
+    reqs = sorted({r.upper() for r in REQ_NAMED_RE.findall(brief)})
+    try:
+        if reg.validate(root):
+            return ["REFERENCE register invalid: run `python scripts/orchestrator/reference_register.py --check` "
+                    "and fix the records before dispatch (ADR-176 (2))"]
+        wanted = reg.open_records(root, reqs)
+    except reg.RegisterError as exc:
+        return [f"REFERENCE register unreadable ({exc}): fix it before dispatch (ADR-176 (2))"]
+    named = {i for line in lines for i in RECORD_ID_RE.findall(line)}
+    return [f"MISSING open record {rid} on the Reference line: the brief names its requirement, and an open "
+            "difference record is never dropped from a brief (ADR-176 (2))" for rid in wanted if rid not in named]
+
+
+def check_reference(brief: str, root: Path) -> list[str]:
+    """ADR-173 (2) by machine: a brief naming any `REQ-###` carries a valid `Reference:` line naming every open
+    record of those requirements; a brief naming no requirement (process tooling) is exempt. Keyed on the label, so
+    loose words elsewhere never satisfy it."""
+    if not REQ_NAMED_RE.search(brief):
+        return []
+    valid = [m.group(1) for m in REFERENCE_RE.finditer(_outside_fences(brief)) if _reference_line_ok(m.group(1))]
+    if not valid:
+        return ["MISSING Reference line (ADR-173): a brief naming a REQ-### carries `Reference: screens <numbers> - "
+                "copy <what is copied>` (e.g. `Reference: screens 209-211 - copy the price-changed marker`) or "
+                "`Reference: none - searched <term>, <term>` (at least two terms) when the study has no such screen"]
+    return _open_record_misses(brief, valid, root)
+
+
 ROW_AHEAD_RE = re.compile(r"^\W*Row-ahead:\s*yes\b", re.I | re.M)
 OVERLAP_NONE_RE = re.compile(r"^\W*Overlap:\s*none\b", re.I | re.M)
 MAIN_SEQUENCE_WORKTREE = "OptionsForOptions2-builder-reqs"  # the older row's worktree (ADR-171 rule 6)
@@ -337,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     text = path.read_text(encoding="utf-8")
     results = check_text(text, Path(args.root))
-    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text)
+    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text) + check_reference(text, Path(args.root))
     out = []
     for r in results:
         short = r.quote if len(r.quote) <= 80 else r.quote[:77] + "..."
