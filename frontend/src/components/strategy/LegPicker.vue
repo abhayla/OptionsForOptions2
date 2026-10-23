@@ -198,6 +198,11 @@ function choose(id, side) {
 }
 const lotsOf = (id) => cellLots.value[id] ?? 1
 const choicesFor = (cell) => lotChoices(lotsMode.value, cell?.lot_size)
+/** The select's text maps back to one of the offered choices (never parsed): an unknown text changes nothing. */
+function setLots(cell, text) {
+  const choice = choicesFor(cell).find((o) => String(o.value) === text)
+  if (choice) cellLots.value = { ...cellLots.value, [cell.instrument_id]: choice.value }
+}
 
 function resetForm() {
   editingId.value = null
@@ -403,7 +408,7 @@ const legName = (l) => contractName(l)
                 <template v-if="choicesFor(row[side]).length">
                   <button type="button" data-testid="cell-buy" :aria-pressed="picked[row[side].instrument_id] === 'BUY'" :class="picked[row[side].instrument_id] === 'BUY' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'BUY')">Buy</button>
                   <button type="button" class="ml-1" data-testid="cell-sell" :aria-pressed="picked[row[side].instrument_id] === 'SELL'" :class="picked[row[side].instrument_id] === 'SELL' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'SELL')">Sell</button>
-                  <select class="ml-1" data-testid="cell-lots" :value="lotsOf(row[side].instrument_id)" @change="cellLots = { ...cellLots, [row[side].instrument_id]: Number($event.target.value) }">
+                  <select class="ml-1" data-testid="cell-lots" :value="lotsOf(row[side].instrument_id)" @change="setLots(row[side], $event.target.value)">
                     <option v-for="o in choicesFor(row[side])" :key="o.value" :value="o.value">{{ o.label }}</option>
                   </select>
                 </template>

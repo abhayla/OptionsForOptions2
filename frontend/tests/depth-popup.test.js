@@ -94,7 +94,7 @@ describe('depth popup not available (AC-8)', () => {
       w.unmount()
     }
     expect(seen).toEqual([
-      'There is no Zerodha session.', 'The live feed is not fresh.', 'This contract is not streaming.',
+      'The broker account is not connected.', 'The live feed is not fresh.', 'This contract is not streaming.',
       'No depth has been received for this contract yet.', 'The depth the feed sent is empty.', 'The reason was not given.',
     ])
   })
@@ -130,7 +130,9 @@ describe('depth popup refresh (AC-7)', () => {
     expect(calls).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(3 * DEPTH_REFRESH_MS)
     expect(calls).toHaveLength(5) // one a second, never more
+    expect(vi.getTimerCount()).toBe(1) // the one refresh timer
     w.unmount()
+    expect(vi.getTimerCount()).toBe(0) // closed: the timer itself is gone, not just ignored
     await vi.advanceTimersByTimeAsync(10 * DEPTH_REFRESH_MS)
     expect(calls).toHaveLength(5)
   })

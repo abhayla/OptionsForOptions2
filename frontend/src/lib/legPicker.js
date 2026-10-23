@@ -110,7 +110,7 @@ const FORWARD_REASON_TEXT = Object.freeze({
   NOT_PRICEABLE: 'The engine cannot price this expiry right now.',
 })
 const DEPTH_REASON_TEXT = Object.freeze({
-  NO_SESSION: 'There is no Zerodha session.',
+  NO_SESSION: 'The broker account is not connected.',
   FEED_STALE: 'The live feed is not fresh.',
   NOT_STREAMING: 'This contract is not streaming.',
   NO_DEPTH_RECEIVED: 'No depth has been received for this contract yet.',

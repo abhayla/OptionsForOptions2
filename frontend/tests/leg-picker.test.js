@@ -682,6 +682,23 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
   })
 
+  it('ADR-015: when a refresh fails the earlier list and prices are removed, never kept on screen as current', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = mountPicker()
+      await flushPromises()
+      await openStrikes(w)
+      expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(4)
+      answers[STRIKES_URL()] = new Error('down')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+      expect(w.findAll('[data-testid="cell-ltp"]')).toHaveLength(0)
+      expect(t(w, 'strikes-error').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('the open list refreshes on a timer and the timer stops when the picker is removed', async () => {
     vi.useFakeTimers()
     try {

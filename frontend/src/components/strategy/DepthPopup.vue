@@ -62,7 +62,7 @@ const unavailableReason = computed(() => {
 })
 const levels = computed(() => {
   const a = answer.value
-  return available.value ? Array.from({ length: Math.max(a.bids.length, a.asks.length) }, (_, i) => ({ bid: a.bids[i] ?? null, ask: a.asks[i] ?? null })) : []
+  return available.value ? Array.from({ length: a.bids.length > a.asks.length ? a.bids.length : a.asks.length }, (_, i) => ({ bid: a.bids[i] ?? null, ask: a.asks[i] ?? null })) : []
 })
 </script>
 
