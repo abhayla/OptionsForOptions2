@@ -21,7 +21,7 @@ NO-SCREEN or MATCH; (2) the brief, verify and close gates and the CI failures it
 repo limits; (4) the label is "Reference:" and new text never names the reference product; (5) always copy, bugs never,
 approved extras through one batched SPEC CHANGE list. ADR-173 (2) the brief line.
 Copy from: none.
-Reference: none - searched register, difference record, brief label (delivery tooling; no product screen).
+Reference: none - searched register, difference record, brief label (tooling); open records named: RD-001.
 
 ## Where you work
 Worktree `D:\Abhay\Ventures\OptionsForOptions2-process`, branch `build/seq-process`, head 729039c8 - its OWN worktree.
