@@ -166,7 +166,8 @@ class LiveMarket:
                                on_reconnect=self._read_positions_once)
         else:
             socket = KiteSocket(provider, api_key=broker_config.api_key, access_token=token, clock=clock,
-                                base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once)
+                                base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once,
+                                user_ref=OWNER_REF)
         self.attach(provider, socket, clock, token_fingerprint(token))
 
     async def _read_positions_once(self) -> None:

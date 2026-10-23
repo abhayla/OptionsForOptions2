@@ -283,6 +283,10 @@
     "sha256": "a87e6f1bded6de61cf847696a990b1061ab3015635ee40eb59b1c530c7f99d9e",
     "reviewed": "pending owner read"
   },
+  "marketdata_market_closed": {
+    "sha256": "1a07ee2fb796061c78ee2baf893f8e3ad24a27b77aef3b6726e888bf2da98ad0",
+    "reviewed": "pending owner read"
+  },
   "send_request_not_from_sink": {
     "sha256": "067ff5f74d8588119766118b4d938e9d26acd42ee2cd759b35a4d1d86d1e1d8b",
     "reviewed": "pending owner read"

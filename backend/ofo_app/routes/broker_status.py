@@ -28,8 +28,16 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
-from ofo.marketdata.feed_health import FEED_CAPPED, FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
-from ofo.timeutil import market_open
+from ofo.market_calendar import is_market_open as market_open
+from ofo.marketdata.feed_health import (
+    FEED_CAPPED,
+    FEED_ENDED,
+    FEED_HEALTHY,
+    FEED_IDLE,
+    FEED_MARKET_CLOSED,
+    FEED_RECONNECTING,
+    FEED_WAITING,
+)
 
 from ofo_app import broker_sync, live_market
 from ofo_app.api_models import ApiModel
@@ -83,7 +91,8 @@ def _live_status(live_state: str, phase: str | None, market_is_open: bool = True
                 FEED_RECONNECTING: _status("partial", "live_feed_reconnecting"),
                 FEED_ENDED: _status("partial", "live_feed_session_ended"),
                 FEED_IDLE: _status("partial", "live_feed_idle"),
-                FEED_CAPPED: _status("partial", "live_feed_capped")}
+                FEED_CAPPED: _status("partial", "live_feed_capped"),
+                FEED_MARKET_CLOSED: _status("partial", "live_feed_market_closed")}
     if phase in by_phase:
         return by_phase[phase]
     if live_state == live_market.SESSION_ENDED:

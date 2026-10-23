@@ -452,6 +452,12 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Prices on screen may not match the live market, and rules are not checked while data is missing.",
           "Rule monitoring for this strategy.", "Wait for the feed to reconnect; monitoring resumes on its own.",
           {"time": Clock}),
+    # REQ-114 AC-7: outside market hours silence is expected; the what-happened part is the owner-cited wording.
+    _gate("marketdata_market_closed", _MD, 124,
+          "Market closed - last price {time}.",
+          "Prices on screen are the last ones before the close; none are arriving, as expected.",
+          "Live strategy monitoring until the market opens.", "Nothing to do; prices resume at the next open.",
+          {"time": Clock}),
 )
 
 

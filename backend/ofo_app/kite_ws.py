@@ -2,12 +2,17 @@
 
 Connects to ``wss://ws.kite.trade?api_key=..&access_token=..``, subscribes in ``full`` mode (at most 3,000 tokens per
 connection; more is REFUSED and logged, never cut to fit), and reconnects after any drop with backoff 1, 2, 4 ... 30 s,
-re-subscribing everything the provider still wants. Every answer state has one behaviour:
+re-subscribing everything the provider still wants (the numbers live in ``ofo.marketdata.reconnect_policy``, REQ-114).
+Every answer state has one behaviour:
 
-- binary data frame / heartbeat  -> ``provider.on_frame`` (which counts them)
-- text message (order update, error) -> ``provider.on_text`` (counted by type, nothing stored)
+- binary data frame / heartbeat  -> ``provider.on_frame`` (which counts them); both are a frame of any kind
+- text message (order update, other error) -> ``provider.on_text`` (counted by type, nothing stored)
+- text message that is a token error -> the session has ended, no retry (REQ-114 AC-6)
 - close, network error, HTTP error other than 403 -> ``provider.on_disconnected`` then back off and reconnect
 - HTTP 403 on connect -> the session has ended (token expired or revoked): ``provider.on_session_ended``, no retry
+- no frame of any kind for 60 s on an open socket -> closed, ``provider.on_disconnected``, back off, reconnect (AC-2);
+  checked at least every 15 s on the CONNECTION, never on one contract's tick age (F-32, AC-1)
+- outside market hours (calendar, ADR-119) silence is expected: the same close, but no more than one reconnect per 5 min
 - unknown packet length / unsupported segment / cut-short frame -> counted by the provider, never raised
 
 The URL carries the access token, so it is never logged: only generic messages and exception class names are
@@ -26,6 +31,7 @@ import contextlib
 import datetime
 import json
 import logging
+import random
 import sys
 from collections.abc import AsyncIterator as _AsyncIterator
 from collections.abc import Awaitable as _Awaitable
@@ -36,7 +42,14 @@ from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.broker.kite_http import plain_str as _plain_str
+from ofo.market_calendar import is_market_open as _calendar_is_open
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
+from ofo.marketdata.reconnect_policy import BACKOFF_MAX, BACKOFF_START, SILENT_AFTER
+from ofo.marketdata.reconnect_policy import Uniform as _Uniform
+from ofo.marketdata.reconnect_policy import is_silent as _is_silent
+from ofo.marketdata.reconnect_policy import next_backoff as _next_backoff
+from ofo.marketdata.reconnect_policy import next_check as _next_check
+from ofo.marketdata.reconnect_policy import reconnect_wait as _reconnect_wait
 from websockets.asyncio.client import connect as _ws_connect
 from websockets.exceptions import InvalidStatus as _InvalidStatus
 
@@ -54,11 +67,28 @@ _silent.setLevel(logging.CRITICAL + 1)
 KITE_WS_URL = f"wss://{_KITE_WS_HOST}"
 MAX_TOKENS_PER_CONNECTION = 3000
 MAX_CONNECTIONS_PER_KEY = 3  # per API key across ALL users of the app (F-59); the source is in order_limits_registry
-BACKOFF_START = 1
-BACKOFF_MAX = 30
 SESSION_ENDED = "session ended"
 STOPPED = "stopped"
 _POLL_SECONDS = 0.5  # how often to look for subscription changes while the socket is quiet
+
+
+class _Silent(Exception):
+    pass
+
+
+class _SessionEnded(Exception):
+    pass
+
+
+def _is_token_error(message: str) -> bool:
+    """A text frame that says the session's token is no good: ``{"type": "error", "data": "...token..."}``. Any other
+    text (an order update, another error, text that is not JSON) is not: it never ends a session."""
+    try:
+        body = json.loads(message)
+    except ValueError:
+        return False
+    return (isinstance(body, dict) and body.get("type") == "error" and isinstance(body.get("data"), str)
+            and "token" in body["data"].lower())
 
 
 class KiteSocket:
@@ -66,8 +96,19 @@ class KiteSocket:
                  clock: _Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
                  connect: _Callable | None = None,
                  sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep,
-                 on_reconnect: _Callable[[], _Awaitable[None]] | None = None) -> None:
+                 on_reconnect: _Callable[[], _Awaitable[None]] | None = None,
+                 user_ref: str = "unknown", rng: _Uniform | None = None,
+                 market_open: _Callable[[datetime.datetime], bool] | None = None,
+                 on_check: _Callable[[datetime.datetime], None] | None = None) -> None:
         self._provider = provider
+        self._user_ref = user_ref  # logged with every disconnect / reconnect / recovery (REQ-114 AC-8); never a secret
+        self._rng: _Uniform = rng or random.Random()  # noqa: S311 - jitter (AC-3), not a secret
+        self._market_open = market_open or _calendar_is_open  # ADR-119 calendar: closed hours expect silence (AC-7)
+        self._on_check = on_check  # observer of each silence check (tests)
+        self._stopped = asyncio.Event()
+        self._last_frame: datetime.datetime | None = None  # the connection's newest frame of any kind, set at connect
+        self._next_check: datetime.datetime | None = None
+        self._down_since: datetime.datetime | None = None
         self._on_reconnect = on_reconnect  # REQ-015 AC-5: once per RE-connection, as its own task (see ``run``)
         self._reconnect_tasks: set[asyncio.Task] = set()
         for value in (api_key, access_token, base_url):  # plain data only (W-080 r9): a str subclass is caller code
@@ -84,13 +125,14 @@ class KiteSocket:
         self._sleep = sleep
         self._stop = False
         self.connections = 0
-        self._backoff = BACKOFF_START
+        self._backoff: float = BACKOFF_START
         self.over_limit = 0  # instruments wanted beyond the per-connection cap right now (0 = within it)
         self.capped = False
         self._sent: set[int] = set()  # what Kite holds on THIS connection
 
     def stop(self) -> None:
         self._stop = True
+        self._stopped.set()
 
     async def run(self) -> str:
         """Run until stopped or the session ends. Returns ``STOPPED`` or ``SESSION_ENDED``."""
@@ -107,26 +149,55 @@ class KiteSocket:
             try:
                 async with self._opened() as ws:
                     self.connections += 1
-                    self._provider.on_connected(self._clock())
-                    _log.info("kite socket connected")
+                    await self._subscribe_all(ws)  # REQ-114 AC-4: every subscription is back BEFORE the link counts
+                    now = self._clock()
+                    self._provider.on_connected(now)
+                    self._last_frame, self._next_check = now, _next_check(now, now)
+                    _log.info("kite socket connected: user=%s connection=%d at=%s", self._user_ref, self.connections,
+                              now.isoformat())
                     self._start_reconnect_read()
-                    await self._subscribe_all(ws)
                     await self._pump(ws)
             except _InvalidStatus as exc:
                 if exc.response.status_code == 403:  # noqa: PLR2004
                     self._provider.on_session_ended(self._clock())
-                    _log.warning("kite socket refused with 403: session ended")
+                    _log.warning("kite socket refused with 403: session ended: user=%s at=%s", self._user_ref,
+                                 self._clock().isoformat())
                     return SESSION_ENDED
                 self._dropped(type(exc).__name__)
+            except _SessionEnded:
+                self._provider.on_session_ended(self._clock())
+                _log.warning("kite socket got a token error: session ended, no retry: user=%s at=%s", self._user_ref,
+                             self._clock().isoformat())
+                return SESSION_ENDED
+            except _Silent:
+                self._dropped(f"no frame of any kind for {int(SILENT_AFTER.total_seconds())} s")
             except Exception as exc:  # network error, close, timeout: all handled the same way  # noqa: BLE001
                 self._dropped(type(exc).__name__)
             else:
                 self._dropped("closed")
             if self._stop:
                 break
-            await self._sleep(self._backoff)
-            self._backoff = min(self._backoff * 2, BACKOFF_MAX)
+            now = self._clock()
+            wait = _reconnect_wait(self._backoff, self._rng, market_open=self._market_open(now))
+            _log.warning("kite socket reconnecting: user=%s attempt=%d wait=%.1fs at=%s", self._user_ref,
+                         self.connections + 1, wait, now.isoformat())
+            await self._sleep_or_stop(wait)
+            self._backoff = _next_backoff(self._backoff)
         return STOPPED
+
+    async def _sleep_or_stop(self, seconds: float) -> None:
+        """Wait ``seconds`` (the injected sleep), but return the moment ``stop`` is called: a 5-minute closed-market
+        wait must not hold a stop for 5 minutes."""
+        sleeper = asyncio.ensure_future(self._sleep(seconds))
+        stopper = asyncio.ensure_future(self._stopped.wait())
+        try:
+            await asyncio.wait({sleeper, stopper}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in (sleeper, stopper):
+                if not task.done():
+                    task.cancel()
+        if sleeper.done() and not sleeper.cancelled():
+            sleeper.result()  # a failing sleep still propagates
 
     def _start_reconnect_read(self) -> None:
         """REQ-015 AC-5: after a RE-connection (not the first connect) run the owner's callback once, as its own task so
@@ -170,8 +241,29 @@ class KiteSocket:
             await cm.__aexit__(None, None, None)
 
     def _dropped(self, reason: str) -> None:
-        self._provider.on_disconnected(self._clock())
-        _log.warning("kite socket dropped: %s", reason)
+        """AC-2 / AC-8: quotes are stale from this moment; the log line carries the user, the reason and the time."""
+        now = self._clock()
+        self._provider.on_disconnected(now)
+        if self._down_since is None:
+            self._down_since = now
+        _log.warning("kite socket dropped: %s: user=%s at=%s", reason, self._user_ref, now.isoformat())
+
+    def _recovered(self, now: datetime.datetime) -> None:
+        if self._down_since is not None:
+            _log.info("kite socket recovered: user=%s down_since=%s first_data_at=%s", self._user_ref,
+                      self._down_since.isoformat(), now.isoformat())
+            self._down_since = None
+
+    def _health_check(self) -> None:
+        """AC-1 / AC-2: the CONNECTION's last frame of any kind, checked at least every 15 s and at the 60 s mark."""
+        now = self._clock()
+        if self._next_check is None or self._last_frame is None or now < self._next_check:
+            return
+        if self._on_check is not None:
+            self._on_check(now)
+        if _is_silent(now, self._last_frame):
+            raise _Silent
+        self._next_check = _next_check(now, self._last_frame)
 
     def _refuse(self, wanted: int) -> None:
         """REQ-113 AC-6: more tokens wanted than one connection may carry. REFUSED (nothing sent, nothing cut to fit),
@@ -210,14 +302,21 @@ class KiteSocket:
             try:
                 message = await asyncio.wait_for(ws.recv(), timeout=_POLL_SECONDS)
             except TimeoutError:  # asyncio.TimeoutError is this builtin on Python 3.11+
+                self._health_check()
                 await self._send_changes(ws)
                 continue
             if isinstance(message, bytes):
+                now = self._clock()
+                self._last_frame = now  # a tick or the 1-byte heartbeat: either proves the connection is alive
                 if len(message) > 1:  # a data frame (not a heartbeat) proves the connection is useful
                     self._backoff = BACKOFF_START
-                self._provider.on_frame(message, self._clock())
+                    self._recovered(now)
+                self._provider.on_frame(message, now)
             else:
                 self._provider.on_text(message)
+                if _is_token_error(message):
+                    raise _SessionEnded
+            self._health_check()
             await self._send_changes(ws)
 
 

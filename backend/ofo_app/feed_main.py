@@ -72,13 +72,13 @@ def feed_settings():
 
 def build_socket(relay: feed_bus.FeedRelay, *, api_key: str, access_token: str, ws_url: str,  # noqa: PLR0913
                  clock: Callable[[], datetime.datetime], connect: Callable | None = None,
-                 on_reconnect: Callable[[], Awaitable[None]] | None = None):
+                 on_reconnect: Callable[[], Awaitable[None]] | None = None, user_ref: str = "unknown"):
     """The real ``KiteSocket`` over the relay. Its address check refuses anything but ``wss://ws.kite.trade`` (loopback
     only in the test suites' mode); ``connect`` is a test seam it refuses outside them."""
     from ofo_app.kite_ws import KiteSocket  # noqa: PLC0415
 
     return KiteSocket(relay, api_key=api_key, access_token=access_token, clock=clock, base_url=ws_url,  # type: ignore[arg-type]
-                      connect=connect, on_reconnect=on_reconnect)
+                      connect=connect, on_reconnect=on_reconnect, user_ref=user_ref)
 
 
 def _now() -> datetime.datetime:
@@ -96,7 +96,7 @@ async def run_feed(*, user_ref: str, api_key: str, access_token: str, ws_url: st
     client = client or feed_bus.new_client(redis_url or feed_mode.redis_url())
     relay = feed_bus.FeedRelay(user_ref, clock)
     socket = build_socket(relay, api_key=api_key, access_token=access_token, ws_url=ws_url, clock=clock,
-                          connect=connect, on_reconnect=relay.announce_reconnect)
+                          connect=connect, on_reconnect=relay.announce_reconnect, user_ref=user_ref)
     relay.bind(socket)
     jobs = [asyncio.create_task(job(client), name=name) for name, job in
             (("feed-publish", relay.publish_loop), ("feed-want", relay.want_loop), ("feed-status", relay.status_loop))]

@@ -62,9 +62,10 @@ from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.timeutil import IST, market_open  # the one shared market-hours check (re-exported for the route's tests)
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import eligibility_from_zerodha as elig

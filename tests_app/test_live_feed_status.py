@@ -244,7 +244,7 @@ def test_after_hours_a_stopped_socket_after_a_session_end_still_says_log_in_agai
 
 
 def test_the_market_hours_check_has_one_home():
-    from ofo.timeutil import market_open as shared
+    from ofo.market_calendar import is_market_open as shared
     from ofo_app.routes import execute
     assert execute.market_open is shared
 
