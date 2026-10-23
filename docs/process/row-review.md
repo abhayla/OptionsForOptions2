@@ -159,6 +159,16 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 20 - REQ-076 Leg rows (closed 2026-10-24, session 06fe7549, Done; W-148 in_review until PR #531)
+- A user sees: one leg list on the builder with -/+ strike steps (listed strikes only), a 1-50 multiplier, an include
+  tick ("Left out of the numbers"), the matched template name with Hedge marks from the server, a Lots/Quantity switch,
+  Edit, Reprice and a depth icon per leg; Execute is refused while any leg is unticked.
+- Expected vs actual: unmeasured per row (session-end script). Agents: backend build (142 calls - hit the 100-turn
+  cap), backend finisher, backend check, frontend build, fix round 1 (17 frontend tests left red), finisher (classified
+  every red: a test mock, no hidden regression), frontend check (AC-5 partial), fix, round 2 PASS.
+- Wrong: REQ-076 AC-6's own example was mathematically false (a naked short put is bounded by its strike) - corrected
+  in the spec; my brief copied it from the spec; one fix round removed Edit/Reprice (caught by the orchestrator).
+
 ### Row 19 - REQ-080 Leg picker (closed 2026-10-24, session 06fe7549, Done; W-147 in_review until PR #531; live check pending AC-6 futures price)
 - A user sees: a leg picker with Strikes and Futures tabs (prices, OI, engine IV and delta per strike, ATM highlighted,
   10/20/30/40 strikes), several contracts picked at once with a visible selection list, Lots/Quantity, the forward used

@@ -266,6 +266,26 @@
    "issue": "#532"
   },
   {
+   "key": "UNRESOLVED REQ-076 W-148 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-5",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-7",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-10",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
    "key": "UNRESOLVED REQ-080 W-147 AC-3",
    "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
    "issue": "#532"
