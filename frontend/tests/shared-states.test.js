@@ -14,6 +14,15 @@ import { routes } from '@/router/routes'
 
 const t = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
+describe('reconnectingText (REQ-114 AC-5)', () => {
+  it('names the last price time when there is one, and says the words alone when there is none', () => {
+    expect(T.reconnectingText('09:20:09')).toBe('Reconnecting - prices as of 09:20:09')
+    expect(T.reconnectingText(null)).toBe('Live prices are reconnecting')
+    expect(T.reconnectingText('')).toBe('Live prices are reconnecting')
+    expect(T.reconnectingText(undefined)).toBe(T.RECONNECTING_NO_TIME_TEXT)
+  })
+})
+
 describe('MarketClosedBanner', () => {
   it('shows the exact text with the IST time', () => {
     const w = mount(MarketClosedBanner, { props: { pricesAt: '2026-10-19T15:30:00+05:30' } })
