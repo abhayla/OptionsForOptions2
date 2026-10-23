@@ -86,8 +86,7 @@ Records: 163 (COPY 76, DIFFERENT-BY-DECISION 21, NO-SCREEN 27, MATCH 39)
 | 15 | RD-095 | REQ-028 AC-3 | Shape names as users read them: Short Straddle, Long Iron Condor, Bull Butterfly (G-15-6) | screen 010 | verified |
 | 15 | RD-096 | REQ-028 AC-3 | Shape detection: the reference product names 16 shapes, ours matches every catalogue template (G-15-7) | screen 011 | open |
 | 16 | RD-114 | REQ-038 AC-5 | What a save stores: legs and entry prices only in the reference product, more in ours (G-16-9) | screen 119 | open |
-| 17 | RD-122 | REQ-006 AC-1 | One full builder for everyone, no level switch (G-17-1) | screen 010, screen 011, screen 012, screen 014, screen 015, screen 168, screen 206 | open |
-| 17 | RD-123 | REQ-007 AC-2 | Strategy view tabs follow the reference chart tabs (G-17-2) | screen 012, screen 014, screen 015, screen 016 | open |
+| 17 | RD-122 | REQ-006 AC-1 | One full builder for everyone, no level switch (G-17-1) | screen 010, screen 011, screen 012, screen 014, screen 015, screen 168, screen 206 | verified |
 | 18 | RD-124 | REQ-035 AC-1 | Separate P&L Table, Greeks and Payoff Table views instead of one table (G-18-1) | screen 014, screen 015, screen 017 | open |
 | 18 | RD-125 | REQ-035 AC-7 | Table columns do not depend on a UX level (G-18-2) | screen 014, screen 015, screen 013 | open |
 | 19 | RD-032 | REQ-080 AC-1 | Leg picker with Straddles, Strangles, Strikes and Futures tabs and price columns (G-05-4) | screen 032, screen 033, screen 034, screen 035, screen 036, screen 037, screen 038 | open |
@@ -125,6 +124,7 @@ Records: 163 (COPY 76, DIFFERENT-BY-DECISION 21, NO-SCREEN 27, MATCH 39)
 | 31 | RD-030 | REQ-085 AC-4 | Liquidity warnings per leg: no recent trade, wide bid-offer spread, no bids or offers (row 5 gap G-05-2) | catalogue 011, catalogue 012 | open |
 | 31 | RD-105 | REQ-085 AC-1 | A standing liquidity warning on every ready-made (row 15 match line) | screen 012 | open |
 | 36 | RD-088 | REQ-083  | On-expiry curve for a calendar drawn from the model (G-14-3, same fix as RD-078) | catalogue 108, catalogue 109 | open |
+| 36 | RD-123 | REQ-083  | Strategy view tabs follow the reference chart tabs (G-17-2) | screen 012, screen 014, screen 015, screen 016 | open |
 | 37 | RD-081 | REQ-084  | Greeks at a zero-days target explained in a sentence, not an error (G-13-5) | catalogue 124 | open |
 | 37 | RD-087 | REQ-084 AC-1 | A target row picks the what-if level, and a slider drives every number (G-14-2) | catalogue 020 | open |
 | 38 | RD-086 | REQ-137 AC-1 | Payoff table at a user-chosen interval with a Show % switch (row 14 gap G-14-1) | catalogue 014, catalogue 017 | open |

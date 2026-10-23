@@ -159,6 +159,17 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 17 - REQ-006 + REQ-007 UX levels removed (closed 2026-10-24, session 06fe7549, Done; W-145 in_review until PR #531)
+- A user sees: one full builder for everyone - every column (IV, Greeks, % return, breakevens), the Bid/Ask details
+  block, no Guided/Standard/Advanced switch; old `?ux=` links open the same screen; after a Kite session ends no stale
+  Bid/Ask rides in a "not connected" answer (fix round 1).
+- Expected vs actual: unmeasured per row (measure_process.py runs at session end). Rounds: 1 Opus check (check 4
+  partial, 1 MAJOR) + findings-only round 2 PASS. Spec text: 15 ADR/support files, 13 requirements, 89 re-pins + 134
+  amends citations (scripted, none refused).
+- Wrong: builder B1b renamed `advanced_details` beyond its brief (the frontend would have lost the block - caught before
+  merge); my row-17 checker brief stated Q264 open from memory (brief-rule-from-memory, 16th); row 18 was dispatched
+  without the overlap gate (new finding row-ahead-dispatched-without-overlap-gate).
+
 Rows 11-16 use the short form of ADR-178 (3) (what a user sees, open issues); their per-row expected-vs-actual numbers
 were not generated in sessions 4-5 and are written `unmeasured` here, never typed. The chunk-level numbers are the
 chunk-1 conformance check below (measure_process.py, 2026-10-24).

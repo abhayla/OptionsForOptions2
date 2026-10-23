@@ -12,11 +12,11 @@
     "screen 168",
     "screen 206"
   ],
-  "ours": "REQ-006 AC-1 to AC-4 still give three levels and a Preferences switch, and the builder takes a guided, standard or advanced level. ADR-168 (4)(5) removes it: rewrite the spec first (row 17).",
+  "ours": "Row 17 (W-145, 2026-10-24): no level switch anywhere; the outcome route ignores a stray level key and returns every column and the leg quotes for every user (backend/ofo_app/routes/outcome.py, frontend/src/pages/StrategyBuilderPage.vue). Checked: docs/process/builder-sequence-briefs/results-row-17.md.",
   "req": "REQ-006",
   "ac": "AC-1",
   "row": 17,
-  "status": "open",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

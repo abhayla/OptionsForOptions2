@@ -9,10 +9,9 @@
     "screen 015",
     "screen 016"
   ],
-  "ours": "REQ-007 AC-2 names eight drill-down tabs (Overview, P&L, Risk, Payoff, Legs, Greeks, Conditions, Orders) and AC-3 an Advanced-only terminal view. Rewrite at row 17 to the reference tab set; Strategy Chart is REQ-091.",
-  "req": "REQ-007",
-  "ac": "AC-2",
-  "row": 17,
+  "ours": "NEW AC NEEDED: REQ-007 (superseded at row 17) named eight drill-down tabs; no live requirement owns the chart-area tab set. Re-homed 2026-10-24 to the first row that builds a tab's content (REQ-083 payoff chart, row 36; the P&L table is REQ-137 row 38, Greeks REQ-084 row 37, Strategy Chart REQ-091 row 61 held): write the tab-set AC there.",
+  "req": "REQ-083",
+  "row": 36,
   "status": "open",
   "spec_change": false,
   "bug": false,

@@ -83,6 +83,11 @@
    "date": "2026-10-23",
    "where": "chunk 1 review fix brief F2 (orchestrator-written, session 5db71e90): chunk1-review-fix-f2-limits.md",
    "evidence": "The brief told the builder that, when Kite states no wait after a 429, the wait is 'the endpoint group's own per-second window'. Finding F-60 (spec/findings.md:889) already recorded Kite staff: 'There's a cooldown period of 10s that must be respected whenever you receive a 429', extended by any send inside it. The builder read F-60 and kept the 10 s cooldown (correct); the orchestrator's recommended reconciliation of REQ-118 AC-3/AC-4 had rested on the wrong fact and was re-decided as ADR-179. New shape: an EXTERNAL API fact (Kite) written from memory while the registry held the measured answer. Practice from now: every Kite/vendor behaviour in a brief cites its F-id or is marked 'unverified - measure or cite before building'."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 17 checker brief verify-row-17.md (orchestrator-written, session 06fe7549)",
+   "evidence": "The brief told the checker 'No open question was answered (Q264 still open)'. Q264 was already DECIDED (ADR-080) before chunk 2 (open-questions.md line 413 at cf30134e); the Opus checker caught it. Sixteenth occurrence: a claim about spec state written without grepping the spec first."
   }
  ],
  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",

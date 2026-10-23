@@ -27,7 +27,15 @@ from ofo.instruments.models import ListedContract
 from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
+from ofo.outcome import (
+    OutcomeState,
+    PlannedLeg,
+    StrategyDefinition,
+    build_outcome,
+    not_connected,
+    not_live,
+    read_snapshot,
+)
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -499,7 +507,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
-    if ctx is not None and not live_blocked:  # not live: no frozen bid/ask either
+    if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     return OutcomeResponse.model_validate(body)
 
