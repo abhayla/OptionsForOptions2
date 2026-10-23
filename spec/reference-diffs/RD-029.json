@@ -7,8 +7,9 @@
   "ours": "Ours reads Margin from the broker is not available for this account, naming no broker. Owner to capture any reference screen for a feature a broker lacks.",
   "req": "REQ-117",
   "row": 4,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 529
 }

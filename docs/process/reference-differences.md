@@ -26,19 +26,19 @@ Records: 121 (COPY 56, DIFFERENT-BY-DECISION 19, NO-SCREEN 13, MATCH 33)
 
 | Id | Requirement | Row | What to capture | Status |
 |---|---|---|---|---|
-| RD-009 | REQ-001 | 1 | Refusal of an unsupported underlying (row 1 match line: the study has no screen) | open |
-| RD-018 | REQ-015 | 2 | Daily broker session expiry and its reconnect screen (row 2 study gap) | open |
-| RD-029 | REQ-117 | 4 | Wording when a broker capability is off (row 4 study gap) | open |
-| RD-038 | REQ-053 | 5 | Refusal screen for a contract that is blocked or not listed (row 5 study gap) | open |
-| RD-053 | REQ-114 | 11 | Market-closed status after hours (row 7 study gap) | open |
-| RD-054 | REQ-049 | 7 | Live monitoring paused message and badge (row 7 study gap) | open |
-| RD-061 | REQ-113 | 9 | What a user sees when the broker session ends at the daily expiry (row 9 study gap SG-9) | open |
-| RD-067 | REQ-114 | 11 | Market-closed wording: the study has no closed-market screen (G-11-3, capture part) | open |
-| RD-071 | REQ-114 | 11 | Feed down for minutes, and the index and chain on a weekend or holiday (row 11 study gap SG-11) | open |
-| RD-076 | REQ-072 | 12 | Screen for a missing index value at the open or during a feed gap (row 12 study gap SG-12) | open |
-| RD-084 | REQ-032 | 13 | Greeks, IV and Decay figures per preset with leg prices (row 13 study gap SG-13) | open |
+| RD-009 | REQ-001 | 1 | Refusal of an unsupported underlying (row 1 match line: the study has no screen) | deferred |
+| RD-018 | REQ-015 | 2 | Daily broker session expiry and its reconnect screen (row 2 study gap) | deferred |
+| RD-029 | REQ-117 | 4 | Wording when a broker capability is off (row 4 study gap) | deferred |
+| RD-038 | REQ-053 | 5 | Refusal screen for a contract that is blocked or not listed (row 5 study gap) | deferred |
+| RD-053 | REQ-114 | 11 | Market-closed status after hours (row 7 study gap) | deferred |
+| RD-054 | REQ-049 | 7 | Live monitoring paused message and badge (row 7 study gap) | deferred |
+| RD-061 | REQ-113 | 9 | What a user sees when the broker session ends at the daily expiry (row 9 study gap SG-9) | deferred |
+| RD-067 | REQ-114 | 11 | Market-closed wording: the study has no closed-market screen (G-11-3, capture part) | deferred |
+| RD-071 | REQ-114 | 11 | Feed down for minutes, and the index and chain on a weekend or holiday (row 11 study gap SG-11) | deferred |
+| RD-076 | REQ-072 | 12 | Screen for a missing index value at the open or during a feed gap (row 12 study gap SG-12) | deferred |
+| RD-084 | REQ-032 | 13 | Greeks, IV and Decay figures per preset with leg prices (row 13 study gap SG-13) | deferred |
 | RD-085 | REQ-089 | 39 | Preset numbers captured without a leftover manual P&L entry (row 13 study gap SG-0) | open |
-| RD-118 | REQ-038 | 16 | What happens when a saved strategy cannot be read (row 16 match line: no screen) | open |
+| RD-118 | REQ-038 | 16 | What happens when a saved strategy cannot be read (row 16 match line: no screen) | deferred |
 
 ## COPY by builder row
 
