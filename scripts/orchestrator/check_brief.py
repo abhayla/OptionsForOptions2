@@ -232,6 +232,31 @@ def check_builder_brief(brief: str) -> list[str]:
     if BUILD_GUARD_RE.search(build) and not ALLOW_LIST_RE.search(build):
         misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
                       "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
+    misses.extend(_row_ahead_misses(brief))
+    return misses
+
+
+ROW_AHEAD_RE = re.compile(r"^\W*Row-ahead:\s*yes\b", re.I | re.M)
+OVERLAP_NONE_RE = re.compile(r"^\W*Overlap:\s*none\b", re.I | re.M)
+MAIN_SEQUENCE_WORKTREE = "OptionsForOptions2-builder-reqs"  # the older row's worktree (ADR-171 rule 6)
+ROW_AHEAD_WORKTREE = "OptionsForOptions2-builder-next"
+
+
+def _row_ahead_misses(brief: str) -> list[str]:
+    """ADR-171 by machine: a brief marked `Row-ahead: yes` (built while the previous row is verified) names only the
+    row-ahead worktree - never the main sequence worktree, where its tests would run the OLDER row's code (a false
+    green) - and carries `Overlap: none` (rule 3: no file shared with the open row)."""
+    if not ROW_AHEAD_RE.search(brief):
+        return []
+    misses = []
+    if MAIN_SEQUENCE_WORKTREE in brief:
+        misses.append(f"ROW-AHEAD names `{MAIN_SEQUENCE_WORKTREE}`: a row built ahead works, tests and commits only in "
+                      f"`{ROW_AHEAD_WORKTREE}` (ADR-171 rule 6)")
+    if ROW_AHEAD_WORKTREE not in brief:
+        misses.append(f"ROW-AHEAD worktree missing: name `{ROW_AHEAD_WORKTREE}` as the place to work (ADR-171 rule 6)")
+    if not OVERLAP_NONE_RE.search(brief):
+        misses.append("ROW-AHEAD overlap: add `Overlap: none (checked against row <N>: <its changed files>)` - a row "
+                      "sharing a file with the open row waits (ADR-171 rule 3)")
     return misses
 
 

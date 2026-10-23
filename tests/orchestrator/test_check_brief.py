@@ -356,3 +356,19 @@ def test_ci_line_is_required(tmp_path, capsys):
     """R11 (row 6): every builder brief names the CI job and variables of its new tests."""
     code, out = _out(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET, ci=""), capsys)
     assert code == 1 and "MISSING CI line" in out
+
+
+def test_a_row_ahead_brief_names_only_the_row_ahead_worktree_and_no_overlap(tmp_path, capsys):
+    """ADR-171 (owner 2026-10-23) rules 3 and 6: a `Row-ahead: yes` brief that names the main sequence worktree (its
+    tests would run the older row's code: a false green), names no row-ahead worktree, or has no `Overlap: none` line
+    is refused; the complete form passes; a brief without `Row-ahead: yes` is unaffected by these lines."""
+    head = _builder("Attack list:\n" + FIVE, GOOD_BUDGET)
+    good = head + "Row-ahead: yes\nWork in `OptionsForOptions2-builder-next`.\nOverlap: none (row 9)\n"
+    assert run(tmp_path, good) == 0
+    code, out = _out(tmp_path, good + "Run it in OptionsForOptions2-builder-reqs too.\n", capsys)
+    assert code == 1 and "ROW-AHEAD names `OptionsForOptions2-builder-reqs`" in out
+    code, out = _out(tmp_path, head + "Row-ahead: yes\nOverlap: none (row 9)\n", capsys)
+    assert code == 1 and "ROW-AHEAD worktree missing" in out
+    code, out = _out(tmp_path, head + "Row-ahead: yes\nWork in OptionsForOptions2-builder-next.\n", capsys)
+    assert code == 1 and "ROW-AHEAD overlap" in out
+    assert run(tmp_path, head + "Worktree OptionsForOptions2-builder-reqs.\n") == 0

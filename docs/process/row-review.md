@@ -113,6 +113,13 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | R8 guards as allow-lists | a scan written as a list of forbidden shapes | forbidden-list guards reaching a verifier | 3 earlier occurrences (finding) | 2 (row 4 in the orchestrator's brief; row 6 although the brief said allow-list) - R12 (inventory) added |
 | Budget hard stop | builder running past its budget | builders over budget | - | 5 (row 4: 152/80, 47/40; row 5: 48/40; row 6: 46/40, 46/40) - Size line by machine added after row 6 |
 | R1 / R2 / R3 / R6 (rows 4-6) | listed above | per row | - | R1: 0 misses; R2: 1 (row 6, CI env) -> R11; R3: 3 (rows 5, 6) -> Size line by machine; R6: 1 (row 5, F-57 unstaged, caught by coverage) |
+| Budget hard stop (rows 7-9) | builder past its budget | builders over budget | 5 (rows 4-6) | 3 (row 7 88/80, row 9 A0 91/80, B finish 55/40) - mutation_gate.py removes the hand-run loop that eats the budget |
+| R13 tests a change can break | stale test in a file nobody ran | stale tests found later | - | 2 (row 7 found row 5's; row 9 found row 7's stale openapi.json) |
+| R14 keys from the call | key part with no killing test | surviving key mutants | 30 of 40 (row 8) | n/a in row 9 (no cache key) |
+| R16 slow DB runs first | DB run finishing after the budget | runs cut at budget | 2 (row 8 builder and verifier) | 0 (row 9: every DB run finished: 316, 604, 1088 tests) |
+| R17 no question box at night | session held idle | idle minutes on a question | 460 (row 9) | applied 07:46 - hook by machine pending |
+| R18 mutation results to a file | lost mutation evidence | runs whose results were lost | 2 (row 9 B, A0 r1 hang) | 0 since (B finish 1-2 wrote files) |
+| Builder finishes its proof | follow-up dispatches for unfinished tests | follow-ups per row | row 9: 3 parts, 638k | target <= 1 per row (rows 10-12), mutation_gate.py |
 
 | Row | Expected (min / tokens) | Agents | Actual minutes (agents) | Actual tokens (agents) | Verify rounds | Notes |
 |---|---|---|---|---|---|---|
@@ -124,14 +131,33 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
 | 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | 3 (measure, build, verify r1) | 52 agent min; ~62 wall-clock (16:40-17:42) | ~368k | 1 | time -31% (faster), tokens -18% (within 20%): see the row 7 log |
 | 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | 6 (build, design review, fix 1, verify r1, fix 2, verify r2) + 2 process (row 9 measure, row 9 design review) | ~219 wall-clock (17:20-20:59, two sessions); session-2 agents 60 min (fix 2 30.0, verify r2 30.2); session-1 agents unmeasured (notices lost at the handover) | session 2: 375k (fix 2 169k, verify r2 206k); session 1 unmeasured | 2 (PARKED #519) | time +143%, tokens over (at least the 375k measured plus 4 unmeasured agents): see the row 8 log |
-| 9 | ~330 min / ~1,400k for 4 parts (A0 90 / 350k set 20:20 IST before dispatch; A1, B, C each ~90 / 350k in their briefs) | 15 (measure, design review, A0 build, A0 v1, A0 fix, A0 v2, A1 build, C build, A1+C verify, cap research, C fix, B build, B finish, B finish 2, final verify) + 3 process (row-10 measure, row-10 research, row-ahead review) | 729 wall-clock (21:01-09:10), of which ~460 idle on the owner question box (23:35-07:15); ~270 working | ~2,745k | 4 (A0 r1, A0 r2, A1+C, final) | working time -18% (within 20%); tokens +96%: see the row 9 log |
+| 9 | ~330 min / ~1,400k for 4 parts (A0 90 / 350k set 20:20 IST before dispatch; A1, B, C each ~90 / 350k in their briefs) | 15 (measure, design review, A0 build, A0 v1, A0 fix, A0 v2, A1 build, C build, A1+C verify, cap research, C fix, B build, B finish, B finish 2, final verify) + 3 process (row-10 measure, row-10 research, row-ahead review) | 718 wall-clock (21:01 row 8 close commit - 08:59 close commit 9dcd471c; 759 from the 20:20 brief), of which ~460 idle on the owner question box (23:35-07:15); 258-299 working | ~2,745k | 4 (A0 r1, A0 r2, A1+C, final) | working time -22% to -9% (start-point dependent; corrected by the meta review); tokens +96%: see the row 9 log |
 
 ## Log (newest first)
 
-### Row 9 - REQ-113 Price feed in its own process (closed 2026-10-23 ~09:15 IST, Done, MINORs #520)
-- Expected ~330 min / ~1,400k (4 parts at ~90 / 350k). Actual: 729 min wall-clock (build 21:01 - close ~09:15), of
-  which ~460 min idle: the owner question box asked at ~23:35 held the session until the answer at ~07:15. Working time
-  ~270 min (-18%, within 20%). Agents (minutes / tokens / calls): measure 0.8 / 84k / 18; design review (Opus) 1.9 /
+### Meta review after row 9 (2026-10-23 ~09:20 IST, fresh Sonnet agent, 1.0 min / 121k / 5 calls)
+- Found: waste is NOT shrinking in tokens (rows 4-9: +93%, +124%, +74%, -18%, over, +96%; only row 7 won); time is
+  near the estimate. Row 9: the follow-ups closing builder-unfinished tests cost 638k of 2,745k (23%), in 3 parts (A0,
+  C, B; not 4 - A1 had none). Rules broken after they were written: the Budget hard stop 3 more times (row 7 88/80, row
+  9 A0 91/80, B finish 55/40 - the Size check reads the brief and cannot stop a run); R7 (row 7's build dispatched 16:40,
+  the meta review stamped 16:45); core proof first (A0 wrote its core test after the code); R2/R13 (row 7's stale
+  openapi.json found by chance); R1 met in form only (row 8). Numbers wrong in my log: row 9 closed 08:59 (commit
+  9dcd471c), not ~09:15; R17 first appears at 07:46 (7177d43a), not 07:30; row 8 closed 21:01, not ~20:59; the effect
+  table stopped at row 6.
+- Accepted and applied: (1) `mutation_gate.py` - a script the builder runs before reporting: it applies each listed
+  mutant in a scratch copy, runs the named killing test, appends every result to the R18 file, and exits non-zero on a
+  survivor or a missing line; the orchestrator re-runs it as the gate (being built as a process item, 2026-10-23; the
+  builder brief requires it once it lands); (2) a project hook refusing the question tool between 22:00 and 08:00 IST
+  (R17 by machine; fails open; an owner override with a reason), same process item; (3) numbers corrected from commits
+  (this entry, the row 8 and row 9 rows) and the effect table extended to rows 7-9 and R13-R18. Measure for (1):
+  follow-up dispatches that close builder-unfinished tests, per row - baseline row 9: 3 parts, 638k; target <= 1 per row
+  over rows 10-12; plus survivors found by the first verifier.
+- Not changed: model or split (the verifiers find the gaps; the builder does not finish).
+
+### Row 9 - REQ-113 Price feed in its own process (closed 2026-10-23 08:59 IST, commit 9dcd471c, Done, MINORs #520)
+- Expected ~330 min / ~1,400k (4 parts at ~90 / 350k). Actual: 718 min wall-clock (21:01 - 08:59 by commits; 759 from
+  the 20:20 brief), of which ~460 min idle: the owner question box asked at ~23:35 held the session until the answer at
+  ~07:15. Working time 258-299 min (-22% to -9%, start-point dependent). Agents (minutes / tokens / calls): measure 0.8 / 84k / 18; design review (Opus) 1.9 /
   139k / 16; A0 build 22.2 / 289k / 91 (budget 80); A0 verify r1 14.6 / 185k / 41; A0 fix 32.9 / 179k / 42; A0 verify
   r2 31.6 / 168k / 35; A1 build 45.7 / 244k / 62; C build 9.4 / 220k / 53; A1+C verify 20.3 / 197k / 56; cap research
   1.0 / 103k / 7; C fix 2.7 / 124k / 19; B build 27.0 / 270k / 76; B finish 19.9 / 189k / 55 (budget 40); B finish 2

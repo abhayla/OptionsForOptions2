@@ -59,6 +59,30 @@ Kept current at every meta review (every 3rd delivered item); the kit harvest is
     migrate, run as the limited role, drop only what this run created); measured: 15 "known failures" + 5 unrunnable
     tests became 137 passing, with no shared data touched.
 
+## Added after the third meta review (items 7-9 of the source project)
+
+- **Builders do not finish their own proof steps; a script must.** In one large item, 3 of 4 parts needed a follow-up
+  dispatch only to finish tests the builder had left (mutants never run, mutation output lost when a run was killed,
+  guards with no killing test): 23% of the item's tokens. Fix: a mutation gate script the builder MUST run before
+  reporting - it applies each mutant from the brief's attack list in a scratch copy, runs the named killing test,
+  appends each result to a file as it finishes, and exits non-zero on any survivor or missing line; the orchestrator
+  re-runs it as the gate. Measure: follow-up dispatches per item for builder-unfinished tests (target <= 1).
+- **Write every mutation result to a file as it finishes.** Results held only in an agent's memory are lost when a
+  run is stopped; a finisher then repeats the whole sweep.
+- **A blocking question box at night idles the whole session.** A question asked late held a session ~7.5 hours for an
+  answer the build did not need. Rule: use the interactive question only while the owner is active; otherwise write
+  it to a dated questions file and keep building. Better by machine: a hook that refuses the question tool in the
+  owner's night hours (fail open, override with a reason).
+- **Cache keys built by hand drift from the computation.** 30 of 40 key parts of a shared-computation cache had no
+  killing test. Build each key from the exact arguments of the call it guards, and test "change one input at a time
+  -> recompute".
+- **Building one item ahead, safely.** Owner-approved variant: the next item may be built while the current one is
+  verified, items still close in order; the two never share a file, at most one database run at a time with the older
+  item first, a separate worktree for the item ahead (its brief checked to name only that worktree, else its tests run
+  the older item's code - a false green), and a rebase plus full affected-test run before its verifier.
+- **Every timestamp in a review comes from a commit or the clock,** never typed: three of this project's reviews put a
+  close time 4-16 minutes off.
+
 ## Rejected, with the reason (so other projects do not re-try them blind)
 
 - **"The final verifier only checks what the start check asked."** Both first-round failures in the source project
