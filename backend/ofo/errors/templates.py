@@ -957,9 +957,29 @@ _READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Wait for the live data to return, then try again.", {"underlying": Underlying}),
 )
 
+# --- W-148 (REQ-076 AC-1, AC-2): a refused leg edit (strike step, typed price). The whole edit is refused and nothing
+# changes; each text names the leg. Adapted from branch build/W-126-a1-leg-rows (REQ-076 texts only). New: awaiting the
+# owner's read.
+_LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("leg_edit_strike_not_listed", _UI, 9, "{leg} is not listed in the instrument file.",
+          "The edit was refused and no leg changed.", "This edit.", "Pick a listed strike, or change a different leg.",
+          {"leg": LegRef}),
+    _gate("leg_edit_no_further_strike", _UI, 10, "{leg} has no further listed strike in that direction.",
+          "The edit was refused and no leg changed.", "This edit.", "Step the other way, or pick a strike.",
+          {"leg": LegRef}),
+    _gate("leg_edit_futures_no_stepper", _UI, 11, "{leg} is a futures leg and has no strike to step.",
+          "The edit was refused and no leg changed.", "This edit.", "Change the lots instead.", {"leg": LegRef}),
+    _gate("leg_edit_unknown_contract", _UI, 12, "Leg {number} is not a contract in the instrument file.",
+          "The edit was refused and no leg changed.", "This edit.", "Pick the leg again from the picker.",
+          {"number": Count}),
+    _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
+          "The typed price was refused and the previous price stays.", "This price.",
+          "Type a price that is a multiple of the tick size.", {"leg": LegRef, "tick": Money}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
