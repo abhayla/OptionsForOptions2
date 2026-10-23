@@ -456,3 +456,8 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   (b) a managed Redis service (spend); (c) production keeps the single-process mode (no bus, AC-3's first sentence)
   until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
 - Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.
+
+## Q274 — DECIDED → ADR-170 (owner, 2026-10-23: ask Zerodha at the demo) — Kite allows 3 websockets per API key across all users (F-59): what do we plan for per-user feeds past 3 users?
+- ADR-053 gives each user their own Kite feed in V1; F-59 shows one Kite Connect app may hold only 3 websocket
+  connections in total. F-31: Zerodha's multi-user access comes after a demo, and the owner's limits question was not
+  answered. Not blocking: ADR-060 builds on the owner's own app; REQ-113 part B holds the cap as configuration.

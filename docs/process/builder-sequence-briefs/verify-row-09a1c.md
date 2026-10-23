@@ -4,7 +4,7 @@ Independent, adversarial verifier; you did not build either part. READ-ONLY: nev
 tracked file in any checkout; scratch and mutation copies only in
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\verify-09a1c`.
 
-Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1`, head <HEAD>.
+Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1`, head 1cce4d49 (docs only after 6a0f7117).
 Part C (frontend) = commit f6a6bc5e; part A1 (backend + tests_app) = commit 6a0f7117. Briefs:
 `docs/process/builder-sequence-briefs/row-09a1-REQ-113-feed-control.md` and `row-09c-REQ-113-browser-reconnect.md` -
 run every item of both `Attack list:` sections. Spec: `spec/requirements/REQ-113.md` - for A1: AC-3 (bus loss, rebuildable

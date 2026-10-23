@@ -2,7 +2,7 @@
 
 Common brief: docs/process/builder-brief.md (Budget hard stop: at 64 calls start nothing new, leave the tree
 consistent, commit, report; scratch-copy mutations; fix lint as you go; R13-R16).
-Size: M, 9 files, 5 items
+Size: M, 9 files, 6 items
 CI: app job `api` step (`tests_app/test_feed_user_isolation.py`, `tests_app/test_feed_caps.py`,
 `tests_app/test_feed_session_expiry.py` (new), `tests_app/test_kite_ws.py`, `tests_app/test_bus_socket.py`,
 `tests_app/test_feed_restart_core.py`; vars: TEST_DATABASE_URL, OFO_REQUIRE_DB_TESTS=1, BROKER_TOKEN_KEY, REDIS_URL from
@@ -30,7 +30,7 @@ Commit with `git add <paths>` (never `-A`); do NOT push. Scratch:
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\row09b`.
 
 ## What to build (orchestrator decisions, technical, recorded)
-0. Before any code (R9, findings first): read Zerodha's websocket page (https://kite.trade/docs/connect/v3/websocket/)
+0. DONE by the orchestrator (F-59, ADR-170) - skip the research; for the record, the question was: read Zerodha's websocket page (https://kite.trade/docs/connect/v3/websocket/)
    and, if it is unclear, the Kite forum, for ONE question: is "3 connections per API key" counted per api_key across
    ALL users of one app, or per api_key per user's access token? Report the exact sentence and URL. Do not decide on it:
    the orchestrator records it as finding F-59 (if it is per app, per-user feeds cap at 3 users - an owner question
@@ -54,6 +54,12 @@ Commit with `git add <paths>` (never `-A`); do NOT push. Scratch:
    then IDLES and waits for a login control message or the re-check - it no longer exits with code 3 (a process
    manager would restart an exiting feed in a loop until a login). Update the A0 boundary test that pins exit 3: it now
    asserts gate installed first, no Kite call, still running, and a later stored session starts a socket.
+
+5. From the A1 verify (MINOR): `supervise`'s FIRST `xrevrange` call has no RedisError handling, so a feed started
+   while Redis is down crashes; catch it there, start from "0-0", log the class only, keep retrying on the re-check
+   (test: Redis refused at feed start -> the process stays up and starts once Redis answers).
+Decision for item 0 is now taken (ADR-170, owner 2026-10-23): per-user feeds stay; the cap stays 3 per key as
+configuration; a 4th connection is refused and logged, and that user's screens say live prices are not available.
 
 Attack list: (each names its test file)
 1. Kill user A's socket -> B's ticks continue; A's frames never reach B (`tests_app/test_feed_user_isolation.py`).

@@ -870,3 +870,18 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   laptop. Decision (orchestrator, technical, row 9, after an independent Opus design review): the bus uses Redis
   Streams with a length cap and keys with an expiry (rebuildable state only), so the same code runs on real Redis in CI
   and on the stand-in on the laptop. Not a rule change. Status: **measured on real runs**.
+
+## F-59 - Kite's 3-websocket limit is per API key across ALL users of one Kite Connect app, not per user
+- Read 2026-10-22 ~23:20 IST (builder sequence row 9, REQ-113 AC-6; WebFetch of the pages):
+  Kite docs (https://kite.trade/docs/connect/v3/websocket/): "Single API key can have upto 3 websocket connections."
+  Zerodha staff on the developer forum: "The 3 connections limit is per api_key and not based on user" and "A Kite
+  Connect app is enabled only for single user by default" (sujith, Sept 2021, asked whether 6 users with 6 tokens on one
+  app could open 18 connections, https://kite.trade/forum/discussion/10382/limit-of-number-of-websockets); "we suggest
+  not open more than 3 websocket connections per api_key" - more "will be blocked without intimation" (sujith, May 2022,
+  https://kite.trade/forum/discussion/11179/how-many-websocket-connection-per-kite-connect-app); for more connections
+  "create a new app and use that api_key" (sujith, Feb 2023, https://kite.trade/forum/discussion/12382/more-than-one-api-keys-in-same-subscription).
+  Not found: any Zerodha arrangement for a multi-user platform's websocket count.
+- Bears on: ADR-053 (each user's own feed in V1) - on ONE platform Kite Connect app, per-user sockets stop at 3 users;
+  F-31 (Zerodha grants multi-user access only after a demo; the owner's limits question was not answered); REQ-113 AC-6
+  (the cap is held as configuration: 3 per key). ADR-060 keeps the build on the owner's own app, so nothing breaks
+  today. Owner decision 2026-10-23: ADR-170 (keep per-user feeds; ask Zerodha at the multi-user demo). Status: **measured from documentation and staff answers**.

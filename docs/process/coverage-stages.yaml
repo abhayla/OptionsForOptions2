@@ -309,6 +309,7 @@ decisions:
   ADR-167: S6.2        # curves and scenario values before charges, charges shown once (owner 2026-10-22)
   ADR-168: S6.1        # builder sequence: one row at a time, 63 work items (owner 2026-10-22)
   ADR-169: S6.1        # Zerodha connection by login only, no own-app setup (owner 2026-10-22, row 2)
+  ADR-170: S6.7         # per-user feeds kept; ask Zerodha at the multi-user demo for more websockets per app (Q274, F-59)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -587,6 +588,7 @@ findings:
   F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
   F-57: 4a        # Zerodha rule constants checked against current docs; NIFTY freeze 3,510 reported, unconfirmed (row 5)
   F-58: S6.7      # fakeredis TCP server: no pub/sub delivery, Streams work (row 9 bus design)
+  F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
 
 hypotheses:
   H1: done
