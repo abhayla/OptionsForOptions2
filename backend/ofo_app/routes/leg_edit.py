@@ -1,7 +1,8 @@
 """POST /api/strategies/leg-edit (W-148; REQ-076; ADR-008, ADR-068, ADR-092, ADR-150).
 
 Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo_app/routes/leg_edit.py), REQ-076 controls only:
-``step``, ``multiplier``, ``include``, ``price`` and ``reset_prices``. Shift / Width / Hedge and the controls read are
+``step``, ``multiplier``, ``include``, ``price``, ``reset_prices`` and ``read`` (changes no leg: it answers the current
+numbers, shape name and Hedge marks of the legs as sent, REQ-076 AC-8). Shift / Width / Hedge and the controls read are
 REQ-078 (row 30) and are not here.
 
 The browser sends the builder's legs plus ONE edit; the server applies it with :mod:`ofo.strategy.leg_edit` against the
@@ -71,6 +72,7 @@ CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list i
 _catalogue_cache: dict = {"until": 0.0, "value": None}
 
 Capture = Callable[[MarketContext | None, LiveFeed | None, str, list[str]], Awaitable[tuple]]
+ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
 
 
 async def get_edit_catalogue() -> Catalogue:
@@ -105,6 +107,25 @@ async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
     return {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
 
 
+def get_contract_ids() -> ContractIds:
+    """The stored internal contract id of each live instrument id (what Save Draft links a leg to, ADR-057). A contract
+    with no live stored row is absent from the answer; its leg is then not savable. Tests override it."""
+    async def lookup(instrument_ids: list[str]) -> dict[str, int]:
+        from ofo_app import catalogue_store  # noqa: PLC0415
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+
+        found: dict[str, int] = {}
+        async with get_sessionmaker()() as session:
+            conn = await session.connection()
+            for iid in instrument_ids:
+                segment, _, token = iid.partition(":")
+                stored = await catalogue_store.live_contract_id(conn, ContractKey(segment, int(token)))
+                if stored is not None:
+                    found[iid] = stored
+        return found
+    return lookup
+
+
 def get_capture() -> Capture:
     """The planned-entry capture seam (the same helper the leg picker's route uses). Tests override it."""
     return capture_entries
@@ -125,7 +146,7 @@ class EditLegIn(LegIn):
 
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    control: Literal["step", "multiplier", "include", "price", "reset_prices"]
+    control: Literal["step", "multiplier", "include", "price", "reset_prices", "read"]
     direction: Literal[1, -1] | None = None
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
@@ -136,7 +157,7 @@ class EditIn(BaseModel):
     def _control_has_its_fields(self) -> EditIn:
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
-                 "multiplier": ("multiplier",), "reset_prices": ()}[self.control]
+                 "multiplier": ("multiplier",), "reset_prices": (), "read": ()}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
                  "multiplier": self.multiplier}
         missing = [name for name in needs if given[name] is None]
@@ -157,6 +178,8 @@ class LegEditIn(BaseModel):
 
 class EditLegOut(ApiModel):
     instrument_id: InstrumentId
+    contract_id: int | None  # the stored internal id of THIS contract (a stepped leg's new one); None = not savable
+    lot_size: int
     action: Literal["BUY", "SELL"]
     instrument: Literal["CE", "PE", "FUT"]
     strike: Money | None
@@ -285,6 +308,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
     if e.control == "reset_prices":
         return legs, frozenset(range(len(legs)))
+    if e.control == "read":
+        return legs, frozenset()
     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
     return moved.legs, moved.moved
 
@@ -312,6 +337,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                    feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                    capture: Annotated[Capture, Depends(get_capture)],
+                   contract_ids: Annotated[ContractIds, Depends(get_contract_ids)],
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
@@ -338,8 +364,10 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         new_legs = edit.with_entries(new_legs, entries)
     template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
     blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
+    stored_ids = await contract_ids(ids)
     out_legs = [{
-        "instrument_id": ids[i], "action": x.leg.action.value, "instrument": x.leg.instrument.value,
+        "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
+        "action": x.leg.action.value, "instrument": x.leg.instrument.value,
         "strike": x.leg.strike, "expiry": x.leg.expiry, "lots": x.lots, "base_lots": x.base_lots,
         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price,
         "captured_at": None if i in unpriced else stamps[i],

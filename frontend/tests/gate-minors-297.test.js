@@ -5,9 +5,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 let apiAnswer = null
+// the read control's answer: the legs as sent, with the strike, type and expiry the server names (REQ-076 AC-8)
+let readReply = () => null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')), post: () => Promise.resolve({ data: apiAnswer }) } }
+  return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')), post: (url, body) => Promise.resolve({ data: url === '/strategies/leg-edit' ? readReply(body) : apiAnswer }) } }
 })
 // jsdom has no canvas; the chart's lines are tested through payoffRegions
 vi.mock('chart.js/auto', () => ({ default: class { destroy() {} } }))
@@ -15,6 +17,9 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { payoffRegions } from '@/lib/payoffRegions'
 import real from './fixtures/outcome-condor-no-quote.json'
 
+readReply = (body) => ({ legs: body.legs.map((l) => { const r = real.legs.find((x) => x.instrument_id === l.instrument_id)
+  return { ...l, instrument: r.instrument, strike: r.strike, expiry: r.expiry, price_source: 'captured', hedge: false, block: null } }),
+  shape: null, shape_name: null, outcome: null })
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 
@@ -30,9 +35,15 @@ async function openPage() {
 const texts = (w, id) => w.findAll(`[data-testid="${id}"]`).map((e) => e.text())
 
 describe('item 1: a leg opened from a link is named once the catalogue answer is in', () => {
-  it('the picker rows show contract names, never "Contract details not available"', async () => {
+  it('the one leg list rows name each contract (expiry, strike, type), never "Contract details not available"', async () => {
+    // Fix round 3: the picker's own list (with its "leg-name" text) is gone from the Builder (one list, REQ-076 AC-1); the
+    // contract is now named by the row's own parts. The mock answers every POST with the recorded outcome, so the read
+    // control's reply is made leg-edit shaped here (the recorded legs, as the server names them).
     const w = await openPage()
-    expect(texts(w, 'leg-name').slice(0, 4)).toEqual(['NIFTY 19 Oct 22800 PE', 'NIFTY 19 Oct 22950 PE', 'NIFTY 19 Oct 23250 CE', 'NIFTY 19 Oct 23400 CE'])
+    const rows = w.findAll('[data-testid^="leg-edit-row-"]')
+    expect(rows).toHaveLength(4)
+    expect(rows.map((r) => [r.find('[data-testid="leg-expiry"]').text(), r.find('[data-testid="leg-strike"]').text(), r.find('[data-testid="leg-type"]').text()]))
+      .toEqual(real.legs.map((l) => [l.expiry, l.strike, l.instrument]))
     expect(w.text()).not.toContain('Contract details not available')
     w.unmount()
   })

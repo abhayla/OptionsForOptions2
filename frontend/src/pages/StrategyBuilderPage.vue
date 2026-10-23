@@ -4,7 +4,8 @@
      catalogue API offers); a `draft` query (a JSON body of legs with planned entry and capture time) still opens a
      draft. The outcome API's leg model needs a planned entry, so only priced legs are sent; a leg without one stays in
      the picker's list with the not-connected wording. One level for everyone (ADR-168): an old `ux` query is ignored.
-     States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced),
+     W-148 (REQ-076): leg rows with -/+, multiplier, tick; each edit is one POST /strategies/leg-edit and its reply is drawn.
+     States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced), left-out,
      refused, error, no-draft.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
@@ -26,6 +27,8 @@ import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import LegList from '@/components/strategy/LegList.vue'
+import { applyEditReply, buildEditRequest, executeRefusal } from '@/lib/legEdit'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
@@ -82,6 +85,14 @@ if (linkRefused.value) {
   state.value = 'error'
   errorParts.value = INVALID_LINK_PARTS
 }
+// W-148 (REQ-076): the leg-edit state. The shape name is the server's (null until a reply named it); `updating` marks the
+// old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
+const shapeName = ref(null)
+const hasReply = ref(false)
+const updating = ref(false)
+const editError = ref(null)
+const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.included === false)
+let editSeq = 0
 let loadSeq = 0 // only the newest outcome answer is shown
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -95,7 +106,7 @@ async function load() {
   slow.value = false
   const draft = buildDraft(legs.value)
   if (!draft) {
-    state.value = legs.value.length ? 'unpriced' : 'no-draft'
+    state.value = legs.value.length ? (allLeftOut() ? 'left-out' : 'unpriced') : 'no-draft'
     data.value = null
     return
   }
@@ -183,16 +194,78 @@ const setLegs = (next) => {
   savedRevision.value = null
   linkRefused.value = false
   legs.value = next
+  hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
+  shapeName.value = null
+  editError.value = null
   load()
   syncLive()
+  readShape()
 }
+// REQ-076 AC-8: the shape name and Hedge marks come from the server on load and after Done, before any edit.
+function readShape() {
+  if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
+}
+const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
+  readShape()
 })
+// REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
+// Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.
+async function editLeg(edit) {
+  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit)
+  if (!body) return
+  const mine = ++editSeq
+  updating.value = true
+  editError.value = null
+  try {
+    const reply = (await api.post('/strategies/leg-edit', body)).data
+    if (mine !== editSeq) return
+    if (edit.control === 'read') {
+      // changes no leg and no number: only the contract ids, the name and the Hedge marks are taken (load() owns the outcome)
+      if (Array.isArray(reply?.legs) && reply.legs.length === legs.value.length) {
+        legs.value = applyEditReply(legs.value, reply)
+        shapeName.value = reply.shape_name ?? null
+        hasReply.value = true
+      }
+      return
+    }
+    const keep = edit.control === 'include'
+    legs.value = applyEditReply(legs.value, reply)
+    if (!keep) {
+      savedId.value = null
+      savedRevision.value = null
+    }
+    shapeName.value = reply.shape_name ?? null
+    hasReply.value = true
+    loadSeq++ // the reply carries the numbers: an outcome request still in flight is obsolete
+    clearTimeout(slowTimer)
+    slow.value = false
+    if (reply.outcome) applyOutcome(reply.outcome)
+    else {
+      data.value = null
+      state.value = allLeftOut() ? 'left-out' : 'unpriced'
+    }
+    syncLive()
+  } catch (e) {
+    if (mine !== editSeq || edit.control === 'read') return // a failed read leaves the page as load() drew it, no error text
+    editError.value = e?.parts ?? NEUTRAL_PARTS
+  } finally {
+    if (mine === editSeq) updating.value = false
+  }
+}
+const picker = ref(null)
+// Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
+const openInPicker = (i) => {
+  const leg = legs.value[i]
+  if (leg) picker.value?.startEdit(leg)
+}
+const focusPicker = () => document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
+const refusal = computed(() => executeRefusal(legs.value))
 const setChoice = (next) => {
   choice.value = next
   load()
@@ -229,9 +302,13 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker :legs="legs" @update:legs="setLegs" />
+    <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
+    <LegList
+      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError"
+      @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
+    />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
@@ -246,6 +323,11 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown because none of the legs has a planned entry from live market data.</p>
       <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+    </div>
+
+    <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
+      <p class="font-medium">Every leg is left out of the numbers.</p>
+      <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
     </div>
 
     <div v-else-if="state === 'error'" class="mt-4">
@@ -269,7 +351,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
     </div>
 
-    <template v-if="showNumbers">
+    <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
       <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
         <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
         <ul v-if="staleLegs.length">
@@ -300,9 +382,9 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
       <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
-      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
+      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" :execute-refusal="refusal" @recalculate="load" />
       <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
-    </template>
+    </div>
   </section>
 </template>

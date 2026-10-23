@@ -1,0 +1,381 @@
+// W-148 (REQ-076 AC-1, AC-3, AC-4, AC-6, AC-7, AC-8, AC-9, AC-10; REQ-080 AC-7): the browser sends ONE edit and draws the
+// server's reply; it moves no strike and prices nothing. The reply legs below have the REAL LegEditOut shape of
+// backend/ofo_app/routes/leg_edit.py; the outcome is the recorded condor outcome (tests/fixtures/outcome-condor.json), whose
+// strikes and entries are the recorded values. Adapted from this repo's branch build/W-126-a1-leg-rows (REQ-076 parts only).
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+
+const calls = []
+let answers = {}
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  const respond = (method, url, body) => {
+    calls.push({ method, url, body })
+    const a = answers[`${method} ${url}`]
+    if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
+    return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a })
+  }
+  return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
+})
+import LegList from '@/components/strategy/LegList.vue'
+import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import {
+  CUSTOM_STRATEGY, EXECUTE_NEEDS_ALL_TICKED, LEFT_OUT_LABEL, NO_LEGS_YET, applyEditReply, buildEditRequest, canStep, executeRefusal,
+  MULTIPLIER_CHOICES, shapeLabel,
+} from '@/lib/legEdit'
+import { buildDraft } from '@/lib/legPicker'
+import real from './fixtures/outcome-condor.json'
+
+const t = (w, id) => w.find(`[data-testid="${id}"]`)
+const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
+const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
+  planned_entry: l.planned_entry, captured_at: l.captured_at })) }
+const replyLeg = (l, extra = {}) => ({ instrument_id: l.instrument_id, action: l.action, instrument: l.instrument, strike: l.strike,
+  expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry, captured_at: l.captured_at,
+  price_source: 'captured', included: true, hedge: false, block: null, ...extra })
+// The server's reply to a + on leg 1: the strike moved 22800 -> 22850 (a new contract), every number is the reply's.
+const STEPPED = {
+  legs: [replyLeg(real.legs[0], { instrument_id: 'NSE_FO:44625', strike: '22850.00', planned_entry: '95.00' }), ...real.legs.slice(1).map((l) => replyLeg(l))],
+  shape: null, shape_name: null,
+  outcome: { ...real, summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
+}
+// The server's answer to the read control on load: the legs as sent, the matched name and the two Hedge marks (the wings).
+const READ = {
+  legs: real.legs.map((l, i) => replyLeg(l, { hedge: i === 0 || i === 3 })), shape: 'iron_condor', shape_name: 'Short Iron Condor', outcome: real,
+}
+const REFUSED = { parts: { what_happened: 'That strike is not listed.', impact: 'Nothing changed.', what_is_blocked: 'No step was made.',
+  next_action: 'Pick another strike.' } }
+
+beforeEach(() => {
+  calls.length = 0
+  answers = {}
+})
+
+async function openPage() {
+  answers['POST /strategies/outcome'] = real
+  answers['POST /strategies/leg-edit'] = READ
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+  await router.isReady()
+  const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } }) // no canvas in jsdom
+  await flushPromises()
+  return w
+}
+const edits = () => calls.filter((c) => c.url === '/strategies/leg-edit' && c.body.edit.control !== 'read')
+const reads = () => calls.filter((c) => c.url === '/strategies/leg-edit' && c.body.edit.control === 'read')
+
+describe('REQ-076 AC-8 / one leg list: the page draws the shape name on load and exactly one leg list', () => {
+  it('AC-8: a saved iron condor shows its name and two Hedge marks before any edit, from the read control', async () => {
+    const w = await openPage()
+    expect(reads().length).toBeGreaterThan(0)
+    expect(reads()[0].body.edit).toEqual({ control: 'read' })
+    expect(t(w, 'shape-name').text()).toContain(READ.shape_name)
+    expect(all(w, 'hedge-mark')).toHaveLength(2)
+    expect(edits()).toHaveLength(0)
+  })
+  it('one list: the builder renders LegList only; the picker draws no leg list of its own', async () => {
+    const w = await openPage()
+    expect(all(w, 'leg-edit-list')).toHaveLength(1)
+    expect(all(w, 'leg-list')).toHaveLength(0)
+    expect(all(w, 'leg-row')).toHaveLength(0)
+    expect(all(w, 'leg-edit-row-0')).toHaveLength(1)
+  })
+})
+
+describe('Core: a + on an option leg sends one leg-edit request and the page is redrawn from the reply', () => {
+  it('AC-1/AC-3: + posts {control: step} once; the strike and the summary are the reply\'s', async () => {
+    const w = await openPage()
+    expect(all(w, 'leg-tick')).toHaveLength(4) // the rows exist once the outcome named the legs
+    answers['POST /strategies/leg-edit'] = STEPPED
+    await all(w, 'strike-plus')[0].trigger('click')
+    await flushPromises()
+    expect(edits()).toHaveLength(1)
+    expect(edits()[0].body.edit).toEqual({ control: 'step', index: 0, direction: 1 })
+    expect(edits()[0].body.legs.map((l) => l.instrument_id)).toEqual(real.legs.map((l) => l.instrument_id))
+    expect(all(w, 'leg-strike')[0].text()).toBe('22850.00')
+    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+    expect(t(w, 'output-label').text()).toBe('REPLY LABEL')
+  })
+})
+
+describe('the request carries one edit and nothing computed', () => {
+  const legs = real.legs.map((l) => ({ ...l, instrument_type: l.instrument }))
+  it('AC-1: each control sends only its own fields, plus the legs as they are', () => {
+    const body = buildEditRequest('NIFTY', legs, { control: 'step', index: 1, direction: -1, strike: '99999' })
+    expect(body.edit).toEqual({ control: 'step', index: 1, direction: -1 })
+    expect(Object.keys(body).sort()).toEqual(['edit', 'legs', 'underlying'])
+    expect(body.legs.map((l) => Object.keys(l).sort())).toEqual(Array(4).fill(
+      ['action', 'base_lots', 'captured_at', 'included', 'instrument_id', 'lots', 'planned_entry', 'typed']))
+  })
+  it('an edit missing its fields, an unknown control or a leg with no id builds nothing (no guess)', () => {
+    expect(buildEditRequest('NIFTY', legs, { control: 'step', index: 0 })).toBeNull()
+    expect(buildEditRequest('NIFTY', legs, { control: 'shift', direction: 1 })).toBeNull() // REQ-078, not this row
+    expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0, price: '81.35' })).toBeNull() // REQ-077, not this row
+    expect(buildEditRequest('NIFTY', [{ ...legs[0], instrument_id: null }], { control: 'include', index: 0, included: false })).toBeNull()
+    expect(buildEditRequest('NIFTY', [], { control: 'multiplier', multiplier: 2 })).toBeNull()
+  })
+  it('AC-6: the tick goes into the request as the leg\'s own flag', () => {
+    const body = buildEditRequest('NIFTY', legs.map((l, i) => (i === 2 ? { ...l, included: false } : l)), { control: 'include', index: 2, included: false })
+    expect(body.legs.map((l) => l.included)).toEqual([true, true, false, true])
+  })
+  it('AC-4: the multiplier is chosen from the fixed list 1 to 50, nothing is parsed from text', () => {
+    expect(MULTIPLIER_CHOICES).toHaveLength(50)
+    expect([MULTIPLIER_CHOICES[0], MULTIPLIER_CHOICES[49]]).toEqual([1, 50])
+    expect(new Set(MULTIPLIER_CHOICES).size).toBe(50)
+  })
+})
+
+describe('LegList rows (screens 011, 012)', () => {
+  const rows = [
+    { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 1, base_lots: 1, planned_entry: '100.00', captured_at: 'x',
+      instrument_type: 'CE', strike: '22800.00', expiry: '2026-10-13' },
+    { id: 2, underlying: 'NIFTY', instrument_id: 'NSE_FO:51000', action: 'BUY', lots: 1, base_lots: 1, planned_entry: '23100.00', captured_at: 'x',
+      instrument_type: 'FUT', strike: null, expiry: '2026-10-27' },
+  ]
+
+  it('AC-1 (attack 1): a futures leg has no stepper; an option leg steps down and up', async () => {
+    const w = mount(LegList, { props: { legs: rows } })
+    expect(all(w, 'strike-minus')).toHaveLength(1)
+    expect(all(w, 'strike-plus')).toHaveLength(1)
+    expect(t(w, 'leg-edit-row-1').find('[data-testid="strike-plus"]').exists()).toBe(false)
+    await t(w, 'strike-plus').trigger('click')
+    await t(w, 'strike-minus').trigger('click')
+    expect(w.emitted('edit')).toEqual([[{ control: 'step', index: 0, direction: 1 }], [{ control: 'step', index: 0, direction: -1 }]])
+    expect([canStep(rows[0]), canStep(rows[1]), canStep({}), canStep({ instrument_type: 'ce' })]).toEqual([true, false, false, false])
+  })
+
+  it('AC-1 (attack 1): an option leg at the last listed strike shows the server\'s refusal reason', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = Object.assign(new Error('refused'), REFUSED)
+    await all(w, 'strike-minus')[0].trigger('click')
+    await flushPromises()
+    expect(t(w, 'edit-error-what').text()).toBe('That strike is not listed.')
+    expect(t(w, 'edit-error-next').text()).toBe('Pick another strike.')
+    expect(all(w, 'leg-strike')[0].text()).toBe('22800') // nothing changed
+  })
+
+  it('AC-4: the multiplier is a choice from the list: choosing 3 and 50 emits those numbers', async () => {
+    const w = mount(LegList, { props: { legs: rows } })
+    expect(t(w, 'multiplier').findAll('option')).toHaveLength(50)
+    for (const index of [2, 49]) {
+      t(w, 'multiplier').element.selectedIndex = index
+      await t(w, 'multiplier').trigger('change')
+    }
+    expect(w.emitted('edit')).toEqual([[{ control: 'multiplier', multiplier: 3 }], [{ control: 'multiplier', multiplier: 50 }]])
+  })
+
+  it('AC-6: the tick emits an include edit; an unticked leg is greyed and labelled', async () => {
+    const w = mount(LegList, { props: { legs: [rows[0], { ...rows[1], included: false }] } })
+    expect(all(w, 'left-out-label')).toHaveLength(1)
+    expect(t(w, 'left-out-label').text()).toBe(LEFT_OUT_LABEL)
+    expect(LEFT_OUT_LABEL).toBe('Left out of the numbers')
+    expect(t(w, 'leg-edit-row-1').classes()).toContain('opacity-60')
+    expect(t(w, 'leg-edit-row-0').classes()).not.toContain('opacity-60')
+    expect(all(w, 'leg-tick').map((c) => c.element.checked)).toEqual([true, false])
+    await all(w, 'leg-tick')[0].setValue(false)
+    expect(w.emitted('edit')).toEqual([[{ control: 'include', index: 0, included: false }]])
+    expect(t(w, 'leg-edit-header').text()).toContain('1 selected')
+  })
+
+  it('AC-6: an unticked leg is never part of the draft sent to the outcome', () => {
+    const legs = real.legs.map((l, i) => ({ ...l, underlying: 'NIFTY', included: i !== 3 }))
+    expect(buildDraft(legs).legs.map((l) => l.instrument_id)).toEqual(real.legs.slice(0, 3).map((l) => l.instrument_id))
+    expect(buildDraft(legs.map((l) => ({ ...l, included: false })))).toBeNull()
+  })
+
+  it('AC-8/AC-9 (attack 4): name and Hedge marks come only from the reply; no reply, no name; no marks, none shown', async () => {
+    const w = mount(LegList, { props: { legs: rows } })
+    expect(t(w, 'shape-name').exists()).toBe(false) // nothing invented before a reply
+    expect(all(w, 'hedge-mark')).toHaveLength(0)
+    await w.setProps({ hasReply: true, shapeName: null })
+    expect(t(w, 'shape-name').text()).toContain(CUSTOM_STRATEGY)
+    await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
+    expect(t(w, 'shape-name').text()).toContain('Iron Condor')
+    expect(all(w, 'hedge-mark')).toHaveLength(1)
+    expect(t(w, 'leg-edit-row-0').find('[data-testid="hedge-mark"]').text()).toBe('Hedge')
+    expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
+    expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
+  })
+
+  it('AC-8: on the page the name and the marks are the reply\'s and update on every edit', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, shape: 'iron_condor', shape_name: 'Iron Condor',
+      legs: STEPPED.legs.map((l, i) => ({ ...l, hedge: i === 0 || i === 3 })) }
+    await all(w, 'strike-plus')[0].trigger('click')
+    await flushPromises()
+    expect(t(w, 'shape-name').text()).toContain('Iron Condor')
+    expect(all(w, 'hedge-mark')).toHaveLength(2)
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: STEPPED.legs.map((l) => ({ ...l, hedge: false })) }
+    await all(w, 'strike-plus')[1].trigger('click')
+    await flushPromises()
+    expect(t(w, 'shape-name').text()).toContain('Custom Strategy')
+    expect(all(w, 'hedge-mark')).toHaveLength(0)
+  })
+
+  it('AC-10 (attack 5): with no legs, No legs yet with Add leg and Pick from Option Chain, and no numbers', async () => {
+    const w = mount(LegList, { props: { legs: [] } })
+    expect(t(w, 'no-legs-text').text()).toBe(NO_LEGS_YET)
+    expect(t(w, 'no-legs-add').text()).toBe('Add leg')
+    expect(t(w, 'no-legs-chain').text()).toBe('Pick from Option Chain')
+    expect(w.text()).not.toMatch(/\b0\.00\b/)
+    await t(w, 'no-legs-add').trigger('click')
+    await t(w, 'no-legs-chain').trigger('click')
+    expect(w.emitted('add-leg')).toHaveLength(1)
+    expect(w.emitted('pick-chain')).toHaveLength(1)
+    const page = mount(StrategyBuilderPage, { global: { plugins: [createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: StrategyBuilderPage }] })], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    expect(page.find('[data-testid="no-legs-text"]').text()).toBe('No legs yet')
+    expect(page.find('[data-testid="numbers"]').exists()).toBe(false)
+    expect(page.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('no-draft')
+  })
+
+  it('REQ-080 AC-7 (attack 6): every row has a depth icon that opens the popup for its own contract', async () => {
+    answers['GET /leg-picker/depth?instrument_id=NSE_FO%3A51000'] = { state: 'NOT_AVAILABLE', reason: 'DEPTH_NOT_STORED' }
+    answers['GET /leg-picker/depth?instrument_id=NSE_FO%3A44624'] = { state: 'NOT_AVAILABLE', reason: 'DEPTH_NOT_STORED' }
+    const w = mount(LegList, { props: { legs: rows } })
+    expect(all(w, 'leg-depth-icon')).toHaveLength(2)
+    await all(w, 'leg-depth-icon')[1].trigger('click')
+    await flushPromises()
+    expect(all(w, 'depth-popup')).toHaveLength(1)
+    expect(t(w, 'depth-popup').attributes('data-instrument-id')).toBe('NSE_FO:51000')
+    await all(w, 'leg-depth-icon')[0].trigger('click')
+    await flushPromises()
+    expect(all(w, 'depth-popup')).toHaveLength(1)
+    expect(t(w, 'depth-popup').attributes('data-instrument-id')).toBe('NSE_FO:44624')
+    expect(calls.filter((c) => c.url.startsWith('/leg-picker/depth')).map((c) => c.url)).toEqual([
+      '/leg-picker/depth?instrument_id=NSE_FO%3A51000', '/leg-picker/depth?instrument_id=NSE_FO%3A44624'])
+  })
+
+  it('while a reply is pending the old numbers are marked as updating', async () => {
+    const w = await openPage()
+    let release
+    answers['POST /strategies/leg-edit'] = () => new Promise((res) => { release = () => res({ data: STEPPED }) })
+    await all(w, 'strike-plus')[0].trigger('click')
+    await flushPromises()
+    expect(t(w, 'numbers').attributes('data-updating')).toBe('true')
+    expect(t(w, 'numbers-updating').exists()).toBe(true)
+    expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make) // the old numbers stay until the reply
+    release()
+    await flushPromises()
+    expect(t(w, 'numbers').attributes('data-updating')).toBe('false')
+    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+  })
+})
+
+describe('the reply is drawn as sent', () => {
+  it('AC-3: the page legs take the server strikes, entries and marks; an unpriced leg stays null; a changed contract loses its saved id', () => {
+    const prev = real.legs.map((l, i) => ({ id: i + 1, underlying: 'NIFTY', contract_id: 100 + i, lot_size: 65, symbol: l.symbol, ...l }))
+    const next = applyEditReply(prev, { ...STEPPED, legs: [{ ...STEPPED.legs[0], planned_entry: null, price_source: 'none', captured_at: null }, ...STEPPED.legs.slice(1)] })
+    expect(next.map((l) => l.strike)).toEqual(['22850.00', '22800', '23000', '23200'].map((s, i) => STEPPED.legs[i].strike))
+    expect(next[0].planned_entry).toBeNull()
+    expect(next[0].instrument_id).toBe('NSE_FO:44625')
+    expect(next[0].contract_id).toBeNull() // the reply named no id: Save Draft cannot send the old one
+    expect(next[1].contract_id).toBeNull()
+    expect(next[1].id).toBe(2)
+  })
+
+  it('AC-6: every leg unticked sends no outcome request and says so (no zero numbers)', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { legs: STEPPED.legs.map((l) => ({ ...l, included: false })), shape: null, shape_name: null, outcome: null }
+    await all(w, 'leg-tick')[0].setValue(false)
+    await flushPromises()
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('left-out')
+    expect(t(w, 'numbers').exists()).toBe(false)
+    expect(all(w, 'left-out-label')).toHaveLength(4)
+    expect(calls.filter((c) => c.url === '/strategies/outcome')).toHaveLength(1) // the opening one only
+  })
+})
+
+describe('AC-7 (attack 2): Execute is refused while any leg is unticked', () => {
+  const mountActions = async (props) => {
+    answers['GET /broker/status'] = { account_connection: { state: 'connected', fix: null } }
+    answers['GET /features'] = { order_path: 'on' }
+    const w = mount(StrategyActions, { props: { hasLegs: true, savedId: 5, ...props }, global: { stubs: { RouterLink: { template: '<a data-testid="execute-strategy"><slot /></a>' } } } })
+    await flushPromises()
+    return w
+  }
+  it('AC-7: the reason is the requirement\'s exact sentence', () => {
+    expect(EXECUTE_NEEDS_ALL_TICKED).toBe('Tick every leg to execute: the whole strategy is sent as one plan.')
+    expect(executeRefusal([{ included: true }, {}])).toBeNull()
+    expect(executeRefusal([{ included: true }, { included: false }])).toBe(EXECUTE_NEEDS_ALL_TICKED)
+  })
+  it('AC-7: all ticked -> the Execute link; one unticked -> a disabled button with the exact reason, no link, no request', async () => {
+    const ok = await mountActions({ executeRefusal: null })
+    expect(ok.find('[data-testid="execute-strategy"]').exists()).toBe(true)
+    calls.length = 0
+    const w = await mountActions({ executeRefusal: EXECUTE_NEEDS_ALL_TICKED })
+    expect(w.find('[data-testid="execute-strategy"]').exists()).toBe(false)
+    const stand = w.find('[data-testid="execute-strategy-disabled"]')
+    expect(stand.attributes('disabled')).toBeDefined()
+    expect(w.find('[data-testid="execute-strategy-reason"]').text()).toBe(EXECUTE_NEEDS_ALL_TICKED)
+    await stand.trigger('click')
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+  it('AC-7: on the page the refusal follows the tick; the tick keeps a saved draft saved and never reaches the saved body', async () => {
+    const w = await openPage()
+    const actions = w.findComponent(StrategyActions)
+    expect(actions.props('executeRefusal')).toBeNull()
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l, i) => replyLeg(l, { included: i !== 1 })), outcome: real }
+    await all(w, 'leg-tick')[1].setValue(false)
+    await flushPromises()
+    expect(actions.props('executeRefusal')).toBe(EXECUTE_NEEDS_ALL_TICKED)
+    expect(edits()[0].body.legs.every((l) => l.included === true)).toBe(true) // the edit was sent from the ticked state
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l) => replyLeg(l)), outcome: real }
+    await all(w, 'leg-tick')[1].setValue(true)
+    await flushPromises()
+    expect(actions.props('executeRefusal')).toBeNull()
+  })
+})
+
+// ---- Fix round 3 (row 20): Edit and Reprice are on the ONE leg list and work as the picker's own list did ----
+describe('REQ-077 AC-7: an unpriced leg on the one leg list keeps the ADR-085 message and a working Reprice; Edit works as before', () => {
+  const AT = '2026-10-08T09:20:09+05:30'
+  const UNPRICED = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE',
+    expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null,
+    captured_at: null, reason_code: 'needs_reprice' }
+  const CONTRACTS = { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE',
+    expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }] }
+  async function openWithLeg(leg) {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CONTRACTS
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    w.findComponent({ name: 'LegPicker' }).vm.$emit('update:legs', [leg])
+    await flushPromises()
+    return w
+  }
+  it('attack 2: the row shows the exact ADR-085 message and Reprice; Reprice then Save leg captures one entry and clears the message', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, planned_entry: '104.65',
+      captured_at: AT, source: 'ltp', reason_code: null }] }
+    const w = await openWithLeg(UNPRICED)
+    expect(all(w, 'leg-edit-list')).toHaveLength(1)
+    expect(all(w, 'leg-list')).toHaveLength(0)
+    expect(t(w, 'leg-reprice-prompt').text()).toBe('This leg was saved without a planned entry. Reprice it to see its numbers.')
+    expect(calls.some((c) => c.url === '/strategies/planned-entry')).toBe(false) // nothing is captured by showing the row
+    await t(w, 'reprice-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'pick-strike').element.value).toBe('22800.00') // the picker's form is open on this leg
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.url === '/strategies/planned-entry')).toHaveLength(1)
+    expect(w.findComponent({ name: 'LegList' }).props('legs')[0]).toMatchObject({ planned_entry: '104.65', captured_at: AT, reason_code: null })
+    expect(all(w, 'leg-reprice-prompt')).toHaveLength(0)
+  })
+  it('attack 3: a priced leg has no Reprice; Edit re-fills the picker form from the catalogue (same requests as the picker\'s Edit)', async () => {
+    const w = await openWithLeg({ ...UNPRICED, planned_entry: '100.00', captured_at: AT, reason_code: null })
+    expect(all(w, 'reprice-leg')).toHaveLength(0)
+    expect(all(w, 'leg-reprice-prompt')).toHaveLength(0)
+    calls.length = 0
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    expect(calls.map((c) => `${c.method} ${c.url}`).filter((u) => u.includes('/catalogue/'))).toEqual(['GET /catalogue/NIFTY/expiries', 'GET /catalogue/NIFTY/contracts?expiry=2026-10-13'])
+    expect(w.find('h2').text()).toBe('Edit leg')
+    expect([t(w, 'pick-expiry').element.value, t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value,
+      t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['2026-10-13', 'CE', '22800.00', 'SELL', '1'])
+  })
+})

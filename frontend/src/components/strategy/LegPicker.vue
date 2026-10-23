@@ -35,7 +35,11 @@ import {
   shown,
 } from '@/lib/legPicker'
 
-const props = defineProps({ legs: { type: Array, default: () => [] } })
+const props = defineProps({
+  // the Strategy Builder draws the ONE leg list (LegList.vue), so it passes false
+  showLegList: { type: Boolean, default: true },
+  legs: { type: Array, default: () => [] },
+})
 const emit = defineEmits(['update:legs'])
 
 const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
@@ -337,6 +341,8 @@ async function done() {
 }
 
 const legName = (l) => contractName(l)
+// the Builder's one leg list (LegList.vue) opens the same edit form through this, as the picker's own Edit did
+defineExpose({ startEdit })
 </script>
 
 <template>
@@ -469,7 +475,7 @@ const legName = (l) => contractName(l)
       </div>
     </div>
 
-    <ul v-if="legs.length" class="mt-3 text-sm" data-testid="leg-list">
+    <ul v-if="showLegList && legs.length" class="mt-3 text-sm" data-testid="leg-list">
       <li
 v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-testid="leg-row"
           :data-instrument-id="l.instrument_id" :data-action="l.action" :data-lots="l.lots" :data-entry="l.planned_entry ?? ''"

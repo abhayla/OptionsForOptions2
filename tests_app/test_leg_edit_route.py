@@ -20,7 +20,7 @@ from ofo.outcome.planned_entry import PlannedEntry
 from ofo.strategy import stored_form
 from ofo_app.main import create_app
 from ofo_app.routes import execute, leg_edit, strategies
-from ofo_app.routes.leg_edit import get_capture, get_edit_catalogue, get_edit_today, get_freeze_limits
+from ofo_app.routes.leg_edit import get_capture, get_contract_ids, get_edit_catalogue, get_edit_today, get_freeze_limits
 from ofo_app.routes.outcome import get_margin_source, get_market_context, load_charge_rates
 from ofo_app.routes.planned_entry import get_live_feed
 from pydantic import ValidationError
@@ -40,6 +40,10 @@ BY_KEY = {(c.instrument_type, int(c.strike)): i for i, c in BY_ID.items()
           if c.name == "NIFTY" and c.expiry == EXPIRY and c.instrument_type in ("CE", "PE")}
 #: hand-typed capture prices per (type, strike): what the fake capture finds for a stepped contract
 HAND = {("CE", 23450): "88.00", ("PE", 22850): "45.00", ("PE", 23050): "90.00"}
+#: the stored internal id of each live contract, hand-typed apart from the exchange token (the fake store's rows); the
+#: stepped-to CE 23350 has no stored row, so its leg comes back without a contract id
+STORED = {i: 7_000_000 + n for n, i in enumerate(sorted(BY_ID))}
+STEPPED_ID = BY_KEY[("CE", 23450)]
 START = [("BUY", "PE", 22800, "42.50"), ("SELL", "PE", 23000, "86.00"), ("SELL", "CE", 23400, "91.50"),
          ("BUY", "CE", 23600, "44.00")]
 
@@ -58,6 +62,10 @@ def legs(lots=1, **extra):
              "captured_at": STAMP.isoformat()} | extra for a, t, k, p in START]
 
 
+async def fake_contract_ids(instrument_ids):
+    return {i: STORED[i] for i in instrument_ids if i in STORED and i != BY_KEY[("CE", 23350)]}
+
+
 def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
     app = create_app()
     app.dependency_overrides[get_edit_catalogue] = lambda: cat
@@ -67,6 +75,7 @@ def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
     app.dependency_overrides[get_margin_source] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
     app.dependency_overrides[get_capture] = lambda: fake_capture
+    app.dependency_overrides[get_contract_ids] = lambda: fake_contract_ids
     app.dependency_overrides[load_charge_rates] = lambda: None
 
     async def go():
@@ -269,3 +278,30 @@ def test_a_control_without_its_fields_or_a_smuggled_leg_key_is_a_plain_validatio
         assert status == HTTP_UNPROCESSABLE and "no further" not in str(reply)
     edit = {"control": "multiplier", "multiplier": 2}
     assert post({"legs": legs(checked=True), "edit": edit})[0] == HTTP_UNPROCESSABLE
+
+
+def test_ac_2_a_stepped_leg_carries_the_new_contracts_ids_and_the_others_keep_theirs():
+    """REQ-076 AC-2 'A stepped leg is a new contract': the reply's instrument id, stored id and lot size for the stepped
+    leg are the catalogue's for CE 23450 (not the old CE 23400's); an unstepped leg keeps its own; a contract with no
+    stored row has no contract id (answer state: not savable) and the reply is still 200."""
+    status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": 1}})
+    assert status == HTTP_OK
+    stepped, old = reply["legs"][2], BY_KEY[("CE", 23400)]
+    assert stepped["instrument_id"] == STEPPED_ID and stepped["instrument_id"] != old
+    assert stepped["contract_id"] == STORED[STEPPED_ID] != STORED[old] and stepped["lot_size"] == LOT
+    expected = [STORED[BY_KEY[(t, k)]] if (t, k) != ("CE", 23400) else STORED[STEPPED_ID] for _, t, k, _ in START]
+    assert [leg["contract_id"] for leg in reply["legs"]] == expected
+    status, down = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": -1}})
+    assert status == HTTP_OK and down["legs"][2]["contract_id"] is None and down["legs"][2]["lot_size"] == LOT
+
+
+def test_ac_8_the_read_control_names_the_shape_and_marks_and_changes_no_leg():
+    """REQ-076 AC-8 on load: control 'read' on the saved iron condor answers 'Short Iron Condor', two Hedge marks and
+    the engine's outcome; every leg (strike, lots, entry, capture time) is exactly as sent; no capture is made."""
+    status, reply = post({"legs": legs(), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] == "iron_condor" and "Short Iron Condor" in str(reply["shape_name"])
+    assert [leg["hedge"] for leg in reply["legs"]] == [True, False, False, True]
+    assert strikes(reply) == [22800, 23000, 23400, 23600]
+    assert [leg["planned_entry"] for leg in reply["legs"]] == [p for *_, p in START]
+    assert [leg["captured_at"][:19] for leg in reply["legs"]] == ["2026-10-01T09:20:00"] * 4
+    assert reply["outcome"] is not None

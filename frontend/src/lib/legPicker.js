@@ -51,7 +51,8 @@ export function buildDraft(legs) {
   // Issue #500 (fail closed): a strategy with a leg that is no longer live sends no outcome request at all; pricing the
   // other legs alone would show a P&L that is not the strategy's.
   if (legs.some((l) => l.not_live)) return null
-  const priced = legs.filter((l) => l.planned_entry != null && l.captured_at != null)
+  // W-148 (REQ-076 AC-6): an unticked leg is left out of every number, so it is never sent to the outcome.
+  const priced = legs.filter((l) => l.included !== false && l.planned_entry != null && l.captured_at != null)
   if (!priced.length) return null
   return {
     underlying: priced[0].underlying,

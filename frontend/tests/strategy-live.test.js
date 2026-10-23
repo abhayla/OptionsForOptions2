@@ -6,14 +6,29 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const apiCalls = []
+const readCalls = []
+// the recorded condor's own strike, type and expiry for a leg (the read reply names them; the browser never invents them)
+let legFacts = () => ({})
 let apiAnswer = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')),
-    post: (url, body) => { apiCalls.push({ url, body }); return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer }) } } }
+    post: (url, body) => {
+      // The read control (REQ-076 AC-8) is its own request: it is recorded apart (readCalls) and answered with the legs as sent,
+      // in the real LegEditOut shape, so the tests below keep counting OUTCOME requests only. A test that sets a function
+      // answer handles every request itself.
+      if (url === '/strategies/leg-edit' && typeof apiAnswer !== 'function') {
+        readCalls.push({ url, body })
+        return Promise.resolve({ data: { legs: body.legs.map((l) => ({ ...l, ...legFacts(l.instrument_id), price_source: 'captured', hedge: false, block: null })),
+          shape: null, shape_name: null, outcome: null } })
+      }
+      apiCalls.push({ url, body })
+      return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer })
+    } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor.json'
+legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
 import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
@@ -389,6 +404,7 @@ describe('W-073 round 2: the draft link is canonicalized once at the page bounda
     vi.stubGlobal('WebSocket', FakeSocket)
     FakeSocket.all = []
     apiCalls.length = 0
+    readCalls.length = 0
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(d) } })
     await router.isReady()
@@ -408,6 +424,7 @@ describe('W-073 round 2: the draft link is canonicalized once at the page bounda
     expect(err).toContain('Some of the values sent with this request are missing or not in the expected form.')
     expect(err).toContain('Check the values you entered and try again.')
     expect(apiCalls.length).toBe(0)
+    expect(readCalls.length).toBe(0) // a refused link sends no read either
     expect(FakeSocket.all.length).toBe(0)
     w.unmount()
   })
@@ -425,6 +442,45 @@ describe('W-073 round 2: the draft link is canonicalized once at the page bounda
     ws.serverPush({ ...COMPUTED, legs: COMPUTED.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) })
     await flushPromises()
     expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('computed')
+    w.unmount()
+  })
+})
+
+describe('W-148 (REQ-076 AC-3, AC-6): the live push still matches after a leg edit', () => {
+  // The reply of POST /strategies/leg-edit after leg 1 is unticked: all four legs back, leg 1 included:false, and the
+  // outcome of the other three (the recorded condor outcome without its first leg).
+  const replyLegs = real.legs.map((l, i) => ({ instrument_id: l.instrument_id, action: l.action, instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry,
+    captured_at: l.captured_at, price_source: 'captured', included: i !== 0, hedge: false, block: null }))
+  const THREE = { ...real, output_label: 'THREE LEGS', legs: real.legs.slice(1) }
+  it('AC-6: after an untick the socket is told the included legs only, and a push of exactly those is applied', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    FakeSocket.all = []
+    const readLegs = replyLegs.map((l) => ({ ...l, included: true })) // the read on load changes no tick
+    apiAnswer = (body) => Promise.resolve({ data: body?.edit?.control === 'read' ? { legs: readLegs, shape_name: null, outcome: null }
+      : body?.edit ? { legs: replyLegs, shape_name: null, outcome: THREE } : COMPUTED })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    await w.findComponent({ name: 'LegList' }).vm.$emit('edit', { control: 'include', index: 0, included: false })
+    await flushPromises()
+    expect(apiCalls.filter((c) => c.body?.edit && c.body.edit.control !== 'read')).toHaveLength(1) // the read on load is not an edit
+    expect(w.text()).toContain('THREE LEGS') // the reply's outcome is on screen without a second outcome request
+    const told = JSON.parse(FakeSocket.all.at(-1).sent.at(-1))
+    expect(told.legs.map((l) => l.instrument_id)).toEqual(real.legs.slice(1).map((l) => l.instrument_id))
+    FakeSocket.all.at(-1).serverOpen()
+    FakeSocket.all.at(-1).serverPush({ ...THREE, output_label: 'PUSHED' })
+    await flushPromises()
+    expect(w.text()).toContain('PUSHED')
+    FakeSocket.all.at(-1).serverPush({ ...COMPUTED, output_label: 'ALL FOUR' }) // another strategy as sent: dropped
+    await flushPromises()
+    expect(w.text()).not.toContain('ALL FOUR')
     w.unmount()
   })
 })

@@ -1152,7 +1152,8 @@
               "multiplier",
               "include",
               "price",
-              "reset_prices"
+              "reset_prices",
+              "read"
             ],
             "title": "Control",
             "type": "string"
@@ -1340,6 +1341,17 @@
             ],
             "title": "Captured At"
           },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
           "expiry": {
             "format": "date",
             "title": "Expiry",
@@ -1366,6 +1378,10 @@
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "type": "string"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
           },
           "lots": {
             "title": "Lots",
@@ -1409,6 +1425,8 @@
         },
         "required": [
           "instrument_id",
+          "contract_id",
+          "lot_size",
           "action",
           "instrument",
           "strike",
