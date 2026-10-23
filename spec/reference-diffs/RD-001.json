@@ -1,0 +1,16 @@
+{
+  "id": "RD-001",
+  "kind": "COPY",
+  "title": "Days to expiry beside every expiry date (row 5 study gap G-05-1)",
+  "reference_behaviour": "Every expiry the builder lists is shown as a short day-month date followed by the calendar days left in brackets, so a trader sees how close expiry is without counting.",
+  "reference_screens": ["catalogue 100", "catalogue 134"],
+  "reference_label": "27 Oct (6 Days)",
+  "ours": "REQ-135 AC-2 not built yet: the option chain and leg rows show the raw date 2026-10-27 with no days left",
+  "req": "REQ-135",
+  "ac": "AC-2",
+  "row": 27,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}
