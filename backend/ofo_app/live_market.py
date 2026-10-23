@@ -199,20 +199,24 @@ class LiveMarket:
         a new login starts a new job). A timeout, a busy answer or a failed read keeps the job for the next period."""
         if self._config is None:
             return False
-        token = await self._stored_token(self._config)
-        if token is None:
-            return False
-        transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
-        reads = KiteReads(api_key=self._config.api_key, access_token=token, transport=transport)
-        del token
         try:
+            token = await self._stored_token(self._config)
+            if token is None:
+                return False  # no stored session: disconnected
+            transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+            reads = KiteReads(api_key=self._config.api_key, access_token=token, transport=transport)
+            del token
             await asyncio.wait_for(asyncio.to_thread(kite_period_reads.background_screen_positions, reads),
                                    timeout=CALL_TIMEOUT_SECONDS + 5)
+        except asyncio.CancelledError:
+            raise  # disconnect, a new login or shutdown
         except TimeoutError:
             log.warning("periodic positions read timed out")
         except KiteReadError as exc:
             log.warning("periodic positions read failed: %s", exc.code)
-            return exc.code != TOKEN_CODE
+            return exc.code != TOKEN_CODE  # Zerodha refused the token: stop; any other failure keeps the period
+        except Exception as exc:  # noqa: BLE001 - a store/database or other error in one tick: the class name only
+            log.warning("periodic positions read failed: %s", type(exc).__name__)
         return True
 
     async def _read_positions_once(self) -> None:

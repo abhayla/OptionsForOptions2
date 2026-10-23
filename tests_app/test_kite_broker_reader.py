@@ -247,11 +247,13 @@ def test_attack4_timeout_junk_and_missing_data(name, make, code) -> None:
     assert raised.value.code == code and len(fake.calls) == 1
 
 
-def test_a_failed_account_read_forgets_the_last_sync_and_a_good_one_notes_it() -> None:
-    """AC-1: the profile read is a read like the others for the Settings page's sync time (W-089)."""
+def test_a_failed_account_read_forgets_the_last_sync_and_a_good_one_never_marks_positions_synced() -> None:
+    """AC-1 + REQ-015 AC-4/AC-13: a good profile read reads no positions, so it never moves the position-sync row (the
+    Settings account block reads the profile on every visit); a refused token still forgets the last sync."""
     broker_sync.forget()
     door(Replay(text=PROFILE_REPLY)).fetch_profile()
-    assert broker_sync.last_read() is not None
+    assert broker_sync.last_read() is None
+    broker_sync.note_read()  # a positions read had succeeded earlier
     with pytest.raises(KiteReadError):
         door(Replay(status=403, text=kite_error("TokenException"))).fetch_profile()
     assert broker_sync.last_read() is None
@@ -512,6 +514,8 @@ def test_the_reader_exposes_zerodhas_declared_flags_and_fails_closed(monkeypatch
     """REQ-117 AC-1/AC-4: ``capabilities`` is Zerodha's declared set (held triggers off); a declaration that cannot
     load gives every flag off instead of an error."""
     r = reader(Replay())
-    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [True, False, True, True, True, True, True]
+    # the seven of AC-1, then the four of AC-6 (brokerage charges, split P&L, holdings, verified P&L): undeclared, so off
+    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [True, False, True, True, True, True, True,
+                                                                      False, False, False, False]
     monkeypatch.setattr(kite_flags, "FLAG_FILE", tmp_path / "missing.json")
-    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [False] * 7
+    assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [False] * 11

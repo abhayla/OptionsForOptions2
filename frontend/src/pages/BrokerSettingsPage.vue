@@ -31,7 +31,8 @@ const FIX = {
   live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',
   live_feed_capped: 'Live prices are not available: Zerodha\'s connection limit for this app is reached.',
   live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',
-  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Positions are read at connect and every 45 seconds; if this stays, use Reconnect.',
+  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Positions are read when you open Positions or Execute for a strategy.',
+  no_read_yet_periodic: 'No position read from Zerodha has succeeded since you connected. While live data runs, positions are read at connect and every 45 seconds; if this stays, use Reconnect.',
   live_data_not_connected: 'Orders are not ready until live market data is connected. Fix the live market data row first.',
   positions_not_synced: 'Orders are not ready until your positions have been read from Zerodha. Fix the position sync row first.',
 }
@@ -44,10 +45,18 @@ const disconnecting = ref(false)
 const confirming = ref(false)
 const account = ref(null) // REQ-015 AC-13: the masked id and Zerodha's margin, as the server sent them
 
+// REQ-015 AC-12: the 45 s positions read runs only while the live market runs on the session (LIVE_MARKET on and a
+// socket up); every other live row (switched off, not running, session ended, market closed, unknown) does not claim it
+const RUNNING_LIVE_FIXES = ['live_feed_waiting', 'live_feed_reconnecting', 'live_feed_idle', 'live_feed_capped']
+const periodicReadRuns = computed(() => {
+  const live = status.value?.live_market_data
+  return !!live && (live.state === 'connected' || RUNNING_LIVE_FIXES.includes(live.fix))
+})
 const rows = computed(() => ROWS.map(([key, title]) => {
   const item = status.value?.[key] ?? { state: 'disconnected', fix: null }
   const level = LABEL[item.state] ? item.state : 'disconnected'
-  return { key, title, level, label: LABEL[level], fix: level === 'connected' ? '' : (FIX[item.fix] ?? UNKNOWN_FIX) }
+  const fixKey = item.fix === 'no_read_yet' && periodicReadRuns.value ? 'no_read_yet_periodic' : item.fix
+  return { key, title, level, label: LABEL[level], fix: level === 'connected' ? '' : (FIX[fixKey] ?? UNKNOWN_FIX) }
 }))
 const anyConnected = computed(() => rows.value.some((r) => r.level !== 'disconnected'))
 const lastSync = computed(() => {
