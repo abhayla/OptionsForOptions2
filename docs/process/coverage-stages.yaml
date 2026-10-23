@@ -431,6 +431,7 @@ issues:
   "#521": 4a  # Row 10 (REQ-118 AC-6) deferred: real Notifier sender for the 429 alert (egress door)
   "#522": 4a  # Row 10 (REQ-118) MINORs: rate_limit.py Kite-specific, 429 typed twice, background waits real timing
   "#523": 4a  # Kill-by-name hook MINORs: false refusals on PID-file/variable forms, 4 untested paths
+  "#524": S6.7  # Reference register: 6 deferred MINORs from the Tier A check (ADR-176)
 
 # Work items whose status is not done.
 work_items:
