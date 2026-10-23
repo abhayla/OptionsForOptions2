@@ -312,6 +312,11 @@ decisions:
   ADR-170: S6.7         # per-user feeds kept; ask Zerodha at the multi-user demo for more websockets per app (Q274, F-59)
   ADR-171: S6.7         # builder sequence: one row may be built ahead; rows close in order; no shared files, one DB run at a time
   ADR-172: S6.7         # IV implied from the bid-ask mid when two-sided, else the LTP (owner 2026-10-23, Q275)
+  ADR-173: S6.7         # reference product first, enforced by check_brief; rows 1-14 re-studied (Q277)
+  ADR-174: S6.1         # no prices without a Zerodha connection; revisit at the demo (Q278)
+  ADR-175: S6.1         # account-opening link with the PIFS partner code + "is it safe" explainer (Q279)
+  ADR-176: S6.7         # reference-product difference register and its gates; always copy (Q280)
+  ADR-177: S6.7         # one market-closed wording everywhere (Q281)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
