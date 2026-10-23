@@ -13,6 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
+import { healthSentence } from '@/lib/dataHealthText'
 
 class FakeSocket {
   static all = []
@@ -239,9 +240,14 @@ describe('Option Chain screen', () => {
     expect(w.find('[data-testid="rows-missing"]').text()).toMatch(/underlying price is missing/)
     const stale = answer()
     stale.rows[0].ce.health = 'stale'
+    stale.rows[0].pe.health = 'delayed'
+    stale.spot_health = 'unhealthy'
     sock().serverPush({ ...stale, expiry: '2026-10-20' })
     await flushPromises()
-    expect(w.find('[data-testid="ce-health"]').text()).toBe('stale')
+    // RD-045 (REQ-049 AC-4): each health word reads as the one helper's sentence with its reason, never the bare word
+    expect(w.find('[data-testid="ce-health"]').text()).toBe(healthSentence('stale'))
+    expect(w.find('[data-testid="pe-health"]').text()).toBe(healthSentence('delayed'))
+    expect(w.find('[data-testid="spot-health"]').text()).toBe(healthSentence('unhealthy'))
 
     restAnswer = () => Promise.reject(new Error('down'))
     const w2 = await mountPage()

@@ -5,7 +5,7 @@
   "reference_behaviour": "A delayed feed is explained in one sentence that names the delay and how to get real-time prices.",
   "reference_screens": ["catalogue 245"],
   "reference_label": "The data feeds are delayed by 1 minute.",
-  "ours": "A leg whose health is not available shows the bare word stale, delayed, unhealthy or unavailable; REQ-049 AC-4 is met only in that bare form. Built in 172f1f18.",
+  "ours": "A leg whose health is not available shows the bare word stale, delayed, unhealthy or unavailable; REQ-049 AC-4 is met only in that bare form. Built in 172f1f18; the chain page and Advanced details now use the same one-sentence helper: frontend/src/pages/OptionChainPage.vue:150,206,210 and frontend/src/components/strategy/AdvancedDetails.vue:24 (tests: option-chain.test.js, advanced-details-health.test.js).",
   "req": "REQ-049",
   "ac": "AC-4",
   "row": 7,
