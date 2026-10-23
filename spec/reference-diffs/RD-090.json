@@ -4,11 +4,11 @@
   "title": "20 ready-made shapes the reference product has and our catalogue lacks (row 15 gap G-15-1)",
   "reference_behaviour": "38 ready-mades: single legs (buy or sell call or put), buy and sell future, bull and bear condor, bear butterfly, long calendar with puts, range forward, risk reversal, batman, double plateau, reverse jade lizard, call and put ratio spreads, long iron butterfly, strap, strip, and ATM sell put.",
   "reference_screens": ["screen 010", "catalogue 100", "catalogue 134"],
-  "ours": "21 templates in the catalogue; these 20 shapes read Custom Strategy. Templates are data (REQ-028 AC-3), so adding them needs no engine code; the ADR-003 wording check still applies.",
+  "ours": "Built in the chunk 1 copy commit (catalogue.yaml, tests/strategy/test_reference_shapes.py): 41 templates; the 20 shapes are data only. Legs come from the study preset-matrix for every shape. The reference's Sell Put overlaps cash_secured_put (refused by the loader), so cash_secured_put is kept and sell_put_atm covers the at-the-money strike the reference preset sells.",
   "req": "REQ-028",
   "ac": "AC-3",
   "row": 15,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

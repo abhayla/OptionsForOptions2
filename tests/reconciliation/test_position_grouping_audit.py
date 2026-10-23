@@ -34,7 +34,7 @@ def test_start_records_one_suggest_entry_listing_groups_and_resemblance():
     assert event.correlation_id == "sess-1" and event.timestamp == clock()
     payload = event.payload
     assert payload["action"] == "suggest"
-    assert {g["id"]: g["resembles"] for g in payload["groups"]}[CONDOR_GROUP] == "Iron Condor"
+    assert {g["id"]: g["resembles"] for g in payload["groups"]}[CONDOR_GROUP] == "Short Iron Condor"
     assert IN_STRATEGY not in str(payload["groups"]) and IN_STRATEGY not in str(payload["unresolved"])
     assert payload["hidden"] == (f"{IN_STRATEGY}:S-1",)  # the system's own exclusion is recorded, with the strategy
 
@@ -70,7 +70,7 @@ def test_confirm_writes_one_entry_with_prices_sources_and_products():
     legs = {leg["position"]: leg for leg in event.payload["legs"]}
     assert legs[CALL]["entry_price"] == "95.05" and legs[CALL]["entry_source"] == "edited"
     assert legs["NIFTY26O0623000PE"]["entry_source"] == "from_zerodha" and legs["NIFTY26O0623000PE"]["product"] == "MIS"
-    assert event.payload["strategy_id"] == "S-C" and event.payload["resembles"] == "Iron Condor"
+    assert event.payload["strategy_id"] == "S-C" and event.payload["resembles"] == "Short Iron Condor"
 
 
 def test_a_refused_add_to_an_existing_strategy_is_audited_once():
