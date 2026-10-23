@@ -495,7 +495,7 @@ def test_a_brief_dropping_an_open_record_of_its_requirement_is_refused(tmp_path,
     assert _req135_brief(tmp_path, root, "Reference: n/a RD-001\n") == 1
 
 
-@pytest.mark.parametrize("status,extra", [("verified", None), ("decided", None), ("deferred", {"issue": 12})])
+@pytest.mark.parametrize("status,extra", [("verified", None), ("decided", {"bug": True}), ("deferred", {"issue": 12})])
 def test_a_cleared_record_is_not_required_on_the_line(tmp_path, status, extra):
     """ADR-176 (2): a verified, decided or deferred-with-issue record is not open; the plain forms still pass."""
     root = _register_root(tmp_path, status=status, extra=extra)
@@ -510,3 +510,38 @@ def test_an_invalid_or_unreadable_register_refuses_a_req_brief(tmp_path, capsys)
     unreadable = _register_root(tmp_path / "u", raw="{not json")
     assert _req135_brief(tmp_path, unreadable, "Reference: catalogue 100 - copy it; RD-001\n") == 1
     assert "REFERENCE register unreadable" in capsys.readouterr().out
+
+
+def test_a_fenced_reference_line_does_not_satisfy_the_rule(tmp_path, capsys):
+    """Fix 1: an example `Reference:` line inside a code fence is not the brief's own line."""
+    root = _register_root(tmp_path, status="verified")
+    fenced = "```\nReference: none - searched expiry, days left\n```\n"
+    assert _req135_brief(tmp_path, root, fenced) == 1
+    assert "MISSING Reference line" in capsys.readouterr().out
+    tilde = "~~~\nReference: none - searched expiry, days left\n~~~\n"
+    assert _req135_brief(tmp_path, root, tilde) == 1
+    assert _req135_brief(tmp_path, root, fenced + "Reference: none - searched expiry, days left\n") == 0
+
+
+def test_a_lower_case_requirement_id_still_names_the_requirement(tmp_path, capsys):
+    """Fix 1: `req-135` is REQ-135, so its open record RD-001 is required on the line."""
+    root = _register_root(tmp_path)
+    brief = tmp_path / "lower.md"
+    head = "# Verify row 27\nSpec basis: req-135 AC-2.\n" + GUARD_LINE
+    brief.write_text(head + "Reference: none - searched expiry, days left\n", encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(root)]) == 1
+    assert "MISSING open record RD-001" in capsys.readouterr().out
+    brief.write_text(head + "Reference: none - searched expiry, days left; RD-001\n", encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(root)]) == 0
+    bare = tmp_path / "bare.md"
+    bare.write_text("# Verify\nSpec basis: req-135.\n" + GUARD_LINE, encoding="utf-8")
+    assert check_brief.main([str(bare), "--root", str(root)]) == 1  # naming it needs a Reference line at all
+
+
+def test_a_longer_record_id_does_not_satisfy_an_open_record(tmp_path, capsys):
+    """Fix 1 (kills V19): RD-0010 or RD-0011 on the line is not RD-001."""
+    root = _register_root(tmp_path)
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; RD-0010\n") == 1
+    assert "MISSING open record RD-001" in capsys.readouterr().out
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; XRD-001 RD-0011\n") == 1
+    assert _req135_brief(tmp_path, root, "Reference: catalogue 100 - copy the label; RD-001, RD-0010\n") == 0

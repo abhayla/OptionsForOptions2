@@ -93,7 +93,8 @@ def test_any_other_kind_fails(root, kind):
 
 @pytest.mark.parametrize("status", rr.STATUSES)
 def test_every_allowed_status_passes(root, status):
-    put(root, good(status=status, **({"issue": 5} if status == "deferred" else {})))
+    extra = {"deferred": {"issue": 5}, "decided": {"bug": True}}.get(status, {})
+    put(root, good(status=status, **extra))
     assert errors(root) == []
 
 
@@ -188,10 +189,60 @@ def test_the_banned_name_fails_in_a_key_or_a_list_too(root):
     assert any("names the reference product" in e for e in errors(root))
 
 
-def test_a_word_merely_containing_the_name_is_not_a_ban_hit(root):
-    """The ban keys on whole words, so its hash check is exact (no substring false alarms)."""
-    assert not rr.has_banned_word(f"x{BANNED}y")
-    assert rr.has_banned_word(f"see {BANNED.upper()}.")
+def _hidden_forms() -> dict[str, str]:
+    """The nine encodings the verifier used, each built from BANNED at run time."""
+    return {
+        "hyphen": BANNED[:5] + "-" + BANNED[5:], "space": BANNED[:5] + " " + BANNED[5:], "dots": ".".join(BANNED),
+        "plural": BANNED + "s", "digit suffix": BANNED + "2", "camelCase": "my" + BANNED.title() + "App",
+        "zero-width space": BANNED[:4] + "\u200b" + BANNED[4:], "json escapes": _escaped(),
+        "cyrillic look-alike": BANNED[0] + "\u0435" + BANNED[2:],
+    }
+
+
+def _escaped() -> str:
+    """The name written as JSON \\u escapes (the raw text never spells it)."""
+    return "".join(f"\\u{ord(c):04x}" for c in BANNED)
+
+
+@pytest.mark.parametrize("form", list(_hidden_forms()))
+def test_each_hidden_form_of_the_name_fails_check_in_a_record(root, form):
+    """Attack 2 (core proof): the name in any verifier encoding makes `--check` exit 1 and never reaches the page."""
+    if form == "json escapes":  # the file holds the \u escapes, so the raw text never spells the name
+        raw = json.dumps(good()).replace("Days left", _escaped())
+        assert BANNED not in raw.lower()
+    else:
+        raw = json.dumps(good(title=_hidden_forms()[form]))
+    (root / "spec" / "reference-diffs" / "RD-001.json").write_text(raw, encoding="utf-8")
+    assert any("reference product" in e for e in errors(root))
+    assert rr.main(["--root", str(root), "--render"]) == 1
+    assert not (root / rr.PAGE).exists()
+    assert rr.main(["--root", str(root), "--check"]) == 1
+
+
+def test_ordinary_words_holding_no_window_of_the_name_pass(root):
+    """Attack 2: the ban is letter windows, so unrelated prose, digits and punctuation never trip it."""
+    words = ["Days left beside each expiry", "sensible bull market, a bulls-eye 2026", "sense and bulls", "x" * 30]
+    for text in words:
+        assert not rr.has_banned_word(text), text
+    put(root, good(title="A sensible bullish view of strikes"))
+    assert errors(root) == []
+
+
+def test_a_look_alike_letter_is_refused_even_when_it_spells_no_name(root):
+    put(root, good(title="Caf\u00e9 expiry"))
+    assert any("non-ASCII letter" in e for e in errors(root))
+    put(root, good(title="Price \u20b9100 \u2013 shown"))  # a currency sign and a dash are not letters
+    assert errors(root) == []
+
+
+def test_a_duplicate_key_fails_on_load(root):
+    """Attack 3: a record with `status` twice is unreadable (the later value must never silently win)."""
+    raw = json.dumps(good())[:-1] + ', "status": "verified"}'
+    (root / "spec" / "reference-diffs" / "RD-001.json").write_text(raw, encoding="utf-8")
+    with pytest.raises(rr.RegisterError):
+        rr.validate(root)
+    assert rr.main(["--root", str(root), "--check"]) == rr.EXIT_UNREADABLE
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == rr.EXIT_UNREADABLE
 
 
 @pytest.mark.parametrize("name", ["notes.txt", "RD-1.json", "rd-001.json", "RD-001.json.bak"])
@@ -221,12 +272,15 @@ def test_an_invalid_record_makes_the_gates_fail_closed(root):
     ({"status": "built"}, 1),                                  # built, not verified
     ({"status": "verified"}, 0),
     ({"status": "deferred", "issue": 7}, 0),
-    ({"status": "decided"}, 0),
+    ({"status": "decided"}, 1),                                # decided with no reason still blocks
     ({"kind": "MATCH"}, 0),                                    # open MATCH never blocks
     ({"kind": "NO-SCREEN"}, 0),
     ({"kind": "DIFFERENT-BY-DECISION", "adr": "ADR-176"}, 0),
     ({"kind": "MATCH", "spec_change": True}, 1),               # open spec_change blocks whatever its kind
-    ({"kind": "MATCH", "spec_change": True, "status": "decided"}, 0),
+    ({"kind": "MATCH", "spec_change": True, "status": "decided"}, 1),   # MATCH has no decided shape
+    ({"status": "decided", "bug": True}, 0),                   # a measured bug is never copied
+    ({"status": "decided", "spec_change": True, "adr": "ADR-176"}, 0),  # approved extra with the owner's adr
+    ({"kind": "DIFFERENT-BY-DECISION", "adr": "ADR-176", "status": "decided"}, 0),
 ])
 def test_close_check_states(root, capsys, over, code):
     """Attack 4: exit 1 for an open COPY or open spec_change record, 0 once verified, deferred with issue, decided."""
@@ -234,6 +288,37 @@ def test_close_check_states(root, capsys, over, code):
     assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == code
     out = capsys.readouterr().out
     assert ("RD-001" in out) is (code == 1)
+
+
+@pytest.mark.parametrize("over", [
+    {"status": "decided"},                                                         # COPY, no reason
+    {"status": "decided", "spec_change": True},                                    # extra but no owner answer
+    {"status": "decided", "adr": "ADR-176"},                                       # an adr alone is not a reason
+    {"status": "decided", "bug": False, "spec_change": False, "adr": "ADR-176"},
+    {"kind": "NO-SCREEN", "reference_screens": [], "status": "decided", "adr": "ADR-176"},
+    {"kind": "MATCH", "status": "decided", "bug": True},
+])
+def test_decided_without_its_reason_fails_check_and_blocks_the_close(root, capsys, over):
+    """Attack 1 (core proof): an unreasoned `decided` is a --check error and --close-check exits 1 (still blocking)."""
+    rec = good(**over)
+    put(root, rec)
+    assert any("`decided` needs its reason" in e for e in errors(root))
+    assert rr.main(["--root", str(root), "--check"]) == 1
+    if rec["kind"] == "COPY" or rec["spec_change"]:
+        assert rr.is_blocking(rec) is True
+        assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 1
+        assert "BLOCKED: RD-001" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("over", [
+    {"status": "decided", "bug": True},
+    {"status": "decided", "spec_change": True, "adr": "ADR-176"},
+    {"kind": "DIFFERENT-BY-DECISION", "status": "decided", "adr": "ADR-176"},
+])
+def test_each_valid_decided_shape_passes_check_and_clears_the_close(root, over):
+    put(root, good(**over))
+    assert errors(root) == []
+    assert rr.main(["--root", str(root), "--close-check", "REQ-135"]) == 0
 
 
 def test_close_check_with_no_record_passes(root):

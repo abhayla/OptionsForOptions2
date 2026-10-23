@@ -9,7 +9,7 @@ Usage: python scripts/orchestrator/reference_register.py [--root <repo>] (--chec
   --render       write docs/process/reference-differences.md (deterministic: sorted, no clock). Exit 0 / 1.
   --open         print the ids of every blocking record of the named requirements, one per line. Exit 0.
   --close-check  exit 1 naming each blocking record of the named requirements, else exit 0.
-Blocking = kind COPY or `spec_change` true, and status not verified / decided / deferred-with-an-issue.
+Blocking = kind COPY or `spec_change` true, and status not verified / decided-with-its-reason / deferred-with-an-issue.
 Exit 2: bad usage, or the register cannot be read (a gate never passes on an unreadable register).
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ SEQUENCE = Path("docs") / "process" / "builder-sequence-2026-10-22.md"
 
 KINDS = ("COPY", "DIFFERENT-BY-DECISION", "NO-SCREEN", "MATCH")
 STATUSES = ("open", "built", "verified", "deferred", "decided")
-CLEARED = ("verified", "deferred", "decided")  # deferred clears only with an issue (see is_blocking)
+CLEARED = ("verified",)  # deferred needs an issue and decided its reason: both are read in is_blocking
 REQUIRED = ("id", "kind", "title", "reference_behaviour", "reference_screens", "ours", "req", "row", "status",
             "spec_change", "bug", "recorded")
 OPTIONAL = ("reference_label", "ac", "adr", "issue")
@@ -36,8 +36,12 @@ MAX_LEN = {"title": 120, "reference_behaviour": 400, "reference_label": 40, "our
 MAX_SCREENS = 20
 EXIT_UNREADABLE = 2  # bad usage, or a register the gates cannot trust
 INT_FIELDS = (("row", "a builder row number"), ("issue", "an issue number"))
-# ADR-176 (4): the reference product's name never enters public text. Compared as a hash of whole lower-cased words.
+# ADR-176 (4): the reference product's name never enters public text. Every decoded string is reduced to its
+# lower-case ASCII letters and each window of the name's length is compared by hash (so splits, plurals, numbers,
+# camelCase and zero-width characters all still hit); a non-ASCII letter (a look-alike) is refused outright.
 BANNED_WORD_SHA256 = "51eb0a649e8ea998a8e8527a47858a91d20b263772281af86fffa67f898ca33a"
+BANNED_WORD_LEN = 9
+ASCII_MAX = 127
 
 ID_RE = re.compile(r"^RD-\d{3}$")
 FILE_RE = re.compile(r"^RD-\d{3}\.json$")
@@ -46,7 +50,7 @@ ADR_RE = re.compile(r"^ADR-\d{3}$")
 AC_RE = re.compile(r"^AC-\d+$")
 SCREEN_RE = re.compile(r"^(screen|catalogue) \d{3}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-WORD_RE = re.compile(r"[a-z0-9]+")
+NON_LETTER_RE = re.compile(r"[^a-z]")
 REQ_IN_CELL_RE = re.compile(r"\bREQ-\d{3}\b")
 ROW_LINE_RE = re.compile(r"^\|\s*(\d+)\s*\|[^|]*\|([^|]*)\|")
 
@@ -56,9 +60,35 @@ class RegisterError(Exception):
 
 
 def has_banned_word(text: str) -> bool:
-    """True when any whole lower-cased word of `text` hashes to the banned name."""
-    return any(hashlib.sha256(w.encode("utf-8")).hexdigest() == BANNED_WORD_SHA256
-               for w in WORD_RE.findall(text.lower()))
+    """True when any name-length window of the lower-case ASCII letters of `text` hashes to the name."""
+    letters = NON_LETTER_RE.sub("", text.lower())
+    return any(hashlib.sha256(letters[i:i + BANNED_WORD_LEN].encode("ascii")).hexdigest() == BANNED_WORD_SHA256
+               for i in range(len(letters) - BANNED_WORD_LEN + 1))
+
+
+def has_lookalike_letter(text: str) -> bool:
+    """True when `text` holds a letter outside ASCII (Cyrillic, fullwidth ...): a look-alike is refused, not decoded."""
+    return any(c.isalpha() and ord(c) > ASCII_MAX for c in text)
+
+
+def _strings(value: object):
+    """Every key and every string value of a decoded JSON value, at any depth."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from _strings(k)
+            yield from _strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v)
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("duplicate key")
+    return dict(pairs)
 
 
 def load_records(root: Path) -> dict[str, dict]:
@@ -74,7 +104,7 @@ def load_records(root: Path) -> dict[str, dict]:
         if not FILE_RE.match(path.name) or not path.is_file():
             raise RegisterError(f"{rel}: only RD-NNN.json record files belong in the register")
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys)
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             raise RegisterError(f"{rel}: unreadable ({exc.__class__.__name__})") from exc
         if not isinstance(data, dict):
@@ -183,19 +213,48 @@ def _link_errors(rec: dict, root: Path, rows: dict[int, set[str]]) -> list[str]:
     return errs
 
 
-def validate(root: Path) -> list[str]:
-    """Every error of every record (file-prefixed); raises RegisterError when the register cannot be read."""
+def decided_has_reason(rec: dict) -> bool:
+    """ADR-176 (2),(5): `decided` is a reason, not a status. Allowed shapes only: a DIFFERENT-BY-DECISION with a real
+    `adr`; a COPY that is a measured bug (`bug` true); a COPY approved as an extra (`spec_change` true) with the
+    owner's `adr`."""
+    has_adr = isinstance(rec.get("adr"), str) and bool(ADR_RE.match(rec["adr"]))
+    if rec.get("kind") == "DIFFERENT-BY-DECISION":
+        return has_adr
+    if rec.get("kind") == "COPY":
+        return rec.get("bug") is True or (rec.get("spec_change") is True and has_adr)
+    return False
+
+
+def _decided_errors(rec: dict) -> list[str]:
+    if rec.get("status") != "decided" or decided_has_reason(rec):
+        return []
+    return ["`decided` needs its reason: a DIFFERENT-BY-DECISION with an `adr`, a COPY with `bug` true, or a COPY with "
+            "`spec_change` true and an `adr` (ADR-176 (2),(5))"]
+
+
+def _name_errors(rec: dict) -> list[str]:
+    texts = list(_strings(rec))
+    errs = []
+    if any(has_banned_word(t) for t in texts):
+        errs.append("names the reference product: records say \"reference product\" (ADR-176 (4))")
+    if any(has_lookalike_letter(t) for t in texts):
+        errs.append("holds a non-ASCII letter: a look-alike could hide the reference product's name (ADR-176 (4))")
+    return errs
+
+
+def validate(root: Path, reasons: bool = True) -> list[str]:
+    """Every error of every record (file-prefixed); raises RegisterError when the register cannot be read.
+    `reasons=False` leaves out the decided-needs-a-reason error: the close gate reads that case as still blocking."""
     records = load_records(root)
     rows = sequence_rows(root) if records else {}
     errors: list[str] = []
     for stem, rec in records.items():
         rel = (REGISTER_DIR / f"{stem}.json").as_posix()
-        errs = _field_errors(rec) + _link_errors(rec, root, rows)
+        errs = _field_errors(rec) + _link_errors(rec, root, rows) + _name_errors(rec)
+        if reasons:
+            errs += _decided_errors(rec)
         if rec.get("id") != stem:
             errs.append(f"`id` must equal the file name ({stem})")
-        raw = (root / REGISTER_DIR / f"{stem}.json").read_text(encoding="utf-8")
-        if has_banned_word(raw):
-            errs.append("names the reference product: records say \"reference product\" (ADR-176 (4))")
         errors.extend(f"{rel}: {e}" for e in errs)
     return errors
 
@@ -207,6 +266,8 @@ def is_blocking(rec: dict) -> bool:
     status = rec.get("status")
     if status == "deferred":
         return not (_is_int(rec.get("issue")) and rec["issue"] >= 1)
+    if status == "decided":
+        return not decided_has_reason(rec)
     return status not in CLEARED
 
 
@@ -279,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace, root: Path, reqs: list[str]) -> int:
-    errors = validate(root)
+    errors = validate(root, reasons=not reqs)
     if reqs and errors:  # a gate never reads an invalid register (fail closed)
         sys.stderr.write("register invalid:\n" + "".join(f"{e}\n" for e in errors))
         return EXIT_UNREADABLE

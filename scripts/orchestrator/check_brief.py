@@ -245,7 +245,7 @@ def check_builder_brief(brief: str) -> list[str]:
     return misses
 
 
-REQ_NAMED_RE = re.compile(r"\bREQ-\d{3}\b")
+REQ_NAMED_RE = re.compile(r"\bREQ-\d{3}\b", re.I)  # `req-135` names REQ-135
 REFERENCE_RE = re.compile(r"^\W*Reference:(.*)$", re.I | re.M)
 REFERENCE_NONE_RE = re.compile(r"^none\s*[-\u2013\u2014]\s*searched\s+(.+)$", re.I)
 REFERENCE_SCREEN_RE = re.compile(r"(?<![\w.-])\d{3}(?![\w.])")  # a study screen number: three digits, e.g. 012, 209-211
@@ -275,11 +275,25 @@ def _register():
     return module
 
 
+def _outside_fences(brief: str) -> str:
+    """The brief without its ``` / ~~~ fenced blocks: a quoted example line never counts as the real one."""
+    out, fence = [], None
+    for line in brief.splitlines():
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence = m.group(1)
+        elif m and m.group(1) == fence:
+            fence = None
+        elif fence is None:
+            out.append(line)
+    return "\n".join(out)
+
+
 def _open_record_misses(brief: str, lines: list[str], root: Path) -> list[str]:
     """ADR-176 (2): every open record of every requirement the brief names appears on a valid `Reference:` line.
     A register that cannot be read or is invalid refuses the brief (fail closed)."""
     reg = _register()
-    reqs = sorted(set(REQ_NAMED_RE.findall(brief)))
+    reqs = sorted({r.upper() for r in REQ_NAMED_RE.findall(brief)})
     try:
         if reg.validate(root):
             return ["REFERENCE register invalid: run `python scripts/orchestrator/reference_register.py --check` "
@@ -298,7 +312,7 @@ def check_reference(brief: str, root: Path) -> list[str]:
     loose words elsewhere never satisfy it."""
     if not REQ_NAMED_RE.search(brief):
         return []
-    valid = [m.group(1) for m in REFERENCE_RE.finditer(brief) if _reference_line_ok(m.group(1))]
+    valid = [m.group(1) for m in REFERENCE_RE.finditer(_outside_fences(brief)) if _reference_line_ok(m.group(1))]
     if not valid:
         return ["MISSING Reference line (ADR-173): a brief naming a REQ-### carries `Reference: screens <numbers> - "
                 "copy <what is copied>` (e.g. `Reference: screens 209-211 - copy the price-changed marker`) or "
