@@ -10,9 +10,12 @@
  },
  "fix": "Instance: REQ-058 and REQ-060 set back to Approved with fail evidence in every owning work item; W-107 blocks Execute while the strategy's own closed plan has drifted at Zerodha (the one gap the GC-3 go/no-go review showed reachable in the live run); the rest is the next contract's core (wire the domain reconciler and partial handling into the routes, or re-specify). Class fix proposed: a work item whose requirement is already Verified and whose `affected` paths re-implement that requirement's behaviour must name the requirement's ACs in its own tests_required, so a fresh verifier checks the new path; a verifier brief always asks 'which user-facing path calls the code this test exercises?'.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Caught only by a fresh verifier asked to check the CURRENT text against the path users reach. A check could list, per Verified requirement, the modules its evidence's test files import and fail when no route/app module imports them; not built. A related kit gap (harvest issue): trace_check counts an AC complete when ANY owning work item holds a passing file, so a fresh fail written into one item is hidden by an old pass in another (worked around here by writing the verdict into every owning item)."
+  "status": "guarded",
+  "checks": [
+   "scripts/orchestrator/reach_check.py",
+   "tests/test_reach_check_real.py"
+  ],
+  "note": "Module-level guard (chunk 2 process item): reach_check.py lists, per Verified or finished requirement, every passing evidence file whose test subject modules no app entry module imports (transitively, by AST), exits 1 on a new hit or a stale baseline entry, and runs in the repo_scan job. Run on the tree before GC-3 P0 it flags REQ-060 AC-1..7 and REQ-058 AC-1/2/3/5/6 (ofo.reconciliation.compare/resolution, ofo.execution.partial). Limit: it proves a module is imported, not that the route CALLS the behaviour a criterion needs (REQ-038 AC-2/3 versions.py is imported by the app and still unused at the path users reach), so a fresh verifier is still asked which screen or route shows each criterion. A related kit gap (harvest issue): trace_check counts an AC complete when ANY owning work item holds a passing file, so a fresh fail written into one item is hidden by an old pass in another (worked around here by writing the verdict into every owning item)."
  },
  "spec_ref": [
   "spec/requirements/REQ-058.md",
