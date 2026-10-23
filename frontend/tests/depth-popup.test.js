@@ -137,6 +137,21 @@ describe('depth popup refresh (AC-7)', () => {
     expect(calls).toHaveLength(5)
   })
 
+  it('attack 5 / AC-7: the refresh is pinned at 1000 ms by a literal, not by the shipped constant (a 500 ms mutant fails)', async () => {
+    const w = mountPopup()
+    await flushPromises()
+    expect(calls).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(calls).toHaveLength(1) // nothing before one second
+    await vi.advanceTimersByTimeAsync(1)
+    expect(calls).toHaveLength(2) // exactly one at one second
+    await vi.advanceTimersByTimeAsync(999)
+    expect(calls).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(calls).toHaveLength(3)
+    w.unmount()
+  })
+
   it('attack 5: a slow read is never overlapped by the next tick, and an answer arriving after close is dropped', async () => {
     let release
     answer = () => new Promise((resolve) => { release = () => resolve({ data: AVAILABLE }) })

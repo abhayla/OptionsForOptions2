@@ -682,6 +682,86 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
   })
 
+  it('AC-3 attack 4: a selected strike the refresh re-centred out of the rows stays in the selection list and Done adds it', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = mountPicker()
+      await flushPromises()
+      await openStrikes(w)
+      await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+      expect(w.findAll('[data-testid="selection-row"]').map((r) => [r.attributes('data-instrument-id'), r.attributes('data-action'), r.attributes('data-lots')]))
+        .toEqual([['NSE_FO:44002', 'SELL', '1']])
+      // the 5 s refresh answers a window centred elsewhere: 22500 is no longer in the rows
+      const moved = strikesAnswer()
+      moved.rows = moved.rows.filter((r) => r.strike !== '22500.00')
+      answers[STRIKES_URL()] = moved
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(rowOf(w, '22500.00').exists()).toBe(false)
+      const row = t(w, 'selection-row')
+      expect(row.text()).toContain('NIFTY 13 Oct 22500 CE') // the contract, as the legs list names it
+      expect([t(w, 'selection-side').text(), t(w, 'selection-lots').text()]).toEqual(['SELL', '1 lot'])
+      // the selection list sits above Done
+      expect(t(w, 'selection-list').element.compareDocumentPosition(t(w, 'picker-done').element) & 4).toBeTruthy()
+      await t(w, 'picker-done').trigger('click')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(w.props('legs').map((l) => [l.instrument_id, l.action, l.lots, l.planned_entry])).toEqual([['NSE_FO:44002', 'SELL', 1, '151.30']])
+      expect(w.findAll('[data-testid="selection-row"]')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('AC-3: removing a contract from the selection list means Done no longer adds it; the other is added', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-lots"]').setValue('3')
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-lots"]').setValue('2')
+    expect(w.findAll('[data-testid="selection-row"]').map((r) => r.find('[data-testid="selection-lots"]').text())).toEqual(['3 lot', '2 lot'])
+    await w.find('[data-testid="selection-row"][data-instrument-id="NSE_FO:44002"] [data-testid="selection-remove"]').trigger('click')
+    // a removed contract forgets its lots: selecting it again starts at 1
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    expect(w.find('[data-testid="selection-row"][data-instrument-id="NSE_FO:44002"]').attributes('data-lots')).toBe('1')
+    await w.find('[data-testid="selection-row"][data-instrument-id="NSE_FO:44002"] [data-testid="selection-remove"]').trigger('click')
+    expect(w.findAll('[data-testid="selection-row"]').map((r) => r.attributes('data-instrument-id'))).toEqual(['NSE_FO:44005'])
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').attributes('aria-pressed')).toBe('false')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action, l.lots])).toEqual([['NSE_FO:44005', 'BUY', 2]])
+    expect(calls.filter((x) => x.method === 'POST').map((x) => x.body.instrument_ids)).toEqual([['NSE_FO:44005']])
+  })
+
+  it('AC-3: removing the only selection leaves Done disabled and sending nothing', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'selection-remove').trigger('click')
+    expect(t(w, 'selection-list').exists()).toBe(false)
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+  })
+
+  it('AC-3 attack 6: Done with nothing selected adds nothing and sends no request', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
+    expect(t(w, 'selection-list').exists()).toBe(false)
+    const before = calls.length
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(calls.slice(before)).toEqual([])
+    await w.vm.done() // the function itself, not only the disabled button, refuses an empty selection
+    expect(w.emitted('update:legs')).toBeUndefined()
+    expect(calls.slice(before)).toEqual([])
+  })
+
   it('ADR-015: when a refresh fails the earlier list and prices are removed, never kept on screen as current', async () => {
     vi.useFakeTimers()
     try {

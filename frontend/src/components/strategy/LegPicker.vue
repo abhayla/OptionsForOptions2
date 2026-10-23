@@ -197,6 +197,19 @@ function choose(id, side) {
   picked.value = next
 }
 const lotsOf = (id) => cellLots.value[id] ?? 1
+/** Drop one selection (from the selection list): Done then no longer adds it. */
+function unpick(id) {
+  const { [id]: _side, ...rest } = picked.value
+  const { [id]: _lots, ...restLots } = cellLots.value
+  picked.value = rest
+  cellLots.value = restLots
+}
+/** Every leg Done will add, as the user reads it: contract, side, lots. */
+const selection = computed(() => Object.keys(picked.value).map((id) => {
+  const c = contractByInstrumentId(contracts.value, id)
+  const name = c ? contractName({ underlying: underlying.value, expiry: c.expiry, instrument_type: c.instrument_type, strike: c.strike }) : id
+  return { id, name, action: picked.value[id], lots: lotsOf(id) }
+}))
 const choicesFor = (cell) => lotChoices(lotsMode.value, cell?.lot_size)
 /** The select's text maps back to one of the offered choices (never parsed): an unknown text changes nothing. */
 function setLots(cell, text) {
@@ -416,11 +429,21 @@ const legName = (l) => contractName(l)
               <span v-else data-testid="cell-none">-</span>
             </div>
           </div>
-          <div class="mt-2 flex items-center gap-3">
-            <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done{{ pickedCount ? ` (${pickedCount})` : '' }}</button>
-            <span v-if="doneError" data-testid="done-error">{{ doneError }}</span>
-          </div>
         </template>
+        <!-- The selection is its own list, whatever the strike list shows (the refresh re-centres the rows): Done adds
+             exactly these. -->
+        <ul v-if="pickedCount" class="mt-2" data-testid="selection-list">
+          <li v-for="item in selection" :key="item.id" class="flex items-center gap-2" data-testid="selection-row" :data-instrument-id="item.id" :data-action="item.action" :data-lots="item.lots">
+            <span data-testid="selection-name">{{ item.name }}</span>
+            <span data-testid="selection-side">{{ item.action }}</span>
+            <span data-testid="selection-lots">{{ item.lots }} lot</span>
+            <button type="button" class="underline" data-testid="selection-remove" :aria-label="`Remove ${item.name}`" @click="unpick(item.id)">Remove</button>
+          </li>
+        </ul>
+        <div v-if="expiry" class="mt-2 flex items-center gap-3">
+          <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done{{ pickedCount ? ` (${pickedCount})` : '' }}</button>
+          <span v-if="doneError" data-testid="done-error">{{ doneError }}</span>
+        </div>
       </div>
 
       <div v-else data-testid="futures-panel">

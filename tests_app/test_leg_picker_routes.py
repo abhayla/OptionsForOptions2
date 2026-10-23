@@ -476,6 +476,9 @@ def test_attack_2_and_3_one_viewer_stopping_releases_only_its_contracts_and_both
     async def scenario() -> tuple[set[str], set[str], int, int]:
         provider, feed = two_viewer_rig()
         start = len(provider.vendor_subscribed)
+        dropped: list[str] = []
+        original = provider.unsubscribe
+        provider.unsubscribe = lambda ids: (dropped.extend(ids), original(ids))[1]
         a_cat = catalogue(CONTRACTS, expiries=(EXPIRY, NEXT_EXPIRY))
         b_cat = catalogue(OTHER, expiries=(EXPIRY, NEXT_EXPIRY))
         strikes_answer(feed, "NIFTY", EXPIRY, 10, a_cat, lambda: T0, viewer="a")
@@ -485,6 +488,7 @@ def test_attack_2_and_3_one_viewer_stopping_releases_only_its_contracts_and_both
             await asyncio.sleep(0.1)
             strikes_answer(feed, "NIFTY", NEXT_EXPIRY, 10, b_cat, lambda: T0, viewer="b")
         provider.tick()
+        assert not set(dropped) & ({c.instrument_id for c in OTHER}), dropped  # A's timeout never touched B's window
         held = set(provider.vendor_subscribed)
         b_priced = priced_cells(strikes_answer(feed, "NIFTY", NEXT_EXPIRY, 10, b_cat, lambda: T0, viewer="b"))
         await asyncio.sleep(0.4)  # B stops as well
@@ -502,19 +506,23 @@ def test_two_viewers_on_the_same_window_share_the_contracts_and_one_stopping_kee
     stops the other still holds them, and the index stays held while any lease holds it."""
     monkeypatch.setattr(leg_picker, "LEASE_SECONDS", 0.2)
 
-    async def scenario() -> tuple[int, set[str]]:
+    async def scenario() -> tuple[int, int, set[str]]:
         provider, feed = two_viewer_rig()
         cat = catalogue(CONTRACTS, expiries=(EXPIRY, NEXT_EXPIRY))
+        handles: list[int] = []
+        original = feed.fanout.subscribe
+        feed.fanout.subscribe = lambda *a, **k: handles.append(original(*a, **k)) or handles[-1]
         strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="a")
         strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="b")
         calls = len(provider.subscribe_calls)
         for _ in range(3):
             await asyncio.sleep(0.1)
             strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="b")
-        return calls, set(provider.vendor_subscribed)
+        return calls, len(handles), set(provider.vendor_subscribed)
 
-    calls, held = asyncio.run(scenario())
-    assert calls == 1 and held == {c.instrument_id for c in CONTRACTS} | {NIFTY_ID}
+    calls, handle_count, held = asyncio.run(scenario())
+    assert calls == 1 and handle_count == TWO_LEASES, "a repeated read of the same window takes no new handle"
+    assert held == {c.instrument_id for c in CONTRACTS} | {NIFTY_ID}
 
 
 # ---- AC-6 futures and forward ----------------------------------------------------------------------------------------
@@ -570,6 +578,20 @@ def test_ac_6_futures_quote_not_offered_is_said_not_shown_as_zero():
     provider.futures_offered = False
     out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
     assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, "NOT_OFFERED") and out.forwards[0].forward
+
+
+def test_the_futures_lease_is_per_viewer_too_and_ends_with_the_last_viewer():
+    """AC-6 (answer state: two viewers): each viewer holds the listed future (two holders, one vendor subscribe);
+    releasing one leaves it streaming, releasing both drops it."""
+    provider, feed = priced_provider()
+    for viewer in ("a", "b"):
+        futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0, viewer=viewer)
+    assert feed.fanout.subscriber_count(FUT.instrument_id) == TWO_LEASES
+    assert provider.subscribe_calls.count([FUT.instrument_id]) == 1
+    leg_picker.FUTURES_LEASE.release(("a", "NIFTY", "futures"))
+    assert FUT.instrument_id in provider.vendor_subscribed
+    leg_picker.FUTURES_LEASE.release(("b", "NIFTY", "futures"))
+    assert FUT.instrument_id not in provider.vendor_subscribed
 
 
 def test_attack_3_a_listed_future_is_subscribed_on_the_shared_feed_and_a_tick_gives_its_ltp():
