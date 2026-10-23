@@ -13,13 +13,15 @@ picker never places an order, ADR-002). Three ``GET`` routes, each a door route 
 - ``/api/leg-picker/depth?instrument_id``: 5 bid and ask levels, the day's open / high / low / previous close and the
   last trade time of one contract, or ``NOT_AVAILABLE`` with a reason code, never an empty or old table.
 
-A GET holds no socket of its own, so the strikes read keeps ONE short lease on the shared fan-out (the picker's window,
-at most ``2 x (2 x 40 + 1)`` option contracts and the index) and the futures read keeps a second one for the listed
-futures (the same fan-out and socket, never another): the same request again reuses it, a different one takes the new
-window BEFORE releasing the old (a shared id is never dropped and re-added, like ``ChainPush._take``), and each ends
-``LEASE_SECONDS`` (30 s) after its last read, so the subscriptions are released 30 s after the picker's last request.
-Reading twice never grows the subscription count (finding liveness-from-shared-subscribers: a quote is live only
-while a holder streams it).
+A GET holds no socket of its own, so each read keeps a short lease on the shared fan-out: one lease per viewer and
+window (the viewer from ``current_user_ref``, then the underlying, expiry and width; the futures read keeps its own per
+viewer), at most ``2 x (2 x 40 + 1)`` option contracts and the index each. The fan-out counts holders per contract, so
+the vendor holds the UNION of every lease and lets a contract go only when no lease holds it: two viewers on different
+expiries never swap each other's quotes out (ADR-077: a dropped subscription loses its price). The same request again
+reuses its lease and each ends ``LEASE_SECONDS`` (30 s) after its last read, so everything is released 30 s after the
+picker's last request. V1 has one fixed owner, so a viewer's window is the lease's identity: a second tab on another
+expiry or width holds its own, and a window nobody reads any more ends by its timer. Reading twice never grows the
+subscription count (finding liveness-from-shared-subscribers: a quote is live only while a holder streams it).
 
 Without a live spot (REQ-080 AC-5) the list still names its strikes, every price cell null with the reason: centred on
 the last known spot while the feed still holds one (``centre`` LAST_KNOWN_SPOT, with ``spot_at``), else on the middle
@@ -29,6 +31,7 @@ keeps no price after a subscription ends (ADR-077), so a spot is "last known" on
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -59,6 +62,7 @@ from ofo_app.chain_push import (
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes import live
+from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
 from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, market_state
 from ofo_app.underlying import Underlying
 
@@ -195,29 +199,37 @@ class _Lease:
 
 
 class WindowLease:
-    """The one subscription of the picker's current window (see the module docstring)."""
+    """The leases of the picker's windows, one per viewer and window (see the module docstring). Each lease is its own
+    handle on the shared fan-out, which counts holders per contract: the vendor holds the UNION of every lease's
+    contracts and lets one go only when no lease holds it."""
 
     def __init__(self) -> None:
-        self._lease: _Lease | None = None
-        self._timer: asyncio.TimerHandle | None = None
+        self._leases: dict[tuple[Any, ...], _Lease] = {}
+        self._timers: dict[tuple[Any, ...], asyncio.TimerHandle] = {}
 
     @property
     def held_ids(self) -> frozenset[str]:
-        lease = self._lease
+        """Every contract any lease streams."""
+        return frozenset().union(*(self.ids_of(key) for key in self._leases))
+
+    def ids_of(self, key: tuple[Any, ...]) -> frozenset[str]:
+        """The contracts the lease of ``key`` really streams (none when it holds nothing)."""
+        lease = self._leases.get(key)
         return frozenset() if lease is None or lease.handle is None else frozenset(lease.ids) - lease.unknown
 
     def hold(self, feed: LiveFeed, key: tuple[Any, ...], ids: list[str]) -> _Lease:
-        """Hold ``ids`` for ``key``. The same feed and key again changes nothing; otherwise the new window is taken
-        first and the old one released after. A contract the provider does not know is left out and remembered."""
-        current = self._lease
-        if current is not None and current.feed is feed and current.key == key and current.ids == tuple(ids):
-            self._arm()
+        """Hold ``ids`` for ``key`` (the viewer's window). The same feed, key and ids again change nothing but the
+        timer; the same key with other ids takes the new set first and releases the old after. A contract the provider
+        does not know is left out and remembered."""
+        current = self._leases.get(key)
+        if current is not None and current.feed is feed and current.ids == tuple(ids):
+            self._arm(key)
             return current
         handle, unknown = self._subscribe(feed, ids)
-        self.release()
-        self._lease = _Lease(feed, key, tuple(ids), handle, unknown)
-        self._arm()
-        return self._lease
+        self.release(key)
+        self._leases[key] = _Lease(feed, key, tuple(ids), handle, unknown)
+        self._arm(key)
+        return self._leases[key]
 
     @staticmethod
     def _subscribe(feed: LiveFeed, ids: list[str]) -> tuple[int | None, frozenset[str]]:
@@ -241,21 +253,22 @@ class WindowLease:
                 fanout.unsubscribe(single)
         return handle, frozenset(unknown)
 
-    def release(self) -> None:
-        lease, self._lease = self._lease, None
-        if self._timer is not None:
-            self._timer.cancel()
-            self._timer = None
-        if lease is not None and lease.handle is not None:
-            lease.feed.fanout.unsubscribe(lease.handle)
+    def release(self, key: tuple[Any, ...] | None = None) -> None:
+        """End the lease of ``key``, or every lease when no key is given."""
+        for k in list(self._leases) if key is None else [key]:
+            lease = self._leases.pop(k, None)
+            timer = self._timers.pop(k, None)
+            if timer is not None:
+                timer.cancel()
+            if lease is not None and lease.handle is not None:
+                lease.feed.fanout.unsubscribe(lease.handle)
 
-    def _arm(self) -> None:
-        if self._timer is not None:
-            self._timer.cancel()
-        try:
-            self._timer = asyncio.get_running_loop().call_later(LEASE_SECONDS, self.release)
-        except RuntimeError:  # a direct call outside the event loop (a test): the route always runs inside it
-            self._timer = None
+    def _arm(self, key: tuple[Any, ...]) -> None:
+        timer = self._timers.pop(key, None)
+        if timer is not None:
+            timer.cancel()
+        with contextlib.suppress(RuntimeError):  # a direct call outside the event loop (a test): the route is inside it
+            self._timers[key] = asyncio.get_running_loop().call_later(LEASE_SECONDS, self.release, key)
 
 
 LEASE = WindowLease()  # the strikes window
@@ -349,20 +362,20 @@ def _centre_of(grid: list[Decimal], spot_quote: NormalizedQuote | None) -> _Cent
     return _Centre("MIDDLE_STRIKE", None, None, None, grid[len(grid) // 2])
 
 
-def _held_quotes(feed: LiveFeed, underlying: str, expiry: datetime.date, width: int,
+def _held_quotes(feed: LiveFeed, key: tuple[str, str, datetime.date, int],
                  contracts: list[PickableContract]) -> dict[str, NormalizedQuote]:
     """Hold the window (and the index, so a spot can arrive) and read the quotes the lease really streams."""
     ctx = feed.ctx
+    _viewer, underlying, expiry, _width = key  # the viewer's window: its own lease
     index_id = index_id_of(ctx, underlying)
-    LEASE.hold(feed, (underlying, expiry, width),
-               [c.instrument_id for c in contracts] + ([index_id] if index_id else []))
-    live_ids = LEASE.held_ids
+    LEASE.hold(feed, key, [c.instrument_id for c in contracts] + ([index_id] if index_id else []))
+    live_ids = LEASE.ids_of(key)
     return {q.instrument_id: q for q in ctx.provider.option_chain_snapshot(underlying, expiry)
             if q.instrument_id in live_ids}
 
 
 def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date, width: int,  # noqa: PLR0913
-                   catalogue: ChainCatalogue, now: AnswerClock) -> StrikesOut:
+                   catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF) -> StrikesOut:
     """The strikes read. Every answer state: catalogue unreadable / empty / expiry unknown (no rows), no feed (strikes
     listed, every price '-', NOT_CONNECTED), no live spot (strikes listed around the last known spot or the middle
     strike, every price null, SPOT_MISSING, no ATM claimed), spot stale (rows, no price), a quote missing for some
@@ -380,7 +393,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     spot_quote = None if ctx is None else _index_quote(ctx, underlying)
     centre = _centre_of(grid, spot_quote)
     contracts = _window_contracts(catalogue, window_around(grid, centre.anchor, width))
-    quotes = {} if feed is None else _held_quotes(feed, underlying, expiry, width, contracts)
+    quotes = {} if feed is None else _held_quotes(feed, (viewer, underlying, expiry, width), contracts)
     if centre.kind == "MIDDLE_STRIKE":
         quotes = {}  # AC-5: without a spot every price cell is '-' with the reason
     usable = [q for q in quotes.values() if _priced(q)]
@@ -473,15 +486,17 @@ def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: Norma
                       strikes_used=fwd.strikes_used, reason=None)
 
 
-def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock) -> FuturesOut:
+def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
+                   viewer: str = V1_OWNER_REF) -> FuturesOut:
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     spot_quote = None if ctx is None else _index_quote(ctx, underlying)
     spot = None if spot_quote is None or not is_live_price(spot_quote.ltp) else spot_quote.ltp
     streamed: frozenset[str] = frozenset()
     if feed is not None and catalogue.futures:  # the listed futures ride the shared fan-out like an option leg
-        FUTURES_LEASE.hold(feed, (underlying, "futures"), [c.instrument_id for c in catalogue.futures])
-        streamed = FUTURES_LEASE.held_ids
+        key = (viewer, underlying, "futures")
+        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures])
+        streamed = FUTURES_LEASE.ids_of(key)
     reason: Literal["CATALOGUE_UNREADABLE", "CATALOGUE_EMPTY", "NOT_CONNECTED", "SPOT_MISSING"] | None
     if catalogue.unreadable:
         reason = "CATALOGUE_UNREADABLE"
@@ -578,9 +593,10 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_picker_reader)],
+        viewer: Annotated[str, Depends(current_user_ref)],
         width: Annotated[Width, Query(description="strikes either side of ATM: 10, 20, 30 or 40")] = DEFAULT_WIDTH,
 ) -> StrikesOut:
-    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now)
+    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now, viewer)
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)
@@ -589,8 +605,9 @@ async def leg_picker_futures(
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[FuturesReader, Depends(get_futures_reader)],
+        viewer: Annotated[str, Depends(current_user_ref)],
 ) -> FuturesOut:
-    return futures_answer(feed, underlying, await reader(underlying), now)
+    return futures_answer(feed, underlying, await reader(underlying), now, viewer)
 
 
 @router.get(DEPTH_PATH, response_model=DepthOut)

@@ -54,7 +54,7 @@ FAR_EXPIRY = datetime.date(2026, 11, 24)
 NIFTY_ID = "NSE_INDEX:256265"
 RATE = D("0.065")
 GRID = [D(s) for s in (22450, 22500, 22550, 22600)]
-HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
+HTTP_OK, HTTP_UNPROCESSABLE, TWO_LEASES = 200, 422, 2
 WIDTH_10_ROWS = 21  # 10 strikes each side + the ATM
 LEVELS, WIDTH_20, WIDTH_40_ROWS, WINDOW_IDS = 5, 20, 81, 9  # depth levels; a width; 2 x 40 + 1; 4 strikes' ids + index
 NO_QUOTE_CELLS, TOLERANCE, PARITY_STRIKES = 6, 0.01, 3  # 8 cells less the 2 priced; forward tolerance; AC-6
@@ -308,7 +308,8 @@ def test_ac_5_every_catalogue_answer_state_has_its_reason_and_no_rows(cat, reaso
 
 def test_ac_1_width_40_subscribes_exactly_the_strikes_asked_for_and_reading_twice_does_not_grow_it():
     """AC-1 (attack 7): a 100-strike grid with width 40 holds 81 strikes x CE/PE + the index; the same read again
-    makes no new vendor call; a smaller width then releases what the window no longer needs."""
+    makes no new vendor call; a smaller width is a second lease;
+    ending the wide one releases only what no lease holds."""
     grid = [D(22000 + 50 * i) for i in range(100)]
     contracts = contracts_for(grid)
     provider, feed = make_feed()
@@ -322,9 +323,12 @@ def test_ac_1_width_40_subscribes_exactly_the_strikes_asked_for_and_reading_twic
     for _ in range(3):
         answer(feed, 40, cat)
     assert len(provider.vendor_subscribed) == expected and len(provider.subscribe_calls) == calls
-    answer(feed, 10, cat)
-    assert len(provider.vendor_subscribed) == 21 * 2 + 1
-    assert feed.fanout.subscriber_count(NIFTY_ID) == 1  # the shared index was never dropped and added twice
+    answer(feed, 10, cat)  # another window of the same viewer: its own lease, the wider one runs out by its timer
+    assert len(provider.vendor_subscribed) == expected and len(provider.subscribe_calls) == calls
+    assert feed.fanout.subscriber_count(NIFTY_ID) == TWO_LEASES  # two leases, one vendor subscription of the index
+    leg_picker.LEASE.release(("owner", "NIFTY", EXPIRY, 40))
+    assert len(provider.vendor_subscribed) == 21 * 2 + 1  # the union shrinks to what the remaining lease holds
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 1
 
 
 def test_ac_1_a_new_window_is_taken_before_the_old_is_released():
@@ -385,11 +389,132 @@ def test_ac_5_a_price_the_lease_does_not_hold_is_not_live():
     assert out.reason is None and all(c.ltp == D("90.00") for c in cells(out))
     provider.vendor_subscribed.clear()  # nothing streams any more: the book still has the old quotes
     leg_picker.LEASE.release()
-    leg_picker.LEASE._lease = None
     # the same read after the lease is gone re-holds; a read that cannot hold anything shows no price
     provider.unknown.update(c.instrument_id for c in both.contracts)
     out = answer(feed, cat=ChainCatalogue((EXPIRY, NEXT_EXPIRY), other), expiry=NEXT_EXPIRY)
     assert all(c.ltp is None for c in cells(out))
+
+
+# ---- one lease per viewer (fix round: two viewers on different windows) ---------------------------------------------
+
+class TickingProvider(FakeProvider):
+    """Like the real book (ADR-077): a price exists only for a subscribed contract AFTER a tick, and an unsubscribe
+    drops it. ``prices`` is what the vendor would send; ``tick`` is one second of feed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prices: dict[str, NormalizedQuote] = {}
+        self.book: dict[str, NormalizedQuote] = {}
+
+    def unsubscribe(self, ids) -> None:
+        super().unsubscribe(ids)
+        for i in ids:
+            self.book.pop(i, None)
+
+    def tick(self) -> None:
+        for i in self.vendor_subscribed:
+            if i in self.prices:
+                self.book[i] = self.prices[i]
+
+    def underlying_quote(self, underlying: str) -> NormalizedQuote | None:
+        return self.book.get(NIFTY_ID) if underlying == "NIFTY" else None
+
+    def option_chain_snapshot(self, underlying: str, expiry: datetime.date) -> list[NormalizedQuote]:
+        return [q for q in self.book.values() if q.underlying == underlying and q.expiry == expiry]
+
+
+OTHER = contracts_for(GRID, NEXT_EXPIRY, 45000)
+BOTH = catalogue(CONTRACTS + OTHER, expiries=(EXPIRY, NEXT_EXPIRY))
+TWO_WINDOWS = {EXPIRY: BOTH, NEXT_EXPIRY: BOTH}
+
+
+def two_viewer_rig() -> tuple[TickingProvider, LiveFeed]:
+    provider = TickingProvider()
+    provider.prices[NIFTY_ID] = quote(NIFTY_ID, None, None, "22533.25")
+    for contracts, expiry in ((CONTRACTS, EXPIRY), (OTHER, NEXT_EXPIRY)):
+        for c in contracts:
+            provider.prices[c.instrument_id] = quote(c.instrument_id, Instrument(c.instrument_type), c.strike, "90.00",
+                                                     expiry=expiry)
+    return provider, LiveFeed(MarketContext(provider, lambda: T0, RATE), FanOut(provider))
+
+
+def priced_cells(out) -> int:
+    return sum(c.ltp is not None for c in cells(out))
+
+
+def test_attack_1_two_viewers_on_different_expiries_both_get_priced_rows_on_every_read_through_the_door():
+    """AC-2 (attack 1): NIFTY 13-Oct and NIFTY 20-Oct read alternately through the real route, one tick between reads:
+    after the first tick both are priced on every read (before the fix each read swapped the other's window out and
+    the dropped quotes were gone)."""
+    provider, feed = two_viewer_rig()
+
+    async def reader(_u, expiry):
+        return catalogue(CONTRACTS if expiry == EXPIRY else OTHER, expiries=(EXPIRY, NEXT_EXPIRY))
+
+    client = _app_client(feed, BOTH, futures_catalogue())
+    client.app.dependency_overrides[leg_picker.get_picker_reader] = lambda: reader
+
+    def read(expiry: datetime.date) -> dict:
+        return client.get(leg_picker.STRIKES_PATH, params={"underlying": "NIFTY", "expiry": expiry.isoformat()}).json()
+
+    read(EXPIRY), read(NEXT_EXPIRY)
+    provider.tick()
+    for _ in range(3):
+        for expiry in (EXPIRY, NEXT_EXPIRY):
+            out = read(expiry)
+            assert sum(c["ltp"] is not None for r in out["rows"] for c in (r["ce"], r["pe"]) if c) == 2 * len(GRID), (
+                expiry, out["reason"])
+            provider.tick()
+
+
+def test_attack_2_and_3_one_viewer_stopping_releases_only_its_contracts_and_both_stopping_returns_to_the_start(
+        monkeypatch):
+    """AC-1 (attacks 2, 3): A (13-Oct) stops reading, B (20-Oct) keeps reading: after the timeout only A's contracts
+    are unsubscribed and B's stay priced; when B stops too the subscription count is back to its start (0)."""
+    monkeypatch.setattr(leg_picker, "LEASE_SECONDS", 0.2)
+
+    async def scenario() -> tuple[set[str], set[str], int, int]:
+        provider, feed = two_viewer_rig()
+        start = len(provider.vendor_subscribed)
+        a_cat = catalogue(CONTRACTS, expiries=(EXPIRY, NEXT_EXPIRY))
+        b_cat = catalogue(OTHER, expiries=(EXPIRY, NEXT_EXPIRY))
+        strikes_answer(feed, "NIFTY", EXPIRY, 10, a_cat, lambda: T0, viewer="a")
+        strikes_answer(feed, "NIFTY", NEXT_EXPIRY, 10, b_cat, lambda: T0, viewer="b")
+        provider.tick()
+        for _ in range(3):  # only B keeps reading; A's 0.2 s lease runs out
+            await asyncio.sleep(0.1)
+            strikes_answer(feed, "NIFTY", NEXT_EXPIRY, 10, b_cat, lambda: T0, viewer="b")
+        provider.tick()
+        held = set(provider.vendor_subscribed)
+        b_priced = priced_cells(strikes_answer(feed, "NIFTY", NEXT_EXPIRY, 10, b_cat, lambda: T0, viewer="b"))
+        await asyncio.sleep(0.4)  # B stops as well
+        assert start == 0
+        return held, set(provider.vendor_subscribed), b_priced, feed.fanout.subscriber_count(NIFTY_ID)
+
+    held, after, b_priced, index_holders = asyncio.run(scenario())
+    other_ids = {c.instrument_id for c in OTHER} | {NIFTY_ID}
+    assert held == other_ids and b_priced == 2 * len(GRID)
+    assert after == set() and index_holders == 0
+
+
+def test_two_viewers_on_the_same_window_share_the_contracts_and_one_stopping_keeps_them(monkeypatch):
+    """AC-1 (answer state: two viewers, same window): both hold the same contracts (one vendor subscribe); when one
+    stops the other still holds them, and the index stays held while any lease holds it."""
+    monkeypatch.setattr(leg_picker, "LEASE_SECONDS", 0.2)
+
+    async def scenario() -> tuple[int, set[str]]:
+        provider, feed = two_viewer_rig()
+        cat = catalogue(CONTRACTS, expiries=(EXPIRY, NEXT_EXPIRY))
+        strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="a")
+        strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="b")
+        calls = len(provider.subscribe_calls)
+        for _ in range(3):
+            await asyncio.sleep(0.1)
+            strikes_answer(feed, "NIFTY", EXPIRY, 10, cat, lambda: T0, viewer="b")
+        return calls, set(provider.vendor_subscribed)
+
+    calls, held = asyncio.run(scenario())
+    assert calls == 1 and held == {c.instrument_id for c in CONTRACTS} | {NIFTY_ID}
 
 
 # ---- AC-6 futures and forward ----------------------------------------------------------------------------------------
@@ -637,11 +762,13 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
     tree = ast.parse(pathlib.Path(leg_picker.__file__).read_text(encoding="utf-8"))
     imported = {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
-    allowed = {"__future__", "asyncio", "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi",
+    allowed = {"__future__", "asyncio", "contextlib",
+               "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi",
                "pydantic", "sqlalchemy.exc", "ofo.engine.chain_values", "ofo.marketdata.forward",
                "ofo.timeutil", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money",
                "ofo.rules.inputs", "ofo_app.api_models", "ofo_app.catalogue_picker", "ofo_app.chain_push",
                "ofo_app.errors", "ofo_app.live_push", "ofo_app.routes", "ofo_app.routes.outcome",
+               "ofo_app.routes.broker",
                "ofo_app.underlying", "ofo_app", "ofo_app.db"}
     assert imported <= allowed, imported - allowed
     forbidden = ("execute", "basket", "margin", "order")
