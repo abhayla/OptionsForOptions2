@@ -8,6 +8,7 @@ token store, catalogue and KiteSocket are fakes (the recorded 2026-10-08 catalog
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from http import HTTPStatus
@@ -260,6 +261,8 @@ async def test_a_login_after_shutdown_starts_nothing(kite_world, monkeypatch):
 # ---- round 2: "running" is not "running on the stored session" (F-37: the token dies ~04:30 IST, the socket stays) --
 
 START_AND_ONE_RE_READ = 2  # session lookups: the start, then exactly one re-read for the ended socket
+B_READS = 2  # the read-at-connect sends GET /portfolio/positions and GET /orders, both on B
+READ_AT_CONNECT_OF_B = 1  # REQ-015 AC-12: a restart onto a new session reads its positions once, on that session
 TOKEN_A, TOKEN_B = "ACtok_fake_A_11112222333344", "ACtok_fake_B_55556666777788"
 
 
@@ -301,17 +304,32 @@ async def test_live_on_a_and_a_login_stores_a_again_does_not_restart(kite_world,
 
 
 async def test_session_ended_on_a_with_b_already_stored_restarts_onto_b_once(kite_world, monkeypatch):
+    """Plus REQ-015 AC-12: the restart onto B starts B's read-at-connect, which makes ONE more session lookup and reads
+    Zerodha with B's token only - A's periodic read was stopped with A's socket and never reads (nor reads A)."""
+    sent: list[str] = []
+
+    def wire(method, url, headers, body, *, timeout=None):  # Zerodha's side of the periodic read
+        sent.append(headers["Authorization"])
+        data = {"net": [], "day": []} if url.endswith("/portfolio/positions") else []
+        return 200, json.dumps({"status": "success", "data": data})
+
+    monkeypatch.setattr(live_market, "urllib_transport", wire)
     end_a = asyncio.Event()
     kite_world["ends"] = [end_a]
     market = await started_on(TOKEN_A, kite_world)
     kite_world["token"] = TOKEN_B  # the login landed while A's socket still looked live (or in its backoff)
     end_a.set()
     await settle()
+    for _ in range(200):  # the read-at-connect runs in a worker thread
+        if len(sent) >= B_READS:
+            break
+        await asyncio.sleep(0.01)
     first, second = kite_world["sockets"]
     assert market.state == live_market.LIVE and first.fingerprint == live_market.token_fingerprint(TOKEN_A)
     assert second.fingerprint == live_market.token_fingerprint(TOKEN_B)
     assert second.alive_at_birth == [] and socket_tasks() == [market._task]
-    assert kite_world["lookups"] == START_AND_ONE_RE_READ
+    assert kite_world["lookups"] == START_AND_ONE_RE_READ + READ_AT_CONNECT_OF_B
+    assert len(sent) == B_READS and all(TOKEN_B in a and TOKEN_A not in a for a in sent)  # on B only
     await market.close()
 
 

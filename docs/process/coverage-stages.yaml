@@ -20,7 +20,7 @@ requirements:
   REQ-012: S5
   REQ-013: S5
   REQ-014: S5
-  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a, AC-10: 4a, AC-11: 4a}
+  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a, AC-10: 4a, AC-11: 4a, AC-12: 4a, AC-13: 4a}
   REQ-016: S6.2
   REQ-017: S8
   REQ-018: S8

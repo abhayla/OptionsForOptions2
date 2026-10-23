@@ -267,9 +267,9 @@ class KiteReads:
 
     def fetch_profile(self) -> AccountProfile:
         """``GET /user/profile``: the five kept keys only (REQ-054 AC-1). No cache: every call reads Zerodha."""
-        profile = _profile(self._data("GET", PROFILE_PATH))
-        broker_sync.note_read()
-        return profile
+        # no broker_sync.note_read(): the profile holds no positions, and the position-sync row moves only on a
+        # positions read (REQ-015 AC-4; the Settings account block reads the profile on every visit, AC-13)
+        return _profile(self._data("GET", PROFILE_PATH))
 
     def fetch_order_statuses(self, order_ids: Sequence[str]) -> dict[str, dict | None]:
         """Each asked order id -> its row of today's orders, or ``None`` when Zerodha's list has no such id.

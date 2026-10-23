@@ -287,6 +287,31 @@ async def test_a_busy_or_failed_periodic_read_keeps_the_job_for_the_next_period(
         await market.stop()
 
 
+async def test_a_store_error_on_one_tick_is_logged_and_the_next_tick_still_reads(monkeypatch, clock, kite, caplog):
+    """RD-014 (COPY check MAJOR): an OSError reading the stored session on one tick is logged by class name (never the
+    token) and the job keeps its period; the next tick reads Zerodha."""
+    market, sleeps = _market(monkeypatch, clock)
+    answers = iter([OSError("database down - ACtok_secret"), TOKEN_A])
+
+    async def stored(_config):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(market, "_stored_token", stored)
+    market.start_periodic_positions()
+    try:
+        await _until(lambda: sleeps.asked)
+        assert kite.count("/portfolio/positions") == 0 and not market._periodic.done()  # the job kept its period
+        assert "OSError" in caplog.text and "ACtok_secret" not in caplog.text
+        sleeps.release.put_nowait(None)
+        await _until(lambda: len(sleeps.asked) == 2)
+        assert kite.count("/portfolio/positions") == 1
+    finally:
+        await market.stop()
+
+
 def test_standing_a_background_reads_cannot_take_the_slots_the_order_path_needs(clock):
     """Standing item (a): background requests (the periodic job) book at most ``BACKGROUND_QUEUE_SECONDS`` ahead, so
     when they have filled their share a user read (Execute, return) still gets a slot inside its 5 s wait."""

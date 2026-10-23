@@ -103,6 +103,14 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
     "ofo.execution.partial:MAX_ORDER_STATUSES": "this product's cap on order statuses read in one pass (orchestrator default OD-g)",  # noqa: E501
     "ofo.execution.sequence:MAX_SLICES_PER_LEG": "this product's cap on how many slices one leg is split into",
     "ofo_app.kite_reads:BUSY_CODE": "this product's own error code for a read the limiter or Kite refused as busy, not a Zerodha rule",  # noqa: E501
+    "ofo.broker.rate_limit:READ_POSITIONS": "this product's name for the positions read kind of its minimum read period (REQ-118 AC-7, RD-063: copied from the reference product), not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_period_reads:POSITIONS_CALL": "this product's memo key for its positions + orders screen read (REQ-118 AC-7), not a Zerodha rule",  # noqa: E501
+    "ofo.broker.rate_limit:READ_NUMBERS": "this product's name for the numbers read kind of its minimum read period (REQ-118 AC-7), not a Zerodha rule",  # noqa: E501
+    "ofo.broker.rate_limit:READ_PERIOD_SECONDS": "this product's minimum seconds between two reads per user (30 s numbers, 45 s positions), copied from the reference product's refresh timers (RD-063); Zerodha's own limits are GROUP_RATES",  # noqa: E501
+    "ofo_app.kite_period_reads:PROFILE_CALL": "this product's memo key for its masked client-id read (REQ-015 AC-13), not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_period_reads:_SHOWN_EACH_END": "how many characters of the client id this product shows at each end (REQ-015 AC-13), not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_reads:TOKEN_CODE": "this product's own error code for a read Zerodha refused the token on, not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_period_reads:MARGIN_CALL":"this product's memo key for its available-margin read (REQ-015 AC-13), not a Zerodha rule",  # noqa: E501
     "ofo.broker.rate_limit:NO_KEY": "the bucket name of a request that carries no api key (the public instrument-list download), not a Zerodha rule",  # noqa: E501
     "ofo.execution.margin_gate:MARGIN_BUSY_CODE": "this product's own refusal code (the limiter refused the margin read at once), not a Zerodha rule",  # noqa: E501
     **_grouped({
