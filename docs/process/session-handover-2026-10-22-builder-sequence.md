@@ -1,6 +1,58 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 2, 2026-10-23 09:06 IST (commit 83707b70) - read this first (newer than the block below)
+## UPDATE session 3, 2026-10-23 12:51 IST (clock) - READ THIS FIRST (newest)
+- **New binding rules ADR-173..176 (owner, between 12:46 and 13:12 by commit times):** reference product first for every requirement, enforced by
+  `check_brief.py` (process item `process-sensibull-line.md`, built bd2a69d4 - label to be renamed `Reference:`);
+  every difference is a record in the ADR-176 register (to be built), gated at brief / verify / close; always copy,
+  never a bug, approved extras via one batched SPEC CHANGE list; new text never names the reference product.
+  ADR-174 (no prices without Zerodha, revisit at the demo), ADR-175 (account-opening link with the PIFS partner code
+  + "is it safe" explainer). Rows 1-16 studied: session-3 scratchpad `sensibull-study/rows-01-07.md` (23 gaps),
+  `rows-08-14.md` (21), `rows-15-16.md` (17) - to be loaded into the register. A row in flight closes only after its
+  records are built or decided.
+- Process branch merged into the chunk branch (7d93c1bd). Row 11 verify r1 dispatched 12:46 (b04d47f0); row 12 fix 1
+  dispatched 12:46 in `-builder-next-12` (overlap gate OK). Known red: one hook test whose sample brief predates the
+  mutation-gate rule - fixed in the Sensibull process item.
+
+## UPDATE session 2 END, 2026-10-23 12:36 IST (clock) - older
+- **Closed:** rows 1-5, 7, 9 (REQ-113), 10 (REQ-118, fb9a3702: Done, AC-6 sender deferred #521, MINORs #522). PARKED:
+  6 (#517), 8 (#519). Chunk branch `build/seq-chunk-1` head fb9a3702, pushed; no PR until row 16.
+- **In flight - four worktrees (ADR-171: four rows in flight, rows close in order, no shared files, ONE db run at a time,
+  older first, one agent per worktree):**
+  - `OptionsForOptions2-builder-next`, branch `build/seq-row-11` (pushed, b04d47f0, clean): row 11 (REQ-114) BOTH PARTS
+    BUILT. Part A 799b16ab (gate 15/15 killed; no DB run yet). Part B b04d47f0 (12:38-12:46: vitest 16/16, lint clean,
+    gate 8/8 killed; e2e NOT run - no Chrome; one known CRLF failure in learn.test.js). NEXT: verify row 11 with
+    `verify-row-11.md` - fill <HEAD> = b04d47f0 and <B-SHA> = b04d47f0; its DB run uses THIS worktree path in
+    fresh_launch.py. Note for row 11's review: part B's mutation launcher (`scratchpad\row11b\vt.py`) swapped mutant
+    files INTO the real worktree and restored them (breaks R4 - scratch copies only; the tree was verified clean after,
+    `git status` empty) - tell the next frontend builder to copy `frontend/` to scratch and run vitest there.
+  - `OptionsForOptions2-builder-next-12`, branch `build/seq-row-12` (clean, at fb9a3702): row 12's one fix
+    (`row-12-fix-1.md`, REQ-072 AC-2 wrong reason when the index is missing). Dispatch when row 11's verifier is
+    dispatched, after `python scripts/orchestrator/overlap_gate.py <row-11 wt> fb9a3702 <row-12 wt> <plan file>`
+    exits 0 (plan: backend/ofo/outcome/service.py, tests/outcome/test_spot_gate_reason.py).
+  - Rows 13 (REQ-032) and 14 (REQ-033): FULLY re-checked on fb9a3702 - every AC passes (Opus non-DB: hand computations to
+    the paisa; DB part 224 passed). They close right after row 12 (evidence from `results-rows-12-14.md`; the two
+    surviving mutants - shared-Greeks key IV (= #519) and days_in_year guard - are MINORs for one deferred issue).
+  - `OptionsForOptions2-process`, branch `build/seq-process` 05c3e431: mutation_gate.py fix (proven), kill_by_name_guard
+    hook (Tier A r2 PASS WITH MINORS, port-owner kill fixed; MINORs #523). MERGE it into the chunk branch when no agent
+    writes in builder-reqs: combine `.claude/project/hooks.json` (the chunk has the night hook, the process branch the
+    kill guard - keep both), regenerate settings with `python tools/kit_settings.py <wt>` from the main checkout, then
+    `tests/hooks` must pass (2 night-hook wiring tests fail on the process branch alone - expected).
+- **Kill guard at user level (Q276): WIRED and LIVE since 2026-10-23 12:42** (run at the owner's instruction; backup
+  `settings.json.bak-20261023-124239`; a test `taskkill //IM ...` was BLOCKED). Any name-based kill is now refused in
+  every project; stop processes only by the PIDs you recorded.
+- **Owner decisions today:** ADR-170 (keep per-user feeds, ask Zerodha at the demo), ADR-171 (four rows in flight, binding
+  overlap gate, one agent per worktree, older first), ADR-172 (IV from the bid-ask mid, else LTP), Q276 (kill guard on
+  now). Open: Q273 (where Redis runs in production - ask at the first deploy brief).
+- **Mechanisms due (Learn-or-block):** finding `report-time-typed-not-read` (3 occurrences): a report/log time stamped
+  from `date`, and a repo test refusing a log time later than its commit - build as the next process item.
+- **Meta review** due after row 12 closes, before any later build. Then rows 15-16, then the chunk 1 PR.
+- **Infra:** the live API on :8765 (run_api_live_wt.py) dies with this session - restart it if a live read is needed;
+  the owner's Kite session (logged in ~09:00 today) is stored and valid until 06:00 tomorrow. DB lock:
+  `D:\Abhay\scratch\ofo2-builder-sequence\db.lock` (fresh_launch.py takes it; a dead holder is cleared).
+- **R17/R19:** no question box 22:00-08:00 or when the owner has not written for ~30 min (owner-questions file);
+  every time written is read from `date` or a commit.
+
+## UPDATE session 2, 2026-10-23 09:06 IST (commit 83707b70) - older
 - **Closed:** row 8 PARKED #519; row 9 (REQ-113) Done 08:59 (9dcd471c; MINORs #520). Meta review after row 9 applied
   (335485c7). Owner decisions: ADR-170 (keep per-user feeds, ask Zerodha at the demo; F-59), ADR-171 (one row may be
   built ahead, rows close in order, NO shared files between rows in flight, ONE database run at a time, older row

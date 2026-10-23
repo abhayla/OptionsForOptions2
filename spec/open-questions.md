@@ -457,6 +457,26 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
 - Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.
 
+## Q281 — DECIDED → ADR-177 (owner, 2026-10-23: the banner wording everywhere) — Which market-closed wording: the banner's or REQ-114 AC-7's?
+- Row 11 verify r1 found AC-7's text is never shown; the banner "Market closed. Prices are from <time>." and REQ-114
+  AC-7 / REQ-105 "Market closed - last price <time>" clashed.
+
+## Q280 — DECIDED → ADR-176 (owner, 2026-10-23: register + gates, reference product unnamed, always copy, bugs never, approved extras as one SPEC CHANGE batch) — How are differences from the reference product recorded and enforced?
+- The 2026-10-23 studies of rows 1-16 found 61 gaps kept in scratch files; nothing linked them to requirements or
+  stopped a row closing with one open.
+
+## Q279 — DECIDED → ADR-175 (owner, 2026-10-23: PIFS partner link + compliance check) — Should Connect Zerodha carry the reference product's "Open Now" account link?
+- Reference-product study gap G-02-1 (screen 180). Also copies the "Is it safe to connect?" explainer as plain facts.
+
+## Q278 — DECIDED → ADR-174 (owner, 2026-10-23: keep as is, revisit with Zerodha) — Should a user without a Zerodha connection see prices, as on the reference product's delayed feed?
+- Reference-product study gap G-02-2. We have no price source without a user's Zerodha session; a shared feed is a data-licence
+  and spend question (ADR-152 exception c).
+
+## Q277 — DECIDED → ADR-173 (owner, 2026-10-23: binding by machine check; rows 1-14 re-studied and fixed) — Is reference-product-first binding, and from which row?
+- ADR-152 and the goal contract said to read the reference product study first; no check enforced it and rows 10-14's briefs
+  had no Reference line. Owner: machine check on every brief, and rows 1-14 re-studied and fixed wherever they differ.
+  Missing screens: build on best practice and list them for the owner (orchestrator default).
+
 ## Q275 — DECIDED → ADR-172 (owner, 2026-10-23: mid when two-sided, else LTP) — Is each leg's IV implied from its LTP or its bid-ask mid?
 - `spec/business-rules/scenario-calculations.md` section 4 says "implied from its LTP"; section 2 lists LTP vs mid as
   open (§95); the code uses the mid with an LTP fallback (`service.py:420`). Real case: 22450 PE mid 100.40 vs last trade
