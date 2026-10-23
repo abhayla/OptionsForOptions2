@@ -41,6 +41,7 @@ from ofo_app.routes import (
     features,
     health,
     indices,
+    leg_picker,
     live,
     outcome,
     planned_entry,
@@ -82,7 +83,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await close_db()
 
 
-def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
+def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:  # noqa: PLR0915 - one include per route
     """Builds the app. The broker routes refuse to start without a valid broker configuration (W-058):
     ``load_broker_config`` raises BrokerConfigError, so the app is never built without its token key.
 
@@ -127,6 +128,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
     app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
     app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
