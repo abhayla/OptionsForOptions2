@@ -360,7 +360,7 @@ def _broker_share(history: Sequence[plans.StoredPlan], book: er.TodaysBook, worl
     checks = _checks(history, world)
     if er.drifted(history, book) or any(c.undecidable for c in checks):
         return None
-    return {c.key: c.zerodha_units - c.other_units for c in checks}
+    return {c.key: c.platform_units + c.unexplained for c in checks}  # = the broker's net minus the other strategies'
 
 
 __all__ = ["ReturnOut", "return_from_kite"]
