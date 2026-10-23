@@ -30,6 +30,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
+from brief_path import resolve_brief
+
 LIMITS = {1: 250_000, 2: 3, 3: 0, 4: 0, 5: 15.0, 7: 1, 10: 15.0}
 SAFETY_SET = (  # the files whose change makes a checker Opus (ADR-178; builder-brief.md "Safety set"); matched as a
     # path tail, so `ofo/broker/kite_http.py` in a brief counts like `backend/ofo/broker/kite_http.py`
@@ -90,20 +93,17 @@ def names_safety_file(text: str) -> bool:
     return any(p in text.replace("\\", "/") for p in SAFETY_SET)
 
 
-BRIEF_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s`'\"]+?\.md|docs/process/[^\s`'\"]+?\.md")
+BRIEF_PATH_RE = re.compile(r"(?:[A-Za-z]:)?[\\/][^\s`'\"]+?\.md|docs[\\/]process[\\/][^\s`'\"]+?\.md")
 
 
 def _with_briefs(prompt: str, repo: Path | None) -> str:
     """The prompt plus the text of every brief file it names (a dispatch usually says only `Your brief is <file>`)."""
     parts = [prompt]
     for raw in BRIEF_PATH_RE.findall(prompt):
-        p = Path(raw.replace("\\", "/"))
-        candidates = [p] + ([repo / p] if repo and not p.is_absolute() else [])
-        for c in candidates:
+        found = resolve_brief(raw, [repo] if repo else [])
+        if found is not None:
             try:
-                if c.is_file():
-                    parts.append(c.read_text(encoding="utf-8", errors="replace"))
-                    break
+                parts.append(found.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
     return "\n".join(parts)
