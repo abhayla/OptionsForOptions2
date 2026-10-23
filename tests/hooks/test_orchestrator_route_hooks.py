@@ -195,8 +195,10 @@ GUARD_TESTS_LINE = ("Tests: python -m pytest tests/test_*.py tests/errors/test_w
 NO_ATTACK_BUILDER = ("# Row 99\nStanding items: (a) n/a: x\n" + GUARD_TESTS_LINE
                      + "Budget: 60 min wall-clock, 80 tool calls\nSize: M, 8 files, 3 items\n"
                      + "CI: kit tests job; vars: none\n")
+SENSIBULL_OK = "Sensibull: screens 209-211 - copy the price-changed marker\n"
 WITH_ATTACK_BUILDER = NO_ATTACK_BUILDER + ("Attack list:\n1. a heartbeat alone is not a price\n2. b\n3. c\n4. d\n"
-                                           "5. e\n")
+                                           "5. e\nRun `python scripts/orchestrator/mutation_gate.py` on the mutants.\n"
+                                           "Spec basis: REQ-072 AC-1.\n" + SENSIBULL_OK)
 
 
 def _sub_brief(root: pathlib.Path, text: str, name: str = "row-99-x.md") -> pathlib.Path:
@@ -231,6 +233,15 @@ def test_agent_gate_allows_a_builder_brief_with_an_attack_list_and_a_verifier_br
     verifier = _sub_brief(tmp_path, "# Verify row 99\n" + GUARD_TESTS_LINE, "verify-row-99.md")
     assert abg.decide("Agent", {"prompt": f"Your full brief is the file {good}"}) is None
     assert abg.decide("Agent", {"prompt": f"Your full brief is the file {verifier}"}) is None
+
+
+def test_agent_gate_blocks_a_req_brief_without_a_sensibull_line(tmp_path):
+    """ADR-173 (2): the dispatch hook refuses a REQ brief with no `Sensibull:` line; the fixed sample passes."""
+    bad = _sub_brief(tmp_path, WITH_ATTACK_BUILDER.replace(SENSIBULL_OK, ""), "row-98-x.md")
+    out = abg.decide("Agent", {"prompt": f"Your full brief is the file {bad}"})
+    assert out is not None and "MISSING Sensibull line" in out
+    good = _sub_brief(tmp_path, WITH_ATTACK_BUILDER, "row-97-x.md")
+    assert abg.decide("Agent", {"prompt": f"Your full brief is the file {good}"}) is None
 
 
 def test_agent_gate_allows_when_the_checker_times_out(tmp_path, monkeypatch):

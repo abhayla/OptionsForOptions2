@@ -16,6 +16,8 @@ each exist as knowledge/findings/<id>.json;
 (d) a BUILDER brief (it has a `Standing items:` line; verifier and measure briefs do not) needs `Attack list:` followed
 by a numbered item (`1.`), and a `Budget:` line whose minutes/calls are a size pair from docs/process/row-review.md R3
 (30/40 S, 60/80 M or each part of an L, or a fix/re-check pair of at most half: 15/20, 20/30, 30/40).
+(e) any brief naming a `REQ-###` needs a `Sensibull:` line (ADR-173): study screen numbers plus what is copied, or
+`none - searched <term>, <term>`; a brief naming no requirement is exempt.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
@@ -240,6 +242,38 @@ def check_builder_brief(brief: str) -> list[str]:
     return misses
 
 
+REQ_NAMED_RE = re.compile(r"\bREQ-\d{3}\b")
+SENSIBULL_RE = re.compile(r"^\W*Sensibull:(.*)$", re.I | re.M)
+SENSIBULL_NONE_RE = re.compile(r"^none\s*[-\u2013\u2014]\s*searched\s+(.+)$", re.I)
+SENSIBULL_SCREEN_RE = re.compile(r"(?<![\w.-])\d{3}(?![\w.])")  # a study screen number: three digits, e.g. 012, 209-211
+SENSIBULL_COPY_RE = re.compile(r"\b(copy|copies|copied|same as)\b", re.I)
+MIN_SEARCH_TERMS = 2
+
+
+def _sensibull_line_ok(rest: str) -> bool:
+    """ADR-173 (2): `none - searched <term>, <term>` (at least two terms), or a study screen number AND a word saying
+    what is copied. Anything else - empty, `n/a`, a bare `none`, screens with no copy word - is not accepted."""
+    rest = rest.strip()
+    none = SENSIBULL_NONE_RE.match(rest)
+    if none:
+        return len([t for t in none.group(1).split(",") if t.strip(" .")]) >= MIN_SEARCH_TERMS
+    if rest.lower().startswith("none"):
+        return False
+    return bool(SENSIBULL_SCREEN_RE.search(rest) and SENSIBULL_COPY_RE.search(rest))
+
+
+def check_sensibull(brief: str) -> list[str]:
+    """ADR-173 (2) by machine: a brief naming any `REQ-###` carries a valid `Sensibull:` line; a brief naming no
+    requirement (process tooling) is exempt. Keyed on the label, so loose words elsewhere never satisfy it."""
+    if not REQ_NAMED_RE.search(brief):
+        return []
+    if any(_sensibull_line_ok(m.group(1)) for m in SENSIBULL_RE.finditer(brief)):
+        return []
+    return ["MISSING Sensibull line (ADR-173): a brief naming a REQ-### carries `Sensibull: screens <numbers> - copy "
+            "<what is copied>` (e.g. `Sensibull: screens 209-211 - copy the price-changed marker`) or `Sensibull: "
+            "none - searched <term>, <term>` (at least two terms) when the study has no such screen"]
+
+
 ROW_AHEAD_RE = re.compile(r"^\W*Row-ahead:\s*yes\b", re.I | re.M)
 OVERLAP_NONE_RE = re.compile(r"^\W*Overlap:\s*none\b", re.I | re.M)
 MAIN_SEQUENCE_WORKTREE = "OptionsForOptions2-builder-reqs"  # the older row's worktree (ADR-171 rule 6)
@@ -337,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     text = path.read_text(encoding="utf-8")
     results = check_text(text, Path(args.root))
-    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text)
+    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text) + check_sensibull(text)
     out = []
     for r in results:
         short = r.quote if len(r.quote) <= 80 else r.quote[:77] + "..."

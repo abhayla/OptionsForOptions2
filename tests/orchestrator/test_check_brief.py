@@ -17,9 +17,12 @@ GUARD_LINE = ("Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.
 THREAT_LINE = "Threat model: in scope: a forged id; out of scope: a stolen token.\n"
 
 
-def run(tmp_path, text, *extra):
+SENSIBULL_LINE = "Sensibull: none - searched order retry, failed order\n"  # ADR-173 (2): any brief naming a REQ-###
+
+
+def run(tmp_path, text, *extra, sensibull=True):
     brief = tmp_path / "brief.md"
-    brief.write_text(text + "\n" + GUARD_LINE, encoding="utf-8")
+    brief.write_text(text + "\n" + GUARD_LINE + (SENSIBULL_LINE if sensibull else ""), encoding="utf-8")
     return check_brief.main([str(brief), "--root", str(ROOT), *extra])
 
 
@@ -142,7 +145,7 @@ def test_guard_set_fixed_w080_copy_passes(tmp_path):
     """W-080 r9 plus the guard line and two real finding ids passes (quotes unchanged)."""
     text = (ROOT / "docs" / "process" / "brief-W-080-r9.md").read_text(encoding="utf-8")
     text += "\nFindings checked: guard-by-banned-shapes, targeted-tests-miss-dependent-files\n" + GUARD_LINE
-    text += THREAT_LINE
+    text += THREAT_LINE + SENSIBULL_LINE
     brief = tmp_path / "b.md"
     brief.write_text(text, encoding="utf-8")
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
@@ -266,8 +269,8 @@ def _builder(attack: str, budget: str, size: str | None = None, ci: str = CI_LIN
     return "# Row 99\n" + STANDING + attack + budget + size + ci
 
 
-def _out(tmp_path, text, capsys):
-    code = run(tmp_path, text)
+def _out(tmp_path, text, capsys, **kw):
+    code = run(tmp_path, text, **kw)
     return code, capsys.readouterr().out
 
 
@@ -373,6 +376,66 @@ def test_a_row_ahead_brief_names_only_the_row_ahead_worktree_and_no_overlap(tmp_
     code, out = _out(tmp_path, head + "Row-ahead: yes\nWork in OptionsForOptions2-builder-next.\n", capsys)
     assert code == 1 and "ROW-AHEAD overlap" in out
     assert run(tmp_path, head + "Worktree OptionsForOptions2-builder-reqs.\n") == 0
+
+
+REQ_LINE = "Spec basis: REQ-072 AC-1.\n"
+
+
+@pytest.mark.parametrize("line", [
+    "Sensibull: screens 209-211 - copy the price-changed marker\n",
+    "- Sensibull: 012 same as the strategy list\n",
+    "sensibull: screen 044, 045 copied unchanged\n",
+    "Sensibull: none - searched reconnect, stale feed\n",
+    "Sensibull: none \u2013 searched payoff, breakeven, margin\n",
+])
+def test_sensibull_req_brief_with_a_valid_line_passes(tmp_path, line):
+    """ADR-173 (2): both accepted forms pass, label case and bullet ignored."""
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE + line, sensibull=False) == 0
+
+
+def test_sensibull_req_brief_without_the_line_is_refused(tmp_path, capsys):
+    """ADR-173 (2): a REQ brief with no `Sensibull:` line is refused naming ADR-173; loose words do not count."""
+    base = _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE
+    code, out = _out(tmp_path, base, capsys, sensibull=False)
+    assert code == 1 and "MISSING Sensibull line (ADR-173)" in out
+    loose = base + "We copy screen 209 from the Sensibull study.\n"  # not on a `Sensibull:` line
+    code, out = _out(tmp_path, loose, capsys, sensibull=False)
+    assert code == 1 and "MISSING Sensibull line" in out
+
+
+@pytest.mark.parametrize("line", [
+    "Sensibull:\n", "Sensibull: n/a\n", "Sensibull: none\n", "Sensibull: none - searched\n",
+    "Sensibull: none - searched reconnect\n", "Sensibull: none, no screen\n",
+    "Sensibull: screens 209-211\n", "Sensibull: copy the price-changed marker\n",
+    "Sensibull: screens 12 - copy the marker\n", "Sensibull: none - screen 209 copied\n",
+])
+def test_sensibull_malformed_line_is_refused(tmp_path, capsys, line):
+    """ADR-173 (2): empty, n/a, bare none, one search term, screens without a copy word, a copy word without a screen
+    number: all refused (fail closed on any line it cannot classify)."""
+    text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + REQ_LINE + line
+    code, out = _out(tmp_path, text, capsys, sensibull=False)
+    assert code == 1 and "MISSING Sensibull line" in out
+
+
+def test_sensibull_a_brief_naming_no_requirement_is_exempt(tmp_path):
+    """ADR-173 (2): process tooling briefs (no REQ-###) need no line; a malformed one still does not matter."""
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET)) == 0
+    assert run(tmp_path, _builder("Attack list:\n" + FIVE, GOOD_BUDGET) + "Sensibull: n/a\n") == 0
+
+
+def test_sensibull_a_verifier_brief_naming_a_req_needs_the_line(tmp_path, capsys):
+    """ADR-173 (2): verifier briefs (no `Standing items:`) are covered too."""
+    code, out = _out(tmp_path, "# Verify row 99\n" + REQ_LINE, capsys, sensibull=False)
+    assert code == 1 and "MISSING Sensibull line" in out
+    ok = "# Verify row 99\n" + REQ_LINE + "Sensibull: none - searched strike, expiry\n"
+    assert run(tmp_path, ok, sensibull=False) == 0
+
+
+def test_the_real_row_12_fix_1_brief_is_refused_for_the_missing_line(capsys):
+    """ADR-173 proof: the real brief citing REQ-072 with no Sensibull line exits non-zero."""
+    d = ROOT / "docs" / "process" / "builder-sequence-briefs"
+    assert check_brief.main([str(d / "row-12-fix-1.md"), "--root", str(ROOT)]) == 1
+    assert "MISSING Sensibull line" in capsys.readouterr().out
 
 
 def test_a_builder_brief_must_require_the_mutation_gate(tmp_path, capsys):
