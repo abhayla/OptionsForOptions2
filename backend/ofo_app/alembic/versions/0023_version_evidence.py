@@ -142,7 +142,8 @@ def upgrade() -> None:
     role = _BASE._app_role()
     allowlist = _BASE.ALLOWLIST_FUNCTION
     op.execute(f"SELECT {allowlist}('{role}', 'pre')")
-    op.execute(f"ALTER TABLE {_M16.PLANS} ADD COLUMN {PLAN_LINK} INTEGER CHECK ({PLAN_LINK} IS NULL OR {PLAN_LINK} > 0)")
+    op.execute(f"ALTER TABLE {_M16.PLANS} ADD COLUMN {PLAN_LINK} INTEGER "
+               f"CHECK ({PLAN_LINK} IS NULL OR {PLAN_LINK} > 0)")
     op.execute(f"ALTER TABLE {VERSIONS} ADD COLUMN {FLAG} BOOLEAN NOT NULL DEFAULT FALSE")
     op.execute(_guard_sql())
     op.execute(f'GRANT INSERT ({PLAN_LINK}) ON TABLE {_M16.PLANS} TO "{role}"')

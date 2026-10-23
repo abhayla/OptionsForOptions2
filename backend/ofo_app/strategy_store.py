@@ -304,7 +304,8 @@ class StoredVersion:
 
 
 _VERSIONS = text("SELECT number, state, based_on, created_at, confirmed_at, reconciled_at, outcome, "
-                 "definition::text AS definition_text, reconciliation_required FROM public.strategy_versions WHERE strategy_id = :id "
+                 "definition::text AS definition_text, reconciliation_required FROM public.strategy_versions "
+                 "WHERE strategy_id = :id "
                  "ORDER BY number")
 _INSERT_VERSION = text(
     "INSERT INTO public.strategy_versions (strategy_id, number, state, based_on, definition, "
@@ -508,7 +509,8 @@ async def settle_versions(conn: Any, user_ref: str, strategy_id: int, history: S
     if active is None or pending is None or pending.outcome is not None or any(p.status == "open" for p in history):
         return None
     built = [p for p in history if p.action == "ENTRY" and p.status == "closed" and p.created_at is not None
-             and p.strategy_version == pending.number and p.created_at >= pending.confirmed_at]
+             and p.strategy_version == pending.number and pending.confirmed_at is not None
+             and p.created_at >= pending.confirmed_at]
     if not built:
         return None
     if broker_units is None:  # the return cannot tell this strategy's units: reconcile before anything else

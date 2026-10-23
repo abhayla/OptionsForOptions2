@@ -120,6 +120,196 @@ async def _propose_130(conn, user: str, sid: int) -> dict:
     return resp.json()
 
 
+async def _linked_plan(conn, user: str, sid: int, version: int | None) -> int:
+    """The next ENTRY plan (65 BUY of the real contract) stored with the version it was built from."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from test_execute_route import CORE_ID  # noqa: PLC0415
+    from test_execution_return import SYMBOL, D, PlanOrder  # noqa: PLC0415
+
+    number = await plans.next_plan_number(conn, user, sid)
+    order = PlanOrder(0, make_tag(sid, number, 0), f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", SYMBOL,
+                      "BUY", 65, D("5.45"))
+    await plans.record_plan(conn, user, sid, number, "ENTRY", (order,), strategy_version=version)
+    return number
+
+
+async def _flags(conn, sid: int) -> list[bool]:
+    rows = await conn.execute(text("SELECT reconciliation_required FROM public.strategy_versions "
+                                   "WHERE strategy_id = :s "
+                                   "ORDER BY number"), {"s": sid})
+    return [bool(r[0]) for r in rows.all()]
+
+
+async def _judge(conn, user: str, sid: int, reason: str, units: int | None, *,  # noqa: PLR0913
+                 link: int | None = 2) -> str | None:
+    """settle_versions on the REAL store: the stored plans plus one ENTRY plan linked to ``link``, closed with
+    ``reason``, created a second after version 2's confirmation (none: a minute after version 1); ``units`` is
+    Zerodha's share on the real contract (None = undecidable)."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    stored = await store.load(conn, user, sid)
+    stamps = [v.confirmed_at for v in stored.versions if v.confirmed_at is not None]
+    at = max(stamps) + datetime.timedelta(seconds=1)
+    history = await plans.plans_for(conn, user, sid)
+    plan = plans.StoredPlan(sid, len(history) + 1, "ENTRY", "closed", (), at, at, reason, link)
+    (key,) = stored.saved.definition.intended_position()
+    return await store.settle_versions(conn, user, sid, (*history, plan), None if units is None else {key: units})
+
+
+async def _refused_in_a_new_request(conn, user: str, sid: int) -> None:
+    """A NEW request (fresh app, fresh store read) is refused for PUT and confirm with the reconciliation template."""
+    saved = (await store.load(conn, user, sid)).saved
+    put = await _put(_app_for(conn, user, _Reads("122104")), sid, _body(saved, 195, 3))
+    assert put.status_code == HTTPStatus.CONFLICT, put.text
+    assert render("strategy_reconciliation_required").what_happened in put.text
+    number = max(v.number for v in (await store.load(conn, user, sid)).versions)
+    app = _app_for(conn, user, _Reads("122104"))
+    confirm = await _call(app, "POST", f"/strategies/{sid}/versions/{number}/confirm")
+    assert confirm.status_code == HTTPStatus.CONFLICT, confirm.text
+
+
+async def _confirmed_v2(conn, user: str, app_role: str, monkeypatch) -> int:
+    sid = await _executed(conn, user, app_role, monkeypatch)
+    await _propose_130(conn, user, sid)
+    resp = await _call(_app_for(conn, user, _Reads("122104")), "POST", f"/strategies/{sid}/versions/2/confirm")
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    return sid
+
+
+# ---- fix 1 core (attack 1): a reconciled plan built from version 1, or with no link, never activates version 2 ----
+
+async def test_core_a_plan_built_from_another_version_never_activates_the_confirmed_proposal(app_engine, admin_engine,
+                                                                                            monkeypatch):
+    """AC-3: Zerodha holds exactly version 2's 130, the plan closed filled after the confirmation, but it was built
+    from version 1 (link 1) or names no version: version 2 stays proposed, not judged (verifier: time-only match)."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _confirmed_v2(conn, user, app_engine.url.username, monkeypatch)
+            for link in (1, None):
+                assert await _judge(conn, user, sid, "filled", 130, link=link) is None
+                assert [(r[1], r[3]) for r in await _versions(conn, sid)] == [("active", None), ("proposed", None)]
+            assert await _flags(conn, sid) == [False, False]
+        finally:
+            await trans.rollback()
+
+
+# ---- fix 1 attack 2 + mutants: every answer state's effect on the version and the flag ----
+
+@pytest.mark.parametrize(("reason", "units", "state", "outcome", "flags"), [
+    ("partial", 65, "proposed", "partial", [True, False]),  # mutant: PARTIAL treated as superseded
+    ("nothing_placed", 65, "superseded", "rejected", [False, False]),  # mutant: nothing_placed treated as complete
+    ("nothing_placed", 130, "superseded", "rejected", [True, False]),  # REJECTED with units changed
+    ("unresolved_from_positions", 65, "superseded", "failed", [False, False]),
+    ("filled", 65, "superseded", "mismatch", [True, False]),  # complete, Zerodha different
+    ("filled", None, "proposed", None, [True, False]),  # units unknown: not judged, flagged
+])
+async def test_each_broker_answer_has_its_stated_effect_and_the_flag_survives_a_new_request(  # noqa: PLR0913
+        app_engine, admin_engine, monkeypatch, reason, units, state, outcome, flags):
+    """AC-4: the broker wins; a result that leaves Zerodha away from the active version flags it, the flag is stored
+    and a NEW request's PUT and confirm are refused (verifier: _replay dropped the domain's flag)."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _confirmed_v2(conn, user, app_engine.url.username, monkeypatch)
+            assert await _judge(conn, user, sid, reason, units) == outcome
+            rows = await _versions(conn, sid)
+            assert [(r[0], r[1]) for r in rows] == [(1, "active"), (2, state)] and rows[1][3] == outcome
+            assert await _flags(conn, sid) == flags
+            if flags[0]:
+                await _refused_in_a_new_request(conn, user, sid)
+                # Q222: a later clean, reconciled answer never clears it, and nothing activates while flagged
+                await _judge(conn, user, sid, "filled", 130)
+                assert await _flags(conn, sid) == flags and (await _versions(conn, sid))[0][1] == "active"
+        finally:
+            await trans.rollback()
+
+
+# ---- fix 1 attack 3: manual units on the broker are outside lots, never the strategy's (ADR-109) ----
+
+async def test_manual_units_at_zerodha_are_not_counted_as_the_strategys(app_engine, admin_engine, monkeypatch):
+    """AC-4 + ADR-109: plan 2 (built from version 2) filled; Zerodha holds 195 (65 bought by hand): the strategy's
+    share is its own 130, so version 2 activates and the extra lots block nothing."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _confirmed_v2(conn, user, app_engine.url.username, monkeypatch)
+            assert await _linked_plan(conn, user, sid, 2) == 2
+            resp = await _post(_app_for(conn, user, _Plan2Reads(sid, 3)), sid)
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            rows = await _versions(conn, sid)
+            assert [(r[0], r[1], r[3]) for r in rows] == [(1, "superseded", None), (2, "active", "activated")]
+            import json  # noqa: PLC0415
+            assert [line["units"] for line in json.loads(rows[1][4])] == [130]  # not 195
+            assert await _flags(conn, sid) == [False, False]
+        finally:
+            await trans.rollback()
+
+
+def test_the_broker_share_is_none_when_the_book_drifted_or_a_contract_is_undecidable(monkeypatch):
+    """AC-4 (mutant: the drift/undecidable check removed): no share, so nothing is judged and the strategy is
+    flagged."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+    check = SimpleNamespace(key=("k",), platform_units=65, zerodha_units=65, other_units=0, kind=None,
+                            undecidable=None)
+    monkeypatch.setattr(route, "_checks", lambda history, world: [check])
+    monkeypatch.setattr(route.er, "drifted", lambda history, book: {1})
+    assert route._broker_share((), None, None) is None
+    monkeypatch.setattr(route.er, "drifted", lambda history, book: set())
+    assert route._broker_share((), None, None) == {("k",): 65}
+    monkeypatch.setattr(route, "_checks", lambda history, world: [SimpleNamespace(**{**vars(check),
+                                                                                     "undecidable": "x"})])
+    assert route._broker_share((), None, None) is None
+
+
+# ---- fix 1 attack 4: an open plan is in flight even after versions exist ----
+
+async def test_an_open_plan_is_in_flight_after_versions_exist(app_engine, admin_engine, monkeypatch):
+    """AC-3: the open-plan check runs before the versions' early EXECUTED answer; the edit is refused."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _executed(conn, user, app_engine.url.username, monkeypatch)
+            await _propose_130(conn, user, sid)
+            assert await store.execution_state(conn, user, sid) == store.EXECUTED
+            await _linked_plan(conn, user, sid, 1)
+            assert await store.execution_state(conn, user, sid) == store.IN_FLIGHT
+        finally:
+            await trans.rollback()
+
+
+# ---- fix 1 attack 5: the database refuses an inserted active row that skipped proposal and reconciliation ----
+
+async def test_the_guard_refuses_an_inserted_active_or_superseded_row(app_engine, admin_engine, monkeypatch):
+    """AC-3 (migration 0023): as the table owner, an INSERT of an active version 3 with both stamps, an active one
+    without them, a superseded one, or a flagged one is refused by the guard (OF022)."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _executed(conn, user, app_engine.url.username, monkeypatch)
+            await _propose_130(conn, user, sid)
+            await conn.execute(text("RESET ROLE"))
+            insert = ("INSERT INTO public.strategy_versions (strategy_id, number, state, based_on, definition, "
+                      "definition_schema_version, confirmed_at, reconciled_at, reconciliation_required) "
+                      "SELECT strategy_id, 3, {state}, 1, definition, definition_schema_version, {at}, {at}, {flag} "
+                      "FROM public.strategy_versions WHERE strategy_id = :s AND number = 1")
+            for state, at, flag in (("'active'", "now()", "FALSE"), ("'active'", "NULL", "FALSE"),
+                                    ("'superseded'", "now()", "FALSE"), ("'proposed'", "NULL", "TRUE"),
+                                    ("'proposed'", "now()", "FALSE")):
+                sql = insert.format(state=state, at=at, flag=flag)
+                assert await _refused_with(conn, sql, sid) == GUARD, sql
+        finally:
+            await trans.rollback()
+
+
 # ---- core + attack 2: after a fill an edit is version 2 proposed; version 1 stays active, byte for byte ----
 
 async def test_core_after_a_fill_an_edit_is_a_proposed_version_and_version_1_stays_active(app_engine, admin_engine,
@@ -217,9 +407,9 @@ async def test_a_proposed_version_becomes_active_only_after_confirm_and_a_reconc
             user = _user()
             sid = await _executed(conn, user, app_engine.url.username, monkeypatch)
             await _propose_130(conn, user, sid)
-            # a return before confirmation activates nothing
-            assert (await _post(_app_for(conn, user, _Reads("122104")), sid)).status_code == HTTPStatus.OK
-            assert [r[1] for r in await _versions(conn, sid)] == ["active", "proposed"]
+            # a return before confirmation activates nothing, even with a closed plan linked to version 2
+            await _judge(conn, user, sid, "filled", 130)
+            assert [(r[1], r[3]) for r in await _versions(conn, sid)] == [("active", None), ("proposed", None)]
             resp = await _call(_app_for(conn, user, _Reads("122104")), "POST", f"/strategies/{sid}/versions/2/confirm")
             assert resp.status_code == HTTPStatus.OK, resp.text
             assert [(v["state"], v["confirmed_at"] is not None) for v in resp.json()["versions"]] == [
@@ -228,7 +418,7 @@ async def test_a_proposed_version_becomes_active_only_after_confirm_and_a_reconc
             again = await _call(_app_for(conn, user, _Reads("122104")), "POST", f"/strategies/{sid}/versions/2/confirm")
             assert again.status_code == HTTPStatus.CONFLICT  # confirmed once
             # plan 2 (built after the confirmation) fills 65 more; Zerodha holds 130 = version 2's position
-            assert await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45")) == 2
+            assert await _linked_plan(conn, user, sid, 2) == 2
             resp = await _post(_app_for(conn, user, _Plan2Reads(sid, 2)), sid)
             assert resp.status_code == HTTPStatus.OK, resp.text
             rows = await _versions(conn, sid)
@@ -252,7 +442,7 @@ async def test_a_broker_position_other_than_the_version_is_recorded_and_never_ac
             await _propose_130(conn, user, sid)
             app = _app_for(conn, user, _Reads("122104"))
             assert (await _call(app, "POST", f"/strategies/{sid}/versions/2/confirm")).status_code == HTTPStatus.OK
-            assert await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45")) == 2
+            assert await _linked_plan(conn, user, sid, 2) == 2
             resp = await _post(_app_for(conn, user, _Plan2Reads(sid, 1)), sid)  # Zerodha still holds 65
             assert resp.status_code == HTTPStatus.OK, resp.text
             rows = await _versions(conn, sid)
@@ -260,6 +450,8 @@ async def test_a_broker_position_other_than_the_version_is_recorded_and_never_ac
             assert rows[1][3] == "mismatch" and not rows[1][6]  # never reconciled, never active
             import json  # noqa: PLC0415
             assert [line["units"] for line in json.loads(rows[1][4])] == [65]  # the broker's position, not 130
+            assert await _flags(conn, sid) == [True, False]  # attack 2: MISMATCH flags the active version
+            await _refused_in_a_new_request(conn, user, sid)
         finally:
             await trans.rollback()
 

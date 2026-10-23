@@ -199,17 +199,17 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
 def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkeypatch: pytest.MonkeyPatch) -> None:
     """REQ-038 AC-3 (row 16 fix 1): each version carries its own definition and the sticky flag, in the declared
     field order (bytes written by hand: VersionOut's fields, then the same leg document as above)."""
-    import copy
-    import datetime
-    from types import SimpleNamespace
+    import copy  # noqa: PLC0415
+    import datetime  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from ofo_app.db import get_db
-    from ofo_app.routes import strategies
+    from ofo_app.db import get_db  # noqa: PLC0415
+    from ofo_app.routes import strategies  # noqa: PLC0415
 
     document = {"schema_version": 1, "underlying": "NIFTY", "legs": [
         {"contract_id": 5, "action": "BUY", "instrument": "NIFTY2610625000CE", "strike": "25000",
          "expiry": "2026-10-27", "quantity": 75}], "rules_ref": None, "risk_limits": {}, "preferences": {}}
-    utc = datetime.timezone.utc
+    utc = datetime.UTC
     at = datetime.datetime(2026, 10, 12, 9, 15, 0, tzinfo=utc)
     version = SimpleNamespace(number=1, state="active", based_on=None, created_at=at, confirmed_at=at,
                               reconciled_at=at, outcome=None, reconciliation_required=True, definition_text="{}")
@@ -224,7 +224,7 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
         return object()
 
     async def resolve(db, ids):
-        from ofo.instruments.models import InstrumentId
+        from ofo.instruments.models import InstrumentId  # noqa: PLC0415
         return tuple(SimpleNamespace(contract_id=i, state="live", feed_id=InstrumentId("NSE_FO", 44624)) for i in ids)
 
     monkeypatch.setattr(strategies.store, "load", load)
@@ -238,7 +238,7 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
 
     app.dependency_overrides[get_db] = fake_db
     response = _client(app).get("/strategies/3")
-    assert response.status_code == 200
+    assert response.status_code == 200  # noqa: PLR2004
     definition = (b'{"schema_version":1,"underlying":"NIFTY","legs":[{"contract_id":5,"action":"BUY",'
                   b'"contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
                   b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27","quantity":75}],'

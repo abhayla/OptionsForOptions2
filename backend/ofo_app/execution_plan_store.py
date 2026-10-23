@@ -277,7 +277,8 @@ def _unique_violation(message: str) -> PlanStoreError:
 
 
 async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: int,  # noqa: PLR0913 fixed API
-                      action: str, orders: Sequence[PlanOrder], *, strategy_version: Optional[int] = None,  # noqa: UP045
+                      action: str, orders: Sequence[PlanOrder], *,
+                      strategy_version: Optional[int] = None,  # noqa: UP045
                       ) -> StoredPlan:
     """Stores the plan open, with its orders, and the version number of the definition it was built from (W-144;
     None = unknown, such a plan never activates a version). The caller commits (and has called ``next_plan_number`` in the same
