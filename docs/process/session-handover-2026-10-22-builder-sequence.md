@@ -1,5 +1,14 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
+## UPDATE session 3, 2026-10-23 14:2x IST - PAUSED BY THE OWNER (newest)
+- Owner, ~14:20: "pause everything other than the audit. Let audit run and give its recommendation, and based on that
+  we will implement everything, including 61 issues that we have found out, plus the requirements".
+- Running: the independent process audit (Fable; report in the session-3 scratchpad `process-audit/report.md`).
+  Paused: row 11 fix 1 (commits 38b757fe, cffc1da8 on build/seq-row-11; asked to stop and commit any WIP), row 12 fix
+  built (d76cd0e0, not verified), rows 13-14 verified, not closed. Register merged (b38b268a, 121 records, page
+  57be2e77); deferred #524; the batch of approved-requirement differences = Q282 in owner-questions-2026-10-23.md.
+- NEXT: read the audit, present it, implement what the owner approves, then the 61 gaps and the rows.
+
 ## UPDATE session 3, 2026-10-23 12:51 IST (clock) - READ THIS FIRST (newest)
 - **New binding rules ADR-173..176 (owner, between 12:46 and 13:12 by commit times):** reference product first for every requirement, enforced by
   `check_brief.py` (process item `process-sensibull-line.md`, built bd2a69d4 - label to be renamed `Reference:`);
