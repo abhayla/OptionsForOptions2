@@ -175,14 +175,14 @@ export function useReconnecting(status) {
 }
 
 /**
- * REQ-114 AC-5: the words a reconnecting screen shows. `note(push, isPrice)` records the server time (`answered_at`) of every
- * push that carried prices; `text` is "Reconnecting - prices as of HH:MM:SS" (IST) from the last such push, or the words
+ * REQ-114 AC-5: the words a reconnecting screen shows. `note(push, isPrice)` records the LAST PRICE time (`last_price_at`, when
+ * the feed's last price frame arrived - never the push's own `answered_at`, review F1 MINOR 4) of every push that carried prices; `text` is "Reconnecting - prices as of HH:MM:SS" (IST) from the last such push, or the words
  * without a time when none arrived or its time cannot be read. The browser clock is never used; page left ('off') forgets it.
  */
 export function useReconnectingText(status) {
   const lastAt = ref(null)
   watch(status, (s) => { if (s === 'off') lastAt.value = null }, { flush: 'sync' })
-  const note = (msg, isPrice = true) => { if (isPrice) lastAt.value = msg?.answered_at ?? null }
+  const note = (msg, isPrice = true) => { if (isPrice) lastAt.value = msg?.last_price_at ?? null }
   return { note, text: computed(() => reconnectingText(istClock(lastAt.value))) }
 }
 
