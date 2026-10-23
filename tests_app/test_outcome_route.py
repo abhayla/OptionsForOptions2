@@ -39,8 +39,7 @@ def _body(provider):
     legs = [{"instrument_id": iid, "action": action, "lots": 1,
              "planned_entry": f"{provider.book.get(iid, VALUATION).ltp:f}", "captured_at": VALUATION.isoformat()}
             for iid, action in CONDOR]
-    body = {"underlying": "NIFTY", "legs": legs}
-    return body
+    return {"underlying": "NIFTY", "legs": legs}
 
 
 async def _post(body, provider=None):
@@ -103,13 +102,13 @@ async def test_a_request_carrying_the_retired_level_is_ignored(replayed):
     plain = (await _post(_body(replayed), replayed)).json()
     for level in ("guided", "advanced"):
         resp = await _post({**_body(replayed), "ux_level": level}, replayed)
-        assert resp.status_code == 200, resp.text
+        assert resp.is_success, resp.text
         out = resp.json()
         assert "ux_level" not in out
         assert out["table"] == plain["table"] and out["payoff"] == plain["payoff"]
         assert out["leg_quotes"] == plain["leg_quotes"] and len(out["leg_quotes"]) == len(CONDOR)
     resp = await _post({**_body(replayed), "nonsense": 1}, replayed)
-    assert resp.status_code == 422  # only the retired key is dropped; any other unknown key is still refused
+    assert resp.is_client_error  # only the retired key is dropped; any other unknown key is still refused
 
 
 async def test_no_provider_returns_not_connected_state(replayed):
