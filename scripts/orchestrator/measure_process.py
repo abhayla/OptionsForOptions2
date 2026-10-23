@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
-from brief_path import resolve_brief  # noqa: E402
+from brief_path import resolve_brief
 
 LIMITS = {1: 250_000, 2: 3, 3: 0, 4: 0, 5: 15.0, 7: 1, 10: 15.0}
 SAFETY_SET = (  # the files whose change makes a checker Opus (ADR-178; builder-brief.md "Safety set"); matched as a

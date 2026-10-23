@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from brief_path import resolve_brief  # noqa: E402
+from brief_path import resolve_brief
 
 REPO = Path(__file__).resolve().parents[2]
 

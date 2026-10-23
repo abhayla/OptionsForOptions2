@@ -21,8 +21,8 @@ REL = "docs/process/builder-sequence-briefs/row-99-x.md"
 
 @pytest.mark.parametrize("raw, expected", [
     ("docs\\process\\row-1.md", "docs/process/row-1.md"),
-    ("\\tmp\\pytest-0\\docs\\process\\row-1.md", "/tmp/pytest-0/docs/process/row-1.md"),
-    ("/tmp/pytest-0/docs/process/row-1.md", "/tmp/pytest-0/docs/process/row-1.md"),
+    ("\\srv\\work-0\\docs\\process\\row-1.md", "/srv/work-0/docs/process/row-1.md"),
+    ("/srv/work-0/docs/process/row-1.md", "/srv/work-0/docs/process/row-1.md"),
     ("D:\\repo\\docs\\process\\row-1.md", "D:/repo/docs/process/row-1.md"),
 ])
 def test_normalise_ref_reads_both_separators(raw, expected):
@@ -55,7 +55,7 @@ def test_resolve_brief_returns_none_for_a_missing_file_or_no_base(tmp_path):
 
 def test_measure_process_captures_a_whole_absolute_posix_path_and_a_backslash_relative_path():
     """The Linux runner's tmp_path is `/tmp/.../docs/process/x.md`; the old pattern kept only `docs/process/x.md`."""
-    found = mp.BRIEF_PATH_RE.findall("Your full brief is the file /tmp/pytest-0/t/docs/process/verify-row-99.md - go")
-    assert found == ["/tmp/pytest-0/t/docs/process/verify-row-99.md"]
+    found = mp.BRIEF_PATH_RE.findall("Your full brief is the file /srv/work-0/t/docs/process/verify-row-99.md - go")
+    assert found == ["/srv/work-0/t/docs/process/verify-row-99.md"]
     assert mp.BRIEF_PATH_RE.findall("Your brief is docs\\process\\verify-row-99.md") == [
         "docs\\process\\verify-row-99.md"]
