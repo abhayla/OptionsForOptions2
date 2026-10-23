@@ -153,10 +153,37 @@ def test_ac5_a_write_is_never_retried_even_with_a_stated_wait() -> None:
     assert len(opener.sent_at) == 1
 
 
-@pytest.mark.parametrize(("header", "seconds"), [("1", 1.0), ("0", 0.0), ("7", 7.0), (None, 10.0), ("", 10.0),
-                                                 ("-1", 10.0), ("1.5", 10.0), ("Wed, 21 Oct 2026 07:28:00 GMT", 10.0),
-                                                 ("\N{FULLWIDTH DIGIT ONE}", 10.0), ("999999", 10.0), (" 2 ", 2.0)])
-def test_ac4_stated_wait_reads_only_plain_seconds_else_kites_10_s(header: str | None, seconds: float) -> None:
-    """The stated wait is Retry-After as plain ASCII delta-seconds (up to 5 digits); anything else is Kite's
-    documented 10 s (F-60) - fail safe: never a shorter wait than Kite asked."""
-    assert rl.stated_wait(header) == seconds
+@pytest.mark.parametrize(("header", "seconds"), [("1", 1.0), ("0", 0.0), ("2", 2.0), ("7", 7.0), (" 2 ", 2.0),
+                                                 ("60", 60.0), (None, 10.0), ("", 10.0), ("   ", 10.0)])
+def test_ac4_stated_wait_honours_plain_seconds_up_to_60_else_no_header_is_kites_10_s(
+        header: str | None, seconds: float, caplog: pytest.LogCaptureFixture) -> None:
+    """AC-4 / ADR-179: Retry-After as plain ASCII delta-seconds up to 60 s is the wait, no log; no header (absent or
+    blank) is Kite's documented 10 s cooldown (F-60), unchanged."""
+    with caplog.at_level("WARNING", logger="ofo.broker.rate_limit"):
+        assert rl.stated_wait(header) == seconds
+    assert caplog.records == []
+
+
+@pytest.mark.parametrize("header", ["61", "99999", "999999", "9" * 400, "abc", "-1", "1.5", "+5", "0x10",
+                                    "Wed, 21 Oct 2026 07:28:00 GMT", "\N{FULLWIDTH DIGIT ONE}", "2 3", "10s"])
+def test_ac4_a_larger_or_unreadable_retry_after_is_clamped_to_60_s_and_logged(
+        header: str, caplog: pytest.LogCaptureFixture) -> None:
+    """AC-4 / chunk 1 review round 2 (MINOR): one header must not block a group for hours (99999 s = 27 h). More than
+    60 s or unreadable -> 60 s (never shorter than Kite may have asked), and one warning naming the header's value."""
+    with caplog.at_level("WARNING", logger="ofo.broker.rate_limit"):
+        assert rl.stated_wait(header) == rl.MAX_STATED_WAIT_SECONDS == 60.0  # noqa: PLR2004
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert repr(header.strip()[:40]) in caplog.records[0].getMessage()
+
+
+def test_ac4_retry_after_99999_cools_the_group_60_s_not_27_hours() -> None:
+    """AC-4 through the real door (background, 30 s limit): 429 with Retry-After 99999 -> the group cools 60 s, so the
+    retry cannot fit and the read is refused busy after 1 send; the next read of that group goes out 60 s later."""
+    with door([(429, {"Retry-After": "99999"}), (200, {})], background=True) as (opener, pacer):
+        start = pacer.t
+        with pytest.raises(rl.KiteBusy):
+            kh.open_url(URL, headers=dict(HEADERS))
+        pacer.t = start + rl.MAX_STATED_WAIT_SECONDS - 25  # still cooling: a new background read waits the rest out
+        with kh.open_url(URL, headers=dict(HEADERS)) as reply:
+            assert reply.status == 200  # noqa: PLR2004
+    assert opener.sent_at[1] - opener.sent_at[0] == pytest.approx(rl.MAX_STATED_WAIT_SECONDS)

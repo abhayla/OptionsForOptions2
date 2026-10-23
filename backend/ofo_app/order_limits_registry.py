@@ -156,6 +156,7 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.broker.rate_limit:MAX_READ_RETRIES", "ofo.broker.rate_limit:ALERT_THRESHOLD",
             "ofo.broker.rate_limit:ALERT_WINDOW_SECONDS", "ofo.broker.rate_limit:_USER_REF_CHARS",
             "ofo.broker.kite_http:_TOO_MANY_REQUESTS", "ofo_app.kite_http:_TOO_MANY_REQUESTS",
+            "ofo.broker.rate_limit:MAX_STATED_WAIT_SECONDS",  # the longest Retry-After honoured (chunk 1 review)
         ),
         "an event name or address family of the egress guard (Python's audit events), not Zerodha": (
             "ofo.broker.egress:_CONNECT_EVENTS", "ofo.broker.egress:_DOOR", "ofo.broker.egress:_SEND_EVENTS",

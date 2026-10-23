@@ -14,8 +14,8 @@ limiter, so one quote through urllib and one through httpx share one bucket.
   background job may keep only ``BACKGROUND_QUEUE_SECONDS`` of slots booked ahead, so a user action never queues behind
   a long background burst.
 - AC-4 / F-60: a 429 starts a cooldown for that group of the wait Kite states (``stated_wait``: a ``Retry-After``
-  header in plain seconds, else Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of 10s that must be
-  respected"); nothing is booked or sent into it (a request already waiting re-books after it), so the sliding window
+  header in plain seconds up to ``MAX_STATED_WAIT_SECONDS``, a larger or unreadable one clamped to it and logged; no
+  header: Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of 10s that must be respected"); nothing is booked or sent into it (a request already waiting re-books after it), so the sliding window
   is never extended. A read is retried after it, at most ``MAX_READ_RETRIES`` times, and only while the retry starts
   inside the call's ONE wait limit (``DoorCall``: the 5 s or 30 s is the whole call's, fixed at its first send, so AC-3
   and AC-4 hold together); a call that creates something is never retried (AC-5).
@@ -66,8 +66,11 @@ USER_MAX_WAIT_SECONDS: Final = 5.0
 BACKGROUND_MAX_WAIT_SECONDS: Final = 30.0
 BACKGROUND_QUEUE_SECONDS: Final = 2.0
 MAX_READ_RETRIES: Final = 2
-#: a ``Retry-After`` Kite may send, read only as plain ASCII delta-seconds (RFC 9110); anything else is not a statement
-_RETRY_AFTER: Final = re.compile(r"[0-9]{1,5}", re.ASCII)
+#: a ``Retry-After`` Kite may send, read only as plain ASCII delta-seconds (RFC 9110); anything else is not a wait
+_RETRY_AFTER: Final = re.compile(r"[0-9]+", re.ASCII)
+#: the longest stated wait honoured (orchestrator technical decision, chunk 1 review round 2): one header must not block
+#: an endpoint group for hours; a larger or unreadable ``Retry-After`` cools the group this long, and is logged
+MAX_STATED_WAIT_SECONDS: Final = 60.0
 ALERT_THRESHOLD: Final = 3
 ALERT_WINDOW_SECONDS: Final = 60.0
 _USER_REF_CHARS: Final = 8
@@ -117,11 +120,21 @@ _SENT, _REFUSED = 0, 1
 
 
 def stated_wait(retry_after: str | None) -> float:
-    """The seconds Kite asked us to wait after a 429: its ``Retry-After`` as plain seconds, else Kite's documented
-    cooldown (F-60: no header was found; Kite staff state 10 s). Never shorter than Kite asked: an HTTP date, a
-    fraction, a sign or any other text is not read as a shorter wait."""
+    """The seconds to cool a group after a 429 (ADR-179, F-60). No ``Retry-After`` (absent or blank): Kite's documented
+    cooldown ``COOLDOWN_SECONDS`` (F-60: no header was found; Kite staff state 10 s). Plain ASCII seconds up to
+    ``MAX_STATED_WAIT_SECONDS``: that wait. Anything else (more than 60 s, an HTTP date, a fraction, a sign, other
+    text): ``MAX_STATED_WAIT_SECONDS``, logged by its value - never a shorter wait than Kite may have asked, and never
+    the hours one header could otherwise block the group for."""
     text = (retry_after or "").strip()
-    return float(text) if _RETRY_AFTER.fullmatch(text) else COOLDOWN_SECONDS
+    if not text:
+        return COOLDOWN_SECONDS
+    if _RETRY_AFTER.fullmatch(text):
+        seconds = float(text)  # digits only: float() never raises here (a huge value is inf, clamped below)
+        if seconds <= MAX_STATED_WAIT_SECONDS:
+            return seconds
+    log.warning("Kite Retry-After %r is not a wait of at most %.0f s: the group cools for %.0f s",
+                text[:40], MAX_STATED_WAIT_SECONDS, MAX_STATED_WAIT_SECONDS)
+    return MAX_STATED_WAIT_SECONDS
 
 
 class KiteBusy(Exception):
