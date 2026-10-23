@@ -550,3 +550,19 @@ def test_ac3_extra_key_in_an_answer_is_refused():
            "pnl": "1.00"}
     with pytest.raises(ValueError):
         StrategyContractOut.model_validate(row)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_req118_a_busy_zerodha_orders_read_is_the_busy_text_never_a_broken_connection(app_engine, admin_engine,
+                                                                                            monkeypatch):
+    """REQ-118 AC-3 / AC-4: Kite answers 429 to the orders read -> 409 with the busy text from its one home, no answer
+    built on an empty book (the caller's fail-closed rule), and not the could-not-confirm-connection text."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo.errors.templates import ZERODHA_BUSY_TEXT  # noqa: PLC0415
+
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
+                            orders=None, orders_status=429)
+    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert "strategies" not in resp.json()
+    assert ZERODHA_BUSY_TEXT in resp.text
+    assert render("gate_broker_unconfirmed").what_happened not in resp.text

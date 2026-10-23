@@ -23,6 +23,7 @@ from types import MappingProxyType
 from ofo import wording as _wording
 
 from ofo.errors.slots import SlotType, _require_exact
+from ofo.errors.templates import ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
@@ -953,6 +954,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"needed": Rupees, "available": Rupees, "time": ClockSeconds}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
+    ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
     ExplanationTemplate("outcome_margin_no_basket", "values_seen",
                         "Margin from Zerodha is shown when every leg is a listed Zerodha contract."),
     ExplanationTemplate("outcome_feed_disconnected", "values_seen",

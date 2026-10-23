@@ -41,6 +41,7 @@ KITE_MODULES: Final = frozenset({
 #: Generic broker plumbing that names no vendor (session state, tokens, config, the egress gate, routes).
 NEUTRAL_BROKER_NAMED: Final = frozenset({
     "ofo/broker/__init__.py", "ofo/broker/flags.py", "ofo/broker/egress.py", "ofo/broker/session.py",
+    "ofo/broker/rate_limit.py",
     "ofo_app/alembic/versions/0004_broker_instruments.py", "ofo_app/alembic/versions/0007_broker_sessions.py",
     "ofo_app/alembic/versions/0015_audit_broker_allowlist.py", "ofo_app/broker_config.py", "ofo_app/broker_crypto.py",
     "ofo_app/broker_sync.py", "ofo_app/broker_token_store.py", "ofo_app/routes/broker.py",

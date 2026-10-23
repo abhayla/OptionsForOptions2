@@ -27,7 +27,13 @@ from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.broker.rate_limit import KiteBusy
-from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
+from ofo.execution.margin_gate import (
+    MARGIN_BUSY_CODE,
+    MarginReplyError,
+    MarginVerdict,
+    check_margin,
+    required_from_basket_reply,
+)
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.money import zerodha_paise
@@ -163,7 +169,7 @@ class KiteMargin:
             if status == 403 or error_type(text) == "TokenException":  # noqa: PLR2004
                 raise KiteMarginError("kite_margin_token")
             if status == 429:  # noqa: PLR2004
-                raise KiteMarginError("kite_margin_busy")
+                raise KiteMarginError(MARGIN_BUSY_CODE)
             raise KiteMarginError("kite_margin_unavailable" if status >= 500 else "kite_margin_refused")  # noqa: PLR2004
         try:
             reply = json.loads(text, parse_float=Decimal)
@@ -226,6 +232,7 @@ def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginV
     try:
         available: Decimal | None = client.fetch_available_funds()
         required: Decimal | None = client.fetch_basket_margin(orders).required_total
-    except KiteMarginError:
+    except KiteMarginError as exc:
         available = required = None
+        return check_margin(available, required, busy=exc.code == MARGIN_BUSY_CODE)
     return check_margin(available, required)

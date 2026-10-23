@@ -191,6 +191,9 @@ _EXEC = "Execution of this strategy."
 CONNECT_PROMPT = ("Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, "
                   "check margin and prepare/execute your strategy.")
 _RECONNECT = "Reconnect your Zerodha account from the account page, then try again."
+#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
+#: `ofo.broker.rate_limit.KiteBusy` raises it).
+ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
 _NO_ALTERNATIVE = " No nearby listed strike is available to offer."
 _ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
 _PICK_OR_REMOVE = "Pick one of the strikes shown for this leg yourself, or remove the leg, then check again."
@@ -324,6 +327,8 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
                     "right now."),
     _gate("gate_broker_unconfirmed", _BA, 101, "We could not confirm your Zerodha connection. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
+    _gate("gate_zerodha_busy", _BA, 105, ZERODHA_BUSY_TEXT, "Orders cannot be confirmed with Zerodha right now.",
+          _EXEC, "Wait a moment, then try again."),
     _gate("gate_broker_not_connected", _BA, 102, CONNECT_PROMPT,
           "Orders cannot be sent to Zerodha.", _EXEC, "Connect your Zerodha account from the account page."),
     _gate("gate_session_unconfirmed", _BA, 103, "We could not confirm your Zerodha session. Reconnect to continue.",
@@ -1024,6 +1029,6 @@ def display_text(message: UserFacingError) -> str:
     return "\n".join(lines)
 
 
-#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
-#: `ofo.broker.rate_limit.KiteBusy` raises it).
-ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
+#: REQ-118 AC-4: the operator alert (Notifier, never shown to a user) when Kite answers 429 in a burst; its one home.
+KITE_RATE_LIMIT_ALERT_TITLE: str = "Kite is rate-limiting the platform"
+KITE_RATE_LIMIT_ALERT_BODY: str = "{recent} rate-limit answers (429) from Kite in the last minute."

@@ -42,7 +42,7 @@ from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.kite_reads import KiteReadError
+from ofo_app.kite_reads import KiteReadError, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
@@ -166,8 +166,8 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     try:
         orders, trades = reads.fetch_orders(), reads.fetch_trades()
         positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
-    except (KiteReadError, KiteReplyError, ValueError):
-        raise _refuse("gate_broker_unconfirmed") from None
+    except (KiteReadError, KiteReplyError, ValueError) as exc:
+        raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(positions, f"return strategy {req.strategy_id}")
     return _Read(orders, trades, positions.net)
 

@@ -195,6 +195,11 @@ def margin_unreadable() -> Margin:
     return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_unreadable"))
 
 
+def margin_busy() -> Margin:
+    """REQ-118 AC-3: Zerodha's rate limiter refused the margin read; no figure, and the user is told why."""
+    return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_busy"))
+
+
 def margin_no_basket() -> Margin:
     """A leg is not a listed Zerodha contract, so no basket can be sent: no figure, and no Kite call."""
     return Margin(MARGIN_NO_BASKET, render_explanation("outcome_margin_no_basket"))

@@ -167,6 +167,10 @@
     "sha256": "d0b36f554ef44ae8da91ad82ce7c628e01d9b9c938ecb3c7a9c6d3e07f90ee7e",
     "reviewed": "owner read 2026-10-08"
   },
+  "gate_zerodha_busy": {
+    "sha256": "8a3a50cae2593ab88d84c7acf1793b66c0c79cda7e3ca2f98c04cae055ac9e6f",
+    "reviewed": "pending owner read"
+  },
   "gate_margin_unconfirmed": {
     "sha256": "021eb04a8fcc3f0f640e742c05828bf7a163530352a5ad2fc8e1924182cea4c2",
     "reviewed": "pending owner read"
@@ -1021,6 +1025,10 @@
   },
   "explanation:outcome_margin_unreadable": {
     "sha256": "397de18d6ed7dec7b5830dd70004d173e2a7cdaba1ae278b3bbdd5750ef4b0b6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_busy": {
+    "sha256": "e90a70836d3f15d84e47cff8c5cb38c516ae821a283a25c41824db5c1763a817",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_no_basket": {

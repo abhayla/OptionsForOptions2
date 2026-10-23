@@ -47,7 +47,7 @@ from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
-from ofo.execution.margin_gate import MarginVerdict, check_margin
+from ofo.execution.margin_gate import MARGIN_BUSY_CODE, MarginVerdict, check_margin
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
@@ -316,8 +316,8 @@ def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> Margi
         available = source.available_funds()
         required = source.zerodha_required(orders)
         return check_margin(available, required)
-    except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
-        return check_margin(None, None)
+    except Exception as exc:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
+        return check_margin(None, None, busy=getattr(exc, "code", None) == MARGIN_BUSY_CODE)
 
 
 __all__ = [

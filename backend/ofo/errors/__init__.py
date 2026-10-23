@@ -31,7 +31,15 @@ from ofo.errors.slots import (
     Underlying,
 )
 from ofo.errors.gate_slots import LegValue
-from ofo.errors.templates import CATALOGUE, MessageTemplate, display_text, render
+from ofo.errors.templates import (
+    CATALOGUE,
+    KITE_RATE_LIMIT_ALERT_BODY,
+    KITE_RATE_LIMIT_ALERT_TITLE,
+    ZERODHA_BUSY_TEXT,
+    MessageTemplate,
+    display_text,
+    render,
+)
 from ofo.errors.user_facing import UserFacing, user_message_of
 
 __all__ = [
@@ -43,6 +51,9 @@ __all__ = [
     "CATALOGUE",
     "render",
     "display_text",
+    "ZERODHA_BUSY_TEXT",
+    "KITE_RATE_LIMIT_ALERT_TITLE",
+    "KITE_RATE_LIMIT_ALERT_BODY",
     "LegValue",
     "Money",
     "PnLMoney",

@@ -37,7 +37,7 @@ from collections.abc import Iterator, Mapping
 from typing import Final, Protocol
 from urllib.parse import parse_qs
 
-from ofo.errors.templates import ZERODHA_BUSY_TEXT
+from ofo.errors import KITE_RATE_LIMIT_ALERT_BODY, KITE_RATE_LIMIT_ALERT_TITLE, ZERODHA_BUSY_TEXT
 
 log = logging.getLogger("ofo.broker.rate_limit")
 
@@ -132,6 +132,18 @@ class _Bucket:
         self.cooldown_until = 0.0
         self.booked: list[float] = []  # start times still in the future: the waiters
 
+    def drop_started(self, now: float) -> None:
+        self.booked = [s for s in self.booked if s > now]
+
+    def book(self, start: float) -> None:
+        self.booked.append(start)
+
+    def take(self, start: float, rate: int) -> None:
+        self.next_free = start + 1 / rate
+
+    def cool(self, until: float) -> None:
+        self.cooldown_until = until
+
 
 class RateLimiter:
     def __init__(self, *, pacer: Pacer | None = None, notifier: Notifier | None = None) -> None:
@@ -154,7 +166,7 @@ class RateLimiter:
         with self._lock:
             now = self._pacer.now()
             bucket = self._bucket(group, key)
-            bucket.booked = [s for s in bucket.booked if s > now]
+            bucket.drop_started(now)
             start = max(now, bucket.next_free, bucket.cooldown_until)
             if start > deadline:
                 raise KiteBusy("wait")
@@ -162,8 +174,8 @@ class RateLimiter:
                 seconds = BACKGROUND_QUEUE_SECONDS if background else USER_MAX_WAIT_SECONDS
                 if len(bucket.booked) >= math.ceil(GROUP_RATES[group] * seconds):
                     raise KiteBusy("queue")
-                bucket.booked.append(start)
-            bucket.next_free = start + 1 / GROUP_RATES[group]
+                bucket.book(start)
+            bucket.take(start, GROUP_RATES[group])
             return start
 
     def _still_valid(self, group: str, key: str) -> bool:
@@ -196,7 +208,7 @@ class RateLimiter:
             now = self._pacer.now()
             bucket = self._bucket(group, key)
             if bucket.cooldown_until <= now:
-                bucket.cooldown_until = now + COOLDOWN_SECONDS
+                bucket.cool(now + COOLDOWN_SECONDS)
             self._counts[(group, user_ref)] = count = self._counts.get((group, user_ref), 0) + 1
             self._recent = [t for t in self._recent if now - t < ALERT_WINDOW_SECONDS] + [now]
             alert = len(self._recent) >= ALERT_THRESHOLD and now - self._last_alert >= ALERT_WINDOW_SECONDS
@@ -217,8 +229,8 @@ class RateLimiter:
 
     def _alert(self, recent: int) -> None:
         payload = {"project": "optionsforoptions2", "severity": "warning", "type": "kite_rate_limit",
-                   "title": "Kite is rate-limiting the platform",
-                   "body": f"{recent} rate-limit answers (429) from Kite in the last minute.",
+                   "title": KITE_RATE_LIMIT_ALERT_TITLE,
+                   "body": KITE_RATE_LIMIT_ALERT_BODY.format(recent=recent),
                    "dedupeKey": "kite-429-burst"}
         try:
             sent = self._notifier.send(payload)

@@ -47,6 +47,7 @@ _INSTRUMENT: Final = re.compile(QUOTE_INSTRUMENT, re.ASCII)
 _PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
 _OK: Final = 200
 _BUSY: Final = 429
+BUSY_CODE: Final = "kite_read_busy"
 _DENIED: Final = 403
 _SERVER_ERROR: Final = 500
 
@@ -57,6 +58,13 @@ class KiteReadError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def unconfirmed_template(exc: BaseException) -> str:
+    """The gate template for a refused Zerodha read: the busy text when the limiter said busy (REQ-118 AC-3), else
+    the could-not-confirm text."""
+    busy = isinstance(exc, KiteReadError) and exc.code == BUSY_CODE
+    return "gate_zerodha_busy" if busy else "gate_broker_unconfirmed"
 
 
 def _rows(data: object) -> list[object]:
@@ -218,7 +226,7 @@ class KiteReads:
             if status == _DENIED or error_type(text) == "TokenException":
                 raise KiteReadError("kite_read_token")
             if status == _BUSY:
-                raise KiteReadError("kite_read_busy")
+                raise KiteReadError(BUSY_CODE)
             raise KiteReadError("kite_read_unavailable" if status >= _SERVER_ERROR else "kite_read_refused")
         try:
             reply = json.loads(text, parse_float=Decimal)

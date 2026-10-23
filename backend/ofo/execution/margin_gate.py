@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
-from typing import Protocol
+from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
@@ -69,9 +69,13 @@ class MarginVerdict(SealedTuple, made_by="check_margin"):
         return f"MarginVerdict(available={self.available!r}, required={self.required!r}, allowed={self.allowed!r})"
 
 
-def _derive(available: Decimal | None, required: Decimal | None) -> tuple[bool, UserFacingError | None]:
+#: The code of the margin client's error when Zerodha's rate limiter refused the read at once (REQ-118 AC-3).
+MARGIN_BUSY_CODE: Final = "kite_margin_busy"
+
+
+def _derive(available: Decimal | None, required: Decimal | None, busy: bool) -> tuple[bool, UserFacingError | None]:
     if available is None or required is None:
-        return False, render("gate_margin_unconfirmed")
+        return False, render("gate_zerodha_busy" if busy else "gate_margin_unconfirmed")
     if available >= required:
         return True, None
     # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
@@ -83,17 +87,18 @@ def _derive(available: Decimal | None, required: Decimal | None) -> tuple[bool, 
         return False, render("gate_margin_unconfirmed")
 
 
-def check_margin(available: Decimal | None, required: Decimal | None) -> MarginVerdict:
+def check_margin(available: Decimal | None, required: Decimal | None, *, busy: bool = False) -> MarginVerdict:
     """Allowed when `available` >= `required` (equal is allowed); otherwise blocked with both amounts shown.
 
     Both are Zerodha's figures. None (not confirmed with Zerodha) blocks with the "could not confirm" message. Public
     because it is pure: its result cannot be turned into a basket (the basket builder takes a margin source, reads
-    Zerodha's two figures and calls this itself), so a self-made verdict proves nothing to anyone."""
+    Zerodha's two figures and calls this itself), so a self-made verdict proves nothing to anyone. ``busy`` only picks
+    the words of the "not confirmed" block (Zerodha was too busy to read); it never lets anything pass."""
     if available is not None:
         _amount(available, "available", signed=True)
     if required is not None:
         _amount(required, "required")
-    allowed, message = _derive(available, required)
+    allowed, message = _derive(available, required, busy)
     return tuple.__new__(MarginVerdict, (available, required, allowed, message))
 
 

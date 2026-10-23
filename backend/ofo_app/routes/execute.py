@@ -83,7 +83,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
-from ofo_app.kite_reads import KiteReadError, KiteReads
+from ofo_app.kite_reads import KiteReadError, KiteReads, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
@@ -313,8 +313,8 @@ async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     try:
         book = await asyncio.to_thread(req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
-    except (KiteReadError, ValueError):
-        raise _refuse("gate_broker_unconfirmed") from None
+    except (KiteReadError, ValueError) as exc:
+        raise _refuse(unconfirmed_template(exc)) from None
     if still_open:
         raise _refuse("gate_dependencies_unsatisfied")
     try:
