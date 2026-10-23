@@ -8,14 +8,25 @@ check is applied at once; a change that removes or loosens a check, a review rou
 gets an independent reviewer's read, then goes to the owner as one question. Every change is logged below with its
 reason. Strict row order stays (owner, same session: "Keep strict order").
 
-## Expected vs actual (owner 2026-10-22: every row, from row 5; row 4 stated after the fact)
+## ADR-178 (2026-10-23) changes this file's method
+
+The per-row prose review, the per-row full report and the hand-typed measured table are replaced (ADR-178 (3)): the
+measured numbers come from `scripts/orchestrator/measure_process.py` (tracker counters, every session end) and the
+generated expected-vs-actual table (commit times + agent transcripts; the generator is the one allowed process item
+after the chunk-1 PR); a prose entry below is written only for a row more than 50% over its estimate and at each
+chunk end. A "tokens" figure in the log below is the agent's FINAL CONTEXT SIZE, not the tokens it processed (the
+audit measured ~100x more context read per agent); from now on the script reports context tokens read. Rules changed
+by ADR-178: R13/R16 (the R13 selection runs in CI on the draft chunk PR; locally only a row's own new DB test file);
+R7 (the table is generated, not typed); the round-2 verify is findings-only (15 min / 20 calls); the checker's model
+follows the changed files (`builder-brief.md`, "Safety set"). Everything else below stands.
+
+## Expected vs actual (owner 2026-10-22; prose only for rows >50% over since ADR-178)
 
 Before a row's build is dispatched, the orchestrator writes its expected time in the row's table below and in the
 status reply: measure + build (from the size: S 30, M 60, L 2 x 60 minutes) + verify (Tier B 10, Tier A 20 minutes) +
-orchestrator work (live proofs, fixtures, close: about 10 minutes) = expected minutes, and expected agent tokens
-(about 150k per dispatch). When the row closes, the actual is read from the completion notices and the commit times.
-A difference within 20% needs no comment. Over 20% either way: one line of cause (faster: which rule or change saved
-the time; slower: what went wrong), and for slower, the change that stops it next row, applied the same turn.
+orchestrator work (live proofs, fixtures, close: about 10 minutes) = expected minutes. When the row closes, the actual
+is generated from the commit times and transcripts. Over 50% slower: one line of cause and the change that stops it
+next row, applied the same turn.
 
 1. **Measure** from the dispatch notifications: for each agent (start check, measure, build, fix, verify) its minutes,
    tokens and tool calls; the number of rounds; the orchestrator's own work outside agents.

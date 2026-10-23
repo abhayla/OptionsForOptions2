@@ -37,6 +37,13 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/agent_brief_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] }
     ],
+    "SessionStart": [
+      { "matcher": "",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/adr178_start.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] }
+    ],
     "PostToolUse": [
       { "matcher": "Write|Edit|MultiEdit",
         "hooks": [

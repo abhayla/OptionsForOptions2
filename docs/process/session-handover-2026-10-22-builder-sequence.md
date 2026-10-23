@@ -190,18 +190,23 @@ Continue at the FIRST ROW NOT CLOSED (row 8 - see "In flight").
    `builder-brief.md` + the row part with the `Size:` line, `CI:` line, attack list, Spec basis quoted verbatim,
    `Threat model:` on ONE line; run `check_brief.py` (PYTHONUTF8=1) and `copy_from_check.py --append`; write the row's
    EXPECTED time/tokens into the brief and the row-review table BEFORE dispatch.
-2. Builder: Sonnet, `git add <paths>` only, hard budget, throwaway-database runner for DB tests, R13 test selection.
-3. Verifier: fresh Opus (Tier A) / Sonnet (Tier B), read-only, every AC, the attack list, known-failing tests named.
+2. Builder: Sonnet, `git add <paths>` only, hard budget; locally only the row's own NEW DB test file (throwaway
+   launcher); the R13 selection runs in CI on the draft chunk PR (ADR-178).
+3. Verifier: read-only, every AC, the attack list, known-failing tests named; Opus ONLY when a changed file is in the
+   safety set (`builder-brief.md`), else Sonnet. Round 2 = findings + changed files, 15 min / 20 calls (ADR-178 (1)).
+   A row-ahead fix of <= 3 files is verified as soon as it is built.
 4. Two failed rounds -> PARKED with an issue (row 6 example); a CRITICAL that breaks CI is removed the same hour.
 5. Close: `record_evidence_fp.py` (ac_fp from `fps_wt.py` in the worktree), the work item (tests_required naming real
    files), table status, MINORs as one deferred issue (`gh_issue.py app deferred ... --stage <stage>`), findings same
    turn, then MY self-checks: `tests/test_row_review_log.py`, `tests/test_tests_required_exist.py`,
    `coverage.py . --check`, `ruff_ratchet.py`; commit (message via `-F` file), backup push.
-6. Review: the row's log entry (expected vs actual from commit times, causes of every extra round, what changed); apply
-   changes the same turn; meta review (fresh Sonnet) every 3rd row before the next build (next due after row 9);
-   at each meta review update `delivery-learnings-generic.md` and comment #161 (`kit_issue_comment.py`).
-7. Report to the owner: what changed for a user, expected vs actual with reasons, THE WHOLE 63-ROW TABLE (never a
-   subset), open questions, the trend table, the evidence table.
+6. Review (ADR-178 (3)): the measured numbers come from `measure_process.py` and the expected-vs-actual generator,
+   never typed; a prose review entry only for a row >50% over and at each chunk end (then update
+   `delivery-learnings-generic.md` and comment #161). MINORs: one deferred issue per CHUNK, not per row.
+7. Report to the owner: a SHORT status - what a user sees now, expected vs actual, open issues and questions, the
+   evidence table. The whole 63-row table, process review and trend table once per chunk or when a row runs >50% over.
+8. Session end: `python scripts/orchestrator/measure_process.py --chunk-start <sha>`; a MISS = a finding the same turn;
+   update `adr-178-tracker.md` Status from the output only. A fresh session about every 3 rows.
 
 ## Helper scripts (NOT in the repo): `D:\Abhay\scratch\ofo2-builder-sequence\`
 - `fresh_launch.py <checkout> <command...>`: DB tests in a throwaway database with the MAIN checkout's .env (use for

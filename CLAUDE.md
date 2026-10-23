@@ -132,10 +132,12 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
      reconciliation, money maths, live-data liveness, migrations, auth/tokens/secrets, hooks, and any read feeding a
      price, quantity, band, margin, fill, position or tag (any module the Execute/return routes import). Tier B (Sonnet,
      diff only; verified at requirement close): display that computes no money, history/timeline/table/catalogue/
-     admin/wording. Tier C: docs. A change takes its highest-risk file's tier.
+     admin/wording. Tier C: docs. A change takes its highest-risk file's tier: the checker's model follows the CHANGED
+     FILES against the safety set in `docs/process/builder-brief.md` (ADR-178), not a row's Tier column.
   4. Aim the first round: briefs use `docs/process/builder-brief.md` and add only the item part - reviewer checklist,
      attack cases, `Findings checked:` ids (grep the registry first), a `Threat model:` for any guard.
-  5. At most 2 review rounds per item. Red CI or a failed core proof is never deferred; after round 2 a CRITICAL or
+  5. At most 2 review rounds per item; round 2 re-checks only round 1's findings and the files the fix changed, 15 min /
+     20 calls (ADR-178 (1)). Red CI or a failed core proof is never deferred; after round 2 a CRITICAL or
      MAJOR on Tier A code -> independent redesign or park unmerged; only MINOR/Tier B findings become deferred issues.
      Before any live run: open Tier A deferred issues triaged per ADR-107; a verifier passes on main per money/order AC.
   6. Batch: one docs PR per contract; a decision a build needs rides in that build's PR. Dependent items are stacked PRs

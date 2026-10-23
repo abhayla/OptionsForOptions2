@@ -12,6 +12,19 @@ dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
 attack list, not a rewrite (ADR-106 item 9).
 
+## Safety set and round 2 (ADR-178)
+**Safety set** - a changed file under any of these makes the checker Opus with mutation tests on its guards; otherwise
+the checker is Sonnet, whatever the row's Tier column says (the list is `SAFETY_SET` in
+`scripts/orchestrator/measure_process.py`; change both together): `backend/ofo/engine/`, `backend/ofo/scenario/`,
+`backend/ofo/table/`, `backend/ofo/outcome/`, `backend/ofo/marketdata/`, `backend/ofo/feed*`, `backend/ofo_app/kite_ws*`,
+`backend/ofo_app/feed*`, `backend/ofo/broker/`, `backend/ofo_app/kite_*`, `backend/ofo_app/routes/auth*`,
+`backend/ofo_app/broker_sessions*`, `backend/ofo/orders/`, `backend/ofo/execution/`, `backend/ofo/reconciliation/`,
+`backend/ofo_app/alembic/`, `scripts/hooks/`. An Opus dispatch names the safety-set file in its `Why Opus:` line; the
+session-end script lists every Opus dispatch without one as a MISS.
+**Round-2 checker brief** (findings-only, ADR-178 (1)): `Round 2 findings:` with round 1's numbered findings, `Changed
+files:` with the fix commit's files, the attack items those findings touch, `Budget: 15 min wall-clock, 20 tool calls`.
+A full re-check only when the fix touched a safety-set file round 1 did not see - the brief says which.
+
 You build ONE work item in your own git worktree of github.com/abhayla/OptionsForOptions2 (branch from origin/main).
 Read first, in order: your `work/W-###.md`; its requirement `spec/requirements/REQ-###.md` (acceptance criteria);
 every ADR that requirement cites; `CLAUDE.md` (hard rules); for engine work `spec/business-rules/scenario-calculations.md`.

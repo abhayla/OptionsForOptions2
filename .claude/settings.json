@@ -17,6 +17,15 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\" --session-start"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/adr178_start.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
       }
     ],
     "Stop": [
