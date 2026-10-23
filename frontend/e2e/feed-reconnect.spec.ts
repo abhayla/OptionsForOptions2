@@ -45,7 +45,7 @@ test('AC-2: a dropped live socket reads reconnecting at once, shows no old price
   state.refuse = true
   await state.current.close()
   await expect(builder).not.toHaveAttribute('data-live', 'live')
-  await expect(page.getByTestId('live-reconnecting')).toContainText(/reconnecting/i)
+  await expect(page.getByTestId('live-reconnecting')).toContainText(/^Reconnecting - prices as of \d\d:\d\d:\d\d$/)
   await expect(page.locator('[data-live="live"]')).toHaveCount(0) // nothing on the screen is marked live
   await page.waitForTimeout(GAP_MS) // the gap under test
   await expect(page.getByTestId('live-reconnecting')).toBeVisible() // still reconnecting, still not live

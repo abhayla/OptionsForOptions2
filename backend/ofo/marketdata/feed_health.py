@@ -39,6 +39,9 @@ FEED_HEALTHY, FEED_WAITING, FEED_RECONNECTING, FEED_ENDED = "healthy", "waiting"
 FEED_IDLE = "idle"
 #: the feed refused this user's socket over Zerodha's connection cap (REQ-113 AC-6, ADR-170): no prices will arrive.
 FEED_CAPPED = "capped"
+#: outside market hours (ADR-119 calendar, REQ-114 AC-7): silence is expected, so the feed reads "market closed - last
+#: price <time>" (``ofo.marketdata.disconnect.market_closed_message``), never "waiting" or "reconnecting".
+FEED_MARKET_CLOSED = "market_closed"
 
 
 class FeedState:
@@ -87,14 +90,23 @@ class FeedState:
         """The feed's own word that it refused this user's socket over a Zerodha cap (read from its status)."""
         self.capped = capped
 
-    def phase(self, now: datetime.datetime) -> str:
-        """One of ``FEED_HEALTHY / WAITING / RECONNECTING / ENDED``. ``healthy`` only when a PRICE frame arrived within
+    @property
+    def last_price_at(self) -> datetime.datetime | None:
+        """When the last PRICE frame arrived (a heartbeat is not a price); None if none ever did."""
+        return self._last_tick_frame
+
+    def phase(self, now: datetime.datetime, market_open: bool = True) -> str:
+        """One of ``FEED_HEALTHY / WAITING / RECONNECTING / ENDED / CAPPED / MARKET_CLOSED``. ``market_open`` is the
+        ADR-119 calendar's answer for ``now``: False reads ``FEED_MARKET_CLOSED`` (REQ-114 AC-7) unless the session
+        ended or the feed is capped, which still say so. ``healthy`` only when a PRICE frame arrived within
         ``feed_stale``: heartbeats (1 byte, every second) prove the link, never prices, so they cannot keep it healthy
         (unlike ``health``, which a quiet contract may keep AVAILABLE on heartbeats, F-32)."""
         if self.session_ended:
             return FEED_ENDED
         if self.capped:
             return FEED_CAPPED
+        if not market_open:
+            return FEED_MARKET_CLOSED
         if not self.connected:
             return FEED_RECONNECTING
         fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale

@@ -186,6 +186,15 @@
             ],
             "title": "Last Successful Sync"
           },
+          "live_market_closed": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Market Closed"
+          },
           "live_market_data": {
             "$ref": "#/components/schemas/StatusOut"
           },

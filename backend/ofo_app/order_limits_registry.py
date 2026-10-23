@@ -136,8 +136,9 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
         ),
         "a timeout, retry, backoff, nesting or polling figure of this product's own network code": (
             "ofo.broker.egress:_MAX_DEPTH", "ofo_app.kite_client:EXCHANGE_TIMEOUT_SECONDS",
-            "ofo_app.kite_http:_MAX_NESTING", "ofo_app.kite_http:_TIMEOUT", "ofo_app.kite_ws:BACKOFF_MAX",
-            "ofo_app.kite_ws:BACKOFF_START", "ofo_app.kite_ws:_POLL_SECONDS", "ofo.execution.partial:UNCONFIRMED_GRACE",
+            "ofo_app.kite_http:_MAX_NESTING", "ofo_app.kite_http:_TIMEOUT",
+            "ofo.marketdata.reconnect_policy:BACKOFF_MAX", "ofo.marketdata.reconnect_policy:BACKOFF_START",
+            "ofo_app.kite_ws:_POLL_SECONDS", "ofo.execution.partial:UNCONFIRMED_GRACE",
             "ofo.execution.freeze:STALE_AFTER_DAYS", "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
             "ofo.broker.rate_limit:BACKGROUND_MAX_WAIT_SECONDS", "ofo.broker.rate_limit:BACKGROUND_QUEUE_SECONDS",
             "ofo.broker.rate_limit:MAX_READ_RETRIES", "ofo.broker.rate_limit:ALERT_THRESHOLD",

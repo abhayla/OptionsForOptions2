@@ -6,9 +6,9 @@ daily-load-misses-intraday-additions ("a once-a-day catalogue load misses strike
 
 One in-process asyncio task started by the app lifespan when ``CATALOGUE_REFRESH`` is on (explicitly "1", or by default
 when ``LIVE_MARKET`` is on). It loads once at start-up (any day, any hour: a restarted app must not wait for the next
-window), then every ``REFRESH_INTERVAL`` between 08:35 and 15:45 IST on weekdays. There is no exchange holiday
-calendar in this project yet (``routes.execute.market_open`` says the same), so a weekday holiday runs the load too;
-Zerodha's list is the same that day and the load is harmless.
+window), then every ``REFRESH_INTERVAL`` between 08:35 and 15:45 IST on weekdays. The refresh timetable is
+its own weekday window and does not read the ADR-119 market calendar (``ofo.market_calendar``), so a weekday holiday
+runs the load too; Zerodha's list is the same that day and the load is harmless.
 
 Each run is ``catalogue_load.load_once`` unchanged, so every guard of ``apply_update`` applies (truncated-list refusal
 per index and per expiry, identity rules, retirement). A failed or refused run keeps the previous list (nothing is

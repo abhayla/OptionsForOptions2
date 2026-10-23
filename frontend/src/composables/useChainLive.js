@@ -6,7 +6,7 @@
 // reconnect backoff is the strategy socket's (imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
-import { createLiveSocket, useReconnecting } from './useStrategyLive'
+import { createLiveSocket, useReconnecting, useReconnectingText } from './useStrategyLive'
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
 export const CHAIN_REST_PATH = '/market/chain' // relative to the api base (/api)
@@ -65,6 +65,7 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
     viaSocket.value = false
   }
 
+  const lastPrice = useReconnectingText(status)
   const live = createLiveSocket({
     url,
     WebSocketImpl,
@@ -73,6 +74,7 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
     onPush: (msg) => {
       if (!sameRequest(msg, request.value)) return // an answer for the choice before this one
       pushed = true
+      lastPrice.note(msg, msg.state === 'LIVE')
       failed.value = false
       viaSocket.value = true
       answer.value = msg
@@ -132,7 +134,7 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
   // A REST first paint that says LIVE while the socket is still connecting is a wait, not a not-connected state.
   const waitingForSocket = () => answer.value?.state === 'LIVE' && status.value === 'connecting'
   const notLive = () => !isLive() && !waitingForSocket() && (answer.value !== null || failed.value)
-  return { answer, status, reconnecting: useReconnecting(status), request, follow, clear, stop, refresh, shown, isLive, notLive }
+  return { answer, status, reconnecting: useReconnecting(status), reconnectingText: lastPrice.text, request, follow, clear, stop, refresh, shown, isLive, notLive }
 }
 
 /** Whole days from `today` to the expiry date (date parts only; a label, never a price). */

@@ -8,9 +8,11 @@ import datetime
 import json
 import pathlib
 
+from _fake_kite_ws import FakeConnect, NoJitter, SimClock, Sleeper, new_provider, recorded_frames
 from ofo.instruments.parser import parse_instruments_csv
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.rules.inputs import DataHealth
 from ofo_app.kite_ws import KiteSocket
 from websockets.asyncio.server import serve
 
@@ -18,6 +20,7 @@ FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 NOW = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)
 SPOT_ID = "NSE_INDEX:1001"
 API_KEY, TOKEN = "KEY-abc123", "TOK-xyz789"
+EXPECTED_CONNECTIONS = 2
 
 
 def _ltp_frame(pairs) -> bytes:
@@ -88,3 +91,36 @@ async def test_spot_released_by_one_socket_and_taken_by_another_keeps_ticking():
             await asyncio.wait_for(task, 10)
     assert spot in kite.subscribed, f"Kite was told to drop the spot: {kite.messages}"
     assert first is not None and later is not None and later.ltp > first.ltp, "the spot stopped updating"
+
+
+# -- REQ-114 AC-4 (attack 5): the link counts as connected only AFTER every subscription is re-sent -----------------
+
+
+async def test_on_connected_fires_only_after_the_subscribe_is_sent_and_quotes_stay_stale_until_a_fresh_tick():
+    clock = SimClock()
+    provider = new_provider(clock)
+    frame = recorded_frames(1)[0]
+    at_connect: list[list[dict]] = []
+    healths: list[set] = []
+
+    def probe() -> None:
+        healths.append({q.health for q in provider.book.quotes(clock.now)})
+
+    # connection 1: one price frame, then silence (the socket closes it at 60 s); connection 2: probe, then a tick
+    connect = FakeConnect(clock, [[("bytes", frame)], [("call", probe), ("bytes", frame)]])
+    original = provider.on_connected
+
+    def spy(now):
+        at_connect.append(list(connect.sockets[-1].sent))  # what had been sent when the provider was told
+        original(now)
+
+    provider.on_connected = spy  # type: ignore[method-assign]
+    sock = KiteSocket(provider, api_key=API_KEY, access_token=TOKEN, clock=clock, base_url="ws://127.0.0.1:9",
+                      connect=connect, sleep=Sleeper(clock), rng=NoJitter())
+    connect.on_end = lambda: sock.stop() if len(connect.sockets) >= EXPECTED_CONNECTIONS else None
+    await sock.run()
+    wanted = provider.subscribed_tokens()
+    expected = [{"a": "subscribe", "v": wanted}, {"a": "mode", "v": ["full", wanted]}]
+    # subscribe + mode were already sent when the provider was told about each connection
+    assert len(at_connect) == EXPECTED_CONNECTIONS and at_connect == [expected, expected]
+    assert healths == [{DataHealth.STALE}]  # after the reconnect, before the fresh tick: stale, never available

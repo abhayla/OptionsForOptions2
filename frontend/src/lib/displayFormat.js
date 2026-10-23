@@ -83,6 +83,13 @@ export function istTime(iso) {
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
 
+/** An ISO instant (with an offset or Z) as 'HH:MM:SS' in India time, or null when it cannot be read (never the raw string,
+ *  never the browser clock). The time part of istTime. */
+export function istClock(iso) {
+  const t = istTime(iso)
+  return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
+}
+
 /** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
  *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
 export function maxLine(summary, side) {
