@@ -317,6 +317,7 @@ decisions:
   ADR-175: S6.1         # account-opening link with the PIFS partner code + "is it safe" explainer (Q279)
   ADR-176: S6.7         # reference-product difference register and its gates; always copy (Q280)
   ADR-177: S6.7         # one market-closed wording everywhere (Q281)
+  ADR-178: S6.7         # leaner builder sequence from the process audit (Q283)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

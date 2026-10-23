@@ -1,5 +1,10 @@
 # Goal contract: Builder sequence (63 rows, one at a time, top to bottom)
 
+**2026-10-23: ADR-178 overrides this contract where they differ** (findings-only round 2; reference-product COPY gaps
+per chunk; short status per row, full report per chunk; checker model by changed file; DB suites in CI via a draft chunk
+PR; small orchestrator context with a fresh session about every 3 rows; process-tool freeze until the chunk-1 PR).
+Audit: `process-audit-2026-10-23.md`.
+
 Owner-approved order and rules: ADR-168 (2026-10-22). Status table and row order: `builder-sequence-2026-10-22.md`
 (the checklist). Reviewed 2026-10-22 by an independent architect (round 1 REVISE, round 2 PASS WITH FIXES, all fixes
 applied) and a delivery-efficiency engineer (measured CI/PR history; changes 1-10 applied). Replaces the builder part

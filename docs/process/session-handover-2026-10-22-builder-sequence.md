@@ -1,6 +1,38 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 3, 2026-10-23 14:2x IST - PAUSED BY THE OWNER (newest)
+## UPDATE session 3 END, 2026-10-23 ~14:4x IST - START HERE (newest): implement ADR-178, then rows 11-16
+- **Process audit done** (independent, Fable): `docs/process/process-audit-2026-10-23.md`. Owner approved its three
+  loosenings (ADR-178, Q283); its technical changes are the orchestrator's (ADR-178 lists them). Read ADR-178 FIRST -
+  it overrides the per-row rules of the goal contract, row-review.md and ADR-176 (2) where they differ.
+- **Rule 1 for every session from now: keep the orchestrator's context small.** A fresh session about every 3 rows; never
+  read logs, transcripts, diffs or the 63-row table into context (tail 20 lines, or ask an agent); scripts write briefs,
+  evidence, issues. This session (0c676935) ends here for that reason.
+- **NEXT, in order:**
+  1. Open the chunk-1 PR as a DRAFT now (`build/seq-chunk-1` -> main; body with the Spec-deviation block) so CI runs
+     the app DB suites on every push; stop using the tunnel for selections (only a row's own new DB test file locally).
+  2. Row 11: merge `build/seq-row-11` (fix 1 at cffc1da8; 5 items done, gate 9/9) into the chunk branch's current head;
+     round 2 = FINDINGS-ONLY (ADR-178 (1)): AC-7 wiring + the ADR-177 wording, AC-2's drop test (A10), AC-6's token
+     check, the changed files; Opus (live-feed files). The ~10 DB failures seen at 76-86% of two cut runs are
+     unclassified: classify them from the draft PR's CI run against fb9a3702's behaviour. Row 11's open COPY records
+     go to the chunk-1 copy builder (ADR-178 (2)), not to row 11.
+  3. Row 12: verify fix d76cd0e0 (`-builder-next-12`, outcome/service.py = safety set -> Opus, small scope); the stale
+     index stays computed with a label (REQ-072 AC-3) - the brief's item 2 was wrong, the builder was right.
+  4. Rows 13-14: close from `results-rows-12-14.md` (one deferred issue for both MINORs).
+  5. In parallel: rows 15-16 (one shared verifier) and ONE chunk-1 reference-copy builder for the chunk's open COPY
+     records (`python scripts/orchestrator/reference_register.py --open REQ-...` per row's REQ; about 23), Sonnet,
+     one Sonnet check (Opus only for records touching safety-set files). The `spec_change` records wait for Q282.
+  6. The one process exception (ADR-178): a brief generator `make_brief.py <row> <measure.json>` (Sonnet), and a
+     script that generates the measured expected-vs-actual table from commit times + transcripts. Nothing else.
+  7. File a kit harvest issue: the kit guard blocks read-only commands whose TEXT contains a guarded word (about 9-12
+     blocks per session, e.g. a commit message saying "SPEC CHANGE").
+  8. Remove the stray worktree `.claude/worktrees/agent-a5043e23c50a0886e` with `wt-rm.ps1` (empty, from a builder run).
+  9. Chunk-1 close: the draft PR becomes the real PR, ONE Tier A Opus chunk review, CI green, land.
+- **Open for the owner:** Q282 (13 approved-requirement differences, recommendation each, in
+  `owner-questions-2026-10-23.md`); Q273 (Redis host, at the first deploy brief).
+- **Reporting now (ADR-178 (3)):** a short status per row; the full table, review and trend once per chunk or when a
+  row runs >50% over.
+
+## UPDATE session 3, 2026-10-23 14:2x IST - PAUSED BY THE OWNER (older)
 - Owner, ~14:20: "pause everything other than the audit. Let audit run and give its recommendation, and based on that
   we will implement everything, including 61 issues that we have found out, plus the requirements".
 - Running: the independent process audit (Fable; report in the session-3 scratchpad `process-audit/report.md`).
