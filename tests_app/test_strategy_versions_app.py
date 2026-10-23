@@ -545,3 +545,59 @@ def test_migration_0022_runs_down_and_up_again():
         done = subprocess.run([*cmd, *step],  # noqa: S603 - fixed argv, no shell
                                cwd=ROOT, capture_output=True, text=True, timeout=300, check=False)
         assert done.returncode == 0, done.stderr[-2000:]
+
+
+def _migration_0023():
+    import importlib.util  # noqa: PLC0415
+
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0023_version_evidence.py"
+    found = importlib.util.spec_from_file_location("_m0023_downgrade_test", path)
+    module = importlib.util.module_from_spec(found)  # type: ignore[arg-type]
+    found.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+async def _downgrade_refusal(conn, module) -> str:
+    """Run 0023's real ``downgrade()`` inside a savepoint; return the refusal text (the savepoint undoes the rest)."""
+    from alembic.migration import MigrationContext  # noqa: PLC0415
+    from alembic.operations import Operations  # noqa: PLC0415
+
+    def run(sync_conn) -> None:
+        with Operations.context(MigrationContext.configure(sync_conn)):
+            module.downgrade()
+
+    savepoint = await conn.begin_nested()
+    with pytest.raises(DBAPIError) as err:
+        await conn.run_sync(run)
+    await savepoint.rollback()
+    return str(err.value)
+
+
+async def _column_exists(conn, table: str, column: str) -> bool:
+    row = await conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' "
+                                  "AND table_name = :t AND column_name = :c"), {"t": table, "c": column})
+    return row.first() is not None
+
+
+async def test_f2_attack7_the_0023_downgrade_refuses_while_a_flag_or_a_plan_version_link_is_stored(
+        app_engine, admin_engine, monkeypatch):
+    """Review F2 item 7 (as 0022 refuses with versions stored): with a raised reconciliation flag the downgrade is
+    refused; with the flag down but a plan's version link stored it is refused too; nothing is dropped either way."""
+    module = _migration_0023()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _executed(conn, user, app_engine.url.username, monkeypatch)
+            await _linked_plan(conn, user, sid, 1)
+            await conn.execute(text("RESET ROLE"))  # the owner runs migrations
+            await conn.execute(text("UPDATE public.strategy_versions SET reconciliation_required = TRUE "
+                                    "WHERE strategy_id = :s AND state = 'active'"), {"s": sid})
+            assert "reconciliation_required flag" in await _downgrade_refusal(conn, module)
+            await conn.execute(text("UPDATE public.strategy_versions SET reconciliation_required = FALSE "
+                                    "WHERE reconciliation_required"))
+            assert "plan version links" in await _downgrade_refusal(conn, module)
+            assert await _column_exists(conn, "execution_plans", "strategy_version")
+            assert await _column_exists(conn, "strategy_versions", "reconciliation_required")
+        finally:
+            await trans.rollback()
