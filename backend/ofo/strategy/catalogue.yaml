@@ -29,7 +29,7 @@ templates:
     constraints: []
     legs:
       - {name: long_call, action: BUY, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
-      - {name: short_call, action: SELL, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1}
+      - {name: short_call, action: SELL, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: bull_put_spread
     name: "Bull Put Spread"
@@ -43,7 +43,7 @@ templates:
     constraints: []
     legs:
       - {name: short_put, action: SELL, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
-      - {name: long_put, action: BUY, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_put, action: BUY, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: synthetic_long
     name: "Long Synthetic Future"
@@ -72,7 +72,7 @@ templates:
     constraints: []
     legs:
       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
-      - {name: short_put, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1}
+      - {name: short_put, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: bear_call_spread
     name: "Bear Call Spread"
@@ -86,7 +86,7 @@ templates:
     constraints: []
     legs:
       - {name: short_call, action: SELL, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
-      - {name: long_call, action: BUY, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_call, action: BUY, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: synthetic_short
     name: "Short Synthetic Future"
@@ -121,10 +121,10 @@ templates:
       - {equal: [w_put, w_call]}
       - {order: [short_put, short_call]}
     legs:
-      - {name: long_put, action: BUY, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_put, action: BUY, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
       - {name: short_put, action: SELL, instrument: PE, strike: "-p", expiry_slot: near, quantity_multiplier: 1}
       - {name: short_call, action: SELL, instrument: CE, strike: "q", expiry_slot: near, quantity_multiplier: 1}
-      - {name: long_call, action: BUY, instrument: CE, strike: "q + w_call", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_call, action: BUY, instrument: CE, strike: "q + w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: iron_butterfly
     name: "Iron Fly"
@@ -140,10 +140,10 @@ templates:
     constraints:
       - {equal: [w_put, w_call]}
     legs:
-      - {name: long_put, action: BUY, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_put, action: BUY, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
       - {name: short_call, action: SELL, instrument: CE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
-      - {name: long_call, action: BUY, instrument: CE, strike: "w_call", expiry_slot: near, quantity_multiplier: 1}
+      - {name: long_call, action: BUY, instrument: CE, strike: "w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: short_straddle
     name: "Short Straddle"

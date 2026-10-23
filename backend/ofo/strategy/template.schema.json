@@ -63,7 +63,8 @@
           ]
         },
         "expiry_slot": {"enum": ["near", "next"]},
-        "quantity_multiplier": {"type": "integer", "minimum": 1, "maximum": 10}
+        "quantity_multiplier": {"type": "integer", "minimum": 1, "maximum": 10},
+        "protective": {"type": "boolean"}
       },
       "if": {"properties": {"instrument": {"const": "FUT"}}},
       "then": {"not": {"required": ["strike"]}},

@@ -1463,6 +1463,26 @@
     "sha256": "153711bfab1232d6e9a006a19d86c9d9b6875dcfcd914f112cbb281a4f355048",
     "reviewed": "pending owner read"
   },
+  "leg_edit_strike_not_listed": {
+    "sha256": "21becd9984422a8625e39d207d906775f83b03a9ceaec619ca83b0a78f004a90",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_no_further_strike": {
+    "sha256": "eb77282c70c205296edd037592daf75988f05fa3d1db1609d5f77cb2e79dbd2f",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_futures_no_stepper": {
+    "sha256": "438868ee544b4607ccb0431be83ff4b9fc81c39427613c3ad9ea76abb4cba9bd",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_price_not_tick": {
+    "sha256": "926a63c553a31591cbd60bf47ae205fe6eb55892759dcca745d0e3b37b13c26a",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_unknown_contract": {
+    "sha256": "6f66686722d95876bc85977232872fb72771236decea29c6dc35e1ae59aaced0",
+    "reviewed": "pending owner read"
+  },
   "explanation:ready_made_fixed_rule_label": {
     "sha256": "fd98968c08bd3b7eff12e3471002c112d6064cbf0596c55cdb11361337dd7a27",
     "reviewed": "pending owner read"
