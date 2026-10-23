@@ -187,12 +187,13 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
     app.dependency_overrides[get_db] = fake_db
     response = _client(app).get("/strategies/3")
     assert response.status_code == 200
+    # REQ-038 AC-3 (row 16): versions is always written; an unversioned strategy answers an empty list.
     assert response.content == (
         b'{"id":3,"status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
         b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
-        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}}}')
+        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}},"versions":[]}')
 
 
 # --- every app ApiModel is swept: it emits, and its bytes equal the old serializer's (temporary parity) ----------------
