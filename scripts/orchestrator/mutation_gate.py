@@ -8,8 +8,13 @@ exactly once in `file` (inside the checkout), else the mutant is `unresolved` an
 checkout is never edited: it is copied once to a scratch folder and each mutant is applied there, then undone.
 Per mutant `python -m pytest -q -p no:cacheprovider <test>` runs in the copy (prefixed by --launcher, e.g. the
 throwaway-database runner) and one line `{id, result, secs, summary}` is appended to the results file at once.
-pytest answer -> result: failed or error at collection (exit 1/2) = killed; passed (0) = survived; timeout = timeout
-(named, counts as NOT killed); no tests collected (5), usage error (4), anything else = unresolved.
+A mutant is killed only when its named test PASSES on the unmutated copy and FAILS on the mutant: each distinct test
+runs on the clean copy first; a test that does not pass clean makes its mutants `unresolved` (a hang there = timeout).
+pytest answer -> result (one table, PYTEST_ANSWERS): failed or error at collection (exit 1/2) = killed; passed (0) =
+survived; timeout = timeout (named, counts as NOT killed); internal error (3), usage error (4), no tests collected (5),
+anything else = unresolved. A file that is not UTF-8 makes its mutant unresolved and the run continues.
+`find` is matched byte for byte after UTF-8 decoding, so it must match the file's line endings (CRLF on a Windows
+checkout: a multi-line `find` needs CR+LF line breaks).
 Finally the union of the named tests runs once on the unmutated copy (line id `__clean__`, must pass).
 Exit 0 only when every mutant is killed and the clean run passed; otherwise 1 naming each failing mutant.
 """
@@ -31,7 +36,7 @@ from typing import NamedTuple
 DEFAULT_TIMEOUT = 180
 KEYS = frozenset({"id", "file", "find", "replace", "test"})
 IGNORE = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache")
-PYTEST_PASSED, PYTEST_FAILED, PYTEST_INTERRUPTED, PYTEST_USAGE, PYTEST_NO_TESTS = 0, 1, 2, 4, 5
+PYTEST_ANSWERS = {0: "passed", 1: "failed", 2: "error", 3: "internal", 4: "usage", 5: "none"}
 CLEAN_ID = "__clean__"
 SUMMARY_CHARS = 300
 
@@ -81,14 +86,7 @@ def run_pytest(copy: Path, tests: list[str], config: str | None, launcher: list[
         return "timeout", f"no answer within {timeout}s"
     tail = [x for x in out.strip().splitlines() if x.strip()]
     summary = (tail[-1] if tail else "")[:SUMMARY_CHARS]
-    states = {
-        PYTEST_PASSED: "passed",
-        PYTEST_FAILED: "failed",
-        PYTEST_INTERRUPTED: "error",
-        PYTEST_NO_TESTS: "none",
-        PYTEST_USAGE: "usage",
-    }
-    return states.get(proc.returncode, "other"), summary
+    return PYTEST_ANSWERS.get(proc.returncode, "other"), summary
 
 
 def classify(state: str) -> str:
@@ -107,7 +105,10 @@ def resolve(copy: Path, m: dict) -> tuple[Path | None, str | None, str]:
     target = (copy / m["file"]).resolve()
     if copy.resolve() not in target.parents or not target.is_file():
         return None, None, f"file {m['file']!r} is not a file inside the checkout"
-    text = target.read_bytes().decode("utf-8")
+    try:
+        text = target.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return None, None, f"file {m['file']!r} is not UTF-8 text"
     count = text.count(m["find"])
     if count != 1:
         return None, None, f"find text occurs {count} times in {m['file']} (must be exactly 1)"
@@ -127,11 +128,19 @@ def run_gate(checkout: Path, mutants: list[dict], results: Path, opts: Options) 
     try:
         copy = scratch / "copy"
         shutil.copytree(checkout, copy, ignore=IGNORE)
+        clean: dict[str, tuple[str, str]] = {}
         for m in mutants:
             t0 = time.monotonic()
             target, original, problem = resolve(copy, m)
+            if target is not None and m["test"] not in clean:
+                clean[m["test"]] = run_pytest(copy, [m["test"]], opts.config, opts.launcher, opts.timeout)
+            clean_state, clean_summary = clean.get(m["test"], ("passed", ""))
             if target is None or original is None:
                 row = {"id": m["id"], "result": "unresolved", "secs": 0.0, "summary": problem}
+            elif clean_state != "passed":
+                result = "timeout" if clean_state == "timeout" else "unresolved"
+                summary = f"the named test does not pass on the clean copy ({clean_state}: {clean_summary})"
+                row = {"id": m["id"], "result": result, "secs": round(time.monotonic() - t0, 1), "summary": summary}
             else:
                 target.write_bytes(original.replace(m["find"], m["replace"], 1).encode("utf-8"))
                 try:
