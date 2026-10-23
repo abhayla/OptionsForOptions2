@@ -19,14 +19,20 @@ Chunk 1 merged before this session (PR #525). Chunk 2 = branch `build/seq-chunk-
     not called (row 18's AC-7 is exactly that gap).
   - Chunk-1 conformance check (late): 13 MISS; tracker updated. Reference study for rows 17-24: RD-122..RD-163.
   - Issue #532 = chunk 2's ONE deferred issue (reach-check hits + tooling); add items to its body, never a new issue.
-- **IN FLIGHT at writing:** row 19 backend finish round (worktree `-row19`, branch `build/seq-row-19`, brief
-  `row19/brief-19fix.md`): 5 guard tests it broke, ruff +8, day stats via a real provider method (not getattr),
-  futures LTP from the feed, strikes listed without a spot. Overlap gate OK vs row 18 (a3209a88).
-- **NEXT, in order:** row 19 backend check (Opus: kite_frames / kite_provider / feed_health are safety set) -> row 19
-  frontend part (picker tabs, multi-select Buy/Sell, depth popup; notes in `chunk2-notes.md`) -> row 20 (take hunks from
-  `build/W-126-a1-leg-rows` per the notes; backend shares main.py with row 19 so it starts after row 19 backend lands)
-  -> row 21 (after row 20; shares 6 files) -> row 22 (check `ofo.scenario.outcome` is UNREACHED) -> 23 -> 24 -> chunk
-  COPY builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check.
+- **Row 19 CLOSED later this session** (W-147 in_review; live check pending: AC-6 futures price at row 63): backend
+  Opus check + MINOR fixes, frontend Sonnet check, fix round 1 (one lease per viewer; visible selection list), round 2
+  PASS; evidence W-147 AC-1..8.
+- **Row 20 IN FLIGHT** (worktree `-row20`, branch `build/seq-row-20`): backend merged into the chunk and checked (Sonnet,
+  9 mutants killed, all backend ACs pass); REQ-076 AC-6's example corrected (0744041e: a naked short put is bounded by
+  its strike). Frontend built (463dca78) but fix round 1 running (brief `row20/brief-20fix2.md`): money guard red,
+  a stepped leg not savable (reply lacks the instrument id), two leg lists, shape name only after the first edit. Then
+  a frontend check, then close (evidence AC-1..10).
+- **NEXT, in order:** row 20 close -> row 21 (REQ-077 typed price/Reset/moved marker; shares 6 files with row 20;
+  notes in `chunk2-notes.md`) -> row 22 (REQ-034: the product never calls ofo/scenario/outcome.py; what-if inputs
+  missing) -> 23 (REQ-119: server-echoed seq, abort, Execute version check) -> 24 (REQ-133: versioned socket frames)
+  -> chunk COPY builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check.
+- **Budget overruns are now 11 occurrences** of `builder-budget-is-prose` (two tonight: 119 and 142 calls vs 80);
+  the dispatch prompt itself now carries "HARD STOP at <80%> of your calls" - keep doing that.
 - **Worktrees to remove when #531 merges** (wt-rm refuses before: merged into the chunk branch, not main; use
   `-Discard -MergedSha <merge sha>`): `-row17a2`, `-row17b2`, `-row18`, `-OptionsForOptions2-chunk2-process` (odd name:
   wt-new prefixes the repo name), later `-row19`. An empty locked harness worktree `agent-a59c99e84c09acee8` sits under
