@@ -868,6 +868,15 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "to another contract).",
           "No order was prepared or sent; a leg is never priced or ordered as another contract.",
           "Executing this strategy.", "Rebuild the strategy on live contracts and save it again."),
+    # W-144 (REQ-038 AC-2, AC-3; ADR-019): versions after the first execution.
+    _gate("strategy_restore_after_execution", _SV, 416,
+          "This strategy has executed, so an earlier draft cannot be restored over it.",
+          "Nothing was changed; the active version stays as it was executed.", "Restoring a pre-execution draft.",
+          "Edit the strategy to propose a new version instead."),
+    _gate("strategy_version_pending", _SV, 417,
+          "This strategy has an execution or a proposed version still waiting for its result.",
+          "Nothing was changed; the active version stays as it is.", "Changing or confirming the strategy now.",
+          "Wait for the result, or return from Zerodha to read it, then try again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

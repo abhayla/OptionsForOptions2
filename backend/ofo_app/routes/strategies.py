@@ -136,13 +136,26 @@ class DefinitionOut(ApiModel):
     preferences: PreferencesOut
 
 
+class VersionOut(ApiModel):
+    """W-144 (REQ-038 AC-2/AC-3): one version after the first execution; ``state`` says which one is active."""
+
+    number: int
+    state: Literal["proposed", "active", "superseded"]
+    based_on: Optional[int]  # noqa: UP045 - None for version 1
+    created_at: datetime.datetime
+    confirmed_at: Optional[datetime.datetime]  # noqa: UP045 - None until the user confirms
+    reconciled_at: Optional[datetime.datetime]  # noqa: UP045 - None until a reconciled return activates it
+    outcome: Optional[Identifier]  # noqa: UP045 - the last execution outcome recorded for it
+
+
 class StrategyOut(ApiModel):
     id: int
     status: Identifier
     revision: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
-    definition: DefinitionOut
+    definition: DefinitionOut  # the ACTIVE definition (after the first execution, the active version's)
+    versions: list[VersionOut] = Field(default_factory=list)  # W-144: empty before the first execution
 
 
 class SummaryOut(ApiModel):
@@ -197,14 +210,22 @@ _FORM_TEMPLATE = MappingProxyType({
 _STORED_OWN_MESSAGE = frozenset({sf.CONTRACT_NOT_IN_CATALOGUE, sf.CONTRACT_TERMS_CHANGED})
 
 
+#: A store refusal's code -> (template, status); any other store code is the underlying refusal (422).
+_STORE_REFUSAL = MappingProxyType({
+    store.NOT_FOUND: ("user_input_request_not_available", Failure.NOT_FOUND),
+    store.HISTORY_NOT_FOUND: ("user_input_request_not_available", Failure.NOT_FOUND),
+    store.VERSION_NOT_FOUND: ("user_input_request_not_available", Failure.NOT_FOUND),
+    store.REVISION_CONFLICT: ("strategy_revision_conflict", Failure.CONFLICT),
+    store.RESTORE_AFTER_EXECUTION: ("strategy_restore_after_execution", Failure.CONFLICT),  # W-144, ADR-019
+    store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
+})
+
+
 def refused_answer(exc: Exception, form_status: int) -> Exception:
     """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message."""
     if isinstance(exc, store.StrategyStoreError):
-        if exc.code in (store.NOT_FOUND, store.HISTORY_NOT_FOUND):
-            return StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
-        if exc.code == store.REVISION_CONFLICT:
-            return StrategyRefused("strategy_revision_conflict", Failure.CONFLICT)
-        return StrategyRefused("strategy_underlying_fixed")
+        template, failure = _STORE_REFUSAL.get(exc.code, ("strategy_underlying_fixed", None))
+        return StrategyRefused(template, failure)
     assert isinstance(exc, sf.StoredFormError)
     if form_status == 409:
         own = exc.code in _STORED_OWN_MESSAGE
@@ -245,7 +266,10 @@ async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
     await _with_tokens(db, doc)
     return StrategyOut.model_validate({
         "id": stored.id, "status": stored.status, "revision": stored.revision,
-        "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc})
+        "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
+        "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
+                      "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome}
+                     for v in stored.versions]})
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
@@ -387,4 +411,15 @@ async def restore_strategy(strategy_id: int, seq: int,
                 await _check_eligible(db, entry.saved, today_of, current)
         return await _strategy_out(db, await store.restore(db, user_ref, strategy_id, seq,
                                                            expected_revision=expected_revision))
+    return await _run(db, work, form_status=409)
+
+
+@router.post("/strategies/{strategy_id}/versions/{number}/confirm", response_model=StrategyOut,
+             response_model_exclude_unset=True)
+async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_db),
+                          user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+    """W-144 (REQ-038 AC-3, ADR-019 Q191): the user confirms the pending proposed version. It stays proposed: only a
+    reconciled execution return makes it active."""
+    async def work():
+        return await _strategy_out(db, await store.confirm_version(db, user_ref, strategy_id, number))
     return await _run(db, work, form_status=409)
