@@ -78,6 +78,8 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
   tree for the old value or answer of anything you changed.
 - **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
+  Run `python scripts/orchestrator/mutation_gate.py` on your attack-list mutants before reporting; quote its results
+  file; a non-zero exit means not done.
 - **Run the app tests your change can break** (row-review R13; row 7 found a row-5 stale test in a file nobody ran):
   for every backend file you change, list the `tests_app` files that import it or call its routes
   (`scripts/orchestrator/select_app_tests.py` does this for a whole branch; for your own commits grep the importers),
