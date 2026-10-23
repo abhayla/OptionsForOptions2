@@ -1,0 +1,32 @@
+{
+ "id": "ci-apt-mirror-stall",
+ "scope": "generic",
+ "class": "A CI step that installs system packages with apt on a hosted runner can spend its whole timeout on one stalled mirror download, because apt's default per-request timeout is long and it retries the same slow fetch; the job fails red with no code defect, and a re-run is the only recovery unless apt is told to fail over fast.",
+ "mechanism": "`npx playwright install-deps chromium` runs apt-get; a fetch from azure.archive.ubuntu.com stalls (log shows `Ign:` then the same `Get:` again) and the step hits timeout-minutes 12.",
+ "first_seen": {
+  "date": "2026-10-23",
+  "where": "PR #525 app-tests frontend job, run 39950471622 (d99b2097), step 'Install Playwright system deps only (cache hit)'",
+  "evidence": "log tail: Ign:7 / Ign:9 / Ign:13 on noble mirrors, then '##[error]The action ... has timed out after 12 minutes.'"
+ },
+ "fix": "A step before the Playwright installs writes /etc/apt/apt.conf.d/80-fast-failover (Acquire::Retries 5, http/https Timeout 20 s) in both jobs that install Playwright deps.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Seen in the job log only. Guarded when a repo test asserts every job that runs `playwright install` has the failover step before it; not built (one-file CI change, ADR-178 process freeze)."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39950471622, frontend job",
+   "evidence": "timed out after 12 minutes on apt downloads"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39953102150 (11b950d8), execute-screen-e2e job",
+   "evidence": "same step, same 12-minute timeout"
+  }
+ ]
+}
