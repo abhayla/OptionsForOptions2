@@ -1,8 +1,9 @@
 """REQ-080 AC-7: the day's open / high / low / previous close and the last trade time decoded from a full-mode frame.
 
-The input is the ONE real full packet in ``tests/fixtures/kite_ws/full-frame-12080386-150720.bin`` (NIFTY26O1923650CE,
-2026-10-16 15:07:20 IST). Expected values are read straight off the raw bytes with ``struct`` (the layout of Kite's
-websocket-protocol reference: ten int32 fields at bytes 4..44, last trade time at 44..48), not from the decoder:
+The input is the ONE real full packet in ``tests/fixtures/kite_ws/full-frame-12080386-150720.bin`` (the NIFTY 23650 call
+of 2026-10-19, token 12080386, 2026-10-16 15:07:20 IST). Expected values are read straight off the raw bytes with
+``struct`` (the layout of Kite's websocket-protocol reference: ten int32 fields at bytes 4..44, last trade
+time at 44..48), not from the decoder:
 open 3.30 (330 paise), high 7.35, low 2.05, previous close 3.00, last trade time 1792143439.
 A quote-only and an ltp-only packet are cut from the same real packet; a zero price is dropped (F-29).
 """
@@ -16,6 +17,7 @@ from ofo.marketdata.kite_frames import parse_frame
 
 FRAME = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "kite_ws" / "full-frame-12080386-150720.bin"
 D = Decimal
+FULL_PACKET_LEN, LAST_TRADE_TS, FULL_OI = 184, 1792143439, 2562430
 
 
 def _packet() -> bytes:
@@ -29,13 +31,13 @@ def _frame(packet: bytes) -> bytes:
 def test_ac_7_full_frame_carries_the_days_open_high_low_previous_close_and_last_trade_time():
     """AC-7: the five values of the real packet, as read off its bytes."""
     packet = _packet()
-    assert len(packet) == 184
+    assert len(packet) == FULL_PACKET_LEN
     fields = struct.unpack(">11i", packet[4:48])  # ltp, last qty, avg, volume, buy qty, sell qty, o, h, l, c, ltt
-    assert fields[6:] == (330, 735, 205, 300, 1792143439)
+    assert fields[6:] == (330, 735, 205, 300, LAST_TRADE_TS)
     tick = parse_frame(_frame(packet)).ticks[0]
     assert (tick.day_open, tick.day_high, tick.day_low, tick.prev_close) == (D("3.3"), D("7.35"), D("2.05"), D("3"))
-    assert tick.last_trade_ts == 1792143439
-    assert tick.ltp == D("3.35") and tick.oi == 2562430  # the fields decoded before are unchanged
+    assert tick.last_trade_ts == LAST_TRADE_TS
+    assert tick.ltp == D("3.35") and tick.oi == FULL_OI  # the fields decoded before are unchanged
 
 
 def test_ac_7_a_zero_price_is_absent_never_rupees_zero():

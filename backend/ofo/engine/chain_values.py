@@ -2,7 +2,8 @@
 breakeven %, and the engine's Greeks (W-124; REQ-087 AC-1/AC-4/AC-5, REQ-029 AC-3). Standard library plus the engine.
 
 Copy from: none - no algochanakya row. Taken from branch build/W-124-a3-chain (PR #509, row 33-35 code; ADR-171
-reuse rule: this file and its test only) with ``iv`` added to ``ChainGreeks`` for the leg picker (REQ-080 AC-2). Money is ``Decimal`` end to end (ADR-008); the browser only draws the strings.
+reuse rule: this file and its test only) with ``iv`` added to ``ChainGreeks`` for the leg picker (REQ-080 AC-2).
+Money is ``Decimal`` end to end (ADR-008); the browser only draws the strings.
 
 - intrinsic value is measured against the SPOT (the index price), labelled so on the screen: call max(S - K, 0),
   put max(K - S, 0); time value is LTP minus intrinsic and may be negative (a stale deep in-the-money price is shown

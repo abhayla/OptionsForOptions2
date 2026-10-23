@@ -33,11 +33,11 @@ SPOT = D("22976.85")
 LOT = 65
 
 
-def _quote(instrument_id: str, underlying: str, kind: Instrument | None, expiry: datetime.date | None,
+def _quote(instrument_id: str, underlying: str, kind: Instrument | None, expiry: datetime.date | None,  # noqa: PLR0913
            strike: str | None, ltp: str, health: DataHealth = DataHealth.AVAILABLE) -> NormalizedQuote:
     segment = "NSE_FO" if kind is not None else "INDICES"
-    return NormalizedQuote(instrument_id, underlying, "NSE", segment, kind, expiry, None if strike is None else D(strike),
-                           D(ltp), None, None, None, None, None, None, None, None, None, None, VALUATION,
+    return NormalizedQuote(instrument_id, underlying, "NSE", segment, kind, expiry,
+                           None if strike is None else D(strike), D(ltp), *([None] * 10), VALUATION,
                            SourceMetadata("recorded", "kite-2026-10-08"), health)
 
 

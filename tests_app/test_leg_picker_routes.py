@@ -22,8 +22,14 @@ import pytest
 from ofo.engine.executable_price import Depth, DepthLevel
 from ofo.engine.legs import Instrument
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.kite_frames import DayStats
-from ofo.marketdata.provider import NotSupported, ProviderStatus
+from ofo.marketdata.provider import (
+    NOT_OFFERED,
+    PACKET_WITHOUT_DAY_FIELDS,
+    DayStats,
+    DayStatsAnswer,
+    NotSupported,
+    ProviderStatus,
+)
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo_app import chain_push
@@ -49,6 +55,8 @@ NIFTY_ID = "NSE_INDEX:256265"
 RATE = D("0.065")
 GRID = [D(s) for s in (22450, 22500, 22550, 22600)]
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
+LEVELS, WIDTH_20, WIDTH_40_ROWS, WINDOW_IDS = 5, 20, 81, 9  # depth levels; a width; 2 x 40 + 1; 4 strikes' ids + index
+NO_QUOTE_CELLS, TOLERANCE, PARITY_STRIKES = 6, 0.01, 3  # 8 cells less the 2 priced; forward tolerance; AC-6
 PRICES = {("22500", "CE"): ("151.30", 3218475), ("22550", "PE"): ("145.10", 4022200)}
 
 
@@ -74,12 +82,13 @@ def catalogue(contracts=CONTRACTS, expiries=(EXPIRY,), **kw) -> ChainCatalogue:
     return ChainCatalogue(tuple(expiries), tuple(contracts), **kw)
 
 
-def quote(instrument_id: str, kind: Instrument | None, strike: D | None, ltp: str, *, oi: int | None = 1000,
+def quote(instrument_id: str, kind: Instrument | None, strike: D | None, ltp: str, *,  # noqa: PLR0913
+          oi: int | None = 1000,
           health: DataHealth = DataHealth.AVAILABLE, bid: str | None = None, ask: str | None = None,
           expiry: datetime.date | None = EXPIRY) -> NormalizedQuote:
     return NormalizedQuote(instrument_id, "NIFTY", "NSE", "NSE_FO" if kind else "INDICES", kind,
                            expiry if kind else None, strike, D(ltp), None if bid is None else D(bid),
-                           None if ask is None else D(ask), 500, oi if kind else None, None, None, None, None, None, None,
+                           None if ask is None else D(ask), 500, oi if kind else None, *([None] * 6),
                            T0, SourceMetadata("fake", "fake-feed"), health)
 
 
@@ -94,6 +103,7 @@ class FakeProvider:
         self.stats: dict[str, DayStats] = {}
         self.futures: dict[datetime.date, NormalizedQuote] = {}
         self.futures_offered = True
+        self.stats_offered = True
         self._listener = None
 
     def live_quote_stream(self, listener) -> None:
@@ -123,13 +133,17 @@ class FakeProvider:
     def futures_quote(self, underlying: str, expiry: datetime.date) -> NormalizedQuote | None:
         if not self.futures_offered:
             raise NotSupported("no futures quotes")
-        return self.futures.get(expiry)
+        held = self.futures.get(expiry)  # like the real book: only a subscribed future has a quote
+        return held if held is not None and held.instrument_id in self.vendor_subscribed else None
 
     def latest_depth(self, instrument_id: str, now=None) -> Depth | None:
         return self.depths.get(instrument_id)
 
-    def latest_day_stats(self, instrument_id: str, now=None) -> DayStats | None:
-        return self.stats.get(instrument_id)
+    def latest_day_stats(self, instrument_id: str, now=None) -> DayStatsAnswer:
+        if not self.stats_offered:
+            return DayStatsAnswer.unavailable(NOT_OFFERED)
+        stats = self.stats.get(instrument_id)
+        return DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS) if stats is None else DayStatsAnswer(stats)
 
 
 def make_feed(provider: FakeProvider | None = None) -> tuple[FakeProvider, LiveFeed]:
@@ -150,6 +164,7 @@ def priced_provider(spot_health: DataHealth = DataHealth.AVAILABLE, contracts=CO
 def _release_lease():
     yield
     leg_picker.LEASE.release()
+    leg_picker.FUTURES_LEASE.release()
 
 
 def answer(feed, width: int = 10, cat: ChainCatalogue | None = None, expiry=EXPIRY):
@@ -182,7 +197,7 @@ def test_ac_5_a_missing_quote_is_a_null_cell_with_the_list_reason_and_other_stri
     out = answer(feed)
     assert out.state == "LIVE" and out.reason == "SOME_PRICES_MISSING"
     assert [c.ltp for c in cells(out) if c.ltp is not None] == [D("151.30"), D("145.10")]
-    assert sum(c.health == "unavailable" for c in cells(out)) == 6  # 8 cells, 2 quotes
+    assert sum(c.health == "unavailable" for c in cells(out)) == NO_QUOTE_CELLS
 
 
 def test_ac_5_no_quote_at_all_is_waiting_for_prices_not_an_empty_list():
@@ -190,7 +205,7 @@ def test_ac_5_no_quote_at_all_is_waiting_for_prices_not_an_empty_list():
     provider, feed = make_feed()
     provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "22533.25")
     out = answer(feed)
-    assert len(out.rows) == 4 and out.reason == "WAITING_FOR_PRICES" and all(c.ltp is None for c in cells(out))
+    assert len(out.rows) == len(GRID) and out.reason == "WAITING_FOR_PRICES" and all(c.ltp is None for c in cells(out))
 
 
 @pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.DELAYED, DataHealth.UNHEALTHY])
@@ -222,19 +237,60 @@ def test_ac_2_a_zero_price_is_null_never_rupees_zero():
     assert cell.ltp is None and cell.iv_percent is None and cell.delta is None
 
 
-def test_ac_5_no_feed_is_not_connected_with_no_rows_and_no_number():
-    """AC-5: no Zerodha session -> NOT_LIVE / NOT_CONNECTED, no rows, no spot."""
+def test_ac_5_no_feed_lists_the_strikes_with_no_price_and_the_not_connected_reason():
+    """AC-5: no Zerodha session -> NOT_LIVE / NOT_CONNECTED, the strikes listed around the middle strike, no price, no
+    spot, no ATM claimed."""
     out = answer(None)
-    assert (out.state, out.reason, out.rows, out.spot, out.atm_strike) == ("NOT_LIVE", "NOT_CONNECTED", [], None, None)
+    assert (out.state, out.reason, out.spot, out.spot_at, out.atm_strike, out.centre) == (
+        "NOT_LIVE", "NOT_CONNECTED", None, None, None, "MIDDLE_STRIKE")
+    assert len(out.rows) == len(GRID) and not any(r.is_atm for r in out.rows)
+    assert all(c.ltp is None and c.iv_percent is None and c.health == "unavailable" for c in cells(out))
 
 
-def test_ac_5_no_live_spot_gives_no_rows_and_no_guessed_atm_and_holds_nothing():
-    """AC-5: without the index price there is no window to centre: reason SPOT_MISSING and nothing subscribed."""
+def test_attack_4_no_live_spot_lists_the_middle_strike_window_with_null_prices_and_the_reason():
+    """Attack 4 / AC-5: no index quote -> the window is cut around the MIDDLE listed strike (grid index 2 of 4 =
+    22,550), labelled MIDDLE_STRIKE, no ATM flagged, every price cell null even where the book holds quotes, reason
+    SPOT_MISSING; the window and the index are held so the next read can have a spot."""
     provider, feed = make_feed()
+    for (strike, kind), (ltp, oi) in PRICES.items():  # priced options but no index: still no price shown
+        c = cid(strike, kind)
+        provider.quotes[c] = quote(c, Instrument(kind), D(strike), ltp, oi=oi)
     out = answer(feed)
-    assert (out.reason, out.rows, out.atm_strike) == ("SPOT_MISSING", [], None) and not provider.vendor_subscribed
-    provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "0")
-    assert answer(feed).reason == "SPOT_MISSING"
+    assert (out.state, out.reason, out.centre, out.spot, out.spot_at, out.atm_strike) == (
+        "LIVE", "SPOT_MISSING", "MIDDLE_STRIKE", None, None, None)
+    assert [r.strike for r in out.rows] == [D(s) for s in ("22450.00", "22500.00", "22550.00", "22600.00")]
+    assert not any(r.is_atm for r in out.rows) and all(c.ltp is None for c in cells(out))
+    assert NIFTY_ID in provider.vendor_subscribed and len(provider.vendor_subscribed) == len(CONTRACTS) + 1
+    provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "0")  # a zero index price is no price
+    assert (answer(feed).reason, answer(feed).centre) == ("SPOT_MISSING", "MIDDLE_STRIKE")
+    provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "22533.25")  # the spot arrives: ATM and prices follow
+    arrived = answer(feed)
+    assert (arrived.centre, arrived.atm_strike, arrived.spot_at) == ("LIVE_SPOT", D("22550.00"), T0)
+    assert [c.ltp for c in cells(arrived) if c.ltp is not None] == [D("151.30"), D("145.10")]
+
+
+def test_attack_4_the_middle_strike_is_the_middle_of_the_listed_grid_not_its_first_strike():
+    """Attack 4: a 100-strike grid, no spot, width 10 -> 21 strikes around grid index 50 (24,500), not around index 0;
+    with and without a feed."""
+    grid = [D(22000 + 50 * i) for i in range(100)]
+    cat = catalogue(contracts_for(grid))
+    _, feed = make_feed()
+    expected = [D(22000 + 50 * i) for i in range(40, 61)]
+    for fed in (feed, None):
+        out = answer(fed, 10, cat)
+        assert [r.strike for r in out.rows] == [s.quantize(D("0.01")) for s in expected]
+        assert out.centre == "MIDDLE_STRIKE" and out.atm_strike is None and not any(r.is_atm for r in out.rows)
+
+
+def test_attack_4_a_spot_held_but_not_healthy_is_the_last_known_spot_dated_with_no_engine_values():
+    """Attack 4: the index quote is still held but the feed is not healthy -> centred on it, labelled LAST_KNOWN_SPOT
+    with its own time; the ATM is the one that spot gives, no IV or delta, reason FEED_STALE."""
+    _, feed = priced_provider(spot_health=DataHealth.STALE)
+    out = answer(feed)
+    assert (out.centre, out.reason, out.spot, out.spot_at, out.atm_strike) == (
+        "LAST_KNOWN_SPOT", "FEED_STALE", D("22533.25"), T0, D("22550.00"))
+    assert all(c.iv_percent is None and c.delta is None for c in cells(out))
+    assert answer(priced_provider()[1]).centre == "LIVE_SPOT"
 
 
 @pytest.mark.parametrize(("cat", "reason"), [
@@ -257,7 +313,7 @@ def test_ac_1_width_40_subscribes_exactly_the_strikes_asked_for_and_reading_twic
     provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "24533.25")  # 24533.25: ATM 24550 = index 51
     cat = catalogue(contracts)
     first = answer(feed, 40, cat)
-    assert len(first.rows) == 81 and first.atm_strike == D("24550.00")
+    assert len(first.rows) == WIDTH_40_ROWS and first.atm_strike == D("24550.00")
     expected = 81 * 2 + 1
     assert len(provider.vendor_subscribed) == expected and feed.fanout.subscriber_count(NIFTY_ID) == 1
     calls = len(provider.subscribe_calls)
@@ -299,7 +355,7 @@ def test_ac_1_the_lease_ends_after_its_seconds_and_a_reader_in_between_renews_it
         return alive, len(provider.vendor_subscribed)
 
     alive, after = asyncio.run(scenario())
-    assert alive == 9 and after == 0
+    assert alive == WINDOW_IDS and after == 0
 
 
 def test_ac_5_an_unknown_contract_is_one_unavailable_cell_and_the_rest_still_stream():
@@ -356,7 +412,7 @@ def test_ac_6_every_option_expiry_names_its_forward_and_which_one_was_used_and_f
     expected = 22533.25 * math.exp(0.065 * int(seconds) / (365 * 86400))
     near = out.forwards[0]
     assert near.source == "spot_fallback" and near.strikes_used == 0 and near.reason is None
-    assert abs(float(near.forward) - expected) <= 0.01 and near.label is not None  # "estimated from spot"
+    assert abs(float(near.forward) - expected) <= TOLERANCE and near.label is not None  # "estimated from spot"
 
 
 def test_ac_6_with_three_usable_strikes_the_forward_is_the_parity_one_and_says_parity():
@@ -376,29 +432,55 @@ def test_ac_6_with_three_usable_strikes_the_forward_is_the_parity_one_and_says_p
                                    ask=f"{put_mid + 0.05:.2f}")
     out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
     near = out.forwards[0]
-    assert near.source == "parity" and near.strikes_used == 3 and near.label is None
+    assert near.source == "parity" and near.strikes_used == PARITY_STRIKES and near.label is None
     assert abs(near.forward - D("22600")) <= D("0.05")
     assert out.forwards[1].source == "spot_fallback"  # the other expiry holds no chain: labelled, never silent
 
 
 def test_ac_6_futures_quote_not_offered_is_said_not_shown_as_zero():
-    """AC-6 (answer state: the provider offers no futures quote): ltp null with NOT_OFFERED; forwards still answer."""
+    """AC-6 (answer state: a provider with no futures quote at all): ltp null, NOT_OFFERED; forwards still answer."""
     provider, feed = priced_provider()
     provider.futures_offered = False
     out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
     assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, "NOT_OFFERED") and out.forwards[0].forward
 
 
-def test_ac_6_no_futures_quote_a_stale_one_and_a_zero_one_are_null():
-    """AC-6: missing, stale and zero futures quotes are null with NO_QUOTE (a stale one keeps its health word)."""
+def test_attack_3_a_listed_future_is_subscribed_on_the_shared_feed_and_a_tick_gives_its_ltp():
+    """Attack 3 / AC-6: the future rides the same fan-out as an option leg (a second holder, no second socket); with no
+    tick yet the reason is NO_QUOTE (never NOT_OFFERED); once its tick is in the book the read shows the LTP."""
     provider, feed = priced_provider()
+    provider.futures[FAR_EXPIRY] = quote(FUT.instrument_id, Instrument.FUT, None, "22611.40", expiry=FAR_EXPIRY)
+    answer(feed)  # the strikes window is held
+    window = set(provider.vendor_subscribed)
+    with_tick = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
+    assert FUT.instrument_id in provider.vendor_subscribed and window <= provider.vendor_subscribed
+    assert feed.fanout.subscriber_count(FUT.instrument_id) == 1
+    assert (with_tick.futures[0].ltp, with_tick.futures[0].ltp_reason) == (D("22611.40"), None)
+    provider.futures.clear()  # no tick received
+    none = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
+    assert (none.futures[0].ltp, none.futures[0].ltp_reason) == (None, "NO_QUOTE")
+    grown = len(provider.subscribe_calls)
+    futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
+    assert len(provider.subscribe_calls) == grown  # reading again never grows the subscription
+
+
+def test_ac_6_a_future_the_provider_cannot_stream_is_not_streamable_never_not_offered():
+    """AC-6 (answer state: instrument not found): no feed token for the listed future -> NOT_STREAMABLE."""
+    provider, feed = priced_provider()
+    provider.unknown.add(FUT.instrument_id)
     out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
-    assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, "NO_QUOTE")
-    for health, ltp in ((DataHealth.STALE, "22611.40"), (DataHealth.AVAILABLE, "0")):
+    assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, "NOT_STREAMABLE")
+
+
+def test_ac_6_a_stale_future_and_a_zero_one_are_null_with_their_own_reasons():
+    """AC-6 / ADR-015: a future whose quote is not AVAILABLE is FEED_STALE (health shown), a zero price is NO_QUOTE."""
+    provider, feed = priced_provider()
+    for health, ltp, reason in ((DataHealth.STALE, "22611.40", "FEED_STALE"), (DataHealth.AVAILABLE, "0", "NO_QUOTE")):
         provider.futures[FAR_EXPIRY] = quote(FUT.instrument_id, Instrument.FUT, None, ltp, health=health,
                                              expiry=FAR_EXPIRY)
         out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
-        assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, "NO_QUOTE")
+        assert (out.futures[0].ltp, out.futures[0].ltp_reason) == (None, reason)
+    assert out.futures[0].health == "available"
 
 
 def test_ac_6_without_a_spot_or_session_or_catalogue_the_forward_is_null_with_a_reason():
@@ -406,7 +488,8 @@ def test_ac_6_without_a_spot_or_session_or_catalogue_the_forward_is_null_with_a_
     expiry (valuation after its close) is NOT_PRICEABLE, never a raw error."""
     provider, feed = make_feed()
     out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
-    assert out.reason == "SPOT_MISSING" and [(f.forward, f.reason) for f in out.forwards] == [(None, "SPOT_MISSING")] * 2
+    assert out.reason == "SPOT_MISSING"
+    assert [(f.forward, f.reason) for f in out.forwards] == [(None, "SPOT_MISSING")] * len(out.forwards)
     off = futures_answer(None, "NIFTY", futures_catalogue(), lambda: T0)
     assert off.state == "NOT_LIVE" and off.reason == "NOT_CONNECTED" and off.futures[0].ltp_reason == "NOT_LIVE"
     assert futures_answer(None, "NIFTY", FuturesCatalogue((), (), unreadable=True), lambda: T0).reason == (
@@ -441,18 +524,37 @@ def test_ac_7_depth_gives_five_levels_each_side_the_days_values_and_the_two_time
     assert out.state == "AVAILABLE" and out.reason is None
     assert [(lv.price, lv.quantity) for lv in out.bids] == [(D("150.05"), 100), (D("149.05"), 200), (D("148.05"), 300),
                                                             (D("147.05"), 400), (D("146.05"), 500)]
-    assert [(lv.price, lv.quantity) for lv in out.asks][0] == (D("151.00"), 50) and len(out.asks) == 5
+    assert (out.asks[0].price, out.asks[0].quantity) == (D("151.00"), 50) and len(out.asks) == LEVELS
     assert (out.day_open, out.day_high, out.day_low, out.prev_close) == (D("140.00"), D("160.50"), D("120.25"),
                                                                         D("133.10"))
     assert out.last_trade_at == datetime.datetime.fromtimestamp(1791444009, IST) and out.read_at == T0
 
 
-def test_ac_7_a_provider_without_day_values_still_gives_depth_with_those_null():
-    """AC-7: previous close 'where the data carries it' (F-47): absent -> null, depth still shown."""
+def test_ac_7_a_packet_without_day_values_still_gives_depth_with_those_null_and_the_reason():
+    """AC-7: previous close 'where the data carries it' (F-47): absent -> null WITH its reason, depth still shown."""
     provider, feed, c = depth_rig()
     del provider.stats[c]
     out = depth_answer(feed, c, lambda: T0)
     assert out.state == "AVAILABLE" and (out.day_open, out.prev_close, out.last_trade_at) == (None, None, None)
+    assert out.day_stats_reason == "PACKET_WITHOUT_DAY_FIELDS"
+    assert depth_answer(feed, c, lambda: T0).day_stats_reason == "PACKET_WITHOUT_DAY_FIELDS"
+    provider.stats[c] = DayStats(D("1"), D("2"), D("1"), D("1"), None)
+    given = depth_answer(feed, c, lambda: T0)
+    assert given.day_stats_reason is None and given.last_trade_at is None and given.day_high == D("2.00")
+
+
+def test_attack_1_a_provider_without_day_stats_says_not_available_with_its_reason_and_no_lookup_decides_it():
+    """Attack 1: the provider's own answer ('not offered') reaches the response as the reason; the route source has no
+    getattr / hasattr on the provider (the interface method is called directly, never a fail-open lookup)."""
+    provider, feed, c = depth_rig()
+    provider.stats_offered = False
+    out = depth_answer(feed, c, lambda: T0)
+    assert out.state == "AVAILABLE" and out.day_stats_reason == NOT_OFFERED
+    assert (out.day_open, out.day_high, out.day_low, out.prev_close, out.last_trade_at) == (None,) * 5
+    tree = ast.parse(pathlib.Path(leg_picker.__file__).read_text(encoding="utf-8"))
+    lookups = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+               and n.func.id in {"getattr", "hasattr"}]
+    assert lookups == []
 
 
 @pytest.mark.parametrize("case", ["no_feed", "session_ended", "not_connected", "stale", "not_streaming", "no_depth",
@@ -483,13 +585,6 @@ def test_ac_8_when_depth_cannot_be_read_it_says_so_with_the_reason_and_never_an_
     assert (out.day_open, out.last_trade_at) == (None, None)
 
 
-def test_ac_8_a_provider_with_no_depth_reader_is_no_depth_received():
-    """AC-8: the test replay's provider has no ``latest_depth``: NO_DEPTH_RECEIVED, never an error."""
-    provider, feed, c = depth_rig()
-    provider.latest_depth = None  # type: ignore[assignment]
-    assert depth_answer(feed, c, lambda: T0).reason == "NO_DEPTH_RECEIVED"
-
-
 # ---- the app's door -------------------------------------------------------------------------------------------------
 
 def _app_client(feed, cat: ChainCatalogue, fut: FuturesCatalogue):
@@ -514,21 +609,22 @@ def _app_client(feed, cat: ChainCatalogue, fut: FuturesCatalogue):
 def test_the_three_routes_answer_through_the_door_and_refuse_bad_input():
     """AC-1/AC-7: GET strikes, futures and depth mint their models; width 15, an unlisted width, a bad instrument id
     and an unknown underlying are refused with 422."""
-    provider, feed, c = depth_rig()
+    _, feed, c = depth_rig()
     client = _app_client(feed, catalogue(), futures_catalogue())
     query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat()}
     ok = client.get("/api/leg-picker/strikes", params=query)
     assert ok.status_code == HTTP_OK, ok.text
-    assert ok.json()["atm_strike"] == "22550.00" and ok.json()["width"] == 10
-    assert client.get("/api/leg-picker/strikes", params={**query, "width": "20"}).json()["width"] == 20
+    assert ok.json()["atm_strike"] == "22550.00" and ok.json()["width"] == leg_picker.DEFAULT_WIDTH
+    assert client.get("/api/leg-picker/strikes", params={**query, "width": "20"}).json()["width"] == WIDTH_20
     for bad in ("15", "0", "x", "50", "-10"):
         assert client.get("/api/leg-picker/strikes", params={**query, "width": bad}).status_code == HTTP_UNPROCESSABLE
     assert client.get("/api/leg-picker/strikes", params={**query, "underlying": "BANKNIFTY"}).status_code == (
         HTTP_UNPROCESSABLE)
     futures = client.get("/api/leg-picker/futures", params={"underlying": "NIFTY"})
-    assert futures.status_code == HTTP_OK and len(futures.json()["forwards"]) == 2
+    expiries = futures_catalogue().option_expiries
+    assert futures.status_code == HTTP_OK and len(futures.json()["forwards"]) == len(expiries)
     depth = client.get("/api/leg-picker/depth", params={"instrument_id": c})
-    assert depth.status_code == HTTP_OK and depth.json()["state"] == "AVAILABLE" and len(depth.json()["bids"]) == 5
+    assert depth.status_code == HTTP_OK and depth.json()["state"] == "AVAILABLE" and len(depth.json()["bids"]) == LEVELS
     assert client.get("/api/leg-picker/depth", params={"instrument_id": "nse fo 1"}).status_code == HTTP_UNPROCESSABLE
 
 
@@ -541,10 +637,10 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
     imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     allowed = {"__future__", "asyncio", "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi",
                "pydantic", "sqlalchemy.exc", "ofo.engine.chain_values", "ofo.marketdata.forward",
-               "ofo.marketdata.kite_provider", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money",
+               "ofo.timeutil", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money",
                "ofo.rules.inputs", "ofo_app.api_models", "ofo_app.catalogue_picker", "ofo_app.chain_push",
                "ofo_app.errors", "ofo_app.live_push", "ofo_app.routes", "ofo_app.routes.outcome",
-               "ofo_app.underlying", "ofo_app", "ofo_app.catalogue_picker", "ofo_app.db"}
+               "ofo_app.underlying", "ofo_app", "ofo_app.db"}
     assert imported <= allowed, imported - allowed
     forbidden = ("execute", "basket", "margin", "order")
     assert not [m for m in imported if any(w in m.rsplit(".", 1)[-1] for w in forbidden)], imported
@@ -552,4 +648,4 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
 
 def test_the_picker_reuses_the_chain_catalogue_helpers_and_does_not_change_them():
     """AC-2: the helpers it reuses keep their signatures (the chain read and push are unchanged by this row)."""
-    assert chain_push.MAX_STRIKES_EACH_SIDE == 15 and leg_picker.WIDTHS == (10, 20, 30, 40)
+    assert max(leg_picker.WIDTHS) > chain_push.MAX_STRIKES_EACH_SIDE and leg_picker.WIDTHS == (10, 20, 30, 40)

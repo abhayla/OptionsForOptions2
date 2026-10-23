@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import BinaryIO, Iterator
 
+from ofo.marketdata.provider import DayStats
+
 #: Kite instrument_token low byte -> price divisor (paise per rupee). Only the V1 segments; others are skipped.
 SEGMENT_DIVISOR: dict[int, int] = {1: 100, 2: 100, 4: 100, 5: 100, 9: 100}  # NSE, NFO, BSE, BFO, indices
 SEGMENT_NAMES: dict[int, str] = {1: "NSE", 2: "NFO", 4: "BSE", 5: "BFO", 9: "INDICES"}
@@ -60,23 +62,14 @@ class RawTick:
     day_open: Decimal | None = None
     day_high: Decimal | None = None
     day_low: Decimal | None = None
-    prev_close: Decimal | None = None  # Kite's ``close`` field = the previous session's close (F-47)
+    prev_close: Decimal | None = None  # Kite's ``close`` = previous session's close (F-47)
     last_trade_ts: int | None = None  # full packet only: epoch seconds of the last trade; 0 = none yet -> None
 
 
-@dataclass(frozen=True)
-class DayStats:
-    """What a packet says about the trading day (REQ-080 AC-7); each field ``None`` when the packet does not carry it."""
-
-    day_open: Decimal | None
-    day_high: Decimal | None
-    day_low: Decimal | None
-    prev_close: Decimal | None
-    last_trade_ts: int | None  # epoch seconds, as Kite sends it
-
-    @classmethod
-    def of(cls, tick: RawTick) -> DayStats:
-        return cls(tick.day_open, tick.day_high, tick.day_low, tick.prev_close, tick.last_trade_ts)
+def day_stats_of(tick: RawTick) -> DayStats | None:
+    """What the packet says about the day; ``None`` for a packet that carries none of it (ltp / index)."""
+    stats = DayStats(tick.day_open, tick.day_high, tick.day_low, tick.prev_close, tick.last_trade_ts)
+    return None if stats == DayStats(None, None, None, None, None) else stats
 
 
 @dataclass(frozen=True)
