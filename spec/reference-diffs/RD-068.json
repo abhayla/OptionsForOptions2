@@ -3,14 +3,16 @@
   "kind": "COPY",
   "title": "One market-closed wording on every screen and gate (G-11-3, wording fix under ADR-177)",
   "reference_behaviour": "The product uses a single wording for the age of prices, a clock line on the builder, and never a second variant for the same state.",
-  "reference_screens": ["catalogue 012"],
+  "reference_screens": [
+    "catalogue 012"
+  ],
   "reference_label": "Prices last updated at 10:35 AM",
   "ours": "Built in 799b16ab and 481be355 (verified in code, chunk 1): one wording, MARKET_CLOSED_PREFIX 'Market closed. Prices are from ' (frontend/src/lib/sharedStateText.js:3), template backend/ofo/errors/templates.py:457; no other market-closed wording remains in backend or frontend/src.",
   "req": "REQ-114",
   "ac": "AC-7",
   "adr": "ADR-177",
   "row": 11,
-  "status": "built",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

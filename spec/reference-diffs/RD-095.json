@@ -3,12 +3,14 @@
   "kind": "COPY",
   "title": "Shape names as users read them: Short Straddle, Long Iron Condor, Bull Butterfly (G-15-6)",
   "reference_behaviour": "Names read Short Straddle, Short Strangle, Short Iron Condor, Long Iron Condor, Long Calendar with Calls, Bull Butterfly and Synthetic Future.",
-  "reference_screens": ["screen 010"],
+  "reference_screens": [
+    "screen 010"
+  ],
   "ours": "Built in the chunk 1 copy commit: display names now Short Straddle, Short Strangle, Long Straddle, Long Strangle, Short Iron Condor, Long Iron Condor, Long Calendar with Calls, Bull Butterfly, Long Synthetic Future, Short Synthetic Future; ids unchanged; the wording check passes for each (tests/strategy/test_reference_shapes.py).",
   "req": "REQ-028",
   "ac": "AC-3",
   "row": 15,
-  "status": "built",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

@@ -3,12 +3,14 @@
   "kind": "COPY",
   "title": "Silence measured on the whole connection over 60 s, not per contract over 3 s (G-07-5)",
   "reference_behaviour": "A connection counts as dead only after 60 s with no packet of any kind on it.",
-  "reference_screens": ["catalogue 012"],
+  "reference_screens": [
+    "catalogue 012"
+  ],
   "ours": "Built in 799b16ab (verified in code, chunk 1): silence is the connection's last frame of any kind, backend/ofo_app/kite_ws.py:265-271 with SILENT_AFTER 60 s (reconnect_policy.py:14).",
   "req": "REQ-114",
   "ac": "AC-1",
   "row": 11,
-  "status": "built",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"
