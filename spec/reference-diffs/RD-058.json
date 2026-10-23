@@ -3,8 +3,10 @@
   "kind": "COPY",
   "title": "Browser keeps retrying the live socket and never gives up (G-9-2)",
   "reference_behaviour": "The browser keeps retrying at the capped delay, every 5 s while the device reports offline, with no point where it stops (bundle-findings 6.1).",
-  "reference_screens": ["catalogue 012"],
-  "ours": "Built in bf59ec1f as REQ-113 AC-11: the browser keeps retrying at the 30 s cap with no attempt limit (frontend/src/composables/useStrategyLive.js, schedule). Was: gave up after 40 attempts (about 10 minutes). Offline half also built: while navigator.onLine is false the wait is 5 s (frontend/src/composables/useStrategyLive.js:26,103) and the online event retries at once (:111); test reconnect-offline.test.js.",
+  "reference_screens": [
+    "catalogue 012"
+  ],
+  "ours": "Built in bf59ec1f as REQ-113 AC-11: the browser keeps retrying at the 30 s cap with no attempt limit (was: gave up after 40 attempts). Offline: while navigator.onLine is false the wait is 5 s and the online event retries at once (frontend/src/composables/useStrategyLive.js:26,103,111; test reconnect-offline.test.js).",
   "req": "REQ-113",
   "ac": "AC-11",
   "row": 9,
