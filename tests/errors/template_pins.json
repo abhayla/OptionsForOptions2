@@ -1474,5 +1474,9 @@
   "strategy_version_pending": {
     "sha256": "ddf9c1cf9549fe3e62f4b3d9e67cb5c8b27d3931c19e93e6e0ea396cdf3f4e78",
     "reviewed": "pending owner read"
+  },
+  "strategy_reconciliation_required": {
+    "sha256": "2cbf1b075a315c2eec0628517cc73fed232d722810c315b6ddb8819357c1bb1f",
+    "reviewed": "pending owner read"
   }
 }

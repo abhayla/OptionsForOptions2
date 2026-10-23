@@ -3493,6 +3493,9 @@
             "title": "Created At",
             "type": "string"
           },
+          "definition": {
+            "$ref": "#/components/schemas/DefinitionOut"
+          },
           "number": {
             "title": "Number",
             "type": "integer"
@@ -3521,6 +3524,10 @@
             ],
             "title": "Reconciled At"
           },
+          "reconciliation_required": {
+            "title": "Reconciliation Required",
+            "type": "boolean"
+          },
           "state": {
             "enum": [
               "proposed",
@@ -3538,7 +3545,9 @@
           "created_at",
           "confirmed_at",
           "reconciled_at",
-          "outcome"
+          "outcome",
+          "reconciliation_required",
+          "definition"
         ],
         "title": "VersionOut",
         "type": "object"

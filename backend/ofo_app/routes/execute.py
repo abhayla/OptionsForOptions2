@@ -397,7 +397,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     basket = await _basket(req, priced, catalogue, plan_number)
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
-                                       _plan_orders(basket))
+                                       _plan_orders(basket), strategy_version=store.built_from(stored))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
