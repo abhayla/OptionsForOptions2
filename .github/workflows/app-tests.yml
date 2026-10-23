@@ -111,6 +111,8 @@ jobs:
               - 'tests/test_bundle_secret_scan.py'
               - 'tests/test_app_workflow_bundle_scan.py'
               - 'tests/orchestrator/test_db_run_fresh.py'
+              - 'scripts/orchestrator/db_run_fresh.py'  # the code those tests guard, and the module it imports
+              - 'scripts/orchestrator/db_run.py'
               - '.github/workflows/app-tests.yml'
             # execute-screen-e2e: the Execute screen against the real ofo_app replay API, so API code also feeds it.
             e2e:
