@@ -407,9 +407,10 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
         return Catalogue()
 
     class Sock(FakeSocket):
-        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):  # noqa: PLR0913 - KiteSocket's keywords
+        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None, user_ref):  # noqa: PLR0913 - KiteSocket's keywords
             super().__init__(prov, result="stopped")
-            seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987")
+            seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987",
+                        user_ref=user_ref)
 
     monkeypatch.setattr(db, "get_engine", lambda: _Engine())
     monkeypatch.setattr(broker_token_store, "access_token_for", token)
@@ -422,6 +423,7 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
     with caplog.at_level(logging.DEBUG):
         await market.start(_Cfg())
     assert market.state == live_market.LIVE and seen["token_given"] and seen["api_key"] == "key123"
+    assert seen["user_ref"] == live_market.OWNER_REF  # REQ-114 AC-8: the socket's log lines name the user
     assert market.feed.ctx.provider.index_id("NIFTY") is not None
     assert "TOKEN-VALUE-987" not in caplog.text
     await market.stop()

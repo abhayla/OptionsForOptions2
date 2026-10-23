@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import datetime
 import logging
 import logging.handlers
 import socket
@@ -195,6 +196,11 @@ def _provider() -> _Provider:
     return _Provider()
 
 
+def _clock() -> datetime.datetime:
+    """A real datetime: the socket's drop and reconnect log lines call ``.isoformat()`` on it (REQ-114 AC-8)."""
+    return datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.UTC)
+
+
 async def test_the_socket_door_opens_door_context_only_for_the_real_connect(monkeypatch) -> None:
     seen: list[bool] = []
 
@@ -207,14 +213,14 @@ async def test_the_socket_door_opens_door_context_only_for_the_real_connect(monk
             return False
 
     monkeypatch.setattr(kite_ws, "_ws_connect", lambda url, **k: _Cm())  # stands in for the real websockets connect
-    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None)  # noqa: S106
+    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=_clock)  # noqa: S106
 
     async def stop_after_first(_seconds: float) -> None:
         sock.stop()
 
     sock._sleep = stop_after_first
     await sock.run()
-    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
+    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=_clock,  # noqa: S106
                               connect=lambda url, **k: _Cm(), sleep=stop_after_first)  # injected connect, tests only
     await sock.run()
     assert seen == [True, False] and not egress._in_door()

@@ -37,9 +37,6 @@ HISTORY_FETCH_UNTIL: Final = datetime.time(15, 59)
 SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading weekdays
 
 
-def market_open(now: datetime.datetime) -> bool:
-    """The ONE market-hours check: a weekday inside the regular session, on IST wall clock (REQ-049 AC-4, the Execute
-    gate and the Settings live-data row all read it). No holiday calendar exists yet: a holiday reads as open (reported
-    gap; the legacy 2026 holiday list is wrong, F-54, and is never copied)."""
-    local = now.astimezone(IST)
-    return local.weekday() < SATURDAY and SESSION_OPEN <= local.time() < SESSION_CLOSE
+
+# The market-hours check is NOT here: it needs the holiday calendar (ADR-119, REQ-114 AC-7), which this
+# standard-library-only constants module cannot read. The one check is `ofo.market_calendar.is_market_open`.

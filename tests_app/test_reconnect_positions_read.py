@@ -303,12 +303,19 @@ async def test_a_real_reconnect_of_the_feed_socket_makes_exactly_one_positions_r
     kite = DropFirst()
     stop = asyncio.Event()
     bus = feed_bus.new_client(redis_url)
+    started = time.monotonic()
+
+    def open_market_clock() -> datetime.datetime:
+        """Moves with real time but starts inside market hours: the socket waits 1 s to reconnect when the market is
+        open and 300 s when it is closed (REQ-114 AC-7), so a wall-clock `now` made this test depend on CI's hour."""
+        return NOW + datetime.timedelta(seconds=time.monotonic() - started)
+
     try:
         async with serve(kite.handler, "127.0.0.1", 0) as server:
             port = server.sockets[0].getsockname()[1]
             feed = asyncio.create_task(feed_main.run_feed(
                 user_ref=user, api_key="KEY-abc123", access_token="TOK-xyz789", ws_url=f"ws://127.0.0.1:{port}",
-                client=bus, clock=lambda: datetime.datetime.now(IST), stop=stop))
+                client=bus, clock=open_market_clock, stop=stop))
             try:
                 await _until(lambda: len(calls) >= 1, 20)
                 await _until(lambda: kite.sent >= 5, 20)

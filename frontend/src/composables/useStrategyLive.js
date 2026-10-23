@@ -9,6 +9,8 @@
 // server's whole outcome answer and is handed over untouched. When the socket drops, `onDown` runs so the page asks the
 // REST outcome route, whose answer carries the server's own not-live label; this file writes no label of its own.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { istClock } from '@/lib/displayFormat'
+import { reconnectingText } from '@/lib/sharedStateText'
 
 export const LIVE_PATH = '/api/strategies/live'
 /** Reconnect delays (REQ-113 AC-2: an API deploy restarts in seconds, the screen must be back within 10 s): the first
@@ -154,10 +156,24 @@ export function useReconnecting(status) {
   return computed(() => everLive.value && (status.value === 'connecting' || status.value === 'down'))
 }
 
+/**
+ * REQ-114 AC-5: the words a reconnecting screen shows. `note(push, isPrice)` records the server time (`answered_at`) of every
+ * push that carried prices; `text` is "Reconnecting - prices as of HH:MM:SS" (IST) from the last such push, or the words
+ * without a time when none arrived or its time cannot be read. The browser clock is never used; page left ('off') forgets it.
+ */
+export function useReconnectingText(status) {
+  const lastAt = ref(null)
+  watch(status, (s) => { if (s === 'off') lastAt.value = null }, { flush: 'sync' })
+  const note = (msg, isPrice = true) => { if (isPrice) lastAt.value = msg?.answered_at ?? null }
+  return { note, text: computed(() => reconnectingText(istClock(lastAt.value))) }
+}
+
 /** Vue wrapper: `status` is a ref (connecting | live | down | off), `reconnecting` a computed; closes on unmount. */
 export function useStrategyLive({ onPush, onMessage, onDown, url = liveUrl(), WebSocketImpl } = {}) {
   const status = ref('off')
-  const live = createLiveSocket({ url, onPush, onMessage, onDown, WebSocketImpl, onStatus: (s) => (status.value = s) })
+  const shown = useReconnectingText(status)
+  const live = createLiveSocket({ url, onMessage, onDown, WebSocketImpl, onStatus: (s) => (status.value = s),
+    onPush: (msg) => { shown.note(msg, msg?.state === 'COMPUTED'); onPush?.(msg) } })
   onBeforeUnmount(() => live.stop())
-  return { status, reconnecting: useReconnecting(status), follow: live.follow, stop: live.stop }
+  return { status, reconnecting: useReconnecting(status), reconnectingText: shown.text, follow: live.follow, stop: live.stop }
 }
