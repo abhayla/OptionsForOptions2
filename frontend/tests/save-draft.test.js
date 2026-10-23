@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildSaveBody, canSaveLegs, legsFromSaved } from '@/lib/saveDraft'
 import { buildDraft } from '@/lib/legPicker'
+import { applyEditReply } from '@/lib/legEdit'
 
 const leg = (over = {}) => ({
   id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 2381960, lot_size: 65, action: 'SELL', lots: 2,
@@ -94,5 +95,22 @@ describe('W-148 (REQ-076 AC-7): the tick is never saved', () => {
   })
   it('a leg whose contract the server changed (no contract_id) cannot be saved with a stale one', () => {
     expect(canSaveLegs([leg({ contract_id: null, lot_size: null })])).toBe(false)
+  })
+})
+
+describe('W-148 (REQ-076 AC-2): a stepped leg is a new contract and stays savable', () => {
+  const stepReply = (over = {}) => ({ legs: [{ instrument_id: 'NSE_FO:44625', contract_id: 2381961, lot_size: 65, action: 'SELL', instrument: 'CE',
+    strike: '22850.00', expiry: '2026-10-19', lots: 2, base_lots: 2, planned_entry: '88.00', captured_at: '2026-10-14T15:26:00+05:30',
+    included: true, hedge: false, price_source: 'captured', ...over }] })
+  it('AC-2: step then Save Draft posts the NEW contract id and the new entry, never the old contract', () => {
+    const [stepped] = applyEditReply([leg()], stepReply())
+    expect(canSaveLegs([stepped])).toBe(true)
+    expect(buildSaveBody([stepped], '').legs[0]).toEqual({ contract_id: 2381961, action: 'SELL', quantity: 130, planned_entry: '88.00',
+      captured_at: '2026-10-14T15:26:00+05:30' })
+    expect(JSON.stringify(buildSaveBody([stepped], ''))).not.toContain('2381960')
+  })
+  it('AC-2: a reply that names no contract id leaves the leg unsavable, not saved with the old one', () => {
+    const [stepped] = applyEditReply([leg()], stepReply({ contract_id: null }))
+    expect(canSaveLegs([stepped])).toBe(false)
   })
 })

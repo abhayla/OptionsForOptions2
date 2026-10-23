@@ -8,7 +8,8 @@ import { computed, ref } from 'vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import { contractName } from '@/lib/displayFormat'
-import { CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, canStep, multiplierShape } from '@/lib/legEdit'
+import { NOT_CONNECTED_LABEL } from '@/lib/legPicker'
+import { CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, canStep } from '@/lib/legEdit'
 
 const props = defineProps({
   legs: { type: Array, required: true },
@@ -17,23 +18,18 @@ const props = defineProps({
   updating: { type: Boolean, default: false },
   errorParts: { type: Object, default: null },
 })
-const emit = defineEmits(['edit', 'add-leg', 'pick-chain'])
+const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove'])
 
-const multiplier = ref('1')
-const multiplierBad = ref(false)
+const multiplier = ref(1)
 const depthFor = ref(null) // the leg whose depth popup is open
 
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
 const shown = computed(() => (props.hasReply ? props.shapeName ?? CUSTOM_STRATEGY : null))
 const legName = (l) => contractName(l)
 
-function setMultiplier(text) {
-  if (!multiplierShape(text)) {
-    multiplierBad.value = true // not digits: nothing is sent; digits out of 1..50 go to the server, which refuses them
-    return
-  }
-  multiplierBad.value = false
-  emit('edit', { control: 'multiplier', multiplier: parseInt(text.trim(), 10) })
+function setMultiplier(index) {
+  const choice = MULTIPLIER_CHOICES[index] // chosen from the fixed list: nothing is parsed from text
+  if (choice !== undefined) emit('edit', { control: 'multiplier', multiplier: choice })
 }
 </script>
 
@@ -50,9 +46,10 @@ function setMultiplier(text) {
         <span v-if="updating" class="ml-2" data-testid="numbers-updating">Updating the numbers...</span>
       </p>
       <label class="mt-1 flex items-center gap-2">Strategy multiplier ({{ MULTIPLIER_MIN }} to {{ MULTIPLIER_MAX }})
-        <input v-model="multiplier" class="w-16 rounded border border-line px-1" inputmode="numeric" data-testid="multiplier" @change="setMultiplier($event.target.value)" />
+        <select v-model="multiplier" class="rounded border border-line px-1" data-testid="multiplier" @change="setMultiplier($event.target.selectedIndex)">
+          <option v-for="n in MULTIPLIER_CHOICES" :key="n" :value="n">{{ n }}</option>
+        </select>
       </label>
-      <p v-if="multiplierBad" class="text-ink-muted" data-testid="multiplier-shape">Type a whole number from {{ MULTIPLIER_MIN }} to {{ MULTIPLIER_MAX }}.</p>
       <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
       <ul>
         <li
@@ -69,9 +66,12 @@ function setMultiplier(text) {
           <span :class="`tag tag-${(leg.instrument_type ?? '').toLowerCase()}`" data-testid="leg-type">{{ leg.instrument_type }}</span>
           <span data-testid="leg-lots">{{ leg.lots }} lot</span>
           <span v-if="leg.hedge === true" class="tag" data-testid="hedge-mark">Hedge</span>
+          <span v-if="leg.planned_entry != null" data-testid="leg-entry">planned entry {{ leg.planned_entry }}</span>
+          <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
           <span v-if="leg.included === false" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
           <span v-if="leg.block" class="text-ink-muted" data-testid="leg-block">{{ leg.block }}</span>
           <button type="button" data-testid="leg-depth-icon" class="underline" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i">Depth</button>
+          <button type="button" class="underline" data-testid="leg-remove" :aria-label="`Remove ${legName(leg)}`" @click="emit('remove', i)">Remove</button>
           <DepthPopup v-if="depthFor === i" class="w-full" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
         </li>
       </ul>

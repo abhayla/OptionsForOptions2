@@ -199,13 +199,20 @@ const setLegs = (next) => {
   editError.value = null
   load()
   syncLive()
+  readShape()
 }
+// REQ-076 AC-8: the shape name and Hedge marks come from the server on load and after Done, before any edit.
+function readShape() {
+  if (legs.value.length >= 2) editLeg({ control: 'read' })
+}
+const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
+  readShape()
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
 // Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.
@@ -218,7 +225,7 @@ async function editLeg(edit) {
   try {
     const reply = (await api.post('/strategies/leg-edit', body)).data
     if (mine !== editSeq) return
-    const keep = edit.control === 'include'
+    const keep = edit.control === 'include' || edit.control === 'read' // neither changes the saved strategy
     legs.value = applyEditReply(legs.value, reply)
     if (!keep) {
       savedId.value = null
@@ -280,12 +287,12 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker :legs="legs" @update:legs="setLegs" />
+    <LegPicker :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError"
-      @edit="editLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
+      @edit="editLeg" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
     />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />

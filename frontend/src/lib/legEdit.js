@@ -15,15 +15,15 @@ export const EXECUTE_NEEDS_ALL_TICKED = 'Tick every leg to execute: the whole st
 /** REQ-076 AC-10: the empty list's sentence. */
 export const NO_LEGS_YET = 'No legs yet'
 
-/** Whole digits only; the 1-50 bound is the server's to refuse (REQ-076 AC-4), so 0 and 51 are sent as typed. */
-export function multiplierShape(text) {
-  return /^\d{1,4}$/.test(String(text ?? '').trim())
-}
+/** The multiplier is CHOSEN from this fixed list (REQ-076 AC-4), never parsed from text: the server still refuses any
+ *  other value. A fixed list, so the page converts no text to a number (ADR-008). */
+export const MULTIPLIER_CHOICES = Object.freeze([...Array(MULTIPLIER_MAX + 1).keys()].slice(MULTIPLIER_MIN))
 
 const CONTROL_FIELDS = {
   step: ['index', 'direction'],
   include: ['index', 'included'],
   multiplier: ['multiplier'],
+  read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
 }
 
 /** True for a leg the step control applies to: an option leg only (an allow-list: a futures or unknown leg has none). */
@@ -60,8 +60,9 @@ export function buildEditRequest(underlying, legs, edit) {
 }
 
 /** The page's legs after a reply: each keeps its page fields and takes the server's contract, lots, entry, capture time,
- *  tick and Hedge mark. A leg whose contract changed loses the saved-contract fields it can no longer vouch for
- *  (`contract_id`, `lot_size`), so Save Draft cannot send a stale contract. */
+ *  tick and Hedge mark. The saved-contract fields (`contract_id`, `lot_size`)
+ *  are the reply's own, so a stepped leg saves its NEW contract, and a reply without them leaves the leg unsavable: Save
+ *  Draft never sends the old contract. */
 export function applyEditReply(prev, reply) {
   return reply.legs.map((r, i) => {
     const old = prev[i] ?? {}
@@ -71,8 +72,8 @@ export function applyEditReply(prev, reply) {
       id: old.id ?? `edit-${i}`,
       underlying: old.underlying,
       instrument_id: r.instrument_id,
-      contract_id: same ? old.contract_id : null,
-      lot_size: same ? old.lot_size : null,
+      contract_id: r.contract_id ?? null, // the server's id for THIS contract (a stepped leg's new one); null = not savable
+      lot_size: r.lot_size ?? null,
       symbol: same ? old.symbol ?? null : null,
       action: r.action,
       lots: r.lots,
