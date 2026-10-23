@@ -5,7 +5,7 @@ READ-ONLY: never edit, create, commit or delete a tracked file in any checkout; 
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\verify-09final`.
 
 Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1`, head <HEAD>.
-Row 9 = 1cee0593..<HEAD>: A0 495c0af7 + fix 58d5304c; A1 6a0f7117; C f6a6bc5e + fix 4bcea64e; B <B-SHA>. Briefs (run
+Row 9 = 1cee0593..<HEAD>: A0 495c0af7 + fix 58d5304c; A1 6a0f7117; C f6a6bc5e + fix 4bcea64e; B 9dd50d9b + finish 05124939, d9332fe3 + finish-2 8ff10625. Briefs (run
 every `Attack list:` item of B again, and spot-check A0/A1/C): `docs/process/builder-sequence-briefs/row-09a0-*.md`,
 `row-09a1-*.md`, `row-09b-*.md`, `row-09c-*.md`. Earlier verifier briefs (what was already checked):
 `verify-row-09a0.md`, `verify-row-09a0-r2.md`, `verify-row-09a1c.md`. Spec: `spec/requirements/REQ-113.md` (every AC),
