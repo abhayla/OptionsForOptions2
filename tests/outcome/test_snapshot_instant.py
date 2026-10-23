@@ -3,6 +3,7 @@
 The instant is the latest frame time read, never later than the clock. It values every figure and the strategy's own
 P&L, so the CURRENT column reprices to the quote it was solved from; but the expiry check stays on the REAL clock, so
 after the 15:30 close nothing is valued with time left. Counts and values, never wall-clock timing."""
+import dataclasses
 import datetime
 from decimal import Decimal
 
@@ -12,8 +13,9 @@ from ofo.engine.legs import Action
 from ofo.marketdata.forward import mid_price
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
-from ofo.table import TOTAL_ROW_ID, UXLevel
+from ofo.table import TOTAL_ROW_ID
 
 RATE = Decimal("0.065")
 LEGS = ("NSE_FO:44614", "NSE_FO:44615")  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -48,7 +50,7 @@ def test_the_current_column_reprices_to_the_quote_at_the_snapshot_instant(feed):
     clock = at + datetime.timedelta(minutes=1)  # the request clock is a minute after the last frame
     d = definition(provider, at)
     snap = read_snapshot(provider, "NIFTY", list(LEGS), clock, RATE)
-    out = build_outcome(d, snap, UXLevel.STANDARD, snap.valuation, view=View.ESTIMATED_NOW)
+    out = build_outcome(d, snap, snap.valuation, view=View.ESTIMATED_NOW)
     assert out.state is OutcomeState.COMPUTED, out.reason
     total = next(r for r in out.table.rows if r.row_id == TOTAL_ROW_ID)
     now_pnl = total.cell(out.spot_level).value
@@ -72,4 +74,18 @@ def test_after_the_close_an_expiring_contract_is_not_valued_with_time_left(feed)
         assert all((lm.problem is None) is valued for lm in snap.legs.values()), clock
         if not valued:
             assert snap.forwards == {}
-            assert build_outcome(d, snap, UXLevel.STANDARD, snap.valuation).state is not OutcomeState.COMPUTED
+            assert build_outcome(d, snap, snap.valuation).state is not OutcomeState.COMPUTED
+
+
+def test_the_serialized_outcome_carries_no_level_and_the_full_column_set(feed):
+    """REQ-006 / ADR-168 (4): the serialized outcome has no `ux_level` key and every fixed column is visible."""
+    provider, at = feed
+    snap = read_snapshot(provider, "NIFTY", list(LEGS), at, RATE)
+    out = build_outcome(definition(provider, at), snap, snap.valuation)
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    assert "ux_level" not in {f.name for f in dataclasses.fields(out)}
+    body = outcome_to_dict(out)
+    assert "ux_level" not in body
+    shown = {c["id"] for c in body["table"]["columns"] if c["visible"]}
+    assert {"iv", "delta", "gamma", "theta", "vega", "pnl_percent", "lower_be", "upper_be"} <= shown
+    assert all(c["visible"] for c in body["table"]["columns"])

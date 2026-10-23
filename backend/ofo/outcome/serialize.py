@@ -92,7 +92,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
     return {
-        "state": out.state.value, "underlying": out.underlying, "ux_level": out.ux_level.value,
+        "state": out.state.value, "underlying": out.underlying,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
