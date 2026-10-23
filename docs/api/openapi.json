@@ -2797,6 +2797,13 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
           }
         },
         "required": [
@@ -3452,6 +3459,88 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VersionOut": {
+        "additionalProperties": false,
+        "description": "W-144 (REQ-038 AC-2/AC-3): one version after the first execution; ``state`` says which one is active.",
+        "properties": {
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "reconciled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciled At"
+          },
+          "state": {
+            "enum": [
+              "proposed",
+              "active",
+              "superseded"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "state",
+          "based_on",
+          "created_at",
+          "confirmed_at",
+          "reconciled_at",
+          "outcome"
+        ],
+        "title": "VersionOut",
         "type": "object"
       },
       "ofo_app__routes__outcome__LegIn": {
@@ -5063,6 +5152,55 @@
           }
         },
         "summary": "Start Tracking"
+      }
+    },
+    "/strategies/{strategy_id}/versions/{number}/confirm": {
+      "post": {
+        "description": "W-144 (REQ-038 AC-3, ADR-019 Q191): the user confirms the pending proposed version. It stays proposed: only a\nreconciled execution return makes it active.",
+        "operationId": "confirm_version_strategies__strategy_id__versions__number__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Version"
       }
     }
   }

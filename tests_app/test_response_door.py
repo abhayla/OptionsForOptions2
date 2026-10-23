@@ -164,7 +164,7 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
          "expiry": "2026-10-27", "quantity": 75}], "rules_ref": None, "risk_limits": {"max_loss": "5000"},
         "preferences": {}}
     utc = datetime.timezone.utc
-    stored = SimpleNamespace(id=3, status="draft", revision=2, saved=object(),
+    stored = SimpleNamespace(id=3, status="draft", revision=2, saved=object(), versions=(),
                              created_at=datetime.datetime(2026, 10, 12, 9, 15, 0, tzinfo=utc),
                              updated_at=datetime.datetime(2026, 10, 12, 9, 15, 0, 250000, tzinfo=utc))
 
@@ -318,6 +318,7 @@ APP_MODELS = (
     "ofo_app.routes.strategies.StrategyListOut",
     "ofo_app.routes.strategies.StrategyOut",
     "ofo_app.routes.strategies.SummaryOut",
+    "ofo_app.routes.strategies.VersionOut",
     "ofo_app.routes.strategy_templates.TemplateLegOut",
     "ofo_app.routes.strategy_templates.TemplateOut",
     "ofo_app.routes.strategy_templates.TemplatesOut",
