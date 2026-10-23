@@ -281,8 +281,8 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
                       strategy_version: Optional[int] = None,  # noqa: UP045
                       ) -> StoredPlan:
     """Stores the plan open, with its orders, and the version number of the definition it was built from (W-144;
-    None = unknown, such a plan never activates a version). The caller commits (and has called ``next_plan_number`` in the same
-    transaction: the strategy lock is taken here too, so a plan can never be recorded around it)."""
+    None = unknown, such a plan never activates a version). The caller commits (and has called ``next_plan_number`` in
+    the same transaction: the strategy lock is taken here too, so a plan can never be recorded around it)."""
     strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     number = _int(plan_number, "plan_number", 1)
     version = None if strategy_version is None else _int(strategy_version, "strategy_version", 1)
