@@ -36,7 +36,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q18 | Exit conditions | D — simple V1, compound later ('explicit exit plan' part superseded by Q153) | Owner | T1 #37 | ADR-009 |
 | Q19 | Test before real money | B — simple historical simulation | Owner | T1 #39 | ADR-013 |
 | Q20 | What monitoring monitors | B — strategy-health monitoring | Owner | T1 #41 | ADR-010 |
-| Q21 | How much the main screen shows | D — simple by default, Advanced mode | Owner | T1 #43 | ADR-004 |
+| Q21 | How much the main screen shows | D — simple by default, Advanced mode; level part superseded by ADR-168 (4) | Owner | T1 #43 | ADR-004 |
 | Q22 | Multiple broker accounts | C — several brokers, one per strategy → void after Zerodha-only (T1 #47) | Superseded | T1 #45 | ADR-001 |
 | Q23 | Whose account can be traded | Yes — own Zerodha account only | Owner | T1 #49 | ADR-001 |
 | Q24 | Existing positions | B — discover + user groups them | Owner | T1 #51 | ADR-018 |
@@ -46,8 +46,8 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q28 | Order types | Zerodha-specific execution engine, no generic order-type menu (ChatGPT recommended; owner moved on) | ChatGPT (delegated) | T1 #65–#70 | ADR-017 |
 | Q29 | Strategy-only vs individual orders | A — strategy-only | Owner | T1 #71 | ADR-002 |
 | Q30 | Modify a live strategy | A — controlled strategy modification (+ 'Strategy Guard', owner #73/#75) | Owner | T1 #75 | ADR-002 |
-| Q31 | UX model | A — three levels: Guided / Standard / Advanced | Owner | T1 #79 | ADR-004 |
-| Q32 | Change UX level | A — any time; safety rules always enforced | Owner | T1 #81 | ADR-004 |
+| Q31 | UX model | A — three levels: Guided / Standard / Advanced; level part superseded by ADR-168 (4) | Owner | T1 #79 | ADR-004 |
+| Q32 | Change UX level | A — any time; safety rules always enforced; level part superseded by ADR-168 (4) | Owner | T1 #81 | ADR-004 |
 | Q33 | Risk acknowledgement | Owner replaced it with the strategy outcome table requirement (#83–#98); risk UX later as contextual | Owner | T1 #83–#98 | ADR-008 |
 | Q33A | Scenario columns: expiry vs current estimate | C — both, Expiry P&L default | Owner | T1 #111 | ADR-008 |
 | Q33B | Scenario range | E — intelligent default + user customization | Owner | T1 #113 | ADR-008 |
@@ -55,16 +55,16 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q33D | Where current/0-P&L columns go | C — inserted at their actual price position | Owner | T1 #117 | ADR-008 |
 | Q34 | Option Chain role | B + multi-select checkboxes, 'Add Selected (N)' | Owner | T1 #119 | ADR-007 |
 | Q35 | Where Buy/Sell is chosen | C — both chain and Builder; Builder is default | Owner | T1 #121 | ADR-007 |
-| Q36 | Quantity | D — lots primary, exact quantity in Advanced | Owner | T1 #123 | ADR-007 |
+| Q36 | Quantity | D — lots primary, exact quantity in Advanced; level part superseded by ADR-168 (4) | Owner | T1 #123 | ADR-007 |
 | Q37 | Chain sets action + lots | B — chain can; Builder is authoritative | Owner | T1 #125 | ADR-007 |
-| Q38 | Chain filters | D — adaptive to UX level | Owner | T1 #127 | ADR-007 |
+| Q38 | Chain filters | D — adaptive to UX level; level part superseded by ADR-168 (4) | Owner | T1 #127 | ADR-007 |
 | Q39 | Expiry in chain | C — Builder sets strategy expiry; chain can explore/import another | Owner | T1 #129 | ADR-007 |
 | Q40 | Multiple expiries in a strategy | B — allowed | Owner | T1 #131 | ADR-006 |
 | Q41 | Mixed-expiry selection | B — confirm 'Multiple expiries detected' | Owner | T1 #133 | ADR-007 |
 | Q42 | Same contract selected twice | B — combine into one row | Owner | T1 #135 | ADR-007 |
 | Q43 | Same contract, opposite actions | B — separate legs, no netting | Owner | T1 #143 | ADR-007 |
 | Q44 | Contract becomes unavailable | D — suggest alternatives, user picks | Owner | T1 #145 | ADR-007, ADR-016 |
-| Q45 | Chain default columns | A — clean default + Advanced Details | Owner | T1 #147 | ADR-007 |
+| Q45 | Chain default columns | A — clean default + Advanced Details; level part superseded by ADR-168 (4) | Owner | T1 #147 | ADR-007 |
 | Q46 | Live refresh | C — hybrid streaming | Owner | T1 #149 | ADR-007 |
 | Q47 | Selected legs display | B — persistent Selected Legs summary | Owner | T1 #151 | ADR-007 |
 | Q48 | Contract already in strategy | C — ask: increase / keep separate / cancel | Owner | T1 #153 | ADR-007 |
@@ -164,7 +164,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q142 | Suggest rules | Yes — suggest, don't impose | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q143 | Auto-activate suggested rules | No — explicit confirmation | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q144 | Default rule templates | Yes | ChatGPT (delegated) | T2 #86 | ADR-009 |
-| Q145 | Rule UI by level | Adaptive to UX level | ChatGPT (delegated) | T2 #86 | ADR-009 |
+| Q145 | Rule UI by level | Adaptive to UX level; level part superseded by ADR-168 (4) | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q146 | AND/OR | Yes | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q147 | Rule complexity | Controlled in V1 | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q148 | When a rule triggers | Explain + prepare; user decides | ChatGPT (delegated) | T2 #86 | ADR-009 |
