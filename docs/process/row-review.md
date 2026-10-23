@@ -159,6 +159,49 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+Rows 11-16 use the short form of ADR-178 (3) (what a user sees, open issues); their per-row expected-vs-actual numbers
+were not generated in sessions 4-5 and are written `unmeasured` here, never typed. The chunk-level numbers are the
+chunk-1 conformance check below (measure_process.py, 2026-10-24).
+
+### Meta review after row 15 (2026-10-24, the chunk-1 conformance check, fresh Sonnet agent, 1.3 min / 111k / 11 calls)
+- The chunk-end conformance check (`builder-sequence-briefs/conformance-check-chunk.md`) is the meta review for rows
+  13-15 and the chunk: `measure_process.py --sessions 5 --chunk-start 3ccc8439` = 13 MISS / 16 OK / 2 UNMEASURED.
+- Found: orchestrator context over 250k/turn in 3 of 4 measured sessions; 2 + 3 Opus dispatches without `Why Opus:`;
+  11 / 3 / 5 local database runs; 27 process-tool commits; the draft PR opened ~29 h after row 1; 3 of 16 briefs from
+  the generator; 17 deferred issues against 1.
+- Changed (applied in chunk 2): the draft PR #531 opened at chunk 2's first commit; row briefs rendered by
+  `make_brief.py`; one process-tool item (the reach check); one batched deferred issue at the chunk end. Tracker
+  `docs/process/adr-178-tracker.md` Status column updated from the check's table.
+
+### Row 16 - REQ-038 Save a strategy and load it back exactly (closed 2026-10-23, session 5db71e90, Done with AC-3/AC-4 deferred #527)
+- A user sees: saved versions after execution on the app path (migration 0022, confirm route). AC-3/AC-4 fail end to
+  end: no live plan can activate a proposal until the adjustments row (#527, fix before that row). Expected vs actual:
+  unmeasured.
+
+### Row 15 - REQ-028 Shape templates and shape matching (closed 2026-10-23, session 5db71e90, Done with AC-2 deferred #528)
+- A user sees: shape names matched on the builder. AC-2 fails on the app path: modification, adjustment proposal and
+  exit domain types have no route caller (#528). Expected vs actual: unmeasured.
+
+### Row 14 - REQ-033 Expiry and live P&L formulas (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: expiry and live P&L from the one engine. Shared verifier with rows 12-13; all ACs pass. Expected vs
+  actual: unmeasured.
+
+### Row 13 - REQ-032 Calculation engine (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: every figure from one engine. All ACs pass (shared verifier rows 12-14). Expected vs actual: unmeasured.
+
+### Meta review after row 12 (2026-10-24, covered by the chunk-1 conformance check above)
+- Rows 10-12 were reviewed in the chunk-1 Tier A review (three areas, round 2 PASS on 1006ca32) and the conformance
+  check; no separate meta agent ran for row 12 - stated, not hidden.
+
+### Row 12 - REQ-072 Index spot price (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: the index spot price on the builder. Round 2 PASS with one MINOR (the `except SpotRefused` net).
+  Expected vs actual: unmeasured.
+
+### Row 11 - REQ-114 Price feed health check and reconnect (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: a stale banner and last values labelled stale on every price screen when the feed or the market is
+  closed. AC-7 was re-verdicted FAIL by the chunk Tier A review (closed market shown live), fixed by F1 + an independent
+  redesign, re-recorded pass on 1006ca32. Expected vs actual: unmeasured.
+
 ### Row 10 - REQ-118 Zerodha rate limits for read calls (closed 2026-10-23 ~12:10 IST, Done, #521 deferred, MINORs #522)
 - Expected ~90 min / ~420k (in the brief). Actual: ~180 min wall-clock (build dispatched ~09:07 after 83707b70 at 09:06;
   last code commit 962ab74c at 11:42; close ~12:10) = +100%. Agents (minutes / tokens / calls): build 33.7 / 272k / 78;
