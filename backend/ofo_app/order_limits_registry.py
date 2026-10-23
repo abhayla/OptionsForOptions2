@@ -47,6 +47,12 @@ RULES: tuple[ZerodhaRule, ...] = (
     ZerodhaRule("ofo_app.kite_ws:MAX_TOKENS_PER_CONNECTION", "instrument tokens per websocket connection (3000)",
                 "Kite websocket docs: 'up to 3000 instruments on a single WebSocket connection' "
                 "https://kite.trade/docs/connect/v3/websocket/ (fetched 2026-10-22)", "2026-10-22", True),
+    ZerodhaRule("ofo_app.kite_ws:MAX_CONNECTIONS_PER_KEY",
+                "websocket connections per API key, across all users of one Kite Connect app (3)",
+                "Kite websocket docs: 'Single API key can have upto 3 websocket connections.' "
+                "https://kite.trade/docs/connect/v3/websocket/ (fetched 2026-10-22); Zerodha staff on the developer "
+                "forum: 'The 3 connections limit is per api_key and not based on user' (F-59, ADR-170)",
+                "2026-10-22", True),
     ZerodhaRule("ofo_app.kite_margin:_ORDER_TYPES", "order types this platform sends to the order-margins call",
                 "Kite margins docs list only 'Order type (MARKET, LIMIT etc.)' "
                 "https://kite.trade/docs/connect/v3/margins/ (fetched 2026-10-22): the full list is not stated",

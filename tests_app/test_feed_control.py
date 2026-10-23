@@ -258,7 +258,7 @@ def fake(monkeypatch):
 
     def start(session, *args):
         f.started.append(session.fingerprint)
-        return feed_main._Running(session.fingerprint, _Task(), types.SimpleNamespace(set=lambda: None))
+        return feed_main._Running(session, _Task(), types.SimpleNamespace(set=lambda: None))
 
     async def halt(self):
         f.halted += 1
@@ -268,13 +268,27 @@ def fake(monkeypatch):
 
     monkeypatch.setattr(feed_main, "_start", start)
     monkeypatch.setattr(feed_main._Running, "halt", halt)
-    monkeypatch.setattr(feed_main, "_publish_stopped", stopped)
+    monkeypatch.setattr(feed_bus, "publish_stopped", stopped)
     return f
 
 
+def _hub(read_session, client=None):
+    async def users():
+        return [USER]
+
+    async def read(_user):
+        return await read_session()
+
+    return feed_main._Hub(list_users=users, read_session=read, ws_url="ws://x", client=client, clock=lambda: None,
+                          connect=None, max_connections=3, watch=(USER,))
+
+
 async def _reconcile(running, read_session):
-    return await feed_main._reconcile(running, user_ref=USER, read_session=read_session, client=None, ws_url="ws://x",
-                                      clock=lambda: None, connect=None)
+    hub = _hub(read_session)
+    if running is not None:
+        hub.running[USER] = running
+    await hub.reconcile()
+    return hub.running.get(USER)
 
 
 async def test_store_present_starts_the_socket_and_the_same_session_changes_nothing(fake):
@@ -320,9 +334,9 @@ async def test_store_unreadable_keeps_the_running_socket_and_logs_the_class_only
 
 async def test_a_socket_whose_session_kite_refused_is_not_restarted_on_the_same_session(fake):
     """(d) Kite said 'session ended' for this stored session: the same session is not tried again; a crash is."""
-    ended = feed_main._Running(_session(TOKEN).fingerprint, _Task(True, feed_main.SESSION_ENDED_WORD), None)
+    ended = feed_main._Running(_session(TOKEN), _Task(True, feed_main.SESSION_ENDED_WORD), None)
     assert await _reconcile(ended, _answer(_session(TOKEN))) is ended
-    crashed = feed_main._Running(_session(TOKEN).fingerprint, _Task(True, "stopped"), None)
+    crashed = feed_main._Running(_session(TOKEN), _Task(True, "stopped"), None)
     assert await _reconcile(crashed, _answer(_session(TOKEN))) is not crashed
     assert len(fake.started) == 1
 
@@ -338,16 +352,17 @@ async def test_control_stream_states(redis_url):
     """(d) Redis: empty -> no wake | valid -> wake | malformed or foreign -> counted, no wake | refused -> no wake."""
     user = f"c{os.urandom(5).hex()}"
     bus = feed_bus.new_client(redis_url)
-    counters = {"bad_control": 0}
+    hub = _hub(None, bus)
+    hub.positions[user] = "0-0"
+    hub.watch = (user,)
     try:
-        assert await feed_main._read_control(bus, user, "0-0", counters) == (False, "0-0")
+        assert await hub.read_controls() is False
         await bus.xadd(feed_bus.control_key(user), {"u": user, "k": "login", "t": "5", "token": "x"})  # extra key
         await bus.xadd(feed_bus.control_key(user), {"u": "other", "k": "login", "t": "5"})
         await bus.xadd(feed_bus.control_key(user), {"u": user, "k": "mystery", "t": "5"})
-        woken, last = await feed_main._read_control(bus, user, "0-0", counters)
-        assert woken is False and counters["bad_control"] == 3
+        assert await hub.read_controls() is False and hub.counters["bad_control"] == 3
         await feed_bus.publish_control(bus, user, "disconnect", live_market.datetime.datetime.now(live_market.IST))
-        assert (await feed_main._read_control(bus, user, last, counters))[0] is True
+        assert await hub.read_controls() is True
     finally:
         await bus.delete(feed_bus.control_key(user))
         await bus.aclose()
@@ -356,7 +371,10 @@ async def test_control_stream_states(redis_url):
         async def xread(self, *a, **k):
             raise RedisConnectionError("refused")
 
-    assert await feed_main._read_control(Refused(), user, "7-0", counters) == (False, "7-0")
+    refused = _hub(None, Refused())
+    refused.positions[user] = "7-0"
+    refused.watch = (user,)
+    assert await refused.read_controls() is False and refused.positions[user] == "7-0"
 
 
 async def test_lost_wake_up_publish_never_raises(monkeypatch, caplog):

@@ -166,16 +166,19 @@ async def test_url_and_token_never_appear_in_any_log_record(caplog):
     assert not any("cannot reach" in r.getMessage() for r in caplog.records)
 
 
-async def test_over_3000_tokens_are_cut_and_counted():
+async def test_over_3000_tokens_are_refused_not_cut(caplog):
+    """REQ-113 AC-6 (was: cut and counted): 3500 wanted -> NOTHING is sent (not the first 3000), the socket says
+    capped with the 500 beyond the cap, and the refusal is logged by count."""
+    caplog.set_level(logging.INFO)
     provider = _provider()
     provider._wanted.update(range(1, 3500))  # more than one connection may carry
     got = []
     ready = asyncio.Event()
 
     async def handler(ws):
-        got.append(json.loads(await ws.recv()))
         ready.set()
-        await ws.wait_closed()
+        async for message in ws:
+            got.append(json.loads(message))  # noqa: PERF401
 
     async with serve(handler, "127.0.0.1", 0, max_size=None) as server:
         port = server.sockets[0].getsockname()[1]
@@ -183,9 +186,14 @@ async def test_over_3000_tokens_are_cut_and_counted():
                           base_url=f"ws://127.0.0.1:{port}")
         task = asyncio.create_task(sock.run())
         await asyncio.wait_for(ready.wait(), 10)
+        for _ in range(10):
+            await asyncio.sleep(0.05)
         sock.stop()
         await asyncio.wait_for(task, 10)
-    assert len(got[0]["v"]) == 3000 and sock.over_limit == len(provider.subscribed_tokens()) - 3000  # noqa: PLR2004
+    assert got == [] and sock.capped is True
+    assert sock.over_limit == len(provider.subscribed_tokens()) - 3000
+    assert any("refused" in r.getMessage() and str(len(provider.subscribed_tokens())) in r.getMessage()
+               for r in caplog.records)
 
 
 async def test_accept_then_drop_server_is_not_retried_every_second():

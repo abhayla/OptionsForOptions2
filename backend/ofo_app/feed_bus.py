@@ -200,11 +200,12 @@ def decode_status(user_ref: str, raw: Any) -> dict | None:
         return None
     if type(body.get("connections")) is not int or body["connections"] < 0:
         return None
-    last, phase = body.get("last_frame_us"), body.get("phase", PHASE_LIVE)
-    if (last is not None and type(last) is not int) or phase not in {PHASE_LIVE, PHASE_STOPPED}:
+    last, phase, capped = body.get("last_frame_us"), body.get("phase", PHASE_LIVE), body.get("capped", False)
+    if (last is not None and type(last) is not int) or phase not in {PHASE_LIVE, PHASE_STOPPED} \
+            or type(capped) is not bool:
         return None
     return {"connected": body["connected"], "ended": body["ended"], "connections": body["connections"],
-            "last_frame_us": last, "phase": phase}
+            "last_frame_us": last, "phase": phase, "capped": capped}
 
 
 class BusSocket:
@@ -377,6 +378,26 @@ async def publish_stopped(client: Any, user_ref: str, clock: Callable[[], dateti
     await client.set(status_key(user_ref), json.dumps(body, separators=(",", ":")), px=STATUS_TTL_MS)
 
 
+async def publish_capped(client: Any, user_ref: str, clock: Callable[[], datetime.datetime]) -> None:
+    """REQ-113 AC-6: the key already holds its connection cap, so this user's socket was REFUSED (nothing connected).
+    Phase ``stopped`` and ``capped`` true: the API shows that live prices are not available."""
+    body = {"u": valid_user_ref(user_ref), "connected": False, "ended": False, "phase": PHASE_STOPPED, "capped": True,
+            "connections": 0, "last_frame_us": None, "at_us": to_micros(clock())}
+    await client.set(status_key(user_ref), json.dumps(body, separators=(",", ":")), px=STATUS_TTL_MS)
+
+
+async def publish_ended(client: Any, user_ref: str, clock: Callable[[], datetime.datetime], *, event: bool) -> None:
+    """REQ-113 AC-8: the user's Zerodha session ended (06:00). The status says ``ended``; ``event`` also puts the one
+    ``ended`` entry on the user's stream (the API reads it as the session ending, the same as Kite's own 403)."""
+    now = clock()
+    if event:
+        await client.xadd(ticks_key(user_ref), encode_message(user_ref, KIND_ENDED, now),
+                          maxlen=STREAM_MAXLEN, approximate=True)
+    body = {"u": valid_user_ref(user_ref), "connected": False, "ended": True, "phase": PHASE_LIVE,
+            "connections": 0, "last_frame_us": None, "at_us": to_micros(now)}
+    await client.set(status_key(user_ref), json.dumps(body, separators=(",", ":")), px=STATUS_TTL_MS)
+
+
 class FeedRelay:
     """What ``KiteSocket`` calls in the market-data process in place of a ``KiteProvider``: frames and events are
     published to the bus as they are; the wanted set comes from the API's snapshot. It parses nothing and
@@ -459,6 +480,7 @@ class FeedRelay:
     def status(self) -> dict[str, Any]:
         last = self.last_frame_at
         return {"u": self._user, "connected": self.connected, "ended": self.ended, "phase": PHASE_LIVE,
+                "capped": bool(getattr(self._socket, "capped", False)),
                 "connections": 0 if self._socket is None else self._socket.connections,
                 "last_frame_us": None if last is None else to_micros(last), "at_us": to_micros(self._clock())}
 

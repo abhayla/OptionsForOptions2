@@ -1,8 +1,8 @@
 """The live Kite WebSocket client (W-059, REQ-048). Feeds a ``KiteProvider``; places and sends no order, ever.
 
 Connects to ``wss://ws.kite.trade?api_key=..&access_token=..``, subscribes in ``full`` mode (at most 3,000 tokens per
-connection), and reconnects after any drop with backoff 1, 2, 4 ... 30 s, re-subscribing everything the provider
-still wants. Every answer state has one behaviour:
+connection; more is REFUSED and logged, never cut to fit), and reconnects after any drop with backoff 1, 2, 4 ... 30 s,
+re-subscribing everything the provider still wants. Every answer state has one behaviour:
 
 - binary data frame / heartbeat  -> ``provider.on_frame`` (which counts them)
 - text message (order update, error) -> ``provider.on_text`` (counted by type, nothing stored)
@@ -31,12 +31,12 @@ from collections.abc import AsyncIterator as _AsyncIterator
 from collections.abc import Awaitable as _Awaitable
 from collections.abc import Callable as _Callable
 
+import websockets as _websockets
 from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.broker.kite_http import plain_str as _plain_str
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
-import websockets as _websockets
 from websockets.asyncio.client import connect as _ws_connect
 from websockets.exceptions import InvalidStatus as _InvalidStatus
 
@@ -53,6 +53,7 @@ _silent.setLevel(logging.CRITICAL + 1)
 
 KITE_WS_URL = f"wss://{_KITE_WS_HOST}"
 MAX_TOKENS_PER_CONNECTION = 3000
+MAX_CONNECTIONS_PER_KEY = 3  # per API key across ALL users of the app (F-59); the source is in order_limits_registry
 BACKOFF_START = 1
 BACKOFF_MAX = 30
 SESSION_ENDED = "session ended"
@@ -84,7 +85,9 @@ class KiteSocket:
         self._stop = False
         self.connections = 0
         self._backoff = BACKOFF_START
-        self.over_limit = 0
+        self.over_limit = 0  # instruments wanted beyond the per-connection cap right now (0 = within it)
+        self.capped = False
+        self._sent: set[int] = set()  # what Kite holds on THIS connection
 
     def stop(self) -> None:
         self._stop = True
@@ -170,23 +173,37 @@ class KiteSocket:
         self._provider.on_disconnected(self._clock())
         _log.warning("kite socket dropped: %s", reason)
 
-    async def _subscribe_all(self, ws) -> None:
-        tokens = self._provider.subscribed_tokens()
-        if len(tokens) > MAX_TOKENS_PER_CONNECTION:
-            self.over_limit += len(tokens) - MAX_TOKENS_PER_CONNECTION
-            tokens = tokens[:MAX_TOKENS_PER_CONNECTION]
-        self._provider.drain_subscription_changes()  # everything wanted is sent below
-        if tokens:
-            await ws.send(json.dumps({"a": "subscribe", "v": tokens}))
-            await ws.send(json.dumps({"a": "mode", "v": ["full", tokens]}))
+    def _refuse(self, wanted: int) -> None:
+        """REQ-113 AC-6: more tokens wanted than one connection may carry. REFUSED (nothing sent, nothing cut to fit),
+        logged by count only, and visible: ``capped`` / ``over_limit`` (the status the API shows)."""
+        self.capped, self.over_limit = True, wanted - MAX_TOKENS_PER_CONNECTION
+        _log.warning("kite subscription refused: %d instruments wanted, the cap is %d per connection",
+                     wanted, MAX_TOKENS_PER_CONNECTION)
 
-    async def _send_changes(self, ws) -> None:
-        added, removed = self._provider.drain_subscription_changes()
+    async def _sync(self, ws) -> None:
+        """Make Kite's subscription equal the wanted set, or refuse the whole request when it is over the cap."""
+        wanted = set(self._provider.subscribed_tokens())
+        if len(wanted) > MAX_TOKENS_PER_CONNECTION:
+            self._refuse(len(wanted))
+            return
+        self.capped, self.over_limit = False, 0
+        added, removed = sorted(wanted - self._sent), sorted(self._sent - wanted)
         if added:
             await ws.send(json.dumps({"a": "subscribe", "v": added}))
             await ws.send(json.dumps({"a": "mode", "v": ["full", added]}))
         if removed:
             await ws.send(json.dumps({"a": "unsubscribe", "v": removed}))
+        self._sent = wanted
+
+    async def _subscribe_all(self, ws) -> None:
+        self._sent = set()  # a new connection holds nothing
+        self._provider.drain_subscription_changes()  # everything wanted is synced below
+        await self._sync(ws)
+
+    async def _send_changes(self, ws) -> None:
+        added, removed = self._provider.drain_subscription_changes()
+        if added or removed:
+            await self._sync(ws)
 
     async def _pump(self, ws) -> None:
         while not self._stop:
@@ -204,5 +221,5 @@ class KiteSocket:
             await self._send_changes(ws)
 
 
-__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED",
-           "KiteSocket"]
+__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_CONNECTIONS_PER_KEY", "MAX_TOKENS_PER_CONNECTION",
+           "SESSION_ENDED", "STOPPED", "KiteSocket"]

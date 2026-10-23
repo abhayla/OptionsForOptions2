@@ -3,6 +3,9 @@
 ``python feed_launcher.py feed <config.json>``   the REAL ``ofo_app.feed_main.run_feed`` over the REAL ``KiteSocket``
 ``python feed_launcher.py feedsup <config.json>`` the REAL ``feed_main.supervise`` (A1): the stored session is the file
                                                   ``session_file`` (its token, or absent = no session)
+``python feed_launcher.py feedmulti <config.json>`` the REAL ``supervise_users`` (row 9 B): one socket per user;
+                                                  ``session_dir/<user>.txt`` = that user's stored token,
+                                                  ``users[<user>]["ws_url"]`` the fake Kite that user's socket reaches
 ``python feed_launcher.py api <config.json>``    the REAL ``LiveMarket.start`` in ``bus`` mode (the REAL ``BusSocket``),
                                                   writing its state to a file every 100 ms (a process the test can
                                                   kill and start again). Files ``disconnect_file`` / ``login_file``
@@ -82,6 +85,28 @@ async def run_feedsup(cfg: dict) -> None:
                               redis_url=cfg["redis_url"], clock=clock, recheck_s=cfg.get("recheck_s", 0.5))
 
 
+def _stored_users(directory: pathlib.Path) -> list[str]:
+    return sorted(f.stem for f in directory.glob("*.txt"))
+
+
+async def run_feedmulti(cfg: dict) -> None:
+    directory = pathlib.Path(cfg["session_dir"])
+
+    async def list_users() -> list[str]:
+        return _stored_users(directory)
+
+    async def read_session(user: str):
+        try:
+            token = (directory / f"{user}.txt").read_text().strip()
+        except OSError:
+            return None
+        return feed_main.StoredSession("KEY-launcher", token, live_market.token_fingerprint(token)) if token else None
+
+    await feed_main.supervise_users(list_users=list_users, read_session=read_session,
+                                    ws_url=lambda user: cfg["users"][user]["ws_url"], redis_url=cfg["redis_url"],
+                                    clock=clock, recheck_s=cfg.get("recheck_s", 0.5))
+
+
 async def _no_catalogue(conn):
     return types.SimpleNamespace(all_entries=list)
 
@@ -133,7 +158,8 @@ def main() -> None:
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     role, cfg = sys.argv[1], json.loads(pathlib.Path(sys.argv[2]).read_text())
-    asyncio.run({"feed": run_feed, "feedsup": run_feedsup, "api": run_api}[role](cfg))
+    asyncio.run({"feed": run_feed, "feedsup": run_feedsup, "feedmulti": run_feedmulti,
+           "api": run_api}[role](cfg))
 
 
 if __name__ == "__main__":

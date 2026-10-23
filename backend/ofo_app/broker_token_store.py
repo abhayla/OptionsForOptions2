@@ -22,9 +22,9 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
+from ofo.broker.session import BROKER_ZERODHA, EndReason
 from sqlalchemy import text
 
-from ofo.broker.session import BROKER_ZERODHA, EndReason
 from ofo_app.broker_crypto import TokenCipher, TokenDecryptError, associated_data
 from ofo_app.kite_client import KiteTokenException
 
@@ -124,6 +124,25 @@ async def active_session_status(conn: Any, user_ref: str, broker: str = BROKER_Z
     without one. Moved here from the status route so feature code never names the broker."""
     row = (await conn.execute(_STATUS_ROW, {"user_ref": user_ref, "broker": broker})).one_or_none()
     return None if row is None else (row[0], bool(row[1]))
+
+
+_ACTIVE_REFS = text("SELECT user_ref FROM public.broker_sessions WHERE broker = :broker AND ended_at IS NULL "
+                    "ORDER BY started_at, id")
+_EXPIRY = text("SELECT expected_expiry FROM public.broker_sessions "
+               "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
+
+
+async def active_user_refs(conn: Any, broker: str = BROKER_ZERODHA) -> list[str]:
+    """REQ-113 AC-1: who has an active session, for the market-data process to hold one socket per user. An allow-list
+    read: the ONE column ``user_ref``, never the ciphertext, key id or any token. A session past its expiry that nobody
+    has ended yet is still listed; ``access_token_for`` ends it when the feed reads that user's token."""
+    return [str(row[0]) for row in (await conn.execute(_ACTIVE_REFS, {"broker": broker})).all()]
+
+
+async def session_expiry(conn: Any, user_ref: str, broker: str = BROKER_ZERODHA) -> Any:
+    """The active session's expected expiry (a datetime, ADR-053's 06:00), or None without a session. One column."""
+    row = (await conn.execute(_EXPIRY, {"user_ref": user_ref, "broker": broker})).one_or_none()
+    return None if row is None else row[0]
 
 
 async def end_session(conn: Any, user_ref: str, reason: EndReason, broker: str = BROKER_ZERODHA) -> int | None:
