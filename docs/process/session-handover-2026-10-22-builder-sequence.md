@@ -5,11 +5,13 @@
   6 (#517), 8 (#519). Chunk branch `build/seq-chunk-1` head fb9a3702, pushed; no PR until row 16.
 - **In flight - four worktrees (ADR-171: four rows in flight, rows close in order, no shared files, ONE db run at a time,
   older first, one agent per worktree):**
-  - `OptionsForOptions2-builder-next`, branch `build/seq-row-11`: row 11 (REQ-114). Part A committed 799b16ab (gate 15/15
-    killed; no DB run yet). Part B (frontend, `row-11b-...md`) builder dispatched ~12:30 - the session ended before it
-    reported: FIRST `git -C D:/Abhay/Ventures/OptionsForOptions2-builder-next log --oneline -3` and `status --short`;
-    if part B is uncommitted or half done, send a FRESH finisher (R5), never assume. Then verify row 11 with
-    `verify-row-11.md` (fill <HEAD> and <B-SHA>); its DB run uses THIS worktree path in fresh_launch.py.
+  - `OptionsForOptions2-builder-next`, branch `build/seq-row-11` (pushed, b04d47f0, clean): row 11 (REQ-114) BOTH PARTS
+    BUILT. Part A 799b16ab (gate 15/15 killed; no DB run yet). Part B b04d47f0 (12:38-12:46: vitest 16/16, lint clean,
+    gate 8/8 killed; e2e NOT run - no Chrome; one known CRLF failure in learn.test.js). NEXT: verify row 11 with
+    `verify-row-11.md` - fill <HEAD> = b04d47f0 and <B-SHA> = b04d47f0; its DB run uses THIS worktree path in
+    fresh_launch.py. Note for row 11's review: part B's mutation launcher (`scratchpad\row11b\vt.py`) swapped mutant
+    files INTO the real worktree and restored them (breaks R4 - scratch copies only; the tree was verified clean after,
+    `git status` empty) - tell the next frontend builder to copy `frontend/` to scratch and run vitest there.
   - `OptionsForOptions2-builder-next-12`, branch `build/seq-row-12` (clean, at fb9a3702): row 12's one fix
     (`row-12-fix-1.md`, REQ-072 AC-2 wrong reason when the index is missing). Dispatch when row 11's verifier is
     dispatched, after `python scripts/orchestrator/overlap_gate.py <row-11 wt> fb9a3702 <row-12 wt> <plan file>`
