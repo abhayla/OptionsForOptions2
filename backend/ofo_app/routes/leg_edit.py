@@ -28,13 +28,12 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
-from ofo.execution.freeze import StoredFreeze
 from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
@@ -173,6 +172,13 @@ class LegEditIn(BaseModel):
     edit: EditIn
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
 
+    @model_validator(mode="after")
+    def _index_is_inside_the_legs(self) -> LegEditIn:
+        """A forged index is a plain 422 through the API's one error boundary (ofo_app/errors.py), never a guess."""
+        if self.edit.index is not None and self.edit.index >= len(self.legs):
+            raise ValueError("index outside legs")
+        return self
+
 
 # ---- response --------------------------------------------------------------------------------------------------------
 
@@ -290,9 +296,8 @@ def shape_and_marks(cat: Catalogue, ctx: MarketContext | None, underlying: str, 
 
 
 def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
-    if e.index is None or e.index >= len(legs):  # a forged index: a plain validation error, never a guess
-        raise RequestValidationError(
-            [{"loc": ("body", "edit", "index"), "msg": "index outside legs", "type": "value_error"}])
+    if e.index is None or e.index >= len(legs):  # unreachable: LegEditIn refuses a forged index first
+        raise LegEditRefused("leg_edit_unknown_contract", number=0)
     return e.index
 
 

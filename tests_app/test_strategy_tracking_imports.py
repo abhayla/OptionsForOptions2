@@ -113,6 +113,7 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/execute_replay.py": "APP_ENV=test replay seeding: inserts the recorded contract",
     "backend/ofo_app/execution_plan_store.py": "key -> broker symbol with its live flag (key -> row)",
     "backend/ofo_app/live_market.py": "imports the store for load_catalogue (live rows by key); no stored id read",
+    "backend/ofo_app/routes/leg_edit.py": "key -> LIVE holder -> its stored id (live_contract_id): never id -> key",
     "backend/ofo_app/routes/outcome.py": "key -> LIVE holder -> its row (live_contract_id first): never id -> key",
     "backend/ofo_app/strategy_store.py": "save-time validation of a picked id (live, terms); returns no feed key",
     # review round 1 (table constants and f-string SQL now seen):

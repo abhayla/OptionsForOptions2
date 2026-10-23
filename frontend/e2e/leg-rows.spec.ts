@@ -4,13 +4,14 @@
 // the exact LegEditOut shape of routes/leg_edit.py; the real route is proven by tests_app/test_leg_edit_route.py.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
 
 useQuietLiveSocket()
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
-const real = JSON.parse(readFileSync(resolve(__dirname, '../tests/fixtures/outcome-condor.json'), 'utf-8'))
+const real = JSON.parse(readFileSync(resolve(fileURLToPath(new URL('.', import.meta.url)), '../tests/fixtures/outcome-condor.json'), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 

@@ -27,8 +27,8 @@ from decimal import Decimal
 from ofo.engine.executable_price import round_to_tick
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacing, UserFacingError, render
-from ofo.execution.freeze import StoredFreeze, largest_allowed_units
 from ofo.instruments.catalogue import Catalogue, ContractKind
+from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 
 MULTIPLIER_MIN, MULTIPLIER_MAX = 1, 50  # REQ-076 AC-4: whole numbers 1 to 50
 
