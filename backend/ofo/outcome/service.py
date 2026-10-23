@@ -34,7 +34,7 @@ from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, ro
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
+from ofo.engine.model import (ModelInputs, data_label, expiry_model, implied_vol, join_labels,
                              leg_greeks_unrounded, model_inputs)
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
@@ -436,6 +436,17 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         except ValueError:  # the cause goes to no user (W-066): a closed reason
             problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id,
                                                why=render_explanation("outcome_why_leg_input")))
+    # REQ-072 AC-2: the index spot is gated BEFORE the forwards, so a missing or unusable index is named as the cause
+    # (a forward cannot be derived without it; that is a consequence, not the reason).
+    spot_q = snapshot.spot
+    if spot_q is None or not is_live_price(spot_q.ltp):
+        return _refused(definition, ux_level,
+                        render_explanation("outcome_spot_missing", underlying=definition.underlying), legs, message)
+    if spot_q.health in _UNUSABLE:
+        return _refused(definition, ux_level,
+                        render_explanation("outcome_spot_unusable", underlying=definition.underlying,
+                                           health=spot_q.health), legs, message)
+    spot = spot_reading(spot_q)
     for expiry, why in snapshot.forward_errors.items():
         if any(leg.expiry == expiry for leg in inputs):
             problems.append(render_explanation("outcome_forward_error", expiry=expiry, why=why))
@@ -443,17 +454,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return _refused(definition, ux_level, join_explanations(problems, "; "), legs, message)
 
     try:
-        spot = spot_reading(snapshot.spot)
         model = model_inputs(StrategyInput(definition.underlying, spot, valuation, snapshot.rate, tuple(inputs)),
                              snapshot.forwards)
-    except SpotRefused:
-        spot_q = snapshot.spot
-        if spot_q is None or not is_live_price(spot_q.ltp):
-            reason = render_explanation("outcome_spot_missing", underlying=definition.underlying)
-        else:
-            reason = render_explanation("outcome_spot_unusable", underlying=definition.underlying,
-                                        health=spot_q.health)
-        return _refused(definition, ux_level, reason, legs, message)
     except ForwardUnavailable:
         return _refused(definition, ux_level, render_explanation("outcome_forward_refused"), legs, message)
 
