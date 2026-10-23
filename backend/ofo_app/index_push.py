@@ -29,7 +29,7 @@ from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext
+from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
 from ofo_app.underlying import Underlying
 
 #: The two indices of the view, in the order the message lists them (NIFTY then SENSEX).
@@ -49,6 +49,10 @@ class IndicesOut(ApiModel):
     indices: list[IndexOut]
     #: ADR-088: when the server produced THIS answer (aware)
     answered_at: datetime.datetime
+    #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the screen shows the one market-closed banner)
+    market_closed: bool
+    #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
+    last_price_at: datetime.datetime | None
 
 
 def index_ids(ctx: MarketContext) -> dict[str, str | None]:
@@ -79,15 +83,21 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     last value time kept."""
     if ctx is None:
         rows = [IndexOut(underlying=u, instrument_id=None, value=None, at=None, health=None) for u in UNDERLYINGS]
-        return IndicesOut(state="NOT_CONNECTED", indices=rows, answered_at=now())
+        answered_at = now()
+        state = market_state(None, answered_at)
+        return IndicesOut(state="NOT_CONNECTED", indices=rows, answered_at=answered_at, market_closed=state.closed,
+                          last_price_at=state.last_price_at)
     answered_at = ctx.clock()
+    state = market_state(ctx, answered_at)
     rows = [_row(ctx, u, i, live) for u, i in index_ids(ctx).items()]
-    return IndicesOut(state="LIVE" if live else "NOT_CONNECTED", indices=rows, answered_at=answered_at)
+    return IndicesOut(state="LIVE" if live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
+                      market_closed=state.closed, last_price_at=state.last_price_at)
 
 
 def _shown_state(body: IndicesOut) -> tuple:
     """What the page shows: the state and each row (never ``answered_at``, which moves on every read)."""
-    return (body.state, tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
+    return (body.state, body.market_closed, body.last_price_at,
+            tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
 
 
 def _ignore(_quote: Any) -> None:

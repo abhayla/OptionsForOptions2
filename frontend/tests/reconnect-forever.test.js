@@ -85,7 +85,7 @@ describe('AC-11: the browser never gives up on the live socket', () => {
     const w = mount(Probe)
     const first = FakeSocket.all[0]
     first.serverOpen()
-    first.serverPush({ state: 'COMPUTED', answered_at: '2026-10-19T05:32:10+00:00', legs: [] })
+    first.serverPush({ state: 'COMPUTED', answered_at: '2026-10-19T05:32:10+00:00', last_price_at: '2026-10-19T05:32:10+00:00', legs: [] })
     await flushPromises()
     first.serverClose()
     for (let i = 0; i < FAST_ATTEMPTS + 15; i += 1) { // 45 failed attempts: past the old give-up point of 40

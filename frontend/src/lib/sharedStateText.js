@@ -4,8 +4,8 @@ export const MARKET_CLOSED_PREFIX = 'Market closed. Prices are from '
 export const marketClosedText = (time) => `${MARKET_CLOSED_PREFIX}${time}.`
 
 // REQ-113 AC-2 / REQ-114 AC-5: shown (test id live-reconnecting) by every live screen whose socket dropped after it had
-// been live. ONE helper builds it: "Reconnecting - prices as of <time>" (the time of the screen's last price, the push's own
-// server time in IST HH:MM:SS); before any price has arrived there is no time to show, so the words without one.
+// been live. ONE helper builds it: "Reconnecting - prices as of <time>" (the time of the screen's last price - the push's
+// `last_price_at`, never its `answered_at` - in IST HH:MM:SS); before any price has arrived there is no time to show, so the words without one.
 export const RECONNECTING_PREFIX = 'Reconnecting - prices as of '
 export const RECONNECTING_NO_TIME_TEXT = 'Live prices are reconnecting'
 export const reconnectingText = (time) => (time ? `${RECONNECTING_PREFIX}${time}` : RECONNECTING_NO_TIME_TEXT)

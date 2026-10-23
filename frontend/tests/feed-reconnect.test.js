@@ -39,7 +39,7 @@ class FakeSocket {
 const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
 const T1 = '2026-10-19T05:32:10+00:00' // 11:02:10 IST
 const T1_TEXT = 'Reconnecting - prices as of 11:02:10'
-const OUTCOME = (ltp, at = T1) => ({ state: 'COMPUTED', answered_at: at, legs: [{ instrument_id: 'NSE_FO:44626', ltp, label: null }] })
+const OUTCOME = (ltp, at = T1) => ({ state: 'COMPUTED', answered_at: at, last_price_at: at, legs: [{ instrument_id: 'NSE_FO:44626', ltp, label: null }] })
 const SLOW_DELAYS = [2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000] // requirement: 2, 4, 8 ... capped at 30 s
 
 beforeEach(() => {
@@ -226,7 +226,7 @@ describe('AC-2: the chain and index screens show the same reconnecting text from
 
   it('AC-2: the index page says reconnecting after a drop (once live), nothing before and nothing after stop', async () => {
     const indexRow = (u, value) => ({ underlying: u, instrument_id: `I:${u}`, value, at: '2026-10-19T09:20:00+05:30', health: 'available' })
-    const answer = { state: 'LIVE', indices: [indexRow('NIFTY', '25145.50'), indexRow('SENSEX', '82010.25')], answered_at: '2026-10-19T03:50:01+00:00' }
+    const answer = { state: 'LIVE', indices: [indexRow('NIFTY', '25145.50'), indexRow('SENSEX', '82010.25')], answered_at: '2026-10-19T03:50:01+00:00', last_price_at: '2026-10-19T03:50:01+00:00' }
     restAnswer = () => Promise.resolve({ data: { state: 'NOT_CONNECTED', indices: [] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { template: '<div />' } }] })
     const w = mount(IndexViewPage, { global: { plugins: [router] } })
@@ -256,7 +256,7 @@ describe('AC-2: the chain and index screens show the same reconnecting text from
     await flushPromises()
     const ws = FakeSocket.all[0]
     ws.serverOpen()
-    ws.serverPush({ state: 'LIVE', underlying: 'NIFTY', expiry: '2026-10-27', spot: '24510.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available', atm_strike: '24500.00', rows_missing: null, rows: [], answered_at: '2026-10-19T04:30:05+00:00' })
+    ws.serverPush({ state: 'LIVE', underlying: 'NIFTY', expiry: '2026-10-27', spot: '24510.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available', atm_strike: '24500.00', rows_missing: null, rows: [], answered_at: '2026-10-19T04:30:05+00:00', last_price_at: '2026-10-19T04:30:05+00:00' })
     await flushPromises()
     expect(w.get('[data-testid="socket-status"]').text()).toBe('live')
     expect(w.find('[data-testid="live-reconnecting"]').exists()).toBe(false)
@@ -302,6 +302,14 @@ describe('REQ-114 AC-5: "Reconnecting - prices as of <time>" until the first fre
     back.serverClose()
     await flushPromises()
     expect(text(w)).toBe('Reconnecting - prices as of 11:10:00')
+  })
+
+  it('AC-5 (review F1 MINOR 4): after quotes turn stale the shown time is the LAST PRICE time, not the push time', async () => {
+    vi.useFakeTimers()
+    // the server answered at 11:10:00 IST, but its feed's last price frame arrived at 11:02:10 IST
+    const w = await liveThenDrop({ ...OUTCOME('30.05', '2026-10-19T05:40:00+00:00'), last_price_at: '2026-10-19T05:32:10+00:00' })
+    expect(text(w)).toBe('Reconnecting - prices as of 11:02:10')
+    expect(text(w)).not.toContain('11:10:00')
   })
 
   it('AC-5 (3): the time is the push server time in IST, not the browser clock (clock 5 h off changes nothing)', async () => {

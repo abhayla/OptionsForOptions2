@@ -57,7 +57,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext
+from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
 from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
@@ -136,6 +136,10 @@ class ChainOut(ApiModel):
     rows: list[ChainRowOut]  # ascending strike (REQ-029 AC-1: Calls | Strike | Puts)
     #: ADR-088: when the server produced THIS answer (aware)
     answered_at: datetime.datetime
+    #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the screen shows the one market-closed banner)
+    market_closed: bool
+    #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
+    last_price_at: datetime.datetime | None
 
 
 @dataclass(frozen=True)
@@ -334,10 +338,12 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
     does not know, shown unavailable."""
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
+    state = market_state(ctx, answered_at)
     if ctx is None or not live:
         return ChainOut(state="NOT_CONNECTED", underlying=req.underlying, expiry=req.expiry, spot=None,
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
-                        atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at)
+                        atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at,
+                        market_closed=state.closed, last_price_at=state.last_price_at)
     spot = live_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
     missing = _rows_missing(catalogue, req.expiry, window)
@@ -349,7 +355,7 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
         rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
-        answered_at=answered_at)
+        answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at)
 
 
 def _shown_state(body: ChainOut) -> tuple:

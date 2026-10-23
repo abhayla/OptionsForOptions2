@@ -70,7 +70,8 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
 
   function notLiveAfterDrop() {
     const rows = (answer.value?.indices ?? []).map((r) => ({ underlying: r.underlying, instrument_id: r.instrument_id, value: null, at: r.at ?? null, health: null }))
-    answer.value = { state: 'NOT_CONNECTED', indices: rows }
+    // the market state and last price time stay (REQ-114 AC-7): a closed market stays closed across a drop
+    answer.value = { state: 'NOT_CONNECTED', indices: rows, market_closed: answer.value?.market_closed ?? false, last_price_at: answer.value?.last_price_at ?? null }
   }
 
   const { status, reconnecting, reconnectingText, start: startSocket } = useIndexLive({

@@ -744,6 +744,22 @@
             "format": "date-time",
             "title": "Answered At"
           },
+          "market_closed": {
+            "type": "boolean",
+            "title": "Market Closed"
+          },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
           "spot_level": {
             "anyOf": [
               {
@@ -843,6 +859,8 @@
           "output_label",
           "valuation",
           "answered_at",
+          "market_closed",
+          "last_price_at",
           "spot_level",
           "spot_at",
           "legs",

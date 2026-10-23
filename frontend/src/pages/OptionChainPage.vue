@@ -15,6 +15,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason } from '@/lib/dataHealthText'
+import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 
 const SIDE_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume']]
@@ -36,7 +37,7 @@ const expiry = ref('')
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
+const { answer, status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
 
 async function loadExpiries() {
   const mine = ++expirySeq
@@ -152,6 +153,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
     </div>
 
+    <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
     <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
 
     <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>

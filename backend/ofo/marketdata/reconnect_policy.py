@@ -36,11 +36,20 @@ def jittered(nominal: float, rng: Uniform) -> float:
     return nominal * (1 - rng.uniform(0, JITTER_FRACTION))
 
 
-def reconnect_wait(nominal: float, rng: Uniform, *, market_open: bool) -> float:
+def reconnect_wait(nominal: float, rng: Uniform, *, market_open: bool,
+                   until_open: float | None = None) -> float:
     """How long to wait before the next connect: the jittered back-off, and outside market hours never less than
-    ``CLOSED_RETRY_EVERY`` (silence is expected then, AC-7)."""
+    ``CLOSED_RETRY_EVERY`` (silence is expected then, AC-7) - but never past the next open: ``until_open`` is the
+    seconds until ``market_calendar.next_open`` (None when the calendar cannot say), and the closed wait ends at the
+    open plus a jittered ``BACKOFF_START`` (0.5-1 s), so a drop at 09:14:59 is back by 09:15:01 and many users'
+    sockets do not all open in the same instant."""
     wait = jittered(nominal, rng)
-    return wait if market_open else max(wait, float(CLOSED_RETRY_EVERY))
+    if market_open:
+        return wait
+    closed = max(wait, float(CLOSED_RETRY_EVERY))
+    if until_open is None or until_open < 0:
+        return closed
+    return min(closed, until_open + jittered(BACKOFF_START, rng))
 
 
 def is_silent(now: datetime.datetime, last_frame: datetime.datetime) -> bool:

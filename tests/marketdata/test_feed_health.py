@@ -48,21 +48,21 @@ def _feed_with_a_price_at(when: datetime.datetime) -> FeedState:
 def test_the_feed_reads_market_closed_on_a_weekend_and_on_the_holiday_not_waiting_or_reconnecting():
     for when in (SATURDAY, DUSSEHRA):
         feed = _feed_with_a_price_at(AFTER_CLOSE)
-        assert feed.phase(when, is_market_open(when)) == FEED_MARKET_CLOSED
+        assert feed.phase(when) == FEED_MARKET_CLOSED
         feed.on_disconnected(when)  # even a dropped connection is "market closed", not "reconnecting"
-        assert feed.phase(when, is_market_open(when)) == FEED_MARKET_CLOSED
+        assert feed.phase(when) == FEED_MARKET_CLOSED
 
 
-def test_an_open_market_keeps_its_phases_and_the_default_is_open():
+def test_an_open_market_keeps_its_phases():
     feed = _feed_with_a_price_at(OPEN_THURSDAY)
-    assert feed.phase(OPEN_THURSDAY) == FEED_HEALTHY == feed.phase(OPEN_THURSDAY, True)
-    assert feed.phase(OPEN_THURSDAY + datetime.timedelta(seconds=30), True) == FEED_WAITING
+    assert feed.phase(OPEN_THURSDAY) == FEED_HEALTHY
+    assert feed.phase(OPEN_THURSDAY + datetime.timedelta(seconds=30)) == FEED_WAITING
 
 
 def test_a_session_ended_by_zerodha_still_says_so_when_the_market_is_closed():
     feed = _feed_with_a_price_at(OPEN_THURSDAY)
     feed.on_session_ended(OPEN_THURSDAY)
-    assert feed.phase(SATURDAY, False) != FEED_MARKET_CLOSED
+    assert feed.phase(SATURDAY) != FEED_MARKET_CLOSED
 
 
 def test_the_last_price_time_is_the_last_price_frame_not_a_heartbeat():
