@@ -4,13 +4,14 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-072; Superseded, never built (2): REQ-006, REQ-007
+Done (8): REQ-020, REQ-032, REQ-033, REQ-035, REQ-040, REQ-057, REQ-059, REQ-072; Superseded, never built (2): REQ-006, REQ-007
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
 | REQ-015 | Zerodha connection | core | normal | next |
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
-| REQ-048 | Market-data pipeline and browser boundary | core | normal | next |
+| REQ-038 | Strategy definition, live state and versions | core | normal | next |
+| REQ-048 | Market-data pipeline and browser boundary | core | normal | blocked: its own work item W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first |
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
@@ -36,10 +37,10 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-090 | Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files | foundation | normal | next |
 | REQ-117 | The broker adapter declares named capability flags, and features ask the flag, never the broker's name | foundation | normal | waiting: on REQ-054 |
 | REQ-133 | A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data | foundation | normal | waiting: on REQ-049, REQ-119 |
-| REQ-077 | Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing | feature | high | next |
+| REQ-077 | Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing | feature | high | waiting: on REQ-038 |
 | REQ-081 | Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted | feature | high | waiting: on REQ-055 |
 | REQ-082 | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) | feature | high | next |
-| REQ-089 | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills | feature | high | next |
+| REQ-089 | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills | feature | high | waiting: on REQ-038 |
 | REQ-008 | Home dashboard | feature | normal | next |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-010 | Public site and live-data access | feature | normal | next |
@@ -63,11 +64,11 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-047 | Adjustment-relevant data collection | feature | normal | next |
-| REQ-050 | Shared computation and scale | feature | normal | next |
-| REQ-113 | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds | feature | high | waiting: on REQ-048, REQ-049, REQ-050, REQ-060 |
-| REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | high | waiting: on REQ-049, REQ-113 |
-| REQ-115 | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order | feature | high | waiting: on REQ-041, REQ-042, REQ-043, REQ-060, REQ-113 |
-| REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | high | waiting: on REQ-054, REQ-113 |
+| REQ-050 | Shared computation and scale | feature | normal | blocked: its own work item W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded |
+| REQ-113 | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-115 | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
 | REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
@@ -87,15 +88,15 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-103 | An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read time | feature | normal | waiting: on REQ-015, REQ-054 |
 | REQ-104 | The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user | feature | high | blocked: behind REQ-061 (W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275.) |
 | REQ-105 | Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan and paper-track on them | feature | normal | waiting: on REQ-016 (recorded, not approved to build: status Specified), REQ-049, REQ-052 |
-| REQ-106 | A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed | feature | normal | waiting: on REQ-049, REQ-050 |
+| REQ-106 | A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed | feature | normal | blocked: behind REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-107 | IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, held until display rights are confirmed | feature | normal | waiting: on REQ-047, REQ-051 |
 | REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | normal | waiting: on REQ-051, REQ-107 |
 | REQ-108 | An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared | feature | normal | waiting: on REQ-052 |
-| REQ-109 | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch | feature | normal | waiting: on REQ-049 |
+| REQ-109 | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch | feature | normal | waiting: on REQ-038, REQ-049 |
 | REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | normal | waiting: on REQ-042, REQ-045, REQ-046 |
-| REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | normal | waiting: on REQ-062, REQ-115 |
-| REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | normal | waiting: on REQ-060, REQ-115, REQ-116 |
-| REQ-134 | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched | feature | normal | waiting: on REQ-070 |
+| REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | normal | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | normal | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-134 | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched | feature | normal | waiting: on REQ-038, REQ-070 |
 | REQ-135 | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited | feature | normal | waiting: on REQ-049, REQ-076 |
 | REQ-136 | Every builder figure has a plain definition on hover or tap, and the builder carries one note that its numbers are projections | feature | normal | waiting: on REQ-034, REQ-081 |
 | REQ-137 | A payoff table lists P&L at target date and at expiry for index levels at a chosen interval, and a standard-deviation table shows the 1SD and 2SD ranges | feature | normal | waiting: on REQ-034, REQ-083, REQ-084 |
@@ -104,7 +105,7 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-140 | For a strategy already being tracked, the builder summary shows the profit still possible and the loss still possible from now first, with the original maximums below | feature | normal | waiting: on REQ-081, REQ-109 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
-| REQ-111 | The user can keep private notes on a strategy | polish | normal | next |
+| REQ-111 | The user can keep private notes on a strategy | polish | normal | waiting: on REQ-038 |
 
 ## Recorded, not approved to build
 

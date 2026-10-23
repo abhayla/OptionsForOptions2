@@ -10,11 +10,11 @@
  },
  "fix": "W-067 round 3: app-dependent tests move to tests_app/; a repo-wide ast guard test fails on any `import ofo_app` / `from ofo_app` statement under tests/ (string mentions allowed), with a self-test.",
  "detection": {
-  "status": "guarded",
+  "status": "unguarded",
   "checks": [
    "tests/test_no_app_imports.py"
   ],
-  "note": "Merged with W-067 (#178, 8b46b35): an ast scan of every tests/ module fails on an ofo_app import (string mentions allowed), with a self-test; the W-067 verifier's mutation M3 (import ofo_app in a tests/ file) turned it red."
+  "note": "Merged with W-067 (#178, 8b46b35): an ast scan of every tests/ module fails on an ofo_app import (string mentions allowed), with a self-test; the W-067 verifier's mutation M3 (import ofo_app in a tests/ file) turned it red. Gap 2026-10-23: the guard names one package (ofo_app) instead of the kit job's installed set; a tests/ module importing any package outside pyyaml/jsonschema/pytest/stdlib (asyncpg here) passes it. Detection upgrade due: the guard derives the allowed set from the kit job's install line."
  },
  "spec_ref": [
   "spec/decisions/ADR-046.md"
@@ -24,6 +24,11 @@
    "date": "2026-10-10",
    "where": "W-067 round 2",
    "evidence": "CI lint-and-test red on an unrelated execution-safety test"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "draft PR #525 kit job lint-and-test on 0e574b58",
+   "evidence": "tests/orchestrator/test_db_run_fresh.py imports scripts/orchestrator/db_run_fresh.py which imports asyncpg; the kit job installs only pyyaml jsonschema pytest -> ModuleNotFoundError at collection. The ast guard checks only `ofo_app` imports, so a third-party app-only package reached tests/ unguarded (fixed with importorskip, 5d5534d0)."
   }
  ]
 }

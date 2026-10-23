@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "Detected only by noticing a missing file. The orchestrator compares git status of its own worktrees before and after each verifier (deliver step 4) - that check found this one."
+  "note": "Detected only by noticing a missing file. The orchestrator compares git status of its own worktrees before and after each verifier (deliver step 4) - that check found this one. Recurrence 5 (2026-10-23): kit issue 110 still open in effect; the project gate inherits the same every-worktree scope. Process-tool freeze (ADR-178) allows one process item per chunk, used by make_brief.py; the scope fix is queued as chunk 2's process item. Until then: verifiers run when no builder needs to commit, and builders get a 'wait and keep editing' line."
  },
  "spec_ref": [
   "spec/testing/core-invariants.md"
@@ -37,6 +37,11 @@
    "date": "2026-10-17",
    "where": "GC-2e, 17:46 IST: the W-106 Tier A reviewer ran as the `verifier` agent type while five builders worked in parallel worktrees",
    "evidence": "quarantine 20261017-174616-1792239376776635900: work/W-103.md (sha256 b20b1a24...) MOVED out of the W-103 builder's worktree agent-a092609fff34ea9ed; the orchestrator's restore was then refused by verifier_inflight_gate while the W-105 reviewer (also `verifier` type) ran. Fourth occurrence, new shape: parallel BUILDERS' new cards, not the orchestrator's. Run decision: Tier A reviewers dispatched as the read-only `Explore` type for the rest of GC-2e (no write-guard); the structural fix stays kit issue 110."
+  },
+  {
+   "date": "2026-10-23",
+   "where": "builder sequence session 7a0c81e3: rows 15-16 verifier in -builder-reqs while the copy and CI-fix builders worked in their own worktrees",
+   "evidence": "verifier_inflight_gate refused git add/commit in -chunk1-copy (3x) and -ci-fix (2x); the copy builder used 90 calls in 7 min largely on blocked retries and committed nothing; the verifier was blamed for deletions in harness agent worktrees (agent-af7b05d362ad83018, agent-a5043e23c50a0886e) that were being released, not by its own calls"
   }
  ]
 }

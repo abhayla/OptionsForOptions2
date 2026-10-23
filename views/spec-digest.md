@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (165)
+## Decisions (175)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -131,16 +131,16 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-124 2026-10-19: (1) The control that lets the user change the ran… [extends ADR-121]
 - ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved b… [extends ADR-109; extends ADR-120]
 - ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-09… [refines ADR-084]
-- ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
-- ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
-- ADR-129 2026-10-20: (1) The success outcome of the return-from-Kite check (after "Checking with Zerodha…") reads exactl… [extends REQ-073]
-- ADR-130 2026-10-20: (1) Orders, when empty, shows "No orders yet." with a [Create Strategy] button. [extends ADR-002]
-- ADR-131 2026-10-20: (1) Tapping Buy (or Sell) on a contract already selected with that same action unselects it (a togg… [refines REQ-030]
-- ADR-132 2026-10-20: (1) REQ-030 AC-12: when a selected contract is already a leg of the strategy, the prompt reads "<co… [refines REQ-030]
-- ADR-133 2026-10-20: (1) When "Check with Zerodha" finds no order carrying a plan's tag (the user opened Kite and never… [refines REQ-057]
-- ADR-134 2026-10-20: (1) Anything the broker (Zerodha today, any broker later) already provides - its order book, order… [amends REQ-057; amends REQ-058; amends REQ-073]
-- ADR-135 2026-10-20: (1) Under ADR-134 the app shows each strategy order in exactly one of four states: "Not sent to Zer… [amends REQ-057; supersedes ADR-133]
-- ADR-136 2026-10-20: (1) A partly executed strategy shows its actual risk and max loss now (REQ-058 AC-1) and offers exa… [amends REQ-058]
+- ADR-127 2026-10-20: (1) One server setting, changed only by the platf… [extends REQ-056]
+- ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill… [extends ADR-127]
+- ADR-129 2026-10-20: (1) The success outcome of the return-from-Kite c… [extends REQ-073]
+- ADR-130 2026-10-20: (1) Orders, when empty, shows "No orders yet." wi… [extends ADR-002]
+- ADR-131 2026-10-20: (1) Tapping Buy (or Sell) on a contract already s… [refines REQ-030]
+- ADR-132 2026-10-20: (1) REQ-030 AC-12: when a selected contract is al… [refines REQ-030]
+- ADR-133 2026-10-20: (1) When "Check with Zerodha" finds no order carr… [refines REQ-057]
+- ADR-134 2026-10-20: (1) Anything the broker (Zerodha today, any broke… [amends REQ-057; amends REQ-058; amends REQ-073]
+- ADR-135 2026-10-20: (1) Under ADR-134 the app shows each strategy ord… [amends REQ-057; supersedes ADR-133]
+- ADR-136 2026-10-20: (1) A partly executed strategy shows its actual r… [amends REQ-058]
 - ADR-137 2026-10-20: (1) A strategy (or several sharing a contract) blocked by a reconciliation mismatch offers exactly… [amends REQ-060; extends ADR-116]
 - ADR-138 2026-10-20: (1) Orders screen: one line per strategy order in the four ADR-135 states plus an "Open Kite order… [amends REQ-073; amends REQ-044; amends REQ-064; a…]
 - ADR-139 2026-10-20: (1) The first line of the Execute review follows one pattern: entry "You will place <n> orders now… [refines REQ-056]
@@ -171,6 +171,16 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-166 2026-10-21: The action on one saved strategy that records each leg at the live price and starts watching it (RE… [refines REQ-109]
 - ADR-167 2026-10-22: SPEC CHANGE to ADR-082 (2) for the scenario values. [amends ADR-082]
 - ADR-168 2026-10-22: The strategy builder is built from one ordered list of requirements (the owner's 59, grown to 63 ro… [amends ADR-165; amends ADR-004; supersedes REQ-00…]
+- ADR-169 2026-10-22: SPEC CHANGE to ADR-020 (Q178, second meaning) and REQ-015 AC-3: the guided Zerodha API setup (each… [amends ADR-020; amends REQ-015]
+- ADR-170 2026-10-23: Per-user live feeds (ADR-053) stay. [refines ADR-053]
+- ADR-171 2026-10-23: Amends ADR-168's "one requirement at a time": when row N's code is committed and its verifier is di… [amends ADR-168]
+- ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
+- ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
+- ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152 exception (c) to the reference pr…]
+- ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015 (the reference product gap G-02-1…]
+- ADR-176 2026-10-23: Refines ADR-152 and ADR-173. [refines ADR-152, ADR-173]
+- ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114 AC-7, REQ-105 AC-4]
+- ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176 (2), ADR-168 (per-row report and r…]
 
 ## Requirements (131)
 
@@ -211,7 +221,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-035 [Verified]: Single strategy table
 - REQ-036 [Approved]: Strategy-only execution
 - REQ-037 [Approved]: Strategy modification
-- REQ-038 [Verified]: Strategy definition, live state and versions
+- REQ-038 [Approved]: Strategy definition, live state and versions
 - REQ-039 [Approved]: Strategy state machine and exception states
 - REQ-040 [Verified]: Activity timeline and rule-trigger audit
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults
@@ -306,7 +316,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-139 [Approved]: The builder header shows the underlying's spot with the day's change and percent and the day's open, high, lo…
 - REQ-140 [Approved]: For a strategy already being tracked, the builder summary shows the profit still possible and the loss still…
 
-## Spec sections (216)
+## Spec sections (229)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -423,6 +433,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses…
 - ## F-55 - A net-only next-day read cannot see a same-day round trip: a f…
 - ## F-56 - Zerodha's instrument list is generated once each morning; Kite…
+- ## F-57 - Zerodha rule constants checked against Zerodha's current docs;…
+- ## F-58 - The pure-Python Redis stand-in (fakeredis 2.40.0 TcpFakeServer…
+- ## F-59 - Kite's 3-websocket limit is per API key across ALL users of on…
+- ## F-60 - Kite REST rate limits per endpoint group; a 429 starts a 10 s…
 
 ### spec/open-questions.md
 
@@ -500,6 +514,15 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grou…
 - ## Q271 — DECIDED (expert role, 2026-10-17; spec silent - REQ-060 F-08 c…
 - ## Q272 — DECIDED (owner, 2026-10-21, ADR-149: re-specify AC-5 to the th…
+- ## Q273 — OPEN (business: production host; due before the first deploy t…
+- ## Q283 — DECIDED → ADR-178 (owner, 2026-10-23: approve all three loosen…
+- ## Q281 — DECIDED → ADR-177 (owner, 2026-10-23: the banner wording every…
+- ## Q280 — DECIDED → ADR-176 (owner, 2026-10-23: register + gates, refere…
+- ## Q279 — DECIDED → ADR-175 (owner, 2026-10-23: PIFS partner link + comp…
+- ## Q278 — DECIDED → ADR-174 (owner, 2026-10-23: keep as is, revisit with…
+- ## Q277 — DECIDED → ADR-173 (owner, 2026-10-23: binding by machine check…
+- ## Q275 — DECIDED → ADR-172 (owner, 2026-10-23: mid when two-sided, else…
+- ## Q274 — DECIDED → ADR-170 (owner, 2026-10-23: ask Zerodha at the demo)…
 
 ### spec/operations/README.md
 
