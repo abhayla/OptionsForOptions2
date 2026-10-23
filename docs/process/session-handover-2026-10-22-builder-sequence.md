@@ -1,7 +1,7 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
 ## UPDATE session 3, 2026-10-23 12:51 IST (clock) - READ THIS FIRST (newest)
-- **New binding rules ADR-173..176 (owner 12:48-13:45):** reference product first for every requirement, enforced by
+- **New binding rules ADR-173..176 (owner, between 12:46 and 13:12 by commit times):** reference product first for every requirement, enforced by
   `check_brief.py` (process item `process-sensibull-line.md`, built bd2a69d4 - label to be renamed `Reference:`);
   every difference is a record in the ADR-176 register (to be built), gated at brief / verify / close; always copy,
   never a bug, approved extras via one batched SPEC CHANGE list; new text never names the reference product.

@@ -457,6 +457,10 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
 - Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.
 
+## Q281 — DECIDED → ADR-177 (owner, 2026-10-23: the banner wording everywhere) — Which market-closed wording: the banner's or REQ-114 AC-7's?
+- Row 11 verify r1 found AC-7's text is never shown; the banner "Market closed. Prices are from <time>." and REQ-114
+  AC-7 / REQ-105 "Market closed - last price <time>" clashed.
+
 ## Q280 — DECIDED → ADR-176 (owner, 2026-10-23: register + gates, reference product unnamed, always copy, bugs never, approved extras as one SPEC CHANGE batch) — How are differences from the reference product recorded and enforced?
 - The 2026-10-23 studies of rows 1-16 found 61 gaps kept in scratch files; nothing linked them to requirements or
   stopped a row closing with one open.
