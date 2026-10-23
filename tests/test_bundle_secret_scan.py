@@ -198,10 +198,12 @@ def test_every_allow_list_entry_names_a_reason():
 def test_with_ci_set_and_no_build_the_bundle_scan_fails_and_without_ci_it_skips(monkeypatch):
     real_is_dir = pathlib.Path.is_dir
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda self: False if self == DIST else real_is_dir(self))
-    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("OFO_REQUIRE_BUNDLE_SCAN", "1")  # what the frontend job's scan step sets
     with pytest.raises(pytest.fail.Exception):
         test_the_built_bundle_names_no_vendor_host_and_holds_no_key_or_token()
-    monkeypatch.delenv("CI")
+    # the skip half must hold wherever this runs: the frontend job sets the variable, GitHub sets CI everywhere
+    monkeypatch.delenv("OFO_REQUIRE_BUNDLE_SCAN", raising=False)
+    monkeypatch.delenv("CI", raising=False)
     with pytest.raises(pytest.skip.Exception):
         test_the_built_bundle_names_no_vendor_host_and_holds_no_key_or_token()
 

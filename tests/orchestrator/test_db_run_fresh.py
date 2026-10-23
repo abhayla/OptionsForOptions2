@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+# db_run_fresh imports asyncpg, an app-only package: the kit tests job installs only pyyaml, jsonschema and pytest, so
+# there this file is skipped at collection (the app job and local runs, which have asyncpg, run it).
+pytest.importorskip("asyncpg")
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "orchestrator"))
 import db_run_fresh as fresh
 

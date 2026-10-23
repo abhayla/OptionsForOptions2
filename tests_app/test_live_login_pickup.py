@@ -50,8 +50,9 @@ class WorldSocket(FakeSocket):
 
     world: ClassVar[dict] = {}  # the kite_world fixture binds its world here
 
-    def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None):  # noqa: PLR0913 - KiteSocket's keywords
+    def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None, user_ref):  # noqa: PLR0913 - KiteSocket's keywords
         super().__init__(prov, result="stopped")
+        self.user_ref = user_ref  # REQ-114 AC-8: the live market passes the owner reference on every real build
         self.fingerprint = live_market.token_fingerprint(access_token)
         self.alive_at_birth = socket_tasks()
         self.ends = self.world["ends"].pop(0) if self.world["ends"] else None

@@ -45,7 +45,8 @@ from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.broker.kite_http import plain_str as _plain_str
 from ofo.market_calendar import is_market_open as _calendar_is_open
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
-from ofo.marketdata.reconnect_policy import BACKOFF_MAX, BACKOFF_START, SILENT_AFTER
+from ofo.marketdata.reconnect_policy import BACKOFF_MAX, BACKOFF_START
+from ofo.marketdata.reconnect_policy import SILENT_AFTER as _SILENT_AFTER
 from ofo.marketdata.reconnect_policy import Uniform as _Uniform
 from ofo.marketdata.reconnect_policy import is_silent as _is_silent
 from ofo.marketdata.reconnect_policy import next_backoff as _next_backoff
@@ -176,7 +177,7 @@ class KiteSocket:
                              self._clock().isoformat())
                 return SESSION_ENDED
             except _Silent:
-                self._dropped(f"no frame of any kind for {int(SILENT_AFTER.total_seconds())} s")
+                self._dropped(f"no frame of any kind for {int(_SILENT_AFTER.total_seconds())} s")
             except Exception as exc:  # network error, close, timeout: all handled the same way  # noqa: BLE001
                 self._dropped(type(exc).__name__)
             else:
