@@ -306,3 +306,10 @@ def test_ac_8_the_read_control_names_the_shape_and_marks_and_changes_no_leg():
     assert [leg["planned_entry"] for leg in reply["legs"]] == [p for *_, p in START]
     assert [leg["captured_at"][:19] for leg in reply["legs"]] == ["2026-10-01T09:20:00"] * 4
     assert reply["outcome"] is not None
+
+
+def test_ac_1_a_negative_index_is_a_validation_error_never_a_leg():
+    """AC-1: ``EditIn.index`` refuses -1 (it would otherwise read the last leg) for every control that takes one."""
+    for edit in ({"control": "step", "index": -1, "direction": 1}, {"control": "include", "index": -1, "included": False},
+                 {"control": "price", "index": -1, "price": "81.32"}):
+        assert post({"legs": legs(), "edit": edit})[0] == HTTP_UNPROCESSABLE, edit

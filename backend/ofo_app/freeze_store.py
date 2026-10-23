@@ -20,21 +20,17 @@ from typing import Any, NamedTuple, TextIO
 
 from sqlalchemy import text
 
-from ofo.execution.freeze import StoredFreeze, freeze_limits_for_plan
+from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.freeze_file import Disagreement, match_to_catalogue, parse_freeze_file
-from ofo.instruments.models import NSE_FO, InstrumentId
+from ofo.instruments.models import NSE_FO
 from ofo_app.catalogue_store import load_catalogue
+from ofo_app.freeze_read import StoredLimit, limits_in_force  # noqa: F401  (re-exported: the loader's callers)
 from ofo_app.sql_time import IST_SQL_ZONE
 
 _TODAY_IST = text(f"SELECT (clock_timestamp() {IST_SQL_ZONE})::date")
 _INSERT = text(
     "INSERT INTO public.exchange_freeze_limits (exchange_segment, exchange_token, file_date, freeze_limit, file_name) "
     "VALUES (:segment, :token, :file_date, :limit, :file_name) ON CONFLICT DO NOTHING")
-_IN_FORCE = text(
-    "SELECT DISTINCT ON (exchange_segment, exchange_token) exchange_segment, exchange_token, file_date, freeze_limit "
-    "FROM public.exchange_freeze_limits ORDER BY exchange_segment, exchange_token, file_date DESC")
-
-
 _SAME_DAY = text(
     "SELECT exchange_token, freeze_limit FROM public.exchange_freeze_limits "
     "WHERE exchange_segment = 'NSE_FO' AND file_date = :file_date")
@@ -45,23 +41,12 @@ _STORED_ONE = text(
     "WHERE exchange_segment = 'NSE_FO' AND exchange_token = :token AND file_date = :file_date")
 
 
-class StoredLimit(NamedTuple):
-    freeze_limit: int
-    file_date: date
-
-
 class FreezeLoadResult(NamedTuple):
     file_date: date
     inserted: int
     already_stored: int
     not_in_catalogue: int
     disagreements: tuple[Disagreement, ...]
-
-
-async def limits_in_force(conn: Any) -> dict[InstrumentId, StoredLimit]:
-    """The limit with the newest file date for every stored contract."""
-    rows = (await conn.execute(_IN_FORCE)).all()
-    return {InstrumentId(r.exchange_segment, r.exchange_token): StoredLimit(r.freeze_limit, r.file_date) for r in rows}
 
 
 async def load_freeze_file(conn: Any, path: str | pathlib.Path, *, nse_name: str | None = None) -> FreezeLoadResult:
@@ -102,7 +87,10 @@ async def load_freeze_file(conn: Any, path: str | pathlib.Path, *, nse_name: str
 
 async def review_freeze_limits(conn: Any, plan: Any) -> dict[str, StoredFreeze]:
     """The ``freeze_limits`` argument of ``execution_review`` for ``plan``: stored limits by InstrumentId joined to the
-    catalogue's Zerodha symbols, lot from the catalogue."""
+    catalogue's Zerodha symbols, lot from the catalogue. The plan-side join is imported inside this function, which
+    only the order path calls, so ``freeze_read`` (the leg-edit route's) never reaches ``ofo.execution``."""
+    from ofo.execution.freeze import freeze_limits_for_plan  # noqa: PLC0415
+
     return freeze_limits_for_plan(plan, await load_catalogue(conn),
                                   {k: (v.freeze_limit, v.file_date) for k, v in (await limits_in_force(conn)).items()})
 

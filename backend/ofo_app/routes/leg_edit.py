@@ -98,11 +98,11 @@ async def get_edit_today() -> datetime.date:
 
 async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
     """The stored exchange freeze limit in force for every stored contract, as (limit, file date). Tests override it."""
-    from ofo_app import freeze_store  # noqa: PLC0415
+    from ofo_app import freeze_read  # noqa: PLC0415
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
     async with get_sessionmaker()() as session:
-        stored = await freeze_store.limits_in_force(await session.connection())
+        stored = await freeze_read.limits_in_force(await session.connection())
     return {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
 
 
@@ -296,8 +296,9 @@ def shape_and_marks(cat: Catalogue, ctx: MarketContext | None, underlying: str, 
 
 
 def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
-    if e.index is None or e.index >= len(legs):  # unreachable: LegEditIn refuses a forged index first
-        raise LegEditRefused("leg_edit_unknown_contract", number=0)
+    if e.index is None or not 0 <= e.index < len(legs):  # unreachable: LegEditIn refuses a forged index first
+        raise RuntimeError(f"leg edit '{e.control}' reached the edit with index {e.index} for {len(legs)} legs: "
+                           "the request check (LegEditIn) should have refused it")
     return e.index
 
 
