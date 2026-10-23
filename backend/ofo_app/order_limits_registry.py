@@ -53,6 +53,18 @@ RULES: tuple[ZerodhaRule, ...] = (
                 "https://kite.trade/docs/connect/v3/websocket/ (fetched 2026-10-22); Zerodha staff on the developer "
                 "forum: 'The 3 connections limit is per api_key and not based on user' (F-59, ADR-170)",
                 "2026-10-22", True),
+    # REQ-118 AC-1 / finding F-60 (read 2026-10-23; WebFetch summaries of the pages, not raw page reads).
+    ZerodhaRule("ofo.broker.rate_limit:GROUP_RATES",
+                "REST requests per second per endpoint group, one bucket per group for the whole app (scope unstated by "
+                "Zerodha, so the stricter reading): quote 1, historical candle 3, all other endpoints 10; order placement "
+                "(10/s, 400/min, 5000/day) has no group because no order call is built",
+                "Kite exceptions docs, 'API rate limit' table https://kite.trade/docs/connect/v3/exceptions/ "
+                "(fetched 2026-10-23)", "2026-10-23", True),
+    ZerodhaRule("ofo.broker.rate_limit:COOLDOWN_SECONDS",
+                "after a 429 a group is left alone for 10 s; the window is sliding, so a request inside it extends it",
+                "Kite forum, staff 'There's a cooldown period of 10s that must be respected whenever you receive a 429 "
+                "Status Code' https://kite.trade/discussion/11971/api-rate-limits (fetched 2026-10-23, F-60)",
+                "2026-10-23", True),
     ZerodhaRule("ofo_app.kite_margin:_ORDER_TYPES", "order types this platform sends to the order-margins call",
                 "Kite margins docs list only 'Order type (MARKET, LIMIT etc.)' "
                 "https://kite.trade/docs/connect/v3/margins/ (fetched 2026-10-22): the full list is not stated",
@@ -101,7 +113,7 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo_app.kite_reads:HOLDINGS_PATH", "ofo_app.kite_reads:ORDERS_PATH",
             "ofo_app.kite_reads:POSITIONS_PATH", "ofo_app.kite_reads:PROFILE_PATH",
             "ofo_app.kite_reads:QUOTE_PATH", "ofo_app.kite_reads:TRADES_PATH", "ofo.broker.kite_http:METHODS",
-            "ofo.broker.kite_http:_BARE_TARGETS",
+            "ofo.broker.kite_http:_BARE_TARGETS", "ofo.broker.kite_endpoints:ENDPOINT_GROUPS",
         ),
         "this product's own grammar for an input it validates (a pattern or a key list), not a limit Zerodha sets": (
             "ofo.broker.kite_http:QUOTE_INSTRUMENT", "ofo.broker.kite_http:_PLAIN_NETLOC",
@@ -123,7 +135,11 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.broker.egress:_MAX_DEPTH", "ofo_app.kite_client:EXCHANGE_TIMEOUT_SECONDS",
             "ofo_app.kite_http:_MAX_NESTING", "ofo_app.kite_http:_TIMEOUT", "ofo_app.kite_ws:BACKOFF_MAX",
             "ofo_app.kite_ws:BACKOFF_START", "ofo_app.kite_ws:_POLL_SECONDS", "ofo.execution.partial:UNCONFIRMED_GRACE",
-            "ofo.execution.freeze:STALE_AFTER_DAYS",
+            "ofo.execution.freeze:STALE_AFTER_DAYS", "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
+            "ofo.broker.rate_limit:BACKGROUND_MAX_WAIT_SECONDS", "ofo.broker.rate_limit:BACKGROUND_QUEUE_SECONDS",
+            "ofo.broker.rate_limit:MAX_READ_RETRIES", "ofo.broker.rate_limit:ALERT_THRESHOLD",
+            "ofo.broker.rate_limit:ALERT_WINDOW_SECONDS", "ofo.broker.rate_limit:_USER_REF_CHARS",
+            "ofo.broker.kite_http:_TOO_MANY_REQUESTS", "ofo_app.kite_http:_TOO_MANY_REQUESTS",
         ),
         "an event name or address family of the egress guard (Python's audit events), not Zerodha": (
             "ofo.broker.egress:_CONNECT_EVENTS", "ofo.broker.egress:_DOOR", "ofo.broker.egress:_SEND_EVENTS",
@@ -146,6 +162,8 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.execution.alternatives:_ZERO", "ofo.execution.safety:_ZERO_PREMIUM",
             "ofo.broker.session:BROKER_ZERODHA", "ofo.execution.review:BROKER",
             "ofo.broker.kite_flags:FLAG_FILE", "ofo_app.kite_client:SESSION_TOKEN_PATH",
+            "ofo.broker.rate_limit:GROUP_QUOTE", "ofo.broker.rate_limit:GROUP_HISTORICAL",
+            "ofo.broker.rate_limit:GROUP_OTHER", "ofo.broker.rate_limit:_BACKGROUND",
         ),
     }),
 }

@@ -26,6 +26,7 @@ from urllib.error import HTTPError
 from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
+from ofo.broker.rate_limit import KiteBusy
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
@@ -121,6 +122,8 @@ def urllib_transport(method: str, url: str, headers: dict[str, str], body: str |
             return exc.code, exc.read().decode("utf-8")
         except Exception:  # noqa: BLE001 - the status alone decides
             return exc.code, ""
+    except KiteBusy:  # the rate limiter refused at once, nothing sent (REQ-118 AC-3): the caller's 429 rule applies
+        return 429, ""
     except KiteCallRefused:
         raise KiteMarginError("kite_margin_refused") from None
     except Exception:  # noqa: BLE001 - IncompleteRead, bad UTF-8, resets, timeouts: all "not confirmed"

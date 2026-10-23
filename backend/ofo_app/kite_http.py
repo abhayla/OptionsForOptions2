@@ -43,16 +43,20 @@ from httpcore._backends.anyio import AnyIOStream as _AnyIOStream
 from httpx._client import BoundAsyncStream as _BoundAsyncStream
 from httpx._client import BoundSyncStream as _BoundSyncStream
 from ofo.broker import egress as _egress
+from ofo.broker import rate_limit as _rate_limit
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import check_call as _check_call
+from ofo.broker.kite_http import endpoint_of as _endpoint_of
 from ofo.broker.kite_http import plain_headers as _plain_headers
 from ofo.broker.kite_http import plain_method as _plain_method
 from ofo.broker.kite_http import plain_str as _plain_str
 from ofo.broker.kite_http import plain_timeout as _plain_timeout
+from ofo.broker.rate_limit import KiteBusy
 
 HTTPError = _httpx.HTTPError  # the one httpx name a consumer needs, so a consumer imports no network module
 
 _TIMEOUT = 20.0
+_TOO_MANY_REQUESTS = 429  # Kite's rate-limit answer (F-60)
 _httpx_log = _logging.getLogger("httpx")
 _SCALARS = (str, int, float, bool, _Decimal, type(None))
 _MAX_NESTING = 20
@@ -253,9 +257,21 @@ class KiteClient(_httpx.Client):
         request.read()  # a caller's body generator runs HERE, outside the door, never inside it
         fresh = _plain_request(request)
         transport = self._transport
-        start = _time.perf_counter()
-        with _egress._door():
-            response = transport.handle_request(fresh)
+        group, is_read = _endpoint_of(fresh.method, str(fresh.url))
+        key, user = _rate_limit.identity(fresh.headers.get("authorization"), fresh.content)
+        retries = 0
+        while True:
+            _rate_limit.acquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy with nothing sent
+            start = _time.perf_counter()
+            with _egress._door():
+                response = transport.handle_request(fresh)
+            if response.status_code != _TOO_MANY_REQUESTS:
+                break
+            _rate_limit.note_429(group, key, user)  # the group's cooldown: the next acquire waits it out
+            if not is_read or retries >= _rate_limit.MAX_READ_RETRIES:  # only a read is retried (AC-4, AC-5)
+                break
+            retries += 1
+            response.close()
         if not isinstance(response.stream, _httpx.SyncByteStream):
             raise KiteCallRefused("the transport returned a stream that is not a sync byte stream")
         response.request = fresh
@@ -313,9 +329,21 @@ class KiteAsyncClient(_httpx.AsyncClient):
         await request.aread()  # a caller's body generator runs HERE, outside the door, never inside it
         fresh = _plain_request(request)
         transport = self._transport
-        start = _time.perf_counter()
-        with _egress._door():
-            response = await transport.handle_async_request(fresh)
+        group, is_read = _endpoint_of(fresh.method, str(fresh.url))
+        key, user = _rate_limit.identity(fresh.headers.get("authorization"), fresh.content)
+        retries = 0
+        while True:
+            await _rate_limit.aacquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy
+            start = _time.perf_counter()
+            with _egress._door():
+                response = await transport.handle_async_request(fresh)
+            if response.status_code != _TOO_MANY_REQUESTS:
+                break
+            _rate_limit.note_429(group, key, user)
+            if not is_read or retries >= _rate_limit.MAX_READ_RETRIES:
+                break
+            retries += 1
+            await response.aclose()
         if not isinstance(response.stream, _httpx.AsyncByteStream):
             raise KiteCallRefused("the transport returned a stream that is not an async byte stream")
         response.request = fresh
@@ -336,4 +364,5 @@ def kite_async_client(*, base_url: str = "", timeout: float = _TIMEOUT,
     return KiteAsyncClient(base_url=base_url, timeout=timeout, headers=headers)
 
 
-__all__ = ["HTTPError", "KiteAsyncClient", "KiteCallRefused", "KiteClient", "kite_async_client", "kite_client"]
+__all__ = ["HTTPError", "KiteAsyncClient", "KiteBusy", "KiteCallRefused", "KiteClient", "kite_async_client",
+           "kite_client"]

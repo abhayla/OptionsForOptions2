@@ -1022,3 +1022,7 @@ def display_text(message: UserFacingError) -> str:
     if message.external_text is not None:
         lines.append(message.external_text)
     return "\n".join(lines)
+
+
+#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home; `ofo.broker.rate_limit.KiteBusy`).
+ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
