@@ -8,11 +8,11 @@
     "screen 015",
     "screen 013"
   ],
-  "ours": "REQ-035 AC-7 hides IV and Greek columns at Guided and adds % return and breakevens by level; the API sends a visible flag per level. ADR-168 (4)(5) already approves removing levels; the AC is rewritten at row 17.",
+  "ours": "Rows 17-18 (2026-10-24): REQ-035 AC-7 rewritten to one level; the table returns every column for every user in the locked order (backend/ofo/table/columns.py, tests/table/test_one_column_set.py), verified by the row 18 checks (evidence/W-146/AC-7.md).",
   "req": "REQ-035",
   "ac": "AC-7",
   "row": 18,
-  "status": "open",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

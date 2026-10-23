@@ -88,7 +88,7 @@ Records: 163 (COPY 76, DIFFERENT-BY-DECISION 21, NO-SCREEN 27, MATCH 39)
 | 16 | RD-114 | REQ-038 AC-5 | What a save stores: legs and entry prices only in the reference product, more in ours (G-16-9) | screen 119 | open |
 | 17 | RD-122 | REQ-006 AC-1 | One full builder for everyone, no level switch (G-17-1) | screen 010, screen 011, screen 012, screen 014, screen 015, screen 168, screen 206 | verified |
 | 18 | RD-124 | REQ-035 AC-1 | Separate P&L Table, Greeks and Payoff Table views instead of one table (G-18-1) | screen 014, screen 015, screen 017 | open |
-| 18 | RD-125 | REQ-035 AC-7 | Table columns do not depend on a UX level (G-18-2) | screen 014, screen 015, screen 013 | open |
+| 18 | RD-125 | REQ-035 AC-7 | Table columns do not depend on a UX level (G-18-2) | screen 014, screen 015, screen 013 | verified |
 | 19 | RD-032 | REQ-080 AC-1 | Leg picker with Straddles, Strangles, Strikes and Futures tabs and price columns (G-05-4) | screen 032, screen 033, screen 034, screen 035, screen 036, screen 037, screen 038 | open |
 | 19 | RD-129 | REQ-080 AC-3 | Pick several strikes, see the count, Clear All and Done (G-19-1) | screen 032, screen 035 | open |
 | 19 | RD-130 | REQ-080 AC-2 | Strike IV and delta shown to every user (G-19-2) | screen 032, screen 033 | open |

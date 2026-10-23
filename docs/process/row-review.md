@@ -159,6 +159,27 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Meta review after row 18 (2026-10-24, session 06fe7549 - no separate meta agent ran; stated, not hidden)
+- Rows 17-18 were reviewed per chunk (ADR-178 (3)); the chunk-2 conformance check runs at the chunk end. This entry
+  lists the process misses the orchestrator measured itself, for that check to verify:
+  (1) row 18 dispatched without overlap_gate.py (new finding row-ahead-dispatched-without-overlap-gate);
+  (2) row 19's backend brief listed too few files (the Kite provider and feed health were left out, so day stats and
+  futures prices came back null in production; the builder stopped at budget with 5 guards red) - a brief defect;
+  (3) a checker brief stated Q264 open from memory (brief-rule-from-memory, 16th);
+  (4) builder B1b renamed a response block beyond its brief (caught before merge);
+  (5) the reach check reads only python tests, so frontend-only evidence is UNRESOLVED by design (#532).
+- Followed: draft PR #531 from the first commit; every row brief rendered by make_brief.py (fix/verify-r2 kinds
+  included); one process item; one deferred issue (#532); findings-only round 2s (15/20 budget).
+
+### Row 18 - REQ-035 Strategy table (closed 2026-10-24, session 06fe7549, Done; W-146 in_review until PR #531)
+- A user sees: the scenario columns of the builder table now carry the heading pair "NIFTY at expiry | You make/lose"
+  (or SENSEX); every column for everyone in the locked order, one highlighted current column, Bid/Ask in Details.
+- Expected vs actual: unmeasured per row (session-end script). Rounds: Opus full-AC check (AC-7 FAIL: heading built
+  but never sent - 5th occurrence of verified-on-a-module-the-product-does-not-call, invisible to the reach check
+  because model.py is imported), one build, Opus findings-only round 2 PASS. MINORs in #532.
+- Wrong: dispatched without the overlap gate (finding row-ahead-dispatched-without-overlap-gate); the merge with row
+  17's fix was clean.
+
 ### Row 17 - REQ-006 + REQ-007 UX levels removed (closed 2026-10-24, session 06fe7549, Done; W-145 in_review until PR #531)
 - A user sees: one full builder for everyone - every column (IV, Greeks, % return, breakevens), the Bid/Ask details
   block, no Guided/Standard/Advanced switch; old `?ux=` links open the same screen; after a Kite session ends no stale

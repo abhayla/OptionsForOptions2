@@ -141,6 +141,16 @@
    "issue": "#532"
   },
   {
+   "key": "UNRESOLVED REQ-035 W-146 AC-1",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-035 W-146 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
    "key": "UNRESOLVED REQ-037 W-027 AC-1",
    "reason": "unresolved: test uses __import__ (mock.patch wraps) AND ofo.strategy.modification is unreached (imported by no app entry point) - #528",
    "issue": "#528"
