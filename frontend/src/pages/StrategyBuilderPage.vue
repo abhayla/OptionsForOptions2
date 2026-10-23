@@ -203,7 +203,7 @@ const setLegs = (next) => {
 }
 // REQ-076 AC-8: the shape name and Hedge marks come from the server on load and after Done, before any edit.
 function readShape() {
-  if (legs.value.length >= 2) editLeg({ control: 'read' })
+  if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
 }
 const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
@@ -225,7 +225,16 @@ async function editLeg(edit) {
   try {
     const reply = (await api.post('/strategies/leg-edit', body)).data
     if (mine !== editSeq) return
-    const keep = edit.control === 'include' || edit.control === 'read' // neither changes the saved strategy
+    if (edit.control === 'read') {
+      // changes no leg and no number: only the contract ids, the name and the Hedge marks are taken (load() owns the outcome)
+      if (Array.isArray(reply?.legs) && reply.legs.length === legs.value.length) {
+        legs.value = applyEditReply(legs.value, reply)
+        shapeName.value = reply.shape_name ?? null
+        hasReply.value = true
+      }
+      return
+    }
+    const keep = edit.control === 'include'
     legs.value = applyEditReply(legs.value, reply)
     if (!keep) {
       savedId.value = null
@@ -243,7 +252,7 @@ async function editLeg(edit) {
     }
     syncLive()
   } catch (e) {
-    if (mine !== editSeq) return
+    if (mine !== editSeq || edit.control === 'read') return // a failed read leaves the page as load() drew it, no error text
     editError.value = e?.parts ?? NEUTRAL_PARTS
   } finally {
     if (mine === editSeq) updating.value = false
