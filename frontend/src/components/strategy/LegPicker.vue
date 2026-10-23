@@ -186,6 +186,8 @@ watch(underlying, () => {
   if (tab.value === 'futures') loadFutures()
 })
 watch(tab, refreshOpenTab)
+// a leg removed by the page (the one list lives outside this component) while it is being edited leaves no stale form
+watch(() => props.legs, (now) => { if (editingId.value !== null && !now.some((l) => l.id === editingId.value)) resetForm() })
 
 onMounted(() => {
   loadExpiries()

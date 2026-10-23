@@ -379,3 +379,67 @@ describe('REQ-077 AC-7: an unpriced leg on the one leg list keeps the ADR-085 me
       t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['2026-10-13', 'CE', '22800.00', 'SELL', '1'])
   })
 })
+
+describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit block text, the stale edit form', () => {
+  const lotsRow = (extra) => ({ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 3, base_lots: 3, planned_entry: '100.00',
+    captured_at: 'x', instrument_type: 'CE', strike: '22800.00', expiry: '2026-10-13', quantity: 195, ...extra })
+  async function openReply(reply) {
+    answers['POST /strategies/outcome'] = real
+    answers['POST /strategies/leg-edit'] = reply
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    return w
+  }
+  it('AC-5: lots by default; Quantity shows each leg\'s reply quantity as sent (NIFTY 195, SENSEX 60), no multiplication', async () => {
+    const legs = [lotsRow(), lotsRow({ id: 2, underlying: 'SENSEX', instrument_id: 'BSE_FO:1', lots: 3, quantity: 60 })]
+    const w = mount(LegList, { props: { legs } })
+    expect(all(w, 'leg-lots').map((x) => x.text())).toEqual(['3 lot', '3 lot'])
+    expect(all(w, 'leg-quantity')).toHaveLength(0)
+    await t(w, 'lots-quantity-switch').setValue('quantity')
+    expect(all(w, 'leg-quantity').map((x) => x.text())).toEqual(['195', '60'])
+    expect(all(w, 'leg-lots')).toHaveLength(0)
+    await t(w, 'lots-quantity-switch').setValue('lots')
+    expect(all(w, 'leg-lots')).toHaveLength(2)
+  })
+  it('AC-5: on the page the reply quantity reaches the row; switching to Quantity shows it', async () => {
+    const w = await openReply({ ...READ, legs: READ.legs.map((l, i) => (i === 0 ? { ...l, lots: 3, quantity: 195 } : l)) })
+    await t(w, 'lots-quantity-switch').setValue('quantity')
+    expect(t(w, 'leg-edit-row-0').find('[data-testid="leg-quantity"]').text()).toBe('195')
+  })
+  it('ADR-092: a reply leg carrying block shows the reason on that leg only', async () => {
+    const reason = 'Quantity 1950 is above the freeze limit 1800.'
+    const w = await openReply({ ...READ, legs: READ.legs.map((l, i) => (i === 1 ? { ...l, block: reason } : l)) })
+    expect(all(w, 'leg-block')).toHaveLength(1)
+    expect(t(w, 'leg-edit-row-1').find('[data-testid="leg-block"]').text()).toBe(reason)
+    expect(t(w, 'leg-edit-row-0').find('[data-testid="leg-block"]').exists()).toBe(false)
+  })
+  it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> empty form, Add adds nothing of A', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624,
+      instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }] }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    const A = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13',
+      instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'BUY', lots: 2, planned_entry: '100.00', captured_at: 'x', reason_code: null }
+    w.findComponent({ name: 'LegPicker' }).vm.$emit('update:legs', [A])
+    await flushPromises()
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'pick-strike').element.value).toBe('22800.00')
+    await t(w, 'leg-remove').trigger('click')
+    await flushPromises()
+    expect(all(w, 'leg-edit-row-0')).toHaveLength(0)
+    expect(w.find('h2').text()).not.toBe('Edit leg')
+    expect([t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value, t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['', '', 'SELL', '1'])
+    const add = t(w, 'add-leg')
+    if (add.exists() && !add.element.disabled) await add.trigger('click')
+    await flushPromises()
+    expect(w.findComponent({ name: 'LegPicker' }).props('legs')).toHaveLength(0)
+  })
+})
