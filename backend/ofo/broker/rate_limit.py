@@ -15,7 +15,8 @@ limiter, so one quote through urllib and one through httpx share one bucket.
   a long background burst.
 - AC-4 / F-60: a 429 starts a cooldown for that group of the wait Kite states (``stated_wait``: a ``Retry-After``
   header in plain seconds up to ``MAX_STATED_WAIT_SECONDS``, a larger or unreadable one clamped to it and logged; no
-  header: Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of 10s that must be respected"); nothing is booked or sent into it (a request already waiting re-books after it), so the sliding window
+  header: Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of 10s that must be respected"); nothing is
+  booked or sent into it (a request already waiting re-books after it), so the sliding window
   is never extended. A read is retried after it, at most ``MAX_READ_RETRIES`` times, and only while the retry starts
   inside the call's ONE wait limit (``DoorCall``: the 5 s or 30 s is the whole call's, fixed at its first send, so AC-3
   and AC-4 hold together); a call that creates something is never retried (AC-5).
