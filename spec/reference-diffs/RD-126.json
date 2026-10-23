@@ -1,0 +1,16 @@
+{
+  "id": "RD-126",
+  "kind": "NO-SCREEN",
+  "title": "Sticky left columns on a horizontally scrolling table (study gap)",
+  "reference_behaviour": "Not captured: the study notes the tables as rows of legs or targets and never records horizontal scrolling or frozen columns (searched sticky, scroll, freeze, horizontal).",
+  "reference_screens": [],
+  "ours": "REQ-035 AC-3 keeps the left-hand columns sticky while the table scrolls sideways. Owner to capture the reference table at a narrow width.",
+  "req": "REQ-035",
+  "ac": "AC-3",
+  "row": 18,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

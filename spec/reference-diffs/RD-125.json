@@ -1,0 +1,19 @@
+{
+  "id": "RD-125",
+  "kind": "COPY",
+  "title": "Table columns do not depend on a UX level (G-18-2)",
+  "reference_behaviour": "The Greeks tab and the strikewise IV panel are available to every user; no column is hidden by a level and no beginner caption replaces the headings.",
+  "reference_screens": [
+    "screen 014",
+    "screen 015",
+    "screen 013"
+  ],
+  "ours": "REQ-035 AC-7 hides IV and Greek columns at Guided and adds % return and breakevens by level; the API sends a visible flag per level. ADR-168 (4)(5) already approves removing levels; the AC is rewritten at row 17.",
+  "req": "REQ-035",
+  "ac": "AC-7",
+  "row": 18,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

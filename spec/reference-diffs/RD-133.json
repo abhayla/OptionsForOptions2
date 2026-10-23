@@ -1,0 +1,17 @@
+{
+  "id": "RD-133",
+  "kind": "COPY",
+  "title": "Depth popup extras of ours: 5 levels, last trade time, read time (G-19-5)",
+  "reference_behaviour": "The leg popup shows open, high, low, close and one best bid and offer; five levels of depth appear in the basket sheet, not in the builder popup.",
+  "reference_screens": [
+    "screen 024"
+  ],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-080 AC-7 asks 5 bid/ask levels, last trade time, depth read time and a 1 s refresh in the builder popup; copying drops them. For the owner's batch.",
+  "req": "REQ-080",
+  "ac": "AC-7",
+  "row": 19,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

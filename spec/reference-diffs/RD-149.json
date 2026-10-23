@@ -1,0 +1,17 @@
+{
+  "id": "RD-149",
+  "kind": "COPY",
+  "title": "Moved-price marker text with times and both prices is an extra of ours (G-21-5)",
+  "reference_behaviour": "The marker is a corner dot with one help line; it does not state the saved time, planned price or current price.",
+  "reference_screens": [
+    "screen 210"
+  ],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-077 AC-6 text 'Price has moved since <time>: planned 44.90, now 47.15'; copying drops the figures. For the owner's batch.",
+  "req": "REQ-077",
+  "ac": "AC-6",
+  "row": 21,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

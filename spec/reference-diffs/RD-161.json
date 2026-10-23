@@ -1,0 +1,16 @@
+{
+  "id": "RD-161",
+  "kind": "NO-SCREEN",
+  "title": "Execute refused on a stale plan version (study gap)",
+  "reference_behaviour": "Not covered: the study never went past the order review (needs an order).",
+  "reference_screens": [],
+  "ours": "REQ-119 AC-5 refuses Execute whose version is not the saved one: Your plan changed - review it again.",
+  "req": "REQ-119",
+  "ac": "AC-5",
+  "row": 23,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

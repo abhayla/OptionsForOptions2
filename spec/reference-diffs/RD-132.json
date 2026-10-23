@@ -1,0 +1,17 @@
+{
+  "id": "RD-132",
+  "kind": "COPY",
+  "title": "A depth icon on each leg opens a popup (G-19-4)",
+  "reference_behaviour": "Each leg row has a depth icon that opens a popup with open, high, low, close and the best bid and offer with quantities.",
+  "reference_screens": [
+    "screen 024"
+  ],
+  "ours": "REQ-080 AC-7 depth popup per leg is not built; leg rows have no depth icon.",
+  "req": "REQ-080",
+  "ac": "AC-7",
+  "row": 19,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

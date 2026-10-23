@@ -1,0 +1,18 @@
+{
+  "id": "RD-138",
+  "kind": "MATCH",
+  "title": "Buy and Sell in the picker choose the leg's side only",
+  "reference_behaviour": "Buy and Sell on a strike choose the leg's side; the picker places no order.",
+  "reference_screens": [
+    "screen 032",
+    "screen 035"
+  ],
+  "ours": "The picker's BUY/SELL chooses the leg's side and places nothing (ADR-002).",
+  "req": "REQ-080",
+  "ac": "AC-3",
+  "row": 19,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

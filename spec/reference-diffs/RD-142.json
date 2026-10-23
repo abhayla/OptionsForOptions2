@@ -1,0 +1,18 @@
+{
+  "id": "RD-142",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Execute refused while a leg is unticked",
+  "reference_behaviour": "With a leg unticked the main button becomes Trade 3 and sends only the ticked legs, leaving an unhedged position.",
+  "reference_screens": [
+    "screen 111"
+  ],
+  "ours": "REQ-076 AC-7 refuses Execute while any leg is unticked; the whole strategy goes as one plan (ADR-163). Stricter on order safety, exception (a).",
+  "req": "REQ-076",
+  "ac": "AC-7",
+  "row": 20,
+  "adr": "ADR-163",
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

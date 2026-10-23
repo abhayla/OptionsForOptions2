@@ -1,0 +1,16 @@
+{
+  "id": "RD-144",
+  "kind": "NO-SCREEN",
+  "title": "A leg above the freeze limit (study gap)",
+  "reference_behaviour": "Not captured: the study never raised a leg above the exchange freeze limit in the builder (searched freeze, slice, limit).",
+  "reference_screens": [],
+  "ours": "REQ-076 AC-5 shows the ADR-092 block reason on that leg and never splits it. Owner to capture a large lot count.",
+  "req": "REQ-076",
+  "ac": "AC-5",
+  "row": 20,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

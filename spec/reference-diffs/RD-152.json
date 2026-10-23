@@ -1,0 +1,16 @@
+{
+  "id": "RD-152",
+  "kind": "NO-SCREEN",
+  "title": "Typed prices with no live data (study gap)",
+  "reference_behaviour": "Not covered: after-hours and no-feed behaviour were not studied.",
+  "reference_screens": [],
+  "ours": "REQ-077 AC-9 shows At Expiry numbers labelled From your prices - no live data. Owner to capture the builder with the feed off.",
+  "req": "REQ-077",
+  "ac": "AC-9",
+  "row": 21,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

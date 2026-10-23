@@ -1,0 +1,17 @@
+{
+  "id": "RD-148",
+  "kind": "COPY",
+  "title": "Marker when a leg's live price moved from its entry (G-21-4)",
+  "reference_behaviour": "A small marker on a price with the tooltip Prices have changed: entry prices are frozen when a strategy is loaded and the marker shows the live price has moved.",
+  "reference_screens": [
+    "screen 210"
+  ],
+  "ours": "REQ-077 AC-6 marker on a live leg is not built.",
+  "req": "REQ-077",
+  "ac": "AC-6",
+  "row": 21,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

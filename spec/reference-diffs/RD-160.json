@@ -1,0 +1,16 @@
+{
+  "id": "RD-160",
+  "kind": "NO-SCREEN",
+  "title": "Numbers marked updating while a reply is pending (study gap)",
+  "reference_behaviour": "Not recorded: no screen shows the figures during a pending request (searched updating, loading, spinner).",
+  "reference_screens": [],
+  "ours": "REQ-119 AC-4 marks the numbers updating and keeps Execute disabled until the latest reply. Owner to capture a slow reply.",
+  "req": "REQ-119",
+  "ac": "AC-4",
+  "row": 23,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

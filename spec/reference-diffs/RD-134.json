@@ -1,0 +1,18 @@
+{
+  "id": "RD-134",
+  "kind": "COPY",
+  "title": "Futures prices per expiry with synthetic futures (G-19-6)",
+  "reference_behaviour": "The Futures tab and the info panel list real and synthetic futures for each expiry with their prices, with buy and sell on each.",
+  "reference_screens": [
+    "screen 031",
+    "screen 034"
+  ],
+  "ours": "REQ-080 AC-6 (every futures LTP and the forward used for each option expiry) is not built; the picker only offers FUT as a contract type.",
+  "req": "REQ-080",
+  "ac": "AC-6",
+  "row": 19,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

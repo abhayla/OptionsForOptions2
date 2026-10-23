@@ -1,0 +1,16 @@
+{
+  "id": "RD-155",
+  "kind": "NO-SCREEN",
+  "title": "Live level and 0-P&L levels inserted as extra scenario rows (study gap)",
+  "reference_behaviour": "Not recorded: the Payoff Table highlights the current price row; the study does not say whether breakeven levels are inserted as rows.",
+  "reference_screens": [],
+  "ours": "REQ-034 AC-5 inserts the live level and the 0-P&L levels at their price positions. Owner to capture a table with a breakeven between two rows.",
+  "req": "REQ-034",
+  "ac": "AC-5",
+  "row": 22,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

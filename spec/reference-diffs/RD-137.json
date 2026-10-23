@@ -1,0 +1,16 @@
+{
+  "id": "RD-137",
+  "kind": "NO-SCREEN",
+  "title": "The picker with no live data (study gap)",
+  "reference_behaviour": "Not captured: the study ran with live data only, so the picker with no prices is unknown.",
+  "reference_screens": [],
+  "ours": "REQ-080 AC-5: strikes list with a dash in each price cell and the reason above. Owner to capture the picker with the feed off.",
+  "req": "REQ-080",
+  "ac": "AC-5",
+  "row": 19,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

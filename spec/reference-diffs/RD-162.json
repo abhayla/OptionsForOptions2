@@ -1,0 +1,16 @@
+{
+  "id": "RD-162",
+  "kind": "NO-SCREEN",
+  "title": "Screen after a live-connection drop until the first tick (code evidence only)",
+  "reference_behaviour": "Read in code, not seen: the live socket checks silence every 15 s, reconnects after 60 s without data, backs off up to 30 s with jitter. No screen of the waiting state was captured.",
+  "reference_screens": [],
+  "ours": "REQ-133 AC-3 shows Waiting for the first live price after a reconnect, DATA_UNHEALTHY only after the health window. Owner to capture a Wi-Fi drop.",
+  "req": "REQ-133",
+  "ac": "AC-3",
+  "row": 24,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

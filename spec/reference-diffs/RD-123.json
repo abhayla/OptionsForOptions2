@@ -1,0 +1,20 @@
+{
+  "id": "RD-123",
+  "kind": "COPY",
+  "title": "Strategy view tabs follow the reference chart tabs (G-17-2)",
+  "reference_behaviour": "Under the leg list and the always-visible summary strip, the chart area has four tabs: Payoff Graph, P&L Table, Greeks and Strategy Chart. Nothing is hidden behind a level.",
+  "reference_screens": [
+    "screen 012",
+    "screen 014",
+    "screen 015",
+    "screen 016"
+  ],
+  "ours": "REQ-007 AC-2 names eight drill-down tabs (Overview, P&L, Risk, Payoff, Legs, Greeks, Conditions, Orders) and AC-3 an Advanced-only terminal view. Rewrite at row 17 to the reference tab set; Strategy Chart is REQ-091.",
+  "req": "REQ-007",
+  "ac": "AC-2",
+  "row": 17,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}
