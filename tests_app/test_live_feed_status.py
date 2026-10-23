@@ -370,6 +370,20 @@ async def test_a_market_closed_reply_with_no_price_ever_has_no_time_text(market,
     assert out.live_market_data.fix == "live_feed_market_closed" and out.live_market_closed is None
 
 
+@pytest.mark.parametrize(("at", "fix"), [(SATURDAY_10, "live_feed_market_closed"),
+                                         (WEDNESDAY_10, "live_feed_not_running")])
+async def test_a_stopped_socket_reads_by_the_route_clock_calendar(market, provider, clock, at, fix):
+    """AC-7: with no running socket (no phase) the ROUTE's own clock and the calendar decide: Saturday reads market
+    closed, an open Wednesday still names the not-running fix."""
+    market._task.cancel()
+    await asyncio.gather(market._task, return_exceptions=True)
+    market.state = live_market.LIVE
+    clock.now = at
+    assert live_market.feed_phase() is None
+    out = await broker_status(_Db(), "owner", clock)
+    assert out.live_market_data.fix == fix
+
+
 async def test_a_session_end_on_a_closed_day_still_says_log_in_again(market, provider, clock):
     """Closed in every phase EXCEPT ENDED: a genuine 403 on Saturday is still a session to renew."""
     _backing_off_at(provider, clock, SATURDAY_10)
