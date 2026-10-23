@@ -1,6 +1,66 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 3 END, 2026-10-23 ~14:4x IST - START HERE (newest): implement ADR-178, then rows 11-16
+## UPDATE session 4 END (7a0c81e3), 2026-10-23 - START HERE (newest)
+Handed over at the context limit (measure_process: avg 226k/turn), with 0 rows closed. "Session-4 scratchpad" below =
+`C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\7a0c81e3-1fa0-4c0c-ab2b-6ae5a07ae075\scratchpad`.
+Rows 15-16 start-check results: `builder-sequence-briefs/results-rows-15-16.md`. Chunk head f23f0818 is pushed,
+and draft PR #525 CI is running on it.
+- **DONE:**
+  - Draft chunk PR #525 opened (step 1).
+  - Row 11 round 2 PASS: 5/5 checks, 3 mutants killed (`verify-row-11-r2.md`). Combined evidence JSON for AC-1..AC-8
+    is written but not recorded: session-4 scratchpad `ev-W-139.json` (round 1 was extracted from session b9b5cb32's
+    agent output, `r11-round1.json`).
+  - Row 12 round 2 PASS, with one MINOR: the `except SpotRefused` safety net was removed (`verify-row-12-r2.md`
+    result in this block).
+  - CI fix 1 (5d5534d0) and CI fix 2 (6097acf8): row 11's 14 database failures, the asyncpg collection error, the
+    bundle self-test, the template pin, Windows-only brief paths (new helper `scripts/hooks/brief_path.py`), the
+    bus-socket race and the e2e reconnect text.
+  - Copy part A: RD-010, RD-012, RD-045 and RD-048 built (REQ-015 AC-10/AC-11), all set to `built`, no check yet.
+  - Row 16 (REQ-038) built: migration 0022 `strategy_versions`, store/route/return path, `POST
+    /strategies/{id}/versions/{n}/confirm`. Its attack-6 test fixes (b5855c17) have NOT run on a database yet.
+  - Process: `make_brief.py` and `row_actuals.py` (f441b87d). Not reviewed; the actuals token column is unproven on
+    real transcripts.
+  - Kit harvest issue #162 (guard false positives) filed. Stray worktree removed (step 8).
+  - Findings bumped: `verified-on-a-module-the-product-does-not-call` (REQ-038 reset from Verified to Approved),
+    `verifier-guard-watches-every-worktree` (5th), and `domain-test-imports-app-package` (now unguarded).
+- **NEXT, in order:**
+  1. Read CI on f23f0818: `gh pr checks 525`, and for a red job `gh run view <id> --log-failed`, tail only. Red
+     means CI fix 3, findings only.
+  2. With NO builder writing (the verifier write guard blocks every worktree), dispatch three checks:
+     - Row 16: Opus, full check (Tier A migration). Mutants are ready in the session-4 scratchpad `row16\mutants.json`.
+     - CI fixes 1+2: Opus, findings only, 15/20 (`kite_ws.py`, `scripts/hooks/brief_path.py`).
+     - Process tools: Sonnet, 15/20.
+  3. Close rows 11 → 12 → 13 in order, once CI is green:
+     - Record evidence with `record_evidence.py`, then add the `requirement` and `ac_fp` lines (scratch
+       `close_rows.py` shows how; it handles rows 13-14 from `results-rows-12-14.md`).
+     - Set W-139/W-140/W-141 to `in_review`.
+     - File ONE chunk deferred issue for all MINORs: row 11's two time formats for one banner, its stale comment
+       at `feed_health.py:42` and the hyphenated `access-token`; row 12's `SpotRefused` net and its untested
+       missing-leg + missing-index case; rows 13-14's surviving mutants `shared_greeks_key_iv` and
+       `days_in_year_guard`; row 15's M7/M9; and the brief-path fail-open on a missing file.
+     - Three rows closed means hand over.
+  4. Row 15: one Sonnet check of REQ-028 AC-2 (not checked; the other 4 ACs pass, results in this block's session
+     transcript, summary: AC-1/3/4/5 pass).
+  5. Copy part B, after row 11 closes: RD-013 (profile margin as read), RD-014, RD-025, RD-039, RD-046, RD-047,
+     RD-057, RD-058, RD-063, RD-068, plus RD-090/095 after row 15 closes. Several already match after row 11
+     (RD-046 calendar, RD-068 wording, RD-039/047 the 60 s silence): verify and mark `built` with file:line.
+     Then ONE check of all 16 COPY records.
+  6. Before release, compliance: the Connect Zerodha panel text (`frontend/src/lib/connectHelp.js`, the
+     no-extra-charges line is the builder's own wording) gets the ADR-175 NSE ad-code check against GLOBAL.md's
+     compliance text. This is a business item for the owner at the release brief.
+  7. Row 16 known limit: the Execute route will not build an adjustment plan while units are held, so a proposed
+     version cannot reach `active` in the live app yet. The adjustments row must close this.
+  8. The 12 NO-SCREEN records of rows 1-16 are decided per record before chunk 1 closes. The 7 SPEC CHANGE records
+     wait for Q282.
+- **Worktrees** (wt-new meta, TTL 48h): `-ci-fix`, `-chunk1-copy`, `-row-16`, `-process` (all merged into the
+  chunk branch; remove with `wt-rm.ps1` once their checks pass), `-builder-next` and `-builder-next-12` (rows 11/12,
+  merged or superseded; remove after the rows close).
+- **Process lessons this session:** the verifier write guard froze two builders for about 25 minutes, so run checks
+  only when no builder needs to commit. Kit tools (`tools/*.py`) are blocked in a linked worktree outside the main
+  folder (kit #113), so rely on CI for factory_lint/trace_check. Commit messages naming a guarded word go through
+  a message file.
+
+## UPDATE session 3 END, 2026-10-23 ~14:4x IST (older): implement ADR-178, then rows 11-16
 - **Process audit done** (independent, Fable): `docs/process/process-audit-2026-10-23.md`. Owner approved its three
   loosenings (ADR-178, Q283); its technical changes are the orchestrator's (ADR-178 lists them). Read ADR-178 FIRST -
   it overrides the per-row rules of the goal contract, row-review.md and ADR-176 (2) where they differ.
