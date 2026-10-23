@@ -143,9 +143,30 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
 | 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | 3 (measure, build, verify r1) | 52 agent min; ~62 wall-clock (16:40-17:42) | ~368k | 1 | time -31% (faster), tokens -18% (within 20%): see the row 7 log |
 | 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | 6 (build, design review, fix 1, verify r1, fix 2, verify r2) + 2 process (row 9 measure, row 9 design review) | ~219 wall-clock (17:20-20:59, two sessions); session-2 agents 60 min (fix 2 30.0, verify r2 30.2); session-1 agents unmeasured (notices lost at the handover) | session 2: 375k (fix 2 169k, verify r2 206k); session 1 unmeasured | 2 (PARKED #519) | time +143%, tokens over (at least the 375k measured plus 4 unmeasured agents): see the row 8 log |
+| 10 | 90 / 420k (in the brief, before dispatch) | 6 (build, finish, finish 2, verify r1, fix 1, verify r2) + 2 process | ~180 wall-clock (~09:07-~12:10); ~172 agent min | ~1,256k | 2 (r1 PARTIAL, r2 PASS) | time +100%, tokens +199%: see the row 10 log |
 | 9 | ~330 min / ~1,400k for 4 parts (A0 90 / 350k set 20:20 IST before dispatch; A1, B, C each ~90 / 350k in their briefs) | 15 (measure, design review, A0 build, A0 v1, A0 fix, A0 v2, A1 build, C build, A1+C verify, cap research, C fix, B build, B finish, B finish 2, final verify) + 3 process (row-10 measure, row-10 research, row-ahead review) | 718 wall-clock (21:01 row 8 close commit - 08:59 close commit 9dcd471c; 759 from the 20:20 brief), of which ~460 idle on the owner question box (23:35-07:15); 258-299 working | ~2,745k | 4 (A0 r1, A0 r2, A1+C, final) | working time -22% to -9% (start-point dependent; corrected by the meta review); tokens +96%: see the row 9 log |
 
 ## Log (newest first)
+
+### Row 10 - REQ-118 Zerodha rate limits for read calls (closed 2026-10-23 ~12:10 IST, Done, #521 deferred, MINORs #522)
+- Expected ~90 min / ~420k (in the brief). Actual: ~180 min wall-clock (build dispatched ~09:07 after 83707b70 at 09:06;
+  last code commit 962ab74c at 11:42; close ~12:10) = +100%. Agents (minutes / tokens / calls): build 33.7 / 272k / 78;
+  finish 10.6 / 186k / 61; finish 2 17.8 / 217k / 86 (budget 80); verify r1 28.2 / 199k / 45; fix 1 64.2 / 195k / 75
+  (budget 60 min); verify r2 17.2 / 187k / 58. Sum ~172 min, ~1,256k tokens (+199%). Process agents (separate): row-10
+  measure 98k, row-10 research 103k. Resumes: 0. Notes to running agents: 1 (the finisher, about the 09:47 kill).
+- Why +100% / +199%: (1) builder-unfinished again - two finishers before the first verify (unproven write-retry guard,
+  lint rises on 8 rules, busy text not on routes, the R13 run unfinished); the brief did not require `mutation_gate.py`
+  (my miss - check_brief now refuses that); (2) the 09:47 name-kill by a process agent destroyed the finisher's R13 run
+  (finding process-kill-by-name-hits-others); (3) three R13 DB runs of ~20 min each over the tunnel; (4) CI reds from
+  the row's own process-wide limiter leaking a 429 cooldown across tests, plus 10 failures from ROW 9's one-read change
+  that row 9's final verifier never ran (`test_broker_token_store.py`, the dependent-tests class again); (5) my wrong
+  assumption that the busy wording needed the owner (REQ-118 AC-3 gives it verbatim).
+- Right: verify r2 PASS with no CRITICAL/MAJOR; every round-1 finding fixed in code; the gate killed M8/M9/M9b and u8b;
+  the busy text reaches users; AC-6 split honestly (counting + one alert built, the real sender #521 needs an egress door).
+- Wrong also: `tests/orchestrator` (the selector test) had been red since row 1 and no guard line ran it.
+- Changed (applied): check_brief refuses a builder brief without `mutation_gate.py`; R6 runs `tests/orchestrator` at
+  every row close; the kill-by-name hook built, Tier A checked twice, installed at user level (the owner wires it,
+  Q276); overlap_gate.py takes the planned-files list (it would have said OK for row 11a).
 
 ### Meta review after row 9 (2026-10-23 ~09:00 IST, applied in 335485c7 at 09:03, fresh Sonnet agent, 1.0 min / 121k / 5 calls)
 - Found: waste is NOT shrinking in tokens (rows 4-9: +93%, +124%, +74%, -18%, over, +96%; only row 7 won); time is
