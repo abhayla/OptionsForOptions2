@@ -2,7 +2,7 @@
 
 # Findings index
 
-97 finding(s), generated from `knowledge/findings/*.json`.
+98 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -80,6 +80,7 @@
 | request-clock-for-database-stamped-fact | A route writes, or compares against, a fact the DATABASE clock stamps (a grant's granted_at, an instrument load's last_seen_at, an audit event's time) using the request's own clock instead of the database's. In production the two agree, so the defect is invisible; whenever the request clock is pinned, replayed or skewed it refuses valid facts (a fresh grant reads 'not yet active', a fresh load reads 'stale') or the database refuses the write (ADR-023: more than 60 s off its clock). | guarded | occurrences, scope, spec_ref |
 | research-finding-held-in-chat | Any research finding proven during a session but reported only in chat (or held back until a decision) is lost to the next reader and lets work proceed on assumptions the finding contradicts; findings must be written to the spec findings list, the spec sections they bear on and (for failure classes) the registry in the same turn they are proven, before any decision or implementation. | unguarded | scope, spec_ref |
 | resolution-on-stale-broker-copy | Any manual resolution or state change whose premise (what the broker holds) is read from a stored copy rather than from the latest reconciliation, or any multi-strategy recording that mutates some records before validating all of them, lets the platform act on a broker picture that is no longer true or leave a half-recorded run. | guarded | occurrences, scope, spec_ref |
+| row-ahead-dispatched-without-overlap-gate | A builder for a younger row is dispatched into its own worktree without running the binding overlap gate (ADR-171 rule 3) against every older open row, so two rows in flight edit the same file and the older row's fix round collides with the younger row's work. | unguarded | occurrences, scope, spec_ref |
 | sealed-object-mutable-after-seal | A guard that checks an object when it is BUILT (a seal, a mint token, a type check at construction) but not when it is USED lets any holder change the object in between; every check on the build path passes while the used object carries something the guard never saw. Checking 'is it the sealed type' at the use site has the same hole. Fixing one mutable part (the body) and not its siblings (header names but not values, status) leaves the same class open. | unguarded | occurrences, scope, spec_ref |
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | occurrences, scope, spec_ref |
 | setting-read-from-two-sources | A setting that the settings loader reads from several sources (process environment, a .env file, defaults) but that some code reads directly from one source (os.environ) with its own default gives two answers for the same deployment. A safety switch read that way fails OPEN whenever the value lives only in the other source or is unset and the local default is the permissive one. | unguarded | occurrences, scope, spec_ref |
