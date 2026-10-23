@@ -360,13 +360,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
 
-      # finding ci-apt-mirror-stall: twice on 2026-10-23 (runs 39950471622, 39953102150) one stalled Ubuntu mirror
-      # download ("Ign:" then a re-fetch) used the whole 12-minute step. Short per-request timeouts with retries make a
-      # stalled fetch fail over in seconds instead.
-      - name: apt fails over fast on a stalled mirror
+      # finding ci-apt-mirror-stall: three times on 2026-10-23 the runner's mirror list (mirror+file:, the Azure mirror
+      # first for EVERY file) stalled `playwright install-deps` past its 12-minute cap. Short timeouts (fix 1) did not
+      # help: the timeout counts only silence and failover is per file. The independent review's fix: apt reads the
+      # Ubuntu archive directly, so no file waits on the Azure mirror.
+      - name: apt reads the Ubuntu archive directly (no mirror list)
         run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
-            | sudo tee /etc/apt/apt.conf.d/80-fast-failover >/dev/null
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i -E \
+              -e 's#mirror\+file:/etc/apt/apt-mirrors\.txt#http://archive.ubuntu.com/ubuntu/#g' \
+              -e 's#https?://azure\.archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$f"
+          done
+          ! grep -rqsE 'mirror\+file|azure\.archive' /etc/apt/sources.list /etc/apt/sources.list.d/
 
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'
@@ -559,13 +564,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
 
-      # finding ci-apt-mirror-stall: twice on 2026-10-23 (runs 39950471622, 39953102150) one stalled Ubuntu mirror
-      # download ("Ign:" then a re-fetch) used the whole 12-minute step. Short per-request timeouts with retries make a
-      # stalled fetch fail over in seconds instead.
-      - name: apt fails over fast on a stalled mirror
+      # finding ci-apt-mirror-stall: three times on 2026-10-23 the runner's mirror list (mirror+file:, the Azure mirror
+      # first for EVERY file) stalled `playwright install-deps` past its 12-minute cap. Short timeouts (fix 1) did not
+      # help: the timeout counts only silence and failover is per file. The independent review's fix: apt reads the
+      # Ubuntu archive directly, so no file waits on the Azure mirror.
+      - name: apt reads the Ubuntu archive directly (no mirror list)
         run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
-            | sudo tee /etc/apt/apt.conf.d/80-fast-failover >/dev/null
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i -E \
+              -e 's#mirror\+file:/etc/apt/apt-mirrors\.txt#http://archive.ubuntu.com/ubuntu/#g' \
+              -e 's#https?://azure\.archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$f"
+          done
+          ! grep -rqsE 'mirror\+file|azure\.archive' /etc/apt/sources.list /etc/apt/sources.list.d/
 
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'

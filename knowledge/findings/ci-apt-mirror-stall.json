@@ -8,11 +8,11 @@
   "where": "PR #525 app-tests frontend job, run 39950471622 (d99b2097), step 'Install Playwright system deps only (cache hit)'",
   "evidence": "log tail: Ign:7 / Ign:9 / Ign:13 on noble mirrors, then '##[error]The action ... has timed out after 12 minutes.'"
  },
- "fix": "A step before the Playwright installs writes /etc/apt/apt.conf.d/80-fast-failover (Acquire::Retries 5, http/https Timeout 20 s) in both jobs that install Playwright deps.",
+ "fix": "Fix 1 (3cb151da, short apt timeouts and retries) did NOT hold: the timeout counts only silence and the mirror method fails over per file, so every index file still waited on the Azure mirror first (run 39972212143: Ign on azure for InRelease and 6 Packages/Translation files, then the 12-minute timeout). Second occurrence -> independent review (Sonnet, fresh): the defect is the runner's `mirror+file:/etc/apt/apt-mirrors.txt` source list putting Azure first for every file. Fix 2: a step before the Playwright installs rewrites /etc/apt/sources.list.d/ubuntu.sources (and sources.list) to http://archive.ubuntu.com/ubuntu/ and fails if any mirror-list entry survives. The review's first choice (skip apt when `install-deps --dry-run` shows nothing missing) was not taken: the flag is unverified and output parsing adds a failure mode. Remaining risk: Canonical's archive itself slow.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Seen in the job log only. Guarded when a repo test asserts every job that runs `playwright install` has the failover step before it; not built (one-file CI change, ADR-178 process freeze)."
+  "status": "guarded",
+  "checks": ["tests/test_app_workflow_apt_direct.py"],
+  "note": "The repo test asserts every job with a `playwright install` step has an earlier sources-rewrite step that proves itself (`! grep`); red on the fix-1 workflow (flags frontend and execute-screen-e2e), green on fix 2. Not covered: whether the archive is reachable on a given run - the next CI run is the proof."
  },
  "spec_ref": [
   "spec/testing/core-invariants.md"
@@ -27,6 +27,11 @@
    "date": "2026-10-23",
    "where": "PR #525 run 39953102150 (11b950d8), execute-screen-e2e job",
    "evidence": "same step, same 12-minute timeout"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39972212143 (1a349d52), frontend job, AFTER fix 1",
+   "evidence": "Ign:2-5 azure InRelease twice, Hit:2 https://archive.ubuntu.com, then Ign:10-15 azure Packages/Translation, then timed out after 12 minutes"
   }
  ]
 }

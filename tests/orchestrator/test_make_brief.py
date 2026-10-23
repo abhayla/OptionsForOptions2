@@ -2,7 +2,7 @@
 
 The core test renders row 11's fix-1 brief (content of docs/process/builder-sequence-briefs/row-11-fix-1.md) from a
 measure JSON and runs the real check_brief.py on the output. REQ-114's open records are read from the real register
-(RD-039, RD-046, RD-047, RD-065, RD-066, RD-068); they are fixtures here, not work."""
+at test time; they are fixtures here, not work."""
 
 from __future__ import annotations
 
@@ -21,8 +21,12 @@ import make_brief as mb  # noqa: E402
 CHECK = REPO / "scripts" / "orchestrator" / "check_brief.py"
 MAKE = REPO / "scripts" / "orchestrator" / "make_brief.py"
 S_MAX = 5
-OPEN_REQ_114 = ["RD-039", "RD-046", "RD-047", "RD-065", "RD-066", "RD-068"]
-WAITING = ["RD-065", "RD-066"]
+# REQ-114's open records are read from the real register at test time, never typed: a record that is built or verified
+# leaves the list (2026-10-23: RD-039/046/047/068 were verified and a hard-coded list of six turned CI red). The test
+# still proves every open record is listed and each spec_change one reads "waiting for the owner".
+_REG = mb._reg()
+OPEN_REQ_114 = list(_REG.open_records(REPO, ["REQ-114"]))
+WAITING = [r for r in OPEN_REQ_114 if _REG.load_records(REPO)[r].get("spec_change") is True]
 SAFE = "backend/ofo_app/live_market.py"
 NON_SAFETY = ["frontend/src/lib/sharedStateText.js"]
 SPEC_BASIS = (
@@ -127,8 +131,9 @@ def test_size_bands_come_from_the_file_count(measure, count, line):
     assert expected in text
 
 
-def test_reference_line_lists_six_open_records_with_screens_and_waiting(measure):
-    """Attack 3: REQ-114 -> all six open records with their screens; RD-065 and RD-066 waiting for the owner."""
+def test_reference_line_lists_every_open_record_with_screens_and_waiting(measure):
+    """Attack 3: REQ-114 -> every open record with its screens; each spec_change record waiting for the owner."""
+    assert OPEN_REQ_114, "REQ-114 has no open record left: point this test at a requirement that still has one"
     ref = next(x for x in mb.render(measure, "build", REPO).splitlines() if x.startswith("Reference:"))
     assert [r for r in OPEN_REQ_114 if r not in ref] == []
     assert "catalogue 012" in ref  # RD-065's screen

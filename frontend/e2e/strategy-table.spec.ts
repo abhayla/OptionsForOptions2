@@ -6,6 +6,7 @@
 // PREVIEW_DOWN_URL one on a closed port.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { healthSentence } from '../src/lib/dataHealthText.js'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
@@ -151,7 +152,8 @@ test('AC-5: Bid and Ask are in Advanced Details at Advanced only, with the API v
     const row = page.locator(`[data-testid="advanced-details"] tr[data-leg="${r.instrument_id}"]`)
     await expect(row.getByTestId('adv-bid')).toHaveText(r.bid)
     await expect(row.getByTestId('adv-ask')).toHaveText(r.ask)
-    await expect(row.getByTestId('adv-health')).toHaveText(r.health)
+    // RD-045: the cell shows the one-sentence reading of the API's health word, never the bare word
+    await expect(row.getByTestId('adv-health')).toHaveText(healthSentence(r.health) ?? 'Available')
   }
   // the locked table columns are the same as at Standard (AC-2); bid/ask are not among them
   const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
