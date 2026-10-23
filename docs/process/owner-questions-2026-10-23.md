@@ -49,3 +49,28 @@
   3. **Show both** - IV from mid in figures, LTP-based IV in a tooltip; more to explain to beginners.
 - **Until answered:** the code stays as it is (mid with LTP fallback); rows 12-14 are not blocked (their criteria pass
   either way).
+
+## Q282 (written 14:00 IST by the clock; owner not writing for ~40 min, R17) - the SPEC CHANGE batch of ADR-176 (5): 13 places where ours differs and an approved requirement says so
+Business call: each item either changes a requirement you approved or, under "always copy", removes behaviour you approved.
+Spec basis: ADR-176 (5) (always copy; approved extras come to you as ONE batched list); ADR-152 exceptions (a) stricter
+safety, (b) legal/compliance, (c) money. Records in the reference-diffs folder of the spec (ids below). Answer per item,
+or "approve all recommendations".
+
+| # | Record (row) | The reference product | Ours today (approved) | Recommendation and why |
+|---|---|---|---|---|
+| 1 | RD-035 (5) | blocked strikes are simply left out of the picker | a refusal naming the impact + two other strikes, and "Currently unavailable on Zerodha" on the chain | COPY the picker behaviour (leave them out), KEEP the refusal only as the execution-time check - exception (a): a stale screen can still send a blocked strike |
+| 2 | RD-044 (27) | a Refresh prices button | REQ-135 AC-3: no manual refresh (prices are pushed) | COPY: add the button; costs little, users expect it |
+| 3 | RD-065 (11) | reconnect jitter up to 1 s | up to 50% of the wait (up to 15 s) | KEEP ours - exception (a): with per-user Zerodha sockets, a 1 s spread after an API restart sends every user's reconnect within ~1 s and risks Zerodha's 429 lock-out; no user sees the difference |
+| 4 | RD-066 (11) | back-off escalates by recent attempt count; 5 s retry while offline | plain doubling to 30 s | COPY: add the attempt tiers and the offline retry on top of our cap |
+| 5 | RD-077 (13) | max loss "Unlimited" on a sold put or bought future | the finite loss (about Rs 14.7 lakh on one NIFTY 22,800 PE; locked formulas) | KEEP ours - exception (c) money: an index cannot fall below zero, so "Unlimited" on a put is false; the locked formulas say finite |
+| 6 | RD-078 (13) | calendars/diagonals get model-valued max profit/loss, breakevens, POP, with a warning note | refused: no single maximum on mixed expiries (ADR-143) | COPY as a NEW requirement scheduled after the core rows (size L, engine work); until then ours stays |
+| 7 | RD-088 (36) | calendar on-expiry line drawn as a model curve | the chart says why it cannot draw it | COPY with item 6 (same feature) |
+| 8 | RD-096 (15) | only 16 shapes detected by name | any catalogue template that fits | KEEP ours - exception (a): reconciliation uses the same matcher (`matching.py`); narrowing it would let unknown shapes through unchecked |
+| 9 | RD-105 (31) | one blanket "odd strike multiples may not be liquid" note on every preset | warnings only on a measured condition | COPY, reworded as fact (no "avoid") per ADR-003 |
+| 10 | RD-107 (28) | no history or restore for saved strategies | activity history with restore (API built, no screen) | KEEP ours - exception (a): restore undoes a mistaken edit to a live strategy's plan; the API already exists |
+| 11 | RD-108 (29) | name up to 20 characters | up to 40 | COPY: 20 characters |
+| 12 | RD-110 (44) | share links anyone can open | only signed-in users can open (REQ-086 AC-3) | COPY: open links, still no account data and the sharer's name hidden - it is the reference product's growth path; exception (b) is met by carrying no account data |
+| 13 | RD-114 (16) | a save keeps legs and entry prices only | also capture times, rules, risk limits, preferences | KEEP ours - exception (a): monitoring runs against the saved rules and risk limits (the product's purpose, vision.md); dropping them breaks it |
+
+Until answered: rows whose open item is here are marked "Waiting on owner" for that item only and the run continues
+(row 5: #1; row 11: #3-4; row 13: #5-6; row 15: #8; row 16: #13; later rows: theirs).
