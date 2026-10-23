@@ -51,7 +51,8 @@ CARRIERS = frozenset({"bash", "sh", "zsh", "dash", "cmd", "powershell", "pwsh", 
 WRAPPERS = frozenset({"sudo", "env", "time", "nohup", "exec", "command", "call", "start", "xargs", "builtin", "timeout",
                       "nice", "setsid", "npx", "bunx", "watch"} | CARRIERS)
 KEYWORDS = frozenset({"do", "then", "else", "elif", "!", "if", "while", "until"})
-SELECTOR_BASES = frozenset({"get-process", "gps", "pgrep", "pidof", "tasklist"})
+SELECTOR_BASES = frozenset({"get-process", "gps", "pgrep", "pidof", "tasklist",
+                            "get-nettcpconnection", "get-netudpendpoint"})  # a port owner is a process selection
 READONLY_SINKS = frozenset({
     "select-object", "select", "where-object", "where", "?", "sort-object", "sort", "measure-object", "measure",
     "group-object", "group", "ft", "fl", "fw", "gm", "grep", "egrep", "fgrep", "rg", "findstr", "find",
@@ -68,7 +69,8 @@ SWITCH = re.compile(r"(?://|/|-)([A-Za-z]+)(?::(.*))?", re.S)
 PS_SWITCH = re.compile(r"-([A-Za-z]+)(?::(.*))?", re.S)
 ENC_FLAG = re.compile(r"-e(?:nc(?:odedcommand)?)?", re.I)
 METHOD_KILL = re.compile(r"-methodname\s+terminate", re.I)
-PROCESS_SOURCE = re.compile(r"get-process|\bgps\b|get-wmiobject|get-ciminstance|win32_process|getprocess", re.I)
+PROCESS_SOURCE = re.compile(r"get-process|\bgps\b|get-wmiobject|get-ciminstance|win32_process|getprocess|"
+                            r"get-nettcpconnection|get-netudpendpoint|owningprocess", re.I)  # port owners too
 PS_FLAGS_NO_VALUE = frozenset({"force", "passthru", "whatif", "verbose", "confirm"})
 PS_FLAGS_VALUE = frozenset({"erroraction", "ea"})
 KILL_VALUE_FLAGS = frozenset({"-s", "-n", "-signal"})

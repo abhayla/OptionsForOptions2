@@ -266,3 +266,22 @@ def test_the_hook_is_wired_for_bash_and_powershell_and_skips_a_missing_script() 
     assert len(entries) == 1 and set(entries[0]["matcher"].split("|")) == {"Bash", "PowerShell"}
     command = next(h["command"] for h in entries[0]["hooks"] if "kill_by_name_guard.py" in h["command"])
     assert '[ -f "$f" ] || exit 0' in command
+
+
+PORT_OWNER_KILLS = [
+    "Get-NetTCPConnection -LocalPort 8000 | Select-Object -ExpandProperty OwningProcess"
+    " | ForEach-Object { Stop-Process -Id $_ }",
+    "$c = Get-NetTCPConnection -LocalPort 8000; Stop-Process -Id $c.OwningProcess -Force",
+]
+
+
+@pytest.mark.parametrize("command", PORT_OWNER_KILLS)
+def test_killing_whatever_holds_a_port_is_refused(command):
+    """Tier A round 2 (2026-10-23): killing a port's owner can kill the owner's live API (:8765) - refused like
+    `fuser -k` and `lsof | xargs kill`."""
+    assert kbn.decide("PowerShell", {"command": command}) is not None
+
+
+def test_listing_port_owners_without_stopping_them_is_allowed():
+    listing = "Get-NetTCPConnection -LocalPort 8765 | Select-Object OwningProcess"
+    assert kbn.decide("PowerShell", {"command": listing}) is None
