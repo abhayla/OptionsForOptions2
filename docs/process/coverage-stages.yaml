@@ -318,6 +318,7 @@ decisions:
   ADR-176: S6.7         # reference-product difference register and its gates; always copy (Q280)
   ADR-177: S6.7         # one market-closed wording everywhere (Q281)
   ADR-178: S6.7         # leaner builder sequence from the process audit (Q283)
+  ADR-179: 4a           # a user read after a Kite 429 is refused busy unless Kite states a wait that fits (REQ-118)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
