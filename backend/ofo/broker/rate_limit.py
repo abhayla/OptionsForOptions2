@@ -31,6 +31,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import threading
 import time
 from collections.abc import Iterator, Mapping
@@ -54,6 +55,8 @@ MAX_READ_RETRIES: Final = 2
 ALERT_THRESHOLD: Final = 3
 ALERT_WINDOW_SECONDS: Final = 60.0
 _USER_REF_CHARS: Final = 8
+#: ``identity`` names this when a request carries no api key (the public instrument-list download)
+NO_KEY: Final = "-"
 
 _BACKGROUND: Final = contextvars.ContextVar("ofo_kite_background", default=False)
 
@@ -146,7 +149,8 @@ class _Bucket:
 
 
 class RateLimiter:
-    def __init__(self, *, pacer: Pacer | None = None, notifier: Notifier | None = None) -> None:
+    def __init__(self, *, pacer: Pacer | None = None, notifier: Notifier | None = None, app_key: str = "") -> None:
+        self._app_key = app_key  # the app's one api key: a request that names none (the instrument file) is the app's
         self._pacer = pacer or RealPacer()
         self._notifier = notifier or LogNotifier()
         self._lock = threading.Lock()
@@ -160,6 +164,8 @@ class RateLimiter:
     def _bucket(self, group: str, key: str) -> _Bucket:
         if group not in GROUP_RATES:
             raise ValueError(f"unknown Kite endpoint group {group!r}")  # fail closed: nothing is sent
+        if key == NO_KEY and self._app_key:  # F-60: one bucket per group for the whole app, never a stray "-" bucket
+            key = self._app_key
         return self._buckets.setdefault((group, key), _Bucket())
 
     def _reserve(self, group: str, key: str, background: bool, deadline: float) -> float:
@@ -247,10 +253,15 @@ _installed: dict[str, RateLimiter | None] = {"limiter": None}  # a holder, not a
 _current_lock = threading.Lock()
 
 
+def process_limiter(environ: Mapping[str, str]) -> RateLimiter:
+    """The one limiter a process runs: the app's api key (``KITE_API_KEY``) is the bucket of keyless requests."""
+    return RateLimiter(app_key=environ.get("KITE_API_KEY", "").strip())
+
+
 def current() -> RateLimiter:
     with _current_lock:
         if _installed["limiter"] is None:
-            _installed["limiter"] = RateLimiter()
+            _installed["limiter"] = process_limiter(os.environ)
         return _installed["limiter"]
 
 
@@ -299,4 +310,4 @@ def identity(authorization: str | None, form: bytes | None) -> tuple[str, str]:
         fields = parse_qs(form.decode("utf-8", "replace")).get("api_key")
         if fields and fields[0]:
             return fields[0], "-"
-    return "-", "-"
+    return NO_KEY, "-"

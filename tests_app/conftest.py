@@ -37,6 +37,16 @@ if sys.platform == "win32":
 
 
 @pytest.fixture(autouse=True)
+def _fresh_kite_limiter():
+    """REQ-118: a 429 case starts a REAL 10 s cooldown in the process-wide limiter, and the next test's Kite call would
+    wait it out (6 ``test_kite_login`` tests went red that way). Each test gets its own fresh limiter; production keeps
+    ONE per process (``rate_limit.current``)."""
+    from ofo.broker import rate_limit  # noqa: PLC0415 - the KITE_* placeholders below are set after this module's top
+    with rate_limit.use(rate_limit.process_limiter(os.environ)):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _no_charge_rates_by_default(monkeypatch):
     """W-075: the outcome route and the live push load the charge rates in force from the database, cached in
     ``ofo_app.routes.outcome._rates_cache``. Tests that do not care get a cached "no rate set" (never a connection

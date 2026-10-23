@@ -7,6 +7,7 @@ not the body Kite sends with it.
 # ruff: noqa: PLR2004, S105  - test constants, a fake token, fixture tuples unpacked whole
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sys
@@ -246,3 +247,53 @@ def test_use_installs_one_process_wide_limiter_for_a_block() -> None:
         assert rl.current() is limiter
         rl.acquire(OTHER, KEY)
     assert rl.current() is before
+
+
+def test_a_keyless_request_uses_the_apps_bucket_for_its_group() -> None:
+    """AC-1 (F-60, one bucket per group for the whole app): the instrument download names no api key; it takes the
+    app's slot in 'other', not a stray '-' bucket that would double the app's call rate."""
+    pacer = FakePacer(auto=True)
+    limiter = rl.RateLimiter(pacer=pacer, app_key=KEY)
+    key, _ = rl.identity(None, None)
+    assert key == rl.NO_KEY
+    assert limiter._reserve(OTHER, KEY, False, 5.0) == 0.0
+    assert limiter._reserve(OTHER, key, False, 5.0) == pytest.approx(0.1)
+    assert limiter._reserve(OTHER, KEY, False, 5.0) == pytest.approx(0.2)
+    assert list(limiter._buckets) == [(OTHER, KEY)]
+    assert limiter._reserve(QUOTE, "otherkey", False, 5.0) == 0.0  # a key the app does not own keeps its own bucket
+
+
+def test_a_429_on_a_keyless_request_cools_the_apps_group() -> None:
+    """AC-4: the cooldown a keyless call starts binds the app's own calls in that group too."""
+    pacer = FakePacer(auto=True)
+    limiter = rl.RateLimiter(pacer=pacer, app_key=KEY)
+    limiter.note_429(OTHER, rl.NO_KEY, "-")
+    assert limiter.in_cooldown(OTHER, KEY) and limiter.in_cooldown(OTHER, rl.NO_KEY)
+
+
+def test_the_process_limiter_takes_the_apps_key_from_the_environment() -> None:
+    assert rl.process_limiter({"KITE_API_KEY": f" {KEY} "})._app_key == KEY
+    assert rl.process_limiter({})._app_key == ""
+
+
+def test_u8b_the_async_door_re_checks_for_a_cooldown_that_began_while_it_waited() -> None:
+    """AC-4: an async request holding a later slot wakes into a cooldown that a 429 started meanwhile: it re-books past
+    its 5 s and is refused (the sync twin is the 'waiting when a 429 arrives' door test); without the re-check after
+    the sleep it would be sent into the cooldown."""
+    pacer = FakePacer()
+    limiter = rl.RateLimiter(pacer=pacer)
+
+    async def scenario() -> None:
+        await limiter.aacquire(OTHER, KEY)  # slot t=0, no wait
+        waiter = asyncio.create_task(limiter.aacquire(OTHER, KEY))  # slot t=0.1
+        for _ in range(1000):  # the loop must run the waiter: a sync wait here would block it
+            if limiter._buckets[(OTHER, KEY)].booked:
+                break
+            await asyncio.sleep(0.001)
+        assert len(limiter._buckets[(OTHER, KEY)].booked) == 1, "the second request holds a later slot"
+        limiter.note_429(OTHER, KEY, "u1")
+        pacer.advance(0.1)
+        with pytest.raises(rl.KiteBusy):
+            await asyncio.wait_for(waiter, 5)
+
+    asyncio.run(scenario())

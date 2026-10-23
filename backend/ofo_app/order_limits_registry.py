@@ -102,6 +102,9 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
     "ofo.execution.sequence:MAX_BATCH_SIZE": "this product's sanity cap on a provider's answer, not a Zerodha limit",
     "ofo.execution.partial:MAX_ORDER_STATUSES": "this product's cap on order statuses read in one pass (orchestrator default OD-g)",  # noqa: E501
     "ofo.execution.sequence:MAX_SLICES_PER_LEG": "this product's cap on how many slices one leg is split into",
+    "ofo_app.kite_reads:BUSY_CODE": "this product's own error code for a read the limiter or Kite refused as busy, not a Zerodha rule",  # noqa: E501
+    "ofo.broker.rate_limit:NO_KEY": "the bucket name of a request that carries no api key (the public instrument-list download), not a Zerodha rule",  # noqa: E501
+    "ofo.execution.margin_gate:MARGIN_BUSY_CODE": "this product's own refusal code (the limiter refused the margin read at once), not a Zerodha rule",  # noqa: E501
     **_grouped({
         "an endpoint path, host or URL of Kite's published API; the call itself is allow-listed in ALLOWED_CALLS": (
             "ofo.broker.kite_auth:KITE_LOGIN_BASE", "ofo.broker.kite_endpoints:KITE_API_HOST",

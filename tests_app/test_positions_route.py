@@ -100,7 +100,9 @@ class _Transport:
             assert url.endswith("/orders"), url
             status, data = self.orders_status, self.orders
         if status != HTTPStatus.OK:
-            return status, json.dumps({"status": "error", "message": "x", "error_type": "TokenException"})
+            # Kite's own error type per status: a 429 is a NetworkException, never the TokenException of "log in again"
+            kind = "NetworkException" if status == HTTPStatus.TOO_MANY_REQUESTS else "TokenException"
+            return status, json.dumps({"status": "error", "message": "x", "error_type": kind})
         return 200, json.dumps({"status": "success", "data": data}, default=str)
 
 

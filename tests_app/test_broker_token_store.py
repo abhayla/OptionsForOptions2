@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import uuid
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -41,6 +42,7 @@ API_SECRET = "kite_fake_secret_value"  # noqa: S105
 FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest: every app in a run shares one origin
 REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"  # noqa: S105
 ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"  # noqa: S105
+EXPIRY = datetime(2026, 10, 23, 1, 0, tzinfo=UTC)  # the 5th column of the one-read session query (REQ-113 AC-8)
 CHECKSUM = hashlib.sha256((API_KEY + REQUEST_TOKEN + API_SECRET).encode()).hexdigest()
 SECRETS = (ACCESS_TOKEN, REQUEST_TOKEN, CHECKSUM)
 
@@ -154,7 +156,7 @@ def test_each_encryption_uses_a_fresh_nonce():
 async def test_access_token_for_decrypts_the_active_row():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, False))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, False, EXPIRY))
     assert await store.access_token_for(conn, "u-1", cipher) == ACCESS_TOKEN
 
 
@@ -165,10 +167,10 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
     rows = {
         "no_row": None,
-        "other_key": (7, _cipher().key_id, blob, False),
-        "copied_row": (8, cipher.key_id, blob, False),
-        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), False),
-        "no_ciphertext": (7, cipher.key_id, None, False),
+        "other_key": (7, _cipher().key_id, blob, False, EXPIRY),
+        "copied_row": (8, cipher.key_id, blob, False, EXPIRY),
+        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), False, EXPIRY),
+        "no_ciphertext": (7, cipher.key_id, None, False, EXPIRY),
     }
     assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher) is None
     assert all(ACCESS_TOKEN not in r.getMessage() for r in caplog.records)
@@ -177,7 +179,7 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
 async def test_a_kite_token_exception_marks_the_session_expired():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, False))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, False, EXPIRY))
     seen = []
 
     async def call(token):
@@ -198,7 +200,7 @@ async def test_a_kite_token_exception_marks_the_session_expired():
 async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, True))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, True, EXPIRY))
     assert await store.access_token_for(conn, "u-1", cipher) is None
     assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
     ((sql, params),) = [c for c in conn.calls if c[0].startswith("UPDATE")]
@@ -212,7 +214,7 @@ async def test_a_connection_already_in_a_transaction_is_refused_before_anything_
     """GC-6 MAJOR-1: the token end commits, so it would commit the caller's own earlier writes: refused up front."""
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, True))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, True, EXPIRY))
     conn.in_tx = True
 
     async def call(token):
@@ -258,7 +260,7 @@ async def test_one_token_read_never_holds_a_second_connection():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
     for past in (False, True):
-        engine = _CountingEngine((7, cipher.key_id, blob, past))
+        engine = _CountingEngine((7, cipher.key_id, blob, past, EXPIRY))
 
         async def one(engine=engine):
             async with engine.connect() as conn:
