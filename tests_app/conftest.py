@@ -151,4 +151,8 @@ def redis_url() -> Iterator[str]:
     stopper = threading.Thread(target=server.shutdown, daemon=True)  # shutdown() waits for the serve loop: bound it
     stopper.start()
     stopper.join(timeout=3)
-    server.server_close()
+    # server_close() joins every handler thread, so ONE client left open by a failed test hung the whole run for good
+    # (mutant M6, 420 s): bound it too, and let the daemon thread go (the process exits anyway).
+    closer = threading.Thread(target=server.server_close, daemon=True)
+    closer.start()
+    closer.join(timeout=3)

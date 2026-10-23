@@ -425,6 +425,71 @@ async def test_redis_refused_at_feed_start_keeps_the_process_up_and_starts_once_
 
 
 # ------------------------------------------------------------------------------------------------------------------
+# AC-9: a start or a stop that RAISES for one user, inside the reconcile step, never reaches another user
+# ------------------------------------------------------------------------------------------------------------------
+async def test_a_raising_start_for_one_user_leaves_the_other_users_socket_and_ticks_untouched(rig, monkeypatch, caplog):
+    """Attack 1: B runs; A's session appears and starting A's socket raises inside the reconcile step. B stays live on
+    its one connection, its ticks keep arriving, the feed task is still running, and only the class is logged."""
+    caplog.set_level(logging.INFO)
+    user_a, user_b = new_ref("ua"), new_ref("ub")  # "ua" sorts before "ub": A is reconciled first
+    await rig.kite(user_a)
+    kite_b = await rig.kite(user_b)
+    rig.store.set(user_b, "TOK-B-start")
+    rig.start()
+    await rig.until(lambda: rig.live(user_b), "user B live")
+    attempts: list[str] = []
+    real_start = feed_main._start
+
+    def start(session, user_ref, *args):
+        if user_ref == user_a:
+            attempts.append(user_ref)
+            raise RuntimeError("start failed for A: postgresql://secret@host")
+        return real_start(session, user_ref, *args)
+
+    monkeypatch.setattr(feed_main, "_start", start)
+    rig.store.set(user_a, "TOK-A-start")
+    await rig.until(lambda: _is_true(len(attempts) >= 3), "three failing starts of A across re-checks")
+    mark = (await rig.bus.xrevrange(feed_bus.ticks_key(user_b), count=1))[0][0].decode()
+    await rig.until(lambda: _count_more(rig.bus, user_b, mark, 10), "user B's ticks after A's failing starts")
+    assert not rig.task.done(), "the feed task ended because one user's start raised"
+    assert kite_b.accepted == 1 and (await rig.live(user_b)) is not None
+    assert any("feed for one user failed: RuntimeError" in r.getMessage() for r in caplog.records)
+    assert not any("secret@host" in r.getMessage() for r in caplog.records)
+
+
+async def test_a_raising_stop_for_one_user_leaves_the_other_users_socket_and_ticks_untouched(rig, monkeypatch, caplog):
+    """Attack 2: A and B run; A's session is removed and stopping A's socket raises inside the reconcile step. B stays
+    live on its one connection with ticks flowing, and the feed task is still running."""
+    caplog.set_level(logging.INFO)
+    user_a, user_b = new_ref("ua"), new_ref("ub")
+    await rig.kite(user_a)
+    kite_b = await rig.kite(user_b)
+    rig.store.set(user_a, "TOK-A-stop")
+    rig.store.set(user_b, "TOK-B-stop")
+    rig.start()
+    await rig.until(lambda: _both_live(rig, user_a, user_b), "both live")
+    attempts: list[str] = []
+    armed = [True]
+    real_halt = feed_main._Running.halt
+
+    async def halt(self):
+        if armed[0] and self.task.get_name() == f"feed-run-{user_a}":
+            attempts.append(user_a)
+            raise RuntimeError("stop failed for A")
+        await real_halt(self)
+
+    monkeypatch.setattr(feed_main._Running, "halt", halt)
+    del rig.store.sessions[user_a]
+    await rig.until(lambda: _is_true(len(attempts) >= 3), "three failing stops of A across re-checks")
+    mark = (await rig.bus.xrevrange(feed_bus.ticks_key(user_b), count=1))[0][0].decode()
+    await rig.until(lambda: _count_more(rig.bus, user_b, mark, 10), "user B's ticks after A's failing stops")
+    assert not rig.task.done(), "the feed task ended because one user's stop raised"
+    assert kite_b.accepted == 1 and (await rig.live(user_b)) is not None
+    assert any("feed for one user failed: RuntimeError" in r.getMessage() for r in caplog.records)
+    armed[0] = False  # let the rig's own shutdown stop A's socket
+
+
+# ------------------------------------------------------------------------------------------------------------------
 # Attack 6, the database half (CI: real PostgreSQL)
 # ------------------------------------------------------------------------------------------------------------------
 async def test_active_user_refs_is_an_allow_list_of_one_column(app_engine):

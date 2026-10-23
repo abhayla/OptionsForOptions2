@@ -24,6 +24,7 @@ from test_feed_restart_core import LoopingKite
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent / "backend"
 MIN_FRAMES = 5
+MIN_IDLE_READS = 4  # the LATE_LOGIN_CHILD waits for this many store reads before it stores a session
 TOKEN = "TOK-boundary-secret-not-real"  # noqa: S105 - a fixture value, not a credential
 
 
@@ -215,6 +216,77 @@ def test_the_market_data_process_installs_the_egress_gate_then_idles_for_want_of
     out = json.loads(stdout.strip().splitlines()[-1])
     assert out == {"prepared": True, "prepared_first": True, "built": 0, "at_first_step": True,
                    "code": "still running", "installed_after": True}
+
+
+LATE_LOGIN_CHILD = r"""import asyncio, json, pathlib, sys, types
+from ofo_app import broker_config, broker_crypto, broker_token_store, db, event_loop, feed_main, feed_mode
+from ofo_app import live_market
+redis_url, session_file = sys.argv[1], pathlib.Path(sys.argv[2])
+seen = {'reads': 0, 'started': 0, 'exit': None}
+class Conn:
+    async def __aenter__(self): return self
+    async def __aexit__(self, *exc): return False
+class Engine:
+    def connect(self): return Conn()
+async def noop(*a, **k): return None
+async def nobody(*a, **k): return []
+async def session(conn, user, cipher):
+    seen['reads'] += 1
+    return ('TOK-late-login', None) if session_file.exists() else None
+async def fake_run(**kw):
+    seen['started'] += 1
+    await kw['stop'].wait()
+feed_main.feed_settings = lambda: types.SimpleNamespace(KITE_WS_URL='wss://ws.kite.trade')
+live_market.require_safe = lambda *a: None
+feed_mode.redis_url = lambda: redis_url
+broker_config.load_broker_config = lambda: types.SimpleNamespace(token_key=b'k', api_key='K')
+broker_crypto.TokenCipher = lambda key: None
+broker_token_store.access_session_for = session
+broker_token_store.active_user_refs = nobody
+db.verify_pool_budget, db.close_db, db.get_engine = noop, noop, Engine
+feed_main.run_feed = fake_run
+feed_main.supervise_users.__kwdefaults__['recheck_s'] = 0.2
+async def waited(predicate, limit=20.0):
+    for _ in range(int(limit / 0.05)):
+        if predicate() or main.done():
+            return
+        await asyncio.sleep(0.05)
+async def go():
+    global main
+    main = asyncio.ensure_future(feed_main._main())
+    await waited(lambda: seen['reads'] >= 4)
+    seen['idle_reads'], seen['up_while_idle'] = seen['reads'], not main.done()
+    session_file.write_text('stored')
+    await waited(lambda: seen['started'] >= 1)
+    seen['up_at_start'] = not main.done()
+    main.cancel()
+    await asyncio.gather(main, return_exceptions=True)
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+asyncio.run(go())
+print(json.dumps(seen))
+"""
+
+
+def test_the_market_data_process_stays_up_without_a_session_and_starts_a_socket_after_a_login(redis_url, tmp_path):
+    """Attack 3 (AC-1): the real ``feed_main._main`` with no stored session is still running after several timed
+    re-checks of the store (it never exits: a process manager would restart it in a loop), and a session stored later
+    starts that user's socket. Every wait is bounded (20 s in the child, 90 s for the process), so a crash or a hang
+    FAILS the test instead of stalling it."""
+    env = {**os.environ, "PYTHONPATH": str(BACKEND)}
+    session_file = tmp_path / "stored-session"
+    with subprocess.Popen([sys.executable, "-c", LATE_LOGIN_CHILD, redis_url, str(session_file)], env=env,  # noqa: S603
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as child:
+        try:
+            stdout, stderr = child.communicate(timeout=90)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.communicate()
+            pytest.fail("the market-data process hung")
+    assert child.returncode == 0, f"the process exited instead of idling: {stderr[-1500:]}"
+    out = json.loads(stdout.strip().splitlines()[-1])
+    assert out["up_while_idle"] and out["idle_reads"] >= MIN_IDLE_READS, out
+    assert out["started"] == 1 and out["up_at_start"], out
 
 
 async def test_no_token_appears_in_any_bus_value_or_log_line(redis_url, caplog):
