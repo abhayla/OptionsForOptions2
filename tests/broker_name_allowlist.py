@@ -233,6 +233,7 @@ LINES: dict[str, tuple[str, ...]] = {
         "live_feed_market_closed: 'The market is closed, so no new prices are arriving. Live prices resume at the next market open (9:15 am IST on a trading day).',",
         "live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',",
         "live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',",
+        "live_feed_capped: 'Live prices are not available: Zerodha\\'s connection limit for this app is reached.',",
         "no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',",
         "positions_not_synced: 'Orders are not ready until your positions have been read from Zerodha. Fix the position sync row first.',",
         '<p class="mt-1 text-sm text-ink-muted">Zerodha is the only broker. Your strategies, history and account stay here whether or not Zerodha is connected.</p>',
