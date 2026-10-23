@@ -514,7 +514,7 @@ def test_the_reader_exposes_zerodhas_declared_flags_and_fails_closed(monkeypatch
     """REQ-117 AC-1/AC-4: ``capabilities`` is Zerodha's declared set (held triggers off); a declaration that cannot
     load gives every flag off instead of an error."""
     r = reader(Replay())
-    # the seven of AC-1, then the four of AC-6 (brokerage charges, split P&L, holdings, verified P&L): undeclared, so off
+    # the seven of AC-1, then the four of AC-6 (brokerage, split P&L, holdings, verified P&L): undeclared, so off
     assert [is_supported(r.capabilities, f) for f in BrokerFlag] == [True, False, True, True, True, True, True,
                                                                       False, False, False, False]
     monkeypatch.setattr(kite_flags, "FLAG_FILE", tmp_path / "missing.json")

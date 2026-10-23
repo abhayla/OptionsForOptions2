@@ -261,6 +261,7 @@ async def test_a_login_after_shutdown_starts_nothing(kite_world, monkeypatch):
 # ---- round 2: "running" is not "running on the stored session" (F-37: the token dies ~04:30 IST, the socket stays) --
 
 START_AND_ONE_RE_READ = 2  # session lookups: the start, then exactly one re-read for the ended socket
+B_READS = 2  # the read-at-connect sends GET /portfolio/positions and GET /orders, both on B
 READ_AT_CONNECT_OF_B = 1  # REQ-015 AC-12: a restart onto a new session reads its positions once, on that session
 TOKEN_A, TOKEN_B = "ACtok_fake_A_11112222333344", "ACtok_fake_B_55556666777788"
 
@@ -320,7 +321,7 @@ async def test_session_ended_on_a_with_b_already_stored_restarts_onto_b_once(kit
     end_a.set()
     await settle()
     for _ in range(200):  # the read-at-connect runs in a worker thread
-        if len(sent) >= 2:
+        if len(sent) >= B_READS:
             break
         await asyncio.sleep(0.01)
     first, second = kite_world["sockets"]
@@ -328,7 +329,7 @@ async def test_session_ended_on_a_with_b_already_stored_restarts_onto_b_once(kit
     assert second.fingerprint == live_market.token_fingerprint(TOKEN_B)
     assert second.alive_at_birth == [] and socket_tasks() == [market._task]
     assert kite_world["lookups"] == START_AND_ONE_RE_READ + READ_AT_CONNECT_OF_B
-    assert len(sent) == 2 and all(TOKEN_B in a and TOKEN_A not in a for a in sent)  # positions + orders, on B only
+    assert len(sent) == B_READS and all(TOKEN_B in a and TOKEN_A not in a for a in sent)  # on B only
     await market.close()
 
 
