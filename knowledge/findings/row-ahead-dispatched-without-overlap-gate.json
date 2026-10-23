@@ -1,0 +1,21 @@
+{
+ "id": "row-ahead-dispatched-without-overlap-gate",
+ "scope": "generic",
+ "class": "A builder for a younger row is dispatched into its own worktree without running the binding overlap gate (ADR-171 rule 3) against every older open row, so two rows in flight edit the same file and the older row's fix round collides with the younger row's work.",
+ "mechanism": "Row 18's build worktree was cut from the chunk head after row 17's code merged and its builder was dispatched at once; row 18's brief lists backend/ofo_app/routes/outcome.py, which row 17 changed (B1b) and then had to change again in its fix round (90d3a2bc) while row 18's builder edited the same file. The gate is a manual command in the contract; nothing forces it before an Agent dispatch.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "builder sequence chunk 2, row 18 build dispatch (session 06fe7549)",
+  "evidence": "overlap_gate.py ran for row 19 (exit 0, later exit 2 on tests_app/test_response_door.py) but not for row 18; row 18's brief lists routes/outcome.py; row 17 fix commit 90d3a2bc touches the same file."
+ },
+ "occurrences": [],
+ "fix": "Instance: row 18 merges the chunk head (with row 17's fix) before its check; the two edits are in different hunks. Class fix proposed (the NEXT chunk's process-tool slot, ADR-178 freeze): a dispatch hook refuses a builder brief whose worktree is a row-ahead worktree unless a recent overlap_gate.py OK line for that worktree and planned-files list is recorded.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught by the orchestrator while briefing the row 17 fix; no automated check. Mechanism due at the second occurrence (Learn-or-block)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-171.md"
+ ]
+}

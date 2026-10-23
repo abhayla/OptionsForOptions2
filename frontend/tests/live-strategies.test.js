@@ -196,6 +196,20 @@ describe('AC-5: the disconnect message is the server\'s', () => {
     expect(c.find('[data-testid="live-spot"]').exists()).toBe(false) // no number shown as live
   })
 
+  it('ADR-168: neither the socket body nor the REST fallback body a live card sends carries a level key', async () => {
+    const LEVEL_KEY = ['ux', 'level'].join('_')
+    const w = await mountPage()
+    openAll()
+    expect(JSON.parse(FakeSocket.all[0].sent[0])).not.toHaveProperty(LEVEL_KEY)
+    FakeSocket.all[0].serverPush(computed())
+    await flushPromises()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(posts).toHaveLength(1)
+    expect(posts[0].body).not.toHaveProperty(LEVEL_KEY)
+    expect(w.exists()).toBe(true)
+  })
+
   it('AC-5: the page source writes no copy of the disconnect sentence', async () => {
     const { readFileSync } = await import('node:fs')
     for (const f of ['src/pages/LiveStrategiesPage.vue', 'src/components/live/LiveStrategyCard.vue']) {

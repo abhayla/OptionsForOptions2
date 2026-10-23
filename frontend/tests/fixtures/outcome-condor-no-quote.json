@@ -1,7 +1,6 @@
 {
  "state": "COMPUTED",
  "underlying": "NIFTY",
- "ux_level": "guided",
  "status_label": null,
  "reason": null,
  "output_label": "estimated from spot; NIFTY26O1922800PE: no live quote; NIFTY26O1922950PE: no live quote; NIFTY26O1923250CE: no live quote; NIFTY26O1923400CE: no live quote",

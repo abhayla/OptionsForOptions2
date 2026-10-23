@@ -1,6 +1,6 @@
 // REQ-117 AC-4 (W-132): the builder page wires the margin line to the server's flag answer (GET /broker/capabilities).
 // Flag on -> the line is drawn; flag off, flag missing, an unreadable answer -> the plain reason, no figures; and the
-// page asks the flags once. Uses the recorded condor answer (tests/fixtures/outcome-condor-advanced.json).
+// page asks the flags once. Uses the recorded condor answer (tests/fixtures/outcome-condor.json).
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -19,7 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { resetCapabilities } from '@/lib/brokerCapabilities'
-import CONDOR from './fixtures/outcome-condor-advanced.json'
+import CONDOR from './fixtures/outcome-condor.json'
 import STATES from './fixtures/outcome-margin-states.json'
 
 const AT = '2026-10-08T09:20:09+05:30'

@@ -142,7 +142,7 @@ from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot  # noqa: E402
 from ofo.outcome.service import exercise_stt_line  # noqa: E402
 from ofo.scenario.views import View  # noqa: E402
-from ofo.table import ColumnId, UXLevel  # noqa: E402
+from ofo.table import ColumnId  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 REPLAY_CONDOR = (
@@ -163,7 +163,7 @@ def outcome_of(provider, rates):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    return d, build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=rates)
+    return d, build_outcome(d, snap, VALUATION, rates=rates)
 
 
 def test_summary_includes_the_hand_computed_round_trip(replayed):
@@ -256,7 +256,7 @@ def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, D("0") if n == 1 else replayed.book.get(i, VALUATION).ltp,
                                                      VALUATION) for n, (i, a) in enumerate(REPLAY_CONDOR)))
     snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    out = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES)
+    out = build_outcome(d, snap, VALUATION, rates=RATES)
     assert out.state is OutcomeState.COMPUTED, out.reason
     assert out.summary.charges is None and out.summary.charges_unavailable
     assert "about ₹" not in out.summary.what_can_i_lose + out.summary.what_can_i_make
@@ -299,7 +299,7 @@ def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estim
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
     snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    est = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
+    est = build_outcome(d, snap, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
     assert CHARGES_ROW not in _rows(est)
 
 
@@ -313,7 +313,7 @@ def _summary_of_legs(provider, picks, rates=RATES):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in picks))
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    out = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=rates)
+    out = build_outcome(d, snap, VALUATION, rates=rates)
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out.summary
 

@@ -2,17 +2,17 @@
 // the socket and refuses it for 5 s, then accepts again. During the gap the screen says "reconnecting" and nothing on it is
 // marked live (no old price as live); a fresh push shows within 10 s of the server accepting again.
 // The server side is played here (routeWebSocket + a route for the REST outcome) with the recorded real condor outcome
-// (tests/fixtures/outcome-condor-advanced.json), so the spec needs only the preview server and cannot disturb the legs
+// (tests/fixtures/outcome-condor.json), so the spec needs only the preview server and cannot disturb the legs
 // the replay specs use.
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 
-const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor-advanced.json', import.meta.url)), 'utf-8'))
+const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor.json', import.meta.url)), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.',
-  table: null, summary: null, payoff: null, scenario: null, advanced_details: undefined, legs: real.legs.map((l: any) => ({ ...l, ltp: null, label: 'x' })) }
+  table: null, summary: null, payoff: null, scenario: null, leg_quotes: undefined, legs: real.legs.map((l: any) => ({ ...l, ltp: null, label: 'x' })) }
 // The real server stamps every outcome push with its own time (`answered_at`) and the feed's last price time
 // (`last_price_at`, the time the reconnecting text shows, REQ-114 AC-5); the recorded fixture predates both fields, so the
 // played server adds them. Without `last_price_at` the page correctly shows the no-time words (frontend/tests).

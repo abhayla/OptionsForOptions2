@@ -3,7 +3,7 @@
 Spec: REQ-034 AC-1 (every part of the outcome view), AC-7 (plain language first), AC-8 (payoff graph and scenario table
 from the same engine); REQ-033 AC-1/AC-3 (the leg formulas; expiry scenarios use the entry price, never the LTP);
 ADR-008 (one engine, exact Decimal); ADR-061 (each expiry's forward; spot for CURRENT and the range); ADR-068 (planned
-entry with its capture time; UX level per request, presentation only; the not-live labels).
+entry with its capture time; the not-live labels).
 
 AC-8 by construction: :func:`build_outcome` computes the scenario values ONCE (``scenario_values``) and both the table
 (``build_table``) and the payoff points are taken from that one ``ScenarioValues``; nothing here prices a level.
@@ -48,7 +48,7 @@ from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, ScenarioValues, View, scenario_values
-from ofo.table import ColumnSpec, Table, UXLevel, build_table, visible_columns
+from ofo.table import ColumnSpec, Table, build_table, visible_columns
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
 MARGIN_NOT_AVAILABLE_YET: Final = "NOT_AVAILABLE_YET"
@@ -153,7 +153,6 @@ class Margin:
 class Outcome:
     state: OutcomeState
     underlying: str
-    ux_level: UXLevel
     status_label: ExplanationText | None  # NOT_CONNECTED / REFUSED text, or REQ-049 AC-5's message when the feed dropped
     reason: ExplanationText | None
     legs: tuple[OutcomeLeg, ...]
@@ -228,25 +227,24 @@ def _unpriced_legs(definition: StrategyDefinition, snapshot: MarketSnapshot | No
     return tuple(out)
 
 
-def not_connected(definition: StrategyDefinition, ux_level: UXLevel = UXLevel.STANDARD,
+def not_connected(definition: StrategyDefinition,
                   snapshot: MarketSnapshot | None = None, stored=None) -> Outcome:
     """No provider or no Zerodha session (ADR-068 consequence, ADR-020 Q185): a state, never an error. With a
     ``snapshot`` (a session that ended) the legs name their contract; with none, ``stored`` (instrument id -> the stored
     catalogue entry, #249) names them, and a contract it lacks stays unnamed."""
     legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL, stored)
-    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, NOT_CONNECTED_LABEL,
+    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, NOT_CONNECTED_LABEL,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
 
 
-def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot,
-             ux_level: UXLevel = UXLevel.STANDARD) -> Outcome:
+def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcome:
     """The live market is connected but this strategy's inputs are not streaming (no subscriber on the shared feed, e.g.
     the REST fallback while the socket is down; ADR-068 (2) "labelled as not live"). No number is shown as live
     (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too. Each leg
     names its contract (ADR-086), from the same snapshot lookup the computed answer uses."""
     label = _not_live_label(snapshot)
     legs = _unpriced_legs(definition, snapshot, label)
-    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, label, None, legs, MARGIN)
+    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, label, None, legs, MARGIN)
 
 
 def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
@@ -318,8 +316,8 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
                    lo, up, level_set.risk_boundaries, charges, charges_unavailable)
 
 
-def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) -> Outcome:
-    return Outcome(OutcomeState.REFUSED, definition.underlying, ux_level, join_labels(message, render_explanation("outcome_refused")),
+def _refused(definition, reason: ExplanationText, legs, message=None) -> Outcome:
+    return Outcome(OutcomeState.REFUSED, definition.underlying, join_labels(message, render_explanation("outcome_refused")),
                    reason, tuple(legs), MARGIN)
 
 
@@ -364,7 +362,7 @@ def _shared_leg_greeks(model, snapshot, shared):
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
-                  ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
+                  valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
                   override: RangeOverride | None = None, shared: FeedScope | None = None) -> Outcome:
@@ -381,10 +379,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     boundaries and the zero-P&L columns are the locked ADR-008 values and never move with charges."""
     if not isinstance(definition, StrategyDefinition):
         raise ValueError(f"definition must be a StrategyDefinition, got {definition!r}")
-    if not isinstance(ux_level, UXLevel):
-        raise ValueError(f"ux_level must be a UXLevel, got {ux_level!r}")
     if snapshot is None or snapshot.status.session_ended:
-        return not_connected(definition, ux_level, snapshot)
+        return not_connected(definition, snapshot)
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
     valuation = snapshot.valuation if valuation is None else valuation
@@ -440,7 +436,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         if any(leg.expiry == expiry for leg in inputs):
             problems.append(render_explanation("outcome_forward_error", expiry=expiry, why=why))
     if problems:
-        return _refused(definition, ux_level, join_explanations(problems, "; "), legs, message)
+        return _refused(definition, join_explanations(problems, "; "), legs, message)
 
     try:
         spot = spot_reading(snapshot.spot)
@@ -453,9 +449,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         else:
             reason = render_explanation("outcome_spot_unusable", underlying=definition.underlying,
                                         health=spot_q.health)
-        return _refused(definition, ux_level, reason, legs, message)
+        return _refused(definition, reason, legs, message)
     except ForwardUnavailable:
-        return _refused(definition, ux_level, render_explanation("outcome_forward_refused"), legs, message)
+        return _refused(definition, render_explanation("outcome_forward_refused"), legs, message)
 
     config = config or ScenarioSettings().for_index(definition.underlying)
     level_set = build_level_set(model, config, override=override)
@@ -473,9 +469,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
     # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).
     return Outcome(
-        state=OutcomeState.COMPUTED, underlying=definition.underlying, ux_level=ux_level, status_label=message,
+        state=OutcomeState.COMPUTED, underlying=definition.underlying, status_label=message,
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
         output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
-        level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table, ux_level),
+        level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
         summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))

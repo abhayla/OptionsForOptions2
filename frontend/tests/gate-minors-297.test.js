@@ -1,5 +1,5 @@
 // Issue 297 items 1 and 4 (REQ-067 AC-4, ADR-072, ADR-086). The answer is the real push recorded from the live
-// websocket on 2026-10-16 (iron condor, guided, 4 legs with no live quote; ofo-kite-ticks/2026-10-16/outcome).
+// websocket on 2026-10-16 (iron condor, 4 legs with no live quote; ofo-kite-ticks/2026-10-16/outcome).
 import { describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -13,7 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
 vi.mock('chart.js/auto', () => ({ default: class { destroy() {} } }))
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { payoffRegions } from '@/lib/payoffRegions'
-import real from './fixtures/outcome-condor-guided-no-quote.json'
+import real from './fixtures/outcome-condor-no-quote.json'
 
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
@@ -21,7 +21,7 @@ const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id
 async function openPage() {
   apiAnswer = real
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
-  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT), ux: 'guided' } })
+  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
   await router.isReady()
   const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
   await flushPromises()

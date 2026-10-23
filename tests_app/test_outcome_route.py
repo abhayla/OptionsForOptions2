@@ -35,14 +35,11 @@ def replayed():
     return provider
 
 
-def _body(provider, ux_level=None):
+def _body(provider):
     legs = [{"instrument_id": iid, "action": action, "lots": 1,
              "planned_entry": f"{provider.book.get(iid, VALUATION).ltp:f}", "captured_at": VALUATION.isoformat()}
             for iid, action in CONDOR]
-    body = {"underlying": "NIFTY", "legs": legs}
-    if ux_level:
-        body["ux_level"] = ux_level
-    return body
+    return {"underlying": "NIFTY", "legs": legs}
 
 
 async def _post(body, provider=None):
@@ -74,10 +71,10 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     resp = await _post(_body(replayed), replayed)
     assert resp.status_code == 200, resp.text
     out = resp.json()
-    assert set(out) == {"state", "underlying", "ux_level", "status_label", "reason", "output_label", "valuation",
+    assert set(out) == {"state", "underlying", "status_label", "reason", "output_label", "valuation",
                         "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
-                        "table", "scenario", "payoff", "summary"}
-    assert (out["state"], out["underlying"], out["ux_level"]) == ("COMPUTED", "NIFTY", "standard")
+                        "table", "scenario", "payoff", "summary", "leg_quotes"}
+    assert (out["state"], out["underlying"]) == ("COMPUTED", "NIFTY")
     assert out["spot_level"] == "22533.25"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET" and isinstance(out["margin"]["reason"], str)
     s = out["summary"]
@@ -100,13 +97,18 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     _no_floats(out)
 
 
-async def test_ux_level_changes_only_what_is_shown(replayed):
-    std = (await _post(_body(replayed), replayed)).json()
-    guided = (await _post(_body(replayed, "guided"), replayed)).json()
-    assert guided["ux_level"] == "guided"
-    assert guided["table"]["rows"] == std["table"]["rows"] and guided["payoff"] == std["payoff"]
-    vis = lambda o: [c["id"] for c in o["table"]["columns"] if c["visible"]]  # noqa: E731
-    assert len(vis(guided)) < len(vis(std))
+async def test_a_request_carrying_the_retired_level_is_ignored(replayed):
+    """REQ-006 / ADR-168 (4): `ux_level` is ignored: the same outcome, Bid/Ask present, no level key in the answer."""
+    plain = (await _post(_body(replayed), replayed)).json()
+    for level in ("guided", "advanced"):
+        resp = await _post({**_body(replayed), "ux_level": level}, replayed)
+        assert resp.is_success, resp.text
+        out = resp.json()
+        assert "ux_level" not in out
+        assert out["table"] == plain["table"] and out["payoff"] == plain["payoff"]
+        assert out["leg_quotes"] == plain["leg_quotes"] and len(out["leg_quotes"]) == len(CONDOR)
+    resp = await _post({**_body(replayed), "nonsense": 1}, replayed)
+    assert resp.is_client_error  # only the retired key is dropped; any other unknown key is still refused
 
 
 async def test_no_provider_returns_not_connected_state(replayed):
@@ -139,18 +141,13 @@ def test_committed_openapi_schema_matches_the_route():
     assert committed == json.loads(json.dumps(app.openapi()))
 
 
-async def test_advanced_details_only_at_advanced(replayed):
-    """REQ-035 AC-5: bid/ask come only in the advanced_details block, absent (not empty) at guided and standard, taken
-    from the same snapshot as the table; the table's locked columns do not change."""
-    for ux in (None, "guided", "standard"):
-        out = (await _post(_body(replayed, ux), replayed)).json()
-        assert "advanced_details" not in out, ux
-        assert not any(c["id"] in ("bid", "ask") for c in out["table"]["columns"])
-    adv = (await _post(_body(replayed, "advanced"), replayed)).json()
-    std = (await _post(_body(replayed), replayed)).json()
-    assert [c["id"] for c in adv["table"]["columns"]] == [c["id"] for c in std["table"]["columns"]]  # AC-2 order
-    assert not any(c["id"] in ("bid", "ask") for c in adv["table"]["columns"])
-    rows = adv["advanced_details"]
+async def test_leg_quotes_carry_bid_ask_for_everyone(replayed):
+    """REQ-035 AC-5 / ADR-168 (5): bid/ask come in the leg_quotes block for every request, taken from the same
+    snapshot as the table; the table's locked columns do not change."""
+    out = (await _post(_body(replayed), replayed)).json()
+    assert not any(c["id"] in ("bid", "ask") for c in out["table"]["columns"])
+    assert all(c["visible"] for c in out["table"]["columns"])  # one column set: nothing hidden
+    rows = out["leg_quotes"]
     assert [r["instrument_id"] for r in rows] == [iid for iid, _ in CONDOR]
     for r in rows:
         q = replayed.book.get(r["instrument_id"], VALUATION)
@@ -158,9 +155,23 @@ async def test_advanced_details_only_at_advanced(replayed):
         assert r["ask"] == (None if q.ask is None else f"{q.ask:f}")
         assert isinstance(r["health"], str) and r["symbol"]
     assert any(r["bid"] is not None and r["ask"] is not None for r in rows)  # the recording carries depth
-    _no_floats(adv)
+    _no_floats(out)
 
 
-async def test_no_provider_has_no_advanced_details(replayed):
-    out = (await _post(_body(replayed, "advanced"))).json()
-    assert out["state"] == "NOT_CONNECTED" and "advanced_details" not in out
+async def test_a_session_that_ended_is_not_connected_and_carries_no_leg_quotes():
+    """REQ-049 AC-4/AC-5 / ADR-168 (5): leg_quotes only for a live computed answer. After the Kite session ends the
+    answer is NOT_CONNECTED and the held bid/ask is not shown (class: every state other than COMPUTED)."""
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    live = (await _post(_body(provider), provider)).json()
+    assert live["state"] == "COMPUTED" and len(live["leg_quotes"]) == len(CONDOR)
+    provider.on_session_ended(VALUATION)
+    out = (await _post(_body(provider), provider)).json()
+    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == "Draft — Live data not connected"
+    assert "leg_quotes" not in out
+
+
+async def test_no_provider_has_no_leg_quotes(replayed):
+    out = (await _post(_body(replayed))).json()
+    assert out["state"] == "NOT_CONNECTED" and "leg_quotes" not in out

@@ -49,7 +49,7 @@ const live = useStrategyLive({
     const mine = ++seq
     try {
       // ADR-077: `fallback: true` makes the server answer the not-live message even if another socket holds the contracts
-      const res = await api.post('/strategies/outcome', { ...draft, ux_level: 'standard', fallback: true })
+      const res = await api.post('/strategies/outcome', { ...draft, fallback: true })
       if (gone || mine !== seq) return
       data.value = res.data
     } catch (e) {
@@ -76,7 +76,7 @@ async function begin() {
       return
     }
     state.value = 'ready'
-    live.follow({ ...draft, ux_level: 'standard' })
+    live.follow({ ...draft })
   } catch (e) {
     if (gone) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS

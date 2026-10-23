@@ -212,7 +212,7 @@ async def test_ac4_a_burst_of_10_changed_strategies_within_a_second_pushes_at_mo
     at most one more after the second has passed, and that one is the LAST strategy sent; nothing else."""
     provider, feed, channel, mono, push = rig
     legs = ((SELL_CE, "SELL"), (BUY_CE, "BUY"), (SELL_PE, "SELL"), (BUY_PE, "BUY"))
-    bodies = [request(provider, ids=legs[:1 + n % 4]) | {"ux_level": ("guided", "standard", "advanced")[n % 3]}
+    bodies = [request(provider, ids=legs[:1 + n % 4])
               for n in range(10)]  # built first: a released instrument leaves the provider's book
     task = asyncio.create_task(push.run())
     for body in bodies:
@@ -225,7 +225,8 @@ async def test_ac4_a_burst_of_10_changed_strategies_within_a_second_pushes_at_mo
     mono.now += 10
     await settle()
     assert len(channel.sent) == 2
-    assert len(channel.sent[1]["legs"]) == 1 + 9 % 4 and channel.sent[1]["ux_level"] == "guided"  # n=9
+    assert len(channel.sent[1]["legs"]) == 1 + 9 % 4  # n=9
+    assert "ux_level" not in channel.sent[1] and len(channel.sent[1]["leg_quotes"]) == 1 + 9 % 4  # no level; bid/ask
     await channel.inbound.put(ChannelClosed)
     await task
 
@@ -597,14 +598,14 @@ async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live
     body = request(provider)
     ids = [leg["instrument_id"] for leg in body["legs"]]
     index_id = provider.index_id("NIFTY")
-    for ux in ("standard", "advanced"):
-        out = await _post({**body, "ux_level": ux})
+    for extra in ({}, {"ux_level": "advanced"}):  # a retired level key is ignored, never read
+        out = await _post({**body, **extra})
         label = out["status_label"]
         assert out["state"] == "NOT_CONNECTED", out
         assert label.startswith("Live market data disconnected. Last updated: ") and label.endswith(
             ". Live strategy monitoring is paused."), label
         assert [leg["ltp"] for leg in out["legs"]] == [None] * 4 and [leg["label"] for leg in out["legs"]] == [label] * 4
-        assert out["table"] is None and out["summary"] is None and "advanced_details" not in out
+        assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
     handle = feed.fanout.subscribe(lambda _q: None, ids + [index_id])
     try:
         streamed = await _post(body)

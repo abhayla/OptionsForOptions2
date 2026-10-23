@@ -75,7 +75,7 @@ onMounted(async () => {
   liveTimer = setTimeout(() => {
     if (phase.value === 'waiting-live') notLive()
   }, props.waitMs)
-  live.follow({ ...draft, ux_level: 'standard' })
+  live.follow({ ...draft })
 })
 onBeforeUnmount(() => clearTimeout(liveTimer))
 

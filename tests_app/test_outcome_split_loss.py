@@ -48,7 +48,7 @@ def _outcome(provider, legs):
 
     body = [{"instrument_id": iid, "action": action, "lots": lots, "planned_entry": entry,
              "captured_at": VALUATION.isoformat()} for iid, action, lots, entry in legs]
-    request = OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": body, "ux_level": "standard"})
+    request = OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": body})
     return strategy_outcome(request, MarketContext(provider, lambda: VALUATION, RATE), now=server_now, stored=None)
 
 
