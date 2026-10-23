@@ -20,7 +20,7 @@ const timeText = (row) => (row?.at ? istTime(row.at) : '')
   <div class="flex flex-wrap items-center gap-x-6 gap-y-1 rounded border border-line bg-surface px-3 py-2 text-sm" data-testid="index-strip">
     <MarketClosedBanner v-if="marketClosed()" :prices-at="answer.last_price_at" />
     <span v-if="reconnecting" class="font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</span>
-    <span v-if="notLive()" class="font-medium" data-testid="strip-state">{{ NOT_LIVE_LABEL }}</span>
+    <span v-if="notLive() && !marketClosed()" class="font-medium" data-testid="strip-state">{{ NOT_LIVE_LABEL }}</span>
     <span v-for="u in INDEX_KEYS" :key="u" :data-testid="`strip-${u}`" class="flex items-baseline gap-2">
       <span class="font-medium">{{ INDEX_NAMES[u] }}</span>
       <span class="tabular-nums" data-testid="strip-value">{{ shownValue(rowFor(u)) }}</span>

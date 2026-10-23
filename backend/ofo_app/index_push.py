@@ -39,7 +39,7 @@ UNDERLYINGS: tuple[str, ...] = tuple(SUPPORTED_UNDERLYINGS)
 class IndexOut(ApiModel):
     underlying: Underlying
     instrument_id: InstrumentId | None  # (segment, exchange token), REQ-072 AC-1; None when the catalogue lacks it
-    value: Money | None  # the last price as given; None when there is none or the answer is not live
+    value: Money | None  # the last price as given (stale on a closed market); None: none, or socket not holding
     at: datetime.datetime | None  # the quote's own time (aware); kept in the not-live answer as "last value time"
     health: HealthCode | None  # the quote's own health; None in the not-live answer
 
@@ -62,25 +62,30 @@ def index_ids(ctx: MarketContext) -> dict[str, str | None]:
 
 
 def _row(ctx: MarketContext, underlying: Underlying, instrument_id: str | None,
-         live: bool) -> IndexOut:
+         held: bool, closed: bool) -> IndexOut:
+    """One index row. ``held``: the page's socket holds the indices. ``closed``: the market is closed (the one
+    market-state answer); the row then keeps the last value with its time and its stale health (REQ-072 AC-2 "a stale
+    ... index value is shown as such"), while the answer's state is never LIVE (``indices_answer``)."""
     quote = None if instrument_id is None else ctx.provider.underlying_quote(underlying)
     if quote is not None and quote.instrument_id != instrument_id:  # never another instrument's quote as this index's
         quote = None
     at = None if quote is None else quote.timestamp
-    if not live:  # not live: the last value time only, never a number shown as live (REQ-049 AC-4)
+    if not held:  # not held: the last value time only, never a number from a socket that is down (REQ-049 AC-4)
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=at, health=None)
     if quote is None:  # unknown index or no quote: shown as unavailable, no number (REQ-072 AC-2 "missing ... as such")
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=None, health="unavailable")
     value = quote.ltp.quantize(PAISE) if is_live_price(quote.ltp) else None
-    return IndexOut(underlying=underlying, instrument_id=instrument_id, value=value, at=at,
-                    health=quote.health.value)
+    health = quote.health.value
+    if closed and health == "available":  # fail closed: a closed market's value is never labelled available
+        health = "stale"
+    return IndexOut(underlying=underlying, instrument_id=instrument_id, value=value, at=at, health=health)
 
 
 def indices_answer(ctx: MarketContext | None, *, live: bool,
                    now: Callable[[], datetime.datetime]) -> IndicesOut:
     """The ONE answer behind the REST read and the socket push. ``ctx`` None (no live feed): NOT_CONNECTED, every value
-    null. ``live`` False (the page's own socket is down, or nothing holds the indices) or the market closed:
-    NOT_CONNECTED with each index's last value time kept."""
+    null. ``live`` False (the page's own socket is down, or nothing holds the indices): NOT_CONNECTED with each
+    index's last value time kept. Market closed while held: NOT_CONNECTED, each row's last value kept as stale."""
     if ctx is None:
         rows = [IndexOut(underlying=u, instrument_id=None, value=None, at=None, health=None) for u in UNDERLYINGS]
         answered_at = now()
@@ -91,9 +96,9 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     state = market_state(ctx, answered_at)
     # ADR-015 / REQ-114 AC-7: the ONE place the index answer decides "live" - held by the page's socket AND the market
     # open by the one market-state answer. A closed market (weekend, holiday, after hours, past the calendar) is never
-    # LIVE: the not-live answer, each row's last value time kept, the screens show the market-closed banner.
+    # LIVE: the not-live answer, each row's last value kept as stale with its time, the market-closed banner shown.
     shown_live = live and not state.closed
-    rows = [_row(ctx, u, i, shown_live) for u, i in index_ids(ctx).items()]
+    rows = [_row(ctx, u, i, live, state.closed) for u, i in index_ids(ctx).items()]
     return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
                       market_closed=state.closed, last_price_at=state.last_price_at)
 

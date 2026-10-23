@@ -68,7 +68,7 @@ async function readAnswer(fallback) {
  * The ONE answer state machine for every screen that shows index values (index page, Home strip): first-paint read,
  * socket pushes, drop counter (a read sent before the latest drop is ignored), clear-on-drop (REQ-049 AC-4: an old LIVE
  * number is never kept; only each index's last time stays), fallback read. `shownValue(row)` returns a number only from a
- * LIVE answer received after the latest drop. Screens render `rowFor`/`shownValue`/`notLive` and hold no answer state.
+ * LIVE answer received after the latest drop, or (stale, with its time) from a market-closed answer. Screens render `rowFor`/`shownValue`/`notLive` and hold no answer state.
  */
 export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const answer = ref(null)
@@ -113,8 +113,9 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
 
   const rowFor = (u) => answer.value?.indices?.find((r) => r.underlying === u) ?? null
   const isLive = () => isLiveIndexAnswer(answer.value)
-  const shownValue = (row) => (isLive() && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
-  const notLive = () => (answer.value !== null && !isLive()) || failed.value
   const marketClosed = () => answer.value?.market_closed === true
+  // REQ-072 AC-2: on a closed market the last value is shown as such (stale, "Last updated <time>"), never as live
+  const shownValue = (row) => ((isLive() || marketClosed()) && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
+  const notLive = () => (answer.value !== null && !isLive()) || failed.value
   return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed }
 }

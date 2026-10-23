@@ -1,8 +1,9 @@
 // REQ-114 AC-7 / ADR-015 / ADR-177 (chunk 1 Tier A review round 2, class live-wording-on-a-closed-market): every screen
 // that reads the index answer - Market Context (strip with its status line), the Home strip, the Underlying/index view -
-// shows the ONE market-closed banner and NO live wording ("Index values are live.", a live "as of" time, a number) when
-// the answer says market_closed, whether it arrives by the first-paint read or a socket push, and even if a (forged)
-// answer says LIVE with market_closed true. An open-market LIVE answer is unchanged. Expected texts are hand-computed:
+// shows the ONE market-closed banner and NO live wording ("Index values are live.", a live "as of" time) when the answer
+// says market_closed, whether it arrives by the first-paint read or a socket push, and even if a (forged) answer says
+// LIVE with market_closed true. The last value IS shown, as such (REQ-072 AC-2): the number, the stale word and, on the
+// index view, "Last updated <time>"; the "unavailable" label is not. An open-market LIVE answer is unchanged. Expected texts are hand-computed:
 // 04:31:00 UTC + 5:30 = 10:01:00 IST in the istTime format; the banner wording comes from its one home (sharedStateText).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -32,13 +33,14 @@ class FakeSocket {
 const LAST = '2026-10-24T04:31:00+00:00' // Saturday 10:01:00 IST
 const BANNER = marketClosedText('24 Oct 2026, 10:01:00 IST')
 const row = (u, value, health) => ({ underlying: u, instrument_id: u === 'NIFTY' ? 'NSE_INDEX:256265' : 'BSE_INDEX:265', value, at: LAST, health })
-const answerOf = (state, closed, value) => ({
+const answerOf = (state, closed, health) => ({
   state, market_closed: closed, last_price_at: LAST, answered_at: '2026-10-24T04:35:00+00:00',
-  indices: [row('NIFTY', value, value ? 'available' : null), row('SENSEX', value, value ? 'available' : null)] })
-const CLOSED = answerOf('NOT_CONNECTED', true, null) // what the server sends on a closed market
-const FORGED = answerOf('LIVE', true, '25100.55') // a LIVE answer on a closed market (second layer)
-const OPEN = answerOf('LIVE', false, '25100.55')
-const LIVE_WORDS = ['Index values are live.', 'as of ', '25100.55']
+  indices: [row('NIFTY', '25100.55', health), row('SENSEX', '81000.10', health)] })
+const CLOSED = answerOf('NOT_CONNECTED', true, 'stale') // what the server sends on a closed market (index_push.py)
+const FORGED = answerOf('LIVE', true, 'available') // a LIVE answer on a closed market (second layer)
+const OPEN = answerOf('LIVE', false, 'available')
+const LIVE_WORDS = ['Index values are live.', 'as of ']
+const UNAVAILABLE_LABEL = 'Index values unavailable.'
 
 const SCREENS = {
   'market context': { component: MarketContextPage, path: '/market/market-context' },
@@ -72,6 +74,8 @@ describe('AC-7: index screens on a closed market', () => {
         const w = await mountScreen(screen)
         expect(w.get('[data-testid="market-closed-text"]').text()).toBe(BANNER)
         for (const word of LIVE_WORDS) expect(w.text()).not.toContain(word)
+        expect(w.text()).toContain('25100.55') // the last value, shown as such
+        expect(w.text()).not.toContain(UNAVAILABLE_LABEL)
       })
       it(`AC-7: ${name}, ${how} by socket push: the banner, no live wording, no number`, async () => {
         apiAnswer = OPEN // the first paint said open and live; the push says closed
@@ -81,13 +85,27 @@ describe('AC-7: index screens on a closed market', () => {
         await flushPromises()
         expect(w.findAll('[data-testid="market-closed-text"]').map((b) => b.text())).toEqual([BANNER])
         for (const word of LIVE_WORDS) expect(w.text()).not.toContain(word)
+        expect(w.text()).toContain('25100.55')
+        expect(w.text()).not.toContain(UNAVAILABLE_LABEL)
       })
     }
-    it(`AC-7 negative case: ${name}, open LIVE answer: no banner, the value shown`, async () => {
+    it(`AC-7: ${name}, closed answer: each index's last value with the stale word`, async () => {
+      apiAnswer = CLOSED
+      const w = await mountScreen(screen)
+      const panel = name === 'index view' ? 'index-panel' : 'strip'
+      const health = name === 'index view' ? 'index-health' : 'strip-health'
+      const value = name === 'index view' ? 'index-value' : 'strip-value'
+      for (const [u, v] of [['NIFTY', '25100.55'], ['SENSEX', '81000.10']]) {
+        expect(w.get(`[data-testid="${panel}-${u}"] [data-testid="${value}"]`).text()).toBe(v)
+        expect(w.get(`[data-testid="${panel}-${u}"] [data-testid="${health}"]`).text()).toBe('stale')
+      }
+    })
+    it(`AC-7 negative case: ${name}, open LIVE answer: no banner, the value shown, no stale word`, async () => {
       apiAnswer = OPEN
       const w = await mountScreen(screen)
       expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
       expect(w.text()).toContain('25100.55')
+      expect(w.text()).not.toContain('stale')
     })
   }
 
