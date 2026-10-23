@@ -15,7 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import IndexViewPage from '@/pages/IndexViewPage.vue'
 import { INDEX_LIVE_PATH, INDEX_REST_PATH, createIndexSocket, indexLiveUrl, isIndicesAnswer } from '@/composables/useIndexLive'
-import { FAST_ATTEMPTS, MAX_ATTEMPTS } from '@/composables/useStrategyLive'
+import { FAST_ATTEMPTS } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -58,8 +58,9 @@ beforeEach(() => {
   apiCalls.length = 0
   apiAnswer = null
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no spread here: the spread has its own tests (reconnect-forever.test.js)
 })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('the index socket lifecycle', () => {
   it('AC-2: opens the same-origin path, sends nothing, passes each index answer untouched, ignores anything else', () => {
@@ -79,7 +80,7 @@ describe('the index socket lifecycle', () => {
     expect(isIndicesAnswer({ state: 'COMPUTED', indices: [] })).toBe(false)
   })
 
-  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it stops after the fast and slow limits', () => {
+  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it never stops (REQ-113 AC-9)', () => {
     const timers = []
     const onDown = vi.fn()
     const s = createIndexSocket({ url: 'ws://x', WebSocketImpl: FakeSocket, onPush: () => {}, onDown,
@@ -88,7 +89,7 @@ describe('the index socket lifecycle', () => {
     FakeSocket.all[0].serverClose()
     expect(onDown).toHaveBeenCalledTimes(1)
     expect(timers[0].ms).toBe(1000)
-    const TOTAL = FAST_ATTEMPTS + MAX_ATTEMPTS
+    const TOTAL = FAST_ATTEMPTS + 10 // past the old give-up point
     for (let i = 1; i < TOTAL; i += 1) {
       timers[i - 1].fn()
       FakeSocket.all[i].serverClose()
@@ -96,7 +97,7 @@ describe('the index socket lifecycle', () => {
     expect(timers.map((t) => t.ms).slice(0, 3)).toEqual([1000, 1000, 1000])
     timers[TOTAL - 1].fn()
     FakeSocket.all[TOTAL].serverClose()
-    expect(timers).toHaveLength(TOTAL) // no attempt past the limit
+    expect(timers).toHaveLength(TOTAL + 1) // an attempt past the old limit is still scheduled
   })
 })
 

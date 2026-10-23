@@ -19,7 +19,7 @@ import IndexViewPage from '@/pages/IndexViewPage.vue'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { createIndexSocket } from '@/composables/useIndexLive'
-import { MAX_ATTEMPTS, createLiveSocket, useStrategyLive } from '@/composables/useStrategyLive'
+import { createLiveSocket, useStrategyLive } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -47,8 +47,9 @@ beforeEach(() => {
   reads.length = 0
   setActivePinia(createPinia())
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no spread here: the spread has its own tests (reconnect-forever.test.js)
 })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 /** A socket whose timers are recorded, so the exact delay of every reconnect attempt can be read. */
 function timedSocket(extra = {}) {
@@ -110,7 +111,7 @@ describe('AC-2 core: a drop reads as reconnecting at once and the server coming 
 })
 
 describe('AC-2: the reconnect timing of the one socket helper', () => {
-  it('AC-2: attempts are 1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s; it gives up only after the slow limit', () => {
+  it('AC-2: attempts are 1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s; it never gives up (REQ-113 AC-9)', () => {
     const { live, timers, statuses } = timedSocket()
     live.follow(BODY)
     FakeSocket.all[0].serverClose()
@@ -118,10 +119,9 @@ describe('AC-2: the reconnect timing of the one socket helper', () => {
       timers[i].fn()
       FakeSocket.all.at(-1).serverClose()
     }
-    expect(timers.map((t) => t.ms)).toEqual([...Array(30).fill(1000), ...SLOW_DELAYS])
-    expect(MAX_ATTEMPTS).toBe(SLOW_DELAYS.length) // the give-up limit counts only the slow phase
-    expect(statuses.at(-1)).toBe('off') // gave up after fast 30 + slow 10
-    expect(timers).toHaveLength(40)
+    expect(timers.map((t) => t.ms)).toEqual([...Array(30).fill(1000), ...SLOW_DELAYS, 30000]) // attempt 41 stays at the cap
+    expect(statuses.at(-1)).toBe('down') // past the old limit of 40: still retrying, never 'off'
+    expect(timers).toHaveLength(41) // attempt 41 is scheduled (at the cap)
   })
 
   it('AC-2: a real answer ends the drop: the next drop starts again in the fast phase', () => {
