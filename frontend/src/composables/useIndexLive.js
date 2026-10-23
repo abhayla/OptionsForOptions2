@@ -22,6 +22,14 @@ export function isIndicesAnswer(msg) {
 }
 
 /**
+ * The ONE "is this index answer live?" rule (ADR-015, REQ-114 AC-7): the server's state LIVE and the market not closed.
+ * The server never sends LIVE on a closed market; this second layer keeps any screen from saying "live" if one did.
+ */
+export function isLiveIndexAnswer(msg) {
+  return msg?.state === 'LIVE' && msg?.market_closed !== true
+}
+
+/**
  * The index socket: the ONE socket helper (createLiveSocket, same fast-then-slow reconnect) in its read-only form: it
  * sends nothing. onPush(answer): every index answer the server pushed, untouched. onDown(): the socket closed without
  * stop(). onStatus(status): connecting | live | down | off.
@@ -37,7 +45,7 @@ export function useIndexLive({ onPush, onDown, url = indexLiveUrl(), WebSocketIm
   const status = ref('off')
   const shown = useReconnectingText(status)
   const live = createIndexSocket({ url, onDown, WebSocketImpl, onStatus: (s) => (status.value = s),
-    onPush: (msg) => { shown.note(msg, msg?.state === 'LIVE'); onPush?.(msg) } })
+    onPush: (msg) => { shown.note(msg, isLiveIndexAnswer(msg)); onPush?.(msg) } })
   onBeforeUnmount(() => live.stop())
   return { status, reconnecting: useReconnecting(status), reconnectingText: shown.text, start: live.start, stop: live.stop }
 }
@@ -104,8 +112,9 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   }
 
   const rowFor = (u) => answer.value?.indices?.find((r) => r.underlying === u) ?? null
-  const isLive = () => answer.value?.state === 'LIVE'
+  const isLive = () => isLiveIndexAnswer(answer.value)
   const shownValue = (row) => (isLive() && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
-  const notLive = () => answer.value?.state === 'NOT_CONNECTED' || failed.value
-  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive }
+  const notLive = () => (answer.value !== null && !isLive()) || failed.value
+  const marketClosed = () => answer.value?.market_closed === true
+  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed }
 }

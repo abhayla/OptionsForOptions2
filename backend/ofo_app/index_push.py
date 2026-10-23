@@ -79,8 +79,8 @@ def _row(ctx: MarketContext, underlying: Underlying, instrument_id: str | None,
 def indices_answer(ctx: MarketContext | None, *, live: bool,
                    now: Callable[[], datetime.datetime]) -> IndicesOut:
     """The ONE answer behind the REST read and the socket push. ``ctx`` None (no live feed): NOT_CONNECTED, every value
-    null. ``live`` False (the page's own socket is down, or nothing holds the indices): NOT_CONNECTED with each index's
-    last value time kept."""
+    null. ``live`` False (the page's own socket is down, or nothing holds the indices) or the market closed:
+    NOT_CONNECTED with each index's last value time kept."""
     if ctx is None:
         rows = [IndexOut(underlying=u, instrument_id=None, value=None, at=None, health=None) for u in UNDERLYINGS]
         answered_at = now()
@@ -89,8 +89,12 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
                           last_price_at=state.last_price_at)
     answered_at = ctx.clock()
     state = market_state(ctx, answered_at)
-    rows = [_row(ctx, u, i, live) for u, i in index_ids(ctx).items()]
-    return IndicesOut(state="LIVE" if live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
+    # ADR-015 / REQ-114 AC-7: the ONE place the index answer decides "live" - held by the page's socket AND the market
+    # open by the one market-state answer. A closed market (weekend, holiday, after hours, past the calendar) is never
+    # LIVE: the not-live answer, each row's last value time kept, the screens show the market-closed banner.
+    shown_live = live and not state.closed
+    rows = [_row(ctx, u, i, shown_live) for u, i in index_ids(ctx).items()]
+    return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
                       market_closed=state.closed, last_price_at=state.last_price_at)
 
 

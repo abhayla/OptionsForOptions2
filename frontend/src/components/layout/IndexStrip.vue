@@ -9,15 +9,16 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 defineProps({ showStatus: { type: Boolean, default: false } }) // W-117: Market context adds one status line
-const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, notLive, isLive } = useIndexAnswer()
+const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, notLive, isLive, marketClosed } = useIndexAnswer()
 onMounted(start)
-const statusText = () => (isLive() ? 'Index values are live.' : answer.value || notLive() ? 'Index values are not live.' : '')
+// a closed market is never live (isLive reads the answer's market state too, ADR-015)
+const statusText = () => (isLive() ? 'Index values are live.' : notLive() ? 'Index values are not live.' : '')
 const timeText = (row) => (row?.at ? istTime(row.at) : '')
 </script>
 
 <template>
   <div class="flex flex-wrap items-center gap-x-6 gap-y-1 rounded border border-line bg-surface px-3 py-2 text-sm" data-testid="index-strip">
-    <MarketClosedBanner v-if="answer?.market_closed" :prices-at="answer.last_price_at" />
+    <MarketClosedBanner v-if="marketClosed()" :prices-at="answer.last_price_at" />
     <span v-if="reconnecting" class="font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</span>
     <span v-if="notLive()" class="font-medium" data-testid="strip-state">{{ NOT_LIVE_LABEL }}</span>
     <span v-for="u in INDEX_KEYS" :key="u" :data-testid="`strip-${u}`" class="flex items-baseline gap-2">
