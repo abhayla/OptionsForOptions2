@@ -38,12 +38,10 @@ REFUSED = [
     "gps python | spps",
     "Stop-Process python",
     "Stop-Process -InputObject $p",
-    "Stop-Process -Id $x",
     "Stop-Process -Id 12 -Name python",
     "pkill -f uvicorn",
     "killall python",
     "kill %1",
-    "kill $pid",
     "kill",
     "kill -9",
     "kill -9 -1",
@@ -69,6 +67,50 @@ REFUSED = [
     "find . -exec pkill x {} \\;",
     "Get-Process python | ForEach-Object { Stop-Process -Name $_.Name }",
     f"pwsh -EncodedCommand {ENCODED}",
+    # fix round 1 (CRITICAL): a word after a shell keyword or a loop header starts a command
+    "for p in $(pgrep python); do kill $p; done",
+    'for p in $(pgrep python); do kill -9 "$p"; done',
+    "for /f \"tokens=2\" %i in ('tasklist ^| findstr python') do taskkill /PID %i /F",
+    "if true; then pkill python; fi",
+    "while true; do pkill python; done",
+    "! pkill python",
+    "then taskkill /IM python.exe",
+    "do Stop-Process -Name python",
+    "if x; then echo a; else killall node; fi",
+    "pgrep python | xargs kill -9",
+    "$ids = (Get-Process python).Id; Stop-Process -Id $ids",
+    "foreach ($p in Get-Process python) { Stop-Process -Id $p.Id }",
+    # fix round 1 (MAJOR): a process-selecting pipeline may only flow into read-only sinks
+    "Stop-Process -InputObject (Get-Process python)",
+    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Invoke-CimMethod -Name Terminate",
+    "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Remove-CimInstance",
+    "Get-WmiObject Win32_Process -Filter \"Name='python.exe'\" | Remove-WmiObject",
+    "Get-Process python | ForEach-Object Kill",
+    "Get-Process python | % Kill",
+    "gps python | % { $_.Kill() }",
+    "[System.Diagnostics.Process]::GetProcessesByName('python') | % { $_.Kill() }",
+    "Get-Process python | Stop-Process -Id 1234",
+    "Get-Process python | kill",
+    "Get-Process python | Where-Object { $_.CPU -gt 1 } | Stop-Process",
+    "Get-Process | Where-Object Name -eq python | Stop-Process",
+    "ps aux | grep python | xargs kill",
+    "$p = Get-Process python; $p.Kill()",
+    "Stop-Process -Force",
+    "Stop-Process -WhatIf",
+    "$p = Get-CimInstance Win32_Process; Invoke-CimMethod -InputObject $p -MethodName Terminate",
+    "Get-Process python | Where-Object Name -eq \"$(echo x)\" | Remove-CimInstance",
+    # fix round 1 (MINOR): group kill, fuser -k, kill-port
+    "kill 0",
+    "kill -9 0",
+    "kill -KILL 0 5",
+    "fuser -k 8000/tcp",
+    "fuser -km /tmp",
+    "npx kill-port 8000",
+    "kill-port 8000",
+    # unterminated quotes fail closed (R09): the rest of the line is judged as command text
+    "echo 'pkill python",
+    'echo "pkill python',
+    "echo ok; echo 'taskkill /IM python.exe /F",
 ]
 
 ALLOWED = [
@@ -84,6 +126,29 @@ ALLOWED = [
     "kill -9 1234 5678",
     "kill -KILL 99",
     "echo ok; kill 77",
+    # fix round 1: a variable holding a recorded PID is a PID form
+    "Stop-Process -Id $p.Id",
+    "Stop-Process -Id $pid -Force",
+    "Stop-Process -Id $x",
+    "kill $pid",
+    "kill $!",
+    'kill -9 "$pid"',
+    "$p = Start-Process python -PassThru; Stop-Process -Id $p.Id",
+    "server & pid=$!; sleep 1; kill $pid",
+    "for p in 12 34; do kill $p; done",
+    "ps -p $pid -o comm=; kill $pid",
+    # read-only pipelines on process selections, and quoted text that only mentions a call
+    "Get-Process python | Select-Object Id",
+    "Get-Process python | Select Id; echo \".Kill()\"",
+    "Get-Process | Where-Object { $_.CPU -gt 1 } | Sort-Object CPU | Format-Table Name, Id",
+    "gps python | Measure-Object | Out-String",
+    "Get-CimInstance Win32_Process | Select-Object ProcessId, Name | ConvertTo-Json",
+    "tasklist | findstr python",
+    "pgrep python | head -3",
+    "echo \".Kill()\"",
+    "$msg = @'\nit's done\nStop-Process -Name python\n'@\ngit commit -m $msg",
+    "fuser 8000/tcp",
+    "npm run kill-server",
     # everything that does not stop a process, including text that only mentions the verbs
     "git status",
     "python -m pytest -q",
@@ -98,6 +163,20 @@ ALLOWED = [
     "ps aux | grep uvicorn",
     "",
 ]
+
+
+def test_an_unterminated_quote_is_judged_as_command_text_not_skipped() -> None:
+    for text in ("echo 'pkill python", 'echo "taskkill /IM a.exe'):
+        reason = kbn.decide("Bash", {"command": text})
+        assert reason is not None and REASON in reason
+    assert kbn.decide("Bash", {"command": "echo 'it is fine"}) is None
+
+
+def test_a_variable_pid_beside_a_name_selection_is_refused_but_alone_passes() -> None:
+    assert kbn.decide("Bash", {"command": "kill $p"}) is None
+    assert kbn.decide("Bash", {"command": "pgrep python; kill $p"}) is not None
+    assert kbn.decide("PowerShell", {"command": "Stop-Process -Id $p.Id"}) is None
+    assert kbn.decide("PowerShell", {"command": "Get-Process python | Out-Null; Stop-Process -Id $p.Id"}) is not None
 
 
 def _encoded_layers(command: str, layers: int) -> str:
