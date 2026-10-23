@@ -8,7 +8,7 @@ import { computed, ref } from 'vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import { contractName } from '@/lib/displayFormat'
-import { NOT_CONNECTED_LABEL } from '@/lib/legPicker'
+import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import { CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, canStep } from '@/lib/legEdit'
 
 const props = defineProps({
@@ -18,7 +18,7 @@ const props = defineProps({
   updating: { type: Boolean, default: false },
   errorParts: { type: Object, default: null },
 })
-const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove'])
+const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg'])
 
 const multiplier = ref(1)
 const depthFor = ref(null) // the leg whose depth popup is open
@@ -26,6 +26,8 @@ const depthFor = ref(null) // the leg whose depth popup is open
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
 const shown = computed(() => (props.hasReply ? props.shapeName ?? CUSTOM_STRATEGY : null))
 const legName = (l) => contractName(l)
+// ADR-085: a leg saved without a planned entry says so and offers Reprice (REQ-077 AC-7); Edit and Reprice both open the picker's own edit form
+const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 
 function setMultiplier(index) {
   const choice = MULTIPLIER_CHOICES[index] // chosen from the fixed list: nothing is parsed from text
@@ -70,7 +72,12 @@ function setMultiplier(index) {
           <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
           <span v-if="leg.included === false" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
           <span v-if="leg.block" class="text-ink-muted" data-testid="leg-block">{{ leg.block }}</span>
+          <template v-if="needsReprice(leg)">
+            <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
+            <button type="button" data-testid="reprice-leg" class="underline" @click="emit('edit-leg', i)">Reprice</button>
+          </template>
           <button type="button" data-testid="leg-depth-icon" class="underline" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i">Depth</button>
+          <button type="button" data-testid="edit-leg" class="underline" @click="emit('edit-leg', i)">Edit</button>
           <button type="button" class="underline" data-testid="leg-remove" :aria-label="`Remove ${legName(leg)}`" @click="emit('remove', i)">Remove</button>
           <DepthPopup v-if="depthFor === i" class="w-full" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
         </li>

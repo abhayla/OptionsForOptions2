@@ -258,6 +258,12 @@ async function editLeg(edit) {
     if (mine === editSeq) updating.value = false
   }
 }
+const picker = ref(null)
+// Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
+const openInPicker = (i) => {
+  const leg = legs.value[i]
+  if (leg) picker.value?.startEdit(leg)
+}
 const focusPicker = () => document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
 const refusal = computed(() => executeRefusal(legs.value))
 const setChoice = (next) => {
@@ -296,12 +302,12 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
+    <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError"
-      @edit="editLeg" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
+      @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
     />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />

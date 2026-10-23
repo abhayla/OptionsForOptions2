@@ -341,6 +341,8 @@ async function done() {
 }
 
 const legName = (l) => contractName(l)
+// the Builder's one leg list (LegList.vue) opens the same edit form through this, as the picker's own Edit did
+defineExpose({ startEdit })
 </script>
 
 <template>

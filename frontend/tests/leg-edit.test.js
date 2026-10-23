@@ -328,3 +328,54 @@ describe('AC-7 (attack 2): Execute is refused while any leg is unticked', () => 
     expect(actions.props('executeRefusal')).toBeNull()
   })
 })
+
+// ---- Fix round 3 (row 20): Edit and Reprice are on the ONE leg list and work as the picker's own list did ----
+describe('REQ-077 AC-7: an unpriced leg on the one leg list keeps the ADR-085 message and a working Reprice; Edit works as before', () => {
+  const AT = '2026-10-08T09:20:09+05:30'
+  const UNPRICED = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE',
+    expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null,
+    captured_at: null, reason_code: 'needs_reprice' }
+  const CONTRACTS = { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE',
+    expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }] }
+  async function openWithLeg(leg) {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CONTRACTS
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    w.findComponent({ name: 'LegPicker' }).vm.$emit('update:legs', [leg])
+    await flushPromises()
+    return w
+  }
+  it('attack 2: the row shows the exact ADR-085 message and Reprice; Reprice then Save leg captures one entry and clears the message', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, planned_entry: '104.65',
+      captured_at: AT, source: 'ltp', reason_code: null }] }
+    const w = await openWithLeg(UNPRICED)
+    expect(all(w, 'leg-edit-list')).toHaveLength(1)
+    expect(all(w, 'leg-list')).toHaveLength(0)
+    expect(t(w, 'leg-reprice-prompt').text()).toBe('This leg was saved without a planned entry. Reprice it to see its numbers.')
+    expect(calls.some((c) => c.url === '/strategies/planned-entry')).toBe(false) // nothing is captured by showing the row
+    await t(w, 'reprice-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'pick-strike').element.value).toBe('22800.00') // the picker's form is open on this leg
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.url === '/strategies/planned-entry')).toHaveLength(1)
+    expect(w.findComponent({ name: 'LegList' }).props('legs')[0]).toMatchObject({ planned_entry: '104.65', captured_at: AT, reason_code: null })
+    expect(all(w, 'leg-reprice-prompt')).toHaveLength(0)
+  })
+  it('attack 3: a priced leg has no Reprice; Edit re-fills the picker form from the catalogue (same requests as the picker\'s Edit)', async () => {
+    const w = await openWithLeg({ ...UNPRICED, planned_entry: '100.00', captured_at: AT, reason_code: null })
+    expect(all(w, 'reprice-leg')).toHaveLength(0)
+    expect(all(w, 'leg-reprice-prompt')).toHaveLength(0)
+    calls.length = 0
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    expect(calls.map((c) => `${c.method} ${c.url}`).filter((u) => u.includes('/catalogue/'))).toEqual(['GET /catalogue/NIFTY/expiries', 'GET /catalogue/NIFTY/contracts?expiry=2026-10-13'])
+    expect(w.find('h2').text()).toBe('Edit leg')
+    expect([t(w, 'pick-expiry').element.value, t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value,
+      t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['2026-10-13', 'CE', '22800.00', 'SELL', '1'])
+  })
+})
