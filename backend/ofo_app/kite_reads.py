@@ -26,6 +26,7 @@ from decimal import Decimal
 from typing import Final
 
 from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
+from ofo.broker.rate_limit import identity
 
 from ofo_app import broker_sync
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
@@ -48,6 +49,7 @@ _PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
 _OK: Final = 200
 _BUSY: Final = 429
 BUSY_CODE: Final = "kite_read_busy"
+TOKEN_CODE: Final = "kite_read_token"  # noqa: S105 - an error code, not a secret. Zerodha refused the token (expired or ended)
 _DENIED: Final = 403
 _SERVER_ERROR: Final = 500
 
@@ -196,13 +198,19 @@ class KiteReads:
     def __repr__(self) -> str:
         return "KiteReads()"
 
+    @property
+    def user_ref(self) -> str:
+        """The limiter's short hash of this client's access token (never the token): the per-user key of the periodic
+        reads (REQ-118 AC-7). A new login is a new ref."""
+        return identity(self._headers["Authorization"], None)[1]
+
     def _data(self, method: str, path: str) -> object:
         """One read's ``data``. A token or unavailable failure forgets the last successful sync (W-089: it must not age
         on screen); the sync is noted by each fetch only after its own shape checks pass."""
         try:
             return self._fetch(method, path)
         except KiteReadError as exc:
-            if exc.code in ("kite_read_token", "kite_read_unavailable"):
+            if exc.code in (TOKEN_CODE, "kite_read_unavailable"):
                 broker_sync.forget()
             raise
 
@@ -224,7 +232,7 @@ class KiteReads:
         if status != _OK:
             log.warning("kite read HTTP status %s", status)
             if status == _DENIED or error_type(text) == "TokenException":
-                raise KiteReadError("kite_read_token")
+                raise KiteReadError(TOKEN_CODE)
             if status == _BUSY:
                 raise KiteReadError(BUSY_CODE)
             raise KiteReadError("kite_read_unavailable" if status >= _SERVER_ERROR else "kite_read_refused")

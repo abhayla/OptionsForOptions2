@@ -22,9 +22,10 @@ import hashlib
 import logging
 import os
 from decimal import Decimal
-from typing import Callable, Optional  # noqa: UP035
+from typing import Awaitable, Callable, Optional  # noqa: UP035
 
 from ofo.broker.kite_endpoints import KITE_WS_HOST
+from ofo.broker.rate_limit import READ_PERIOD_SECONDS, READ_POSITIONS
 from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.market_calendar import is_market_open
@@ -33,11 +34,11 @@ from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_IDLE, FEED_MARKET_CLOS
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from redis.exceptions import RedisError
 
-from ofo_app import feed_bus, feed_mode
+from ofo_app import feed_bus, feed_mode, kite_period_reads
 from ofo_app.config import app_env, get_settings
 from ofo_app.feed_bus import BusSocket
 from ofo_app.kite_margin import KiteMargin, urllib_transport
-from ofo_app.kite_reads import KiteReadError, KiteReads
+from ofo_app.kite_reads import TOKEN_CODE, KiteReadError, KiteReads
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
 from ofo_app.routes.outcome import MarketContext, server_now
@@ -49,6 +50,7 @@ LIVE_RATE = Decimal("0.065")  # the risk-free rate the replay uses too; a rates 
 REAL_KITE_WS = f"wss://{KITE_WS_HOST}"
 
 NOT_STARTED, NOT_CONNECTED, LIVE, SESSION_ENDED = "off", "not_connected", "live", "session_ended"
+POSITIONS_PERIOD = READ_PERIOD_SECONDS[READ_POSITIONS]  # REQ-118 AC-7 (RD-063): one home, the limiter's table
 
 
 def token_fingerprint(token: str) -> bytes:
@@ -87,6 +89,8 @@ class LiveMarket:
         self._fingerprint: bytes | None = None  # token_fingerprint of the running socket's token; never logged
         self._config = None  # the broker config of the last start, for the one re-read after a session ends
         self._recheck: asyncio.Task | None = None
+        self._periodic: asyncio.Task | None = None  # REQ-015 AC-12: positions read at connect, then every period
+        self._sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # injected by the tests' clock
 
     def context(self) -> Optional[MarketContext]:  # noqa: UP045
         return None if self.feed is None else self.feed.ctx
@@ -118,6 +122,7 @@ class LiveMarket:
         """#296 (b): the socket ended; a login may have stored a fresh session meanwhile (in the reconnect backoff,
         or while the dead socket still looked live). Re-read the stored session ONCE for this ended socket."""
         self.state = SESSION_ENDED
+        self._stop_periodic()  # an ended session is never read again on its old token
         if self._config is None or self._closed:
             return
         self._recheck = asyncio.get_running_loop().create_task(self._recheck_after_end(self._fingerprint),
@@ -170,6 +175,45 @@ class LiveMarket:
                                 base_url=get_settings().KITE_WS_URL, on_reconnect=self._read_positions_once,
                                 user_ref=OWNER_REF)
         self.attach(provider, socket, clock, token_fingerprint(token))
+        self.start_periodic_positions()
+
+    def start_periodic_positions(self) -> None:
+        """REQ-015 AC-12 (RD-014): a connect reads positions at once and then every ``POSITIONS_PERIOD`` seconds, with
+        no Execute visit. One job per market: a new connect replaces the old one."""
+        self._stop_periodic()
+        self._periodic = asyncio.get_running_loop().create_task(self._positions_every_period(),
+                                                                name="kite-positions-period")
+
+    def _stop_periodic(self) -> None:
+        if self._periodic is not None and self._periodic is not asyncio.current_task():
+            self._periodic.cancel()
+        self._periodic = None
+
+    async def _positions_every_period(self) -> None:
+        while await self._read_positions_periodic():
+            await self._sleep(POSITIONS_PERIOD)
+
+    async def _read_positions_periodic(self) -> bool:
+        """One periodic read through ``kite_period_reads`` (the limiter's per-user period, as a background request).
+        True = keep the job; False = stop it: no stored session (disconnected) or Zerodha refused the token (expired;
+        a new login starts a new job). A timeout, a busy answer or a failed read keeps the job for the next period."""
+        if self._config is None:
+            return False
+        token = await self._stored_token(self._config)
+        if token is None:
+            return False
+        transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+        reads = KiteReads(api_key=self._config.api_key, access_token=token, transport=transport)
+        del token
+        try:
+            await asyncio.wait_for(asyncio.to_thread(kite_period_reads.background_screen_positions, reads),
+                                   timeout=CALL_TIMEOUT_SECONDS + 5)
+        except TimeoutError:
+            log.warning("periodic positions read timed out")
+        except KiteReadError as exc:
+            log.warning("periodic positions read failed: %s", exc.code)
+            return exc.code != TOKEN_CODE
+        return True
 
     async def _read_positions_once(self) -> None:
         """REQ-015 AC-5: after the socket re-connects, ONE positions read through ``KiteReads`` (which marks
@@ -261,6 +305,7 @@ class LiveMarket:
         await self.stop()
 
     async def _halt(self) -> None:
+        self._stop_periodic()  # disconnect, a new login and shutdown all stop the periodic read
         if self._socket is not None:
             self._socket.stop()
         if self._task is not None:
