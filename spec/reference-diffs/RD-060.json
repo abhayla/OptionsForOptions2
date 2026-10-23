@@ -1,0 +1,15 @@
+{
+  "id": "RD-060",
+  "kind": "MATCH",
+  "title": "Prices and order updates come from a feed separate from the screens, on one relay (row 9 match)",
+  "reference_behaviour": "One socket relay carries quotes and order updates to the browser; the browser reconnects with a back-off capped at 30 s (bundle-findings 1.7 and 6.1).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-113 AC-1: the market-data process owns every price socket and order stream; browser back-off is capped at 30 s.",
+  "req": "REQ-113",
+  "ac": "AC-1",
+  "row": 9,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

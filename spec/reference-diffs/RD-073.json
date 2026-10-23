@@ -1,0 +1,15 @@
+{
+  "id": "RD-073",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Calculations on an old or missing index value: labelled or refused, never silent (G-12-2)",
+  "reference_behaviour": "The builder keeps computing on whatever index price it has and shows only the time prices were last updated.",
+  "reference_screens": ["screen 012"],
+  "ours": "Stale and delayed spot is computed and labelled; unhealthy, unavailable or missing spot is refused with a named reason. Kept as stricter safety under ADR-015.",
+  "req": "REQ-072",
+  "adr": "ADR-015",
+  "row": 12,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

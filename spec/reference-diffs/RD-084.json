@@ -1,0 +1,14 @@
+{
+  "id": "RD-084",
+  "kind": "NO-SCREEN",
+  "title": "Greeks, IV and Decay figures per preset with leg prices (row 13 study gap SG-13)",
+  "reference_behaviour": "Not captured: per-leg prices, IVs and Greeks for a named preset, and the definition of the Decay tile, so our Greeks cannot be compared number for number.",
+  "reference_screens": [],
+  "ours": "Ours computes Greeks with the ADR-063 model. Owner to re-capture one preset with per-leg price, IV, Greeks and Decay.",
+  "req": "REQ-032",
+  "row": 13,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

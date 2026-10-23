@@ -1,0 +1,15 @@
+{
+  "id": "RD-088",
+  "kind": "COPY",
+  "title": "On-expiry curve for a calendar drawn from the model (G-14-3, same fix as RD-078)",
+  "reference_behaviour": "For a calendar, the on-expiry line is valued by the model at the first expiry and drawn as a curve, with a note that the loss can exceed the max loss shown.",
+  "reference_screens": ["catalogue 108", "catalogue 109"],
+  "ours": "SPEC CHANGE: the engine refuses mixed-expiry scenarios; REQ-083 says a chart on different expiries carries a reason instead, and REQ-081 AC-4 shows no maximum (ADR-143).",
+  "req": "REQ-083",
+  "adr": "ADR-143",
+  "row": 36,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

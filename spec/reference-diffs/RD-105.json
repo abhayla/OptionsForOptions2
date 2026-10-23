@@ -1,0 +1,15 @@
+{
+  "id": "RD-105",
+  "kind": "COPY",
+  "title": "A standing liquidity warning on every ready-made (row 15 match line)",
+  "reference_behaviour": "Every preset load carries the same liquidity-risk note that odd strike multiples may not be liquid, whatever the actual strikes.",
+  "reference_screens": ["screen 012"],
+  "ours": "SPEC CHANGE: REQ-085 AC-1 fires each warning only on a measured condition (low_liquidity per REQ-085 AC-4); a blanket note on every preset departs from it.",
+  "req": "REQ-085",
+  "ac": "AC-1",
+  "row": 31,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

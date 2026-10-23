@@ -1,0 +1,15 @@
+{
+  "id": "RD-056",
+  "kind": "MATCH",
+  "title": "Market-wide figures computed once, strategy figures per strategy (row 8 match)",
+  "reference_behaviour": "Market-wide data is one shared cached answer; strategy numbers are computed per edit for that strategy, and old replies are dropped by a request id (bundle-findings 6.1, architecture 4.1).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-050 AC-1 and AC-2: the same split; the live socket drops out-of-order answers.",
+  "req": "REQ-050",
+  "ac": "AC-2",
+  "row": 8,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

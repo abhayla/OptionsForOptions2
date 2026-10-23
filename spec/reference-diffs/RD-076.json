@@ -1,0 +1,14 @@
+{
+  "id": "RD-076",
+  "kind": "NO-SCREEN",
+  "title": "Screen for a missing index value at the open or during a feed gap (row 12 study gap SG-12)",
+  "reference_behaviour": "Not captured: what the builder shows when the index value is missing before 09:15 or during a feed gap.",
+  "reference_screens": [],
+  "ours": "Ours refuses with the index value is missing; the outcome is refused. Owner to capture the reference screen before the open.",
+  "req": "REQ-072",
+  "row": 12,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

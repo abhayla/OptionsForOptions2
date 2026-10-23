@@ -1,0 +1,15 @@
+{
+  "id": "RD-116",
+  "kind": "MATCH",
+  "title": "A reopened strategy uses the prices saved, not today's (row 16 match)",
+  "reference_behaviour": "Loading a saved strategy restores the prices from save time, including any manual price edit.",
+  "reference_screens": ["catalogue 272"],
+  "ours": "REQ-038 AC-5: planned entries and capture times are restored exactly as stored; nothing is captured on reopening.",
+  "req": "REQ-038",
+  "ac": "AC-5",
+  "row": 16,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

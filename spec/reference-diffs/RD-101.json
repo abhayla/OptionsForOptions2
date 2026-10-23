@@ -1,0 +1,15 @@
+{
+  "id": "RD-101",
+  "kind": "MATCH",
+  "title": "18 of the 38 ready-made shapes match our templates leg for leg (row 15 match)",
+  "reference_behaviour": "The four verticals, both synthetic futures, call ratio back spread, put ratio back spread, long calendar with calls, bull butterfly, short straddle, short iron butterfly, short strangle, short iron condor, jade lizard, long straddle, long strangle and long iron condor.",
+  "reference_screens": ["catalogue 100"],
+  "ours": "Each has a catalogue template of the same leg shape; defaults and names differ (RD-092, RD-095).",
+  "req": "REQ-028",
+  "ac": "AC-3",
+  "row": 15,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

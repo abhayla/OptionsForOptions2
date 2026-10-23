@@ -1,0 +1,15 @@
+{
+  "id": "RD-086",
+  "kind": "COPY",
+  "title": "Payoff table at a user-chosen interval with a Show % switch (row 14 gap G-14-1)",
+  "reference_behaviour": "The payoff table lists index targets at an interval the user picks (10, 25, 50 or 100), with P&L on the target date and at expiry, the current-price row highlighted, and a Show % switch.",
+  "reference_screens": ["catalogue 014", "catalogue 017"],
+  "ours": "REQ-137 AC-1 and AC-2 not built: our scenario table uses a per-index admin step (NIFTY 100, SENSEX 300) with no user interval or percent column.",
+  "req": "REQ-137",
+  "ac": "AC-1",
+  "row": 38,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

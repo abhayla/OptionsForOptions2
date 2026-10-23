@@ -1,0 +1,16 @@
+{
+  "id": "RD-072",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Ready-made refused when the index value is missing or old (row 12 gap G-12-1)",
+  "reference_behaviour": "A preset is never refused for index staleness; it fails only when the server fails, with a generic failed-to-fetch toast.",
+  "reference_screens": ["screen 010"],
+  "ours": "REQ-079 AC-8: the load is refused with the REQ-049 reason and no strike is placed from an old spot. Kept as stricter safety under ADR-015.",
+  "req": "REQ-079",
+  "ac": "AC-8",
+  "adr": "ADR-015",
+  "row": 55,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

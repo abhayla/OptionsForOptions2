@@ -1,0 +1,15 @@
+{
+  "id": "RD-113",
+  "kind": "COPY",
+  "title": "A reopened strategy marks legs whose price moved since it was saved (G-16-8)",
+  "reference_behaviour": "A reopened strategy keeps its saved prices, marks legs whose live price has changed, and Reset Prices re-bases them to live.",
+  "reference_screens": ["catalogue 254", "catalogue 257", "catalogue 272"],
+  "ours": "REQ-077 AC-7 not built: saved entries are restored exactly but no moved-price marker shows on reopening; old legs keep the Reprice message.",
+  "req": "REQ-077",
+  "ac": "AC-7",
+  "row": 21,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

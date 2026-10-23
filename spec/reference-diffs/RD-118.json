@@ -1,0 +1,14 @@
+{
+  "id": "RD-118",
+  "kind": "NO-SCREEN",
+  "title": "What happens when a saved strategy cannot be read (row 16 match line: no screen)",
+  "reference_behaviour": "Not documented: no screen for an unreadable or failed saved-strategy load was found (searched unreadable, failed to load).",
+  "reference_screens": [],
+  "ours": "Ours fails closed: the load throws and the current screen is kept. Owner to capture the reference behaviour if a broken saved strategy can be produced.",
+  "req": "REQ-038",
+  "row": 16,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "RD-095",
+  "kind": "COPY",
+  "title": "Shape names as users read them: Short Straddle, Long Iron Condor, Bull Butterfly (G-15-6)",
+  "reference_behaviour": "Names read Short Straddle, Short Strangle, Short Iron Condor, Long Iron Condor, Long Calendar with Calls, Bull Butterfly and Synthetic Future.",
+  "reference_screens": ["screen 010"],
+  "ours": "Ours read Straddle (Short), Strangle (Short), Iron Condor, Reverse Iron Condor, Calendar Spread, Butterfly Spread, Synthetic Long and Short. Align where the ADR-003 wording check passes.",
+  "req": "REQ-028",
+  "ac": "AC-3",
+  "row": 15,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

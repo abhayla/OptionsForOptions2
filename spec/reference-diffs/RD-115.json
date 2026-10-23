@@ -1,0 +1,15 @@
+{
+  "id": "RD-115",
+  "kind": "MATCH",
+  "title": "Saving keeps the legs, quantity in units and each leg's entry price (row 16 match)",
+  "reference_behaviour": "The saved record holds each leg with its quantity in units (lots times lot size) and its entry price.",
+  "reference_screens": ["screen 119"],
+  "ours": "REQ-038 AC-5: each leg with quantity and planned entry is saved.",
+  "req": "REQ-038",
+  "ac": "AC-5",
+  "row": 16,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

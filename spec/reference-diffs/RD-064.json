@@ -1,0 +1,15 @@
+{
+  "id": "RD-064",
+  "kind": "MATCH",
+  "title": "Orders are never retried automatically; a rejected leg offers a manual retry (row 10 match)",
+  "reference_behaviour": "A rejected leg shows its rejected state and a Retry button; nothing is retried on its own.",
+  "reference_screens": ["catalogue 042", "catalogue 044"],
+  "ours": "REQ-118 AC-5: creates and deletes are never retried; retry is a visible user action.",
+  "req": "REQ-118",
+  "ac": "AC-5",
+  "row": 10,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

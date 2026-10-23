@@ -1,0 +1,15 @@
+{
+  "id": "RD-109",
+  "kind": "COPY",
+  "title": "Rename, search, and a list line with the first leg and N more (G-16-4)",
+  "reference_behaviour": "The saved list shows each name with its first contract and how many more legs, has a search box, and a pencil opens a rename dialog.",
+  "reference_screens": ["screen 118", "screen 119"],
+  "ours": "REQ-134 AC-3 (rename) and AC-4 (list line and search) not built: the list shows id, underlying, status and last saved only.",
+  "req": "REQ-134",
+  "ac": "AC-4",
+  "row": 29,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

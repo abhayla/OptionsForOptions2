@@ -1,0 +1,15 @@
+{
+  "id": "RD-098",
+  "kind": "MATCH",
+  "title": "Templates are data behind one generic engine (row 15 match)",
+  "reference_behaviour": "Presets are a server-side list run through one builder engine; adding a preset needs no new calculation code.",
+  "reference_screens": ["screen 010"],
+  "ours": "REQ-028 AC-3 and AC-5: templates are data, no engine per named strategy.",
+  "req": "REQ-028",
+  "ac": "AC-5",
+  "row": 15,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

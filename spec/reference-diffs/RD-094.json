@@ -1,0 +1,15 @@
+{
+  "id": "RD-094",
+  "kind": "COPY",
+  "title": "Each ready-made listed in one market-view group only (G-15-5)",
+  "reference_behaviour": "Each preset sits in exactly one of the Bullish, Bearish, Neutral and Others groups.",
+  "reference_screens": ["screen 010"],
+  "ours": "A template shows in every group that has one of its views, so jade lizard, covered call, cash-secured put and the ratio back spreads appear twice (REQ-079 AC-2).",
+  "req": "REQ-079",
+  "ac": "AC-2",
+  "row": 55,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

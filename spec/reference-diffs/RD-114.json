@@ -1,0 +1,15 @@
+{
+  "id": "RD-114",
+  "kind": "COPY",
+  "title": "What a save stores: legs and entry prices only in the reference product, more in ours (G-16-9)",
+  "reference_behaviour": "A saved strategy keeps its legs (contract, quantity, lot size, side, expiry, type, strike) and initial prices, not IVs, target or manual P&L.",
+  "reference_screens": ["screen 119"],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-038 AC-1 and AC-5 also store capture times, rules, risk limits and preferences and refuse live fields; copying would drop them. For the owner's batch.",
+  "req": "REQ-038",
+  "ac": "AC-5",
+  "row": 16,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

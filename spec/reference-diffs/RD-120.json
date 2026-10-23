@@ -1,0 +1,16 @@
+{
+  "id": "RD-120",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Versions after execution, proposed versus active, and the broker's state wins (row 16 match line)",
+  "reference_behaviour": "Saved strategies have no versions after execution and no proposed-versus-active split (searched version, history, restore).",
+  "reference_screens": ["screen 118"],
+  "ours": "REQ-038 AC-2 to AC-4: versions after first execution, a proposed version kept apart until confirmed, and Zerodha's actual state wins. Decided by ADR-016 (Zerodha is the authority).",
+  "req": "REQ-038",
+  "ac": "AC-4",
+  "adr": "ADR-016",
+  "row": 16,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

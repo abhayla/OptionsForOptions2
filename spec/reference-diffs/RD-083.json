@@ -1,0 +1,14 @@
+{
+  "id": "RD-083",
+  "kind": "MATCH",
+  "title": "Expiry P&L, max profit, max loss, breakevens, Greek units and POP family agree (row 13 match)",
+  "reference_behaviour": "Payoff per leg summed per strategy; breakevens and max values from the payoff; theta per day, vega per 1 vol point, delta per 1 point; POP a lognormal probability about the forward. Bull call spread and short strangle numbers agree once the study's manual P&L of -1,000 is removed.",
+  "reference_screens": ["catalogue 011", "catalogue 012"],
+  "ours": "REQ-032 and the locked formulas give the same numbers on both hand-checked presets; estimates are labelled (REQ-032 AC-5).",
+  "req": "REQ-032",
+  "row": 13,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

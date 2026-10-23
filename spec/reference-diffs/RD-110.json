@@ -1,0 +1,15 @@
+{
+  "id": "RD-110",
+  "kind": "COPY",
+  "title": "Share a strategy by link to social apps or a copied link (G-16-5, owner question)",
+  "reference_behaviour": "A Share menu sends the strategy to social and chat apps or copies a short link; the shared record is created on demand and anyone with the link can open it.",
+  "reference_screens": ["screen 115", "screen 116"],
+  "ours": "SPEC CHANGE: REQ-086 (approved, not built) lets only signed-in users open a link (AC-3), carries no account data and hides the sharer's name by default; copying open-to-anyone links departs from AC-3.",
+  "req": "REQ-086",
+  "ac": "AC-3",
+  "row": 44,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

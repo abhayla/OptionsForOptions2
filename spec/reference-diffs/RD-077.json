@@ -1,0 +1,15 @@
+{
+  "id": "RD-077",
+  "kind": "COPY",
+  "title": "Max loss shown as Unlimited for a naked short put or a long future (row 13 gap G-13-1, owner question)",
+  "reference_behaviour": "A sold put, a bought future and similar shapes show max loss as Unlimited, even though an index cannot fall below zero.",
+  "reference_screens": ["catalogue 100"],
+  "ours": "SPEC CHANGE: scenario-calculations section 3 Tails (ADR-045, locked) and REQ-033 AC-6 give the finite lower-tail loss, about Rs 14.7 lakh on one NIFTY 22,800 PE; only the upper tail reads Unlimited.",
+  "req": "REQ-032",
+  "adr": "ADR-045",
+  "row": 13,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

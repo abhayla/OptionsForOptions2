@@ -1,0 +1,14 @@
+{
+  "id": "RD-117",
+  "kind": "MATCH",
+  "title": "A saved strategy reopens in the builder from a list (row 16 match)",
+  "reference_behaviour": "A saved-strategies tab lists saved strategies and opens one in the builder.",
+  "reference_screens": ["screen 118"],
+  "ours": "The Save Draft bar and My Strategies page list drafts and open one in the builder.",
+  "req": "REQ-038",
+  "row": 16,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

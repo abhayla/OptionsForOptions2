@@ -1,0 +1,15 @@
+{
+  "id": "RD-099",
+  "kind": "MATCH",
+  "title": "Ready-mades grouped Bullish, Bearish, Neutral, Other with an expiry picker (row 15 match)",
+  "reference_behaviour": "Ready-made cards with small payoff icons are grouped by market view, with an expiry picker.",
+  "reference_screens": ["screen 010"],
+  "ours": "REQ-079 AC-2: the same four groups and an expiry picker.",
+  "req": "REQ-079",
+  "ac": "AC-2",
+  "row": 55,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}
