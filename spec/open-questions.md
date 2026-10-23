@@ -457,6 +457,11 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   until a host for Redis exists - an API deploy then still cuts users' feeds (AC-2 not met in production).
 - Orchestrator recommendation: (a), sized at the deploy brief with the host's free memory. Ask at the first deploy brief.
 
+## Q277 — DECIDED → ADR-173 (owner, 2026-10-23: binding by machine check; rows 1-14 re-studied and fixed) — Is Sensibull-first binding, and from which row?
+- ADR-152 and the goal contract said to read the Sensibull study first; no check enforced it and rows 10-14's briefs
+  had no Sensibull line. Owner: machine check on every brief, and rows 1-14 re-studied and fixed wherever they differ.
+  Missing screens: build on best practice and list them for the owner (orchestrator default).
+
 ## Q275 — DECIDED → ADR-172 (owner, 2026-10-23: mid when two-sided, else LTP) — Is each leg's IV implied from its LTP or its bid-ask mid?
 - `spec/business-rules/scenario-calculations.md` section 4 says "implied from its LTP"; section 2 lists LTP vs mid as
   open (§95); the code uses the mid with an LTP fallback (`service.py:420`). Real case: 22450 PE mid 100.40 vs last trade

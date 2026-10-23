@@ -140,6 +140,20 @@ def test_hanging_test_times_out_named_within_limit(tmp_path):
     assert "hang" in p.stdout + p.stderr
 
 
+def test_mutant_that_hangs_while_clean_passes_is_timeout_not_killed(tmp_path):
+    extra = {
+        "loop.py": "def spin(n):\n    return n + 1\n",
+        "test_loop.py": "from loop import spin\n\n\ndef test_spin():\n    assert spin(1) == 2\n",
+    }
+    co = make_checkout(tmp_path, extra)
+    res = tmp_path / "r.jsonl"
+    hang = mutant("spin", "return n + 1", "while True:\n        pass", "test_loop.py", file="loop.py")
+    p = run_gate(co, [hang], res, "--timeout", "10")
+    assert p.returncode == 1
+    assert lines(res)[0]["result"] == "timeout"
+    assert "spin" in p.stdout
+
+
 def test_checkout_is_byte_identical_after_run(tmp_path):
     co = make_checkout(tmp_path)
     before = tree_hash(co)
@@ -175,6 +189,104 @@ def test_malformed_mutants_file_fails_closed(tmp_path):
     assert p.returncode == 1
     p = run_gate(co, [], res)  # an empty allow-list proves nothing
     assert p.returncode == 1
+
+
+def _load_gate():
+    import runpy
+
+    return runpy.run_path(str(GATE), run_name="mutation_gate_under_test")
+
+
+def test_named_test_failing_on_clean_code_is_unresolved_not_killed(tmp_path):
+    co = make_checkout(tmp_path, {"test_red.py": "def test_red():\n    assert False\n"})
+    res = tmp_path / "r.jsonl"
+    p = run_gate(co, [mutant("red", "x > 0", "x >= 0", "test_red.py::test_red")], res)
+    assert p.returncode == 1
+    by_id = {r["id"]: r for r in lines(res)}
+    assert by_id["red"]["result"] == "unresolved"
+    assert "clean" in by_id["red"]["summary"]
+    assert "__clean__" in p.stdout + p.stderr
+
+
+def test_checkout_untouched_while_a_mutant_runs(tmp_path):
+    co = make_checkout(tmp_path)
+    obs = tmp_path / "obs.txt"
+    probe = (
+        "import pathlib\nfrom sample import guard_a\n\n\n"
+        "def test_probe():\n"
+        f"    seen = pathlib.Path({str(co / 'sample.py')!r}).read_text()\n"
+        f"    with open({str(obs)!r}, 'a') as fh:\n"
+        "        fh.write(('orig' if 'x > 0' in seen else 'edited') + '\\n')\n"
+        "    assert not guard_a(0)\n"
+    )
+    (co / "test_probe.py").write_text(probe)
+    p = run_gate(co, [mutant("probe", "x > 0", "x >= 0", "test_probe.py::test_probe")], tmp_path / "r.jsonl")
+    assert p.returncode == 0, p.stdout + p.stderr
+    seen = obs.read_text().split()
+    assert len(seen) >= 2  # noqa: PLR2004 - the clean run and the mutant run both looked at the checkout
+    assert set(seen) == {"orig"}
+
+
+@pytest.mark.parametrize(
+    ("code", "state", "result"),
+    [
+        (0, "passed", "survived"),
+        (1, "failed", "killed"),
+        (2, "error", "killed"),
+        (3, "internal", "unresolved"),
+        (4, "usage", "unresolved"),
+        (5, "none", "unresolved"),
+        (9, "other", "unresolved"),
+    ],
+)
+def test_every_pytest_answer_state_maps_in_one_table(code, state, result):
+    gate = _load_gate()
+    assert gate["PYTEST_ANSWERS"].get(code, "other") == state
+    assert gate["classify"](state) == result
+
+
+def test_pytest_exit_5_no_tests_collected_is_unresolved(tmp_path):
+    co = make_checkout(tmp_path, {"test_empty.py": "VALUE = 1\n"})
+    res = tmp_path / "r.jsonl"
+    p = run_gate(co, [mutant("empty", "x > 0", "x >= 0", "test_empty.py")], res)
+    assert p.returncode == 1
+    assert lines(res)[0]["result"] == "unresolved"
+    assert "none" in lines(res)[0]["summary"]
+
+
+def test_absolute_path_to_a_real_file_outside_is_refused(tmp_path):
+    co = make_checkout(tmp_path)
+    outside = tmp_path / "outside.py"
+    outside.write_text("a = 1\n")
+    res = tmp_path / "r.jsonl"
+    p = run_gate(co, [mutant("abs", "a = 1", "a = 2", "test_sample.py", file=str(outside))], res)
+    assert p.returncode == 1
+    assert lines(res)[0]["result"] == "unresolved"
+    assert outside.read_text() == "a = 1\n"
+
+
+def test_mutant_with_an_extra_key_is_refused(tmp_path):
+    co = make_checkout(tmp_path)
+    p = run_gate(co, [{**A, "extra": "x"}], tmp_path / "r.jsonl")
+    assert p.returncode == 1
+    assert "bad mutants file" in p.stdout
+
+
+def test_non_utf8_file_is_unresolved_and_the_run_continues(tmp_path):
+    co = make_checkout(tmp_path)
+    (co / "latin.py").write_bytes(b"x = '\xe9'\n")
+    res = tmp_path / "r.jsonl"
+    p = run_gate(co, [mutant("latin", "x", "y", "test_sample.py", file="latin.py"), A], res)
+    assert p.returncode == 1
+    got = lines(res)
+    assert [r["id"] for r in got] == ["latin", "a-flip", "__clean__"]
+    assert got[0]["result"] == "unresolved"
+    assert got[1]["result"] == "killed"
+
+
+def test_help_text_warns_find_must_match_line_endings():
+    p = subprocess.run([sys.executable, str(GATE), "--help"], capture_output=True, text=True, check=False)  # noqa: S603
+    assert "CRLF" in p.stdout
 
 
 def test_launcher_prefix_is_used(tmp_path):

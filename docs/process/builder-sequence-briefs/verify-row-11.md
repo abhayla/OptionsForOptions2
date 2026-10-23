@@ -4,8 +4,8 @@ Independent, adversarial verifier; you built none of it. READ-ONLY: never edit, 
 in any checkout; scratch and mutation copies only in
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\verify-11`.
 
-Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-next`, branch `build/seq-row-11`, head <HEAD>
-(part A 799b16ab backend; part B <B-SHA> frontend; base fb9a3702). Briefs: `docs/process/builder-sequence-briefs/row-11a-REQ-114-feed-health-backend.md`
+Code under test: worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-next`, branch `build/seq-row-11`, head b04d47f0
+(part A 799b16ab backend; part B b04d47f0 frontend; base fb9a3702). Briefs: `docs/process/builder-sequence-briefs/row-11a-REQ-114-feed-health-backend.md`
 and `row-11b-REQ-114-reconnect-text-frontend.md` (in the main sequence worktree `...\OptionsForOptions2-builder-reqs`;
 read them there) - run every item of both `Attack list:` sections. Spec: `spec/requirements/REQ-114.md` (every AC),
 ADR-015, ADR-053, ADR-119, F-32, F-54. The order-update stream parts are deferred (order path).
