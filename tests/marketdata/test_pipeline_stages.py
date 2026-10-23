@@ -38,6 +38,8 @@ MAY_IMPORT_FEED_HEALTH = {
     "ofo.marketdata.kite_provider": "the stage itself",
     "ofo_app.live_market": "reads the feed phase constants",
     "ofo_app.routes.broker_status": "reads the feed phase constants for the status label",
+    "ofo_app.kite_ws": "market_closed_for only: the one market-state answer for the closed-hours reconnect wait (F1)",
+    "ofo_app.routes.outcome": "market_closed_for only: the market-state answer the outcome carries (REQ-114 AC-7)",
 }
 
 
