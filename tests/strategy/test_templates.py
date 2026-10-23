@@ -50,10 +50,10 @@ def _write(tmp_path: Path, body: str) -> Path:
     return path
 
 
-def test_catalogue_has_21_templates_adapted_from_algochanakya():
-    """AC-3: the catalogue loads as data: 21 templates (legacy 22 minus wheel_strategy, which needs share
-    delivery that cash-settled index options never make)."""
-    assert len(CATALOGUE) == 21
+def test_catalogue_has_41_templates_adapted_from_algochanakya():
+    """AC-3: the catalogue loads as data: 41 templates (legacy 22 minus wheel_strategy, which needs share
+    delivery that cash-settled index options never make, plus the 20 reference shapes of RD-090)."""
+    assert len(CATALOGUE) == 41
     assert "wheel_strategy" not in BY_ID
     assert DEFAULT_CATALOGUE_PATH.name == "catalogue.yaml"
 
@@ -84,7 +84,7 @@ def test_every_template_resolves_and_prices_through_the_engine(spot, gap):
         if strategy.is_single_expiry:
             assert strategy_metrics(strategy).max_loss is not None
         else:
-            assert template.id in {"calendar_spread", "diagonal_spread"}
+            assert template.id in {"calendar_spread", "diagonal_spread", "long_calendar_puts"}
             with pytest.raises(MultiExpiryError):
                 strategy_metrics(strategy)
 
@@ -191,6 +191,8 @@ def _offenders(source: str, needles: set[str]) -> list[str]:
         for text in texts:
             normal = _normalise(text)
             found += [f"{text!r} contains {n!r}" for n in needles if n in normal]
+            if needles is NEEDLES:
+                found += _word_hits(text)
         if isinstance(node, ast.Compare):
             sides = [node.left, *node.comparators]
             if any(isinstance(s, ast.Attribute) and s.attr in {"id", "name"} for s in sides) and any(
@@ -203,7 +205,32 @@ def _offenders(source: str, needles: set[str]) -> list[str]:
     return found
 
 
-NEEDLES = {_normalise(t.id) for t in CATALOGUE} | {_normalise(t.name) for t in CATALOGUE}
+# The 21 templates of the first catalogue (ids, current names and the names they had before RD-095) are matched as
+# substrings, as before. The 20 reference shapes of RD-090 have short everyday words as ids ("strip" is `str.strip`,
+# "strap", "batman"), so a substring scan would flag ordinary code: those are matched as whole word sequences
+# (`buy_call`, `Sell Put (ATM)`), and the single-word ones are covered by the `.id`/`.name` comparison rule only.
+_FIRST_IDS = {
+    "bull_call_spread", "bull_put_spread", "synthetic_long", "bear_put_spread", "bear_call_spread", "synthetic_short",
+    "iron_condor", "iron_butterfly", "short_straddle", "short_strangle", "jade_lizard", "long_straddle",
+    "long_strangle",
+    "reverse_iron_condor", "covered_call", "cash_secured_put", "calendar_spread", "diagonal_spread", "butterfly_spread",
+    "ratio_backspread_call", "ratio_backspread_put",
+}
+_OLD_NAMES = {"Straddle (Short)", "Strangle (Short)", "Straddle (Long)", "Strangle (Long)", "Iron Condor",
+              "Reverse Iron Condor", "Calendar Spread", "Butterfly Spread", "Synthetic Long", "Synthetic Short"}
+NEEDLES = ({_normalise(i) for i in _FIRST_IDS} | {_normalise(t.name) for t in CATALOGUE if t.id in _FIRST_IDS}
+           | {_normalise(n) for n in _OLD_NAMES})
+_NEW = [t for t in CATALOGUE if t.id not in _FIRST_IDS]
+WORD_NEEDLES = {tuple(re.findall(r"[a-z]+", w.lower())) for t in _NEW for w in (t.id.replace("_", " "), t.name)}
+_MIN_WORDS = 2
+WORD_NEEDLES = {n for n in WORD_NEEDLES if len(n) >= _MIN_WORDS}
+
+
+def _word_hits(text: str) -> list[str]:
+    """Whole-word runs of a new template's id or name inside an identifier or string (camelCase and `_` split)."""
+    words = re.findall(r"[a-z]+", re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text).lower())
+    return [f"{text!r} contains the words {' '.join(n)!r}" for n in WORD_NEEDLES
+            if any(tuple(words[i:i + len(n)]) == n for i in range(len(words)))]
 
 
 def test_ac5_scanner_catches_every_disguise():
@@ -241,5 +268,8 @@ def test_catalogue_descriptions_hold_for_every_parameter_value():
     assert {tid for tid, kinds in uses.items() if kinds} == {
         "iron_butterfly", "short_straddle", "long_straddle", "short_strangle", "long_strangle",
         "jade_lizard", "covered_call", "cash_secured_put",
+        # RD-090: each is true for every allowed value by a sign constraint or a constant zero strike
+        "range_forward", "risk_reversal", "reverse_jade_lizard", "sell_put_atm", "strap", "strip",
+        "long_iron_butterfly",
     }
     assert all(leg.instrument is not Instrument.FUT or leg.strike is None for t in CATALOGUE for leg in t.legs)

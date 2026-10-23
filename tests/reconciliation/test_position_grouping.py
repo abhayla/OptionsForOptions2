@@ -47,7 +47,7 @@ def test_core_seven_rows_give_exactly_three_groups_and_adopting_the_condor_keeps
     assert sorted(groups) == sorted([f"NIFTY:{EXP_SECOND}", f"NIFTY:{EXP_CONDOR}", "SENSEX:2026-10-01"])
     condor = groups[f"NIFTY:{EXP_CONDOR}"]
     assert sorted(p.tradingsymbol for p in condor.positions) == sorted(CONDOR_SYMBOLS)
-    assert condor.resembles == "Iron Condor"
+    assert condor.resembles == "Short Iron Condor"
     assert [p.tradingsymbol for p in groups[f"NIFTY:{EXP_SECOND}"].positions] == [SECOND_EXPIRY_CALL]
     assert [p.tradingsymbol for p in groups["SENSEX:2026-10-01"].positions] == [SENSEX_PUT]
     assert IN_STRATEGY not in {p.tradingsymbol for g in suggestion.groups for p in g.positions}
@@ -234,7 +234,7 @@ def test_average_with_more_than_two_decimals_stays_adoptable_and_is_kept_exact()
     rows = [row("NIFTY26O0623400CE", -LOT, "91.525")] + [r for r in seven_rows()[:4] if r["tradingsymbol"] != "NIFTY26O0623400CE"]
     s = session(rows, {})
     (g,) = s.groups()
-    assert g.resembles == "Iron Condor" and s.suggestion.unresolved == ()
+    assert g.resembles == "Short Iron Condor" and s.suggestion.unresolved == ()
     (call,) = [p for p in g.positions if p.tradingsymbol == "NIFTY26O0623400CE"]
     assert call.average_price == D("91.525")
     with pytest.raises(GroupingError) as err:  # the leg model holds paise: the user sets the entry first

@@ -26,19 +26,19 @@ Records: 121 (COPY 56, DIFFERENT-BY-DECISION 19, NO-SCREEN 13, MATCH 33)
 
 | Id | Requirement | Row | What to capture | Status |
 |---|---|---|---|---|
-| RD-009 | REQ-001 | 1 | Refusal of an unsupported underlying (row 1 match line: the study has no screen) | open |
-| RD-018 | REQ-015 | 2 | Daily broker session expiry and its reconnect screen (row 2 study gap) | open |
-| RD-029 | REQ-117 | 4 | Wording when a broker capability is off (row 4 study gap) | open |
-| RD-038 | REQ-053 | 5 | Refusal screen for a contract that is blocked or not listed (row 5 study gap) | open |
-| RD-053 | REQ-114 | 11 | Market-closed status after hours (row 7 study gap) | open |
-| RD-054 | REQ-049 | 7 | Live monitoring paused message and badge (row 7 study gap) | open |
-| RD-061 | REQ-113 | 9 | What a user sees when the broker session ends at the daily expiry (row 9 study gap SG-9) | open |
-| RD-067 | REQ-114 | 11 | Market-closed wording: the study has no closed-market screen (G-11-3, capture part) | open |
-| RD-071 | REQ-114 | 11 | Feed down for minutes, and the index and chain on a weekend or holiday (row 11 study gap SG-11) | open |
-| RD-076 | REQ-072 | 12 | Screen for a missing index value at the open or during a feed gap (row 12 study gap SG-12) | open |
-| RD-084 | REQ-032 | 13 | Greeks, IV and Decay figures per preset with leg prices (row 13 study gap SG-13) | open |
+| RD-009 | REQ-001 | 1 | Refusal of an unsupported underlying (row 1 match line: the study has no screen) | deferred |
+| RD-018 | REQ-015 | 2 | Daily broker session expiry and its reconnect screen (row 2 study gap) | deferred |
+| RD-029 | REQ-117 | 4 | Wording when a broker capability is off (row 4 study gap) | deferred |
+| RD-038 | REQ-053 | 5 | Refusal screen for a contract that is blocked or not listed (row 5 study gap) | deferred |
+| RD-053 | REQ-114 | 11 | Market-closed status after hours (row 7 study gap) | deferred |
+| RD-054 | REQ-049 | 7 | Live monitoring paused message and badge (row 7 study gap) | deferred |
+| RD-061 | REQ-113 | 9 | What a user sees when the broker session ends at the daily expiry (row 9 study gap SG-9) | deferred |
+| RD-067 | REQ-114 | 11 | Market-closed wording: the study has no closed-market screen (G-11-3, capture part) | deferred |
+| RD-071 | REQ-114 | 11 | Feed down for minutes, and the index and chain on a weekend or holiday (row 11 study gap SG-11) | deferred |
+| RD-076 | REQ-072 | 12 | Screen for a missing index value at the open or during a feed gap (row 12 study gap SG-12) | deferred |
+| RD-084 | REQ-032 | 13 | Greeks, IV and Decay figures per preset with leg prices (row 13 study gap SG-13) | deferred |
 | RD-085 | REQ-089 | 39 | Preset numbers captured without a leftover manual P&L entry (row 13 study gap SG-0) | open |
-| RD-118 | REQ-038 | 16 | What happens when a saved strategy cannot be read (row 16 match line: no screen) | open |
+| RD-118 | REQ-038 | 16 | What happens when a saved strategy cannot be read (row 16 match line: no screen) | deferred |
 
 ## COPY by builder row
 
@@ -46,25 +46,25 @@ Records: 121 (COPY 56, DIFFERENT-BY-DECISION 19, NO-SCREEN 13, MATCH 33)
 |---|---|---|---|---|---|
 | 2 | RD-010 | REQ-015 AC-11 | Login panel: is-it-safe explainer, account-opening link, no-extra-charges line (row 2 gap G-02-1) | screen 180 | built |
 | 2 | RD-012 | REQ-015 AC-10 | Trade button shown disabled with a reason when no broker is connected (G-02-3) | catalogue 246 | built |
-| 2 | RD-013 | REQ-015  | Connected broker user id and available margin shown in the profile (G-02-4) | catalogue 216 | open |
-| 2 | RD-014 | REQ-015  | Positions read on their own on a fixed period, so a new connection never waits on a manual step (G-02-5) | catalogue 331 | open |
-| 4 | RD-025 | REQ-117  | Capability flags for brokerage charges, split P&L, holdings and verified P&L (row 4 gap G-04-1) | catalogue 022 | open |
+| 2 | RD-013 | REQ-015 AC-13 | Connected broker user id and available margin shown in the profile (G-02-4) | catalogue 216 | built |
+| 2 | RD-014 | REQ-015 AC-12 | Positions read on their own on a fixed period, so a new connection never waits on a manual step (G-02-5) | catalogue 331 | built |
+| 4 | RD-025 | REQ-117 AC-6 | Capability flags for brokerage charges, split P&L, holdings and verified P&L (row 4 gap G-04-1) | catalogue 022 | built |
 | 5 | RD-035 | REQ-053 AC-3 | Unavailable contract: the reference product hides it, ours explains and offers two other strikes (row 5 match line) | screen 011 | open |
 | 7 | RD-045 | REQ-049 AC-4 | A data-health state explained in a sentence with the reason, not a bare word (G-07-3) | catalogue 245 | built |
 | 7 | RD-048 | REQ-049 AC-4 | Missing values explained in place by a short reason (G-07-6) | catalogue 051 | built |
-| 9 | RD-057 | REQ-113  | Browser reconnect adds a random spread of up to 1 s (row 9 gap G-9-1) | catalogue 012 | open |
-| 9 | RD-058 | REQ-113  | Browser keeps retrying the live socket and never gives up (G-9-2) | catalogue 012 | open |
-| 10 | RD-063 | REQ-118  | Broker reads on fixed refresh periods: 30 s for numbers, 45 s for positions (G-10-2) | catalogue 012 | open |
-| 11 | RD-039 | REQ-114 AC-1 | Socket watchdog constants: 15 s ping, 60 s silence, 30 s back-off cap (row 6 gap G-06-1) | catalogue 012 | open |
-| 11 | RD-046 | REQ-114 AC-7 | Exchange holiday calendar known to the product (G-07-4) | catalogue 200 | open |
-| 11 | RD-047 | REQ-114 AC-1 | Silence measured on the whole connection over 60 s, not per contract over 3 s (G-07-5) | catalogue 012 | open |
+| 9 | RD-057 | REQ-113 AC-10 | Browser reconnect adds a random spread of up to 1 s (row 9 gap G-9-1) | catalogue 012 | built |
+| 9 | RD-058 | REQ-113 AC-11 | Browser keeps retrying the live socket and never gives up (G-9-2) | catalogue 012 | built |
+| 10 | RD-063 | REQ-118 AC-7 | Broker reads on fixed refresh periods: 30 s for numbers, 45 s for positions (G-10-2) | catalogue 012 | built |
+| 11 | RD-039 | REQ-114 AC-1 | Socket watchdog constants: 15 s ping, 60 s silence, 30 s back-off cap (row 6 gap G-06-1) | catalogue 012 | built |
+| 11 | RD-046 | REQ-114 AC-7 | Exchange holiday calendar known to the product (G-07-4) | catalogue 200 | built |
+| 11 | RD-047 | REQ-114 AC-1 | Silence measured on the whole connection over 60 s, not per contract over 3 s (G-07-5) | catalogue 012 | built |
 | 11 | RD-065 | REQ-114 AC-3 | Reconnect jitter: up to 1 s in the reference product, up to 50% of the wait in ours (row 11 gap G-11-1) | catalogue 012 | open |
 | 11 | RD-066 | REQ-114 AC-3 | Reconnect back-off: escalation tiers by attempt density in the reference product, plain doubling in ours (G-11-2) | catalogue 012 | open |
-| 11 | RD-068 | REQ-114 AC-7 | One market-closed wording on every screen and gate (G-11-3, wording fix under ADR-177) | catalogue 012 | open |
+| 11 | RD-068 | REQ-114 AC-7 | One market-closed wording on every screen and gate (G-11-3, wording fix under ADR-177) | catalogue 012 | built |
 | 13 | RD-077 | REQ-032  | Max loss shown as Unlimited for a naked short put or a long future (row 13 gap G-13-1, owner question) | catalogue 100 | open |
 | 13 | RD-078 | REQ-032  | Calendar and diagonal strategies get max profit, max loss, breakevens and POP (G-13-2, owner question) | catalogue 108, catalogue 109 | open |
-| 15 | RD-090 | REQ-028 AC-3 | 20 ready-made shapes the reference product has and our catalogue lacks (row 15 gap G-15-1) | screen 010, catalogue 100, catalogue 134 | open |
-| 15 | RD-095 | REQ-028 AC-3 | Shape names as users read them: Short Straddle, Long Iron Condor, Bull Butterfly (G-15-6) | screen 010 | open |
+| 15 | RD-090 | REQ-028 AC-3 | 20 ready-made shapes the reference product has and our catalogue lacks (row 15 gap G-15-1) | screen 010, catalogue 100, catalogue 134 | built |
+| 15 | RD-095 | REQ-028 AC-3 | Shape names as users read them: Short Straddle, Long Iron Condor, Bull Butterfly (G-15-6) | screen 010 | built |
 | 15 | RD-096 | REQ-028 AC-3 | Shape detection: the reference product names 16 shapes, ours matches every catalogue template (G-15-7) | screen 011 | open |
 | 16 | RD-114 | REQ-038 AC-5 | What a save stores: legs and entry prices only in the reference product, more in ours (G-16-9) | screen 119 | open |
 | 19 | RD-032 | REQ-080 AC-1 | Leg picker with Straddles, Strangles, Strikes and Futures tabs and price columns (G-05-4) | screen 032, screen 033, screen 034, screen 035, screen 036, screen 037, screen 038 | open |

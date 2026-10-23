@@ -7,8 +7,9 @@
   "ours": "Ours computes Greeks with the ADR-063 model. Owner to re-capture one preset with per-leg price, IV, Greeks and Decay.",
   "req": "REQ-032",
   "row": 13,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 529
 }

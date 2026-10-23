@@ -27,8 +27,8 @@ export function isIndicesAnswer(msg) {
  * stop(). onStatus(status): connecting | live | down | off.
  */
 export function createIndexSocket({ url, onPush, onDown = () => {}, onStatus = () => {}, WebSocketImpl = globalThis.WebSocket,
-  setTimer = setTimeout, clearTimer = clearTimeout }) {
-  const live = createLiveSocket({ url, onPush, onDown, onStatus, isAnswer: isIndicesAnswer, sendBody: false, WebSocketImpl, setTimer, clearTimer })
+  setTimer = setTimeout, clearTimer = clearTimeout, random }) {
+  const live = createLiveSocket({ url, onPush, onDown, onStatus, isAnswer: isIndicesAnswer, sendBody: false, WebSocketImpl, setTimer, clearTimer, random })
   return { start: () => live.follow(null), stop: live.stop, attempts: live.attempts }
 }
 

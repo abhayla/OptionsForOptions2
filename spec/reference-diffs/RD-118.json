@@ -7,8 +7,9 @@
   "ours": "Ours fails closed: the load throws and the current screen is kept. Owner to capture the reference behaviour if a broken saved strategy can be produced.",
   "req": "REQ-038",
   "row": 16,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 529
 }

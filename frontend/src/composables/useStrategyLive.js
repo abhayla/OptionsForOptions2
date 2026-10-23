@@ -14,13 +14,13 @@ import { reconnectingText } from '@/lib/sharedStateText'
 
 export const LIVE_PATH = '/api/strategies/live'
 /** Reconnect delays (REQ-113 AC-2: an API deploy restarts in seconds, the screen must be back within 10 s): the first
- *  FAST_ATTEMPTS attempts are BASE_DELAY_MS apart (about 30 s), then 2 s, 4 s, 8 s ... capped at MAX_DELAY_MS. After
- *  MAX_ATTEMPTS failed attempts in the slow phase it stops trying (the page stays on the REST answer; a later strategy
- *  change or Recalculate starts again). */
+ *  FAST_ATTEMPTS attempts are BASE_DELAY_MS apart (about 30 s), then 2 s, 4 s, 8 s ... capped at MAX_DELAY_MS, and it never
+ *  stops trying (REQ-113 AC-11: it keeps retrying at the cap). Each wait also gets a random spread of up to JITTER_MS
+ *  (REQ-113 AC-10) so tabs do not reconnect in the same second. */
 export const BASE_DELAY_MS = 1000
 export const MAX_DELAY_MS = 30000
 export const FAST_ATTEMPTS = 30
-export const MAX_ATTEMPTS = 10
+export const JITTER_MS = 1000
 
 /** The delay before reconnect attempt `attempt` (1-based). */
 export function backoffDelay(attempt) {
@@ -29,8 +29,8 @@ export function backoffDelay(attempt) {
   return delay > MAX_DELAY_MS ? MAX_DELAY_MS : delay
 }
 
-/** True when `attempts` failed attempts in a row are all there will be (the slow phase used up its limit). */
-export const gaveUp = (attempts) => attempts >= FAST_ATTEMPTS + MAX_ATTEMPTS
+/** The wait before attempt `attempt`: the back-off plus a random spread of 0 up to JITTER_MS ms (not including it) (`random` gives [0, 1)). */
+export const reconnectWait = (attempt, random = Math.random) => backoffDelay(attempt) + random() * JITTER_MS // a timer value in ms, never a price or P&L
 
 /** Same-origin socket URL for the current page: never a host from config, never a query string. */
 export function liveUrl(loc = window.location) {
@@ -46,11 +46,11 @@ export function isOutcome(msg) {
  * The socket lifecycle, framework-free (tested with a fake socket and fake timers).
  * onPush(outcome): every outcome the server pushed, untouched. onMessage(other): any other message (a catalogue error).
  * onDown(): the socket closed without stop() - the page falls back to REST. onStatus(status): connecting | live | down |
- * off. isAnswer(msg) says which message is the screen's answer (default: the outcome check; the Option Chain passes its own).
+ * off (only after stop()). isAnswer(msg) says which message is the screen's answer (default: the outcome check; the Option Chain passes its own).
  * sendBody false = a read-only socket that sends nothing (the index strip). 'live' is reported only for an answer push.
  */
 export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {}, isAnswer = isOutcome,
-  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random }) {
   let socket = null
   let body = null // the JSON text last sent or to send
   let attempts = 0 // failed attempts in a row
@@ -95,12 +95,8 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
 
   function schedule() {
     if (stopped || timer !== null) return
-    if (gaveUp(attempts)) {
-      status('off')
-      return
-    }
     attempts += 1
-    timer = setTimer(open, backoffDelay(attempts))
+    timer = setTimer(open, reconnectWait(attempts, random))
   }
 
   /** Follow this strategy body (the OutcomeRequest JSON). An unchanged body sends nothing. */
@@ -110,11 +106,6 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     body = text
     if (stopped) {
       stopped = false
-      attempts = 0
-      open()
-      return
-    }
-    if (!socket && timer === null) { // given up earlier: a new strategy tries again
       attempts = 0
       open()
       return

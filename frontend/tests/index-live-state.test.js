@@ -39,8 +39,9 @@ beforeEach(() => {
   FakeSocket.all = []
   apiAnswer = null
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
 })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe.each(SCREENS)('$name: after its own socket drops no old number is shown', (screen) => {
   async function mountScreen() {

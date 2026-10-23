@@ -8,8 +8,9 @@
   "req": "REQ-049",
   "ac": "AC-5",
   "row": 7,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 529
 }
