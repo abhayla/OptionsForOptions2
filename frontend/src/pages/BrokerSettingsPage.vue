@@ -8,6 +8,9 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { NO_EXTRA_CHARGES, OPEN_ACCOUNT_LABEL, SAFE_EXPLAINER, SAFE_EXPLAINER_TITLE, openAccountUrl } from '@/lib/connectHelp'
+
+const openAccount = openAccountUrl() // REQ-015 AC-11 (ADR-175): the one configured link, or null
 
 const ROWS = [
   ['account_connection', 'Zerodha account connection'],
@@ -115,6 +118,13 @@ onMounted(load)
       <div class="mt-4 flex flex-wrap gap-2">
         <a href="/api/broker/zerodha/login" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-reconnect">{{ anyConnected ? 'Reconnect Zerodha' : 'Connect Zerodha' }}</a>
         <button v-if="anyConnected && !confirming" type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>
+      </div>
+
+      <div v-if="rows[0].level !== 'connected'" class="mt-4 rounded border border-line bg-surface p-3" data-testid="connect-help">
+        <h2 class="font-medium" data-testid="safe-title">{{ SAFE_EXPLAINER_TITLE }}</h2>
+        <p class="mt-1 text-sm" data-testid="safe-explainer">{{ SAFE_EXPLAINER }}</p>
+        <p class="mt-2 text-sm" data-testid="no-extra-charges">{{ NO_EXTRA_CHARGES }}</p>
+        <a v-if="openAccount" :href="openAccount" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm underline" data-testid="open-account">{{ OPEN_ACCOUNT_LABEL }}</a>
       </div>
 
       <div v-if="confirming" class="mt-3 rounded border border-line bg-surface p-3" role="alertdialog" aria-label="Confirm disconnect" data-testid="disconnect-confirm">

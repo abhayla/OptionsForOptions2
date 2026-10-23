@@ -11,6 +11,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs } from '@/lib/saveDraft'
 import { istTime, maxLine } from '@/lib/displayFormat'
+import { healthSentence } from '@/lib/dataHealthText'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
@@ -106,6 +107,7 @@ const checkedAt = computed(() => istTime(data.value?.answered_at))
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
+// RD-045: the word is followed by one sentence with its reason (lib/dataHealthText.js).
 const healthWord = (leg) => (leg.health === 'available' ? null : leg.health || 'unavailable')
 </script>
 
@@ -144,6 +146,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
           <li v-for="leg in data.legs" :key="leg.instrument_id" data-testid="live-leg" :data-health="leg.health ?? 'unavailable'">
             {{ leg.action }} {{ leg.symbol }}: <span data-testid="live-leg-ltp">{{ leg.ltp ?? '-' }}</span>
             <span v-if="healthWord(leg)" class="ml-1 text-ink-muted" data-testid="live-leg-health">({{ healthWord(leg) }})</span>
+            <span v-if="healthWord(leg)" class="block text-xs text-ink-muted" data-testid="live-leg-health-reason">{{ healthSentence(healthWord(leg)) }}</span>
           </li>
         </ul>
       </template>

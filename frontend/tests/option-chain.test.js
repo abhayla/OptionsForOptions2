@@ -133,6 +133,25 @@ describe('Option Chain screen', () => {
     expect(src).not.toMatch(/\/orders|\/execute|router-link|api\.post/)
   })
 
+  it('REQ-049 AC-4 (RD-048): a missing value carries its reason in place, per reason code', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const gone = { ...cell('NFO:24550PE', '95.25'), ltp: null, health: 'unavailable' }
+    const noOi = { ...cell('NFO:24500CE', '120.50'), oi: null }
+    sock().serverPush({ ...answer(), expiry: '2026-10-20', rows: [{ strike: '24500.00', ce: noOi, pe: null }, { strike: '24550.00', ce: cell('NFO:24550CE', '90.00'), pe: gone }] })
+    await flushPromises()
+    const td = (id, i) => w.findAll(`[data-testid="${id}"]`)[i]
+    expect(td('pe-ltp', 0).attributes('data-reason')).toBe('no_contract')
+    expect(td('pe-ltp', 0).attributes('title')).toBe('There is no contract at this strike for this expiry.')
+    expect(td('ce-oi', 0).attributes('data-reason')).toBe('not_sent')
+    expect(td('ce-oi', 0).attributes('title')).toBe('Zerodha did not send this figure for this contract.')
+    expect(td('pe-ltp', 1).attributes('data-reason')).toBe('no_quote')
+    expect(td('pe-ltp', 1).attributes('title')).toBe('No price has been received for this contract yet.')
+    expect(td('ce-ltp', 0).attributes('title')).toBeUndefined()
+    expect(td('ce-ltp', 0).attributes('data-reason')).toBeUndefined()
+  })
+
   it('Proof: two pushes change an LTP cell', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()

@@ -6,6 +6,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { istTime } from '@/lib/displayFormat'
+import { healthSentence } from '@/lib/dataHealthText'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 const { start, reconnecting, reconnectingText, rowFor, shownValue, isLive, notLive } = useIndexAnswer()
@@ -40,6 +41,7 @@ function timeText(row) {
             data-testid="index-health"
           >{{ rowFor(u).health }}</span>
         </div>
+        <p v-if="rowFor(u)?.health && rowFor(u).health !== 'available'" class="mt-1 text-xs text-ink-muted" data-testid="index-health-reason">{{ healthSentence(rowFor(u).health) }}</p>
         <p class="mt-2 text-2xl font-semibold tabular-nums" data-testid="index-value">{{ shownValue(rowFor(u)) }}</p>
         <p class="mt-1 text-sm text-ink-muted" data-testid="index-at">{{ timeText(rowFor(u)) }}</p>
         <div class="mt-3 flex flex-wrap gap-3 text-sm">
