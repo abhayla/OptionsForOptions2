@@ -80,7 +80,7 @@ describe('the index socket lifecycle', () => {
     expect(isIndicesAnswer({ state: 'COMPUTED', indices: [] })).toBe(false)
   })
 
-  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it never stops (REQ-113 AC-9)', () => {
+  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it never stops (REQ-113 AC-11)', () => {
     const timers = []
     const onDown = vi.fn()
     const s = createIndexSocket({ url: 'ws://x', WebSocketImpl: FakeSocket, onPush: () => {}, onDown,

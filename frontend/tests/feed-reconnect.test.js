@@ -111,7 +111,7 @@ describe('AC-2 core: a drop reads as reconnecting at once and the server coming 
 })
 
 describe('AC-2: the reconnect timing of the one socket helper', () => {
-  it('AC-2: attempts are 1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s; it never gives up (REQ-113 AC-9)', () => {
+  it('AC-2: attempts are 1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s; it never gives up (REQ-113 AC-11)', () => {
     const { live, timers, statuses } = timedSocket()
     live.follow(BODY)
     FakeSocket.all[0].serverClose()

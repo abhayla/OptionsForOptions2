@@ -15,8 +15,8 @@ import { reconnectingText } from '@/lib/sharedStateText'
 export const LIVE_PATH = '/api/strategies/live'
 /** Reconnect delays (REQ-113 AC-2: an API deploy restarts in seconds, the screen must be back within 10 s): the first
  *  FAST_ATTEMPTS attempts are BASE_DELAY_MS apart (about 30 s), then 2 s, 4 s, 8 s ... capped at MAX_DELAY_MS, and it never
- *  stops trying (REQ-113 AC-9: it keeps retrying at the cap). Each wait also gets a random spread of up to JITTER_MS
- *  (REQ-113 AC-8) so tabs do not reconnect in the same second. */
+ *  stops trying (REQ-113 AC-11: it keeps retrying at the cap). Each wait also gets a random spread of up to JITTER_MS
+ *  (REQ-113 AC-10) so tabs do not reconnect in the same second. */
 export const BASE_DELAY_MS = 1000
 export const MAX_DELAY_MS = 30000
 export const FAST_ATTEMPTS = 30

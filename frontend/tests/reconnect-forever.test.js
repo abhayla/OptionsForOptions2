@@ -1,4 +1,4 @@
-// REQ-113 AC-8 and AC-9 (RD-057, RD-058; W-137): the browser never gives up on the live socket, and every wait carries a
+// REQ-113 AC-10 and AC-11 (RD-057, RD-058; W-137): the browser never gives up on the live socket, and every wait carries a
 // random spread of up to 1 s so tabs do not reconnect in the same second. Fake socket, recorded timers. Expected waits come
 // from the requirement (1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s, plus a spread under 1 s).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,7 +18,7 @@ class FakeSocket {
 }
 
 const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
-const SPREAD_MS = 1000 // REQ-113 AC-8: "a random spread of up to 1 s"
+const SPREAD_MS = 1000 // REQ-113 AC-10: "a random spread of up to 1 s"
 
 beforeEach(() => { FakeSocket.all = [] })
 afterEach(() => { vi.useRealTimers() })
@@ -41,8 +41,8 @@ function failTimes(live, timers, n) {
   }
 }
 
-describe('AC-9: the browser never gives up on the live socket', () => {
-  it('AC-9: after 40 failed attempts, attempt 41 is still scheduled, at the 30 s cap; and so is attempt 500', () => {
+describe('AC-11: the browser never gives up on the live socket', () => {
+  it('AC-11: after 40 failed attempts, attempt 41 is still scheduled, at the 30 s cap; and so is attempt 500', () => {
     const { live, timers, statuses } = timedSocket({ random: () => 0 })
     failTimes(live, timers, 499)
     expect(timers).toHaveLength(500)
@@ -52,7 +52,7 @@ describe('AC-9: the browser never gives up on the live socket', () => {
     expect(statuses.at(-1)).toBe('down')
   })
 
-  it('AC-9: a real answer after many failures still resumes live and the next drop starts fast again', () => {
+  it('AC-11: a real answer after many failures still resumes live and the next drop starts fast again', () => {
     const { live, timers, statuses } = timedSocket({ random: () => 0 })
     failTimes(live, timers, 60)
     timers.at(-1).fn()
@@ -64,7 +64,7 @@ describe('AC-9: the browser never gives up on the live socket', () => {
     expect(timers.at(-1).ms).toBe(1000)
   })
 
-  it('AC-9: stop() still ends the retries for good (leaving the page is not a drop)', () => {
+  it('AC-11: stop() still ends the retries for good (leaving the page is not a drop)', () => {
     const { live, timers } = timedSocket({ random: () => 0 })
     failTimes(live, timers, 45)
     live.stop()
@@ -72,7 +72,7 @@ describe('AC-9: the browser never gives up on the live socket', () => {
     expect(timers).toHaveLength(46) // nothing scheduled after stop()
   })
 
-  it('AC-9 / REQ-114 AC-5: while retrying past the old limit the screen keeps the reconnecting text, never a silent answer', async () => {
+  it('AC-11 / REQ-114 AC-5: while retrying past the old limit the screen keeps the reconnecting text, never a silent answer', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const Probe = defineComponent({
@@ -100,8 +100,8 @@ describe('AC-9: the browser never gives up on the live socket', () => {
   })
 })
 
-describe('AC-8: every reconnect wait carries a random spread of up to 1 s', () => {
-  it('AC-8: two clients started together with different random draws never pick the same wait', () => {
+describe('AC-10: every reconnect wait carries a random spread of up to 1 s', () => {
+  it('AC-10: two clients started together with different random draws never pick the same wait', () => {
     const a = timedSocket({ random: () => 0.1 })
     const b = timedSocket({ random: () => 0.9 })
     for (const c of [a, b]) { c.live.follow(BODY); FakeSocket.all.at(-1).serverClose() }
@@ -110,7 +110,7 @@ describe('AC-8: every reconnect wait carries a random spread of up to 1 s', () =
     expect(a.timers[0].ms).not.toBe(b.timers[0].ms)
   })
 
-  it('AC-8: the default random source (Math.random) gives a wait of base to base + under 1 s, and not the same value every time', () => {
+  it('AC-10: the default random source (Math.random) gives a wait of base to base + under 1 s, and not the same value every time', () => {
     const seen = new Set()
     for (let i = 0; i < 30; i += 1) {
       const { live, timers } = timedSocket()
@@ -123,14 +123,14 @@ describe('AC-8: every reconnect wait carries a random spread of up to 1 s', () =
     expect(seen.size).toBeGreaterThan(1)
   })
 
-  it('AC-8: a wait never exceeds the cap plus 1 s, even for the largest draw', () => {
+  it('AC-10: a wait never exceeds the cap plus 1 s, even for the largest draw', () => {
     const { live, timers } = timedSocket({ random: () => 0.9999999 })
     failTimes(live, timers, 80)
     expect(Math.max(...timers.map((t) => t.ms))).toBeLessThan(MAX_DELAY_MS + SPREAD_MS)
     expect(timers.at(-1).ms).toBeGreaterThanOrEqual(MAX_DELAY_MS)
   })
 
-  it('AC-8: the spread is added to the wait, never taken from it (the wait is never below its base)', () => {
+  it('AC-10: the spread is added to the wait, never taken from it (the wait is never below its base)', () => {
     const { live, timers } = timedSocket({ random: () => 0 })
     failTimes(live, timers, 36)
     expect(timers.map((t) => t.ms).slice(29, 37)).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000])

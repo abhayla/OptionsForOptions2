@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 
 HTTP_OK = 200
 HTTP_METHOD_NOT_ALLOWED = 405
-CATALOGUE_SIZE = 21  # the catalogue file's own header: "The catalogue is 21 templates."
+CATALOGUE_SIZE = 41  # the catalogue file: 21 adapted templates plus the 20 reference shapes (RD-090)
 
 
 @pytest.fixture()
@@ -28,7 +28,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def test_ac1_all_templates_equal_the_catalogue_loader(client: TestClient) -> None:
-    """AC-1: the core proof. 21 templates, ids unique, every name, description, level, view and objective equal to
+    """AC-1: the core proof. 41 templates, ids unique, every name, description, level, view and objective equal to
     the loader's values, in the catalogue's order."""
     response = client.get(strategy_templates.PATH)
     assert response.status_code == HTTP_OK

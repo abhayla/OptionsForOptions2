@@ -35,7 +35,7 @@ NEAR, NEXT = date(2026, 9, 29), date(2026, 10, 6)
 GAP = Decimal(50)
 SPOT = Decimal("22810")
 D = Decimal
-TEMPLATE_COUNT = 21
+TEMPLATE_COUNT = 41
 LIVE = Market(SPOT, True, GAP)
 BY_ID = {t.id: t for t in load_templates()}
 
@@ -85,7 +85,7 @@ def test_ac3_atm_is_taken_from_the_listed_strikes_not_a_regular_grid():
 
 
 def test_ac3_every_template_places_on_listed_strikes_at_its_catalogue_offsets(listed):
-    """AC-3: all 21 templates place; each strike is a listed strike of its expiry; offsets are the template data."""
+    """AC-3: all 41 templates place; each strike is a listed strike of its expiry; offsets are the template data."""
     assert len(BY_ID) == TEMPLATE_COUNT
     for tid, template in BY_ID.items():
         defaults = {p.name: p.default for p in template.params}

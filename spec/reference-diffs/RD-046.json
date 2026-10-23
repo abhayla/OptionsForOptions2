@@ -4,11 +4,11 @@
   "title": "Exchange holiday calendar known to the product (G-07-4)",
   "reference_behaviour": "The product keeps a holiday calendar and uses trading holidays in its numbers (a holiday-decay insight).",
   "reference_screens": ["catalogue 200"],
-  "ours": "Row 7 treats every weekday 09:15-15:30 IST as open, so an exchange holiday reads as waiting. REQ-114 AC-7 uses the ADR-119 calendar with dated holidays (row 11, being built).",
+  "ours": "Built in 799b16ab (verified in code, chunk 1): dated holiday calendar backend/ofo/market_calendar.py:93-120 (ADR-119), read by backend/ofo_app/kite_ws.py:113.",
   "req": "REQ-114",
   "ac": "AC-7",
   "row": 11,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

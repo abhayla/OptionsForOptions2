@@ -4,10 +4,11 @@
   "title": "Browser keeps retrying the live socket and never gives up (G-9-2)",
   "reference_behaviour": "The browser keeps retrying at the capped delay, every 5 s while the device reports offline, with no point where it stops (bundle-findings 6.1).",
   "reference_screens": ["catalogue 012"],
-  "ours": "NEW AC NEEDED: ours gives up after 40 attempts (about 10 minutes) and stays on the last REST answer until a recalculation; keep retrying at the 30 s cap instead.",
+  "ours": "Built in bf59ec1f as REQ-113 AC-11: the browser keeps retrying at the 30 s cap with no attempt limit (frontend/src/composables/useStrategyLive.js, schedule). Was: gave up after 40 attempts (about 10 minutes).",
   "req": "REQ-113",
+  "ac": "AC-11",
   "row": 9,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

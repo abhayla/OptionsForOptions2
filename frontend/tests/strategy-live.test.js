@@ -132,7 +132,7 @@ describe('AC-4: the Builder live socket', () => {
     expect(statuses.at(-1)).toBe('live')
   })
 
-  it('AC-4 / REQ-113 AC-2: 1 s apart for the first 30 attempts, then doubles to the cap, and never stops (REQ-113 AC-9)', () => {
+  it('AC-4 / REQ-113 AC-2: 1 s apart for the first 30 attempts, then doubles to the cap, and never stops (REQ-113 AC-11)', () => {
     expect([1, 2, 30, 31, 32, 33, 34, 35, 36].map(backoffDelay)).toEqual([1000, 1000, 1000, 2000, 4000, 8000, 16000, 30000, 30000])
     expect(backoffDelay(50)).toBe(MAX_DELAY_MS)
     const { live, statuses, onDown } = rig()
@@ -362,7 +362,7 @@ describe('W-073: draft URL with un-normalized values, and a leg edit while the s
     await flushPromises()
     const before = FakeSocket.all.length
     vi.advanceTimersByTime(MAX_DELAY_MS + 1)
-    expect(FakeSocket.all.length).toBe(before + 1) // still retrying past the old limit (REQ-113 AC-9)
+    expect(FakeSocket.all.length).toBe(before + 1) // still retrying past the old limit (REQ-113 AC-11)
     FakeSocket.all.at(-1).serverClose()
     apiCalls.length = 0
     await editLeg(w)
