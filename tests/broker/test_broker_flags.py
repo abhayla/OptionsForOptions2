@@ -257,3 +257,19 @@ def test_ac4_a_partial_flag_file_loads_and_the_missing_flags_are_off(
     monkeypatch.setattr(kite_flags, "FLAG_FILE", _file(tmp_path, json.dumps({"funds_read": GOOD})))
     flags = load_zerodha_flags()
     assert [is_supported(flags, n) for n in SEVEN] == [n == "funds_read" for n in SEVEN]
+
+
+@pytest.mark.parametrize("stamp", ["20261022", "2026-W43-4", "2026-296", "2026-10-22T00:00", " 2026-10-22",
+                                   "2026-10-22 ", "\uff12026-10-22"])
+def test_f2_item5_a_date_not_written_yyyy_mm_dd_refuses_the_load_and_every_flag_is_off(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, stamp: str) -> None:
+    """Review F2 item 5 (attack 5): the flag FILE dated '20261022' (and other ISO forms ``fromisoformat`` accepts) is
+    refused: the declaration is YYYY-MM-DD only, so every flag is off."""
+    raw = json.loads(kite_flags.FLAG_FILE.read_text(encoding="utf-8"))
+    raw["funds_read"]["date"] = stamp
+    bad = tmp_path / "kite_flags.json"
+    bad.write_text(json.dumps(raw), encoding="utf-8")
+    monkeypatch.setattr(kite_flags, "FLAG_FILE", bad)
+    with pytest.raises(FlagLoadError):
+        load_zerodha_flags()
+    assert [is_supported(flags_or_off(load_zerodha_flags), n) for n in SEVEN] == [False] * 7

@@ -196,19 +196,17 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
     group, is_read = endpoint_of(method, url)
     key, user = _rate_limit.identity(next((v for k, v in plain.items() if k.lower() == "authorization"), None), data)
     request = _urllib_request.Request(url, data=data, headers=plain, method=method)
-    retries = 0
+    call = _rate_limit.DoorCall(group, key, user, is_read=is_read)  # one wait limit across every retry (AC-3, AC-4)
     while True:
-        _rate_limit.acquire(group, key)  # the limiter at the door: waits for a slot or raises KiteBusy, sends nothing
+        call.acquire()  # the limiter at the door: waits for a slot or raises KiteBusy, sends nothing
         try:
             with _egress._door():
                 return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect is followed
         except _urllib_request.HTTPError as exc:
             if exc.code != _TOO_MANY_REQUESTS:
                 raise
-            _rate_limit.note_429(group, key, user)  # a cooldown for the group: the next acquire waits it out
-            if not is_read or retries >= _rate_limit.MAX_READ_RETRIES:  # only a read is retried (AC-4, AC-5)
-                raise
-            retries += 1
+            if not call.retry(exc.headers.get("Retry-After") if exc.headers is not None else None):
+                raise  # a write (AC-5) or both retries used (AC-4): the 429 is the answer
             exc.close()
 
 
