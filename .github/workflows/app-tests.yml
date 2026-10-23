@@ -360,6 +360,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
 
+      # finding ci-apt-mirror-stall: twice on 2026-10-23 (runs 39950471622, 39953102150) one stalled Ubuntu mirror
+      # download ("Ign:" then a re-fetch) used the whole 12-minute step. Short per-request timeouts with retries make a
+      # stalled fetch fail over in seconds instead.
+      - name: apt fails over fast on a stalled mirror
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+            | sudo tee /etc/apt/apt.conf.d/80-fast-failover >/dev/null
+
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'
         timeout-minutes: 12
@@ -550,6 +558,14 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      # finding ci-apt-mirror-stall: twice on 2026-10-23 (runs 39950471622, 39953102150) one stalled Ubuntu mirror
+      # download ("Ign:" then a re-fetch) used the whole 12-minute step. Short per-request timeouts with retries make a
+      # stalled fetch fail over in seconds instead.
+      - name: apt fails over fast on a stalled mirror
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+            | sudo tee /etc/apt/apt.conf.d/80-fast-failover >/dev/null
 
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'

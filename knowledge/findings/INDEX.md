@@ -2,7 +2,7 @@
 
 # Findings index
 
-95 finding(s), generated from `knowledge/findings/*.json`.
+96 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -17,6 +17,7 @@
 | builder-budget-is-prose | A builder brief's 'Budget: N min, M tool calls' line is text the agent may ignore; the only hard stop is the agent type's maxTurns (builder: 100), so a 40-call budget does not stop a builder before 100 calls, and fix rounds cost 2-3x what the brief allowed. | unguarded | occurrences, scope, spec_ref |
 | builder-report-describes-uncommitted-work | A builder's report describes a change (and reasons about why it failed) that exists only in its own worktree's uncommitted state or was reverted, not on the pushed branch; the orchestrator plans the next round on a branch that does not contain what the report says. | unguarded | occurrences, scope, spec_ref |
 | caller-supplied-verdict-trusted | Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing. | unguarded | occurrences, scope, spec_ref |
+| ci-apt-mirror-stall | A CI step that installs system packages with apt on a hosted runner can spend its whole timeout on one stalled mirror download, because apt's default per-request timeout is long and it retries the same slow fetch; the job fails red with no code defect, and a re-run is the only recovery unless apt is told to fail over fast. | unguarded | occurrences, scope, spec_ref |
 | ci-path-filter-misses-dependency-change | A CI workflow limited by a path filter to the files of one layer never runs when a change lands only in a layer that layer imports; the dependency change breaks its tests on main with no red check anywhere, and every later PR that does touch the filtered paths inherits failures it did not cause. | unguarded | occurrences, scope, spec_ref |
 | client-message-resets-rate-limit | A per-stream rate limit that is reset whenever the client sends a message lets any client bypass it by re-sending, turning a server-paced push into client-driven work. | unguarded | occurrences, scope, spec_ref |
 | daily-list-trims-far-strikes-trips-truncation-guard | A truncation guard on a reference-data reload that judges a shrunk list by a percentage (of the index, or of one expiry) refuses a legitimate daily trim of far-from-the-money members, because the source drops only the far end of every expiry at once; the refused reload leaves the catalogue not same-day and a downstream gate then refuses every action that needs a same-day list. | unguarded | occurrences, scope, spec_ref |
