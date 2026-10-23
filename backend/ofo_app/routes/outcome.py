@@ -33,7 +33,6 @@ from ofo.outcome.service import Margin
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
-from ofo.table import UXLevel
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app import charge_rates_store, db
@@ -190,11 +189,23 @@ class LegIn(BaseModel):
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
 
 
+#: the one request key a client may still send after ADR-168; it is dropped, never read
+RETIRED_LEVEL_KEY = "ux_level"
+
+
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ignore_retired_level(cls, data):
+        """ADR-168: there is one level. A client still sending the retired `level` key is not refused; the key is
+        dropped here (the only key ever dropped), every other unknown key still fails."""
+        if isinstance(data, dict) and RETIRED_LEVEL_KEY in data:
+            return {k: v for k, v in data.items() if k != RETIRED_LEVEL_KEY}
+        return data
     underlying: Underlying
     legs: list[LegIn] = Field(min_length=1, max_length=20)
-    ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
     range_start: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["22800"],
                                     description="the first scenario level in index points; sent with range_end")
@@ -358,8 +369,8 @@ class LegOut(ApiModel):
     label: Optional[CatalogueText]
 
 
-class AdvancedLegOut(ApiModel):
-    """REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read)."""
+class LegQuoteOut(ApiModel):
+    """REQ-035 AC-5 / ADR-168 (5): Bid/Ask for everyone, in the leg quotes. Taken from the same snapshot as the table (one read)."""
     instrument_id: InstrumentId
     symbol: Optional[Identifier]
     bid: Optional[Money]
@@ -370,7 +381,6 @@ class AdvancedLegOut(ApiModel):
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
     underlying: Underlying
-    ux_level: Literal["guided", "standard", "advanced"]
     status_label: Optional[CatalogueText]
     reason: Optional[CatalogueText]
     output_label: Optional[CatalogueText]
@@ -389,11 +399,11 @@ class OutcomeResponse(ApiModel):
     scenario: Optional[ScenarioOut]
     payoff: Optional[PayoffOut]
     summary: Optional[SummaryOut]
-    #: present ONLY at ux_level=advanced (absent, not empty, at guided/standard) and only when a snapshot was read
-    advanced_details: Optional[list[AdvancedLegOut]] = None
+    #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
+    leg_quotes: Optional[list[LegQuoteOut]] = None
 
 
-def _advanced_details(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
+def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
     rows = []
     for leg in definition.legs:
         lm = snapshot.legs.get(leg.instrument_id)
@@ -462,11 +472,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
     frozen quotes. ``now`` stamps the answer time (ADR-088); ``stored`` names the legs when there is no provider (#249)."""
     definition = _definition(req)
-    ux = UXLevel(req.ux_level)
     live_blocked = False
     if ctx is None:
         answered_at = now()
-        out = not_connected(definition, ux, None, stored)
+        out = not_connected(definition, None, stored)
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)
@@ -476,10 +485,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
         if live_blocked:
-            out = not_live(definition, snapshot, ux)
+            out = not_live(definition, snapshot)
         else:
             config, override = req.scenario_choice()
-            out = build_outcome(definition, snapshot, ux, snapshot.valuation, view=View(req.view), rates=rates,
+            out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
@@ -489,9 +498,8 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
-    if ctx is not None and ux is UXLevel.ADVANCED and not live_blocked:  # not live: no frozen bid/ask either  # the UX gate: nothing else ever carries bid/ask
-        body["advanced_details"] = _advanced_details(snapshot, definition,
-                                                     {l["instrument_id"]: l["symbol"] for l in body["legs"]})
+    if ctx is not None and not live_blocked:  # not live: no frozen bid/ask either
+        body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     return OutcomeResponse.model_validate(body)
 
 
