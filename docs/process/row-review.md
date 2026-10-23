@@ -80,6 +80,9 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
   and not between ~22:00 and ~08:00 IST); otherwise the question goes to `docs/process/owner-questions-<date>.md` with
   the recommendation, Business call and Spec basis, the build continues, and the question is asked with the tool the
   next time the owner writes.
+- **R18 Mutation results go to a file as they run** (row 9: part B's mutation output was lost when its run was killed,
+  so no guard was proven and a finisher had to redo it). Each mutant's result is appended to a results file in the
+  agent's scratch folder the moment it finishes; the report quotes that file, never memory.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
@@ -121,9 +124,36 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 | 6 | 60 / 350k (set 15:20 IST before dispatch: measure 2 + build 30 + verify 20 + orchestrator 10) | 5 (measure, build, verify r1, fix, verify r2) | 53 agent min; 74 wall-clock (15:20-16:34, close commit 150873d3) | ~610k | 2 (PARKED) | time +23% (corrected by the meta review: first stated +75%), tokens +74%: see the row 6 log |
 | 7 | 90 / 450k (set 16:50 IST before dispatch, in the brief: measure 1.5 + build 60 + verify 20 + orchestrator 10) | 3 (measure, build, verify r1) | 52 agent min; ~62 wall-clock (16:40-17:42) | ~368k | 1 | time -31% (faster), tokens -18% (within 20%): see the row 7 log |
 | 8 | 90 / 450k (set 17:20 IST before dispatch, in the brief) | 6 (build, design review, fix 1, verify r1, fix 2, verify r2) + 2 process (row 9 measure, row 9 design review) | ~219 wall-clock (17:20-20:59, two sessions); session-2 agents 60 min (fix 2 30.0, verify r2 30.2); session-1 agents unmeasured (notices lost at the handover) | session 2: 375k (fix 2 169k, verify r2 206k); session 1 unmeasured | 2 (PARKED #519) | time +143%, tokens over (at least the 375k measured plus 4 unmeasured agents): see the row 8 log |
-| 9 | part A0 90 / 350k (set 20:20 IST before dispatch, in the brief); row 9 = 4 parts (A0, A1, B, C), ~330 min in all | | | | | |
+| 9 | ~330 min / ~1,400k for 4 parts (A0 90 / 350k set 20:20 IST before dispatch; A1, B, C each ~90 / 350k in their briefs) | 15 (measure, design review, A0 build, A0 v1, A0 fix, A0 v2, A1 build, C build, A1+C verify, cap research, C fix, B build, B finish, B finish 2, final verify) + 3 process (row-10 measure, row-10 research, row-ahead review) | 729 wall-clock (21:01-09:10), of which ~460 idle on the owner question box (23:35-07:15); ~270 working | ~2,745k | 4 (A0 r1, A0 r2, A1+C, final) | working time -18% (within 20%); tokens +96%: see the row 9 log |
 
 ## Log (newest first)
+
+### Row 9 - REQ-113 Price feed in its own process (closed 2026-10-23 ~09:15 IST, Done, MINORs #520)
+- Expected ~330 min / ~1,400k (4 parts at ~90 / 350k). Actual: 729 min wall-clock (build 21:01 - close ~09:15), of
+  which ~460 min idle: the owner question box asked at ~23:35 held the session until the answer at ~07:15. Working time
+  ~270 min (-18%, within 20%). Agents (minutes / tokens / calls): measure 0.8 / 84k / 18; design review (Opus) 1.9 /
+  139k / 16; A0 build 22.2 / 289k / 91 (budget 80); A0 verify r1 14.6 / 185k / 41; A0 fix 32.9 / 179k / 42; A0 verify
+  r2 31.6 / 168k / 35; A1 build 45.7 / 244k / 62; C build 9.4 / 220k / 53; A1+C verify 20.3 / 197k / 56; cap research
+  1.0 / 103k / 7; C fix 2.7 / 124k / 19; B build 27.0 / 270k / 76; B finish 19.9 / 189k / 55 (budget 40); B finish 2
+  13.1 / 146k / 29; final verify 29.5 / 208k / 49. Sum ~2,745k (+96%). Process agents (separate): row-10 measure 98k,
+  row-10 research 103k, row-ahead review 126k. Orchestrator: F-58 stand-in probe, F-59/F-60 records, ADR-170, ADR-171,
+  openapi regen (row 7's stale file), the flaky-wait fix at close, the evidence and close.
+- Why tokens +96%: 4 follow-up dispatches (A0 fix, C fix, B finish, B finish 2), each closing tests the BUILDER had not
+  finished: A0 ran no mutations and wrote the core test after the code; B's mutation output was lost when its run was
+  killed; 5 + 7 + 3 guards had no killing test at successive checks. Builder self-check is now the main cause, not
+  briefs (row 8's causes were mostly the orchestrator's).
+- Wrong: (1) the owner question box held the session ~7.5 h overnight for a question that blocked nothing (R17 added the
+  same morning); (2) builders over budget twice more (A0 91/80, B finish 55/40); (3) row 7 left `docs/api/openapi.json`
+  stale and neither its builder nor its verifier ran that test (found by A0's R13 run; dependent-tests class again);
+  (4) a stand-in teardown bug (server_close joins every client thread) made a mutant hang 420 s instead of failing.
+- Right: the design review before the build caught the two-way bus, the egress/test-mode blockers and the laptop
+  Redis gap; the Zerodha research turned up F-59 (3 websockets per app) before any per-user design was built on it;
+  A1 + C ran in parallel on disjoint folders with path-scoped commits and no collision; every verifier ran mutation
+  sweeps that found real test gaps; the final round found no CRITICAL or MAJOR.
+- Changed (applied now): R17 (no blocking question at night - applied 07:30); R18 - every mutation run writes each
+  result to a file in the agent's scratch folder as it finishes, and the report quotes that file (lost twice: row 9 B,
+  and the round-1 hang); ADR-171 (owner): one row may be built ahead, rows close in order, no shared files, one DB run
+  at a time, older row first. The builder-finishing-its-proof pattern goes to the meta review now due.
 
 ### Row 8 - REQ-050 Shared computation (PARKED #519, 2026-10-22 ~21:00 IST)
 - Expected 90 min / 450k. Actual: ~219 min wall-clock (17:20 dispatch - 20:59 close), across a session handover at 91%

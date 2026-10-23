@@ -329,7 +329,10 @@ async def test_an_unreadable_store_keeps_the_running_socket_and_a_missing_sessio
     del rig.store.sessions[user_a]
     stopped = await rig.until(lambda: _phase(rig, user_a, "stopped"), "A stopped")
     assert stopped["connected"] is False
-    assert kite_a.active == 0 and kite_b.active == 1 and kite_b.accepted == 1
+    # the fake server counts the close a moment after the client sends it: wait for it, never assert at once (flaked
+    # once under a loaded run, row 9 final verify; finding wall-clock-assertion-flakes-under-load)
+    await rig.until(lambda: _is_true(kite_a.active == 0), "A's socket closed at the fake Kite server")
+    assert kite_b.active == 1 and kite_b.accepted == 1
     assert (await rig.live(user_b)) is not None
 
 

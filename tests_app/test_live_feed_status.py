@@ -312,7 +312,8 @@ def test_the_quiet_contract_rule_is_unchanged_health_still_counts_heartbeats(pro
 
 @pytest.mark.parametrize("open_now", [True, False])
 def test_a_capped_feed_says_live_prices_are_not_available_in_and_out_of_market_hours(open_now):
-    """REQ-113 AC-6 (ADR-170): the feed phase ``capped`` reads its own fix at any hour, never waiting, never 'market closed'."""
+    """REQ-113 AC-6 (ADR-170): the feed phase ``capped`` reads its own fix at any hour, never waiting, never
+    'market closed'."""
     out = build_status((T0, False), LATER, live_market.current_state(), FEED_CAPPED, open_now)
     assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", "live_feed_capped")
     assert out.order_execution.fix == "live_data_not_connected"

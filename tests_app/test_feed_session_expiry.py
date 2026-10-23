@@ -132,10 +132,10 @@ class _OneReadConn:
 
 async def test_one_read_decides_so_a_login_between_two_reads_cannot_end_the_new_session():
     """AC-8 (standing item d: present and live | present and expired | absent | replaced mid-check): the token and the
-    expiry come from ONE read of one session. The old session expires in 1 h, the replacing login's in 20 h; the scripted
-    connection returns the replacing login's row on any SECOND read. With one read, the pair is the OLD session's token
-    with the OLD expiry (a consistent session the next supervisor pass replaces), never the old token with the new
-    expiry or the new token with the old expiry, and exactly one read happened."""
+    expiry come from ONE read of one session. The old session expires in 1 h, the replacing login's in 20 h; the
+    scripted connection returns the replacing login's row on any SECOND read. With one read, the pair is the OLD
+    session's token with the OLD expiry (a consistent session the next supervisor pass replaces), never the old
+    token with the new expiry or the new token with the old expiry, and exactly one read happened."""
     import os  # noqa: PLC0415
 
     from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415

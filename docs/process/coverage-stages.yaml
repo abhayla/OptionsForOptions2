@@ -310,6 +310,7 @@ decisions:
   ADR-168: S6.1        # builder sequence: one row at a time, 63 work items (owner 2026-10-22)
   ADR-169: S6.1        # Zerodha connection by login only, no own-app setup (owner 2026-10-22, row 2)
   ADR-170: S6.7         # per-user feeds kept; ask Zerodha at the multi-user demo for more websockets per app (Q274, F-59)
+  ADR-171: S6.7         # builder sequence: one row may be built ahead; rows close in order; no shared files, one DB run at a time
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -420,6 +421,7 @@ issues:
   "#517": 4a  # PARKED row 6 (REQ-048 AC-5): credential scans are name lists; redesign as a reply-field inventory
   "#518": 4a  # Row 7 (REQ-049) MINORs: snapshot health typed by caller, retyped 9:15 text, stale docstring, no holiday calendar
   "#519": 4a  # PARKED row 8 (REQ-050 AC-1/AC-3): 30 of 40 cache-key parts unguarded; build keys from the engine call
+  "#520": 4a  # Row 9 (REQ-113) MINORs: ended status vs real store, DB outage at 06:00, isolation test without DB
 
 # Work items whose status is not done.
 work_items:

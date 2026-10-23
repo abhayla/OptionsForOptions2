@@ -39,10 +39,19 @@ live window 1 (after chunk 3) repeats it with the owner's Kite login.
 - Step 0 runs on branch `docs/builder-feature-reqs` (pushed 2026-10-22; it carries ADR-168, REQ-134..140, the
   sequence table and this contract), so the plan and the step-0 fixes land as ONE PR.
 
-## How a row is worked (strictly one row at a time)
+## How a row is worked (rows close strictly in order; one row may be built ahead - ADR-171)
 
-Row N+1's BUILD never starts before row N is closed. While row N's verifier runs, the session prepares row N+1 only:
-READ, MEASURE, write its builder brief, run `check_brief.py` + `copy_from_check.py`, fill its W-file.
+Rows are verified, closed, recorded and reported strictly in table order. ADR-171 (owner 2026-10-23) amends the old
+"Row N+1's BUILD never starts before row N is closed": once row N's code is committed and its verifier is dispatched,
+row N+1 (never N+2) may be built, ONLY when: its Measure file list shares NO file with row N's changed files or open
+fix list (a builder that finds it must touch one stops, commits and reports); it works in its own worktree and branch
+(`OptionsForOptions2-builder-next`, `build/seq-row-<N+1>`, made with `wt-new.ps1`, removed with `wt-rm.ps1`), its brief
+naming that path (check_brief refuses a row-ahead brief naming the main sequence worktree); and no meta review is due
+unapplied. ONE database run at a time across every builder and verifier, the OLDER row first; the older row has
+priority in everything and the younger never touches the older's worktree. After row N closes: rebase row N+1 onto the
+chunk branch, re-run the full R13 selection on the rebased commit, then its verifier (evidence names that commit).
+Otherwise, while row N's verifier runs, the session prepares row N+1: READ, MEASURE, brief, `check_brief.py` +
+`copy_from_check.py`, its W-file.
 
 1. **Read** the requirement in full (every AC), the decisions it cites, the Sensibull study screens
    (`D:\Abhay\Ventures\competitors\sensibull\2026-10-21\INDEX.md`; screenshots never enter this repo), the

@@ -44,7 +44,8 @@ _SET_TOKEN = text(
     "UPDATE public.broker_sessions SET token_ciphertext = :ciphertext "
     "WHERE id = :id AND ended_at IS NULL AND token_ciphertext IS NULL RETURNING id")
 _ACTIVE = text(
-    "SELECT id, key_id, token_ciphertext, expected_expiry <= clock_timestamp() AS past, expected_expiry FROM public.broker_sessions "
+    "SELECT id, key_id, token_ciphertext, expected_expiry <= clock_timestamp() AS past, expected_expiry "
+    "FROM public.broker_sessions "
     "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
 
 
