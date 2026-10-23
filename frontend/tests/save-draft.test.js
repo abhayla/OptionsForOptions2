@@ -81,3 +81,18 @@ describe('a saved leg that is no longer live (issue #500)', () => {
     expect(legsFromSaved(saved(), [contract])[0].instrument_id).toBe('NSE_FO:44624')
   })
 })
+
+describe('W-148 (REQ-076 AC-7): the tick is never saved', () => {
+  it('AC-7: an unticked leg, a Hedge mark and a typed mark leave the saved body exactly as before', () => {
+    const body = buildSaveBody([leg({ included: false, hedge: true, typed: true, base_lots: 1 })], '')
+    expect(Object.keys(body.legs[0]).sort()).toEqual(['action', 'captured_at', 'contract_id', 'planned_entry', 'quantity'])
+    const text = JSON.stringify(body)
+    for (const word of ['included', 'hedge', 'typed', 'base_lots']) expect(text).not.toContain(word)
+  })
+  it('AC-7: an unticked leg is still saved as a leg (the tick does not drop it from the strategy)', () => {
+    expect(buildSaveBody([leg(), leg({ included: false })], '').legs).toHaveLength(2)
+  })
+  it('a leg whose contract the server changed (no contract_id) cannot be saved with a stale one', () => {
+    expect(canSaveLegs([leg({ contract_id: null, lot_size: null })])).toBe(false)
+  })
+})

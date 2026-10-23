@@ -429,3 +429,40 @@ describe('W-073 round 2: the draft link is canonicalized once at the page bounda
   })
 })
 
+describe('W-148 (REQ-076 AC-3, AC-6): the live push still matches after a leg edit', () => {
+  // The reply of POST /strategies/leg-edit after leg 1 is unticked: all four legs back, leg 1 included:false, and the
+  // outcome of the other three (the recorded condor outcome without its first leg).
+  const replyLegs = real.legs.map((l, i) => ({ instrument_id: l.instrument_id, action: l.action, instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry,
+    captured_at: l.captured_at, price_source: 'captured', included: i !== 0, hedge: false, block: null }))
+  const THREE = { ...real, output_label: 'THREE LEGS', legs: real.legs.slice(1) }
+  it('AC-6: after an untick the socket is told the included legs only, and a push of exactly those is applied', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    FakeSocket.all = []
+    apiAnswer = (body) => Promise.resolve({ data: body?.edit ? { legs: replyLegs, shape_name: null, outcome: THREE } : COMPUTED })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    await w.findComponent({ name: 'LegList' }).vm.$emit('edit', { control: 'include', index: 0, included: false })
+    await flushPromises()
+    expect(apiCalls.filter((c) => c.body?.edit)).toHaveLength(1)
+    expect(w.text()).toContain('THREE LEGS') // the reply's outcome is on screen without a second outcome request
+    const told = JSON.parse(FakeSocket.all.at(-1).sent.at(-1))
+    expect(told.legs.map((l) => l.instrument_id)).toEqual(real.legs.slice(1).map((l) => l.instrument_id))
+    FakeSocket.all.at(-1).serverOpen()
+    FakeSocket.all.at(-1).serverPush({ ...THREE, output_label: 'PUSHED' })
+    await flushPromises()
+    expect(w.text()).toContain('PUSHED')
+    FakeSocket.all.at(-1).serverPush({ ...COMPUTED, output_label: 'ALL FOUR' }) // another strategy as sent: dropped
+    await flushPromises()
+    expect(w.text()).not.toContain('ALL FOUR')
+    w.unmount()
+  })
+})
+
