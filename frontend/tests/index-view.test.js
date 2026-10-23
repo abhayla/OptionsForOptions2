@@ -121,6 +121,15 @@ describe('the Underlying/index view page', () => {
     expect(w.text()).not.toMatch(/buy|sell/i) // no order buttons (ADR-002)
   })
 
+  it('AC-4 (RD-045): a health word carries its one-sentence reason; available carries none', async () => {
+    apiAnswer = live(row('NIFTY', '25145.50', T1, 'stale'), row('SENSEX', '82010.25', T1, 'unavailable'))
+    const w = await mountPage()
+    expect(panel(w, 'NIFTY').get('[data-testid="index-health-reason"]').text()).toBe('Stale: the latest price for this contract is older than expected, so the figure may be out of date.')
+    expect(panel(w, 'SENSEX').get('[data-testid="index-health-reason"]').text()).toBe('Unavailable: no price has been received for this contract, so no figure is shown.')
+    apiAnswer = live(row('NIFTY', '25145.50', T1), row('SENSEX', '82010.25', T1))
+    expect((await mountPage()).find('[data-testid="index-health-reason"]').exists()).toBe(false)
+  })
+
   it('AC-2: a stale health shows its word beside the value', async () => {
     apiAnswer = live(row('NIFTY', '25145.50', T1, 'stale'), row('SENSEX', '82010.25', T1, 'unavailable'))
     const w = await mountPage()

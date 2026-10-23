@@ -20,19 +20,32 @@
         {{ isLoading ? 'Calculating...' : 'ReCalculate' }}
       </button>
       <RouterLink
-        v-if="savedId && orderPathOn"
+        v-if="savedId && orderPathOn && brokerConnected"
         :to="`/strategy/${savedId}/execute`"
         data-testid="execute-strategy"
         class="px-4 py-2 text-sm font-medium rounded-lg border border-line"
       >
         Execute Strategy
       </RouterLink>
+      <template v-else-if="savedId && orderPathOn">
+        <button
+          type="button"
+          disabled
+          data-testid="execute-strategy-disabled"
+          :title="TRADE_NEEDS_BROKER_REASON"
+          class="px-4 py-2 text-sm font-medium rounded-lg border border-line text-gray-400 cursor-not-allowed"
+        >
+          Execute Strategy
+        </button>
+        <span class="text-xs text-gray-600" data-testid="execute-strategy-reason">{{ TRADE_NEEDS_BROKER_REASON }}</span>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
 import { useOrderPath } from '@/lib/orderPath'
+import { TRADE_NEEDS_BROKER_REASON, useBrokerConnected } from '@/lib/brokerConnected'
 
 defineProps({
   hasLegs: { type: Boolean, default: false },
@@ -44,4 +57,6 @@ defineEmits(['recalculate'])
 
 // W-121 (REQ-073 AC-6): Execute is offered only when the server said the order path is "on".
 const orderPathOn = useOrderPath()
+// REQ-015 AC-10 (RD-012): with no broker connected the action is shown disabled with its reason, before any click.
+const brokerConnected = useBrokerConnected()
 </script>
