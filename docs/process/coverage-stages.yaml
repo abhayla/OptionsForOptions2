@@ -438,6 +438,7 @@ issues:
   "#527": 4a  # Row 16 (REQ-038) round 2 MINORs: time filter untested, flag never clears, Execute ignores the flag, PARTIAL vs domain - fix before the adjustments row
   "#528": 4a  # Row 15 (REQ-028 AC-2) partial: modification, adjustment proposal and exit domain types are not on the app path
   "#529": 4a  # Owner capture list: 12 NO-SCREEN reference records for builder rows 1-16 (ADR-176)
+  "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
 
 # Work items whose status is not done.
 work_items:
