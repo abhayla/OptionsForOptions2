@@ -21,6 +21,7 @@ const props = defineProps({
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg'])
 
 const multiplier = ref(1)
+const legUnit = ref('lots') // REQ-076 AC-5: lots by default; Quantity draws the reply's own quantity (no multiplication here)
 const depthFor = ref(null) // the leg whose depth popup is open
 
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
@@ -52,6 +53,12 @@ function setMultiplier(index) {
           <option v-for="n in MULTIPLIER_CHOICES" :key="n" :value="n">{{ n }}</option>
         </select>
       </label>
+      <label class="mt-1 flex items-center gap-2">Show
+        <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
+          <option  value="lots">Lots</option>
+          <option  value="quantity">Quantity</option>
+        </select>
+      </label>
       <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
       <ul>
         <li
@@ -66,7 +73,8 @@ function setMultiplier(index) {
             <button type="button" class="rounded border border-line px-1" aria-label="Next strike" data-testid="strike-plus" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
           </span>
           <span :class="`tag tag-${(leg.instrument_type ?? '').toLowerCase()}`" data-testid="leg-type">{{ leg.instrument_type }}</span>
-          <span data-testid="leg-lots">{{ leg.lots }} lot</span>
+          <span v-if="legUnit === 'quantity'" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
+          <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
           <span v-if="leg.hedge === true" class="tag" data-testid="hedge-mark">Hedge</span>
           <span v-if="leg.planned_entry != null" data-testid="leg-entry">planned entry {{ leg.planned_entry }}</span>
           <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>

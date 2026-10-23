@@ -78,6 +78,7 @@ export function applyEditReply(prev, reply) {
       action: r.action,
       lots: r.lots,
       base_lots: r.base_lots,
+      quantity: r.quantity ?? null, // the server's lots times lot size, drawn as sent (ADR-008)
       planned_entry: r.planned_entry,
       captured_at: r.captured_at,
       included: r.included,
