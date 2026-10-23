@@ -11,7 +11,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from ofo import wording as shared_wording
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.strategy.loader import DEFAULT_CATALOGUE_PATH, check_wording, load_templates
@@ -23,6 +22,7 @@ BY_ID = {t.id: t for t in CATALOGUE}
 NEAR = datetime.date(2026, 10, 27)
 NEXT = datetime.date(2026, 11, 23)
 SPOT, GAP, LOT = Decimal("22810"), Decimal("50"), 65
+CATALOGUE_SIZE, NEW_SHAPES = 41, 20  # the 21 before plus the 20 of RD-090
 B, S = Action.BUY, Action.SELL
 CE, PE, FUT = Instrument.CE, Instrument.PE, Instrument.FUT
 
@@ -67,8 +67,8 @@ RENAMES = {
 
 def test_ac3_twenty_new_shapes_are_data_only() -> None:
     """AC-3: the catalogue holds 41 templates: the 21 before plus the 20 reference shapes; all load as data."""
-    assert len(CATALOGUE) == 41
-    assert len(NEW_IDS) == 20 and NEW_IDS <= set(BY_ID)
+    assert len(CATALOGUE) == CATALOGUE_SIZE
+    assert len(NEW_IDS) == NEW_SHAPES and set(BY_ID) >= NEW_IDS
 
 
 @pytest.mark.parametrize("template_id", sorted(PRESETS))
@@ -84,14 +84,16 @@ def test_ac3_each_new_shape_matches_its_own_template_and_no_other(template_id: s
 
 
 def test_ac3_a_one_to_one_straddle_is_still_a_straddle_not_a_strap() -> None:
-    """AC-3 (red case): 1 call + 1 put at the ATM strike is Long Straddle; the 2:1 mix is Strap; neither steals the other."""
+    """AC-3 (red case): 1 call + 1 put at the ATM strike is Long Straddle; the 2:1 mix is Strap; neither steals
+    the other."""
     plain = match([leg(B, CE, "22800"), leg(B, PE, "22800")], spot=SPOT, strike_gap=GAP, templates=CATALOGUE)
     assert plain.label == "Long Straddle"
     assert match(PRESETS["strap"], spot=SPOT, strike_gap=GAP, templates=CATALOGUE).label == "Strap"
 
 
 def test_ac3_a_put_sold_off_the_money_is_still_the_cash_secured_put() -> None:
-    """AC-3: the overlap with the reference's Sell Put is resolved by keeping both: out of the money = cash_secured_put."""
+    """AC-3: the overlap with the reference's Sell Put is resolved by keeping both:
+    out of the money = cash_secured_put."""
     otm = match([leg(S, PE, "22700")], spot=SPOT, strike_gap=GAP, templates=CATALOGUE)
     assert otm.template.id == "cash_secured_put"
     assert match(PRESETS["sell_put_atm"], spot=SPOT, strike_gap=GAP, templates=CATALOGUE).template.id == "sell_put_atm"
@@ -117,7 +119,8 @@ def test_ac3_renamed_templates_keep_their_ids_and_show_the_new_names() -> None:
 
 
 def test_ac3_new_names_and_descriptions_pass_the_adr003_wording_check() -> None:
-    """AC-3 (ADR-003): every new and renamed name and description passes the loader's wording check and the shared one."""
+    """AC-3 (ADR-003): every new and renamed name and description passes the loader's wording check and the
+    shared one."""
     for template_id in NEW_IDS | set(RENAMES):
         template = BY_ID[template_id]
         check_wording(template)

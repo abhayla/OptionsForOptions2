@@ -86,6 +86,7 @@ beforeEach(() => {
   posts.length = 0
   detailGets.length = 0
   vi.useRealTimers()
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
   notLiveFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
