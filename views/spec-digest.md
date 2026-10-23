@@ -176,11 +176,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-171 2026-10-23: Amends ADR-168's "one requirement at a time": when row N's code is committed and its verifier is di… [amends ADR-168]
 - ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
 - ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
-- ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152 exception (c) to the reference pr…]
-- ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015 (the reference product gap G-02-1…]
+- ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152]
+- ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015; applies ADR-173]
 - ADR-176 2026-10-23: Refines ADR-152 and ADR-173. [refines ADR-152, ADR-173]
-- ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114 AC-7, REQ-105 AC-4]
-- ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176 (2), ADR-168 (per-row report and r…]
+- ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114, REQ-105]
+- ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176, ADR-168, ADR-106]
 
 ## Requirements (131)
 
