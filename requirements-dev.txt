@@ -1,2 +1,4 @@
 # Lint packages for developers and the app CI job (installed after requirements-app.txt; never deployed).
 ruff==0.15.12
+# Redis stand-in for the bus tests on a developer PC (REQ-113, finding F-58); CI uses a redis:7 service instead.
+fakeredis==2.40.0

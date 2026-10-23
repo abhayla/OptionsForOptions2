@@ -15,7 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import IndexViewPage from '@/pages/IndexViewPage.vue'
 import { INDEX_LIVE_PATH, INDEX_REST_PATH, createIndexSocket, indexLiveUrl, isIndicesAnswer } from '@/composables/useIndexLive'
-import { MAX_ATTEMPTS } from '@/composables/useStrategyLive'
+import { FAST_ATTEMPTS } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -27,6 +27,7 @@ class FakeSocket {
   }
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
+  serverOpen() { this.readyState = 1; this.onopen?.() }
   serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
@@ -57,8 +58,9 @@ beforeEach(() => {
   apiCalls.length = 0
   apiAnswer = null
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no spread here: the spread has its own tests (reconnect-forever.test.js)
 })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('the index socket lifecycle', () => {
   it('AC-2: opens the same-origin path, sends nothing, passes each index answer untouched, ignores anything else', () => {
@@ -66,6 +68,7 @@ describe('the index socket lifecycle', () => {
     const s = createIndexSocket({ url: 'ws://app.test' + INDEX_LIVE_PATH, WebSocketImpl: FakeSocket, onPush: (m) => pushes.push(m) })
     s.start()
     const ws = FakeSocket.all[0]
+    ws.serverOpen() // the open handler is where a body would be sent
     ws.serverPush(live(row('NIFTY', '25145.50', T1), row('SENSEX', '82010.25', T1)))
     ws.serverPush({ what_happened: 'x' }) // a catalogue error is not an index answer
     ws.serverPush('not json')
@@ -77,7 +80,7 @@ describe('the index socket lifecycle', () => {
     expect(isIndicesAnswer({ state: 'COMPUTED', indices: [] })).toBe(false)
   })
 
-  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it stops after MAX_ATTEMPTS', () => {
+  it('AC-2: a drop calls onDown and reconnects on the shared backoff; it never stops (REQ-113 AC-11)', () => {
     const timers = []
     const onDown = vi.fn()
     const s = createIndexSocket({ url: 'ws://x', WebSocketImpl: FakeSocket, onPush: () => {}, onDown,
@@ -86,14 +89,15 @@ describe('the index socket lifecycle', () => {
     FakeSocket.all[0].serverClose()
     expect(onDown).toHaveBeenCalledTimes(1)
     expect(timers[0].ms).toBe(1000)
-    for (let i = 1; i < MAX_ATTEMPTS; i += 1) {
+    const TOTAL = FAST_ATTEMPTS + 10 // past the old give-up point
+    for (let i = 1; i < TOTAL; i += 1) {
       timers[i - 1].fn()
       FakeSocket.all[i].serverClose()
     }
-    expect(timers.map((t) => t.ms).slice(0, 3)).toEqual([1000, 2000, 4000])
-    timers[MAX_ATTEMPTS - 1].fn()
-    FakeSocket.all[MAX_ATTEMPTS].serverClose()
-    expect(timers).toHaveLength(MAX_ATTEMPTS) // no attempt past the limit
+    expect(timers.map((t) => t.ms).slice(0, 3)).toEqual([1000, 1000, 1000])
+    timers[TOTAL - 1].fn()
+    FakeSocket.all[TOTAL].serverClose()
+    expect(timers).toHaveLength(TOTAL + 1) // an attempt past the old limit is still scheduled
   })
 })
 
@@ -116,6 +120,15 @@ describe('the Underlying/index view page', () => {
     expect(w.get('[data-testid="index-link-chain"]').attributes('href')).toBe('/market/option-chain')
     expect(w.get('[data-testid="index-link-live"]').attributes('href')).toBe('/strategies/live-strategies')
     expect(w.text()).not.toMatch(/buy|sell/i) // no order buttons (ADR-002)
+  })
+
+  it('AC-4 (RD-045): a health word carries its one-sentence reason; available carries none', async () => {
+    apiAnswer = live(row('NIFTY', '25145.50', T1, 'stale'), row('SENSEX', '82010.25', T1, 'unavailable'))
+    const w = await mountPage()
+    expect(panel(w, 'NIFTY').get('[data-testid="index-health-reason"]').text()).toBe('Stale: the latest price for this contract is older than expected, so the figure may be out of date.')
+    expect(panel(w, 'SENSEX').get('[data-testid="index-health-reason"]').text()).toBe('Unavailable: no price has been received for this contract, so no figure is shown.')
+    apiAnswer = live(row('NIFTY', '25145.50', T1), row('SENSEX', '82010.25', T1))
+    expect((await mountPage()).find('[data-testid="index-health-reason"]').exists()).toBe(false)
   })
 
   it('AC-2: a stale health shows its word beside the value', async () => {

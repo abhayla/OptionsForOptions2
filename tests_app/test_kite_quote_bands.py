@@ -57,11 +57,11 @@ def test_core_real_quote_gives_the_band() -> None:
     assert fake.calls[0][:2] == ("GET", f"{BASE}/quote?i={SYM}")
 
 
-def test_allow_list_entry_has_exactly_the_four_reads() -> None:
-    """AC-4: the module's entry is the three W-093 reads plus GET /quote, nothing else."""
+def test_allow_list_entry_has_exactly_the_six_reads() -> None:
+    """AC-4: the module's entry is the three W-093 reads, GET /quote, holdings (W-106) and the profile (W-131)."""
     assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == frozenset({
         ("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"), ("GET", "/portfolio/holdings"),
-        ("GET", "/quote")})
+        ("GET", "/quote"), ("GET", "/user/profile")})
 
 
 def test_repeated_i_query_is_sent_in_asked_order() -> None:

@@ -8,6 +8,10 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { accountView } from '@/lib/brokerAccount'
+import { NO_EXTRA_CHARGES, OPEN_ACCOUNT_LABEL, SAFE_EXPLAINER, SAFE_EXPLAINER_TITLE, openAccountUrl } from '@/lib/connectHelp'
+
+const openAccount = openAccountUrl() // REQ-015 AC-11 (ADR-175): the one configured link, or null
 
 const ROWS = [
   ['account_connection', 'Zerodha account connection'],
@@ -21,8 +25,14 @@ const FIX = {
   session_expired: 'Your Zerodha login for today has expired. Use Reconnect and log in again on Zerodha\'s own page.',
   live_feed_off: 'Live market data is switched off on the server. Ask whoever runs the server to turn it on.',
   live_feed_not_running: 'The live price feed is not running yet. Open a strategy screen to start it; if it stays off, use Reconnect.',
+  live_feed_waiting: 'Connected to Zerodha, but no prices have arrived yet. Wait a few seconds; if this stays, use Reconnect.',
+  live_feed_market_closed: 'The market is closed, so no new prices are arriving. Live prices resume at the next market open (9:15 am IST on a trading day).',
+  live_feed_idle: 'Live prices start when you open a strategy or option chain screen.',
+  live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',
+  live_feed_capped: 'Live prices are not available: Zerodha\'s connection limit for this app is reached.',
   live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',
-  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',
+  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Positions are read when you open Positions or Execute for a strategy.',
+  no_read_yet_periodic: 'No position read from Zerodha has succeeded since you connected. While live data runs, positions are read at connect and every 45 seconds; if this stays, use Reconnect.',
   live_data_not_connected: 'Orders are not ready until live market data is connected. Fix the live market data row first.',
   positions_not_synced: 'Orders are not ready until your positions have been read from Zerodha. Fix the position sync row first.',
 }
@@ -33,11 +43,20 @@ const state = ref('loading') // loading | ready | unavailable
 const error = ref(null)
 const disconnecting = ref(false)
 const confirming = ref(false)
+const account = ref(null) // REQ-015 AC-13: the masked id and Zerodha's margin, as the server sent them
 
+// REQ-015 AC-12: the 45 s positions read runs only while the live market runs on the session (LIVE_MARKET on and a
+// socket up); every other live row (switched off, not running, session ended, market closed, unknown) does not claim it
+const RUNNING_LIVE_FIXES = ['live_feed_waiting', 'live_feed_reconnecting', 'live_feed_idle', 'live_feed_capped']
+const periodicReadRuns = computed(() => {
+  const live = status.value?.live_market_data
+  return !!live && (live.state === 'connected' || RUNNING_LIVE_FIXES.includes(live.fix))
+})
 const rows = computed(() => ROWS.map(([key, title]) => {
   const item = status.value?.[key] ?? { state: 'disconnected', fix: null }
   const level = LABEL[item.state] ? item.state : 'disconnected'
-  return { key, title, level, label: LABEL[level], fix: level === 'connected' ? '' : (FIX[item.fix] ?? UNKNOWN_FIX) }
+  const fixKey = item.fix === 'no_read_yet' && periodicReadRuns.value ? 'no_read_yet_periodic' : item.fix
+  return { key, title, level, label: LABEL[level], fix: level === 'connected' ? '' : (FIX[fixKey] ?? UNKNOWN_FIX) }
 }))
 const anyConnected = computed(() => rows.value.some((r) => r.level !== 'disconnected'))
 const lastSync = computed(() => {
@@ -51,10 +70,20 @@ async function load() {
     const { data } = await api.get('/broker/status')
     status.value = data
     state.value = 'ready'
+    loadAccount()
   } catch (e) {
     error.value = e?.parts ?? null
     status.value = null
     state.value = 'unavailable'
+  }
+}
+
+async function loadAccount() {
+  try {
+    const { data } = await api.get('/broker/account')
+    account.value = accountView(data)
+  } catch {
+    account.value = accountView(null) // a failed read shows its reason, never a figure
   }
 }
 
@@ -105,11 +134,24 @@ onMounted(load)
         <span v-else data-testid="last-sync-none">no successful read from Zerodha is recorded yet</span>
       </p>
 
+      <div v-if="account" class="mt-4 rounded border border-line bg-surface p-3" data-testid="broker-account">
+        <p class="text-sm">Zerodha client id: <span v-if="account.id" data-testid="account-id">{{ account.id }}</span><span v-else data-testid="account-id-none">not available</span></p>
+        <p v-if="account.figure" class="mt-1 text-sm" data-testid="account-margin">Available margin (Zerodha): Rs <span data-testid="account-margin-figure">{{ account.figure }}</span>, read at <span data-testid="account-margin-read-at">{{ account.readAt }}</span></p>
+        <p v-else class="mt-1 text-sm" data-testid="account-margin-reason">{{ account.reason }}</p>
+      </div>
+
       <p class="mt-2 text-sm" data-testid="history-statement">Historical market data: not currently available in this version.</p>
 
       <div class="mt-4 flex flex-wrap gap-2">
         <a href="/api/broker/zerodha/login" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-reconnect">{{ anyConnected ? 'Reconnect Zerodha' : 'Connect Zerodha' }}</a>
         <button v-if="anyConnected && !confirming" type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>
+      </div>
+
+      <div v-if="rows[0].level !== 'connected'" class="mt-4 rounded border border-line bg-surface p-3" data-testid="connect-help">
+        <h2 class="font-medium" data-testid="safe-title">{{ SAFE_EXPLAINER_TITLE }}</h2>
+        <p class="mt-1 text-sm" data-testid="safe-explainer">{{ SAFE_EXPLAINER }}</p>
+        <p class="mt-2 text-sm" data-testid="no-extra-charges">{{ NO_EXTRA_CHARGES }}</p>
+        <a v-if="openAccount" :href="openAccount" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm underline" data-testid="open-account">{{ OPEN_ACCOUNT_LABEL }}</a>
       </div>
 
       <div v-if="confirming" class="mt-3 rounded border border-line bg-surface p-3" role="alertdialog" aria-label="Confirm disconnect" data-testid="disconnect-confirm">

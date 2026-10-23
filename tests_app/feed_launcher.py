@@ -1,0 +1,166 @@
+"""TEST-ONLY launcher (REQ-113 AC-2): starts the market-data process or the API-side feed stack as a real OS process.
+
+``python feed_launcher.py feed <config.json>``   the REAL ``ofo_app.feed_main.run_feed`` over the REAL ``KiteSocket``
+``python feed_launcher.py feedsup <config.json>`` the REAL ``feed_main.supervise`` (A1): the stored session is the file
+                                                  ``session_file`` (its token, or absent = no session)
+``python feed_launcher.py feedmulti <config.json>`` the REAL ``supervise_users`` (row 9 B): one socket per user;
+                                                  ``session_dir/<user>.txt`` = that user's stored token,
+                                                  ``users[<user>]["ws_url"]`` the fake Kite that user's socket reaches
+``python feed_launcher.py api <config.json>``    the REAL ``LiveMarket.start`` in ``bus`` mode (the REAL ``BusSocket``),
+                                                  writing its state to a file every 100 ms (a process the test can
+                                                  kill and start again). Files ``disconnect_file`` / ``login_file``
+                                                  make it call the REAL ``stop_current`` / ``pick_up_login`` (what the
+                                                  Disconnect and login routes call), once each.
+
+It is the only place that enters the egress gate's test mode (a loopback Kite address is allowed only there); production
+code has no switch for it. The Kite token comes from the environment, never from a command-line argument.
+"""
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import datetime
+import json
+import os
+import pathlib
+import sys
+import types
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "backend"))  # pytest.ini's pythonpath
+
+from ofo.broker import egress
+
+egress.install()
+egress._enter_test_mode([sys.executable])
+
+from ofo.instruments.parser import parse_instruments_csv  # noqa: E402
+from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo_app import feed_bus, feed_main, live_market  # noqa: E402
+
+INSTRUMENTS = (pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
+               / "instruments-2026-10-08-subscribed.csv")
+
+
+def clock() -> datetime.datetime:
+    return datetime.datetime.now(IST)
+
+
+async def run_feed(cfg: dict) -> None:
+    token = os.environ["OFO_TEST_KITE_TOKEN"]
+    await feed_main.run_feed(user_ref=cfg["user"], api_key="KEY-launcher", access_token=token,
+                             ws_url=cfg["ws_url"], redis_url=cfg["redis_url"], clock=clock)
+
+
+class _Conn:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _Engine:
+    def connect(self):
+        return _Conn()
+
+
+def _session_token(cfg: dict) -> str | None:
+    """The stand-in for the encrypted token store: ``session_file`` holds the token, or is absent (no session)."""
+    path = cfg.get("session_file")
+    if path is None:
+        return os.environ["OFO_TEST_KITE_TOKEN"]
+    try:
+        return pathlib.Path(path).read_text().strip() or None
+    except OSError:
+        return None
+
+
+async def run_feedsup(cfg: dict) -> None:
+    async def read_session():
+        token = _session_token(cfg)
+        return None if token is None else feed_main.StoredSession("KEY-launcher", token,
+                                                                  live_market.token_fingerprint(token))
+
+    await feed_main.supervise(user_ref=cfg["user"], read_session=read_session, ws_url=cfg["ws_url"],
+                              redis_url=cfg["redis_url"], clock=clock, recheck_s=cfg.get("recheck_s", 0.5))
+
+
+def _stored_users(directory: pathlib.Path) -> list[str]:
+    return sorted(f.stem for f in directory.glob("*.txt"))
+
+
+async def run_feedmulti(cfg: dict) -> None:
+    directory = pathlib.Path(cfg["session_dir"])
+
+    async def list_users() -> list[str]:
+        return _stored_users(directory)
+
+    async def read_session(user: str):
+        try:
+            token = (directory / f"{user}.txt").read_text().strip()
+        except OSError:
+            return None
+        return feed_main.StoredSession("KEY-launcher", token, live_market.token_fingerprint(token)) if token else None
+
+    await feed_main.supervise_users(list_users=list_users, read_session=read_session,
+                                    ws_url=lambda user: cfg["users"][user]["ws_url"], redis_url=cfg["redis_url"],
+                                    clock=clock, recheck_s=cfg.get("recheck_s", 0.5))
+
+
+async def _no_catalogue(conn):
+    return types.SimpleNamespace(all_entries=list)
+
+
+async def run_api(cfg: dict) -> None:
+    """The API side through the REAL ``LiveMarket.start`` (the app's own start path, ``FEED_MODE`` / ``REDIS_URL`` from
+    the environment): only the database, the catalogue and the stored session are stood in, so a start that built a Kite
+    socket instead of the bus socket would connect to the fake Kite and the test would see a second connection."""
+    from ofo_app import catalogue_store, db  # noqa: PLC0415
+
+    listed = list(parse_instruments_csv(INSTRUMENTS))
+    db.get_engine = _Engine
+    catalogue_store.load_catalogue = _no_catalogue
+    live_market.listed_for_kite = lambda entries: listed
+    live_market.get_settings = lambda: types.SimpleNamespace(KITE_WS_URL=cfg["ws_url"])
+
+    async def stored_token(self, config):
+        return _session_token(cfg)
+
+    live_market.LiveMarket._stored_token = stored_token
+    market = live_market.LiveMarket()
+    broker_config = types.SimpleNamespace(api_key="KEY-launcher", token_key=b"k")
+    await market.start(broker_config)
+    live_market.set_current(market)
+    provider = market.feed.ctx.provider
+    socket = market._socket
+    provider.subscribe([f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed])
+    target = pathlib.Path(cfg["state_file"])
+    while True:
+        for name, action in (("disconnect_file", live_market.stop_current),
+                             ("login_file", lambda: live_market.pick_up_login(broker_config))):
+            trigger = cfg.get(name) and pathlib.Path(cfg[name])
+            if trigger and trigger.exists():
+                trigger.unlink()
+                await action()
+        last = socket.last_frame_at if hasattr(socket, "last_frame_at") else None
+        state = {"pid": os.getpid(), "frames": provider.counters["frames"], "ticks": provider.counters["ticks"],
+                 "last_frame_us": None if last is None else feed_bus.to_micros(last),
+                 "phase": provider.feed.phase(clock()), "socket": type(socket).__name__,
+                 "state": live_market.current_state()}
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state))
+        with contextlib.suppress(PermissionError):  # Windows: the reader has the file open this instant; next tick
+            os.replace(tmp, target)
+        await asyncio.sleep(0.1)
+
+
+def main() -> None:
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    role, cfg = sys.argv[1], json.loads(pathlib.Path(sys.argv[2]).read_text())
+    asyncio.run({"feed": run_feed, "feedsup": run_feedsup, "feedmulti": run_feedmulti,
+           "api": run_api}[role](cfg))
+
+
+if __name__ == "__main__":
+    main()

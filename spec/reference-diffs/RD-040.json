@@ -1,0 +1,14 @@
+{
+  "id": "RD-040",
+  "kind": "MATCH",
+  "title": "The browser talks only to the platform's own relay, never to the market-data vendor (row 6 match)",
+  "reference_behaviour": "The browser receives prices only from the product's own socket relay and its own price endpoints.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-048: prices reach screens only through server stages and the platform socket (AC-5 parked at #517, design unchanged).",
+  "req": "REQ-048",
+  "row": 6,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

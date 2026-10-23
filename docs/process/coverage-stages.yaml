@@ -20,7 +20,7 @@ requirements:
   REQ-012: S5
   REQ-013: S5
   REQ-014: S5
-  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a}
+  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a, AC-10: 4a, AC-11: 4a, AC-12: 4a, AC-13: 4a}
   REQ-016: S6.2
   REQ-017: S8
   REQ-018: S8
@@ -308,6 +308,18 @@ decisions:
   ADR-166: S6.1        # "Start tracking" is the label of REQ-109's action (owner 2026-10-21)
   ADR-167: S6.2        # curves and scenario values before charges, charges shown once (owner 2026-10-22)
   ADR-168: S6.1        # builder sequence: one row at a time, 63 work items (owner 2026-10-22)
+  ADR-169: S6.1        # Zerodha connection by login only, no own-app setup (owner 2026-10-22, row 2)
+  ADR-170: S6.7         # per-user feeds kept; ask Zerodha at the multi-user demo for more websockets per app (Q274, F-59)
+  ADR-171: S6.7         # builder sequence: one row may be built ahead; rows close in order; no shared files, one DB run at a time
+  ADR-172: S6.7         # IV implied from the bid-ask mid when two-sided, else the LTP (owner 2026-10-23, Q275)
+  ADR-173: S6.7         # reference product first, enforced by check_brief; rows 1-14 re-studied (Q277)
+  ADR-174: S6.1         # no prices without a Zerodha connection; revisit at the demo (Q278)
+  ADR-175: S6.1         # account-opening link with the PIFS partner code + "is it safe" explainer (Q279)
+  ADR-176: S6.7         # reference-product difference register and its gates; always copy (Q280)
+  ADR-177: S6.7         # one market-closed wording everywhere (Q281)
+  ADR-178: S6.7         # leaner builder sequence from the process audit (Q283)
+  ADR-179: 4a           # a user read after a Kite 429 is refused busy unless Kite states a wait that fits (REQ-118)
+  ADR-180: S6.7         # one-time manual merge of PR #525: the merge gate cannot read a PR of 300+ files (kit #163)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -316,6 +328,7 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
+  Q273: S6.7            # open: where Redis runs in production (ask at the first two-process deploy brief)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -409,6 +422,24 @@ issues:
   "#499": S6.1  # History scan ignores prose text in templates (follow-up to #409)
   "#500": S6.1  # Stored contract priced by a reused exchange token: _with_tokens and execute _IDS
   "#502": S6.1  # Create Strategy: a templates failure before the view pick is wiped; none-listed beside the error
+  "#512": S6.1  # Row 1 (REQ-001) MINORs: underlying table scan shapes, migration lists, index-leg save test
+  "#513": 4a  # Row 2 (REQ-015) MINORs: unwanted ticks count for ~3 s, unreadable session not logged, after-hours Reconnect advice
+  "#514": 4a  # Row 3 (REQ-054) MINORs: profile sync mark, one-broker scan allow-list, bare-string order id
+  "#515": S6.1  # Row 4 (REQ-117) MINORs: broker-name scan gaps, ZERODHA-keyed lookups, per-entry reasons
+  "#516": 4a  # Row 5 (REQ-053) MINORs: scheduler start-up gap before 08:30, scan shapes, unverified registry entries
+  "#517": 4a  # PARKED row 6 (REQ-048 AC-5): credential scans are name lists; redesign as a reply-field inventory
+  "#518": 4a  # Row 7 (REQ-049) MINORs: snapshot health typed by caller, retyped 9:15 text, stale docstring, no holiday calendar
+  "#519": 4a  # PARKED row 8 (REQ-050 AC-1/AC-3): 30 of 40 cache-key parts unguarded; build keys from the engine call
+  "#520": 4a  # Row 9 (REQ-113) MINORs: ended status vs real store, DB outage at 06:00, isolation test without DB
+  "#521": 4a  # Row 10 (REQ-118 AC-6) deferred: real Notifier sender for the 429 alert (egress door)
+  "#522": 4a  # Row 10 (REQ-118) MINORs: rate_limit.py Kite-specific, 429 typed twice, background waits real timing
+  "#523": 4a  # Kill-by-name hook MINORs: false refusals on PID-file/variable forms, 4 untested paths
+  "#524": S6.7  # Reference register: 6 deferred MINORs from the Tier A check (ADR-176)
+  "#526": 4a  # Chunk 1 rows 11-15 MINORs: banner time formats, SpotRefused net, surviving engine mutants, brief-path fail-open
+  "#527": 4a  # Row 16 (REQ-038) round 2 MINORs: time filter untested, flag never clears, Execute ignores the flag, PARTIAL vs domain - fix before the adjustments row
+  "#528": 4a  # Row 15 (REQ-028 AC-2) partial: modification, adjustment proposal and exit domain types are not on the app path
+  "#529": 4a  # Owner capture list: 12 NO-SCREEN reference records for builder rows 1-16 (ADR-176)
+  "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
 
 # Work items whose status is not done.
 work_items:
@@ -575,6 +606,10 @@ findings:
   F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
   F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
   F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
+  F-57: 4a        # Zerodha rule constants checked against current docs; NIFTY freeze 3,510 reported, unconfirmed (row 5)
+  F-58: S6.7      # fakeredis TCP server: no pub/sub delivery, Streams work (row 9 bus design)
+  F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
+  F-60: S6.7      # Kite REST limits per group (quote 1/s, historical 3/s, other 10/s); 429 = 10 s sliding cooldown
 
 hypotheses:
   H1: done

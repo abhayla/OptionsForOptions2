@@ -1,0 +1,15 @@
+{
+  "id": "RD-097",
+  "kind": "COPY",
+  "title": "Hedge legs marked when a shape is loaded or detected (G-15-8)",
+  "reference_behaviour": "The server marks which legs of a loaded shape are hedge legs, and the hedge control moves only those.",
+  "reference_screens": ["screen 012"],
+  "ours": "REQ-076 AC-8 asks for a Hedge mark on legs the template marks as protective, but templates carry no per-leg protective field yet.",
+  "req": "REQ-076",
+  "ac": "AC-8",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

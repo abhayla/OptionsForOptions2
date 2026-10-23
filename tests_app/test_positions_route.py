@@ -100,7 +100,9 @@ class _Transport:
             assert url.endswith("/orders"), url
             status, data = self.orders_status, self.orders
         if status != HTTPStatus.OK:
-            return status, json.dumps({"status": "error", "message": "x", "error_type": "TokenException"})
+            # Kite's own error type per status: a 429 is a NetworkException, never the TokenException of "log in again"
+            kind = "NetworkException" if status == HTTPStatus.TOO_MANY_REQUESTS else "TokenException"
+            return status, json.dumps({"status": "error", "message": "x", "error_type": kind})
         return 200, json.dumps({"status": "success", "data": data}, default=str)
 
 
@@ -155,7 +157,7 @@ async def _plan(conn, user, sid: int, number: int, **opts) -> None:
     token = CORE_ID.exchange_token if symbol == SYMBOL else CORE_ID.exchange_token + 1
     if opts.get("legacy"):  # a row written before 0018: record_plan mints only make_tag's grammar, so the store's
         tag = f"OFS{sid}V{number}L0"  # own INSERT statements write it, as the old code did (the DB still accepts it)
-        await conn.execute(plans._INSERT_PLAN, {"s": sid, "p": number, "a": "ENTRY"})
+        await conn.execute(plans._INSERT_PLAN, {"s": sid, "p": number, "a": "ENTRY", "v": None})  # no version (W-144)
         await conn.execute(plans._INSERT_ORDER, {"s": sid, "p": number, "l": 0, "tag": tag, "iid": _iid(token),
                                                  "side": "BUY", "q": 65, "price": D("5.45")})
         if closed:
@@ -550,3 +552,19 @@ def test_ac3_extra_key_in_an_answer_is_refused():
            "pnl": "1.00"}
     with pytest.raises(ValueError):
         StrategyContractOut.model_validate(row)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_req118_a_busy_zerodha_orders_read_is_the_busy_text_never_a_broken_connection(app_engine, admin_engine,
+                                                                                            monkeypatch):
+    """REQ-118 AC-3 / AC-4: Kite answers 429 to the orders read -> 409 with the busy text from its one home, no answer
+    built on an empty book (the caller's fail-closed rule), and not the could-not-confirm-connection text."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo.errors.templates import ZERODHA_BUSY_TEXT  # noqa: PLC0415
+
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
+                            orders=None, orders_status=429)
+    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert "strategies" not in resp.json()
+    assert ZERODHA_BUSY_TEXT in resp.text
+    assert render("gate_broker_unconfirmed").what_happened not in resp.text

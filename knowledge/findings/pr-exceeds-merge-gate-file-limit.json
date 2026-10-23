@@ -1,0 +1,27 @@
+{
+ "id": "pr-exceeds-merge-gate-file-limit",
+ "scope": "generic",
+ "class": "A process that batches work into one pull request (a chunk, an integration branch) can outgrow a merge gate that reads the PR's file list from an API with a fixed cap; the gate then refuses the PR at the very end, after every review and CI run, and no history split may exist that brings each part under the cap.",
+ "mechanism": "tools/merge_when_green.py reads the compare API's file list, which stops at 300 files (_FILES_LIMIT), and refuses on 300 or more ('staleness unreadable'). ADR-178 lands one PR per chunk; chunk 1 (16 rows plus 121 reference records, 89 evidence files, 66 requirement pins) reached 687 files. No earlier merged PR in the repo had 250 or more files, so the limit was never met before.",
+ "first_seen": {
+  "date": "2026-10-23",
+  "where": "PR #525 (builder sequence chunk 1), merge.py run twice in session 5db71e90",
+  "evidence": "REFUSED: PR 525 not green within 20 min (all 7 checks pass; unfinished: staleness unreadable: compare main...9d5e79a8 lists 300 files, which may be truncated); split_points.py over 170 first-parent commits: 0 split points with both halves under 300 files"
+ },
+ "fix": "One-time owner-approved manual merge with the gate's rules checked by hand (ADR-180). Kit fix filed: abhayla/Startup-Factory #163 (read the PR files endpoint, paginated to 3000, and the post-review set from local git). Until it lands, a chunk is landed as several PRs of under 300 files each.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Seen only at the merge attempt. Detection to build with chunk 2: the chunk PR's file count is read at every push (gh pr view --json changedFiles) and the orchestrator splits the chunk before it reaches 250."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-115.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-23",
+   "where": "PR #525",
+   "evidence": "as first_seen"
+  }
+ ]
+}

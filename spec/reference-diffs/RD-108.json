@@ -1,0 +1,16 @@
+{
+  "id": "RD-108",
+  "kind": "COPY",
+  "title": "Strategy name length: at most 20 characters in the reference product, 1 to 40 in ours (G-16-3)",
+  "reference_behaviour": "Saving asks for a name, prefilled New Strategy, at most 20 characters.",
+  "reference_screens": ["screen 116", "screen 117"],
+  "reference_label": "Save New Strategy",
+  "ours": "SPEC CHANGE: REQ-134 AC-1 (approved) allows 1 to 40 characters with the same default; copying means a 20-character limit. Today saved drafts show only Draft <id>.",
+  "req": "REQ-134",
+  "ac": "AC-1",
+  "row": 29,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

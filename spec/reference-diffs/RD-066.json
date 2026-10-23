@@ -1,0 +1,15 @@
+{
+  "id": "RD-066",
+  "kind": "COPY",
+  "title": "Reconnect back-off: escalation tiers by attempt density in the reference product, plain doubling in ours (G-11-2)",
+  "reference_behaviour": "The reconnect delay escalates by how many attempts happened recently (tiers at 4 attempts in 10 s, 8 in 30 s, 15 in 60 s), capped at 30 s, and retries every 5 s while the device reports offline (bundle-findings 6.1).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "SPEC CHANGE: REQ-114 AC-3 (approved) waits 1 s, 2 s, 4 s and so on, plain doubling capped at 30 s, with no attempt-density tiers.",
+  "req": "REQ-114",
+  "ac": "AC-3",
+  "row": 11,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

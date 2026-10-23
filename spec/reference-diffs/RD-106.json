@@ -1,0 +1,15 @@
+{
+  "id": "RD-106",
+  "kind": "COPY",
+  "title": "Save on an already-saved strategy updates it; Save As makes the copy (row 16 gap G-16-1)",
+  "reference_behaviour": "Once a strategy is saved, its id is in the page address; Save updates that strategy and Save As creates a new one.",
+  "reference_screens": ["screen 115", "screen 116", "screen 117"],
+  "ours": "REQ-134 AC-2 not built: every Save Draft creates a new strategy, even when the open draft came from a saved one; the update route with its revision check is never called by the screen.",
+  "req": "REQ-134",
+  "ac": "AC-2",
+  "row": 29,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

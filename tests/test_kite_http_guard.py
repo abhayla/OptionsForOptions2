@@ -185,3 +185,129 @@ def test_the_kite_hosts_come_from_one_place() -> None:
     from ofo.broker import kite_endpoints  # noqa: PLC0415
     assert kite_http.KITE_API_HOST is kite_endpoints.KITE_API_HOST
     assert kite_http.KITE_WS_HOST is kite_endpoints.KITE_WS_HOST
+
+
+# -- REQ-118 (W-138): every door entry point takes a slot from the ONE limiter before it sends -----------------------
+
+import ast  # noqa: E402
+
+from ofo.broker import rate_limit  # noqa: E402
+
+BACKEND = Path(__file__).resolve().parents[1] / "backend"
+DOOR_FILES = ("ofo/broker/kite_http.py", "ofo_app/kite_http.py")
+_SENDS = frozenset({"open", "handle_request", "handle_async_request"})  # the calls that put bytes on a socket
+_LIMITER_SOURCE = "ofo.broker.rate_limit"
+_TAKES_A_SLOT = frozenset({"acquire", "aacquire"})
+
+
+def _limiter_names(tree: ast.Module) -> tuple[set[str], set[str]] | None:
+    """(module aliases, function aliases) naming ``ofo.broker.rate_limit`` BY IMPORT SOURCE, or None when an import
+    of it cannot be resolved (a star import): fail closed."""
+    modules: set[str] = set()
+    functions: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "ofo.broker":
+            modules |= {a.asname or a.name for a in node.names if a.name == "rate_limit"}
+        elif isinstance(node, ast.ImportFrom) and node.module == _LIMITER_SOURCE:
+            if any(a.name == "*" for a in node.names):
+                return None
+            functions |= {a.asname or a.name for a in node.names if a.name in _TAKES_A_SLOT}
+        elif isinstance(node, ast.Import):
+            modules |= {a.asname for a in node.names if a.name == _LIMITER_SOURCE and a.asname}
+    return modules, functions
+
+
+def doors_without_limiter(source: str) -> list[str]:
+    """Names of functions that send (``.open`` / ``.handle_request`` / ``.handle_async_request``) without a call that
+    takes a slot from the limiter imported from ``ofo.broker.rate_limit``. A star import or an unparseable file reports
+    every sender (fail closed); a local function that is merely NAMED ``acquire`` does not count."""
+    tree = ast.parse(source)
+    names = _limiter_names(tree)
+    bad: list[str] = []
+    for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)]
+        if not any(isinstance(c.func, ast.Attribute) and c.func.attr in _SENDS for c in calls):
+            continue
+        modules, functions = names if names is not None else (set(), set())
+        takes = any((isinstance(c.func, ast.Attribute) and c.func.attr in _TAKES_A_SLOT
+                     and isinstance(c.func.value, ast.Name) and c.func.value.id in modules)
+                    or (isinstance(c.func, ast.Name) and c.func.id in functions) for c in calls)
+        if not takes:
+            bad.append(fn.name)
+    return bad
+
+
+def test_every_real_door_entry_point_takes_a_slot_from_the_limiter() -> None:
+    """AC-2: open_url and both httpx clients' _send_single_request call the limiter; the scan is not empty."""
+    senders = 0
+    for rel in DOOR_FILES:
+        source = (BACKEND / rel).read_text(encoding="utf-8")
+        assert doors_without_limiter(source) == [], rel
+        senders += sum(1 for n in ast.walk(ast.parse(source)) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr in _SENDS
+                               for c in ast.walk(n)))
+    assert senders >= 3  # noqa: PLR2004 - open_url, KiteClient and KiteAsyncClient _send_single_request
+
+
+_SENDER = "def go(r):\n    with d():\n        return OPENER.open(r)\n"
+
+
+def _calling(call: str) -> str:
+    """_SENDER with ``call`` made just before its send."""
+    return _SENDER.replace("with", f"{call}\n    with")
+
+
+@pytest.mark.parametrize(("source", "expected"), [
+    (_SENDER, ["go"]),                                                                           # no limiter at all
+    ("from ofo.broker import rate_limit as rl\n" + _calling("rl.acquire('g','k')"), []),
+    ("from ofo.broker import rate_limit\n" + _calling("rate_limit.aacquire('g','k')"), []),
+    ("from ofo.broker.rate_limit import acquire as take\n" + _calling("take('g','k')"), []),
+    ("def acquire(*a): ...\n" + _calling("acquire('g','k')"), ["go"]),    # same name, wrong source
+    ("from elsewhere import acquire\n" + _calling("acquire('g','k')"), ["go"]),
+    ("from ofo.broker.rate_limit import *\n" + _calling("acquire('g','k')"), ["go"]),  # unresolvable
+    ("from ofo.broker import rate_limit as rl\n" + _calling("other.acquire('g','k')"), ["go"]),
+    ("from ofo.broker import rate_limit as rl\ndef go(r):\n    return 1\n", []),                 # sends nothing
+])
+def test_the_door_scan_fails_closed_and_names_the_limiter_by_import_source(source: str, expected: list[str]) -> None:
+    """AC-2 / standing item (c): a sender with no limiter call is reported; the limiter is recognised only by its
+    import source (a renamed import counts, a same-named local or foreign function does not); a star import
+    fails closed."""
+    assert doors_without_limiter(source) == expected
+
+
+def test_every_allowed_call_has_a_rate_limit_group_and_nothing_else_does() -> None:
+    """AC-1/AC-2: the group map is an allow-list over exactly the ALLOWED_CALLS pairs; every group has a Kite rate."""
+    from ofo.broker.kite_endpoints import ENDPOINT_GROUPS  # noqa: PLC0415
+    allowed = {pair for calls in ALLOWED_CALLS.values() for pair in calls}
+    assert set(ENDPOINT_GROUPS) == allowed
+    assert {group for group, _ in ENDPOINT_GROUPS.values()} <= set(rate_limit.GROUP_RATES)
+    creating = {pair for pair, (_, is_read) in ENDPOINT_GROUPS.items() if not is_read}
+    assert creating == {("POST", "/session/token")}  # the one call that creates something at Zerodha (AC-5)
+
+
+def test_a_kite_path_with_no_group_is_refused_before_anything_is_sent(monkeypatch) -> None:
+    """Attack 5: an allow-listed path that has no group entry is refused by the door; nothing is opened."""
+    opened: list[object] = []
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
+    monkeypatch.setattr(kite_http, "_GROUPED", ())
+    with pytest.raises(kite_http.KiteCallRefused, match="no rate-limit group"):
+        kite_http.open_url(ROOT + "/instruments", timeout=1)
+    assert opened == []
+
+
+def test_the_door_takes_a_slot_before_the_socket_and_a_busy_limiter_sends_nothing(monkeypatch) -> None:
+    """Attack 5 / AC-3: open_url calls the limiter first; when the limiter refuses (KiteBusy) nothing is opened."""
+    order: list[str] = []
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: order.append("open") or "RESP")
+    monkeypatch.setattr(rate_limit, "acquire", lambda group, key: order.append(f"acquire:{group}"))
+    assert kite_http.open_url(ROOT + "/instruments", timeout=1) == "RESP"
+    assert order == ["acquire:other", "open"]
+
+    def busy(group: str, key: str) -> None:
+        raise rate_limit.KiteBusy("wait")
+
+    order.clear()
+    monkeypatch.setattr(rate_limit, "acquire", busy)
+    with pytest.raises(rate_limit.KiteBusy):
+        kite_http.open_url(ROOT + "/instruments/historical/9/minute", timeout=1)
+    assert order == []

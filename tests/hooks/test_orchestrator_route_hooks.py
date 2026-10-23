@@ -190,6 +190,76 @@ def test_agent_gate_allows_a_good_brief_and_a_prompt_without_one(tmp_path):
     assert run_hook("agent_brief_gate.py", agent("Read docs/process/brief-does-not-exist.md")).returncode == 0
 
 
+GUARD_TESTS_LINE = ("Tests: python -m pytest tests/test_*.py tests/errors/test_write_allowlist.py "
+                    "tests/errors/test_producer_inventory.py -m repo_scan\n")
+NO_ATTACK_BUILDER = ("# Row 99\nStanding items: (a) n/a: x\n" + GUARD_TESTS_LINE
+                     + "Budget: 60 min wall-clock, 80 tool calls\nSize: M, 8 files, 3 items\n"
+                     + "CI: kit tests job; vars: none\n")
+REFERENCE_OK = "Reference: screens 209-211 - copy the price-changed marker\n"
+WITH_ATTACK_BUILDER = NO_ATTACK_BUILDER + ("Attack list:\n1. a heartbeat alone is not a price\n2. b\n3. c\n4. d\n"
+                                           "5. e\nRun `python scripts/orchestrator/mutation_gate.py` on the mutants.\n"
+                                           "Spec basis: REQ-072 AC-1.\n" + REFERENCE_OK)
+
+
+def _sub_brief(root: pathlib.Path, text: str, name: str = "row-99-x.md") -> pathlib.Path:
+    brief = root / "docs" / "process" / "builder-sequence-briefs" / name
+    brief.parent.mkdir(parents=True, exist_ok=True)
+    brief.write_text(text, encoding="utf-8")
+    return brief
+
+
+@pytest.mark.parametrize("lead", ["Your full brief is the file ", "Your full brief: ", "Your brief is the file ",
+                                  "Brief: ", "  your FULL brief is the file: "])
+@pytest.mark.parametrize("slash", ["/", "\\"])
+def test_agent_gate_checks_every_designated_form_in_a_subfolder(tmp_path, lead, slash):
+    """Row-review R1: each designated-brief form, either slash, a brief under a subfolder, is checked."""
+    brief = _sub_brief(tmp_path, NO_ATTACK_BUILDER)
+    path = str(brief).replace("\\", "/").replace("/", slash)
+    refused = run_hook("agent_brief_gate.py", agent(f"{lead}{path}\nGo."))
+    assert refused.returncode == TWO and "MISSING Attack list" in refused.stderr
+
+
+def test_agent_gate_checks_a_relative_subfolder_brief(tmp_path, monkeypatch):
+    _sub_brief(tmp_path, NO_ATTACK_BUILDER)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    rel = "docs/process/builder-sequence-briefs/row-99-x.md"
+    for prompt in (f"Your full brief is the file {rel}", f"Brief: {rel.replace('/', chr(92))}"):
+        out = abg.decide("Agent", {"prompt": prompt})
+        assert out is not None and "MISSING Attack list" in out
+
+
+def test_agent_gate_allows_a_builder_brief_with_an_attack_list_and_a_verifier_brief(tmp_path):
+    good = _sub_brief(tmp_path, WITH_ATTACK_BUILDER)
+    verifier = _sub_brief(tmp_path, "# Verify row 99\n" + GUARD_TESTS_LINE, "verify-row-99.md")
+    assert abg.decide("Agent", {"prompt": f"Your full brief is the file {good}"}) is None
+    assert abg.decide("Agent", {"prompt": f"Your full brief is the file {verifier}"}) is None
+
+
+def test_agent_gate_blocks_a_req_brief_without_a_reference_line(tmp_path):
+    """ADR-173 (2): the dispatch hook refuses a REQ brief with no `Reference:` line; the fixed sample passes."""
+    bad = _sub_brief(tmp_path, WITH_ATTACK_BUILDER.replace(REFERENCE_OK, ""), "row-98-x.md")
+    out = abg.decide("Agent", {"prompt": f"Your full brief is the file {bad}"})
+    assert out is not None and "MISSING Reference line" in out
+    good = _sub_brief(tmp_path, WITH_ATTACK_BUILDER, "row-97-x.md")
+    assert abg.decide("Agent", {"prompt": f"Your full brief is the file {good}"}) is None
+
+
+def test_agent_gate_allows_when_the_checker_times_out(tmp_path, monkeypatch):
+    orch = tmp_path / "scripts" / "orchestrator"
+    orch.mkdir(parents=True)
+    (orch / "check_brief.py").write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+    brief = _sub_brief(tmp_path, NO_ATTACK_BUILDER)
+    monkeypatch.setattr(abg, "REPO", tmp_path)
+    monkeypatch.setattr(abg, "TIMEOUT", 1)
+    assert abg.decide("Agent", {"prompt": f"Your full brief is the file {brief}"}) is None
+
+
+def test_agent_gate_ignores_a_passing_mention_of_a_subfolder_brief(tmp_path):
+    brief = _sub_brief(tmp_path, NO_ATTACK_BUILDER)
+    prompt = f"For history see {brief} and the file {brief} is the older one.\nThe brief is the file I read, {brief}"
+    assert abg.decide("Agent", {"prompt": prompt}) is None
+
+
 # ---------------------------------------------------------------- fail-open
 @pytest.mark.parametrize("script", ["agent_brief_gate.py", "merge_route_gate.py", "issue_route_gate.py"])
 @pytest.mark.parametrize("stdin", ["", "not json", "[]", '{"tool_name": 5, "tool_input": "x"}',
@@ -324,3 +394,10 @@ def test_merge_refuses_a_bad_reviewed_sha_before_any_step():
         r = Runner([])
         assert merge.merge("308", bad, r) == TWO
         assert r.calls == []
+
+
+def test_agent_gate_names_an_unresolvable_brief_on_stderr_and_still_allows():
+    r = run_hook("agent_brief_gate.py", agent("Brief: docs/process/no-such-brief-xyz.md\nGo."))
+    assert r.returncode == 0
+    assert r.stderr.count("\n") == 1 and "docs/process/no-such-brief-xyz.md" in r.stderr
+    assert "does not resolve" in r.stderr

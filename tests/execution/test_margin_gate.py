@@ -196,7 +196,18 @@ def test_ac1_replace_cannot_copy_a_verdict() -> None:
 
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
     """AC-3: the gate takes only Zerodha's two figures (no platform estimate parameter) and says Zerodha's figure."""
-    assert list(inspect.signature(check_margin).parameters) == ["available", "required"]
+    params = inspect.signature(check_margin).parameters
+    assert list(params) == ["available", "required", "busy"]
+    assert params["busy"].kind is inspect.Parameter.KEYWORD_ONLY and params["busy"].default is False
+    # busy only picks the words of the "not confirmed" block; it never lets anything pass and never changes a figure.
+    assert check_margin(None, None, busy=True).allowed is False
+    short = check_margin(Decimal("10"), Decimal("20"))
+    short_busy = check_margin(Decimal("10"), Decimal("20"), busy=True)
+    assert short_busy.message is not None and short.message is not None
+    assert short_busy.message.what_happened == short.message.what_happened
+    assert check_margin(Decimal("20"), Decimal("20"), busy=True).allowed is True
+    busy_words, plain_words = check_margin(None, None, busy=True).message, check_margin(None, None).message
+    assert busy_words is not None and plain_words is not None and busy_words.what_happened != plain_words.what_happened
     verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.message is not None and verdict.message.what_happened.startswith("Zerodha says")
 

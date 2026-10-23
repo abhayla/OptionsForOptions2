@@ -1,0 +1,15 @@
+{
+  "id": "RD-049",
+  "kind": "MATCH",
+  "title": "A delayed data state exists (row 7 match)",
+  "reference_behaviour": "Users without a broker see a feed delayed by one minute, labelled as delayed.",
+  "reference_screens": ["catalogue 245"],
+  "ours": "REQ-049 AC-2: a quote can be delayed, from the provider's declared delay.",
+  "req": "REQ-049",
+  "ac": "AC-2",
+  "row": 7,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

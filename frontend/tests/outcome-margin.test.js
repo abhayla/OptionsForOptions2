@@ -9,7 +9,49 @@ import STATES from './fixtures/outcome-margin-states.json'
 import CONDOR from './fixtures/outcome-condor-advanced.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
-const line = (margin) => mount(MarginLine, { props: { margin } })
+const ON = { basket_margin_quote: true } // REQ-117: the flag the margin line asks
+const line = (margin, capabilities = ON) => mount(MarginLine, { props: { margin, capabilities } })
+
+// REQ-117 AC-4 (W-132): the margin line asks the flag `basket_margin_quote`; missing, unknown or unreadable = hidden.
+const REASON = 'Margin from the broker is not available for this account.'
+describe('margin line asks the basket_margin_quote flag (REQ-117)', () => {
+  const ZERODHA = { basket_page_orders: true, broker_held_triggers: false, intraday_product: true,
+    order_update_stream: true, funds_read: true, positions_read: true, basket_margin_quote: true }
+  const withoutFlag = (({ basket_margin_quote: _removed, ...rest }) => rest)(ZERODHA)
+
+  it('core: flag on shows the figures; the flag removed hides them with the plain reason', () => {
+    expect(t(line(STATES.enough, ZERODHA), 'margin-figures').exists()).toBe(true)
+    const w = line(STATES.enough, withoutFlag)
+    expect(t(w, 'margin-hidden-reason').text()).toBe(REASON)
+    expect(t(w, 'margin-figures').exists()).toBe(false)
+    expect(t(w, 'margin-checked-at').exists()).toBe(false)
+    expect(t(w, 'margin-text').exists()).toBe(false)
+    expect(t(w, 'margin').attributes('data-margin-state')).toBe('HIDDEN')
+  })
+
+  it.each([
+    ['false', { ...ZERODHA, basket_margin_quote: false }],
+    ['the string "true"', { ...ZERODHA, basket_margin_quote: 'true' }],
+    ['1', { ...ZERODHA, basket_margin_quote: 1 }],
+    ['an empty body (a failed read)', {}],
+    ['an unknown flag only', { basket_margin_quote_v2: true }],
+    ['an array', [true]],
+  ])('hidden when the flag is %s', (_label, body) => {
+    const w = line(STATES.shortfall, body)
+    expect(t(w, 'margin-hidden-reason').text()).toBe(REASON)
+    expect(t(w, 'margin-figures').exists()).toBe(false)
+    expect(t(w, 'margin-shortfall').exists()).toBe(false)
+  })
+
+  it('the reason names no broker', () => {
+    expect(REASON).not.toMatch(/zerodha|kite/i)
+  })
+
+  it('while the flags are still being read nothing is drawn (null), and a missing prop is the same', () => {
+    expect(line(STATES.enough, null).find('[data-testid="margin"]').exists()).toBe(false)
+    expect(mount(MarginLine, { props: { margin: STATES.enough } }).find('[data-testid="margin"]').exists()).toBe(false)
+  })
+})
 
 describe('outcome margin slot (ADR-099)', () => {
   it('shortfall: the figures, the shortfall mark and the Checked-at time', () => {

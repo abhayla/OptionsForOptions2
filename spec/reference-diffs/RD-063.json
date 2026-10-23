@@ -1,0 +1,17 @@
+{
+  "id": "RD-063",
+  "kind": "COPY",
+  "title": "Broker reads on fixed refresh periods: 30 s for numbers, 45 s for positions (G-10-2)",
+  "reference_behaviour": "Numbers are refreshed on a fixed 30 s timer and positions every 45 s, which spreads broker load by design (bundle-findings 6.1, architecture 4.1).",
+  "reference_screens": [
+    "catalogue 012"
+  ],
+  "ours": "NEW AC NEEDED: only a per-user limiter with bounded queues; no minimum period per user read, so a busy tab can spend the budget.",
+  "req": "REQ-118",
+  "ac": "AC-7",
+  "row": 10,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

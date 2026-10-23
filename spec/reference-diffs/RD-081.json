@@ -1,0 +1,14 @@
+{
+  "id": "RD-081",
+  "kind": "COPY",
+  "title": "Greeks at a zero-days target explained in a sentence, not an error (G-13-5)",
+  "reference_behaviour": "When the target day is expiry day, a note says delta is 0 or 1 and every other Greek is 0, and asks for another target day (bundle-findings 7.1).",
+  "reference_screens": ["catalogue 124"],
+  "ours": "NEW AC NEEDED: the Greeks function raises an error when time to expiry is zero; how the screen shows it at expiry was not measured.",
+  "req": "REQ-084",
+  "row": 37,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

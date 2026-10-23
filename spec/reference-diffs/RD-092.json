@@ -1,0 +1,15 @@
+{
+  "id": "RD-092",
+  "kind": "COPY",
+  "title": "Default strike distances of the ready-mades (G-15-3)",
+  "reference_behaviour": "Defaults: spreads about 1% of spot wide (NIFTY 4 steps), short strangle at ATM plus and minus 4 steps, iron condor shorts 4 steps out with 4-step wings, ratio back spread sold at ATM and bought 4 steps out.",
+  "reference_screens": ["screen 011", "screen 012"],
+  "ours": "Our catalogue defaults are overnight ADR-045 values, mostly 2 steps (iron condor 2 and 2, short strangle 2); only the four vertical spreads match. Data-only change under REQ-079 AC-3, still held for Q211.",
+  "req": "REQ-079",
+  "ac": "AC-3",
+  "row": 55,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

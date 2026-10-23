@@ -1,0 +1,15 @@
+{
+  "id": "RD-017",
+  "kind": "MATCH",
+  "title": "Trading needs a broker connection (row 2 match)",
+  "reference_behaviour": "Trade is not possible without a broker login.",
+  "reference_screens": ["catalogue 246"],
+  "ours": "REQ-015 AC-1: the contextual prompt appears on the broker-dependent action.",
+  "req": "REQ-015",
+  "ac": "AC-1",
+  "row": 2,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "RD-121",
+  "kind": "COPY",
+  "title": "Paper-trading draft portfolios, a separate feature from a saved draft (row 16 match line)",
+  "reference_behaviour": "A Draft Mode records trades that are not real into portfolios with booked and unbooked P&L, stated plainly as not real trades. Switching underlying in that mode crashed the screen (a measured bug, not copied).",
+  "reference_screens": ["catalogue 090", "catalogue 091", "catalogue 092", "screen 220"],
+  "ours": "REQ-109 paper tracking of one saved strategy is the nearest; no portfolio of paper trades. Our word draft means a saved, not-executed strategy, so the name is not reused.",
+  "req": "REQ-109",
+  "row": 53,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,7 +1,8 @@
 """Zerodha's orders, trades and positions over HTTP for the owner's own connection (W-093, REQ-073 AC-3, ADR-054).
 
-Five reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
-(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)) (the module's entry in
+Six reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
+(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)), ``GET /user/profile`` (W-131, REQ-054 AC-1) (the
+module's entry in
 ``ALLOWED_CALLS``). Every request goes through ``check_call`` first, so a method or path outside the allow-list is
 refused BEFORE the transport is called, and the urllib door checks it again. No call here can place, change or cancel
 an order (REQ-073 AC-4).
@@ -20,11 +21,13 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
 from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
+from ofo.broker.rate_limit import identity
+
 from ofo_app import broker_sync
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
 
@@ -34,12 +37,19 @@ TRADES_PATH: Final = "/trades"
 POSITIONS_PATH: Final = "/portfolio/positions"
 QUOTE_PATH: Final = "/quote"
 HOLDINGS_PATH: Final = "/portfolio/holdings"
+PROFILE_PATH: Final = "/user/profile"
+#: The ONLY profile keys read (W-131, REQ-054 AC-1). The reply also carries the user's name, email and avatar; they are
+#: never read, kept, logged or stored: an allow-list, so a key Kite adds later is ignored, not trusted.
+PROFILE_TEXT_KEYS: Final = ("user_id", "broker")
+PROFILE_LIST_KEYS: Final = ("exchanges", "products", "order_types")
 QUANTITY_FIELDS: Final = ("quantity", "t1_quantity", "used_quantity", "authorised_quantity", "collateral_quantity")
 QUOTE_LIMIT: Final = 500  # Kite's cap on instruments per quote call
 _INSTRUMENT: Final = re.compile(QUOTE_INSTRUMENT, re.ASCII)
 _PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
 _OK: Final = 200
 _BUSY: Final = 429
+BUSY_CODE: Final = "kite_read_busy"
+TOKEN_CODE: Final = "kite_read_token"  # noqa: S105 - an error code (token refused or expired), not a secret
 _DENIED: Final = 403
 _SERVER_ERROR: Final = 500
 
@@ -50,6 +60,13 @@ class KiteReadError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def unconfirmed_template(exc: BaseException) -> str:
+    """The gate template for a refused Zerodha read: the busy text when the limiter said busy (REQ-118 AC-3), else
+    the could-not-confirm text."""
+    busy = isinstance(exc, KiteReadError) and exc.code == BUSY_CODE
+    return "gate_zerodha_busy" if busy else "gate_broker_unconfirmed"
 
 
 def _rows(data: object) -> list[object]:
@@ -128,6 +145,34 @@ def _holding(row: dict) -> Holding:  # ``_rows`` has already refused any non-obj
                    *(_units(row.get(name)) for name in QUANTITY_FIELDS))
 
 
+@dataclass(frozen=True)
+class AccountProfile:
+    """What the platform keeps of the profile reply: exactly these five keys (REQ-054 AC-1 "fetch account"). Never
+    cached or written to the database. ``user_id`` is the client id: left out of ``repr`` so no log line carries it."""
+
+    user_id: str = field(repr=False)
+    broker: str
+    exchanges: tuple[str, ...]
+    products: tuple[str, ...]
+    order_types: tuple[str, ...]
+
+
+def _profile(data: object) -> AccountProfile:
+    """The closed key set out of a profile ``data`` object; any other key is dropped unread. A missing or mistyped
+    required key, or a list holding anything but text, is a reply we do not understand."""
+    if not isinstance(data, dict):
+        raise KiteReadError("kite_read_bad_reply")
+    lists = []
+    for name in PROFILE_LIST_KEYS:
+        value = data.get(name)
+        if not isinstance(value, list):
+            raise KiteReadError("kite_read_bad_reply")
+        lists.append(tuple(_text(v) for v in value))
+    user_id, broker = (_text(data.get(name)) for name in PROFILE_TEXT_KEYS)
+    exchanges, products, order_types = lists
+    return AccountProfile(user_id, broker, exchanges, products, order_types)
+
+
 def _by_key(rows: Sequence[Holding]) -> dict[tuple[str, str, str], Holding]:
     keyed = {r.key: r for r in rows}
     if len(keyed) != len(rows):
@@ -153,13 +198,19 @@ class KiteReads:
     def __repr__(self) -> str:
         return "KiteReads()"
 
+    @property
+    def user_ref(self) -> str:
+        """The limiter's short hash of this client's access token (never the token): the per-user key of the periodic
+        reads (REQ-118 AC-7). A new login is a new ref."""
+        return identity(self._headers["Authorization"], None)[1]
+
     def _data(self, method: str, path: str) -> object:
         """One read's ``data``. A token or unavailable failure forgets the last successful sync (W-089: it must not age
         on screen); the sync is noted by each fetch only after its own shape checks pass."""
         try:
             return self._fetch(method, path)
         except KiteReadError as exc:
-            if exc.code in ("kite_read_token", "kite_read_unavailable"):
+            if exc.code in (TOKEN_CODE, "kite_read_unavailable"):
                 broker_sync.forget()
             raise
 
@@ -181,9 +232,9 @@ class KiteReads:
         if status != _OK:
             log.warning("kite read HTTP status %s", status)
             if status == _DENIED or error_type(text) == "TokenException":
-                raise KiteReadError("kite_read_token")
+                raise KiteReadError(TOKEN_CODE)
             if status == _BUSY:
-                raise KiteReadError("kite_read_busy")
+                raise KiteReadError(BUSY_CODE)
             raise KiteReadError("kite_read_unavailable" if status >= _SERVER_ERROR else "kite_read_refused")
         try:
             reply = json.loads(text, parse_float=Decimal)
@@ -213,6 +264,31 @@ class KiteReads:
         out = {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
         broker_sync.note_read()
         return out
+
+    def fetch_profile(self) -> AccountProfile:
+        """``GET /user/profile``: the five kept keys only (REQ-054 AC-1). No cache: every call reads Zerodha."""
+        # no broker_sync.note_read(): the profile holds no positions, and the position-sync row moves only on a
+        # positions read (REQ-015 AC-4; the Settings account block reads the profile on every visit, AC-13)
+        return _profile(self._data("GET", PROFILE_PATH))
+
+    def fetch_order_statuses(self, order_ids: Sequence[str]) -> dict[str, dict | None]:
+        """Each asked order id -> its row of today's orders, or ``None`` when Zerodha's list has no such id.
+
+        ONE ``GET /orders`` per call whatever the number of ids (REQ-118 rate limits; never ``/orders/{id}``, which is
+        not allow-listed). An id absent from the list is ``None``, an explicit not-found, never a default status.
+        A row with no order id, or two rows with one id, is a reply we do not understand (``kite_read_bad_reply``).
+        An id that is not non-empty text is refused before anything is sent."""
+        asked = list(dict.fromkeys(order_ids))
+        if not all(isinstance(i, str) and i.strip() for i in asked):
+            raise KiteReadError("kite_read_refused")
+        rows = self.fetch_orders()
+        by_id: dict[str, dict] = {}
+        for row in rows:
+            order_id = _text(row.get("order_id"))  # type: ignore[attr-defined]  # _rows refused any non-object row
+            if order_id in by_id:
+                raise KiteReadError("kite_read_bad_reply")
+            by_id[order_id] = row  # type: ignore[assignment]
+        return {i: by_id.get(i) for i in asked}
 
     def fetch_holdings(self) -> tuple[Holding, ...]:
         """``GET /portfolio/holdings``: the eight compared fields per row (ADR-097 (4)). An empty tuple is a valid

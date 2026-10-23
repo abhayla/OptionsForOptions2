@@ -1,0 +1,16 @@
+{
+  "id": "RD-119",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "No live prices stored, a revision lock, insert-only history, not-live legs never priced (row 16 match line)",
+  "reference_behaviour": "No such guards are visible: a save overwrites the record and nothing marks a leg whose contract is no longer live.",
+  "reference_screens": ["screen 119"],
+  "ours": "REQ-038 AC-5 refuses live fields; updates need the expected revision; history rows are insert-only; a not-live leg shows its reason and is never priced. Kept as stricter safety, ADR-152 exception (a).",
+  "req": "REQ-038",
+  "ac": "AC-5",
+  "adr": "ADR-152",
+  "row": 16,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

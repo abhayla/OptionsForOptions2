@@ -1,0 +1,26 @@
+{
+ "id": "report-time-typed-not-read",
+ "scope": "generic",
+ "class": "An orchestrator writes clock times into status reports, review logs, briefs or handovers from memory or as an estimate of when something will happen, instead of reading the clock or a commit; the written times drift minutes to hours from reality, including into the future, and the measured expected-vs-actual numbers built on them are wrong.",
+ "mechanism": "Times were typed while composing text; no step read `date` or `git log` at the moment of writing, and no check compares a written time with the clock or the commit that added it.",
+ "first_seen": {
+  "date": "2026-10-22",
+  "where": "builder sequence rows 3 and 6 (row-review.md)",
+  "evidence": "row 3 close typed ~13:35 while the close commit says 12:56; row 6 close typed with +75% when the close commit 150873d3 gave +23% (meta review after row 6)."
+ },
+ "fix": "Row-review R19: every clock time is read from `date` in the same step or from a commit time, with its source when it is not 'now'; an unknown time is written as 'not recorded', never estimated.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Prose rule only. Mechanism due (second occurrence): a repo test that refuses a time in row-review.md later than the commit that added the line (git blame), and the per-row report built from a script that reads commit times."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-075.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-22", "where": "row 3 and row 6 close times", "evidence": "meta reviews after rows 3 and 6"},
+  {"date": "2026-10-23", "where": "status report and four files at 09:06-09:11 IST", "evidence": "times 09:20, 09:30, 09:35, 09:40, 09:45 written at 09:06-09:11 (clock 09:11:32 when the owner asked); meta review after row 9 had flagged three typed times minutes earlier"},
+  {"date": "2026-10-23", "where": "ADR-174, ADR-175, ADR-176 provenance and the handover, written ~13:00-13:12 IST", "evidence": "provenance typed '~13:1x', '~13:2x', '~13:3x-13:4x' and handover '12:48-13:45' while `date` read 13:14 at the next commit; corrected to the commit window 12:55-13:12 (796f36cf, 06e5cd9c). Fourth occurrence; the mechanism is still unbuilt - it is the next process item after the reference register"},
+  {"date": "2026-10-23", "where": "status report to the owner ~12:30 IST", "evidence": "'Row 11b started at about 12:45' written at 12:30 (clock 12:31:44 read right after); R19 existed - prose did not stop it; mechanism now overdue (third occurrence): a report helper that stamps from `date` and a repo test refusing a log time later than its commit"}
+ ]
+}

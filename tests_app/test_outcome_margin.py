@@ -280,7 +280,10 @@ async def test_kite_unreadable_is_the_could_not_read_text_and_retried_only_after
     s = source(t, monotonic=mono)
     m = await margin_answer(s, CTX, plan())
     assert m.state == "UNREADABLE" and m.needed is None and m.available is None
-    assert str(m.reason) == "Margin from Zerodha could not be read just now, so no margin figure is shown."
+    if status == HTTPStatus.TOO_MANY_REQUESTS:  # REQ-118 AC-3: busy (the limiter's refusal arrives as 429)
+        assert str(m.reason) == "Zerodha is busy - try again in a moment"
+    else:
+        assert str(m.reason) == "Margin from Zerodha could not be read just now, so no margin figure is shown."
     calls = len(t.calls)
     await margin_answer(s, CTX, plan())  # a push one second later: no new read
     assert len(t.calls) == calls
@@ -404,3 +407,15 @@ async def test_live_push_ticks_reuse_the_margin_and_a_plan_change_reads_once(mon
     assert len(channel.sent) == ticks + two_plans and t.baskets() == two_plans
     await channel.inbound.put(ChannelClosed)
     await task
+
+
+async def test_route_busy_margin_read_shows_the_zerodha_busy_text_and_no_figure(replayed, monkeypatch) -> None:
+    """REQ-118 AC-3: Kite answers 429 (the limiter's busy refusal reaches the client as 429): UNREADABLE, no figure, and
+    the reason is the busy text from its one home, not the generic could-not-be-read text."""
+    from ofo.errors.templates import ZERODHA_BUSY_TEXT  # noqa: PLC0415
+
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    [resp] = await _post(_body(replayed), replayed, source(Transport(status=429)))
+    out = resp.json()
+    assert out["state"] == "COMPUTED" and out["margin"]["state"] == "UNREADABLE" and out["margin"]["needed"] is None
+    assert out["margin"]["reason"] == ZERODHA_BUSY_TEXT

@@ -30,6 +30,16 @@ UNPLACED = {
     "long_strangle": "Intermediate",    # mirror of short strangle
     "reverse_iron_condor": "Intermediate",  # mirror of Iron Condor
     "butterfly_spread": "Intermediate",  # symmetric butterfly; nearest is Iron Butterfly
+    # RD-090 (2026-10-23): the 20 reference shapes. Q251 places long call/put Beginner; a naked short call, ratio
+    # spreads, calendars, naked-short combinations Advanced; defined-risk and long-only mirrors of Intermediate shapes
+    # Intermediate; the sold ATM put is a cash-secured put (Intermediate).
+    "buy_call": "Beginner", "buy_put": "Beginner",
+    "sell_call": "Advanced", "call_ratio_spread": "Advanced", "put_ratio_spread": "Advanced",
+    "long_calendar_puts": "Advanced", "range_forward": "Advanced", "risk_reversal": "Advanced",
+    "batman": "Advanced", "double_plateau": "Advanced", "reverse_jade_lizard": "Advanced",
+    "sell_put_atm": "Intermediate", "buy_future": "Intermediate", "sell_future": "Intermediate",
+    "bull_condor": "Intermediate", "bear_condor": "Intermediate", "bear_butterfly": "Intermediate",
+    "long_iron_butterfly": "Intermediate", "strap": "Intermediate", "strip": "Intermediate",
 }
 EXPECTED = {
     **{t: "Beginner" for t in BEGINNER_RULE},
@@ -44,9 +54,9 @@ CATALOGUE = load_templates()
 
 
 def test_ac2_every_real_template_level_matches_the_q251_rules() -> None:
-    """AC-2: all 21 real templates load; each level equals the level the Q251 rule text gives it."""
+    """AC-2: all 41 real templates load; each level equals the level the Q251 rule text gives it."""
     assert {t.id for t in CATALOGUE} == set(EXPECTED)
-    assert len(CATALOGUE) == 21
+    assert len(CATALOGUE) == 41
     for template in CATALOGUE:
         assert template.level == EXPECTED[template.id], template.id
 

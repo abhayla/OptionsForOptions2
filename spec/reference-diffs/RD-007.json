@@ -1,0 +1,15 @@
+{
+  "id": "RD-007",
+  "kind": "MATCH",
+  "title": "A futures leg has no strike control (row 1 match)",
+  "reference_behaviour": "On a futures leg the strike box is disabled.",
+  "reference_screens": ["screen 233"],
+  "ours": "The leg picker shows no strike control for a futures leg.",
+  "req": "REQ-001",
+  "ac": "AC-2",
+  "row": 1,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

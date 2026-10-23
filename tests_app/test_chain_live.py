@@ -48,6 +48,7 @@ NIFTY_ID = "NSE_INDEX:256265"
 GRID = [Decimal(25000 + 50 * i) for i in range(9)]  # 25000 .. 25400
 WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
+UNSUPPORTED = render("gate_underlying_unsupported", symbol="BANKNIFTY").as_dict()
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
@@ -238,7 +239,7 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
                                                         "unavailable_reason"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
-                                    "rows_missing", "rows", "answered_at"}
+                                    "rows_missing", "rows", "answered_at", "market_closed", "last_price_at"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
@@ -349,7 +350,8 @@ async def test_unreadable_requests_are_refused(raw):
     provider, _feed, channel, _mono, push = make_rig()
     task = await start(push, channel, raw)
     await close(channel, task)
-    assert channel.sent == [ERROR] and provider.subscribe_calls == []
+    unsupported = isinstance(raw, dict) and raw.get("underlying") == "BANKNIFTY"
+    assert channel.sent == [UNSUPPORTED if unsupported else ERROR] and provider.subscribe_calls == []
 
 
 async def test_expiry_change_releases_the_old_contracts_and_keeps_the_index_held():
@@ -499,7 +501,7 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
                    "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
-                   "ofo_app.errors", "ofo_app.routes"}
+                   "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 

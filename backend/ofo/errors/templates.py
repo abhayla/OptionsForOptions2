@@ -187,7 +187,13 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
 # (tests/errors/template_pins.json, docs/process/w024-templates-for-owner.md).
 
 _EXEC = "Execution of this strategy."
+#: REQ-015 AC-2: the one contextual connection prompt, word for word.
+CONNECT_PROMPT = ("Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, "
+                  "check margin and prepare/execute your strategy.")
 _RECONNECT = "Reconnect your Zerodha account from the account page, then try again."
+#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
+#: `ofo.broker.rate_limit.KiteBusy` raises it).
+ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
 _NO_ALTERNATIVE = " No nearby listed strike is available to offer."
 _ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
 _PICK_OR_REMOVE = "Pick one of the strikes shown for this leg yourself, or remove the leg, then check again."
@@ -321,7 +327,9 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
                     "right now."),
     _gate("gate_broker_unconfirmed", _BA, 101, "We could not confirm your Zerodha connection. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
-    _gate("gate_broker_not_connected", _BA, 102, "Your Zerodha account is not connected. Connect it to continue.",
+    _gate("gate_zerodha_busy", _BA, 105, ZERODHA_BUSY_TEXT, "Orders cannot be confirmed with Zerodha right now.",
+          _EXEC, "Wait a moment, then try again."),
+    _gate("gate_broker_not_connected", _BA, 102, CONNECT_PROMPT,
           "Orders cannot be sent to Zerodha.", _EXEC, "Connect your Zerodha account from the account page."),
     _gate("gate_session_unconfirmed", _BA, 103, "We could not confirm your Zerodha session. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
@@ -443,6 +451,12 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",
           "Prices on screen may not match the live market, and rules are not checked while data is missing.",
           "Rule monitoring for this strategy.", "Wait for the feed to reconnect; monitoring resumes on its own.",
+          {"time": Clock}),
+    # REQ-114 AC-7: outside market hours silence is expected; the what-happened part is the owner-cited wording.
+    _gate("marketdata_market_closed", _MD, 124,
+          "Market closed. Prices are from {time}.",
+          "Prices on screen are the last ones before the close; none are arriving, as expected.",
+          "Live strategy monitoring until the market opens.", "Nothing to do; prices resume at the next open.",
           {"time": Clock}),
 )
 
@@ -854,6 +868,20 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "to another contract).",
           "No order was prepared or sent; a leg is never priced or ordered as another contract.",
           "Executing this strategy.", "Rebuild the strategy on live contracts and save it again."),
+    # W-144 (REQ-038 AC-2, AC-3; ADR-019): versions after the first execution.
+    _gate("strategy_restore_after_execution", _SV, 416,
+          "This strategy has executed, so an earlier draft cannot be restored over it.",
+          "Nothing was changed; the active version stays as it was executed.", "Restoring a pre-execution draft.",
+          "Edit the strategy to propose a new version instead."),
+    _gate("strategy_version_pending", _SV, 417,
+          "This strategy has an execution or a proposed version still waiting for its result.",
+          "Nothing was changed; the active version stays as it is.", "Changing or confirming the strategy now.",
+          "Wait for the result, or return from Zerodha to read it, then try again."),
+    _gate("strategy_reconciliation_required", _SV, 418,
+          "Zerodha's position for this strategy differs from its active version, or could not be told apart.",
+          "Nothing was changed; the strategy stays blocked until the difference is resolved.",
+          "Changing or confirming the strategy.",
+          "Open the strategy's reconciliation and record how the difference was resolved."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
@@ -1019,3 +1047,8 @@ def display_text(message: UserFacingError) -> str:
     if message.external_text is not None:
         lines.append(message.external_text)
     return "\n".join(lines)
+
+
+#: REQ-118 AC-4: the operator alert (Notifier, never shown to a user) when Kite answers 429 in a burst; its one home.
+KITE_RATE_LIMIT_ALERT_TITLE: str = "Kite is rate-limiting the platform"
+KITE_RATE_LIMIT_ALERT_BODY: str = "{recent} rate-limit answers (429) from Kite in the last minute."

@@ -1,8 +1,10 @@
-"""PreToolUse hook (Agent): refuse a dispatch whose prompt names a docs/process/brief-*.md file that fails check_brief.
+"""PreToolUse hook (Agent): refuse a dispatch whose brief file under docs/process/ fails check_brief.
 
-Only the DESIGNATED brief is checked: a line `Your full brief: <path>` or `Brief: <path>` (any other mention of a
-brief file, e.g. "for history see ...", passes). check_brief runs with UTF-8 output; the dispatch is refused
-only when it exits non-zero AND printed a MISSING/FAIL line; a crash of the checker allows (one stderr line).
+Only the DESIGNATED brief is checked: any `.md` under docs/process/ (subfolders included, either slash style) named
+after a line starting `Your full brief is the file`, `Your full brief:`, `Your brief is the file` or `Brief:`
+(any other mention of a brief file, e.g. "for history see ...", passes). check_brief runs with UTF-8 output; the
+dispatch is refused only when it exits non-zero AND printed a MISSING/FAIL line; a crash of the checker allows (one
+stderr line).
 Finding brief-rule-from-memory + 2026-10-16: unchecked briefs cost 3 CI rounds. The brief path may be absolute
 or relative (tried against CLAUDE_PROJECT_DIR, this repo, then the current directory).
 A prompt naming no brief file passes.
@@ -17,20 +19,21 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from brief_path import resolve_brief
 
 REPO = Path(__file__).resolve().parents[2]
-BRIEF_RE = re.compile(r"^\s*(?:your full brief|brief)\s*:\s*(\S*?docs[/\\]process[/\\]brief-[\w.\-]+?\.md)",
-                      re.IGNORECASE | re.MULTILINE)
+
+BRIEF_RE = re.compile(
+    r"^\s*(?:(?:your full brief|your brief) is the file\s*:?|(?:your full brief|brief)\s*:)[\s`'\"]*"
+    r"([^\s`'\"]*?docs[/\\]process[/\\](?:[\w.\-]+[/\\])*[\w.\-]+?\.md)",
+    re.IGNORECASE | re.MULTILINE)
 LINE_RE = re.compile(r"^(MISSING|FAIL)\b")
 TIMEOUT = 60
 
 
 def _resolve(ref: str) -> Path | None:
-    candidates = [Path(ref)]
-    if not Path(ref).is_absolute():
-        base = os.environ.get("CLAUDE_PROJECT_DIR")
-        candidates = ([Path(base) / ref] if base else []) + [REPO / ref, Path.cwd() / ref]
-    return next((c for c in candidates if c.is_file()), None)
+    base = os.environ.get("CLAUDE_PROJECT_DIR")
+    return resolve_brief(ref, ([Path(base)] if base else []) + [REPO, Path.cwd()])
 
 
 def decide(tool_name: str, tool_input: dict) -> str | None:
@@ -44,6 +47,7 @@ def decide(tool_name: str, tool_input: dict) -> str | None:
     for ref in dict.fromkeys(BRIEF_RE.findall(prompt)):
         brief = _resolve(ref)
         if brief is None:
+            sys.stderr.write(f"agent_brief_gate: brief path {ref} does not resolve; not checked (fail open)\n")
             continue
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
         try:

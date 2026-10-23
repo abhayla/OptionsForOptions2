@@ -1,0 +1,15 @@
+{
+  "id": "RD-036",
+  "kind": "COPY",
+  "title": "Monthly-only index: the reference product returns a server error for a calendar (row 5 match line, bug)",
+  "reference_behaviour": "A calendar on the monthly-only index fails with an internal server error.",
+  "reference_screens": ["catalogue 327", "catalogue 329"],
+  "ours": "Measured bug, not copied. Nearest working behaviour kept: REQ-079 AC-6 refuses a template that needs a missing expiry with a plain catalogue message.",
+  "req": "REQ-079",
+  "ac": "AC-6",
+  "row": 55,
+  "status": "decided",
+  "spec_change": false,
+  "bug": true,
+  "recorded": "2026-10-23"
+}

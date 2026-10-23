@@ -1,0 +1,15 @@
+{
+  "id": "RD-100",
+  "kind": "MATCH",
+  "title": "One click loads real legs at strikes counted from ATM (row 15 match)",
+  "reference_behaviour": "Picking a preset loads its legs with strikes placed relative to the at-the-money strike for the chosen expiry.",
+  "reference_screens": ["screen 011", "screen 012"],
+  "ours": "REQ-079 AC-3: ATM is the listed strike nearest spot (a tie takes the lower), other strikes a fixed number of steps away.",
+  "req": "REQ-079",
+  "ac": "AC-3",
+  "row": 55,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

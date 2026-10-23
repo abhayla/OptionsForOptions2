@@ -126,7 +126,8 @@ MUTATIONS = [
     ("version-unknown", _ctx(version_state=None), CheckCode.VERSION_NOT_EXECUTABLE,
      "This version of the strategy is unknown. This action executes only a version that is active."),
     ("broker-disconnected", _ctx(broker_connected=False), CheckCode.BROKER_NOT_CONNECTED,
-     "Your Zerodha account is not connected. Connect it to continue."),
+     "Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, "
+     "check margin and prepare/execute your strategy."),
     ("broker-unknown", _ctx(broker_connected=None), CheckCode.BROKER_NOT_CONNECTED,
      "We could not confirm your Zerodha connection. Reconnect to continue."),
     ("session-expired", _ctx(session_valid=False), CheckCode.SESSION_INVALID,

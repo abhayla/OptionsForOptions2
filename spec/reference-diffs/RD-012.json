@@ -1,0 +1,18 @@
+{
+  "id": "RD-012",
+  "kind": "COPY",
+  "title": "Trade button shown disabled with a reason when no broker is connected (G-02-3)",
+  "reference_behaviour": "With no broker login the Trade action is visibly disabled up front, with a tooltip saying a supported broker login is needed.",
+  "reference_screens": [
+    "catalogue 246"
+  ],
+  "reference_label": "login with a supported broker",
+  "ours": "NEW AC NEEDED: we prompt only when the action is used (REQ-015 AC-1, AC-2 owner wording kept); add a visible disabled-state hint on Execute when there is no session. Built in 172f1f18 (AC-10).",
+  "req": "REQ-015",
+  "ac": "AC-10",
+  "row": 2,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

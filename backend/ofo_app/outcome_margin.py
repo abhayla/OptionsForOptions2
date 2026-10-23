@@ -43,8 +43,9 @@ from typing import Final
 from ofo.engine.product import Product
 from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
+from ofo.execution.margin_gate import MARGIN_BUSY_CODE
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome.service import MARGIN, Margin, margin_checked, margin_no_basket, margin_unreadable
+from ofo.outcome.service import MARGIN, Margin, margin_busy, margin_checked, margin_no_basket, margin_unreadable
 from ofo.outcome.snapshot import contract_id
 
 from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
@@ -181,6 +182,8 @@ class OutcomeMargin:
             available, needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders), timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
+            if exc.code == MARGIN_BUSY_CODE:
+                return margin_busy(), False
             return (MARGIN if exc.code == "kite_margin_token" else margin_unreadable()), False
         except Exception as exc:  # noqa: BLE001 - a timeout, the token store, anything: "could not be read"
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)

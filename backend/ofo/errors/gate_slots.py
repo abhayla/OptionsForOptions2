@@ -255,12 +255,12 @@ class ExecutionStatusName(SlotType):
         return _STATUS_WORDS[value]
 
 
-#: An underlying symbol the platform does not support, as the context names it: capitals and digits only.
-_SYMBOL_PATTERN = re.compile(r"[A-Z][A-Z0-9]{0,19}")
+#: An underlying symbol the platform does not support, as the context names it: letters and digits only.
+_SYMBOL_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9]{0,19}")  # as typed: a wrong-case name is echoed, never rewritten
 
 
 class Symbol(SlotType):
-    """A market symbol outside the supported set (the unsupported-underlying message): capitals and digits only."""
+    """A market symbol outside the supported set (the unsupported-underlying message): letters and digits only."""
 
     @staticmethod
     def validate(value: object) -> None:

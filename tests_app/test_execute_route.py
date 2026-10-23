@@ -738,5 +738,7 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
     req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
     health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
-    assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
+    # W-133 session rule (F-56): a list loaded before the current session's 08:30 IST publish is stale; DB_NOW is a
+    # Saturday, so the session is Friday's and a Thursday load is stale (was: "a list from another calendar day").
+    assert route._list_health(DB_NOW - datetime.timedelta(days=2), DB_NOW) is DataHealth.STALE
     assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE

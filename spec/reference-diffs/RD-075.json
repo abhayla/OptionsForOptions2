@@ -1,0 +1,15 @@
+{
+  "id": "RD-075",
+  "kind": "MATCH",
+  "title": "Weekly-expiry forward from put-call parity; index shown beside the builder underlying (row 12 match)",
+  "reference_behaviour": "When no future trades for an expiry, the theoretical future from put-call parity is used; the index value sits beside the underlying search (bundle-findings 7.1).",
+  "reference_screens": ["screen 012"],
+  "ours": "REQ-072 AC-3 and ADR-061: the same parity forward; the index strip shows the value.",
+  "req": "REQ-072",
+  "ac": "AC-3",
+  "row": 12,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

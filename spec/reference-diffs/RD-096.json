@@ -1,0 +1,15 @@
+{
+  "id": "RD-096",
+  "kind": "COPY",
+  "title": "Shape detection: the reference product names 16 shapes, ours matches every catalogue template (G-15-7)",
+  "reference_behaviour": "Only 16 shapes are detected by name (single legs, straddles, strangles, iron condors, iron butterflies, the four verticals); every other leg set, calendars and condors included, is unknown.",
+  "reference_screens": ["screen 011"],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-028 AC-3 and REQ-076 AC-8 name any catalogue template that fits; copying would narrow detection to 16 shapes. For the owner's batch.",
+  "req": "REQ-028",
+  "ac": "AC-3",
+  "row": 15,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

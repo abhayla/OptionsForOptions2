@@ -33,7 +33,8 @@ calculation engine.
 - Per leg: BUY `(LTP − Entry Price) × Quantity`; SELL `(Entry Price − LTP) × Quantity`. Applies to option and
   futures legs alike (for a futures leg, LTP is the futures contract's LTP; ADR-041).
 - First-class live fields: Entry Price, LTP, Entry Value, Current Value, Unrealized P&L, P&L %.
-- Whether LTP, bid/ask mid or another price is used for live estimates, slippage and charges: open (§95).
+- Whether LTP, bid/ask mid or another price is used for live estimates, slippage and charges: open (§95), except the
+  price IV is implied from, decided by ADR-172 (the mid when two-sided, else the LTP; §4).
 
 ## 3. Strategy-level values
 
@@ -72,8 +73,9 @@ calculation engine.
   yield from put-call parity (ADR-061, 2026-10-08; the engine computes Black-Scholes-Merton with that yield q and
   owns every Greek, theta included - ADR-063; fallback to spot labelled "estimated from spot"), time = calendar
   days / 365
-  to expiry at 15:30 IST, continuous risk-free rate as an explicit input, each leg at its own IV (implied from its LTP
-  where one exists); a futures leg at a what-if level is valued at level x e^(rT). Model prices are rounded to ₹0.01 and
+  to expiry at 15:30 IST, continuous risk-free rate as an explicit input, each leg at its own IV (implied from its
+  bid-ask mid when both sides are live and the ask is at or above the bid, else from its LTP where one exists - owner
+  2026-10-23, ADR-172, Q275; real case 22450 PE mid 100.40 vs last trade 102.35); a futures leg at a what-if level is valued at level x e^(rT). Model prices are rounded to ₹0.01 and
   Greeks to 4 dp at the boundary; money stays Decimal. Core check: Hull reference S=42, K=40, r=10%, sigma=20%, T=0.5 →
   call 4.76, put 0.81.
 - Decided: SENSEX step 300 per index in Admin (Q208, ADR-042); Lower/Upper BE summary columns stay after the grid as well as the inserted 0-P&L columns (Q213, delegated overnight, ADR-045).

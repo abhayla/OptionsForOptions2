@@ -1,0 +1,15 @@
+{
+  "id": "RD-091",
+  "kind": "COPY",
+  "title": "The matched shape name shown in the builder (G-15-2)",
+  "reference_behaviour": "The leg list shows how many legs are selected and the detected shape name, or Custom when the shape is not recognised.",
+  "reference_screens": ["screen 011", "screen 012"],
+  "ours": "REQ-076 AC-8 not built: the matcher exists but only labels broker positions; no route returns the name and no screen shows it.",
+  "req": "REQ-076",
+  "ac": "AC-8",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "RD-089",
+  "kind": "MATCH",
+  "title": "Expiry P&L uses the entry price, legs sum to the strategy, live P&L from LTP, futures supported (row 14 match)",
+  "reference_behaviour": "Expiry P&L uses each leg's entry price (Reset Prices re-bases it to live); the strategy is the sum of its legs; the P&L table shows per-leg target P&L, entry and LTP; futures legs are supported.",
+  "reference_screens": ["catalogue 014", "catalogue 017", "catalogue 100"],
+  "ours": "REQ-033 AC-1 to AC-7: the same formulas; no formula gap found.",
+  "req": "REQ-033",
+  "ac": "AC-3",
+  "row": 14,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

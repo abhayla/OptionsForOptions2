@@ -25,6 +25,21 @@
    "date": "2026-10-17",
    "where": "REQ-057/058/060 + REQ-073 on main 85e38e0, before the GC-3 live run",
    "evidence": "13 of 18 re-verified criteria fail on the live path; REQ-057 AC-1..3 and REQ-058 AC-3/AC-5 and REQ-073 AC-3 pass"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "builder sequence row 16, REQ-038 (status Verified) start check on chunk head 0e574b58",
+   "evidence": "AC-2/AC-3 versions-after-execution live only in the domain StrategyRecord (versions.py); PUT /strategies/{id} (routes/strategies.py:353) calls strategy_store.update with no execution check, migration 0008 allows status 'draft' only, no versions table; the app never calls propose_execution/confirm/apply_result - an edit after a fill becomes a history entry. Mutants M1-M4 on the domain killed, so domain tests were green while the product path lacked the rule."
+  },
+  {
+   "date": "2026-10-23",
+   "where": "builder sequence row 15, REQ-028 AC-2 check on chunk head 025a22cf (session 5db71e90)",
+   "evidence": "modification (LegChange/propose_modification, modification.py:79,:232), adjustment proposal (rules/actions.py:29 Proposal; respond() raises for RuleKind.ADJUSTMENT at :67) and exit (StrategyRecord.mark_exited, versions.py:673) are domain types with green tests that no file under backend/ofo_app calls; the app exits through ep.exit_legs (execute_plan.py:230) and routes only ENTRY/EXIT plans (routes/execute.py:98). Proposal('', 'r', ()) and ProposedOrder(qty=-3, strike=-5) are accepted with no validation. Caught because the check brief asked 'which app path uses this type?' for each thing. Third occurrence: the automated check above is chunk 2's one process item (ADR-178 process freeze); issue #528 tracks the AC-2 gap."
+  },
+  {
+   "date": "2026-10-23",
+   "where": "chunk 1 Tier A review on 29d2dece (areas 1 and 3, session 5db71e90): two recorded passes re-verdicted fail",
+   "evidence": "W-139 AC-7 (REQ-114 market closed) passed on the Settings card only; quote health ignores the calendar (feed_health.py:115), so the price screens read live on a Saturday. W-144 AC-4 (REQ-038 broker actual wins) passed through settle_versions branches that need a plan linked to the proposed version, which Execute never records (execute.py:400). Fourth occurrence: in both the row check named the module, not the screen or route users reach. Brief change from now: every check brief asks 'which screen/route shows this, and did you exercise it there?' per AC."
   }
  ]
 }

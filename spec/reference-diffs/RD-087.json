@@ -1,0 +1,15 @@
+{
+  "id": "RD-087",
+  "kind": "COPY",
+  "title": "A target row picks the what-if level, and a slider drives every number (G-14-2)",
+  "reference_behaviour": "The current row of the payoff table is itself a picker for the target, and a what-if slider updates every figure on the page.",
+  "reference_screens": ["catalogue 020"],
+  "ours": "REQ-084 AC-1 (target-level control) and REQ-137 AC-2 (picking a row sets the target) not built.",
+  "req": "REQ-084",
+  "ac": "AC-1",
+  "row": 37,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

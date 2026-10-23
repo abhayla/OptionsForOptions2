@@ -42,7 +42,7 @@ from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.kite_reads import KiteReadError
+from ofo_app.kite_reads import KiteReadError, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
@@ -137,7 +137,7 @@ async def return_from_kite(
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
-            raise _refuse("gate_broker_unconfirmed")
+            raise _refuse("gate_broker_not_connected")
         await store.lock_strategy(db, user_ref, strategy_id)  # held to commit: one return closes a plan once
         req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db))
         out = await _return(req, stored.saved.definition.underlying)
@@ -166,8 +166,8 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     try:
         orders, trades = reads.fetch_orders(), reads.fetch_trades()
         positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
-    except (KiteReadError, KiteReplyError, ValueError):
-        raise _refuse("gate_broker_unconfirmed") from None
+    except (KiteReadError, KiteReplyError, ValueError) as exc:
+        raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(positions, f"return strategy {req.strategy_id}")
     return _Read(orders, trades, positions.net)
 
@@ -349,7 +349,21 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
     await _record_externals(req, book)
     await order_audit.record_broker_book(req.db, zerodha.orders, zerodha.trades, tags)  # W-103: our orders + trades
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
+    await store.settle_versions(req.db, req.user_ref, req.strategy_id, history, _broker_share(history, book, world))
     return _answer(req, history, live, book, world)
+
+
+def _broker_share(history: Sequence[plans.StoredPlan], book: er.TodaysBook, world: _World) -> dict[tuple, int] | None:
+    """W-144 (REQ-038 AC-4): this strategy's actual units per contract it traded, the position a proposed version is
+    judged by. Where Zerodha agrees with the strategy's own fills (no blocking mismatch) that is its fills: a
+    same-direction surplus is outside lots, never this strategy's (ADR-109). Where Zerodha disagrees (shortfall, side)
+    the broker wins: Zerodha's net minus every other strategy's units. None - the version is not judged and the
+    strategy is flagged - when a contract is undecidable (another strategy's open or drifted plan) or this strategy's
+    own book has drifted."""
+    checks = _checks(history, world)
+    if er.drifted(history, book) or any(c.undecidable for c in checks):
+        return None
+    return {c.key: c.platform_units if c.kind is None else c.zerodha_units - c.other_units for c in checks}
 
 
 __all__ = ["ReturnOut", "return_from_kite"]

@@ -255,6 +255,19 @@ async def test_a_task_cancelled_mid_run_also_unsubscribes(rig):
     assert none_held(provider, strategy_ids(provider))
 
 
+async def test_an_unsupported_underlying_gets_the_unsupported_underlying_message(rig):
+    """W-129 (REQ-001 AC-1): the strategy socket answers the same catalogue message as the routes, as typed."""
+    _provider, _feed, channel, _mono, push = rig
+    task = asyncio.create_task(push.run())
+    await channel.inbound.put({"underlying": "BANKNIFTY", "legs": []})
+    await channel.inbound.put({"underlying": "nifty", "legs": []})
+    await settle()
+    assert channel.sent == [render("gate_underlying_unsupported", symbol="BANKNIFTY").as_dict(),
+                            render("gate_underlying_unsupported", symbol="nifty").as_dict()]
+    await channel.inbound.put(ChannelClosed)
+    await task
+
+
 async def test_bad_input_gets_the_one_catalogue_message_and_the_connection_goes_on(rig):
     provider, feed, channel, mono, push = rig
     good = request(provider)  # built first: the failed subscribe un-subscribes (and so forgets) the replayed quotes
@@ -394,9 +407,10 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
         return Catalogue()
 
     class Sock(FakeSocket):
-        def __init__(self, prov, *, api_key, access_token, clock, base_url):
+        def __init__(self, prov, *, api_key, access_token, clock, base_url, on_reconnect=None, user_ref):  # noqa: PLR0913 - KiteSocket's keywords
             super().__init__(prov, result="stopped")
-            seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987")
+            seen.update(api_key=api_key, base_url=base_url, token_given=access_token == "TOKEN-VALUE-987",
+                        user_ref=user_ref)
 
     monkeypatch.setattr(db, "get_engine", lambda: _Engine())
     monkeypatch.setattr(broker_token_store, "access_token_for", token)
@@ -409,6 +423,7 @@ async def test_start_with_a_session_builds_the_socket_without_logging_the_token(
     with caplog.at_level(logging.DEBUG):
         await market.start(_Cfg())
     assert market.state == live_market.LIVE and seen["token_given"] and seen["api_key"] == "key123"
+    assert seen["user_ref"] == live_market.OWNER_REF  # REQ-114 AC-8: the socket's log lines name the user
     assert market.feed.ctx.provider.index_id("NIFTY") is not None
     assert "TOKEN-VALUE-987" not in caplog.text
     await market.stop()
@@ -677,7 +692,7 @@ def test_ac4_the_replay_serves_every_connection_and_its_pushes_change(monkeypatc
         ltps = [p["legs"][0]["ltp"] for p in pushes]
         assert len(set(ltps)) >= 3, ltps  # the recording moves this leg 14 times in 10 s
         assert len({_pnl_cell(p, "1") for p in pushes}) >= 3
-        assert all(b - a >= 0.9 for a, b in zip(times, times[1:]))  # receive-side gap; the server gate is 1.0 s
+        assert all(b - a >= 0.9 for a, b in zip(times, times[1:], strict=False))  # receive-side gap; the server gate is 1.0 s
         for p in pushes:
             expected = (Decimal("100.00") - Decimal(p["legs"][0]["ltp"])) * 65
             assert _pnl_cell(p, "1") == f"₹{expected:,.2f}"

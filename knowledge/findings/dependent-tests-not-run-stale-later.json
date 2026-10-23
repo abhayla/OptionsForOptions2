@@ -1,0 +1,25 @@
+{
+ "id": "dependent-tests-not-run-stale-later",
+ "scope": "generic",
+ "class": "A change to a shared module (a route helper, a socket constructor, a freshness rule) is verified by running only the tests its own work item names; a test elsewhere that imports or fakes the changed code keeps asserting the old behaviour, stays red on the branch, and surfaces rows or days later in someone else's verification (or in CI at the end), where its cause is no longer obvious.",
+ "mechanism": "Builders and verifiers ran the test files listed in their brief; nobody ran the app tests that import the changed module. The project already has the selector (scripts/orchestrator/select_app_tests.py) that names them.",
+ "first_seen": {
+  "date": "2026-10-22",
+  "where": "builder sequence rows 1, 5, 2 (build/seq-chunk-1)",
+  "evidence": "row 1: tests_app/test_catalogue_picker_api.py:252 expected the old nifty answer (found by row 1's verifier); row 5 changed routes/execute.py _list_health, tests_app/test_execute_route.py:741 kept the old 'loaded today' rule (passes on main 3ccc8439, failed on the branch; found by row 7's verifier); row 2 added on_reconnect to KiteSocket, the fake socket in tests_app/test_strategy_live_push.py::test_start_with_a_session_builds_the_socket_without_logging_the_token rejects it (passes on main, fails on the branch; found by row 8's builder)."
+ },
+ "fix": "Builder and verifier select the app tests for the row's own backend diff (importers of each changed module, routes it serves) and run every one in a throwaway database (row-review R13; builder-brief.md); the whole branch's selection (83 files at row 8) runs in CI at the chunk PR.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "R13 is prose in the builder brief; a check_brief rule or a verifier-brief template line naming the selector would make it machine-checked. CI's full app suite at the chunk PR is the backstop."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-075.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-22", "where": "row 1 (W-129)", "evidence": "test_catalogue_picker_api.py:252"},
+  {"date": "2026-10-22", "where": "row 5 (W-133), found in row 7", "evidence": "test_execute_route.py:741"},
+  {"date": "2026-10-22", "where": "row 2 (W-130), found in row 8", "evidence": "test_strategy_live_push.py start-with-a-session test"}
+ ]
+}

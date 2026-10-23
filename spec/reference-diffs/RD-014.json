@@ -1,0 +1,17 @@
+{
+  "id": "RD-014",
+  "kind": "COPY",
+  "title": "Positions read on their own on a fixed period, so a new connection never waits on a manual step (G-02-5)",
+  "reference_behaviour": "Positions are re-read from the broker on a fixed period of about 45 s without the user doing anything.",
+  "reference_screens": [
+    "catalogue 331"
+  ],
+  "ours": "NEW AC NEEDED: the position-sync row tells the user to open Execute to make a read happen; a first connect may never read positions. Read once at connect, then on a period.",
+  "req": "REQ-015",
+  "ac": "AC-12",
+  "row": 2,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

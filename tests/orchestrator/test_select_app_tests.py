@@ -67,6 +67,13 @@ PR241_SELECTION = {
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
     "tests_app/test_ready_made_route.py",  # W-125: raises StrategyRefused and posts to /api/strategies/... routes
+    # builder sequence rows 1-10 (2026-10-22/23) added app tests that import the same modules or call the same routes:
+    "tests_app/test_underlying_refusal.py",  # row 1
+    "tests_app/test_connect_gate_routes.py",  # row 2
+    "tests_app/test_catalogue_refresh.py",  # row 5: imports the catalogue picker the #241 diff changed
+    "tests_app/test_execute_health_clock.py",  # row 5/7
+    "tests_app/test_busy_text_routes.py",  # row 10
+    "tests_app/test_strategy_versions_app.py",  # row 16: PUT /strategies/{strategy_id} and its versions
 }
 
 
@@ -80,7 +87,9 @@ def test_pr241_diff_selects_both_red_files_within_the_cap() -> None:
 
 
 def test_pr241_diff_does_not_select_the_catalogue_loading_tests() -> None:
-    loaders = [p for p in pick(FILES, DIFF) if re.search(r"test_catalogue_(load|ingest|instruments|refresh)", p)]
+    # test_catalogue_refresh.py (row 5) imports ofo_app.catalogue_picker, a file this diff changes, so selecting it is
+    # right (R13); the pure loaders below import nothing the diff touches and must stay unselected
+    loaders = [p for p in pick(FILES, DIFF) if re.search(r"test_catalogue_(load|ingest|instruments)", p)]
     assert loaders == [], loaders
 
 

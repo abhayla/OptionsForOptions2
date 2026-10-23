@@ -1,0 +1,15 @@
+{
+  "id": "RD-080",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Pricing model: the reference product's Black 76 against ours with an implied dividend yield (G-13-4)",
+  "reference_behaviour": "Greeks come from a modified Black 76 model in which theta, vega and gamma are the same for a call and a put (bundle-findings 2.5 and 7.1).",
+  "reference_screens": ["catalogue 124"],
+  "ours": "Black-Scholes-Merton with each expiry's implied dividend yield; call and put theta differ by a carry term (a few rupees per day, unmeasured). Decided by ADR-063.",
+  "req": "REQ-032",
+  "adr": "ADR-063",
+  "row": 13,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -48,6 +48,33 @@ describe('/settings/broker-market-data', () => {
     expect(t(w, 'last-sync-none')).toContain('no successful read')
   })
 
+  it('REQ-015 AC-12: the sync text claims the 45 s read only while the live market runs; otherwise it names what reads', async () => {
+    const off = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_off' }, position_sync: { state: 'partial', fix: 'no_read_yet' } })
+    expect(t(off, 'fix-position_sync')).toContain('Positions are read when you open Positions or Execute for a strategy.')
+    expect(t(off, 'fix-position_sync')).not.toContain('45 seconds')
+    for (const fix of ['live_feed_not_running', 'live_feed_session_ended', 'live_feed_market_closed']) {
+      const w = await open({ ...base, live_market_data: { state: 'partial', fix }, position_sync: { state: 'partial', fix: 'no_read_yet' } })
+      expect(t(w, 'fix-position_sync')).not.toContain('45 seconds')
+    }
+    const on = await open({ ...base, position_sync: { state: 'partial', fix: 'no_read_yet' } })
+    expect(t(on, 'fix-position_sync')).toContain('positions are read at connect and every 45 seconds')
+    const waiting = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_waiting' }, position_sync: { state: 'partial', fix: 'no_read_yet' } })
+    expect(t(waiting, 'fix-position_sync')).toContain('every 45 seconds')
+  })
+
+  it('partial: the waiting and reconnecting feed fixes read in plain words (REQ-015 AC-4)', async () => {
+    const waiting = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_waiting' } })
+    expect(t(waiting, 'status-live_market_data')).toBe('Partially connected')
+    expect(t(waiting, 'fix-live_market_data')).toContain('no prices have arrived yet')
+    const idle = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_idle' } })
+    expect(t(idle, 'fix-live_market_data')).toContain('Live prices start when you open a strategy or option chain screen.')
+    expect(t(idle, 'fix-live_market_data')).not.toContain('Reconnect')
+    const capped = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_capped' } })
+    expect(t(capped, 'fix-live_market_data')).toContain("Live prices are not available: Zerodha's connection limit for this app is reached.")
+    const back = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_reconnecting' } })
+    expect(t(back, 'fix-live_market_data')).toContain('reconnecting')
+  })
+
   it('disconnected: guide text and a Connect button, no Disconnect', async () => {
     const d = { state: 'disconnected', fix: 'session_expired' }
     const w = await open({ ...base, account_connection: d, live_market_data: d, position_sync: d, order_execution: d })
@@ -82,6 +109,9 @@ describe('/settings/broker-market-data', () => {
     await w.get('[data-testid="disconnect-yes"]').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c[0] === 'post')).toEqual([['post', '/broker/disconnect']])
-    expect(calls.filter((c) => c[0] === 'get').length).toBe(2)
+    // exactly these reads, in this order: load (status, then the account block, REQ-015 AC-13), then after Disconnect
+    // the same two again - nothing else is fetched
+    expect(calls.filter((c) => c[0] === 'get')).toEqual([['get', '/broker/status'], ['get', '/broker/account'],
+      ['get', '/broker/status'], ['get', '/broker/account']])
   })
 })

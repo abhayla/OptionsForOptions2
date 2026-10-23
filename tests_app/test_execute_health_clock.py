@@ -23,6 +23,7 @@ import pytest
 from ofo.execution.context import DataHealth, DataInput
 from ofo.marketdata.health import HealthThresholds
 from ofo_app import eligibility_from_zerodha as elig
+from ofo_app import live_market
 from ofo_app.execute_replay import AT
 from ofo_app.routes import execute as route
 
@@ -112,3 +113,19 @@ async def test_7_the_check_clock_is_read_after_the_index_quote():
     req = SimpleNamespace(db=None, now=AT, clock=lambda: world["t"], quotes=SimpleNamespace(underlying_price=_spot))
     health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", AT)
     assert health[DataInput.UNDERLYING_PRICE] is DataHealth.HEALTHY
+
+
+async def test_8_an_unreadable_stored_session_logs_the_exception_class_only_then_refuses(monkeypatch, caplog):
+    """#513 item 2: the refusal is unchanged, and an operator can now see WHY, without a token or message text."""
+    leaked = "enctoken=abc123-SECRET"  # a planted marker the log must not contain
+
+    async def _broken():
+        raise RuntimeError(f"cannot decrypt {leaked}")
+
+    monkeypatch.setattr(live_market, "owner_margin_client", _broken)
+    with caplog.at_level("WARNING", logger=route.__name__), pytest.raises(route.StrategyRefused) as refused:
+        await route.get_kite_session()
+    assert refused.value.args[0] == "gate_broker_unconfirmed"
+    lines = [r.getMessage() for r in caplog.records if r.name == route.__name__]
+    assert len(lines) == 1 and "RuntimeError" in lines[0]
+    assert leaked not in caplog.text and "cannot decrypt" not in caplog.text

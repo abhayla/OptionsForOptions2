@@ -15,8 +15,9 @@ clock's India date (``catalogue_picker.database_today``, which honours only the 
   passes the result straight to ``ofo.execution.safety.check_pre_execution``. It takes no registry and no status
   from its caller: a refusal can only make a contract NOT tradable (finding caller-supplied-verdict-trusted).
 
-Known limit (ADR-104, finding daily-load-misses-intraday-additions / F-33): a contract Zerodha lists during the day,
-after the latest load, is not eligible until a later load lists it. An intraday refresh is a follow-up.
+Staleness (W-133, finding daily-load-misses-intraday-additions / F-33): a list whose latest load is before the current
+session's 08:30 IST publish time (``catalogue_picker.session_start``) is unconfirmed (``None`` / an empty registry), never trusted. A contract Zerodha lists during the
+day is eligible after the next scheduled load (``ofo_app.catalogue_refresh``, hourly 08:35-15:45 IST).
 
 Copy from: none - the eligibility registry and the picker are this project's own; no algochanakya row covers
 eligibility.
@@ -41,7 +42,15 @@ from ofo.instruments.eligibility import (
 from ofo.instruments.models import ZERODHA, InstrumentId
 from sqlalchemy import text
 
-from ofo_app.catalogue_picker import BROKER_ROWS, CONTRACTS, database_today
+from ofo_app.catalogue_picker import (  # LOADED_AT: the latest load's time, one home in the picker (its offer reads it)
+    BROKER_ROWS,
+    CONTRACTS,
+    database_now,
+    database_today,
+    judging_instant,
+    loaded_before,
+)
+from ofo_app.catalogue_picker import LOADED_AT as _LOADED_AT
 
 _STATE_COLUMNS = (
     "SELECT c.id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.currently_listed, c.retired, "  # noqa: S608 constant table name
@@ -51,19 +60,11 @@ _STATE_COLUMNS = (
 _BY_IDS = text(_STATE_COLUMNS + " WHERE c.id = ANY(CAST(:ids AS BIGINT[]))")
 _LIVE = text(_STATE_COLUMNS + " WHERE NOT c.retired AND NOT c.delisted "
                               "AND (CAST(:underlying AS TEXT) IS NULL OR c.name = CAST(:underlying AS TEXT))")
-#: The latest load's time: the newest moment the load saw a live Zerodha row (the database stamps last_seen_at).
-_LOADED_AT = text(f"SELECT max(last_seen_at) FROM {BROKER_ROWS} WHERE broker = :broker AND NOT retired")  # noqa: S608 constant table name
-_NOW = text("SELECT clock_timestamp()")
 
 
 def _state(row: Any) -> ListState:
     """The store row read through the domain's one row reader (the sealed ``ListState``; no hand-made state)."""
     return list_state_from_row(row)
-
-
-async def database_now(conn: Any) -> datetime.datetime:
-    """The database's own clock (``clock_timestamp()``, ADR-023): the clock that stamps grants and list loads."""
-    return (await conn.execute(_NOW)).scalar_one()
 
 
 async def _loaded_at(conn: Any) -> datetime.datetime | None:
@@ -82,7 +83,8 @@ async def leg_statuses(conn: Any, contract_ids: Sequence[int],
     reuses its token."""
     loaded_at = await _loaded_at(conn)
     wanted = sorted(set(contract_ids))
-    if loaded_at is None or not wanted:
+    # never loaded, or older than this session's publish (W-133)
+    if loaded_before(loaded_at, await judging_instant(conn, today)) or not wanted:
         return [None] * len(contract_ids)
     rows = (await conn.execute(_BY_IDS, {"broker": ZERODHA, "ids": wanted})).all()
     by_id = {int(r.id): status_from_list(_state(r), today=today, loaded_at=loaded_at) for r in rows}
@@ -97,7 +99,8 @@ async def fresh_registry(conn: Any, *, underlying: str | None = None,
     load ever, the registry is empty and the gate refuses every leg as unconfirmed."""
     today = await database_today(conn)
     loaded_at = await _loaded_at(conn)
-    if loaded_at is None:
+    # never loaded, or older than this session's publish (W-133)
+    if loaded_before(loaded_at, await judging_instant(conn, today)):
         return NO_ELIGIBILITY
     rows = (await conn.execute(_LIVE, {"broker": ZERODHA, "underlying": underlying})).all()
     eligibility = registry_from_list((_state(r) for r in rows), today=today, loaded_at=loaded_at)

@@ -1,0 +1,16 @@
+{
+  "id": "RD-082",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Probability of profit held behind a legal check in ours, shown plainly in the reference product (G-13-6)",
+  "reference_behaviour": "POP is shown as a plain percent in the summary strip, explained only by a tooltip.",
+  "reference_screens": ["screen 012"],
+  "ours": "REQ-082 AC-1: switched off until the Q211 legal answer, then shown as a model estimate, not a forecast. Legal exception (b), decided by ADR-156 (1).",
+  "req": "REQ-082",
+  "ac": "AC-1",
+  "adr": "ADR-156",
+  "row": 56,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

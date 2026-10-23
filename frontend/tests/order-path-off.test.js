@@ -13,7 +13,7 @@ let answer = () => Promise.resolve({ data: { order_path: 'on' } })
 const calls = []
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: (url) => { calls.push(url); return answer() } } }
+  return { ...actual, default: { get: (url) => { calls.push(url); return url === '/broker/status' ? Promise.resolve({ data: { account_connection: { state: 'connected' } } }) : answer() } } }
 })
 
 const SENTENCE = 'Placing orders from this app is switched off for now. You can build, save and track strategies.'

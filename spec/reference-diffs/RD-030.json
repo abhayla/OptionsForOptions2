@@ -1,0 +1,15 @@
+{
+  "id": "RD-030",
+  "kind": "COPY",
+  "title": "Liquidity warnings per leg: no recent trade, wide bid-offer spread, no bids or offers (row 5 gap G-05-2)",
+  "reference_behaviour": "A leg is flagged when it has not traded in the last 5 minutes, when its bid-offer spread is too wide, or when it has no bids or offers; each flag has a one-line text.",
+  "reference_screens": ["catalogue 011", "catalogue 012"],
+  "ours": "REQ-085 AC-4 (low_liquidity) not built; no liquidity text today. Wording follows REQ-085 AC-5 and ADR-003: fact and consequence, never avoid this.",
+  "req": "REQ-085",
+  "ac": "AC-4",
+  "row": 31,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

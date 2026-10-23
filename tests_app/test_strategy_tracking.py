@@ -21,9 +21,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+import ofo.outcome.snapshot as snapshot_module  # noqa: E402
+from ofo.marketdata.shared_compute import SharedCompute  # noqa: E402
 from ofo_app import tracked_contracts  # noqa: E402
+from ofo_app.routes import outcome as outcome_route  # noqa: E402
 from ofo_app.routes import tracking as tracking_routes  # noqa: E402
-from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context  # noqa: E402
+from ofo_app.routes.outcome import MarketContext, OutcomeRequest, get_answer_clock, get_market_context  # noqa: E402
 from ofo_app.routes.planned_entry import get_live_feed  # noqa: E402
 from test_strategy_store import WING, _app, _body, _client, _ids, _user, _with_draft  # noqa: E402
 
@@ -66,14 +69,14 @@ async def _same(conn):
     yield conn
 
 
-async def _setup(db, *, ctx="replay", threshold=THRESHOLD):
+async def _setup(db, *, ctx="replay", threshold=THRESHOLD, owner=None):
     user = _user()
     _, stored = await _with_draft(db, user)
     provider, clock, last = _market()
     maker = async_sessionmaker(bind=db, class_=AsyncSession, expire_on_commit=False,
                                join_transaction_mode="create_savepoint")
     app = _app(maker, user)
-    context = MarketContext(provider, lambda: last, D("0.065")) if ctx == "replay" else None
+    context = MarketContext(provider, lambda: last, D("0.065"), owner) if ctx == "replay" else None
     app.dependency_overrides[get_market_context] = lambda: context
     app.dependency_overrides[get_live_feed] = lambda: None
     app.dependency_overrides[get_answer_clock] = lambda: lambda: ANSWERED
@@ -356,3 +359,30 @@ async def test_the_catalogue_answer_states_live_and_contract_row_missing(db):
     assert [(c.state, c.feed_key) for c in live] == [("live", iid) for iid in IDS]
     missing = await tracked_contracts.resolve_one(db, 2**62)
     assert (missing.state, missing.feed_key, missing.stored) == ("contract_missing", None, None)
+
+
+async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_route_on_one_snapshot(db, monkeypatch):
+    """REQ-050 AC-1/AC-3: the start, two reads and one outcome answer on one recorded snapshot of one feed run each
+    expiry's forward once. Removing the tracking route's FeedScope makes the first read compute again (red)."""
+    cache = SharedCompute()
+    monkeypatch.setattr(outcome_route, "SHARED_COMPUTE", cache)
+    calls: dict = {}
+    real = snapshot_module.parity_forward
+
+    def counted(chain, spot, expiry, valuation, rate):
+        calls[expiry] = calls.get(expiry, 0) + 1
+        return real(chain, spot, expiry, valuation, rate)
+
+    monkeypatch.setattr(snapshot_module, "parity_forward", counted)
+    app, stored, provider, _clock, last = await _setup(db, owner="user-1")
+    async with _client(app) as c:
+        started = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+        assert started.status_code == HTTPStatus.CREATED, started.text
+        assert calls and set(calls.values()) == {1}
+        for _ in range(2):
+            assert (await c.get(f"/strategies/{stored.id}/tracking")).status_code == HTTPStatus.OK
+    assert set(calls.values()) == {1} and cache.computations == len(calls)  # the reads computed nothing
+    req = OutcomeRequest(underlying="NIFTY", legs=[{"instrument_id": i, "action": "SELL", "lots": 1,
+                                                    "planned_entry": "10.00", "captured_at": ANSWERED} for i in IDS])
+    outcome_route.outcome_response(req, MarketContext(provider, lambda: last, D("0.065"), "user-1"))
+    assert set(calls.values()) == {1}  # the outcome route read the tracking route's forward

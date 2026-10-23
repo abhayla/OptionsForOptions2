@@ -29,17 +29,21 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from marketdata._kite_fixture import new_provider  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
+from ofo.marketdata.shared_compute import SharedCompute  # noqa: E402
+import ofo.outcome.snapshot as snapshot_module  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import planned_entry as route  # noqa: E402
-from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context  # noqa: E402
+from ofo_app.routes import outcome as outcome_route  # noqa: E402
+from ofo_app.routes.outcome import MarketContext, OutcomeRequest, get_answer_clock, get_market_context  # noqa: E402
 
 HTTP_OK = 200
 RATE = Decimal("0.065")
 LEGS = ["NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"]
 ANSWER = datetime.datetime(2026, 10, 8, 3, 50, 5, tzinfo=datetime.UTC)
+FEEDS = 2  # two users' feeds in the sharing test
 
 
 def _frame(provider, instrument_id: str, rupees: str) -> bytes:
@@ -52,12 +56,15 @@ class Rig:
     """A connected provider with an EMPTY book. ``ticks`` maps an instrument to the price its first live tick carries;
     the tick lands ``delay`` seconds after the vendor subscription is taken (the socket answering Kite's subscribe)."""
 
-    def __init__(self, connected: bool = True) -> None:
-        self.provider, self.clock, _ = new_provider()
-        if connected:
+    def __init__(self, connected: bool = True, *, book: bool = False, owner: str | None = None) -> None:
+        self.provider, self.clock, items = new_provider()
+        if book:  # the whole recorded 2026-10-08 book, every contract live (REQ-050: a snapshot to share)
+            self.provider.subscribe(all_instrument_ids(items))
+            replay(self.provider, self.clock)
+        elif connected:
             self.provider.on_connected(self.clock.now)
         self.fanout = FanOut(self.provider)
-        self.ctx = MarketContext(self.provider, lambda: self.clock.now, RATE)
+        self.ctx = MarketContext(self.provider, lambda: self.clock.now, RATE, owner)
         self.feed = LiveFeed(self.ctx, self.fanout)
         self.ticks: dict[str, str] = {}
         self.delay = 0.1
@@ -176,3 +183,31 @@ async def test_concurrent_requests_for_one_contract_share_one_vendor_subscriptio
     assert first[0]["planned_entry"] == second[0]["planned_entry"] == "44.90"
     assert rig.provider.counters["vendor_subscribe"] == 1
     assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []
+
+
+async def test_req050_planned_entry_shares_the_forward_with_the_outcome_route_on_one_snapshot(monkeypatch):
+    """REQ-050 AC-1/AC-3: two planned-entry requests and one outcome answer on one recorded snapshot of one feed run
+    each expiry's forward once; another user's feed computes its own (ADR-053). Removing the route's FeedScope makes
+    the second request compute again, so this goes red without it."""
+    cache = SharedCompute()
+    monkeypatch.setattr(outcome_route, "SHARED_COMPUTE", cache)
+    calls: dict = {}
+    real = snapshot_module.parity_forward
+
+    def counted(chain, spot, expiry, valuation, rate):
+        calls[expiry] = calls.get(expiry, 0) + 1
+        return real(chain, spot, expiry, valuation, rate)
+
+    monkeypatch.setattr(snapshot_module, "parity_forward", counted)
+    rig = Rig(book=True, owner="user-1")
+    await rig.post()
+    assert calls and set(calls.values()) == {1}
+    await rig.post()
+    assert set(calls.values()) == {1} and cache.computations == len(calls)  # the second request computed nothing
+    req = OutcomeRequest(underlying="NIFTY", legs=[{"instrument_id": i, "action": "SELL", "lots": 1,
+                                                    "planned_entry": "10.00", "captured_at": ANSWER} for i in LEGS])
+    outcome_route.outcome_response(req, rig.ctx)  # the real outcome path, same feed, same snapshot
+    assert set(calls.values()) == {1}  # the outcome route read the planned-entry route's forward
+    other = Rig(book=True, owner="user-2")
+    await other.post()
+    assert all(v == FEEDS for v in calls.values())  # another feed computes its own

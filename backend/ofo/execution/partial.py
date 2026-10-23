@@ -67,7 +67,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
+
+if TYPE_CHECKING:  # a type only: no gate here reads a broker flag (REQ-117 AC-5)
+    from ofo.broker.flags import FlagSet
 
 from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 from ofo.engine import Action, Leg, Strategy, strategy_metrics
@@ -166,6 +169,11 @@ class BrokerReader(Protocol):
 
     Each read returns its lines AND the tz-aware time the broker was read.
     """
+
+    @property
+    def capabilities(self) -> FlagSet:
+        """The broker's named capability flags (REQ-117 AC-1); a feature asks a flag, never the broker's name."""
+        ...
 
     def fetch_positions(self, strategy_id: str) -> tuple[Sequence[BrokerPositionLine], datetime.datetime]: ...
 

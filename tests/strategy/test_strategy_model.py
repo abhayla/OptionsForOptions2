@@ -83,7 +83,7 @@ def test_match_returns_template_and_parameters():
         overrides={"p": 3, "q": 4, "w_put": 5, "w_call": 5},
     )
     result = match(strategy, spot=SPOT, strike_gap=GAP, templates=CATALOGUE)
-    assert result.label == "Iron Condor"
+    assert result.label == "Short Iron Condor"
     assert dict(result.params) == {"p": 3, "q": 4, "w_put": 5, "w_call": 5}
     assert result.base_quantity == 75
 

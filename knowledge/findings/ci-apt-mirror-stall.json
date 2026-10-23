@@ -1,0 +1,37 @@
+{
+ "id": "ci-apt-mirror-stall",
+ "scope": "generic",
+ "class": "A CI step that installs system packages with apt on a hosted runner can spend its whole timeout on one stalled mirror download, because apt's default per-request timeout is long and it retries the same slow fetch; the job fails red with no code defect, and a re-run is the only recovery unless apt is told to fail over fast.",
+ "mechanism": "`npx playwright install-deps chromium` runs apt-get; a fetch from azure.archive.ubuntu.com stalls (log shows `Ign:` then the same `Get:` again) and the step hits timeout-minutes 12.",
+ "first_seen": {
+  "date": "2026-10-23",
+  "where": "PR #525 app-tests frontend job, run 39950471622 (d99b2097), step 'Install Playwright system deps only (cache hit)'",
+  "evidence": "log tail: Ign:7 / Ign:9 / Ign:13 on noble mirrors, then '##[error]The action ... has timed out after 12 minutes.'"
+ },
+ "fix": "Fix 1 (3cb151da, short apt timeouts and retries) did NOT hold: the timeout counts only silence and the mirror method fails over per file, so every index file still waited on the Azure mirror first (run 39972212143: Ign on azure for InRelease and 6 Packages/Translation files, then the 12-minute timeout). Second occurrence -> independent review (Sonnet, fresh): the defect is the runner's `mirror+file:/etc/apt/apt-mirrors.txt` source list putting Azure first for every file. Fix 2: a step before the Playwright installs rewrites /etc/apt/sources.list.d/ubuntu.sources (and sources.list) to http://archive.ubuntu.com/ubuntu/ and fails if any mirror-list entry survives. The review's first choice (skip apt when `install-deps --dry-run` shows nothing missing) was not taken: the flag is unverified and output parsing adds a failure mode. Remaining risk: Canonical's archive itself slow.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["tests/test_app_workflow_apt_direct.py"],
+  "note": "The repo test asserts every job with a `playwright install` step has an earlier sources-rewrite step that proves itself (`! grep`); red on the fix-1 workflow (flags frontend and execute-screen-e2e), green on fix 2. Not covered: whether the archive is reachable on a given run - the next CI run is the proof."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39950471622, frontend job",
+   "evidence": "timed out after 12 minutes on apt downloads"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39953102150 (11b950d8), execute-screen-e2e job",
+   "evidence": "same step, same 12-minute timeout"
+  },
+  {
+   "date": "2026-10-23",
+   "where": "PR #525 run 39972212143 (1a349d52), frontend job, AFTER fix 1",
+   "evidence": "Ign:2-5 azure InRelease twice, Hit:2 https://archive.ubuntu.com, then Ign:10-15 azure Packages/Translation, then timed out after 12 minutes"
+  }
+ ]
+}

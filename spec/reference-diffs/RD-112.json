@@ -1,0 +1,15 @@
+{
+  "id": "RD-112",
+  "kind": "COPY",
+  "title": "Warn before unsaved legs are discarded (G-16-7)",
+  "reference_behaviour": "Before discarding unsaved trades or leaving edit mode, the user is warned that there are unsaved changes.",
+  "reference_screens": ["screen 118"],
+  "reference_label": "You have Unsaved changes",
+  "ours": "NEW AC NEEDED: no guard found; opening a saved strategy over unsaved legs replaces them silently. REQ-079 AC-5 covers only Replace from the ready-made panel.",
+  "req": "REQ-134",
+  "row": 29,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

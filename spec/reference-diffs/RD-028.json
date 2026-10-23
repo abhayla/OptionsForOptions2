@@ -1,0 +1,15 @@
+{
+  "id": "RD-028",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Flags carry source and date, and an unknown or failed load means off (row 4 match line, ours stricter)",
+  "reference_behaviour": "Flags are fixed constants in code; what happens when they cannot be loaded is not known from the study.",
+  "reference_screens": ["catalogue 246"],
+  "ours": "REQ-117 AC-2, AC-4, AC-5: each flag has a source and date, a missing, unknown or failed read is off, flags never loosen a gate. Kept as stricter safety, ADR-152 exception (a).",
+  "req": "REQ-117",
+  "adr": "ADR-152",
+  "row": 4,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

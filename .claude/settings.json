@@ -17,6 +17,15 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\" --session-start"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/adr178_start.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
       }
     ],
     "Stop": [
@@ -158,6 +167,19 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/link_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          },
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/kill_by_name_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/question_night_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       },

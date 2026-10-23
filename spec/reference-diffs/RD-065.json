@@ -1,0 +1,15 @@
+{
+  "id": "RD-065",
+  "kind": "COPY",
+  "title": "Reconnect jitter: up to 1 s in the reference product, up to 50% of the wait in ours (row 11 gap G-11-1)",
+  "reference_behaviour": "The live-price socket in the browser waits a capped, doubling delay before each reconnect and adds a random spread of at most one second to it (bundle-findings 6.1; no screen shows it).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "SPEC CHANGE: REQ-114 AC-3 (approved) adds random jitter of up to 50% of the wait, so up to 15 s at the 30 s cap; copying means at most 1 s.",
+  "req": "REQ-114",
+  "ac": "AC-3",
+  "row": 11,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

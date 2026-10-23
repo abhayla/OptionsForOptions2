@@ -1,0 +1,15 @@
+{
+  "id": "RD-029",
+  "kind": "NO-SCREEN",
+  "title": "Wording when a broker capability is off (row 4 study gap)",
+  "reference_behaviour": "No flag-off screen was found (searched capability, supported, intraday flag, feature flag); only the no-broker trade tooltip exists.",
+  "reference_screens": [],
+  "ours": "Ours reads Margin from the broker is not available for this account, naming no broker. Owner to capture any reference screen for a feature a broker lacks.",
+  "req": "REQ-117",
+  "row": 4,
+  "status": "deferred",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23",
+  "issue": 529
+}

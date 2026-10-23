@@ -1,0 +1,15 @@
+{
+  "id": "RD-050",
+  "kind": "MATCH",
+  "title": "An old answer is never shown over a newer one (row 7 match)",
+  "reference_behaviour": "Replies carry a request id and an older reply is dropped so it never overwrites a newer one.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-049 AC-4: a stale reply cannot show as live; monitoring shows paused.",
+  "req": "REQ-049",
+  "ac": "AC-4",
+  "row": 7,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

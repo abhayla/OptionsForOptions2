@@ -1,0 +1,15 @@
+{
+  "id": "RD-015",
+  "kind": "MATCH",
+  "title": "Zerodha login only on Zerodha's own page, no key or secret screens (row 2 match)",
+  "reference_behaviour": "The user logs in with Zerodha on Zerodha's own page; no developer key or secret is ever asked for.",
+  "reference_screens": ["screen 180"],
+  "ours": "REQ-015 AC-3 and ADR-169: connect by Zerodha login through the platform's app.",
+  "req": "REQ-015",
+  "ac": "AC-3",
+  "row": 2,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

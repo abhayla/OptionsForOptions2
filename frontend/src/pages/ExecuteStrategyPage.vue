@@ -98,6 +98,7 @@ async function prepare(action) {
 <template>
   <section class="p-4" data-testid="execute-screen" :data-phase="phase">
     <h1 class="text-xl font-semibold" data-testid="page-title">Execute Strategy {{ strategyId ?? '' }}</h1>
+    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
 

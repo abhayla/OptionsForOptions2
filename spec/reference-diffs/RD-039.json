@@ -1,0 +1,17 @@
+{
+  "id": "RD-039",
+  "kind": "COPY",
+  "title": "Socket watchdog constants: 15 s ping, 60 s silence, 30 s back-off cap (row 6 gap G-06-1)",
+  "reference_behaviour": "The price socket pings every 15 s, reconnects after 60 s of silence, backs off to at most 30 s with a random spread, and retries every 5 s while offline (bundle-findings 6.1).",
+  "reference_screens": [
+    "catalogue 012"
+  ],
+  "ours": "Built in 799b16ab (verified in code, chunk 1): CHECK_EVERY 15 s, SILENT_AFTER 60 s, BACKOFF_MAX 30 s with jitter (backend/ofo/marketdata/reconnect_policy.py:12-19), used by backend/ofo_app/kite_ws.py:188.",
+  "req": "REQ-114",
+  "ac": "AC-1",
+  "row": 11,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -26,7 +26,8 @@ from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
-from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -39,7 +40,7 @@ Reason = Literal["not_connected", "no_live_price", "unknown_instrument", "wrong_
 
 class PlannedEntryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     instrument_ids: list[InstrumentIdIn] = Field(min_length=1, max_length=20)
 
 
@@ -75,7 +76,7 @@ def _no_listener(_quote) -> None:  # the route only waits for the book to fill; 
 
 def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
-    snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate)
+    snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
     priced = {i: planned_entry_of(snapshot.legs[i].quote) for i in ids if snapshot.legs[i].problem is None}
     return valuation, snapshot, priced
 

@@ -1,0 +1,16 @@
+{
+  "id": "RD-061",
+  "kind": "NO-SCREEN",
+  "title": "What a user sees when the broker session ends at the daily expiry (row 9 study gap SG-9)",
+  "reference_behaviour": "Not observed: the study never caught the daily broker session expiry, so the screen shown then is unknown.",
+  "reference_screens": [],
+  "ours": "REQ-113 AC-8: sockets close at 06:00 and strategies show Monitoring paused - reconnect Zerodha. Owner to capture the reference screen after the daily expiry.",
+  "req": "REQ-113",
+  "ac": "AC-8",
+  "row": 9,
+  "status": "deferred",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23",
+  "issue": 529
+}

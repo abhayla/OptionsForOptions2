@@ -26,7 +26,26 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
     "ofo/instruments/downloader.py": frozenset({("GET", "/instruments")}),
     "ofo_app/kite_margin.py": frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
     "ofo_app/kite_reads.py": frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"),
-                                        ("GET", "/portfolio/holdings"), ("GET", "/quote")}),
+                                        ("GET", "/portfolio/holdings"), ("GET", "/quote"),
+                                        ("GET", "/user/profile")}),
+}
+
+#: (METHOD, path template) -> (rate-limit group, retry-safe read). An ALLOW-LIST like ``ALLOWED_CALLS`` (REQ-118):
+#: a call with no entry here is refused at the door. ``True`` = a read (a 429 may be retried after the
+#: cooldown, at most twice);
+#: ``False`` = a call that creates something at Zerodha (never retried, AC-5). ``POST /margins/basket`` only reads.
+ENDPOINT_GROUPS: Final[dict[tuple[str, str], tuple[str, bool]]] = {
+    ("POST", "/session/token"): ("other", False),
+    ("GET", "/instruments/historical/{token}/minute"): ("historical", True),
+    ("GET", "/instruments"): ("other", True),
+    ("GET", "/user/margins"): ("other", True),
+    ("POST", "/margins/basket"): ("other", True),
+    ("GET", "/orders"): ("other", True),
+    ("GET", "/trades"): ("other", True),
+    ("GET", "/portfolio/positions"): ("other", True),
+    ("GET", "/portfolio/holdings"): ("other", True),
+    ("GET", "/quote"): ("quote", True),
+    ("GET", "/user/profile"): ("other", True),
 }
 
 #: door module -> the network-capable modules (and their submodules) that door alone may import.
@@ -40,4 +59,4 @@ NETWORK_DOORS: Final[dict[str, frozenset[str]]] = {
     "ofo/broker/egress.py": frozenset({"socket"}),  # the gate itself: address-family constants and one getaddrinfo
 }
 
-__all__ = ["ALLOWED_CALLS", "KITE_API_HOST", "KITE_WS_HOST", "NETWORK_DOORS"]
+__all__ = ["ALLOWED_CALLS", "ENDPOINT_GROUPS", "KITE_API_HOST", "KITE_WS_HOST", "NETWORK_DOORS"]

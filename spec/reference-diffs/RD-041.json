@@ -1,0 +1,14 @@
+{
+  "id": "RD-041",
+  "kind": "MATCH",
+  "title": "Shared feed fan-out, no vendor subscription per user (row 6 match)",
+  "reference_behaviour": "The relay is keyed by broker and fans prices out; there is no vendor subscription per user.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-048: provider streams are shared and fanned out internally.",
+  "req": "REQ-048",
+  "row": 6,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

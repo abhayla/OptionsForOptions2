@@ -24,7 +24,7 @@ vi.mock('@/composables/useStrategyLive', () => ({
   useStrategyLive: (opts) => {
     live.onPush = opts.onPush
     live.onDown = opts.onDown
-    return { status: { value: 'off' }, follow: live.follow, stop: () => {} }
+    return { status: { value: 'off' }, reconnecting: { value: false }, follow: live.follow, stop: () => {} }
   },
 }))
 

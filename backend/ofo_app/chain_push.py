@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from ofo.errors import render
+from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
@@ -57,7 +57,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext
+from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
+from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class ChainRequest(BaseModel):
     """What the chain socket's client sends (and the REST read's query): one underlying, one expiry, a strike count."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     expiry: datetime.date
     strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
 
@@ -125,7 +126,7 @@ class ChainRowOut(ApiModel):
 
 class ChainOut(ApiModel):
     state: Literal["LIVE", "NOT_CONNECTED"]
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     expiry: datetime.date
     spot: Money | None  # the underlying index price (REQ-029 AC-8); None when missing or not live
     spot_at: datetime.datetime | None
@@ -135,6 +136,10 @@ class ChainOut(ApiModel):
     rows: list[ChainRowOut]  # ascending strike (REQ-029 AC-1: Calls | Strike | Puts)
     #: ADR-088: when the server produced THIS answer (aware)
     answered_at: datetime.datetime
+    #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the screen shows the one market-closed banner)
+    market_closed: bool
+    #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
+    last_price_at: datetime.datetime | None
 
 
 @dataclass(frozen=True)
@@ -333,10 +338,12 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
     does not know, shown unavailable."""
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
+    state = market_state(ctx, answered_at)
     if ctx is None or not live:
         return ChainOut(state="NOT_CONNECTED", underlying=req.underlying, expiry=req.expiry, spot=None,
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
-                        atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at)
+                        atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at,
+                        market_closed=state.closed, last_price_at=state.last_price_at)
     spot = live_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
     missing = _rows_missing(catalogue, req.expiry, window)
@@ -348,7 +355,7 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
         rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
-        answered_at=answered_at)
+        answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at)
 
 
 def _shown_state(body: ChainOut) -> tuple:
@@ -379,6 +386,7 @@ class ChainPush:
         self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
+        self._error_message: UserFacingError | None = None  # the catalogue message the pending error reply carries
         self._error_due = False  # invalid client messages since the last error reply: answered with ONE error, gated
         self._error_since: float | None = None  # when the pending error reply became due: aged ones beat a push
         self._last_error: float | None = None  # the last error reply: at most one every ERROR_REPLY_SECONDS
@@ -411,7 +419,8 @@ class ChainPush:
     def _take_message(self, raw: Any) -> None:
         try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
-        except ValidationError:
+        except ValidationError as exc:
+            self._error_message = refusal_of(exc.errors()) or render("user_input_request_invalid")
             if not self._error_due:
                 self._error_since = self._monotonic()
             self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
@@ -530,7 +539,7 @@ class ChainPush:
 
     async def _send_error(self) -> None:
         self._error_due, self._error_since = False, None
-        await self._emit(render("user_input_request_invalid"))
+        await self._emit(self._error_message or render("user_input_request_invalid"))
         self._last_error = self._monotonic()
 
     async def run(self) -> None:

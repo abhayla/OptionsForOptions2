@@ -9,15 +9,22 @@ Rule here: while a feed is connected and a data frame or heartbeat arrived withi
 is available; beyond that every contract of that feed is stale; disconnected longer than the reconnect window, never
 connected, or session ended: unavailable. A contract's own last change time is kept (``QuoteBook``) as information
 and is never a health input. Provider-agnostic: any provider with a live connection can use ``FeedState``.
+
+Outside market hours (ADR-119 calendar, REQ-114 AC-7) the feed is never live, whatever frames arrive: ``health`` is
+STALE and ``phase`` is ``FEED_MARKET_CLOSED`` (a session ended or a capped socket still say so). The calendar is read
+HERE, the one quote-health path, so every quote, answer and screen built on a ``FeedState`` inherits it (class
+market-state-decided-per-surface); a date the calendar cannot answer reads closed (``is_market_open`` fails closed).
 """
 from __future__ import annotations
 
 import dataclasses
 import datetime
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
 from ofo.engine.executable_price import Depth
+from ofo.market_calendar import is_market_open
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
@@ -30,16 +37,35 @@ RECONNECT_WINDOW = datetime.timedelta(seconds=30)
 MAX_KEPT_TIMES = 20_000
 
 
+#: What the live feed is doing, in closed words (REQ-015 AC-4 live row, REQ-049 window): ``healthy`` = connected and
+#: a price frame inside ``feed_stale``; ``waiting`` = connected but no price frame yet (a heartbeat alone proves
+#: nothing about prices) or frames stopped beyond ``feed_stale``; ``reconnecting`` = not connected (backoff, or never
+#: connected); ``ended`` = the Zerodha session ended (403).
+FEED_HEALTHY, FEED_WAITING, FEED_RECONNECTING, FEED_ENDED = "healthy", "waiting", "reconnecting", "ended"
+#: connected with nothing subscribed (the caller knows the subscriptions): nothing is expected to arrive.
+FEED_IDLE = "idle"
+#: the feed refused this user's socket over Zerodha's connection cap (REQ-113 AC-6, ADR-170): no prices will arrive.
+FEED_CAPPED = "capped"
+#: outside market hours (ADR-119 calendar, REQ-114 AC-7): silence is expected, so the feed reads "market closed - last
+#: price <time>" (``ofo.marketdata.disconnect.market_closed_message``), never "waiting" or "reconnecting".
+FEED_MARKET_CLOSED = "market_closed"
+
+
 class FeedState:
-    """Connection and activity of ONE feed. Times are passed in (no clock here)."""
+    """Connection and activity of ONE feed. Times are passed in (no clock here). ``market_open`` is the ADR-119
+    calendar's answer for a time (tests inject one; production reads ``market_calendar.is_market_open``)."""
 
     def __init__(self, *, feed_stale: datetime.timedelta = FEED_STALE,
-                 reconnect_window: datetime.timedelta = RECONNECT_WINDOW) -> None:
+                 reconnect_window: datetime.timedelta = RECONNECT_WINDOW,
+                 market_open: Callable[[datetime.datetime], bool] = is_market_open) -> None:
         self.feed_stale = feed_stale
+        self._market_open = market_open
         self.reconnect_window = reconnect_window
         self.connected = False
         self.session_ended = False
+        self.capped = False
         self._last_activity: datetime.datetime | None = None
+        self._last_tick_frame: datetime.datetime | None = None  # a PRICE frame only; heartbeats never move it (``phase``)
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
 
@@ -56,6 +82,7 @@ class FeedState:
     def on_data(self, now: datetime.datetime) -> None:
         """A well-formed data frame with at least one tick arrived: quotes are current again."""
         self._last_activity = now
+        self._last_tick_frame = now
         self._awaiting_data = False
 
     def on_disconnected(self, now: datetime.datetime) -> None:
@@ -69,9 +96,42 @@ class FeedState:
         self.session_ended = True
         self._disconnected_at = now
 
+    def set_capped(self, capped: bool) -> None:
+        """The feed's own word that it refused this user's socket over a Zerodha cap (read from its status)."""
+        self.capped = capped
+
+    @property
+    def last_price_at(self) -> datetime.datetime | None:
+        """When the last PRICE frame arrived (a heartbeat is not a price); None if none ever did."""
+        return self._last_tick_frame
+
+    def market_closed(self, now: datetime.datetime) -> bool:
+        """REQ-114 AC-7: the ADR-119 calendar says the market is not open at ``now`` (closed, or a date it cannot
+        answer: fail closed). The ONE market-state answer every quote health, feed phase and price answer reads."""
+        return self._market_open(now) is not True
+
+    def phase(self, now: datetime.datetime) -> str:
+        """One of ``FEED_HEALTHY / WAITING / RECONNECTING / ENDED / CAPPED / MARKET_CLOSED``. A closed market
+        (``market_closed``) reads ``FEED_MARKET_CLOSED`` (REQ-114 AC-7) whatever frames arrive, unless the session
+        ended or the feed is capped, which still say so. ``healthy`` only when a PRICE frame arrived within
+        ``feed_stale``: heartbeats (1 byte, every second) prove the link, never prices, so they cannot keep it healthy
+        (unlike ``health``, which a quiet contract may keep AVAILABLE on heartbeats, F-32)."""
+        if self.session_ended:
+            return FEED_ENDED
+        if self.capped:
+            return FEED_CAPPED
+        if self.market_closed(now):
+            return FEED_MARKET_CLOSED
+        if not self.connected:
+            return FEED_RECONNECTING
+        fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale
+        return FEED_HEALTHY if fresh and not self._awaiting_data else FEED_WAITING
+
     def health(self, now: datetime.datetime) -> DataHealth:
         if self.session_ended:
             return DataHealth.UNAVAILABLE
+        if self.market_closed(now):
+            return DataHealth.STALE  # REQ-114 AC-7 / ADR-015: a closed market's last price is never shown as live
         if not self.connected:
             if self._disconnected_at is None:
                 return DataHealth.UNAVAILABLE  # never connected
@@ -80,6 +140,15 @@ class FeedState:
         if self._awaiting_data or self._last_activity is None or now - self._last_activity > self.feed_stale:
             return DataHealth.STALE
         return DataHealth.AVAILABLE
+
+
+def market_closed_for(source: object, now: datetime.datetime) -> bool:
+    """REQ-114 AC-7: the ONE market-state answer for ANY provider shape. A provider (or relay) with a
+    ``FeedState`` answers through ``FeedState.market_closed`` (the same answer its quote healths read); one without
+    (the bus-mode ``FeedRelay``, a test fake, no provider at all) gets the calendar ``FeedState`` defaults to
+    (fail closed)."""
+    closed = getattr(getattr(source, "feed", None), "market_closed", None)
+    return (not is_market_open(now)) if closed is None else bool(closed(now))
 
 
 def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuote:

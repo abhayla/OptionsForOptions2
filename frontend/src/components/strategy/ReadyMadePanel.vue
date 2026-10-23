@@ -7,6 +7,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { UNDERLYINGS } from '@/lib/underlyings'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { useHeldFeature } from '@/lib/heldFeatures'
@@ -84,8 +85,7 @@ onMounted(async () => {
     <div class="mt-2 flex flex-wrap items-end gap-3 text-sm">
       <label>Underlying
         <select :value="underlying" :disabled="underlyingLocked" class="ml-1 rounded border border-line p-1" data-testid="rm-underlying" @change="onUnderlying($event.target.value)">
-          <option value="NIFTY">NIFTY</option>
-          <option value="SENSEX">SENSEX</option>
+          <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
         </select>
       </label>
       <label>Expiry

@@ -156,8 +156,8 @@
     "reviewed": "owner read 2026-10-08"
   },
   "gate_broker_not_connected": {
-    "sha256": "97b63566c5a01205721b9e0cdef6b7b3ff0c1c94412dd1d4e2e77d5b2c21be34",
-    "reviewed": "owner read 2026-10-08"
+    "sha256": "6308e1db36dcbabfb68afa5e57df381d2a7d706fb2531ba9e186a964aafdd48e",
+    "reviewed": "pending owner read"
   },
   "gate_session_unconfirmed": {
     "sha256": "0f11ff56a270948befa6cfdcb34103e8c9aa5b160c63c406c0f7992f3c7fc974",
@@ -166,6 +166,10 @@
   "gate_session_expired": {
     "sha256": "d0b36f554ef44ae8da91ad82ce7c628e01d9b9c938ecb3c7a9c6d3e07f90ee7e",
     "reviewed": "owner read 2026-10-08"
+  },
+  "gate_zerodha_busy": {
+    "sha256": "8a3a50cae2593ab88d84c7acf1793b66c0c79cda7e3ca2f98c04cae055ac9e6f",
+    "reviewed": "pending owner read"
   },
   "gate_margin_unconfirmed": {
     "sha256": "021eb04a8fcc3f0f640e742c05828bf7a163530352a5ad2fc8e1924182cea4c2",
@@ -277,6 +281,10 @@
   },
   "marketdata_disconnected": {
     "sha256": "a87e6f1bded6de61cf847696a990b1061ab3015635ee40eb59b1c530c7f99d9e",
+    "reviewed": "pending owner read"
+  },
+  "marketdata_market_closed": {
+    "sha256": "83b71e7f7688576d21e41ef2199867d5c49d4be3b485949618b2d2f2e1da96fa",
     "reviewed": "pending owner read"
   },
   "send_request_not_from_sink": {
@@ -1023,6 +1031,10 @@
     "sha256": "397de18d6ed7dec7b5830dd70004d173e2a7cdaba1ae278b3bbdd5750ef4b0b6",
     "reviewed": "pending owner read"
   },
+  "explanation:outcome_margin_busy": {
+    "sha256": "e90a70836d3f15d84e47cff8c5cb38c516ae821a283a25c41824db5c1763a817",
+    "reviewed": "pending owner read"
+  },
   "explanation:outcome_margin_no_basket": {
     "sha256": "8e8130567abe418582b983907deb156d30ac522f1a72c20986bc387b16904af7",
     "reviewed": "pending owner read"
@@ -1453,6 +1465,18 @@
   },
   "explanation:ready_made_fixed_rule_label": {
     "sha256": "fd98968c08bd3b7eff12e3471002c112d6064cbf0596c55cdb11361337dd7a27",
+    "reviewed": "pending owner read"
+  },
+  "strategy_restore_after_execution": {
+    "sha256": "ee128d855aa2ab80b1b26cbfed20dc6f0ebcbf1172ac9dcc57e2d74c0997cdca",
+    "reviewed": "pending owner read"
+  },
+  "strategy_version_pending": {
+    "sha256": "ddf9c1cf9549fe3e62f4b3d9e67cb5c8b27d3931c19e93e6e0ea396cdf3f4e78",
+    "reviewed": "pending owner read"
+  },
+  "strategy_reconciliation_required": {
+    "sha256": "2cbf1b075a315c2eec0628517cc73fed232d722810c315b6ddb8819357c1bb1f",
     "reviewed": "pending owner read"
   }
 }

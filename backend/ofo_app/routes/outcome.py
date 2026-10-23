@@ -24,7 +24,9 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
+from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
+from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
@@ -38,8 +40,12 @@ from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
+#: The one process-wide cache of market-wide figures (REQ-050); keyed by feed owner, so one user's feed never serves
+#: another's. Only market-wide figures go in; strategy maths never does (tests/marketdata/test_scale_classes.py).
+SHARED_COMPUTE = SharedCompute()
 log = logging.getLogger("ofo_app.outcome")
 
 # A loaded rate set is reused for 300 s (rates change by a dated admin row, so a few minutes of lag is harmless and the
@@ -135,6 +141,34 @@ class MarketContext:
     provider: MarketDataProvider
     clock: Callable[[], datetime.datetime]
     rate: Decimal
+    #: whose Zerodha feed this is (ADR-053): part of every shared-cache key, so two users' feeds never share. None (a
+    #: test or replay context with no owner) means nothing is shared: every reader computes for itself.
+    feed_owner: str | None = None
+
+
+@dataclass(frozen=True)
+class MarketState:
+    """REQ-114 AC-7 / ADR-177: what every price answer carries about the market. ``closed``: the ADR-119 calendar says
+    the market is not open at the answer's time (a date it cannot answer reads closed); ``last_price_at``: when the
+    feed's last PRICE frame arrived (never a heartbeat), the time the market-closed and reconnecting texts show."""
+
+    closed: bool
+    last_price_at: datetime.datetime | None
+
+
+def market_state(ctx: MarketContext | None, at: datetime.datetime) -> MarketState:
+    """The ONE market-state read behind the outcome, chain and index answers (class market-state-decided-per-surface):
+    the provider's own feed answers (``FeedState.market_closed``, which also sets every quote's health); a provider
+    with no feed state, or no context at all, gets the same calendar function the feed defaults to (fail closed)."""
+    provider = None if ctx is None else ctx.provider
+    return MarketState(closed=market_closed_for(provider, at),
+                       last_price_at=getattr(getattr(provider, "feed", None), "last_price_at", None))
+
+
+def feed_scope(ctx: MarketContext) -> FeedScope | None:
+    """The shared-cache scope of ``ctx``'s feed (REQ-050 AC-1/AC-3, ADR-053), or None when there is no feed owner. Every
+    route that reads a market snapshot takes its scope here, so none bypasses the shared cache."""
+    return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
 def get_market_context() -> Optional[MarketContext]:
@@ -158,7 +192,7 @@ class LegIn(BaseModel):
 
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
@@ -241,7 +275,7 @@ class RowOut(ApiModel):
 
 
 class TableOut(ApiModel):
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     output_label: Optional[CatalogueText]
@@ -335,7 +369,7 @@ class AdvancedLegOut(ApiModel):
 
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     ux_level: Literal["guided", "standard", "advanced"]
     status_label: Optional[CatalogueText]
     reason: Optional[CatalogueText]
@@ -343,6 +377,10 @@ class OutcomeResponse(ApiModel):
     valuation: Optional[datetime.datetime]
     #: ADR-088: when the server produced THIS answer (aware, UTC) in every state; the page shows it as "Checked at"
     answered_at: datetime.datetime
+    #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the page shows the one market-closed banner)
+    market_closed: bool
+    #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
+    last_price_at: datetime.datetime | None
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     legs: list[LegOut]
@@ -430,9 +468,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         answered_at = now()
         out = not_connected(definition, ux, None, stored)
     else:
-        valuation = answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
+        answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
+        shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
-                                 valuation, ctx.rate)
+                                 answered_at, ctx.rate, shared)
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
@@ -440,12 +479,14 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
             out = not_live(definition, snapshot, ux)
         else:
             config, override = req.scenario_choice()
-            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+            out = build_outcome(definition, snapshot, ux, snapshot.valuation, view=View(req.view), rates=rates,
+                                config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)
     body["answered_at"] = answered_at
+    state = market_state(ctx, answered_at)
+    body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if ctx is not None and ux is UXLevel.ADVANCED and not live_blocked:  # not live: no frozen bid/ask either  # the UX gate: nothing else ever carries bid/ask

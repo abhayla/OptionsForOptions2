@@ -465,6 +465,42 @@ async def test_ac3_fix1_a_token_reused_in_the_same_list_never_repoints_the_old_c
             await trans.rollback()
 
 
+async def test_ac3_attack_7_token_61746_reused_after_expiry_the_retired_row_never_shadows_the_live_one(
+    app_engine: AsyncEngine,
+) -> None:
+    """Attack 7 (W-133, scheduled reload): 61746 is live as NIFTY 20550 CE of 2026-08-25; the list of 2026-09-30 (after
+    that expiry) gives the token to NIFTY 23000 CE of 2029-12-24. The old row is retired, the new row is live, and a
+    SECOND load of the same list (the scheduler's next run) changes nothing: the token still resolves to the live row,
+    the catalogue carries only the live terms, and the retired row stays retired and unlisted."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            others = _fillers(9) + _fillers(2, first_token=200001, expiry=date(2029, 12, 24))
+            expired = _row(61746, date(2026, 8, 25), "20550", "CE", "NIFTY26AUG20550CE")
+            # the shared test catalogue may hold a real list (#497): the first load is forced (rolled back)
+            await apply_update(conn, [*others, expired], as_of=_as_of(date(2026, 8, 20)),
+                               force=True, reason="test: replace a shared real list", actor="test")
+            old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
+            assert old_id is not None
+            first = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)))
+            assert (first.added, first.retired) == (1, 1)
+            token = InstrumentId("NSE_FO", 61746)
+            new_id = await live_contract_id(conn, token)
+            assert new_id is not None and new_id != old_id
+
+            again = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)) + timedelta(hours=2))
+            assert (again.added, again.retired, again.delisted, again.revised) == (0, 0, 0, 0)
+            assert await live_contract_id(conn, token) == new_id  # the reload does not move the live pointer
+            rows = {r[0]: r for r in await _contracts(conn, 61746)}
+            assert rows[old_id][1:] == (date(2026, 8, 25), Decimal("20550.00"), "CE", True, False)
+            assert rows[new_id][1:] == (date(2029, 12, 24), Decimal("23000.00"), "CE", False, True)
+            live = {e.id: e.contract for e in (await load_catalogue(conn)).all_entries()}
+            assert (live[token].strike, live[token].expiry) == (Decimal("23000.00"), date(2029, 12, 24))
+            assert (await load_contract(conn, old_id)).retired  # a leg linked to the old id still resolves, as retired
+        finally:
+            await trans.rollback()
+
+
 async def test_ac3_retirement_and_retired_rows_are_held_by_the_database(admin_engine: AsyncEngine) -> None:
     """AC-3 database guards, as the owner (who bypasses grants): a live (unexpired) contract cannot be retired; a
     retired contract cannot be un-retired or revised; its broker row never changes; a broker row cannot be added to it."""

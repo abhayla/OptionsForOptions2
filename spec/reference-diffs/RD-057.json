@@ -1,0 +1,17 @@
+{
+  "id": "RD-057",
+  "kind": "COPY",
+  "title": "Browser reconnect adds a random spread of up to 1 s (row 9 gap G-9-1)",
+  "reference_behaviour": "The browser's reconnect delay gets a random spread of up to one second, so many open tabs do not reconnect in the same second (bundle-findings 6.1).",
+  "reference_screens": [
+    "catalogue 012"
+  ],
+  "ours": "Built in bf59ec1f as REQ-113 AC-10: every browser reconnect wait adds a random spread of up to 1 s (frontend/src/composables/useStrategyLive.js, reconnectWait). Was: a flat 1 s for 30 attempts, so every open tab reconnected at once.",
+  "req": "REQ-113",
+  "ac": "AC-10",
+  "row": 9,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

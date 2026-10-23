@@ -830,3 +830,75 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (setting `INSTRUMENT_LIST_PUBLISH_IST`, backend/ofo/timeutil.py on branch gc6/instr-fresh). No exact generation time
   is published; 08:30 is the documented fetch time. Not a rule change. Status: **measured from documentation; no live
   timing captured**.
+- Note 2026-10-22 (builder sequence row 5): the "not updated intraday" forum line conflicts with F-33, which MEASURED
+  108 NIFTY 13-Oct strikes at 08:05 and 236 at 14:39 in Kite's own list (2026-10-08). Measured data wins: REQ-053's
+  catalogue refresh keeps an hourly reload during market hours; its publish time and first load follow this finding
+  (session current from 08:30 IST, first scheduled load 08:35).
+
+## F-57 - Zerodha rule constants checked against Zerodha's current docs; a reported NIFTY freeze-limit rise to 3,510 is unconfirmed
+- Fetched 2026-10-22 (builder sequence row 5, REQ-053 AC-5; WebFetch summaries, not raw page reads):
+  - Matches: `QUOTE_LIMIT` 500 ("complete market data snapshot of up to 500 instruments in one go",
+    https://kite.trade/docs/connect/v3/market-quotes/; `/quote/ohlc` and `/quote/ltp` allow 1000);
+    `MAX_TOKENS_PER_CONNECTION` 3000 ("up to 3000 instruments on a single WebSocket connection", up to 3 connections
+    per API key, https://kite.trade/docs/connect/v3/websocket/); basket tag 8 ("alphanumeric, max 8 chars",
+    https://kite.trade/docs/connect/v3/publisher/); API order tag 20 ("alphanumeric, max 20 chars",
+    https://kite.trade/docs/connect/v3/orders/); Publisher basket at most 10 items (publisher page); order rate limits
+    400/minute, 10/second, 5000/day, 25 modifications per order (https://kite.trade/docs/connect/v3/exceptions/).
+  - Not stated: the order types and products the margins call accepts (the page says "MARKET, LIMIT etc." and gives
+    CNC/NRML examples; https://kite.trade/docs/connect/v3/margins/); exchange code NCO (absent from the user page).
+  - Freeze limit: Zerodha's bulletin for 2026-04-01 gives NIFTY 1,800
+    (https://zerodha.com/marketintel/bulletin/445684/quantity-freeze-limits-for-indices-from-april-01-2026), which the
+    code's fallback `DEFAULT_FREEZE_UNITS` = 1,755 follows (27 lots x 65, the largest lot multiple under 1,800 - 1, per
+    ADR-081). A third-party page (Choice India) reports NSE circular NSE/FAOP/76693 raising NIFTY to 3,510 from
+    2026-10-05; not confirmed on NSE or Zerodha. The live value comes from NSE's daily contract file (ADR-081), so the
+    fallback matters only when that file is missing.
+  - Market orders on options: Zerodha allows them only for the current and next weekly and monthly NIFTY/BANKNIFTY
+    contracts, not for deep ITM (> 5%) contracts, and on SENSEX only with OI over 500 lots
+    (https://support.zerodha.com/category/trading-and-markets/trading-faqs/articles/market-orders-monthly-options).
+    No source says options are limit-only.
+- Bears on: REQ-053 AC-5, ADR-081, REQ-073. Status: **measured from documentation; the 3,510 freeze limit open until
+  NSE's own file or circular is read** (the daily-file loader reads it live).
+
+## F-58 - The pure-Python Redis stand-in (fakeredis 2.40.0 TcpFakeServer) does not deliver pub/sub over the network; Streams work
+- Measured 2026-10-22 ~20:20 IST on the laptop (builder sequence row 9, REQ-113 AC-3 design), redis client 6.4.0:
+  over `TcpFakeServer`, PING/SET/GET work and SUBSCRIBE is confirmed, but PUBLISH returns 1 subscriber and the
+  subscriber's `get_message(timeout=3)` returns `None` (the message never arrives). Redis Streams work: `XADD` from a
+  second connection 0.5 s after a blocking `XREAD ... BLOCK 3000` started was received, at 2.54 s (the stand-in checks
+  for new data on a coarse timer; real Redis wakes at once). `srv.shutdown()` from the main thread hung past 120 s; exit
+  with the process instead.
+- Bears on: REQ-113 AC-3 (the bus is Redis per ADR-043) and the owner's rule that no server runtime is installed on the
+  laptop. Decision (orchestrator, technical, row 9, after an independent Opus design review): the bus uses Redis
+  Streams with a length cap and keys with an expiry (rebuildable state only), so the same code runs on real Redis in CI
+  and on the stand-in on the laptop. Not a rule change. Status: **measured on real runs**.
+
+## F-59 - Kite's 3-websocket limit is per API key across ALL users of one Kite Connect app, not per user
+- Read 2026-10-22 ~23:20 IST (builder sequence row 9, REQ-113 AC-6; WebFetch of the pages):
+  Kite docs (https://kite.trade/docs/connect/v3/websocket/): "Single API key can have upto 3 websocket connections."
+  Zerodha staff on the developer forum: "The 3 connections limit is per api_key and not based on user" and "A Kite
+  Connect app is enabled only for single user by default" (sujith, Sept 2021, asked whether 6 users with 6 tokens on one
+  app could open 18 connections, https://kite.trade/forum/discussion/10382/limit-of-number-of-websockets); "we suggest
+  not open more than 3 websocket connections per api_key" - more "will be blocked without intimation" (sujith, May 2022,
+  https://kite.trade/forum/discussion/11179/how-many-websocket-connection-per-kite-connect-app); for more connections
+  "create a new app and use that api_key" (sujith, Feb 2023, https://kite.trade/forum/discussion/12382/more-than-one-api-keys-in-same-subscription).
+  Not found: any Zerodha arrangement for a multi-user platform's websocket count.
+- Bears on: ADR-053 (each user's own feed in V1) - on ONE platform Kite Connect app, per-user sockets stop at 3 users;
+  F-31 (Zerodha grants multi-user access only after a demo; the owner's limits question was not answered); REQ-113 AC-6
+  (the cap is held as configuration: 3 per key). ADR-060 keeps the build on the owner's own app, so nothing breaks
+  today. Owner decision 2026-10-23: ADR-170 (keep per-user feeds; ask Zerodha at the multi-user demo). Status: **measured from documentation and staff answers**.
+
+## F-60 - Kite REST rate limits per endpoint group; a 429 starts a 10 s sliding cooldown; the scope of the read limits is unstated
+- Read 2026-10-23 ~07:40 IST (builder sequence row 10, REQ-118 AC-1; WebFetch summaries, not raw page reads):
+  https://kite.trade/docs/connect/v3/exceptions/ "API rate limit" table: "Quote | 1req/second", "Historical candle |
+  3req/second", "Order placement | 10req/second", "All other endpoints | 10req/second"; orders also 400 per minute and
+  5000 per day per user/API key, 25 modifications per order (as F-57); "429 | Too many requests to the API (rate
+  limiting)". Kite forum, rakeshr (staff), Oct 2022 edited Jul 2023: "There's a cooldown period of 10s that must be
+  respected whenever you receive a 429 Status Code", a sliding window, so requests during it extend it
+  (https://kite.trade/forum/discussion/11971/api-rate-limits); repeated breaches may get the app blocked for longer
+  (https://kite.trade/forum/discussion/11404/what-happens-after-i-hit-api-limit). Order limits are account (client ID)
+  level, "regardless of the number of app" (https://kite.trade/forum/discussion/15912/...).
+- Not found: whether the quote / historical / other limits count per api_key across all users or per user; the 429
+  reply's `error_type` and message; any Retry-After header.
+- Bears on: REQ-118 AC-1 (limits as configuration with source and date), AC-3 (bounded wait), AC-4 ("retried after the
+  wait Kite indicates" - Kite indicates 10 s, no header). Orchestrator decision (technical, row 10): the unstated scope is
+  taken as the stricter one, per api_key across all users (one bucket per group for the whole app), until Zerodha
+  states otherwise. Not a rule change. Status: **measured from documentation and staff answers**.

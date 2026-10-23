@@ -1,0 +1,16 @@
+{
+  "id": "RD-074",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "IV and Greeks from spot when no parity forward exists are labelled estimated from spot (G-12-3)",
+  "reference_behaviour": "No label marks an IV or Greek computed from a fallback price.",
+  "reference_screens": ["screen 012"],
+  "ours": "REQ-072 AC-3: IV and Greeks use each expiry's parity forward, else they are labelled estimated from spot. Decided by ADR-061.",
+  "req": "REQ-072",
+  "ac": "AC-3",
+  "adr": "ADR-061",
+  "row": 12,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

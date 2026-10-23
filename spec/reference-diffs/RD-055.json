@@ -1,0 +1,15 @@
+{
+  "id": "RD-055",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Market-wide figures shared per underlying across all users; ours shared only within one user's feed (row 8 gap G-8-1)",
+  "reference_behaviour": "Market-wide prices come from one cached answer per underlying with a version tag, served to every user alike (bundle-findings 6.1; users never see it).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "Shared computation is keyed by the feed owner and never crosses two users' feeds, because each user has their own Zerodha feed (ADR-053); REQ-050 AC-4 load tests stay deferred.",
+  "req": "REQ-050",
+  "adr": "ADR-053",
+  "row": 8,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

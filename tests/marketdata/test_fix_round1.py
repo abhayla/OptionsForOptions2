@@ -161,6 +161,7 @@ def test_poison_packet_is_counted_and_skipped_not_raised():
 def test_malformed_frame_is_not_activity():
     provider, clock, _items = new_provider()
     from _kite_fixture import recorded_frames
+    provider.subscribe(all_instrument_ids(_items))  # data counts only for held tokens (#513 item 1)
     provider.on_connected(T0)
     provider.on_frame(next(f for _, f in recorded_frames() if len(f) > 1), T0)
     cut = (1).to_bytes(2, "big") + (44).to_bytes(2, "big") + b"\x00" * 10

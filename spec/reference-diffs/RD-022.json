@@ -1,0 +1,14 @@
+{
+  "id": "RD-022",
+  "kind": "MATCH",
+  "title": "Margin shown as the broker reports it; a shortfall turns the figure red (row 3 match)",
+  "reference_behaviour": "Margin figures come from the broker; a shortfall only turns the number red with a warning in the builder.",
+  "reference_screens": ["screen 012"],
+  "ours": "The margin line shows Zerodha's figures as read and says when available funds are below the margin needed.",
+  "req": "REQ-054",
+  "row": 3,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

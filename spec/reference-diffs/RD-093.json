@@ -1,0 +1,14 @@
+{
+  "id": "RD-093",
+  "kind": "COPY",
+  "title": "Calendar ready-made buys the next monthly expiry (G-15-4)",
+  "reference_behaviour": "The calendar preset sells the near expiry and buys the next monthly expiry, so a NIFTY calendar is about a month wide.",
+  "reference_screens": ["catalogue 100"],
+  "ours": "NEW AC NEEDED: our calendar template buys the next listed expiry, so a NIFTY calendar is one week wide; REQ-079 AC-6 only refuses a missing expiry.",
+  "req": "REQ-079",
+  "row": 55,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -14,13 +14,25 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from ofo.broker import egress as _egress
+from ofo.broker import rate_limit as _rate_limit
 
-from ofo_app import errors, event_loop, execute_replay_switch, held_switches, live_market, pinned_clock, replay_mode
+from ofo_app import (
+    catalogue_refresh,
+    errors,
+    event_loop,
+    execute_replay_switch,
+    feed_mode,
+    held_switches,
+    live_market,
+    pinned_clock,
+    replay_mode,
+)
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     broker,
+    broker_capabilities,
     broker_status,
     catalogue,
     chain,
@@ -37,6 +49,7 @@ from ofo_app.routes import (
     strategies,
     strategy_templates,
     tracking,
+    zerodha_account,
 )
 
 log = logging.getLogger(__name__)
@@ -60,7 +73,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.  # noqa: BLE001
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
+    refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
     yield
+    await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
     if market is not None:
         live_market.set_current(None)  # a login arriving now finds no market (#296)
         await market.close()
@@ -76,6 +91,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     no environment value or flag skips it, and an audit hook cannot be removed."""
     _egress.install()
     config = broker_config if broker_config is not None else load_broker_config()
+    _rate_limit.install_app_key(config.api_key)  # REQ-118 AC-1: a keyless call (instrument file) uses the app's bucket
     # ADR-073: the framework docs page and API description exist only in development and test; in production
     # (and any other APP_ENV) they are not mounted, so they answer 404.
     docs: dict[str, None] = {} if app_env() in DOCS_ENVS else {
@@ -84,6 +100,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
     errors.set_frontend_origin(config.frontend_origin)  # write-once (#159)
+    feed_mode.require_valid(app_env() or "", live_market.live_requested())  # REQ-113: an allow-list, before serving
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
@@ -114,7 +131,9 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
     app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
     broker.mount(app, config)
+    app.include_router(broker_capabilities.router)  # W-132: the seven named broker flags (read-only, no DB)
     app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
+    app.include_router(zerodha_account.router)  # RD-013: masked Zerodha id + Zerodha's own margin (read only)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile

@@ -32,3 +32,11 @@ EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)
 EXPIRY_DAY_SETTLE_FROM: Final = datetime.time(15, 39)
 #: Minute history for a trading day is fetched up to this IST time (naive time), past the 15:30 close.
 HISTORY_FETCH_UNTIL: Final = datetime.time(15, 59)
+
+
+SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading weekdays
+
+
+
+# The market-hours check is NOT here: it needs the holiday calendar (ADR-119, REQ-114 AC-7), which this
+# standard-library-only constants module cannot read. The one check is `ofo.market_calendar.is_market_open`.

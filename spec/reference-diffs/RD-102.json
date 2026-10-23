@@ -1,0 +1,15 @@
+{
+  "id": "RD-102",
+  "kind": "MATCH",
+  "title": "A leg set that fits no shape is still a valid strategy (row 15 match)",
+  "reference_behaviour": "An unrecognised leg set stays valid and is labelled as unknown; width and hedge controls are disabled for it.",
+  "reference_screens": ["screen 011"],
+  "ours": "REQ-028 AC-4: it is a Custom Strategy with full analytics (Q52).",
+  "req": "REQ-028",
+  "ac": "AC-4",
+  "row": 15,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

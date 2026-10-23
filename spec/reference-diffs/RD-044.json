@@ -1,0 +1,15 @@
+{
+  "id": "RD-044",
+  "kind": "COPY",
+  "title": "Refresh prices button, prices-changed marker and Reset Prices (G-07-2)",
+  "reference_behaviour": "A round Refresh prices button re-runs the numbers with the latest data without changing entry prices; a small marker on a leg price says the live price moved; Reset Prices re-bases every leg to the current price and clears the markers.",
+  "reference_screens": ["screen 209", "screen 210", "screen 211"],
+  "ours": "SPEC CHANGE: REQ-135 AC-3 says there is no manual refresh button (prices are pushed). Marker and Reset Prices are REQ-077 AC-5, AC-6 (row 21), not built.",
+  "req": "REQ-135",
+  "ac": "AC-3",
+  "row": 27,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

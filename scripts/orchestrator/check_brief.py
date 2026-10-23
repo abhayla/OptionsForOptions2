@@ -13,12 +13,20 @@ Also (guard-set checks, exit 1): (a) some line must name all three literals `tes
 each exist as knowledge/findings/<id>.json;
 (c) any brief (any tier) whose first 10 lines mention a guard/door/gate/scan needs a line starting `Threat model:`
 (outside a code fence) that contains both `in scope` and `out of scope`.
+(d) a BUILDER brief (it has a `Standing items:` line; verifier and measure briefs do not) needs `Attack list:` followed
+by a numbered item (`1.`), and a `Budget:` line whose minutes/calls are a size pair from docs/process/row-review.md R3
+(30/40 S, 60/80 M or each part of an L, or a fix/re-check pair of at most half: 15/20, 20/30, 30/40).
+(e) any brief naming a `REQ-###` needs a `Reference:` line (ADR-173, label per ADR-176 (4)): study screen numbers
+plus what is copied, or `none - searched <term>, <term>`; a brief naming no requirement is exempt. Every open record
+of the named requirements in the difference register (`reference_register.py --open`) is named on that line (ADR-176
+(2)); an unreadable or invalid register refuses the brief.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
 
 import argparse
 import difflib
+import importlib.util
 import re
 import sys
 from dataclasses import dataclass
@@ -161,6 +169,12 @@ GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
 THREAT_RE = re.compile(r"^\W*Threat model:(.*)$", re.I)
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
+STANDING_RE = re.compile(r"^\W*Standing items:", re.I | re.M)
+ATTACK_RE = re.compile(r"^\W*Attack list:(.*)$", re.I)
+NUMBERED_RE = re.compile(r"^\W*\d+\.\s+\S")
+BLOCK_END_RE = re.compile(r"^(#|[A-Z][\w /()-]*:(\s|$))")  # a heading or the next `Label:` line ends the attack list
+BUDGET_RE = re.compile(r"^\W*Budget:\s*(\d+)\s*min\b[^,\n]*,\s*(\d+)\s*tool calls", re.I | re.M)
+SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review R3: S, M / each part of an L, fix and re-check
 
 
 def _threat_model_lines(lines: list[str]) -> list[str]:
@@ -175,6 +189,198 @@ def _threat_model_lines(lines: list[str]) -> list[str]:
         elif fence is None and THREAT_RE.match(line):
             out.append(line)
     return out
+
+
+MIN_ATTACKS = 5  # row-review R1 (meta review after row 3): at least five numbered attacks
+
+
+def _attack_count(lines: list[str]) -> int:
+    """Numbered items in the `Attack list:` block (its own line remainder, then the following lines up to the next
+    `Label:` line or heading); wrapped continuation lines of an item are not counted. 0 when there is no such line."""
+    best = 0
+    for i, line in enumerate(lines):
+        m = ATTACK_RE.match(line)
+        if not m:
+            continue
+        count = 1 if NUMBERED_RE.match(m.group(1)) else 0
+        for nxt in lines[i + 1:]:
+            if NUMBERED_RE.match(nxt):
+                count += 1
+            elif BLOCK_END_RE.match(nxt):
+                break
+        best = max(best, count)
+    return best
+
+
+def _has_attack_list(lines: list[str]) -> bool:
+    """`Attack list:` followed by at least MIN_ATTACKS numbered items."""
+    return _attack_count(lines) >= MIN_ATTACKS
+
+
+def check_builder_brief(brief: str) -> list[str]:
+    """Row-review R1 and R3 for a builder brief (one with a `Standing items:` line); other briefs are unaffected."""
+    if not STANDING_RE.search(brief):
+        return []
+    misses: list[str] = []
+    if not _has_attack_list(brief.splitlines()):
+        misses.append(f"MISSING Attack list: `Attack list:` followed by at least {MIN_ATTACKS} numbered items "
+                      "(`1.` ...) (row-review R1)")
+    pairs = [(int(a), int(b)) for a, b in BUDGET_RE.findall(brief)]
+    if not pairs or any(p not in SIZE_PAIRS for p in pairs):
+        misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "
+                      "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review R3)")
+    misses.extend(_size_misses(brief, pairs))
+    if not CI_LINE_RE.search(brief):
+        misses.append("MISSING CI line: `CI: <job/step that runs the new tests>; vars: <the variables they need>` "
+                      "(row-review R11: a test that passes only in the builder's shell, or never runs in CI)")
+    build = _build_section(brief)
+    if BUILD_GUARD_RE.search(build) and not ALLOW_LIST_RE.search(build):
+        misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
+                      "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
+    misses.extend(_row_ahead_misses(brief))
+    if "mutation_gate.py" not in brief:
+        misses.append("MISSING mutation gate: a builder brief requires `python scripts/orchestrator/mutation_gate.py` "
+                      "on its attack-list mutants before reporting, results quoted from its file (meta review after "
+                      "row 9: builders left guards unproven in 4 of 5 build parts)")
+    return misses
+
+
+REQ_NAMED_RE = re.compile(r"\bREQ-\d{3}\b", re.I)  # `req-135` names REQ-135
+REFERENCE_RE = re.compile(r"^\W*Reference:(.*)$", re.I | re.M)
+REFERENCE_NONE_RE = re.compile(r"^none\s*[-\u2013\u2014]\s*searched\s+(.+)$", re.I)
+REFERENCE_SCREEN_RE = re.compile(r"(?<![\w.-])\d{3}(?![\w.])")  # a study screen number: three digits, e.g. 012, 209-211
+REFERENCE_COPY_RE = re.compile(r"\b(copy|copies|copied|same as)\b", re.I)
+RECORD_ID_RE = re.compile(r"\bRD-\d{3}\b")
+MIN_SEARCH_TERMS = 2
+
+
+def _reference_line_ok(rest: str) -> bool:
+    """ADR-173 (2): `none - searched <term>, <term>` (at least two terms), or a study screen number AND a word saying
+    what is copied. Anything else - empty, `n/a`, a bare `none`, screens with no copy word - is not accepted."""
+    rest = rest.strip()
+    none = REFERENCE_NONE_RE.match(rest)
+    if none:
+        return len([t for t in none.group(1).split(",") if t.strip(" .")]) >= MIN_SEARCH_TERMS
+    if rest.lower().startswith("none"):
+        return False
+    return bool(REFERENCE_SCREEN_RE.search(rest) and REFERENCE_COPY_RE.search(rest))
+
+
+def _register():
+    """The difference register module, loaded from this script's folder (no package install)."""
+    path = Path(__file__).resolve().parent / "reference_register.py"
+    spec = importlib.util.spec_from_file_location("reference_register", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _outside_fences(brief: str) -> str:
+    """The brief without its ``` / ~~~ fenced blocks: a quoted example line never counts as the real one."""
+    out, fence = [], None
+    for line in brief.splitlines():
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence = m.group(1)
+        elif m and m.group(1) == fence:
+            fence = None
+        elif fence is None:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _open_record_misses(brief: str, lines: list[str], root: Path) -> list[str]:
+    """ADR-176 (2): every open record of every requirement the brief names appears on a valid `Reference:` line.
+    A register that cannot be read or is invalid refuses the brief (fail closed)."""
+    reg = _register()
+    reqs = sorted({r.upper() for r in REQ_NAMED_RE.findall(brief)})
+    try:
+        if reg.validate(root):
+            return ["REFERENCE register invalid: run `python scripts/orchestrator/reference_register.py --check` "
+                    "and fix the records before dispatch (ADR-176 (2))"]
+        wanted = reg.open_records(root, reqs)
+    except reg.RegisterError as exc:
+        return [f"REFERENCE register unreadable ({exc}): fix it before dispatch (ADR-176 (2))"]
+    named = {i for line in lines for i in RECORD_ID_RE.findall(line)}
+    return [f"MISSING open record {rid} on the Reference line: the brief names its requirement, and an open "
+            "difference record is never dropped from a brief (ADR-176 (2))" for rid in wanted if rid not in named]
+
+
+def check_reference(brief: str, root: Path) -> list[str]:
+    """ADR-173 (2) by machine: a brief naming any `REQ-###` carries a valid `Reference:` line naming every open
+    record of those requirements; a brief naming no requirement (process tooling) is exempt. Keyed on the label, so
+    loose words elsewhere never satisfy it."""
+    if not REQ_NAMED_RE.search(brief):
+        return []
+    valid = [m.group(1) for m in REFERENCE_RE.finditer(_outside_fences(brief)) if _reference_line_ok(m.group(1))]
+    if not valid:
+        return ["MISSING Reference line (ADR-173): a brief naming a REQ-### carries `Reference: screens <numbers> - "
+                "copy <what is copied>` (e.g. `Reference: screens 209-211 - copy the price-changed marker`) or "
+                "`Reference: none - searched <term>, <term>` (at least two terms) when the study has no such screen"]
+    return _open_record_misses(brief, valid, root)
+
+
+ROW_AHEAD_RE = re.compile(r"^\W*Row-ahead:\s*yes\b", re.I | re.M)
+OVERLAP_NONE_RE = re.compile(r"^\W*Overlap:\s*none\b", re.I | re.M)
+MAIN_SEQUENCE_WORKTREE = "OptionsForOptions2-builder-reqs"  # the older row's worktree (ADR-171 rule 6)
+ROW_AHEAD_WORKTREE = "OptionsForOptions2-builder-next"
+
+
+def _row_ahead_misses(brief: str) -> list[str]:
+    """ADR-171 by machine: a brief marked `Row-ahead: yes` (built while the previous row is verified) names only the
+    row-ahead worktree - never the main sequence worktree, where its tests would run the OLDER row's code (a false
+    green) - and carries `Overlap: none` (rule 3: no file shared with the open row)."""
+    if not ROW_AHEAD_RE.search(brief):
+        return []
+    misses = []
+    if MAIN_SEQUENCE_WORKTREE in brief:
+        misses.append(f"ROW-AHEAD names `{MAIN_SEQUENCE_WORKTREE}`: a row built ahead works, tests and commits only in "
+                      f"`{ROW_AHEAD_WORKTREE}` (ADR-171 rule 6)")
+    if ROW_AHEAD_WORKTREE not in brief:
+        misses.append(f"ROW-AHEAD worktree missing: name `{ROW_AHEAD_WORKTREE}` as the place to work (ADR-171 rule 6)")
+    if not OVERLAP_NONE_RE.search(brief):
+        misses.append("ROW-AHEAD overlap: add `Overlap: none (checked against row <N>: <its changed files>)` - a row "
+                      "sharing a file with the open row waits (ADR-171 rule 3)")
+    return misses
+
+
+SIZE_LINE_RE = re.compile(r"^\W*Size:\s*(S|M|L)\b[^\n]*?(\d+)\s*files?[^\n]*?(\d+)\s*items?([^\n]*)$", re.I | re.M)
+CI_LINE_RE = re.compile(r"^\W*CI:\s*\S", re.M)
+SMALL_PAIRS = {(30, 40), (15, 20), (20, 30)}  # S, and the fix / re-check pairs
+MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review R3; meta review after row 6: finish/fix briefs had 5 items on S budgets
+
+
+def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
+    """R3 by machine (meta review after row 6): a `Size: S|M|L, <n> files, <k> items[, backend + frontend]` line, and a
+    budget that matches it - more than 5 files, more than 4 items, or backend + frontend can never take an S budget."""
+    m = SIZE_LINE_RE.search(brief)
+    if not m:
+        return ["MISSING size line: `Size: S|M|L, <n> files, <k> items` (add `backend + frontend` when both change) "
+                "(row-review R3)"]
+    size, files, items, rest = m.group(1).upper(), int(m.group(2)), int(m.group(3)), m.group(4).lower()
+    spans_both = "backend" in rest and "frontend" in rest
+    too_big = files > MAX_S_FILES or items > MAX_S_ITEMS or spans_both
+    if too_big and size == "S":
+        return [f"MISSING size: {files} files, {items} items{' across backend and frontend' if spans_both else ''} "
+                "is not S - declare M (60/80) or split it (row-review R3)"]
+    if size == "S" and any(p not in SMALL_PAIRS for p in pairs):
+        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review R3)"]
+    if size in {"M", "L"} and any(p != (60, 80) for p in pairs):
+        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review R3)"]
+    return []
+
+
+BUILD_GUARD_RE = re.compile(r"\b(scan|guard|gate|detector)s?\b", re.I)
+ALLOW_LIST_RE = re.compile(r"allow[- ]list", re.I)  # not `test_write_allowlist.py`, which every brief names
+
+
+def _build_section(brief: str) -> str:
+    """The text of the `## What to build` section (to the next `## ` heading); '' when the brief has none."""
+    if "## What to build" not in brief:
+        return ""
+    section = brief.split("## What to build", 1)[1].split("\n## ", 1)[0]
+    # The section ends at the next labelled block too (row 7: "no static detector" in Standing items tripped R8).
+    return re.split(r"\n\W*(?:Attack list|Standing items|Threat model|Reviewer checklist):", section, maxsplit=1)[0]
 
 
 def check_guard_set(brief: str, root: Path) -> list[str]:
@@ -211,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     text = path.read_text(encoding="utf-8")
     results = check_text(text, Path(args.root))
-    misses = check_guard_set(text, Path(args.root))
+    misses = check_guard_set(text, Path(args.root)) + check_builder_brief(text) + check_reference(text, Path(args.root))
     out = []
     for r in results:
         short = r.quote if len(r.quote) <= 80 else r.quote[:77] + "..."

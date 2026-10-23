@@ -2,11 +2,28 @@
 
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
+Process learnings are logged per row in `docs/process/row-review.md`; its standing rules R1-R5 apply to every brief.
+Size every brief by the files the fix must touch (R3): <= 5 files S (30 min / 40 calls), 6-15 M (60 / 80), more or
+backend + frontend L (split backend then frontend). The orchestrator copies the start check's or Measure's attack list
+into the brief as `Attack list:` (R1).
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
 tier, the `Standing items:` line (section below), and the literal `Budget:` / `Report:` / `Tests:` lines, which the
 dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
 attack list, not a rewrite (ADR-106 item 9).
+
+## Safety set and round 2 (ADR-178)
+**Safety set** - a changed file under any of these makes the checker Opus with mutation tests on its guards; otherwise
+the checker is Sonnet, whatever the row's Tier column says (the list is `SAFETY_SET` in
+`scripts/orchestrator/measure_process.py`; change both together): `backend/ofo/engine/`, `backend/ofo/scenario/`,
+`backend/ofo/table/`, `backend/ofo/outcome/`, `backend/ofo/marketdata/`, `backend/ofo/feed*`, `backend/ofo_app/kite_ws*`,
+`backend/ofo_app/feed*`, `backend/ofo/broker/`, `backend/ofo_app/kite_*`, `backend/ofo_app/routes/auth*`,
+`backend/ofo_app/broker_sessions*`, `backend/ofo/orders/`, `backend/ofo/execution/`, `backend/ofo/reconciliation/`,
+`backend/ofo_app/alembic/`, `scripts/hooks/`. An Opus dispatch names the safety-set file in its `Why Opus:` line; the
+session-end script lists every Opus dispatch without one as a MISS.
+**Round-2 checker brief** (findings-only, ADR-178 (1)): `Round 2 findings:` with round 1's numbered findings, `Changed
+files:` with the fix commit's files, the attack items those findings touch, `Budget: 15 min wall-clock, 20 tool calls`.
+A full re-check only when the fix touched a safety-set file round 1 did not see - the brief says which.
 
 You build ONE work item in your own git worktree of github.com/abhayla/OptionsForOptions2 (branch from origin/main).
 Read first, in order: your `work/W-###.md`; its requirement `spec/requirements/REQ-###.md` (acceptance criteria);
@@ -51,6 +68,20 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
   what is in scope; a finding outside it is recorded, not a new round.
 
+- A brief naming any `REQ-###` (builder or verifier) carries a `Reference:` line right after `Copy from:` (ADR-173,
+  label per ADR-176 (4); check_brief.py refuses the brief without it; a brief naming no requirement is exempt). New
+  text says "reference product", never its name. Two accepted forms:
+  `Reference: screens 209-211 - copy the price-changed marker` (study screen numbers, three digits, plus a word
+  saying what is copied: copy / copies / copied / same as), or
+  `Reference: none - searched reconnect, stale feed` (at least two search terms) when the study has no such screen.
+  `none`, `n/a` or an empty line is refused.
+  Open-record rule (ADR-176 (2)): every open record that `python scripts/orchestrator/reference_register.py --open
+  REQ-###` returns for a requirement the brief names is written on the `Reference:` line, e.g.
+  `Reference: catalogue 100, 134 - copy the days-left label; open RD-001`. A brief that drops one is refused, and so
+  is any brief naming a requirement while the register is invalid. The records live one per file in
+  `spec/reference-diffs/`; the owner's page is `docs/process/reference-differences.md` (`--render`; CI fails a stale
+  page). A row does not close while `--close-check REQ-###` exits 1.
+
 ## Standing items (kit run-discipline C4 (a)-(d), #444): every build brief carries these four
 Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Standing items: (a) ... (b) ... (c) ...
 (d) ...`, each item either applied to this work or `n/a: <reason>` (e.g. "(a) n/a: no time-budgeted job"); a bare
@@ -66,6 +97,30 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
 
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
+- **Run the brief's `Attack list:` yourself before reporting** (row-review R1, 2026-10-22: row 2's round 1 failed on
+  an attack nobody listed, "a heartbeat alone must not count as a price"). Each item gets a test or a scratch run
+  and a line in the report.
+- **Run every changed test file in full, never a `-k` subset** (row-review R2: two stale tests reached the verifier).
+  DB-backed `tests_app` files run through the MAIN checkout's `scripts/orchestrator/db_run.py <your worktree> python
+  -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
+  tree for the old value or answer of anything you changed.
+- **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
+  Run `python scripts/orchestrator/mutation_gate.py` on your attack-list mutants before reporting; quote its results
+  file; a non-zero exit means not done.
+- **Run the app tests your change can break** (row-review R13; row 7 found a row-5 stale test in a file nobody ran):
+  for every backend file you change, list the `tests_app` files that import it or call its routes
+  (`scripts/orchestrator/select_app_tests.py` does this for a whole branch; for your own commits grep the importers),
+  run them all through the throwaway-database runner, and list them in your report.
+- **A cache or memo key is built from the call it guards** (row-review R14; row 8, 2026-10-22: 30 of 40 key parts had
+  no killing test, so a later edit dropping one would serve stale figures with every test green): one helper takes the
+  computation's exact arguments and returns key + result; a test changes one input at a time and asserts a recompute.
+- **Every caller of a changed entry point** is named in the brief and tested (row-review R15; row 8 missed two routes).
+- **DB-backed app runs start first**, in the background, with `-o faulthandler_timeout=60`, and the report gives their
+  timing (row-review R16; ~23 s per DB test over the tunnel).
+- **The `Budget:` is a hard stop** (row 4, 2026-10-22: a builder used 152 tool calls on an 80-call budget, hit the
+  100-turn hard limit and stopped mid-rename with uncommitted files). At 80% of the calls (64 of 80, 32 of 40):
+  start no new change; finish or revert the one in hand so the tree is consistent; commit; report done / not done /
+  next command. Never leave a rename or a refactor half applied.
 - One test per AC in `tests_required`; each test's docstring starts with the AC id (e.g. `"""AC-3: ..."""`).
 - Assert exact values (Decimal equality), not "is not None" or ranges, wherever the spec gives a number.
 - **Expected values come from the spec or an independent hand computation, never from running your own code and

@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
@@ -61,9 +62,10 @@ from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import eligibility_from_zerodha as elig
@@ -74,6 +76,7 @@ from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
+from ofo_app.catalogue_picker import loaded_before
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
 from ofo_app.db import get_db
@@ -81,7 +84,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
-from ofo_app.kite_reads import KiteReadError, KiteReads
+from ofo_app.kite_reads import KiteReadError, KiteReads, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
@@ -90,6 +93,7 @@ from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
+_LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
@@ -151,9 +155,15 @@ class _Session:
 
 
 async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
-    """The owner's Zerodha session (the stored token, as ``owner_margin_client``), or None (not connected)."""
-    margin = await live_market.owner_margin_client()
-    reads = await live_market.owner_kite_reads()
+    """The owner's Zerodha session (the stored token, as ``owner_margin_client``), or None: no stored session (the
+    routes answer ``gate_broker_not_connected``, REQ-015 AC-2). A stored session that cannot be read (the store or
+    decryption failed) answers ``gate_broker_unconfirmed`` here, never None and never a bare 500."""
+    try:
+        margin = await live_market.owner_margin_client()
+        reads = await live_market.owner_kite_reads()
+    except Exception as exc:  # noqa: BLE001 - the class name only; a stored token is never in a message
+        _LOG.warning("stored broker session unreadable: %s", type(exc).__name__)  # #513 item 2: never the text
+        raise _refuse("gate_broker_unconfirmed") from None
     if margin is None or reads is None:
         return None
     return _Session(reads[0], reads[1], margin)
@@ -233,13 +243,6 @@ def _refuse_with(message: UserFacingError) -> StrategyRefused:
     return StrategyRefused("gate_dependencies_unsatisfied", Failure.CONFLICT, message=message)
 
 
-def market_open(now: datetime.datetime) -> bool:
-    """Weekday inside the session (ofo/timeutil). No holiday calendar exists yet: a holiday reads as open and Zerodha
-    refuses the order on its page (reported gap)."""
-    local = now.astimezone(IST)
-    return local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE
-
-
 def _health(times: tuple[datetime.datetime, ...], checked_at: datetime.datetime) -> DataHealth:
     """Each frame time judged on ``checked_at``, a clock read AFTER the quotes were read (never the request-start
     ``req.now``: a tick that arrived while the route read Zerodha is newer than it). A frame up to the clock-skew
@@ -290,7 +293,7 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
-            raise _refuse("gate_broker_unconfirmed")
+            raise _refuse("gate_broker_not_connected")
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
         await db.commit()
@@ -311,8 +314,8 @@ async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     try:
         book = await asyncio.to_thread(req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
-    except (KiteReadError, ValueError):
-        raise _refuse("gate_broker_unconfirmed") from None
+    except (KiteReadError, ValueError) as exc:
+        raise _refuse(unconfirmed_template(exc)) from None
     if still_open:
         raise _refuse("gate_dependencies_unsatisfied")
     try:
@@ -394,7 +397,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     basket = await _basket(req, priced, catalogue, plan_number)
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
-                                       _plan_orders(basket))
+                                       _plan_orders(basket), strategy_version=store.built_from(stored))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
@@ -549,12 +552,12 @@ async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None
 
 
 def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
-    """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
+    """Instrument-list freshness on the database clock: healthy when the latest load is at or after the current
+    session's publish time (W-133: the same rule as the add-time check), stale before it. ``last_seen_at`` is stamped by
     ``clock_timestamp()``, so both sides of the comparison come from the same clock."""
     if loaded is None:
         return DataHealth.UNAVAILABLE
-    same_day = loaded.astimezone(IST).date() == db_now.astimezone(IST).date()
-    return DataHealth.HEALTHY if same_day else DataHealth.STALE
+    return DataHealth.STALE if loaded_before(loaded, db_now) else DataHealth.HEALTHY
 
 
 async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,

@@ -86,6 +86,7 @@ beforeEach(() => {
   posts.length = 0
   detailGets.length = 0
   vi.useRealTimers()
+  vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
   notLiveFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
@@ -95,6 +96,26 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('AC-4: stale or unavailable data is marked, never shown as live', () => {
+  it('AC-4 (RD-045): each health state is explained in one sentence with its reason; available shows none', async () => {
+    const SENTENCES = [
+      'Stale: the latest price for this contract is older than expected, so the figure may be out of date.',
+      'Delayed: prices for this contract are arriving later than they should, so the figure may be behind the market.',
+      'Unhealthy: the data for this contract looks wrong or incomplete, so do not rely on the figure.',
+      'Unavailable: no price has been received for this contract, so no figure is shown.',
+    ]
+    const w = await mountPage()
+    openAll()
+    const states = ['stale', 'delayed', 'unhealthy', 'unavailable', 'available', null, 'weird']
+    FakeSocket.all[0].serverPush(computed({ legs: states.map((h, i) => leg({ instrument_id: `NSE_FO:${2000 + i}`, symbol: `N${i}`, health: h })) }))
+    await flushPromises()
+    const legs = cards(w)[0].findAll('[data-testid="live-leg"]')
+    const reason = (i) => legs[i].find('[data-testid="live-leg-health-reason"]')
+    expect([0, 1, 2, 3].map((i) => reason(i).text())).toEqual(SENTENCES)
+    expect(reason(4).exists()).toBe(false)
+    expect(reason(5).text()).toBe(SENTENCES[3])
+    expect(reason(6).text()).toBe('The health of the data for this contract is not known, so the figure may not be current.')
+  })
+
   it('AC-4: a leg whose health is not available shows its health word; an available leg shows none', async () => {
     const w = await mountPage()
     openAll()

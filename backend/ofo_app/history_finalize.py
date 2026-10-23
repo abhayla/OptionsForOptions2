@@ -7,8 +7,10 @@ final. It is not scheduled anywhere: putting it on a host's timer is deploy work
 (ADR-066); nothing here publishes them.
 
 Run by hand: ``python -m ofo_app.history_finalize --day 2026-10-08 --instruments-csv <Zerodha instruments csv>``
-with DATABASE_URL (the application role), KITE_API_KEY and KITE_ACCESS_TOKEN in the environment. Exit codes: 0 the
-day is final, 2 refused (too early), 3 the day stays provisional (a fetch or the store failed; the reason is counted).
+with DATABASE_URL (the application role) and the broker settings (KITE_API_KEY, BROKER_TOKEN_KEY, ...) in the
+environment. The access token is read only from the encrypted session store (REQ-015 AC-9), never from the
+environment. Exit codes: 0 the day is final, 2 refused (too early), 3 the day stays provisional (a fetch or the store
+failed; the reason is counted), 4 no usable stored Zerodha session (or broker settings missing).
 """
 from __future__ import annotations
 
@@ -37,13 +39,43 @@ class FinalizeRefused(RuntimeError):
     """The day's trading has not finished, so its candles are not complete: nothing was fetched or written."""
 
 
-def finalize_trading_day(store: HistoryStore, day: datetime.date, source: MinuteCandleSource,
-                         instrument_ids: Sequence[str], *, now: datetime.datetime,
-                         chunk: int = CHUNK_INSTRUMENTS, until: datetime.time = FETCH_UNTIL) -> DayResult:
+def refuse_if_too_early(day: datetime.date, now: datetime.datetime) -> None:
     earliest = datetime.datetime.combine(day, FINALIZE_NOT_BEFORE, IST)
     if now.astimezone(IST) < earliest:
         raise FinalizeRefused(f"{day} cannot be finalized before {earliest:%H:%M} IST (the session closes "
                               f"{SESSION_CLOSE:%H:%M}); now is {now.astimezone(IST):%Y-%m-%d %H:%M}")
+
+
+def stored_credentials() -> tuple[str, str] | None:
+    """(api key, access token) from the broker settings and the ENCRYPTED session store - the same read the live socket
+    uses (``broker_token_store.access_token_for``). The token is never read from the environment (REQ-015 AC-9), so a
+    ``KITE_ACCESS_TOKEN`` variable is ignored. None when there is no active session."""
+    import asyncio  # noqa: PLC0415
+
+    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_token_for  # noqa: PLC0415
+    from ofo_app.db import get_engine  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415 - a Kite door loads only inside main (the egress gate test)
+
+    config = load_broker_config()
+
+    async def read() -> str | None:
+        engine = get_engine()
+        try:
+            async with engine.connect() as conn:
+                return await access_token_for(conn, OWNER_REF, TokenCipher(config.token_key))
+        finally:
+            await engine.dispose()
+
+    token = asyncio.run(read())
+    return None if token is None else (config.api_key, token)
+
+
+def finalize_trading_day(store: HistoryStore, day: datetime.date, source: MinuteCandleSource,
+                         instrument_ids: Sequence[str], *, now: datetime.datetime,
+                         chunk: int = CHUNK_INSTRUMENTS, until: datetime.time = FETCH_UNTIL) -> DayResult:
+    refuse_if_too_early(day, now)
     if store.day_status(day) is DayStatus.FINAL:  # a final day never changes: no fetch, no write
         return DayResult(DayStatus.FINAL, None, {})
     start = datetime.datetime.combine(day, SESSION_OPEN, IST)
@@ -62,9 +94,22 @@ def main(argv: Sequence[str] | None = None, *, now: datetime.datetime | None = N
     args = parser.parse_args(argv)
     now = now or datetime.datetime.now(IST)
 
+    try:
+        refuse_if_too_early(args.day, now)  # before the database or Kite is touched
+    except FinalizeRefused as exc:
+        print(f"refused: {exc}")
+        return 2
+    try:
+        credentials = stored_credentials()
+    except Exception as exc:  # noqa: BLE001 - settings missing or the store unreadable: class name only
+        print(f"no stored Zerodha session: {type(exc).__name__}")
+        return 4
+    if credentials is None:
+        print("no stored Zerodha session: log in through the platform first")
+        return 4
     listed = list(parse_instruments_csv(args.instruments_csv))
     ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed]
-    source = KiteHistory(listed, api_key=os.environ["KITE_API_KEY"], access_token=os.environ["KITE_ACCESS_TOKEN"])
+    source = KiteHistory(listed, api_key=credentials[0], access_token=credentials[1])
     store = PostgresHistoryStore(os.environ["DATABASE_URL"])
     try:
         result = finalize_trading_day(store, args.day, source, ids, now=now)

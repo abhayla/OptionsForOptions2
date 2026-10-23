@@ -1,0 +1,15 @@
+{
+  "id": "RD-078",
+  "kind": "COPY",
+  "title": "Calendar and diagonal strategies get max profit, max loss, breakevens and POP (G-13-2, owner question)",
+  "reference_behaviour": "Mixed-expiry strategies are valued by the model: the at-expiry line becomes a curve, a finite max loss, breakevens and POP are shown, with a note that a calendar can lose more than the max loss shown.",
+  "reference_screens": ["catalogue 108", "catalogue 109"],
+  "ours": "SPEC CHANGE: the engine refuses metrics for mixed expiries; REQ-081 AC-4 and REQ-136 AC-1 show no single maximum on mixed expiries (ADR-143). No requirement gives estimated mixed-expiry metrics.",
+  "req": "REQ-032",
+  "adr": "ADR-143",
+  "row": 13,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

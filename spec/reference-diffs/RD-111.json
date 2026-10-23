@@ -1,0 +1,16 @@
+{
+  "id": "RD-111",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Delete only a strategy that never sent a basket (G-16-6)",
+  "reference_behaviour": "Any saved strategy can be deleted from a bin icon after a confirm that says it cannot be reversed, though the record is only archived.",
+  "reference_screens": ["catalogue 270", "catalogue 272"],
+  "ours": "REQ-070 AC-6: only a never-executed draft can be deleted, with confirm and Undo; one that sent a basket reads Can't delete: orders were sent. Decided by ADR-118 (stricter).",
+  "req": "REQ-070",
+  "ac": "AC-6",
+  "adr": "ADR-118",
+  "row": 28,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

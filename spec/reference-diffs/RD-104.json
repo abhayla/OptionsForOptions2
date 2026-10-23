@@ -1,0 +1,15 @@
+{
+  "id": "RD-104",
+  "kind": "COPY",
+  "title": "Ready-mades for BANKNIFTY and FINNIFTY (row 15 match line)",
+  "reference_behaviour": "The ready-made list is offered for BANKNIFTY and FINNIFTY too (and for stocks, which ADR-157 excludes).",
+  "reference_screens": ["screen 230", "screen 232"],
+  "ours": "Placement covers NIFTY and SENSEX only. The two indices join with REQ-090 at row 46; stock presets stay out (RD-005, ADR-157).",
+  "req": "REQ-090",
+  "ac": "AC-1",
+  "row": 46,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

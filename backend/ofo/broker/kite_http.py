@@ -22,7 +22,9 @@ from urllib.parse import unquote as _unquote
 from urllib.parse import urlsplit as _urlsplit
 
 from ofo.broker import egress as _egress
+from ofo.broker import rate_limit as _rate_limit
 from ofo.broker.kite_endpoints import ALLOWED_CALLS as _ALLOWED_CALLS
+from ofo.broker.kite_endpoints import ENDPOINT_GROUPS as _ENDPOINT_GROUPS
 from ofo.broker.kite_endpoints import KITE_API_HOST, KITE_WS_HOST
 
 # W-080 round 9: the library frames a door's send runs through (urllib, http.client, ssl), trusted by the egress gate
@@ -34,8 +36,9 @@ _egress.install()
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 #: One instrument as Kite's quote takes it: ``EXCHANGE:TRADINGSYMBOL``, plain ASCII only (W-099).
 QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
-_BARE_TARGETS: _Final = frozenset({"/portfolio/holdings"})  # calls sent with no query, no fragment (W-106)
+_BARE_TARGETS: _Final = frozenset({"/portfolio/holdings", "/user/profile"})  # no query, no fragment (W-106, W-131)
 _QUOTE_TARGET: _Final = re.compile(rf"/quote(\?i={QUOTE_INSTRUMENT}(&i={QUOTE_INSTRUMENT})*)?", re.ASCII)
+_TOO_MANY_REQUESTS: _Final = 429  # Kite's rate-limit answer (F-60)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
 
@@ -50,6 +53,23 @@ def _template_regex(template: str) -> re.Pattern[str]:
 
 _ALLOWED: _Final = tuple((method, _template_regex(path))
                         for calls in _ALLOWED_CALLS.values() for method, path in sorted(calls))
+
+
+_GROUPED: _Final = tuple((method, _template_regex(path), group_read)
+                         for (method, path), group_read in sorted(_ENDPOINT_GROUPS.items()))
+
+
+def endpoint_of(method: str, url: str) -> tuple[str, bool]:
+    """(rate-limit group, retry-safe read) of an allow-listed call (REQ-118). An ALLOW-LIST map: a Kite path with no
+    entry is refused, nothing is sent. A local test fake (loopback, test mode only) falls back to the ordinary group."""
+    parts = _urlsplit(str(url))
+    path, verb = _unquote(parts.path), str(method).upper()
+    for m, rx, group_read in _GROUPED:
+        if m == verb and rx.fullmatch(path):
+            return group_read
+    if _loopback_test_host((parts.hostname or "").lower().rstrip(".")):
+        return _rate_limit.GROUP_OTHER, verb == "GET"
+    raise KiteCallRefused(f"{verb} {path} has no rate-limit group; nothing was sent")
 
 
 def check_call(method: str, url: str) -> None:
@@ -173,10 +193,22 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
     if data is not None and type(data) is not bytes:
         raise TypeError(f"{method}: the body must be bytes; nothing was sent")
     check_call(method, url)
+    group, is_read = endpoint_of(method, url)
+    key, user = _rate_limit.identity(next((v for k, v in plain.items() if k.lower() == "authorization"), None), data)
     request = _urllib_request.Request(url, data=data, headers=plain, method=method)
-    with _egress._door():
-        return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect is followed
+    with _rate_limit.DoorCall(group, key, user, is_read=is_read) as call:  # one wait limit across every retry
+        while True:
+            _rate_limit.acquire(group, key)  # the limiter at the door: a slot, or KiteBusy with nothing sent
+            try:
+                with _egress._door():
+                    return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect followed
+            except _urllib_request.HTTPError as exc:
+                if exc.code != _TOO_MANY_REQUESTS:
+                    raise
+                if not call.retry(exc.headers.get("Retry-After") if exc.headers is not None else None):
+                    raise  # a write (AC-5) or both retries used (AC-4): the 429 is the answer
+                exc.close()
 
 
 __all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "QUOTE_INSTRUMENT", "KiteCallRefused", "check_call",
-           "check_ws_url", "open_url", "plain_headers", "plain_method", "plain_str", "plain_timeout"]
+           "check_ws_url", "endpoint_of", "open_url", "plain_headers", "plain_method", "plain_str", "plain_timeout"]

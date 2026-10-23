@@ -95,6 +95,11 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/kite_history.py": "Kite's minute-candle client, through the urllib door - REQ-073 AC-4",
     "ofo_app/kite_margin.py": "Kite's margin client, through the urllib door - REQ-073 AC-4",
     "ofo_app/kite_reads.py": "Kite's orders/trades/positions read client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/kite_period_reads.py": "the per-user minimum-period reads (RD-063): calls the Kite read and margin "
+                                    "clients through the one limiter's memo (REQ-118 AC-7) - REQ-063 AC-1",
+    "ofo_app/routes/zerodha_account.py": "composition root of the Settings account block (RD-013): wires the Kite "
+                                         "read and margin clients' errors to closed reason words (REQ-015 AC-13) "
+                                         "- REQ-063 AC-1",
     "ofo_app/outcome_margin.py": "composition point of the outcome screen's Zerodha margin read (ADR-099): calls the "
                                  "Kite margin client for the planned basket, like live_market.py - REQ-063 AC-1",
     "ofo_app/checked_basket.py": "the one production path to a Kite basket (W-081): wires build_basket to the Kite "
@@ -110,7 +115,14 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/routes/positions.py": "composition root of the Positions read (W-111): wires the owner's Kite read client "
                                    "and positions/orders reply adapter to W-108's attribution, like "
                                    "routes/execution_return.py - REQ-063 AC-1",
-    "ofo_app/return_book.py": "the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
+    "ofo_app/kite_broker_reader.py": "the one Zerodha BrokerReader (W-131): glue over the Kite read and margin doors "
+                                     "and the reply adapter; REQ-054 AC-2 keeps it the only broker - REQ-063 AC-1",
+    "ofo_app/routes/broker_capabilities.py": "composition root of the broker-flags read (W-132, REQ-117): serves "
+                                              "Zerodha's declared flags (ofo.broker.kite_flags) as on/off, like "
+                                              "routes/positions.py - REQ-063 AC-1",
+    "ofo_app/feed_main.py":"the market-data process (REQ-113): builds the one real KiteSocket over "
+                              "the bus relay; REQ-063 AC-1 keeps the Kite door out of the API process",
+    "ofo_app/return_book.py":"the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",
 }

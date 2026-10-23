@@ -1,0 +1,14 @@
+{
+  "id": "RD-085",
+  "kind": "NO-SCREEN",
+  "title": "Preset numbers captured without a leftover manual P&L entry (row 13 study gap SG-0)",
+  "reference_behaviour": "Every max profit, max loss, breakeven and POP in the study's preset table includes a manual P&L of -1,000 left on the study account, so each is shifted by 1,000.",
+  "reference_screens": [],
+  "ours": "Manual P&L entries are REQ-089 (row 39). Owner to re-capture the preset table with no manual P&L set, or mark the table as shifted.",
+  "req": "REQ-089",
+  "row": 39,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

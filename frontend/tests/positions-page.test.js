@@ -141,10 +141,10 @@ describe('Positions pages', () => {
   })
 
   it('AC-3: a refused read shows the catalogue message and never the empty-book text', async () => {
-    const parts = { what_happened: 'Your Zerodha account is not connected. Connect it to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }
+    const parts = { what_happened: 'Connect your Zerodha account to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }
     answer = () => Promise.reject({ parts })
     const w = await show('current')
-    expect(w.text()).toContain('Your Zerodha account is not connected')
+    expect(w.text()).toContain('Connect your Zerodha account to continue.')
     expect(w.find('[data-testid=positions-empty]').exists()).toBe(false)
     expect(w.find('[data-testid=position-row]').exists()).toBe(false)
   })

@@ -1,7 +1,7 @@
 // Leg picker helpers (W-068; REQ-035 AC-8, ADR-068, ADR-008). Pure functions; no price or P&L is ever computed here.
 // Strings only: a strike and a planned entry stay exactly the strings the API sent.
 
-export const UNDERLYINGS = ['NIFTY', 'SENSEX']
+export { UNDERLYINGS } from '@/lib/underlyings'
 
 /** The one wording for a draft that has no live data (the backend constant NOT_CONNECTED_LABEL, ADR-020 Q185). */
 export const NOT_CONNECTED_LABEL = 'Draft — Live data not connected'

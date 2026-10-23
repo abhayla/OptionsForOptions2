@@ -22,12 +22,26 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
           { "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/link_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/link_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/kill_by_name_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
+      { "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/question_night_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
       { "matcher": "Agent|Task",
         "hooks": [
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/agent_brief_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] }
+    ],
+    "SessionStart": [
+      { "matcher": "",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/adr178_start.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] }
     ],
     "PostToolUse": [

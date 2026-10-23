@@ -1,0 +1,16 @@
+{
+  "id": "RD-071",
+  "kind": "NO-SCREEN",
+  "title": "Feed down for minutes, and the index and chain on a weekend or holiday (row 11 study gap SG-11)",
+  "reference_behaviour": "Not captured: what the product shows when its whole price feed is down for minutes, and what the index and option chain show on a weekend or exchange holiday.",
+  "reference_screens": [],
+  "ours": "Ours shows the ADR-015 disconnected text and the ADR-177 market-closed banner. Owner to capture the reference screens on a closed day (a weekend).",
+  "req": "REQ-114",
+  "ac": "AC-7",
+  "row": 11,
+  "status": "deferred",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23",
+  "issue": 529
+}

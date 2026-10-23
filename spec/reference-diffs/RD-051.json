@@ -1,0 +1,14 @@
+{
+  "id": "RD-051",
+  "kind": "MATCH",
+  "title": "Prices carry the time they were taken (row 7 match)",
+  "reference_behaviour": "The builder states the time its prices were last updated.",
+  "reference_screens": ["screen 012"],
+  "ours": "Legs show captured HH:MM, the margin line Checked at HH:MM, the index page Last updated HH:MM, the live card the spot time.",
+  "req": "REQ-049",
+  "row": 7,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

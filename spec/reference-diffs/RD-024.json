@@ -1,0 +1,15 @@
+{
+  "id": "RD-024",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "One broker only; the reference product offers several (row 3 match line)",
+  "reference_behaviour": "Login offers Zerodha first and other brokers (three more and a Google sign-in) through a second button.",
+  "reference_screens": ["screen 180"],
+  "ours": "Zerodha is the only broker (REQ-001 AC-3), decided by ADR-016 (Zerodha is the broker boundary).",
+  "req": "REQ-054",
+  "adr": "ADR-016",
+  "row": 3,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

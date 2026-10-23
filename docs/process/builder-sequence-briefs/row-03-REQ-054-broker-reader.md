@@ -49,6 +49,23 @@ each Kite exception type the door already maps (TokenException, PermissionExcept
 GeneralException), HTTP 429, timeout, malformed JSON, a missing required key, an unexpected extra key. Each maps to the
 door's existing refusal codes; nothing raises a raw exception to a route; no retry (CLAUDE.md hard rule).
 
+Attack list: (the final verifier runs each; run each yourself first, row-review R1)
+1. A profile reply carrying `email`, `user_name`, `user_shortname`, `avatar_url`, `meta` -> none of them in the domain
+   value, in any log line, or in any DB write.
+2. `/user/profile` called through anything but the Kite door -> refused by the egress guard (the call is allow-listed
+   only on the door).
+3. `fetch_order_statuses` with an id absent from `/orders`, an empty id list, duplicate ids, and an empty `/orders`
+   reply -> explicit not-found per absent id, no exception, exactly ONE `/orders` call per invocation (count calls).
+4. Each new read under: `status: error` with TokenException / PermissionException / NetworkException /
+   InputException / GeneralException, HTTP 429, timeout, malformed JSON, a missing required key, an extra key ->
+   the door's existing refusal codes, no raw exception, no retry (call count 1).
+5. `KiteBrokerReader` really satisfies `BrokerReader` (all four methods, same signatures; a type or protocol test),
+   and no second copy of a header, host, JSON-with-Decimal parse or HTTP-error-to-code helper exists (grep).
+6. AC-2: a scratch module named like another broker (e.g. `upstox_reader.py`) under the scanned tree turns the
+   allow-list test red; an unparseable module fails closed.
+7. The allow-list (`ALLOWED_CALLS`) gains exactly `GET /user/profile`; no order endpoint becomes reachable from the
+   reader (grep the reader's call graph).
+
 Standing items: (a) n/a: no time-budgeted job; (b) n/a: no CI step changes; (c) the AC-2 detector discovers modules
 from the source tree and fails closed on a module it cannot classify; (d) every Kite answer state above listed and tested.
 Threat model: in scope - a new Kite call not on the allow-list, PII from the profile reply reaching a log, a response or the DB, a missing order id silently read as a status; out of scope - a forged code object injected at runtime (ADR-098).

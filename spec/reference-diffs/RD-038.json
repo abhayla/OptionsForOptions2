@@ -1,0 +1,16 @@
+{
+  "id": "RD-038",
+  "kind": "NO-SCREEN",
+  "title": "Refusal screen for a contract that is blocked or not listed (row 5 study gap)",
+  "reference_behaviour": "No text for blocked strikes or circuit limits was captured (searched blocked strike, circuit, not available).",
+  "reference_screens": [],
+  "ours": "Ours refuses with a message and up to two offered strikes (see RD-035). Owner to capture what the reference shows for a blocked strike.",
+  "req": "REQ-053",
+  "ac": "AC-3",
+  "row": 5,
+  "status": "deferred",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23",
+  "issue": 529
+}

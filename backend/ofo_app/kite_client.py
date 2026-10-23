@@ -25,7 +25,7 @@ from typing import Protocol
 from ofo.broker.kite_auth import KiteSession, checksum
 from ofo.broker.kite_endpoints import KITE_API_HOST
 
-from ofo_app.kite_http import HTTPError, KiteAsyncClient
+from ofo_app.kite_http import HTTPError, KiteAsyncClient, KiteBusy
 
 log = logging.getLogger(__name__)
 
@@ -69,12 +69,14 @@ class HttpKiteAuth:
     def __repr__(self) -> str:
         return f"HttpKiteAuth(api_key={self._api_key!r})"
 
-    async def exchange(self, request_token: str) -> KiteSession:
+    async def exchange(self, request_token: str) -> KiteSession:  # noqa: C901 - one answer state per branch (B4 d)
         form = {"api_key": self._api_key, "request_token": request_token,
                 "checksum": checksum(self._api_key, request_token, self._api_secret)}
         try:
             response = await self._client.post(KITE_API_ROOT + SESSION_TOKEN_PATH, data=form,
                                                headers={"X-Kite-Version": "3"}, timeout=EXCHANGE_TIMEOUT_SECONDS)
+        except KiteBusy:  # the rate limiter refused at once, nothing sent (REQ-118 AC-3)
+            raise KiteExchangeError("kite_busy") from None
         except HTTPError:
             raise KiteExchangeError("kite_unavailable") from None
         finally:

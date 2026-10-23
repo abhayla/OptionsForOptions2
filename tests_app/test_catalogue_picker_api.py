@@ -249,9 +249,12 @@ async def test_unsupported_underlying_and_bad_input_use_catalogue_messages(app_e
                     assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
                     resp = await ac.get("/api/catalogue/BANKNIFTY/contracts", params={"expiry": "2026-10-08"})
                     assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
-                    resp = await ac.get("/api/catalogue/nifty/expiries")  # not even a symbol shape: the fixed input error
+                    resp = await ac.get("/api/catalogue/nifty/expiries")  # wrong case: refused, echoed as typed
+                    assert resp.status_code == 422 and resp.json()["code"] == "USER_INPUT_101", resp.text
+                    assert "nifty is not supported" in resp.text
+                    resp = await ac.get("/api/catalogue/BANK-NIFTY/expiries")  # not a symbol: fixed error, not echoed
                     assert resp.status_code == 422 and resp.json()["code"] == FIXED_INPUT_CODE, resp.text
-                    assert "nifty" not in resp.text
+                    assert "BANK-NIFTY" not in resp.text
                     resp = await ac.get("/api/catalogue/NIFTY/contracts")  # expiry missing
                     assert resp.status_code == 422 and resp.json()["code"] == FIXED_INPUT_CODE, resp.text
                     resp = await ac.get("/api/catalogue/NIFTY/contracts", params={"expiry": "tomorrow"})
@@ -348,7 +351,6 @@ async def test_a_disconnected_provider_gives_no_price(replay_ctx) -> None:
 
 
 @pytest.mark.parametrize("body", [
-    {"underlying": "BANKNIFTY", "instrument_ids": [LIVE_ID]},
     {"underlying": "NIFTY", "instrument_ids": []},
     {"underlying": "NIFTY", "instrument_ids": ["not an id"]},
     {"underlying": "NIFTY", "instrument_ids": [LIVE_ID], "planned_entry": "1.00"},
@@ -357,3 +359,8 @@ async def test_planned_entry_refuses_a_bad_body(body: dict) -> None:
     status, answer = await _capture(body)
     assert status == 422 and answer["code"] == FIXED_INPUT_CODE
     # the price rule itself is a domain function, tested in tests/outcome/test_planned_entry.py
+
+
+async def test_planned_entry_refuses_an_unsupported_underlying_with_the_catalogue_message() -> None:
+    status, answer = await _capture({"underlying": "BANKNIFTY", "instrument_ids": [LIVE_ID]})
+    assert status == 422 and answer["code"] == "USER_INPUT_101"  # noqa: PLR2004

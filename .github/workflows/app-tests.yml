@@ -107,6 +107,12 @@ jobs:
               - 'tests/fixtures/**'
               - 'requirements-app.txt'
               - 'docs/api/**'
+              # REQ-048 AC-5: the bundle scan runs in this job on the built output, so its files start this job
+              - 'tests/test_bundle_secret_scan.py'
+              - 'tests/test_app_workflow_bundle_scan.py'
+              - 'tests/orchestrator/test_db_run_fresh.py'
+              - 'scripts/orchestrator/db_run_fresh.py'  # the code those tests guard, and the module it imports
+              - 'scripts/orchestrator/db_run.py'
               - '.github/workflows/app-tests.yml'
             # execute-screen-e2e: the Execute screen against the real ofo_app replay API, so API code also feeds it.
             e2e:
@@ -142,6 +148,17 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # REQ-113: the bus between the market-data process and the API (Redis Streams). The bus tests FAIL, never skip,
+      # when OFO_REQUIRE_DB_TESTS=1 and this service is missing.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -203,6 +220,7 @@ jobs:
           OFO_REQUIRE_DB_TESTS: '1'
           TEST_DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           TEST_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+          REDIS_URL: redis://localhost:6379/0  # REQ-113: the bus tests (tests_app/test_bus_socket.py and the feed tests)
           # W-067 r2: finalize of a FULL trading day (F-33: about 1,603 instruments x 375 minutes = 601,125 bars) runs
           # here only; a developer PC runs the same test at 40 instruments (its PostgreSQL also serves production).
           OFO_HISTORY_SCALE_INSTRUMENTS: '1603'
@@ -319,6 +337,20 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      # REQ-048 AC-5 (W-134): the bundle and reply scans on the REAL build output. pytest comes from the "Install
+      # backend dependencies" step above (requirements-app.txt); with CI set the scan fails, never skips, when
+      # frontend/dist is missing. tests/test_app_workflow_bundle_scan.py asserts this step sits after both.
+      - name: Bundle and reply secret scan (REQ-048 AC-5)
+        env:
+          OFO_REQUIRE_BUNDLE_SCAN: '1'  # here a missing frontend/dist fails the scan; elsewhere the file skips it
+        run: python -m pytest -q -p no:cacheprovider tests/test_bundle_secret_scan.py
+
+      # finding test-skipped-in-its-only-ci-job: this file importorskips asyncpg, which only requirements-app.txt
+      # installs, so the kit job always skipped it. Runs here, after "Install backend dependencies". It is pure
+      # (fake runner, no database URL).
+      - name: Database-drop guard tests (asyncpg)
+        run: python -m pytest -q -p no:cacheprovider tests/orchestrator/test_db_run_fresh.py
+
       # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the
       # @playwright/test version), and cap the step.
       - name: Cache Playwright browsers
@@ -327,6 +359,19 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      # finding ci-apt-mirror-stall: three times on 2026-10-23 the runner's mirror list (mirror+file:, the Azure mirror
+      # first for EVERY file) stalled `playwright install-deps` past its 12-minute cap. Short timeouts (fix 1) did not
+      # help: the timeout counts only silence and failover is per file. The independent review's fix: apt reads the
+      # Ubuntu archive directly, so no file waits on the Azure mirror.
+      - name: apt reads the Ubuntu archive directly (no mirror list)
+        run: |
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i -E \
+              -e 's#mirror\+file:/etc/apt/apt-mirrors\.txt#http://archive.ubuntu.com/ubuntu/#g' \
+              -e 's#https?://azure\.archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$f"
+          done
+          ! grep -rqsE 'mirror\+file|azure\.archive' /etc/apt/sources.list /etc/apt/sources.list.d/
 
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'
@@ -518,6 +563,19 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      # finding ci-apt-mirror-stall: three times on 2026-10-23 the runner's mirror list (mirror+file:, the Azure mirror
+      # first for EVERY file) stalled `playwright install-deps` past its 12-minute cap. Short timeouts (fix 1) did not
+      # help: the timeout counts only silence and failover is per file. The independent review's fix: apt reads the
+      # Ubuntu archive directly, so no file waits on the Azure mirror.
+      - name: apt reads the Ubuntu archive directly (no mirror list)
+        run: |
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i -E \
+              -e 's#mirror\+file:/etc/apt/apt-mirrors\.txt#http://archive.ubuntu.com/ubuntu/#g' \
+              -e 's#https?://azure\.archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$f"
+          done
+          ! grep -rqsE 'mirror\+file|azure\.archive' /etc/apt/sources.list /etc/apt/sources.list.d/
 
       - name: Install Playwright Chromium (cache miss, browser and system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'

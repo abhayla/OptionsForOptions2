@@ -1,0 +1,17 @@
+{
+  "id": "RD-053",
+  "kind": "NO-SCREEN",
+  "title": "Market-closed status after hours (row 7 study gap)",
+  "reference_behaviour": "No after-hours or pre-market screen was captured (searched market closed, after hours, pre-market, 9:15, stale, offline).",
+  "reference_screens": [],
+  "ours": "ADR-177 wording: Market closed. Prices are from <time>. Owner to capture the reference screen outside market hours.",
+  "req": "REQ-114",
+  "ac": "AC-7",
+  "adr": "ADR-177",
+  "row": 11,
+  "status": "deferred",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23",
+  "issue": 529
+}

@@ -1,0 +1,37 @@
+{
+  "basket_page_orders": {
+    "on": true,
+    "source": "https://kite.trade/docs/connect/v3/publisher/ (the Kite publisher basket, ADR-054)",
+    "date": "2026-10-22"
+  },
+  "broker_held_triggers": {
+    "on": false,
+    "source": "REQ-100 AC-1: the core proof has not passed (checked 2026-10-22)",
+    "date": "2026-10-22"
+  },
+  "intraday_product": {
+    "on": true,
+    "source": "tests/fixtures/kite_replies/user-profile-2026-10-22-redacted.json (the real profile reply: products include MIS)",
+    "date": "2026-10-22"
+  },
+  "order_update_stream": {
+    "on": true,
+    "source": "https://kite.trade/docs/connect/v3/websocket/#postbacks-and-non-trade-updates (Kite Connect order updates over the WebSocket and postbacks)",
+    "date": "2026-10-22"
+  },
+  "funds_read": {
+    "on": true,
+    "source": "backend/ofo_app/kite_margin.py (GET /user/margins, row 3 of the builder sequence)",
+    "date": "2026-10-22"
+  },
+  "positions_read": {
+    "on": true,
+    "source": "backend/ofo_app/kite_reads.py (GET /portfolio/positions, row 3 of the builder sequence)",
+    "date": "2026-10-22"
+  },
+  "basket_margin_quote": {
+    "on": true,
+    "source": "backend/ofo_app/kite_margin.py (POST /margins/basket)",
+    "date": "2026-10-22"
+  }
+}
