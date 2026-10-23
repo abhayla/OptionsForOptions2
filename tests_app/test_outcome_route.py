@@ -158,6 +158,20 @@ async def test_leg_quotes_carry_bid_ask_for_everyone(replayed):
     _no_floats(out)
 
 
+async def test_a_session_that_ended_is_not_connected_and_carries_no_leg_quotes():
+    """REQ-049 AC-4/AC-5 / ADR-168 (5): leg_quotes only for a live computed answer. After the Kite session ends the
+    answer is NOT_CONNECTED and the held bid/ask is not shown (class: every state other than COMPUTED)."""
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    live = (await _post(_body(provider), provider)).json()
+    assert live["state"] == "COMPUTED" and len(live["leg_quotes"]) == len(CONDOR)
+    provider.on_session_ended(VALUATION)
+    out = (await _post(_body(provider), provider)).json()
+    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == "Draft — Live data not connected"
+    assert "leg_quotes" not in out
+
+
 async def test_no_provider_has_no_leg_quotes(replayed):
     out = (await _post(_body(replayed))).json()
     assert out["state"] == "NOT_CONNECTED" and "leg_quotes" not in out
