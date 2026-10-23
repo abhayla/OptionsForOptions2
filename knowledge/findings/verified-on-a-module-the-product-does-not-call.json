@@ -35,6 +35,11 @@
    "date": "2026-10-23",
    "where": "builder sequence row 15, REQ-028 AC-2 check on chunk head 025a22cf (session 5db71e90)",
    "evidence": "modification (LegChange/propose_modification, modification.py:79,:232), adjustment proposal (rules/actions.py:29 Proposal; respond() raises for RuleKind.ADJUSTMENT at :67) and exit (StrategyRecord.mark_exited, versions.py:673) are domain types with green tests that no file under backend/ofo_app calls; the app exits through ep.exit_legs (execute_plan.py:230) and routes only ENTRY/EXIT plans (routes/execute.py:98). Proposal('', 'r', ()) and ProposedOrder(qty=-3, strike=-5) are accepted with no validation. Caught because the check brief asked 'which app path uses this type?' for each thing. Third occurrence: the automated check above is chunk 2's one process item (ADR-178 process freeze); issue #528 tracks the AC-2 gap."
+  },
+  {
+   "date": "2026-10-23",
+   "where": "chunk 1 Tier A review on 29d2dece (areas 1 and 3, session 5db71e90): two recorded passes re-verdicted fail",
+   "evidence": "W-139 AC-7 (REQ-114 market closed) passed on the Settings card only; quote health ignores the calendar (feed_health.py:115), so the price screens read live on a Saturday. W-144 AC-4 (REQ-038 broker actual wins) passed through settle_versions branches that need a plan linked to the proposed version, which Execute never records (execute.py:400). Fourth occurrence: in both the row check named the module, not the screen or route users reach. Brief change from now: every check brief asks 'which screen/route shows this, and did you exercise it there?' per AC."
   }
  ]
 }
