@@ -25,6 +25,7 @@ from ofo_app.db import get_db
 from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes
 from ofo_app.routes.broker_status import BrokerStatusOut, StatusOut, build_status
+from ofo_app.routes.execute import get_execute_clock
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -245,6 +246,9 @@ async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_eng
         def clock() -> datetime.datetime:
             return datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.UTC)
 
+        # the route decides market hours from its own clock dependency, not the feed's: pin it to the same open-market
+        # moment, else this test reads "market closed" whenever CI runs outside 09:15-15:30 IST (REQ-114 AC-7)
+        app.dependency_overrides[get_execute_clock] = lambda: clock
         provider = KiteProvider([], clock=clock)
         provider.on_connected(clock())
         live.feed = type("F", (), {"ctx": type("C", (), {"provider": provider, "clock": staticmethod(clock)})()})()

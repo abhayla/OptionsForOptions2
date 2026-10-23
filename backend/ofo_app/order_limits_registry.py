@@ -125,7 +125,8 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.execution.basket:_STRATEGY_ID_RE", "ofo.execution.basket:_TAG_RE",
             "ofo_app.kite_reads:_PLAIN_NUMBER", "ofo_app.kite_replies:_DECIMAL_LITERAL",
             "ofo_app.kite_replies:_FO_SYMBOL", "ofo_app.kite_replies:_FULL_TIMESTAMP",
-            "ofo_app.kite_http:_TIMEOUT_KEYS", "ofo_app.kite_reads:PROFILE_LIST_KEYS",
+            "ofo_app.kite_ws:_SESSION_TOKEN_ERROR", "ofo_app.kite_http:_TIMEOUT_KEYS",
+            "ofo_app.kite_reads:PROFILE_LIST_KEYS",
             "ofo_app.kite_reads:PROFILE_TEXT_KEYS", "ofo_app.kite_reads:QUANTITY_FIELDS",
         ),
         "the product's own basket-tag layout (8 characters in total is the Zerodha rule, MAX_TAG_LENGTH)": (
