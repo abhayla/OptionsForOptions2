@@ -4,7 +4,7 @@ The limits are Kite's published ones (F-60: quote 1 req/s, historical 3 req/s, a
 starts a 10 s cooldown). No recorded Kite 429 exists, so these tests prove OUR handling of the documented status code,
 not the body Kite sends with it.
 """
-# ruff: noqa: PLR2004, S105, RUF059  - test constants, a fake token, fixture tuples unpacked whole
+# ruff: noqa: PLR2004, S105  - test constants, a fake token, fixture tuples unpacked whole
 from __future__ import annotations
 
 import json
@@ -44,7 +44,7 @@ def make(auto: bool = True, notifier=None) -> tuple[rl.RateLimiter, FakePacer]:
 
 
 def test_the_limits_are_kites_published_ones() -> None:
-    """AC-1: quote 1/s, historical 3/s, all other endpoints 10/s (F-60); the cooldown is 10 s; nothing else is a group."""
+    """AC-1: quote 1/s, historical 3/s, all other endpoints 10/s (F-60); the cooldown is 10 s; no other group."""
     assert dict(rl.GROUP_RATES) == {"quote": 1, "historical": 3, "other": 10}
     assert rl.COOLDOWN_SECONDS == 10.0
 

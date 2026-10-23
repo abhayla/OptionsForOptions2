@@ -252,20 +252,26 @@ def test_every_real_door_entry_point_takes_a_slot_from_the_limiter() -> None:
 _SENDER = "def go(r):\n    with d():\n        return OPENER.open(r)\n"
 
 
+def _calling(call: str) -> str:
+    """_SENDER with ``call`` made just before its send."""
+    return _SENDER.replace("with", f"{call}\n    with")
+
+
 @pytest.mark.parametrize(("source", "expected"), [
     (_SENDER, ["go"]),                                                                           # no limiter at all
-    ("from ofo.broker import rate_limit as rl\n" + _SENDER.replace("with", "rl.acquire('g','k')\n    with"), []),
-    ("from ofo.broker import rate_limit\n" + _SENDER.replace("with", "rate_limit.aacquire('g','k')\n    with"), []),
-    ("from ofo.broker.rate_limit import acquire as take\n" + _SENDER.replace("with", "take('g','k')\n    with"), []),
-    ("def acquire(*a): ...\n" + _SENDER.replace("with", "acquire('g','k')\n    with"), ["go"]),    # same name, wrong source
-    ("from elsewhere import acquire\n" + _SENDER.replace("with", "acquire('g','k')\n    with"), ["go"]),
-    ("from ofo.broker.rate_limit import *\n" + _SENDER.replace("with", "acquire('g','k')\n    with"), ["go"]),  # unresolvable
-    ("from ofo.broker import rate_limit as rl\n" + _SENDER.replace("with", "other.acquire('g','k')\n    with"), ["go"]),
+    ("from ofo.broker import rate_limit as rl\n" + _calling("rl.acquire('g','k')"), []),
+    ("from ofo.broker import rate_limit\n" + _calling("rate_limit.aacquire('g','k')"), []),
+    ("from ofo.broker.rate_limit import acquire as take\n" + _calling("take('g','k')"), []),
+    ("def acquire(*a): ...\n" + _calling("acquire('g','k')"), ["go"]),    # same name, wrong source
+    ("from elsewhere import acquire\n" + _calling("acquire('g','k')"), ["go"]),
+    ("from ofo.broker.rate_limit import *\n" + _calling("acquire('g','k')"), ["go"]),  # unresolvable
+    ("from ofo.broker import rate_limit as rl\n" + _calling("other.acquire('g','k')"), ["go"]),
     ("from ofo.broker import rate_limit as rl\ndef go(r):\n    return 1\n", []),                 # sends nothing
 ])
 def test_the_door_scan_fails_closed_and_names_the_limiter_by_import_source(source: str, expected: list[str]) -> None:
     """AC-2 / standing item (c): a sender with no limiter call is reported; the limiter is recognised only by its
-    import source (a renamed import counts, a same-named local or foreign function does not); a star import fails closed."""
+    import source (a renamed import counts, a same-named local or foreign function does not); a star import
+    fails closed."""
     assert doors_without_limiter(source) == expected
 
 

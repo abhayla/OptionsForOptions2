@@ -2,10 +2,11 @@
 10 s cooldown. Proven through the REAL door modules (``ofo.broker.kite_http.open_url`` urllib path and the
 ``ofo_app.kite_http`` httpx clients) against a loopback fake Kite server, with a fake clock (nothing really sleeps).
 
-Honesty: no recorded Kite 429 exists (none in tests/fixtures); the reply here is Kite's documented status code (F-60), so
+Honesty: no recorded Kite 429 exists (none in tests/fixtures); the reply here is Kite's documented status code
+(F-60), so
 this proves OUR handling of a 429, not the body Kite sends with it.
 """
-# ruff: noqa: PLR2004, S105, RUF059  - test constants, a fake token, fixture tuples unpacked whole
+# ruff: noqa: PLR2004, RUF059  - test constants, a fake token, fixture tuples unpacked whole
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +26,8 @@ from fake_pacer import FakePacer, wait_for
 from ofo.broker import kite_http as kite_http_module
 from ofo.broker import rate_limit as rl
 from ofo.broker.kite_http import open_url
+from ofo.instruments import downloader
+from ofo_app import kite_client, kite_history, kite_margin, kite_reads
 from ofo_app.kite_http import KiteAsyncClient, KiteBusy, KiteClient
 
 KEY, TOKEN = "apikey1", "SECRETACCESSTOKEN123"
@@ -121,7 +124,7 @@ def run(started: list[threading.Thread], fn, results: list | None = None, *, bac
                 out = fn()
             if results is not None:
                 results.append(out)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - a thread must hand ANY failure to the test, never lose it
             if results is not None:
                 results.append(exc)
 
@@ -171,7 +174,8 @@ def test_ten_other_reads_at_once_are_spaced_a_tenth_of_a_second(world) -> None:
 
 
 def test_a_429_stops_everything_to_that_group_for_ten_seconds_then_retries_at_most_twice(world) -> None:
-    """AC-4 core (b): a background positions read gets 429 at t=0 -> NOTHING is sent to 'other' until t=10 (a second read
+    """AC-4 core (b): a background positions read gets 429 at t=0 -> NOTHING is sent to 'other' until t=10 (a
+    second read
     of the same group waits too, a quote read is unaffected); the retry at t=10 gets 429 again; the second retry at t=20
     also; the third 429 is returned (3 sends in all) and the caller sees the 429."""
     pacer, limiter, kite, started = world
@@ -316,6 +320,61 @@ def test_a_timeout_on_the_login_exchange_is_not_retried(world) -> None:
     assert kite.times("/session/token") == [0.0] and not limiter.in_cooldown("other", KEY)
 
 
+# The login exchange through each of the THREE real senders (urllib open_url, sync httpx KiteClient, async httpx
+# KiteAsyncClient): row 10's first build left mutants M8 (urllib) and M9 (sync httpx) alive because the two tests above
+# only drove the async client - the retry branch of the other two senders never ran. Each sender is driven here.
+_LOGIN_FORM = {"api_key": KEY, "request_token": "r", "checksum": "c"}
+
+
+def _login_urllib(kite: FakeKite, timeout: float = 5):
+    form = b"api_key=" + KEY.encode() + b"&request_token=r"
+    return open_url(kite.base + "/session/token", method="POST", data=form, timeout=timeout)
+
+
+def _login_sync_httpx(kite: FakeKite, timeout: float = 5):
+    with KiteClient(base_url=kite.base) as client:
+        return client.post("/session/token", data=_LOGIN_FORM, timeout=timeout).status_code
+
+
+def _login_async_httpx(kite: FakeKite, timeout: float = 5):
+    async def go():
+        async with KiteAsyncClient(base_url=kite.base) as client:
+            return (await client.post("/session/token", data=_LOGIN_FORM, timeout=timeout)).status_code
+    return asyncio.run(go())
+
+
+_SENDERS = [pytest.param(_login_urllib, id="urllib"), pytest.param(_login_sync_httpx, id="httpx-sync"),
+            pytest.param(_login_async_httpx, id="httpx-async")]
+
+
+@pytest.mark.parametrize("login", _SENDERS)
+@pytest.mark.parametrize("background", [False, True])
+def test_a_429_on_the_login_exchange_reaches_the_server_once_through_every_sender(world, login, background) -> None:
+    """Attack 1-2 / AC-5: POST /session/token answered 429 [then 200]: exactly ONE request reaches the server, the 429
+    comes back to the caller (urllib raises HTTPError 429) and a cooldown starts, from a user or background context."""
+    pacer, limiter, kite, started = world
+    kite.script["/session/token"] = [429, 200]
+    out: list = []
+    run(started, lambda: login(kite), out, background=background)
+    wait_for(lambda: len(out) == 1, "answered")
+    answer = out[0].code if isinstance(out[0], HTTPError) else out[0]
+    assert answer == 429 and kite.times("/session/token") == [0.0] and limiter.in_cooldown("other", KEY)
+    pacer.advance(30.0)  # long past the cooldown: still nothing retried
+    assert kite.times("/session/token") == [0.0]
+
+
+@pytest.mark.parametrize("login", _SENDERS)
+def test_a_timeout_on_the_login_exchange_reaches_the_server_once_through_every_sender(world, login) -> None:
+    """Attack 3 / AC-5: a POST /session/token that times out raises once; the server saw exactly one request."""
+    pacer, limiter, kite, started = world
+    kite.delay["/session/token"] = 1.0
+    out: list = []
+    run(started, lambda: login(kite, timeout=0.2), out)
+    wait_for(lambda: len(out) == 1, "timed out")
+    assert isinstance(out[0], Exception) and not isinstance(out[0], (rl.KiteBusy, HTTPError))
+    assert kite.times("/session/token") == [0.0]
+
+
 def test_the_httpx_door_retries_a_read_after_the_cooldown_but_returns_the_third_429(world) -> None:
     """AC-4 on the httpx path: a background GET /orders answered 429, 429, 429 is sent at t=0, 10, 20 and the third 429
     is returned (the caller's fail-closed rule applies)."""
@@ -393,11 +452,38 @@ def test_a_read_timeout_is_raised_not_retried_and_a_malformed_body_is_the_caller
 
 # -- the callers of the door (REQ-118 R15) ----------------------------------------------------------------------------
 
-def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypatch) -> None:
-    """Callers: kite_margin / kite_reads (transport -> 429 -> *_busy), kite_history (-> CandleFetchError), the instrument
-    downloader (runs in background mode), kite_client (-> kite_busy). Each is refused by the limiter, nothing is sent."""
-    from ofo_app import kite_client, kite_history, kite_margin, kite_reads
+@pytest.mark.parametrize("background", [False, True])
+def test_two_429s_on_the_margin_read_block_the_margin_gate_never_a_figure(world, background) -> None:
+    """Attack 5 / AC-4 / ADR-094: the margin read through the REAL urllib door and the client's own transport. Kite
+    answers 429 to every try: the client raises its busy code, and the margin gate BLOCKS (no figure at all, nothing
+    allowed). A user read is refused busy after its first 429 (the wait would pass 5 s); a background read is retried
+    after the cooldown and the third 429 is returned - either way nothing is read as a margin figure."""
+    pacer, limiter, kite, started = world
+    kite.script["/user/margins"] = [429]
+    client = kite_margin.KiteMargin(api_key=KEY, access_token=TOKEN, base_url=kite.base)
+    out: list = []
 
+    def verdict():
+        with pytest.raises(kite_margin.KiteMarginError) as busy:
+            client.fetch_available_funds()
+        return busy.value.code, kite_margin.margin_verdict(client, [])
+
+    run(started, verdict, out, background=background)
+    wait_for(lambda: kite.count() >= 1 and limiter.in_cooldown("other", KEY), "first 429")
+    for _ in range(20):  # each cooldown passes in turn; the read gives up after its third 429
+        if out:
+            break
+        pacer.advance(10.0)
+        threading.Event().wait(0.1)
+    wait_for(lambda: len(out) == 1, "answered")
+    code, blocked = out[0]
+    assert code == "kite_margin_busy" and blocked.allowed is False and blocked.available is None
+
+
+def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypatch) -> None:
+    """Callers: kite_margin / kite_reads (transport -> 429 -> *_busy), kite_history (-> CandleFetchError), the
+    instrument downloader (runs in background mode), kite_client (-> kite_busy). Each is refused by the limiter,
+    nothing is sent."""
     def busy(*args, **kwargs):
         raise rl.KiteBusy("wait")
 
@@ -411,7 +497,8 @@ def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypat
     assert read.value.code == "kite_read_busy"
 
     monkeypatch.setattr(kite_history, "kite_open_url", busy)
-    assert kite_history.urllib_transport("https://api.kite.trade/instruments/historical/1/minute", dict(AUTH)) == (429, "")
+    history_url = "https://api.kite.trade/instruments/historical/1/minute"
+    assert kite_history.urllib_transport(history_url, dict(AUTH)) == (429, "")
 
     seen: list[bool] = []
 
@@ -419,7 +506,6 @@ def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypat
         seen.append(rl._BACKGROUND.get())
         raise rl.KiteBusy("wait")
 
-    from ofo.instruments import downloader
     monkeypatch.setattr(downloader, "open_url", spy)
     with pytest.raises(rl.KiteBusy):
         downloader.download_instruments_csv()

@@ -1024,5 +1024,6 @@ def display_text(message: UserFacingError) -> str:
     return "\n".join(lines)
 
 
-#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home; `ofo.broker.rate_limit.KiteBusy`).
+#: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
+#: `ofo.broker.rate_limit.KiteBusy` raises it).
 ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"

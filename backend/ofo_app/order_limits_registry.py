@@ -55,9 +55,9 @@ RULES: tuple[ZerodhaRule, ...] = (
                 "2026-10-22", True),
     # REQ-118 AC-1 / finding F-60 (read 2026-10-23; WebFetch summaries of the pages, not raw page reads).
     ZerodhaRule("ofo.broker.rate_limit:GROUP_RATES",
-                "REST requests per second per endpoint group, one bucket per group for the whole app (scope unstated by "
-                "Zerodha, so the stricter reading): quote 1, historical candle 3, all other endpoints 10; order placement "
-                "(10/s, 400/min, 5000/day) has no group because no order call is built",
+                "REST requests per second per endpoint group, one bucket per group for the whole app (scope unstated "
+                "by Zerodha, so the stricter reading): quote 1, historical candle 3, all other endpoints 10; order "
+                "placement (10/s, 400/min, 5000/day) has no group because no order call is built",
                 "Kite exceptions docs, 'API rate limit' table https://kite.trade/docs/connect/v3/exceptions/ "
                 "(fetched 2026-10-23)", "2026-10-23", True),
     ZerodhaRule("ofo.broker.rate_limit:COOLDOWN_SECONDS",

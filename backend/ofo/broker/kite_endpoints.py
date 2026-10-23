@@ -31,7 +31,8 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
 }
 
 #: (METHOD, path template) -> (rate-limit group, retry-safe read). An ALLOW-LIST like ``ALLOWED_CALLS`` (REQ-118):
-#: a call with no entry here is refused at the door. ``True`` = a read (a 429 may be retried after the cooldown, at most twice);
+#: a call with no entry here is refused at the door. ``True`` = a read (a 429 may be retried after the
+#: cooldown, at most twice);
 #: ``False`` = a call that creates something at Zerodha (never retried, AC-5). ``POST /margins/basket`` only reads.
 ENDPOINT_GROUPS: Final[dict[tuple[str, str], tuple[str, bool]]] = {
     ("POST", "/session/token"): ("other", False),

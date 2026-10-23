@@ -28,6 +28,7 @@ import asyncio
 import contextlib
 import contextvars
 import hashlib
+import json
 import logging
 import math
 import threading
@@ -35,6 +36,8 @@ import time
 from collections.abc import Iterator, Mapping
 from typing import Final, Protocol
 from urllib.parse import parse_qs
+
+from ofo.errors.templates import ZERODHA_BUSY_TEXT
 
 log = logging.getLogger("ofo.broker.rate_limit")
 
@@ -59,9 +62,6 @@ class KiteBusy(Exception):
     """Nothing was sent: the group's wait or queue limit would be exceeded (AC-3). ``str()`` is the user text."""
 
     def __init__(self, reason: str) -> None:
-        from ofo.errors.templates import (
-            ZERODHA_BUSY_TEXT,
-        )
         super().__init__(ZERODHA_BUSY_TEXT)
         self.reason = reason
 
@@ -88,7 +88,6 @@ class HttpNotifier:
         self._url, self._key, self._post = url.rstrip("/"), key, post
 
     def send(self, payload: Mapping[str, str]) -> bool:
-        import json
         return self._post(self._url + "/notify", {"X-Notifier-Key": self._key, "Content-Type": "application/json"},
                           json.dumps(dict(payload)))
 
@@ -223,7 +222,7 @@ class RateLimiter:
                    "dedupeKey": "kite-429-burst"}
         try:
             sent = self._notifier.send(payload)
-        except Exception:
+        except Exception:  # noqa: BLE001 - an alert failure must never block or fail a Kite read
             log.warning("alert raised an error and was NOT sent")
             return
         if not sent:
@@ -232,29 +231,27 @@ class RateLimiter:
 
 # -- the process-wide limiter both doors share ---------------------------------------------------------------------
 
-_current: RateLimiter | None = None
+_installed: dict[str, RateLimiter | None] = {"limiter": None}  # a holder, not a rebound global
 _current_lock = threading.Lock()
 
 
 def current() -> RateLimiter:
-    global _current
     with _current_lock:
-        if _current is None:
-            _current = RateLimiter()
-        return _current
+        if _installed["limiter"] is None:
+            _installed["limiter"] = RateLimiter()
+        return _installed["limiter"]
 
 
 @contextlib.contextmanager
 def use(limiter: RateLimiter) -> Iterator[RateLimiter]:
     """Install ``limiter`` for a block (tests; the app's startup)."""
-    global _current
     with _current_lock:
-        previous, _current = _current, limiter
+        previous, _installed["limiter"] = _installed["limiter"], limiter
     try:
         yield limiter
     finally:
         with _current_lock:
-            _current = previous
+            _installed["limiter"] = previous
 
 
 def acquire(group: str, key: str) -> None:
@@ -282,7 +279,7 @@ def background() -> Iterator[None]:
 
 def identity(authorization: str | None, form: bytes | None) -> tuple[str, str]:
     """(api key, user ref) of a request: from ``Authorization: token <key>:<access token>``, else the ``api_key`` form
-    field (the login exchange), else ``("-", "-")``. The user ref is a short hash of the access token: never the token."""
+    field (the login exchange), else ``("-", "-")``. The user ref is a short hash of the access token."""
     if authorization and authorization.startswith("token ") and ":" in authorization:
         api_key, _, access = authorization[len("token "):].partition(":")
         return api_key or "-", hashlib.sha256(access.encode()).hexdigest()[:_USER_REF_CHARS]
