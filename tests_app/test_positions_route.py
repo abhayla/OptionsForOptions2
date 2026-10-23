@@ -157,7 +157,7 @@ async def _plan(conn, user, sid: int, number: int, **opts) -> None:
     token = CORE_ID.exchange_token if symbol == SYMBOL else CORE_ID.exchange_token + 1
     if opts.get("legacy"):  # a row written before 0018: record_plan mints only make_tag's grammar, so the store's
         tag = f"OFS{sid}V{number}L0"  # own INSERT statements write it, as the old code did (the DB still accepts it)
-        await conn.execute(plans._INSERT_PLAN, {"s": sid, "p": number, "a": "ENTRY"})
+        await conn.execute(plans._INSERT_PLAN, {"s": sid, "p": number, "a": "ENTRY", "v": None})  # no version (W-144)
         await conn.execute(plans._INSERT_ORDER, {"s": sid, "p": number, "l": 0, "tag": tag, "iid": _iid(token),
                                                  "side": "BUY", "q": 65, "price": D("5.45")})
         if closed:
