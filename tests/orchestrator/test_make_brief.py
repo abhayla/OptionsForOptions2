@@ -228,3 +228,20 @@ def test_invalid_register_record_refused(tmp_path, measure):
     (seq / "builder-sequence-2026-10-22.md").write_text("| 1 | W-1 | REQ-001 |\n", encoding="utf-8")
     with pytest.raises(mb.Refused, match="invalid"):
         mb.render(measure, "build", tmp_path)
+
+
+@pytest.mark.parametrize("tier", ["D", "a", "", "AB", None, 1])
+def test_tier_must_be_a_b_or_c(tmp_path, measure, tier):
+    out = tmp_path / "new.md"
+    measure["tier"] = tier
+    done = _cli(tmp_path, measure, "--out", str(out))
+    assert done.returncode == 1 and "tier" in done.stderr and "Traceback" not in done.stderr
+    assert not out.exists()
+
+
+def test_unwritable_out_exits_1_with_the_reason(tmp_path, measure):
+    blocker = tmp_path / "afile"
+    blocker.write_text("x", encoding="utf-8")
+    done = _cli(tmp_path, measure, "--out", str(blocker / "sub" / "brief.md"))
+    assert done.returncode == 1 and "REFUSED: cannot write --out" in done.stderr
+    assert "Traceback" not in done.stderr

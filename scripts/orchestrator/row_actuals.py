@@ -5,9 +5,11 @@ Columns: row | expected minutes | expected tokens | actual wall-clock minutes | 
 - Expected: each row brief's `Expected (...): <N> min / ~<M>k` line in docs/process/builder-sequence-briefs/ (a brief
   file named `row-<n>...`); values of several briefs of one row are added. A missing value prints `unmeasured`.
 - Actual wall-clock: first to last commit whose subject starts `Row <n>`, over all branches (git log --all); fewer than
-  two such commits prints `unmeasured (<count> commits)`.
+  two such commits prints `unmeasured (<count> commits)`. Caveat: wall-clock keys on commit subjects starting `Row <n>`,
+  while expected sums every row-<n> brief (build + fixes), so the two are not like for like until the commit
+  convention covers build commits.
 - Actual agent tokens: every agent transcript (`<tasks dir>/*/tasks/*.output`) whose first user text names the row
-  (`row 11`, `row-11`) - input + output + cache-creation tokens of its assistant turns, cache reads excluded. The
+  (`row 11`, `row-11`) - input + output + cache-creation tokens of its assistant messages (once per message id), cache reads excluded. The
   transcript reader is measure_process.py's (imported). No transcript prints `unmeasured (no transcript)`.
 A number that cannot be derived is never replaced by a guess.
 """
@@ -73,12 +75,11 @@ def wall_clock(repo: Path, row: int) -> str:
 
 
 def transcript_tokens(path: Path) -> int:
-    total = 0
+    once = mp.UsageOnce()
     for obj in mp._jsonl(path):
-        usage = mp._usage(obj)
-        if usage and obj.get("type") == "assistant":
-            total += sum(int(usage.get(k, 0) or 0) for k in TOKEN_KEYS)
-    return total
+        if obj.get("type") == "assistant":
+            once.add(obj)
+    return sum(int(u.get(k, 0) or 0) for u in once.usages() for k in TOKEN_KEYS)
 
 
 def agent_tokens(tasks_dir: Path | None, row: int) -> str:

@@ -34,6 +34,7 @@ import check_brief  # noqa: E402
 import measure_process  # noqa: E402
 
 KINDS = ("build", "fix", "verify-r2")
+TIERS = ("A", "B", "C")
 BUILD_KEYS = ("row", "w_id", "req", "title", "tier", "files", "items", "core", "proof", "spec_basis", "copy_from",
               "attack", "standing", "threat_model", "findings_checked", "expected", "ci")
 VERIFY_KEYS = ("row", "w_id", "req", "title", "tier", "spec_basis", "attack", "round1_findings", "changed_files")
@@ -83,6 +84,8 @@ def validate_input(data: object, kind: str) -> dict:
             raise Refused(f"missing required key `{key}`")
         if data[key] in (None, "", [], {}):
             raise Refused(f"required key `{key}` is empty")
+    if data["tier"] not in TIERS:
+        raise Refused(f"`tier` must be one of {', '.join(TIERS)}, got {data['tier']!r}")
     return data
 
 
@@ -270,7 +273,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("\n".join(failures) + "\n")
         return 1
     if args.out:
-        _write(text, Path(args.out))
+        try:
+            _write(text, Path(args.out))
+        except OSError as exc:
+            sys.stderr.write(f"REFUSED: cannot write --out {args.out}: {exc}\n")
+            return 1
     else:
         sys.stdout.write(text)
     return 0

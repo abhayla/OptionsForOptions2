@@ -153,3 +153,16 @@ def test_limits_match_the_tracker_file(limit_row):
     text = (REPO / "docs" / "process" / "adr-178-tracker.md").read_text(encoding="utf-8")
     line = next(ln for ln in text.splitlines() if ln.startswith(f"| {limit_row} |"))
     assert TRACKER_LIMITS[limit_row] in line
+
+
+def test_one_message_id_on_three_lines_counts_one_turn(tmp_path):
+    """Finding transcript-usage-counted-per-line: turns and context count a message id once."""
+    def line(msg_id: str | None) -> str:
+        msg = {"role": "assistant", "content": [], "usage": {"input_tokens": 100, "cache_read_input_tokens": 900}}
+        if msg_id:
+            msg["id"] = msg_id
+        return json.dumps({"type": "assistant", "timestamp": _ts(9), "message": msg})
+
+    p = _write(tmp_path, "s.jsonl", [line("m1"), line("m1"), line("m1"), line("m2"), line(None)])
+    s = mp.read_session(p)
+    assert (s["turns"], s["ctx"]) == (3, 3000)

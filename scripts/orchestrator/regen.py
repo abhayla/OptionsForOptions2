@@ -12,6 +12,10 @@ TOOLS = ("build_findings_index.py", "build_spec_digest.py", "build_order.py", "b
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 args = sys.argv[1:]
 only = None
+USAGE = "usage: regen.py [dir] [--only <tool>]  (--only takes exactly one tool, once)"
+if args.count("--only") > 1 or (args and args[-1] == "--only"):
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
 if "--only" in args:
     i = args.index("--only")
     only = args[i + 1]

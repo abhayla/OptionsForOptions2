@@ -118,3 +118,17 @@ def test_transcript_reader_is_imported_not_copied():
     assert "def _jsonl" not in src
     assert "def read_task" not in src
     assert "def git_commits" not in src
+
+
+def test_one_message_id_on_three_lines_counts_once(repo, tmp_path):
+    """Finding transcript-usage-counted-per-line: a message split over 3 lines repeats its usage on each."""
+    tasks = tmp_path / "tasks"
+    f = tasks / "s1" / "tasks" / "a.output"
+    f.parent.mkdir(parents=True)
+    big = {"input_tokens": 1000, "output_tokens": 1000}
+    lines = [{"type": "user", "message": {"role": "user", "content": "row 11 brief"}}]
+    lines += [{"type": "assistant", "message": {"id": "m1", "role": "assistant", "content": [], "usage": big}}] * 3
+    lines.append({"type": "assistant", "message": {"id": "m2", "role": "assistant", "content": [],
+                                                   "usage": {"input_tokens": 500, "output_tokens": 500}}})
+    f.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+    assert ra.transcript_tokens(f) == sum(big.values()) + 1000  # m1 once + m2 (500 + 500)

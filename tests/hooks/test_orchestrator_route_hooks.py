@@ -394,3 +394,10 @@ def test_merge_refuses_a_bad_reviewed_sha_before_any_step():
         r = Runner([])
         assert merge.merge("308", bad, r) == TWO
         assert r.calls == []
+
+
+def test_agent_gate_names_an_unresolvable_brief_on_stderr_and_still_allows():
+    r = run_hook("agent_brief_gate.py", agent("Brief: docs/process/no-such-brief-xyz.md\nGo."))
+    assert r.returncode == 0
+    assert r.stderr.count("\n") == 1 and "docs/process/no-such-brief-xyz.md" in r.stderr
+    assert "does not resolve" in r.stderr
