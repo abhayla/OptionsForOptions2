@@ -276,6 +276,18 @@ LINES: dict[str, tuple[str, ...]] = {
         "{ path: '/broker/connected', name: 'broker-connected', component: () => import('../pages/BrokerConnectedPage.vue'), meta: { title: 'Zerodha connected', section: 'settings' } },",
         "{ path: '/broker/refused', name: 'broker-refused', component: () => import('../pages/BrokerRefusedPage.vue'), meta: { title: 'Zerodha login not completed', section: 'settings' } },",
     ),
+    'frontend/src/lib/brokerConnected.js': (
+        "export const TRADE_NEEDS_BROKER_REASON = 'Log in with Zerodha to trade. Use Connect Zerodha in Settings, then come back.'",
+    ),
+    'frontend/src/lib/connectHelp.js': (
+        "'This app uses the connection to read your positions, orders and margin from Zerodha and to prepare orders that you confirm on Zerodha\\'s own page. It never sees your Zerodha password, PIN or OTP: you log in on Zerodha\\'s own page.'",
+        "export const NO_EXTRA_CHARGES = 'Connecting your Zerodha account adds no charge from this app. Your normal Zerodha brokerage and charges apply to orders you place.'",
+        "export const OPEN_ACCOUNT_LABEL = 'Don\\'t have a Zerodha account? Open one'",
+        'export function openAccountUrl(raw = import.meta.env.VITE_ZERODHA_OPEN_ACCOUNT_URL) {',
+    ),
+    'frontend/src/lib/dataHealthText.js': (
+        "not_sent: 'Zerodha did not send this figure for this contract.',",
+    ),
 }
 ALLOW: dict[tuple[str, str], str] = {
     (path, line): REASONS.get(path, UI)

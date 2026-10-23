@@ -73,6 +73,7 @@ PR241_SELECTION = {
     "tests_app/test_catalogue_refresh.py",  # row 5: imports the catalogue picker the #241 diff changed
     "tests_app/test_execute_health_clock.py",  # row 5/7
     "tests_app/test_busy_text_routes.py",  # row 10
+    "tests_app/test_strategy_versions_app.py",  # row 16: PUT /strategies/{strategy_id} and its versions
 }
 
 
