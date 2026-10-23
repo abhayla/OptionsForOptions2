@@ -27,6 +27,7 @@ class FakeSocket {
   }
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
+  serverOpen() { this.readyState = 1; this.onopen?.() }
   serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
@@ -66,6 +67,7 @@ describe('the index socket lifecycle', () => {
     const s = createIndexSocket({ url: 'ws://app.test' + INDEX_LIVE_PATH, WebSocketImpl: FakeSocket, onPush: (m) => pushes.push(m) })
     s.start()
     const ws = FakeSocket.all[0]
+    ws.serverOpen() // the open handler is where a body would be sent
     ws.serverPush(live(row('NIFTY', '25145.50', T1), row('SENSEX', '82010.25', T1)))
     ws.serverPush({ what_happened: 'x' }) // a catalogue error is not an index answer
     ws.serverPush('not json')

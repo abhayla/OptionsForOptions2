@@ -172,6 +172,32 @@ describe('AC-2: never an old price as live', () => {
     expect(statuses).not.toContain('live')
   })
 
+  it('AC-2: live, stop(), follow() again -> the first connect is not "reconnecting"; a drop once live again is', async () => {
+    vi.useFakeTimers()
+    let handle
+    const Again = defineComponent({
+      setup() {
+        handle = useStrategyLive({ onPush: () => {}, WebSocketImpl: FakeSocket, url: 'ws://x/live' })
+        handle.follow(BODY)
+        return () => h('i', { 'data-testid': 'rc' }, String(handle.reconnecting.value))
+      },
+    })
+    const w = mount(Again)
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverPush(OUTCOME('30.05'))
+    await flushPromises()
+    handle.stop()
+    handle.follow(BODY)
+    await flushPromises()
+    expect(FakeSocket.all).toHaveLength(2) // a new socket, still connecting
+    expect(w.get('[data-testid="rc"]').text()).toBe('false')
+    FakeSocket.all[1].serverOpen()
+    FakeSocket.all[1].serverPush(OUTCOME('29.60'))
+    FakeSocket.all[1].serverClose()
+    await flushPromises()
+    expect(w.get('[data-testid="rc"]').text()).toBe('true')
+  })
+
   it('AC-2: stop() (page left) never reads as reconnecting and never reconnects', async () => {
     vi.useFakeTimers()
     const w = mount(Probe)
