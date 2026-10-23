@@ -31,7 +31,9 @@ from test_strategy_store import _client, _user
 pytestmark = pytest.mark.usefixtures("order_path_on")
 
 ENTRY_ORDER = "261016170576173"  # the real 12:21:04 order (orders-122104 / trades-122104)
-GUARD = "OF022"
+GUARD = "OF022"  # migration 0022 SQLSTATE
+INSUFFICIENT_PRIVILEGE = "42501"
+CHECK_VIOLATION = "23514"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -284,44 +286,61 @@ async def test_restore_after_a_fill_is_refused_with_the_template_and_writes_noth
 # ---- attack 6: the app role reads and writes the table as granted; the guard freezes a version ----
 
 async def test_the_app_role_has_exactly_the_granted_rights_and_a_version_is_frozen(app_engine):
+    """SELECT / INSERT / UPDATE are granted (column-limited for INSERT and UPDATE: has_any_column_privilege);
+    DELETE and TRUNCATE are table-level rights only (has_table_privilege) and are not granted."""
     role = app_engine.url.username
+    column_sql = text("SELECT has_any_column_privilege(:r, 'public.strategy_versions', :p)")
+    table_sql = text("SELECT has_table_privilege(:r, 'public.strategy_versions', :p)")
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            for right, expected in (("SELECT", True), ("INSERT", True), ("UPDATE", True), ("DELETE", False),
-                                    ("TRUNCATE", False)):
-                has = (await conn.execute(text("SELECT has_table_privilege(:r, 'public.strategy_versions', :p) OR "
-                                               "has_any_column_privilege(:r, 'public.strategy_versions', :p)"),
-                                          {"r": role, "p": right})).scalar_one() if right != "TRUNCATE" else (
-                    await conn.execute(text("SELECT has_table_privilege(:r, 'public.strategy_versions', :p)"),
-                                       {"r": role, "p": right})).scalar_one()
-                assert has is expected, right
+            for right in ("SELECT", "INSERT", "UPDATE"):
+                assert (await conn.execute(column_sql, {"r": role, "p": right})).scalar_one() is True, right
+            for right in ("DELETE", "TRUNCATE"):
+                assert (await conn.execute(table_sql, {"r": role, "p": right})).scalar_one() is False, right
             for sql in ("DELETE FROM public.strategy_versions", "TRUNCATE public.strategy_versions"):
                 savepoint = await conn.begin_nested()
-                with pytest.raises(DBAPIError):
+                with pytest.raises(DBAPIError) as err:
                     await conn.execute(text(sql))
                 await savepoint.rollback()
+                assert getattr(err.value.orig, "sqlstate", None) == INSUFFICIENT_PRIVILEGE, sql
         finally:
             await trans.rollback()
 
 
+async def _refused_with(conn, sql: str, sid: int) -> str | None:
+    savepoint = await conn.begin_nested()
+    with pytest.raises(DBAPIError) as err:
+        await conn.execute(text(sql), {"s": sid})
+    await savepoint.rollback()
+    return getattr(err.value.orig, "sqlstate", None)
+
+
+CHANGE_DEFINITION = ("UPDATE public.strategy_versions SET definition = definition || '{\"x\": 1}' "
+                     "WHERE strategy_id = :s AND number = 1")
+
+
 async def test_the_guard_refuses_a_changed_definition_and_a_backward_state(app_engine, admin_engine, monkeypatch):
+    """First as the application role (the setup leaves the transaction in it): changing a definition is refused by
+    the column grant (42501). Then as the table owner (RESET ROLE on the owner connection that ran the migrations,
+    TEST_ADMIN_DATABASE_URL): the version guard itself refuses each change (OF022), and the CHECK refuses an active
+    version that was never confirmed and reconciled (23514)."""
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
             user = _user()
             sid = await _executed(conn, user, app_engine.url.username, monkeypatch)
             await _propose_130(conn, user, sid)
-            for sql in ("UPDATE public.strategy_versions SET definition = definition || '{\"x\": 1}' "
-                        "WHERE strategy_id = :s AND number = 1",
-                        "UPDATE public.strategy_versions SET state = 'proposed' WHERE strategy_id = :s AND number = 1",
-                        "DELETE FROM public.strategy_versions WHERE strategy_id = :s",
-                        "UPDATE public.strategy_versions SET state = 'active' WHERE strategy_id = :s AND number = 2"):
-                savepoint = await conn.begin_nested()
-                with pytest.raises(DBAPIError) as err:
-                    await conn.execute(text(sql), {"s": sid})
-                await savepoint.rollback()
-                assert getattr(err.value.orig, "sqlstate", None) in (GUARD, "23514", "23505"), sql
+            assert await _refused_with(conn, CHANGE_DEFINITION, sid) == INSUFFICIENT_PRIVILEGE
+            await conn.execute(text("RESET ROLE"))  # the owner from here on: only the guard and the CHECK stand
+            for sql, sqlstate in (
+                    (CHANGE_DEFINITION, GUARD),
+                    ("UPDATE public.strategy_versions SET state = 'proposed' WHERE strategy_id = :s AND number = 1",
+                     GUARD),
+                    ("DELETE FROM public.strategy_versions WHERE strategy_id = :s", GUARD),
+                    ("UPDATE public.strategy_versions SET state = 'active' WHERE strategy_id = :s AND number = 2",
+                     CHECK_VIOLATION)):
+                assert await _refused_with(conn, sql, sid) == sqlstate, sql
         finally:
             await trans.rollback()
 
