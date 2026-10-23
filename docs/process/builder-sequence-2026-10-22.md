@@ -49,7 +49,7 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 16 | W-144 | REQ-038 | Save a strategy and load it back exactly | Prerequisite | 1 | A | Done (AC-3/AC-4 deferred: #527 - no live plan can activate a proposal until the adjustments row; fix #527 BEFORE that row) |
 | 17 | W-145 | REQ-006 + REQ-007 | Remove UX levels: one full screen for everyone; spec rewrite first (ADR-168 (4)(5)) | P1 core | 2 | B | Done (W-145 in_review until chunk PR #531; REQ-006/007 superseded, checked against ADR-168 (4)(5): Opus check + fix round 1 + findings-only round 2 PASS, results-row-17.md; MINORs #532) |
 | 18 | W-146 | REQ-035 | Strategy table: every leg's P&L at each level | P1 core | 2 | A | Done (W-146 in_review until chunk PR #531; full-AC Opus check, AC-7 heading pair built 94077a89, findings-only round 2 PASS; evidence W-146 AC-1..8; MINORs #532) |
-| 19 | W-147 | REQ-080 | Leg picker: strikes with live prices, futures, depth popup | P1 core | 2 | A | Not started (basic picker only) |
+| 19 | W-147 | REQ-080 | Leg picker: strikes with live prices, futures, depth popup | P1 core | 2 | A | Done (live check pending: AC-6 futures price, row 63; W-147 in_review until chunk PR #531; Opus backend + Sonnet frontend checks, fix round 1, round 2 PASS; evidence W-147 AC-1..8; MINORs #532) |
 | 20 | W-148 | REQ-076 | Leg rows: strike -/+, lots, multiplier, leave a leg out, shape name | P1 core | 2 | A | Not started (built on branch W-126) |
 | 21 | W-149 | REQ-077 | Entry prices: typed price, Reset Prices, "price has moved" mark | P1 core | 2 | A | Not started (not built) |
 | 22 | W-150 | REQ-034 | Outcome view and scenario levels | P1 core | 2 | A | Not started (mostly built) |

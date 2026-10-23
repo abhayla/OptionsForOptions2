@@ -159,6 +159,16 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 19 - REQ-080 Leg picker (closed 2026-10-24, session 06fe7549, Done; W-147 in_review until PR #531; live check pending AC-6 futures price)
+- A user sees: a leg picker with Strikes and Futures tabs (prices, OI, engine IV and delta per strike, ATM highlighted,
+  10/20/30/40 strikes), several contracts picked at once with a visible selection list, Lots/Quantity, the forward used
+  for pricing per expiry, and a depth popup per leg (5 levels, day values, refreshed once a second).
+- Expected vs actual: unmeasured per row (session-end script). Agents: build (stopped at budget, gates red), finish round
+  (119 calls vs 80 - overrun), backend Opus check, MINOR fix, frontend build, frontend Sonnet check (2 MAJOR), fix round
+  1, findings-only round 2 PASS. CI red once (pinned selector test outside the guard line).
+- Wrong: my first backend brief listed too few files (provider and feed health left out -> values null in production);
+  the one-lease-per-process design would have starved a second viewer (caught by the frontend check).
+
 ### Meta review after row 18 (2026-10-24, session 06fe7549 - no separate meta agent ran; stated, not hidden)
 - Rows 17-18 were reviewed per chunk (ADR-178 (3)); the chunk-2 conformance check runs at the chunk end. This entry
   lists the process misses the orchestrator measured itself, for that check to verify:

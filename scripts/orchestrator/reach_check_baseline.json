@@ -266,6 +266,21 @@
    "issue": "#532"
   },
   {
+   "key": "UNRESOLVED REQ-080 W-147 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-080 W-147 AC-4",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-080 W-147 AC-7",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
    "key": "UNREACHED REQ-113 W-137 AC-6",
    "reason": "unreached: ofo_app.order_limits_registry imported by no app entry point - #532",
    "issue": "#532"
