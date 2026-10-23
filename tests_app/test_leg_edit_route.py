@@ -296,8 +296,8 @@ def test_ac_2_a_stepped_leg_carries_the_new_contracts_ids_and_the_others_keep_th
 
 
 def test_ac_8_the_read_control_names_the_shape_and_marks_and_changes_no_leg():
-    """REQ-076 AC-8 on load: control 'read' on the saved iron condor answers 'Short Iron Condor', two Hedge marks and the
-    engine's outcome; every leg (strike, lots, entry, capture time) is exactly as sent; no capture is made."""
+    """REQ-076 AC-8 on load: control 'read' on the saved iron condor answers 'Short Iron Condor', two Hedge marks and
+    the engine's outcome; every leg (strike, lots, entry, capture time) is exactly as sent; no capture is made."""
     status, reply = post({"legs": legs(), "edit": {"control": "read"}})
     assert status == HTTP_OK and reply["shape"] == "iron_condor" and "Short Iron Condor" in str(reply["shape_name"])
     assert [leg["hedge"] for leg in reply["legs"]] == [True, False, False, True]
