@@ -1,10 +1,11 @@
 """W-111 Positions read (REQ-044 AC-3 part 1; ADR-109 (2), (5); ADR-110; REQ-009 AC-3; ADR-027): quantities only.
 
 Basis: ADR-109 (2): a strategy owns the fills of orders this app placed; lots beyond that are OUTSIDE lots, shown
-apart and blocking nothing. One GET reads Zerodha's positions through the existing read path (``kite_reads`` +
-``kite_replies.positions_from_reply``) and Zerodha's order book (``fetch_orders`` +
-``kite_replies.orders_from_reply``), and asks W-108's ``attribute_and_compare`` for the split (W-108 loads every stored
-plan itself). The route takes NO held units or outside lots from the client (finding
+apart and blocking nothing. One GET reads Zerodha's positions through the existing read path, at most once per
+45 s per user (REQ-118 AC-7: ``kite_period_reads.screen_positions``, the same answer the connect-time periodic read
+stores; ``read_at`` is that read's own time) (``kite_reads`` + ``kite_replies.positions_from_reply``) and Zerodha's
+order book (``fetch_orders`` + ``kite_replies.orders_from_reply``), and asks W-108's ``attribute_and_compare`` for
+the split (W-108 loads every stored plan itself). The route takes NO held units or outside lots from the client (finding
 ``caller-supplied-verdict-trusted``): it has no body and no query. The answer carries units and the owning strategy's id
 only: no price, P&L, margin or Greeks key exists on it (part 2), and no order is ever sent (ADR-002, ADR-027).
 No recorded standalone store exists yet (REQ-060 AC-7), so the standalone map passed is empty: a position in no strategy
@@ -33,6 +34,7 @@ from fastapi import APIRouter, Depends
 from ofo.errors import render
 from ofo.instruments.models import is_lot_aligned
 
+from ofo_app import kite_period_reads
 from ofo_app import reconcile_attribution as ra
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier
@@ -80,6 +82,7 @@ class _Zerodha:
     net: Any
     orders: tuple[Any, ...]
     index: ContractIndex
+    read_at: datetime.datetime  # when Zerodha was read (the periodic job's read or this request's), never "now"
 
 
 def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
@@ -87,12 +90,14 @@ def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
     reply, never replaced by an empty book. An empty list read successfully is a real answer (no orders today)."""
     index = ContractIndex.from_catalogue(catalogue)
     try:
-        read = positions_from_reply(session.reads.fetch_positions(), index)
-        orders = orders_from_reply(session.reads.fetch_orders())
+        answer = kite_period_reads.screen_positions(session.reads)  # REQ-118 AC-7: at most one read per 45 s per user
+        positions_reply, orders_reply = answer.value
+        read = positions_from_reply(positions_reply, index)
+        orders = orders_from_reply(orders_reply)
     except (KiteReadError, KiteReplyError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(read, "positions read")  # rows never ours, named in one line (as the Execute and return routes do)
-    return _Zerodha(read.net, orders, index)
+    return _Zerodha(read.net, orders, index, answer.read_at)
 
 
 async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,
@@ -150,11 +155,11 @@ def _groups(result: ra.Attribution, index: ContractIndex) -> list[dict[str, Any]
     return groups
 
 
-def _answer(result: ra.Attribution, index: ContractIndex, now: datetime.datetime) -> PositionsOut:
+def _answer(result: ra.Attribution, index: ContractIndex, read_at: datetime.datetime) -> PositionsOut:
     groups = _groups(result, index)
     blocked_ids = sorted(int(sid) for sid in result.blocked)
     return PositionsOut.model_validate({
-        "read_at": now, "strategies": groups, "has_outside": any(result.outside.values()),
+        "read_at": read_at, "strategies": groups, "has_outside": any(result.outside.values()),
         "outside_lots": _outside_lots(result, index), "blocked": bool(blocked_ids),
         "blocked_strategy_ids": blocked_ids})
 
@@ -174,7 +179,7 @@ async def read_positions(
         result = await _attribute(db, user_ref, zerodha, ra.Sources(catalogue, clock), now)
     except (ra.AttributionError, store.StrategyStoreError, ValueError):
         raise _refuse("strategy_stored_unreadable") from None
-    return _answer(result, zerodha.index, now)
+    return _answer(result, zerodha.index, zerodha.read_at)
 
 
 __all__ = ["PositionsOut", "StrategyContractOut", "StrategyPositionsOut", "read_positions"]

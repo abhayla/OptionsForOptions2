@@ -37,6 +37,7 @@ KITE_MODULES: Final = frozenset({
     "ofo_app/eligibility_from_zerodha.py", "ofo_app/kite_broker_reader.py", "ofo_app/kite_client.py",
     "ofo_app/kite_history.py", "ofo_app/kite_http.py", "ofo_app/kite_margin.py", "ofo_app/kite_reads.py",
     "ofo_app/kite_replies.py", "ofo_app/kite_ws.py",
+    "ofo_app/kite_period_reads.py", "ofo_app/routes/zerodha_account.py",  # RD-013/RD-014/RD-063 (REQ-015, REQ-118)
 })
 #: Generic broker plumbing that names no vendor (session state, tokens, config, the egress gate, routes).
 NEUTRAL_BROKER_NAMED: Final = frozenset({

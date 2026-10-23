@@ -19,6 +19,12 @@ limiter, so one quote through urllib and one through httpx share one bucket.
 - AC-6: 429s are counted per group and user (a short hash of the access token, never the token) and logged; the
   ``ALERT_THRESHOLD``-th inside ``ALERT_WINDOW_SECONDS`` raises ONE alert through a ``Notifier`` adapter (ADR-029).
   An alert failure never blocks a read.
+- AC-7 (RD-063): a read of one kind for one user has a minimum period (``READ_PERIOD_SECONDS``: 30 s for numbers such
+  as the available margin, 45 s for positions). ``read_once_per_period`` sends at most one read of that call per user
+  per period; any ask inside the period gets the last answer with ITS read time (or the last failure again), never a
+  new Kite call. A "user" is the short hash of the access token, so a new login is a new user and never sees the old
+  session's answer. This is a memo inside the one limiter, not a second limiter: the read it guards still passes the
+  bucket above at the door.
 
 Standard library only (the domain layer imports no HTTP package).
 """
@@ -27,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
+import datetime
 import hashlib
 import json
 import logging
@@ -34,7 +41,9 @@ import math
 import os
 import threading
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final, Protocol
 from urllib.parse import parse_qs
 
@@ -57,6 +66,26 @@ ALERT_WINDOW_SECONDS: Final = 60.0
 _USER_REF_CHARS: Final = 8
 #: ``identity`` names this when a request carries no api key (the public instrument-list download)
 NO_KEY: Final = "-"
+READ_NUMBERS: Final = "numbers"
+READ_POSITIONS: Final = "positions"
+#: AC-7 (RD-063): the minimum seconds between two reads of one kind for one user; a kind not named here is refused
+READ_PERIOD_SECONDS: Final[Mapping[str, float]] = MappingProxyType({READ_NUMBERS: 30.0, READ_POSITIONS: 45.0})
+
+@dataclass(frozen=True)
+class PeriodAnswer[T]:
+    """One read's answer and the wall-clock time it was read. ``fresh`` is True only for the call that read Zerodha."""
+
+    value: T
+    read_at: datetime.datetime
+    fresh: bool
+
+
+@dataclass(frozen=True)
+class _LastRead:
+    at: float  # the pacer's clock when the read was sent
+    read_at: datetime.datetime
+    value: object
+    error: BaseException | None
 
 _BACKGROUND: Final = contextvars.ContextVar("ofo_kite_background", default=False)
 
@@ -158,6 +187,45 @@ class RateLimiter:
         self._counts: dict[tuple[str, str], int] = {}
         self._recent: list[float] = []
         self._last_alert = -math.inf
+        self._last_reads: dict[tuple[str, str, str], _LastRead] = {}
+        self._read_locks: dict[tuple[str, str, str], threading.Lock] = {}
+
+    # -- AC-7: one read per period per user ------------------------------------------------------------------------
+
+    def read_once_per_period[T](self, kind: str, call: str, user_ref: str, fetch: Callable[[], T],
+                             stamp: Callable[[], datetime.datetime]) -> PeriodAnswer[T]:
+        """``fetch()`` at most once per ``READ_PERIOD_SECONDS[kind]`` for this (call, user); inside the period the last
+        answer comes back with its own read time (a failed read raises its error again), and nothing is sent. The key
+        is the guarded call's name and the user, so two calls or two users never share an answer or a period. Many
+        tabs asking at once wait on one lock per key and the later ones get the first one's answer."""
+        if kind not in READ_PERIOD_SECONDS:
+            raise ValueError(f"unknown read kind {kind!r}")  # fail closed: no unbounded read
+        if not call or not isinstance(call, str) or not user_ref or not isinstance(user_ref, str) or user_ref == NO_KEY:
+            raise ValueError("a periodic read needs the call's name and a known user")  # never one answer for all
+        key = (kind, call, user_ref)
+        with self._lock:
+            lock = self._read_locks.setdefault(key, threading.Lock())
+        with lock:
+            now = self._pacer.now()
+            last = self._last_reads.get(key)
+            if last is not None and now - last.at < READ_PERIOD_SECONDS[kind]:
+                if last.error is not None:
+                    raise last.error
+                return PeriodAnswer(last.value, last.read_at, fresh=False)  # type: ignore[arg-type]
+            read_at = stamp()
+            try:
+                value = fetch()
+            except Exception as exc:  # the attempt counts: a failing broker is not asked again inside the period
+                self._remember(key, _LastRead(now, read_at, None, exc), now)
+                raise
+            self._remember(key, _LastRead(now, read_at, value, None), now)
+            return PeriodAnswer(value, read_at, fresh=True)
+
+    def _remember(self, key: tuple[str, str, str], last: _LastRead, now: float) -> None:
+        with self._lock:
+            longest = max(READ_PERIOD_SECONDS.values())
+            self._last_reads = {k: v for k, v in self._last_reads.items() if now - v.at < longest}  # bounded memory
+            self._last_reads[key] = last
 
     # -- slots ----------------------------------------------------------------------------------------------------
 
@@ -288,6 +356,12 @@ async def aacquire(group: str, key: str) -> None:
 
 def note_429(group: str, key: str, user_ref: str) -> None:
     current().note_429(group, key, user_ref)
+
+
+def read_once_per_period[T](kind: str, call: str, user_ref: str, fetch: Callable[[], T],
+                         stamp: Callable[[], datetime.datetime]) -> PeriodAnswer[T]:
+    """AC-7 through the process's one limiter (see ``RateLimiter.read_once_per_period``)."""
+    return current().read_once_per_period(kind, call, user_ref, fetch, stamp)
 
 
 @contextlib.contextmanager

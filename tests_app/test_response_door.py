@@ -382,6 +382,9 @@ APP_MODELS = (
     "ofo_app.routes.tracking.TrackingIndexOut",
     "ofo_app.routes.tracking.TrackingLegOut",
     "ofo_app.routes.tracking.TrackingOut",
+    "ofo_app.routes.zerodha_account.BrokerAccountOut",
+    "ofo_app.routes.zerodha_account.MarginOut",
+    "ofo_app.routes.zerodha_account.MaskedUserIdOut",
 )
 
 

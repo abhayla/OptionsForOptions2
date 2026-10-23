@@ -191,6 +191,10 @@ def test_a_429_stops_everything_to_that_group_for_ten_seconds_then_retries_at_mo
     assert kite.times("/portfolio/positions") == [0.0] and kite.times("/user/profile") == []  # nothing during cooldown
     pacer.advance(0.1)
     wait_for(lambda: len(kite.times("/portfolio/positions")) == 2, "first retry at t=10")
+    # the server counts the retry BEFORE the client has read its 429 and restarted the cooldown; moving the clock in
+    # that gap starts the cooldown at t=20 instead of t=10 and the second retry never comes (a race in this test, seen
+    # under load on 2026-10-23): wait until the client has noted the second 429
+    wait_for(lambda: limiter.in_cooldown("other", KEY), "second 429 noted, cooldown restarted at t=10")
     pacer.advance(10.0)
     wait_for(lambda: len(first) == 1, "the read ended after its retries")
     assert kite.times("/portfolio/positions") == [0.0, 10.0, 20.0]  # 1 send + 2 retries, then it fails
@@ -389,7 +393,7 @@ def test_the_httpx_door_retries_a_read_after_the_cooldown_but_returns_the_third_
     run(started, read, results)
     wait_for(lambda: kite.count() == 1 and limiter.in_cooldown("other", KEY), "first 429")
     pacer.advance(10.0)
-    wait_for(lambda: kite.count() == 2, "retry 1")
+    wait_for(lambda: kite.count() == 2 and limiter.in_cooldown("other", KEY), "retry 1 and its 429 noted")
     pacer.advance(10.0)
     wait_for(lambda: len(results) == 1, "done")
     assert kite.times() == [0.0, 10.0, 20.0] and results == [429]

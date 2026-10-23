@@ -29,6 +29,7 @@ from ofo.broker.kite_flags import declared, load_zerodha_flags
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEVEN = ("basket_page_orders", "broker_held_triggers", "intraday_product", "order_update_stream", "funds_read",
          "positions_read", "basket_margin_quote")  # REQ-117 AC-1, copied from the requirement text
+NEW_OFF = ("brokerage_charges", "split_pnl", "holdings_read", "verified_pnl")  # REQ-117 AC-6, from RD-025's record
 DAY = datetime.date(2026, 10, 22)
 
 
@@ -51,10 +52,28 @@ def test_core_removing_basket_margin_quote_turns_that_flag_off_and_only_that_fla
     assert is_supported(flags_or_off(broken), BrokerFlag.BASKET_MARGIN_QUOTE) is False
 
 
-def test_ac1_the_flag_set_is_closed_and_exactly_the_seven_named_flags() -> None:
-    """AC-1: exactly the seven named flags, nothing more, nothing less."""
-    assert [c.value for c in BrokerFlag] == list(SEVEN)
-    assert set(FLAG_NAMES) == set(SEVEN)
+def test_ac1_the_flag_set_is_closed_and_exactly_the_named_flags() -> None:
+    """AC-1 + AC-6: exactly the seven named flags and the four of AC-6, nothing more, nothing less."""
+    assert [c.value for c in BrokerFlag] == [*SEVEN, *NEW_OFF]
+    assert set(FLAG_NAMES) == set(SEVEN) | set(NEW_OFF)
+
+
+@pytest.mark.parametrize("name", NEW_OFF)
+def test_ac6_each_new_flag_is_off_when_unset_and_when_the_load_fails(name: str) -> None:
+    """AC-6 (RD-025): Zerodha's declaration does not list it (unset) -> off; a broken load -> off; only an explicit
+    declared True turns it on; and the route that lists flags to the screens does not offer it (no reader yet)."""
+    assert name not in declared()
+    assert is_supported(load_zerodha_flags(), name) is False
+    assert is_supported(FlagSet({}), name) is False
+
+    def broken() -> FlagSet:
+        raise OSError("flag file unreadable")
+
+    assert is_supported(flags_or_off(broken), name) is False
+    assert is_supported(load_flags({name: (True, "tests/x.py", DAY)}), name) is True  # the flag itself works
+    assert is_supported(load_flags({name: (False, "tests/x.py", DAY)}), name) is False
+    route = (ROOT / "backend/ofo_app/routes/broker_capabilities.py").read_text(encoding="utf-8")
+    assert name not in route
 
 
 def test_ac2_zerodha_declares_every_flag_with_a_source_and_a_date() -> None:

@@ -38,6 +38,13 @@ class BrokerFlag(enum.StrEnum):
     FUNDS_READ = "funds_read"
     POSITIONS_READ = "positions_read"
     BASKET_MARGIN_QUOTE = "basket_margin_quote"
+    # REQ-117 AC-6 (RD-025): named now so a feature asks the flag, never the broker. No feature reads them yet and the
+    # Zerodha declaration does not list them, so each is OFF (an undeclared flag is off) until its feature and its
+    # source land together.
+    BROKERAGE_CHARGES = "brokerage_charges"
+    SPLIT_PNL = "split_pnl"
+    HOLDINGS_READ = "holdings_read"
+    VERIFIED_PNL = "verified_pnl"
 
 
 FLAG_NAMES: Final = frozenset(f.value for f in BrokerFlag)
@@ -74,7 +81,7 @@ class FlagSet:
         checked = {}
         for name, value in self.flags.items():
             if name not in FLAG_NAMES or not isinstance(value, FlagValue):
-                raise FlagLoadError("flags hold only the seven named flags, each a FlagValue")
+                raise FlagLoadError("flags hold only the named flags, each a FlagValue")
             checked[name] = value
         object.__setattr__(self, "flags", MappingProxyType(checked))
 
