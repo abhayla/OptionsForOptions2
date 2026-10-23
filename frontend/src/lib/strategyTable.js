@@ -7,8 +7,8 @@ export const STICKY_COUNT = 3
 
 /** REQ-035 AC-5: the Details rows (Bid and Ask per leg), or null when the response carries no block. Bid and Ask
  *  are NOT table columns. Values are the API's strings, never computed. */
-export function advancedDetails(response) {
-  return Array.isArray(response?.advanced_details) ? response.advanced_details : null
+export function legQuotes(response) {
+  return Array.isArray(response?.leg_quotes) ? response.leg_quotes : null
 }
 
 /** True for the column the API marks as the current market level (the highlight, REQ-035 AC-3). */

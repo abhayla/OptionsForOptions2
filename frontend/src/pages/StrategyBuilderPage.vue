@@ -19,7 +19,7 @@ import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
-import { advancedDetails } from '@/lib/strategyTable'
+import { legQuotes } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
@@ -204,7 +204,7 @@ const showNumbers = computed(() => (state.value === 'computed' || state.value ==
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
-const advancedRows = computed(() => advancedDetails(data.value))
+const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 // ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
@@ -299,7 +299,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
-      <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
+      <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
       <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />

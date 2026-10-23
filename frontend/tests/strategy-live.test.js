@@ -193,7 +193,7 @@ const AC5 = 'Live market data disconnected. Last updated: 09:20:09 AM. Live stra
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: null, summary: null, payoff: null, scenario: null,
-  advanced_details: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, label: AC5 })) }
+  leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, label: AC5 })) }
 const COMPUTED = real
 const OTHER_STRATEGY = { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) }
 

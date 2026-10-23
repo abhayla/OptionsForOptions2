@@ -7,34 +7,37 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import fs from 'node:fs'
 import path from 'node:path'
-import { advancedDetails, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
+import { legQuotes, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
 import real from './fixtures/outcome-condor.json'
 
 // the removed level names, built here so a search for them over the app finds only real uses
+const OLD_BLOCK = ['advanced', 'details'].join('_')
 const LEVEL_KEY = ['ux', 'level'].join('_')
 const LEVEL_ATTR = ['data', 'ux'].join('-')
 const OLD_LEVEL = ['gui', 'ded'].join('')
 const ids = (cols) => cols.map((c) => c.id)
 const without = (r) => {
-  const { advanced_details: _drop, ...rest } = r
+  const { leg_quotes: _drop, ...rest } = r
   return rest
 }
 
 describe('the real response used here', () => {
   it('is a level-free condor with bid and ask from the API', () => {
     expect(real).not.toHaveProperty(LEVEL_KEY)
-    expect(real.advanced_details).toHaveLength(4)
-    expect(real.advanced_details[0]).toMatchObject({ instrument_id: 'NSE_FO:44624', symbol: 'NIFTY26O1322800CE', bid: '39', ask: '39.1' })
+    expect(real.leg_quotes).toHaveLength(4)
+    expect(real.leg_quotes[0]).toMatchObject({ instrument_id: 'NSE_FO:44624', symbol: 'NIFTY26O1322800CE', bid: '39', ask: '39.1' })
   })
 })
 
 describe('AC-5: bid and ask only in the Details block', () => {
   it('shows the API block as given, with no level argument', () => {
-    expect(advancedDetails(real)).toEqual(real.advanced_details)
+    expect(legQuotes(real)).toEqual(real.leg_quotes)
   })
   it('shows nothing when the response carries no block', () => {
-    expect(advancedDetails(without(real))).toBeNull()
-    expect(advancedDetails(null)).toBeNull()
+    expect(legQuotes(without(real))).toBeNull()
+    expect(legQuotes(null)).toBeNull()
+    expect(legQuotes({ ...without(real), [OLD_BLOCK]: real.leg_quotes })).toBeNull() // the old name is not read
+    expect(legQuotes({ ...without(real), leg_quotes: 'x' })).toBeNull() // not a list: nothing invented
   })
   it('bid and ask are never table columns (AC-2 locked order)', () => {
     expect(ids(real.table.columns)).not.toContain('bid')
@@ -68,7 +71,7 @@ describe('ADR-168: one full builder screen, no level switch', () => {
     expect(w.findAll('[data-testid="col-head"]').length).toBe(real.table.columns.length)
     expect(real.table.columns.map((c) => c.id)).toContain('iv')
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(true)
-    expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.advanced_details.length)
+    expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.leg_quotes.length)
     expect(w.find('[data-testid="strategy-header"]').find('button').exists()).toBe(false)
     expect(w.find('[data-testid^="ux-"]').exists()).toBe(false)
     expect(w.find('[data-testid="strategy-builder"]').attributes(LEVEL_ATTR)).toBeUndefined()

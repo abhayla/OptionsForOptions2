@@ -135,9 +135,9 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
 
 test('AC-5: Bid and Ask are in the Details block for everyone, with the API values', async ({ page, request }, info) => {
   const { api } = await openCondor(page, request)
-  expect(api.advanced_details).toHaveLength(4)
+  expect(api.leg_quotes).toHaveLength(4)
   await expect(page.getByTestId('advanced-details')).toBeVisible()
-  for (const r of api.advanced_details) {
+  for (const r of api.leg_quotes) {
     const row = page.locator(`[data-testid="advanced-details"] tr[data-leg="${r.instrument_id}"]`)
     await expect(row.getByTestId('adv-bid')).toHaveText(r.bid)
     await expect(row.getByTestId('adv-ask')).toHaveText(r.ask)

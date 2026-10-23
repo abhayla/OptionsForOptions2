@@ -1,5 +1,5 @@
 <!-- Details (REQ-035 AC-5): per-leg Bid and Ask, drawn whenever the outcome response carries
-     `advanced_details` (the API sends it for everyone, ADR-168). Every value is the API's string as given. -->
+     `leg_quotes` (the API sends it for everyone, ADR-168). Every value is the API's string as given. -->
 <script setup>
 import { healthSentence, missingReason } from '@/lib/dataHealthText'
 
