@@ -83,7 +83,7 @@ describe('only offered contracts are selectable', () => {
     expect(calls.map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries'])
     await t(w, 'pick-expiry').setValue('2026-10-13')
     await flushPromises()
-    expect(calls.at(-1).url).toBe('/catalogue/NIFTY/contracts?expiry=2026-10-13')
+    expect(calls.filter((x) => x.url.startsWith('/catalogue/')).at(-1).url).toBe('/catalogue/NIFTY/contracts?expiry=2026-10-13') // the picker's own strikes read follows it
     expect(options(w, 'pick-type')).toEqual(['CE', 'PE'])
     await t(w, 'pick-type').setValue('PE')
     expect(options(w, 'pick-strike')).toEqual(['22200.00', '22400.00'])
@@ -472,5 +472,298 @@ describe('a draft reopened without planned entries asks for a reprice', () => {
     const [leg] = w.props('legs')
     expect(leg).toMatchObject({ planned_entry: '104.65', captured_at: AT, reason_code: null })
     expect(t(w, 'leg-reprice-prompt').exists()).toBe(false)
+  })
+})
+
+// ---- W-147 / REQ-080: the Strikes and Futures tabs, multi-select Done, the Lots/Quantity setting. ----
+// The strikes answer is the shape of backend/ofo_app/routes/leg_picker.py StrikesOut, built from the SAME recorded NIFTY
+// 2026-10-08 09:20:09 IST values as tests_app/test_leg_picker_routes.py: spot 22,533.25, grid 22450..22600 step 50 (ATM 22550),
+// tokens 44000 + 2 x index (CE) and +1 (PE), lot size 65, only 22500 CE (151.30, OI 3218475) and 22550 PE (145.10,
+// OI 4022200) priced; IV/delta are the independent hand figures of that file (11.34 %, 0.5730 and 13.65 %, -0.4920).
+const GRID = ['22450.00', '22500.00', '22550.00', '22600.00']
+const tok = (i, side) => 44000 + 2 * i + (side === 'pe' ? 1 : 0)
+const cell = (i, side, extra = {}, lot = 65) => ({
+  instrument_id: `NSE_FO:${tok(i, side)}`, lot_size: lot, ltp: null, oi: null, iv_percent: null, delta: null,
+  health: 'unavailable', at: null, ...extra,
+})
+const PRICED = {
+  1: { ce: { ltp: '151.30', oi: 3218475, iv_percent: '11.34', delta: '0.5730', health: 'available', at: AT } },
+  2: { pe: { ltp: '145.10', oi: 4022200, iv_percent: '13.65', delta: '-0.4920', health: 'available', at: AT } },
+}
+const strikesAnswer = (over = {}) => ({
+  state: 'LIVE', reason: 'SOME_PRICES_MISSING', underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: '22533.25',
+  spot_at: AT, centre: 'LIVE_SPOT', atm_strike: '22550.00', answered_at: AT, market_closed: false,
+  rows: GRID.map((strike, i) => ({
+    strike, is_atm: strike === '22550.00', ce: cell(i, 'ce', PRICED[i]?.ce), pe: cell(i, 'pe', PRICED[i]?.pe),
+  })),
+  ...over,
+})
+const catalogue13 = {
+  underlying: 'NIFTY',
+  contracts: GRID.flatMap((strike, i) => ['ce', 'pe'].map((side) => ({
+    contract_id: tok(i, side), exchange_segment: 'NSE_FO', exchange_token: tok(i, side), instrument_type: side.toUpperCase(),
+    expiry: '2026-10-13', strike, lot_size: 65, symbol: `NIFTY26OCT${strike}${side.toUpperCase()}`,
+  }))),
+}
+const STRIKES_URL = (w = 10, u = 'NIFTY', e = '2026-10-13') => `GET /leg-picker/strikes?underlying=${u}&expiry=${e}&width=${w}`
+const entryFor = (prices) => (body) => Promise.resolve({
+  data: {
+    entries: body.instrument_ids.map((id) => {
+      const token = Number(id.split(':')[1])
+      return entry(token, prices[token] ?? null)
+    }),
+    answered_at: AT,
+  },
+})
+const rowOf = (w, strike) => w.find(`[data-testid="strike-row"][data-strike="${strike}"]`)
+const sideOf = (w, strike, side) => rowOf(w, strike).find(`[data-testid="cell-${side}"]`)
+
+async function openStrikes(w, expiry = '2026-10-13') {
+  await t(w, 'pick-expiry').setValue(expiry)
+  await flushPromises()
+}
+
+describe('REQ-080 strikes tab (W-147)', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+    answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
+  })
+
+  it('AC-1/AC-2/AC-3 core: ATM row highlighted, a null price shows "-" with the server reason, two selected cells then Done emit two legs', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'tab-futures').exists()).toBe(true)
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(GRID)
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'false', 'true', 'false'])
+    expect(rowOf(w, '22550.00').classes()).toContain('bg-amber-100')
+    expect(rowOf(w, '22550.00').find('[data-testid="atm-mark"]').exists()).toBe(true)
+    expect(rowOf(w, '22450.00').find('[data-testid="atm-mark"]').exists()).toBe(false)
+    // priced cell: the server's strings, nothing computed
+    const ce = sideOf(w, '22500.00', 'ce')
+    expect([ce.find('[data-testid="cell-ltp"]').text(), ce.find('[data-testid="cell-oi"]').text(), ce.find('[data-testid="cell-iv"]').text(), ce.find('[data-testid="cell-delta"]').text()])
+      .toEqual(['151.30', '3218475', '11.34', '0.5730'])
+    // unpriced cell: '-' in every figure, and the reason sits above the list
+    const none = sideOf(w, '22450.00', 'ce')
+    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '-', '-', '-'])
+    expect(t(w, 'strikes-reason').text()).toBe('Some strikes have no live price right now; they show a dash.')
+    expect(t(w, 'strikes-reason').element.compareDocumentPosition(rowOf(w, '22450.00').element) & 4).toBeTruthy() // the list follows the reason
+    // select two contracts (22500 CE sell, 22550 PE buy), Done adds both
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    const added = w.props('legs')
+    expect(added.map((l) => [l.instrument_id, l.action, l.lots, l.planned_entry, l.captured_at, l.contract_id, l.strike, l.instrument_type]))
+      .toEqual([['NSE_FO:44002', 'SELL', 1, '151.30', AT, 44002, '22500.00', 'CE'], ['NSE_FO:44005', 'BUY', 1, '145.10', AT, 44005, '22550.00', 'PE']])
+    expect(calls.filter((x) => x.method === 'POST').map((x) => x.url)).toEqual(['/strategies/planned-entry', '/strategies/planned-entry'])
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined() // the selection is cleared
+  })
+
+  it('AC-1: widths 10/20/30/40, default 10; choosing one re-reads with it and clears the selection', async () => {
+    answers[STRIKES_URL(20)] = strikesAnswer({ width: 20 })
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(options(w, 'pick-width')).toEqual(['10', '20', '30', '40'])
+    expect(t(w, 'pick-width').element.value).toBe('10')
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'pick-width').setValue('20')
+    await flushPromises()
+    expect(calls.at(-1).url).toBe('/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=20')
+    expect(t(w, 'picker-done').text()).toBe('Done')
+  })
+
+  it('attack 1: a leg picked on a strike with no price is still added and shows the reprice prompt', async () => {
+    answers['POST /strategies/planned-entry'] = entryFor({})
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22450.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.planned_entry, l.captured_at, l.reason_code])).toEqual([[null, null, 'needs_reprice'], [null, null, 'needs_reprice']])
+    expect(w.findAll('[data-testid="leg-reprice-prompt"]')).toHaveLength(2)
+    expect(t(w, 'leg-reprice-prompt').text()).toBe(REPRICE_PROMPT)
+    // the other strike is still shown priced by the server
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-ltp"]').text()).toBe('151.30')
+  })
+
+  it('attack 2: no live spot says how the list is centred (last known spot with its time, or the middle strike)', async () => {
+    answers[STRIKES_URL()] = strikesAnswer({ state: 'NOT_LIVE', reason: 'FEED_STALE', centre: 'LAST_KNOWN_SPOT', atm_strike: '22550.00' })
+    let w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'strikes-reason').text()).toBe('The live feed is not fresh, so no prices are shown as current.')
+    expect(t(w, 'strikes-centre').text()).toBe('Centred on the last known index price 22533.25, as of 8 Oct 2026, 09:20:09 IST.')
+    answers[STRIKES_URL()] = strikesAnswer({
+      state: 'NOT_LIVE', reason: 'SPOT_MISSING', centre: 'MIDDLE_STRIKE', spot: null, spot_at: null, atm_strike: null,
+      rows: GRID.map((strike, i) => ({ strike, is_atm: false, ce: cell(i, 'ce'), pe: cell(i, 'pe') })),
+    })
+    w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'strikes-centre').text()).toBe('ATM unknown - no live price. The list is centred on the middle listed strike.')
+    expect(w.findAll('[data-testid="strike-row"][data-atm="true"]')).toHaveLength(0)
+    expect(w.findAll('[data-testid="cell-ltp"]').every((e) => e.text() === '-')).toBe(true)
+  })
+
+  it('AC-5/ADR-015: a failed read leaves no old list, an unknown reason code reads as "not given"', async () => {
+    answers[STRIKES_URL()] = new Error('down')
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'strikes-error').exists()).toBe(true)
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+    expect(t(w, 'picker-error').exists()).toBe(false)
+    answers[STRIKES_URL()] = strikesAnswer({ reason: 'SOMETHING_NEW' })
+    const w2 = mountPicker()
+    await flushPromises()
+    await openStrikes(w2)
+    expect(t(w2, 'strikes-reason').text()).toBe('The reason was not given.')
+  })
+
+  it('AC-4 attack 3: quantity mode on SENSEX lists multiples of the SENSEX lot size from the server data, not NIFTY\'s', async () => {
+    const SENSEX_LOT = 20 // the lot size this fixture's server answer carries; the page must show the server's, never a typed 65
+    answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-15'] = {
+      underlying: 'SENSEX',
+      contracts: [{ contract_id: 7001, exchange_segment: 'BSE_FO', exchange_token: 7001, instrument_type: 'CE', expiry: '2026-10-15', strike: '82000.00', lot_size: SENSEX_LOT, symbol: 'SENSEX26O1582000CE' }],
+    }
+    const sx = cell(0, 'ce', {}, SENSEX_LOT)
+    sx.instrument_id = 'BSE_FO:7001'
+    answers[STRIKES_URL(10, 'SENSEX', '2026-10-15')] = strikesAnswer({
+      underlying: 'SENSEX', expiry: '2026-10-15', spot: null, centre: 'MIDDLE_STRIKE', state: 'NOT_LIVE', reason: 'SPOT_MISSING', atm_strike: null,
+      rows: [{ strike: '82000.00', is_atm: false, ce: sx, pe: null }],
+    })
+    answers['POST /strategies/planned-entry'] = { entries: [], answered_at: AT }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'pick-underlying').setValue('SENSEX')
+    await flushPromises()
+    await openStrikes(w, '2026-10-15')
+    const lotsSelect = () => rowOf(w, '82000.00').find('[data-testid="cell-lots"]')
+    expect(lotsSelect().findAll('option').map((o) => o.text())).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']) // lots mode
+    await t(w, 'pick-lots-mode').setValue('quantity')
+    expect(lotsSelect().findAll('option').map((o) => o.text())).toEqual(['20', '40', '60', '80', '100', '120', '140', '160', '180', '200'])
+    expect(lotsSelect().text()).not.toContain('65')
+    await lotsSelect().setValue('3') // the option "60" = 3 lots
+    await rowOf(w, '82000.00').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.lots, l.lot_size])).toEqual([['BSE_FO:7001', 3, 20]])
+  })
+
+  it('AC-4: quantity mode with no usable lot size offers no selector and no Buy/Sell (fail closed)', async () => {
+    const bad = strikesAnswer()
+    bad.rows[1].ce.lot_size = null
+    answers[STRIKES_URL()] = bad
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await t(w, 'pick-lots-mode').setValue('quantity')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').exists()).toBe(false)
+    expect(sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').exists()).toBe(true)
+  })
+
+  it('Done refuses (adds nothing) when a selected contract is not in the catalogue answer', async () => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: catalogue13.contracts.slice(0, 2) }
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(t(w, 'done-error').exists()).toBe(true)
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+  })
+
+  it('ADR-015: when a refresh fails the earlier list and prices are removed, never kept on screen as current', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = mountPicker()
+      await flushPromises()
+      await openStrikes(w)
+      expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(4)
+      answers[STRIKES_URL()] = new Error('down')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+      expect(w.findAll('[data-testid="cell-ltp"]')).toHaveLength(0)
+      expect(t(w, 'strikes-error').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('the open list refreshes on a timer and the timer stops when the picker is removed', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = mountPicker()
+      await flushPromises()
+      await openStrikes(w)
+      const reads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).length
+      const first = reads()
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(reads()).toBe(first + 1)
+      w.unmount()
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(reads()).toBe(first + 1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('REQ-080 futures tab (W-147)', () => {
+  const futuresAnswer = {
+    state: 'LIVE', reason: null, underlying: 'NIFTY', spot: '22533.25', answered_at: AT,
+    futures: [
+      { expiry: '2026-10-27', instrument_id: 'NSE_FO:48704', lot_size: 65, ltp: '22610.40', health: 'available', ltp_reason: null },
+      { expiry: '2026-11-24', instrument_id: 'NSE_FO:48705', lot_size: 65, ltp: null, health: 'unavailable', ltp_reason: 'NO_QUOTE' },
+    ],
+    forwards: [
+      { expiry: '2026-10-13', forward: '22540.10', source: 'parity', label: null, strikes_used: 3, reason: null },
+      { expiry: '2026-10-27', forward: '22548.00', source: 'spot_fallback', label: 'estimated from spot', strikes_used: 1, reason: null },
+      { expiry: '2026-11-24', forward: null, source: null, label: null, strikes_used: 0, reason: 'NOT_PRICEABLE' },
+    ],
+  }
+  it('AC-6: every future with its LTP or reason, and each expiry\'s forward labelled "Forward used for pricing" with its source', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = futuresAnswer
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    const f = w.findAll('[data-testid="future-row"]')
+    expect(f.map((r) => r.attributes('data-expiry'))).toEqual(['2026-10-27', '2026-11-24'])
+    expect(f[0].find('[data-testid="future-ltp"]').text()).toBe('22610.40')
+    expect(f[1].find('[data-testid="future-ltp"]').text()).toBe('-')
+    expect(f[1].find('[data-testid="future-reason"]').text()).toBe('(No price has been received for this future yet.)')
+    const fw = w.findAll('[data-testid="forward-row"]')
+    expect(fw.map((r) => r.find('[data-testid="forward-value"]').text())).toEqual(['22540.10', '22548.00', '-'])
+    expect(fw.every((r) => r.text().includes('Forward used for pricing'))).toBe(true)
+    expect(fw[0].find('[data-testid="forward-source"]').text()).toBe('(from put-call parity)')
+    expect(fw[1].find('[data-testid="forward-source"]').text()).toBe('(estimated from spot)')
+    expect(fw[2].find('[data-testid="forward-reason"]').text()).toBe('(The engine cannot price this expiry right now.)')
+    expect(t(w, 'futures-reason').exists()).toBe(false)
+  })
+
+  it('AC-5: a list-level reason shows above the futures, and a failed read shows no old list', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { ...futuresAnswer, state: 'NOT_LIVE', reason: 'NOT_CONNECTED', futures: [], forwards: [] }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w, 'futures-reason').text()).toBe('Live data is not connected, so no prices are shown.')
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = new Error('down')
+    const w2 = mountPicker()
+    await flushPromises()
+    await t(w2, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w2, 'futures-error').exists()).toBe(true)
+    expect(w2.findAll('[data-testid="future-row"]')).toHaveLength(0)
   })
 })
