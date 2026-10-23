@@ -6,7 +6,7 @@
 // strategy socket's (createLiveSocket, imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
-import { createLiveSocket, useReconnecting } from './useStrategyLive'
+import { createLiveSocket, useReconnecting, useReconnectingText } from './useStrategyLive'
 
 export const INDEX_LIVE_PATH = '/api/market/indices/live'
 export const INDEX_REST_PATH = '/api/market/indices'
@@ -35,9 +35,11 @@ export function createIndexSocket({ url, onPush, onDown = () => {}, onStatus = (
 /** Vue wrapper: `status` is a ref, `reconnecting` a computed (REQ-113 AC-2); closes on unmount. */
 export function useIndexLive({ onPush, onDown, url = indexLiveUrl(), WebSocketImpl } = {}) {
   const status = ref('off')
-  const live = createIndexSocket({ url, onPush, onDown, WebSocketImpl, onStatus: (s) => (status.value = s) })
+  const shown = useReconnectingText(status)
+  const live = createIndexSocket({ url, onDown, WebSocketImpl, onStatus: (s) => (status.value = s),
+    onPush: (msg) => { shown.note(msg, msg?.state === 'LIVE'); onPush?.(msg) } })
   onBeforeUnmount(() => live.stop())
-  return { status, reconnecting: useReconnecting(status), start: live.start, stop: live.stop }
+  return { status, reconnecting: useReconnecting(status), reconnectingText: shown.text, start: live.start, stop: live.stop }
 }
 
 export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
@@ -71,7 +73,7 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
     answer.value = { state: 'NOT_CONNECTED', indices: rows }
   }
 
-  const { status, reconnecting, start: startSocket } = useIndexLive({
+  const { status, reconnecting, reconnectingText, start: startSocket } = useIndexLive({
     url,
     WebSocketImpl,
     onPush: (msg) => {
@@ -104,5 +106,5 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const isLive = () => answer.value?.state === 'LIVE'
   const shownValue = (row) => (isLive() && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
   const notLive = () => answer.value?.state === 'NOT_CONNECTED' || failed.value
-  return { answer, status, reconnecting, start, rowFor, shownValue, isLive, notLive }
+  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive }
 }

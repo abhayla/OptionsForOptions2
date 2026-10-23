@@ -35,7 +35,6 @@ import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
-import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 
 const route = useRoute()
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
@@ -231,7 +230,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
-    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</p>
+    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 

@@ -12,7 +12,6 @@ import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPi
 import { fetchSavedLegs } from '@/lib/saveDraft'
 import { istTime, maxLine } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
-import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
@@ -123,7 +122,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       </span>
     </header>
 
-    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</p>
+    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">Waiting to start...</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />

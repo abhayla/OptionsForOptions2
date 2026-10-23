@@ -6,10 +6,9 @@
 <script setup>
 import { onMounted } from 'vue'
 import { istTime } from '@/lib/displayFormat'
-import { RECONNECTING_TEXT } from '@/lib/sharedStateText'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
-const { start, reconnecting, rowFor, shownValue, isLive, notLive } = useIndexAnswer()
+const { start, reconnecting, reconnectingText, rowFor, shownValue, isLive, notLive } = useIndexAnswer()
 onMounted(start)
 
 function timeText(row) {
@@ -22,7 +21,7 @@ function timeText(row) {
   <section data-testid="index-view-page">
     <p class="text-xs text-ink-muted" data-testid="page-parent">Market</p>
     <h1 class="text-xl font-semibold" data-testid="page-title">Underlying/index view</h1>
-    <p v-if="reconnecting" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ RECONNECTING_TEXT }}</p>
+    <p v-if="reconnecting" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
     <p v-if="notLive()" class="mt-2 font-medium" data-testid="index-state">
       {{ NOT_LIVE_LABEL }}
     </p>
