@@ -11,7 +11,7 @@ from ofo.marketdata.forward import FALLBACK_LABEL, spot_fallback_forward
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, build_outcome, read_snapshot
 from ofo.rules.inputs import DataHealth
-from ofo.table import TOTAL_ROW_ID, ColumnId, UXLevel
+from ofo.table import TOTAL_ROW_ID, ColumnId
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from outcome.test_same_engine import RATE, VALUATION, definition, formula_pnl
@@ -135,7 +135,7 @@ def test_expired_leg_is_refused(replayed):
 def test_no_provider_is_the_not_connected_state(replayed):
     provider, _, _ = replayed
     d = definition(provider)
-    out = build_outcome(d, None, UXLevel.GUIDED)
+    out = build_outcome(d, None)
     assert out.state is OutcomeState.NOT_CONNECTED
     assert out.status_label == NOT_CONNECTED_LABEL == "Draft — Live data not connected"
     assert out.margin.state == "NOT_AVAILABLE_YET"

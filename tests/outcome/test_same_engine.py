@@ -12,7 +12,7 @@ import ofo.scenario.views as views_module
 from ofo.engine.legs import Action
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
-from ofo.table import TOTAL_ROW_ID, UXLevel
+from ofo.table import TOTAL_ROW_ID
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 
@@ -55,7 +55,7 @@ def definition(provider):
 def outcome_of(provider, **kw):
     d = definition(provider)
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
-    return build_outcome(d, snap, UXLevel.STANDARD, VALUATION, **kw)
+    return build_outcome(d, snap, VALUATION, **kw)
 
 
 def formula_pnl(level, provider):
@@ -116,7 +116,7 @@ def test_expiry_scenarios_use_planned_entry_not_current_ltp(replayed):
     bumped = StrategyDefinition("NIFTY", (PlannedLeg(d.legs[0].instrument_id, Action.SELL, 1,
                                                      d.legs[0].planned_entry + Decimal("10"), VALUATION),) + d.legs[1:])
     snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in bumped.legs], VALUATION, RATE)
-    out = build_outcome(bumped, snap, UXLevel.STANDARD, VALUATION)
+    out = build_outcome(bumped, snap, VALUATION)
     a, b = dict(base.payoff_points), dict(out.payoff_points)
     common = [lvl for lvl in a if lvl in b]  # breakeven columns move with the entry; the grid levels are shared
     assert len(common) >= 10

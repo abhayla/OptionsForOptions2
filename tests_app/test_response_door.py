@@ -343,10 +343,10 @@ APP_MODELS = (
     "ofo_app.routes.execution_return.ReturnPlanOut",
     "ofo_app.routes.features.FeaturesOut",
     "ofo_app.routes.health.HealthOut",
-    "ofo_app.routes.outcome.AdvancedLegOut",
     "ofo_app.routes.outcome.CellOut",
     "ofo_app.routes.outcome.ColumnOut",
     "ofo_app.routes.outcome.LegOut",
+    "ofo_app.routes.outcome.LegQuoteOut",
     "ofo_app.routes.outcome.LevelOut",
     "ofo_app.routes.outcome.MarginOut",
     "ofo_app.routes.outcome.OutcomeResponse",
@@ -393,7 +393,7 @@ def test_the_app_models_are_all_swept() -> None:
     so none can skip the door tests."""
     assert {(c.__module__.rsplit(".", 1)[-1], c.__name__) for c in _app_models()} >= {
         ("outcome", n) for n in ("CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut", "ScenarioOut", "PointOut",
-                                 "PayoffOut", "SummaryOut", "MarginOut", "LegOut", "AdvancedLegOut", "OutcomeResponse")}
+                                 "PayoffOut", "SummaryOut", "MarginOut", "LegOut", "LegQuoteOut", "OutcomeResponse")}
     found = sorted(f"{c.__module__}.{c.__name__}" for c in _app_models())
     added, missing = sorted(set(found) - set(APP_MODELS)), sorted(set(APP_MODELS) - set(found))
     assert found == list(APP_MODELS), f"models not in APP_MODELS: {added}; in APP_MODELS but not found: {missing}"

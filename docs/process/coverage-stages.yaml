@@ -440,6 +440,7 @@ issues:
   "#528": 4a  # Row 15 (REQ-028 AC-2) partial: modification, adjustment proposal and exit domain types are not on the app path
   "#529": 4a  # Owner capture list: 12 NO-SCREEN reference records for builder rows 1-16 (ADR-176)
   "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
+  "#532": 4a  # Chunk 2 deferred: reach-check hits (23 unreached, 31 unresolved), register spec_change blocking, worktree helpers
 
 # Work items whose status is not done.
 work_items:

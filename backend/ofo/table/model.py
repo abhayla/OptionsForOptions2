@@ -46,7 +46,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   Cr/Dr side, "—" for a futures leg or a leg without an LTP; so TOTAL Entry Value minus TOTAL Current Value
   (signed, Cr positive) equals the TOTAL Unrealized P&L for an options-only strategy.
 - **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
-  at every UX level, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
+  for everyone, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
   is the section caption (:func:`scenario_caption`), not a per-column label.
 """
 from __future__ import annotations
@@ -72,8 +72,6 @@ from ofo.table.columns import (
     LEADING_COLUMNS,
     TRAILING_COLUMNS,
     ColumnId,
-    UXLevel,
-    is_visible,
 )
 from ofo.money import HUNDREDTH as _PERCENT_STEP
 
@@ -532,7 +530,7 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
 
     columns = [ColumnSpec(cid, HEADER_LABELS[cid], _leading_kind(cid)) for cid in LEADING_COLUMNS]
     marker_map = _markers_by_level(level_set)
-    columns += [ColumnSpec(level, scenario_header(UXLevel.STANDARD, inputs.underlying, level, marker_map[level]),
+    columns += [ColumnSpec(level, scenario_header(inputs.underlying, level, marker_map[level]),
                            CellKind.MONEY, is_scenario_level=True, markers=marker_map[level])
                 for level in level_columns]
     columns += [ColumnSpec(cid, HEADER_LABELS[cid], _trailing_kind(cid)) for cid in TRAILING_COLUMNS]
@@ -587,13 +585,11 @@ def _markers_by_level(level_set: LevelSet | None) -> dict[Decimal, tuple[str, ..
     }
 
 
-def scenario_header(level: UXLevel, underlying: str, value: Decimal, markers: Sequence[str] = ()) -> str:
+def scenario_header(underlying: str, value: Decimal, markers: Sequence[str] = ()) -> str:
     """One scenario column's own heading (AC-7, Q227): its index level, e.g. "22,900", with the CURRENT and 0-P&L
-    columns marked ("CURRENT 23,047", "0-P&L 23,491"). The same at every UX level: the "NIFTY at expiry | You
+    columns marked ("CURRENT 23,047", "0-P&L 23,491"). The same for everyone: the "NIFTY at expiry | You
     make/lose" phrase is the caption of the scenario section (:func:`scenario_caption`), never a column heading.
     """
-    if not isinstance(level, UXLevel):
-        raise ValueError(f"level must be a UXLevel, got {level!r}")
     if not isinstance(underlying, str) or not underlying.strip():
         raise ValueError(f"underlying must be a non-empty string, got {underlying!r}")
     key = {(): "plain", ("CURRENT",): "current", ("0-P&L",): "zero_pnl",
@@ -610,19 +606,15 @@ def scenario_caption(table: Table) -> str:
                       render_explanation("scenario_caption_right")))
 
 
-def visible_columns(table: Table, level: UXLevel) -> tuple[ColumnSpec, ...]:
-    """The column specs ``level`` shows, in the table's own (locked) order (AC-7).
+def visible_columns(table: Table) -> tuple[ColumnSpec, ...]:
+    """Every column, in the table's own (locked) order (AC-7): one column set for everyone.
 
-    A scenario level column (``is_scenario_level``) is visible at every level, with its header text re-labelled
-    per :func:`scenario_header` (round-3 fix). A fixed column is filtered by :func:`ofo.table.columns.is_visible`.
+    A scenario level column (``is_scenario_level``) has its header text set per :func:`scenario_header`.
     Never reorders ``table.columns``.
     """
     if not isinstance(table, Table):
         raise ValueError(f"table must be a Table, got {table!r}")
-    result = []
-    for col in table.columns:
-        if col.is_scenario_level:
-            result.append(_replace(col, label=scenario_header(level, table.underlying, col.id, col.markers)))
-        elif is_visible(col.id, level):
-            result.append(col)
-    return tuple(result)
+    return tuple(
+        _replace(col, label=scenario_header(table.underlying, col.id, col.markers)) if col.is_scenario_level else col
+        for col in table.columns
+    )
