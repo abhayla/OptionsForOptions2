@@ -112,6 +112,7 @@ LINES: dict[str, tuple[str, ...]] = {
         'symbol = _listed(world.catalogue, h.instrument_id).ref(ZERODHA).broker_symbol  # refused before any key read',
         'return er.reconcile(sorted(symbols, key=repr), held, world.others, world.zerodha.net, world.undecidable)',
         '"zerodha_units": c.zerodha_units, "other_strategies_units": c.other_units,',
+        'return {c.key: c.platform_units if c.kind is None else c.zerodha_units - c.other_units for c in checks}',
         'zerodha = _read_zerodha(req, catalogue)',
         'book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)',
         'world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha),',
