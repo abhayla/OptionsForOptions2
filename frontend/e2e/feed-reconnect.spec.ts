@@ -2,13 +2,13 @@
 // the socket and refuses it for 5 s, then accepts again. During the gap the screen says "reconnecting" and nothing on it is
 // marked live (no old price as live); a fresh push shows within 10 s of the server accepting again.
 // The server side is played here (routeWebSocket + a route for the REST outcome) with the recorded real condor outcome
-// (tests/fixtures/outcome-condor-advanced.json), so the spec needs only the preview server and cannot disturb the legs
+// (tests/fixtures/outcome-condor.json), so the spec needs only the preview server and cannot disturb the legs
 // the replay specs use.
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 
-const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor-advanced.json', import.meta.url)), 'utf-8'))
+const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor.json', import.meta.url)), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.',

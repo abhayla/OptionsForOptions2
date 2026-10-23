@@ -3,13 +3,13 @@
      number to compute another. The draft strategy is the legs picked in the LegPicker (W-068: only contracts the
      catalogue API offers); a `draft` query (a JSON body of legs with planned entry and capture time) still opens a
      draft. The outcome API's leg model needs a planned entry, so only priced legs are sent; a leg without one stays in
-     the picker's list with the not-connected wording. The UX level comes from `ux` (guided | standard | advanced).
+     the picker's list with the not-connected wording. One level for everyone (ADR-168): an old `ux` query is ignored.
      States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced),
      refused, error, no-draft.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
@@ -39,7 +39,6 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
 const route = useRoute()
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
-const router = useRouter()
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
@@ -47,7 +46,6 @@ const errorAnsweredAt = ref(null) // the failed request's server answer time (it
 const slow = ref(false)
 let slowTimer = null
 
-const uxLevel = computed(() => (['guided', 'standard', 'advanced'].includes(route.query.ux) ? route.query.ux : 'standard'))
 
 function readDraft() {
   try {
@@ -106,7 +104,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value), fallback })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), fallback })
     if (mine !== loadSeq) return
     applyOutcome(res.data)
   } catch (e) {
@@ -163,7 +161,7 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value) })
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value) })
   else live.stop()
 }
 
@@ -195,23 +193,18 @@ onMounted(() => {
   load()
   syncLive()
 })
-watch(() => route.query.ux, () => {
-  load()
-  syncLive()
-})
 const setChoice = (next) => {
   choice.value = next
   load()
   syncLive()
 }
-const setUx = (ux) => router.replace({ query: { ...route.query, ux } })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
 const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
-const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
+const advancedRows = computed(() => advancedDetails(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 // ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
@@ -227,7 +220,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 </script>
 
 <template>
-  <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel" :data-live="live.status.value">
+  <section data-testid="strategy-builder" :data-state="state" :data-live="live.status.value">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
@@ -240,7 +233,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 
-    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
+    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
 
     <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
@@ -303,7 +296,6 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
       <StrategyTable
         :table="data.table"
-        :ux-level="uxLevel"
         :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />

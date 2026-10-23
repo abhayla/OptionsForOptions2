@@ -1,12 +1,14 @@
-// REQ-035 AC-5: Bid/Ask appear only in Advanced Details; AC-2: the screen never reorders the API's columns;
+// REQ-035 AC-5: Bid/Ask appear only in the Details block, for everyone (ADR-168); AC-2: the screen never reorders the API's columns;
 // ADR-008: no client-side maths on the outcome's values (a second layer; the first is that the page takes strings).
 // The fixture is a REAL outcome response (NIFTY 13-Oct iron condor on the recorded 2026-10-08 09:20 frames, requested
-// at ux_level=advanced from the replay API), not invented columns or ids.
-import { describe, it, expect } from 'vitest'
+// from the replay API), not invented columns or ids.
+import { describe, it, expect, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import fs from 'node:fs'
 import path from 'node:path'
-import { columnsToRender, advancedDetails, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
-import real from './fixtures/outcome-condor-advanced.json'
+import { advancedDetails, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
+import real from './fixtures/outcome-condor.json'
 
 const ids = (cols) => cols.map((c) => c.id)
 const without = (r) => {
@@ -15,34 +17,77 @@ const without = (r) => {
 }
 
 describe('the real response used here', () => {
-  it('is the advanced condor with bid and ask from the API', () => {
-    expect(real.ux_level).toBe('advanced')
+  it('is a level-free condor with bid and ask from the API', () => {
+    expect(real).not.toHaveProperty('ux_level')
     expect(real.advanced_details).toHaveLength(4)
     expect(real.advanced_details[0]).toMatchObject({ instrument_id: 'NSE_FO:44624', symbol: 'NIFTY26O1322800CE', bid: '39', ask: '39.1' })
   })
 })
 
-describe('AC-5: bid and ask only in Advanced Details', () => {
-  it('shows the API block at Advanced, as given', () => {
-    expect(advancedDetails(real, 'advanced')).toEqual(real.advanced_details)
+describe('AC-5: bid and ask only in the Details block', () => {
+  it('shows the API block as given, with no level argument', () => {
+    expect(advancedDetails(real)).toEqual(real.advanced_details)
   })
-  it('shows nothing at Standard and Guided even if a block were present', () => {
-    for (const ux of ['standard', 'guided', '', undefined, 'whatever']) expect(advancedDetails(real, ux)).toBeNull()
+  it('shows nothing when the response carries no block', () => {
+    expect(advancedDetails(without(real))).toBeNull()
+    expect(advancedDetails(null)).toBeNull()
   })
-  it('shows nothing at Advanced when the response carries no block', () => {
-    expect(advancedDetails(without(real), 'advanced')).toBeNull()
-    expect(advancedDetails(null, 'advanced')).toBeNull()
-  })
-  it('bid and ask are never table columns, at any level (AC-2 locked order)', () => {
-    expect(ids(columnsToRender(real.table.columns))).not.toContain('bid')
+  it('bid and ask are never table columns (AC-2 locked order)', () => {
+    expect(ids(real.table.columns)).not.toContain('bid')
     expect(ids(real.table.columns)).not.toContain('ask')
   })
 })
 
-describe('AC-2: the API order is kept', () => {
-  it('never reorders and drops only what the API marks as not visible', () => {
-    const shown = ids(columnsToRender(real.table.columns))
-    expect(shown).toEqual(ids(real.table.columns.filter((c) => c.visible)))
+let apiAnswer = null
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')), post: () => Promise.resolve({ data: apiAnswer }) } }
+})
+vi.mock('chart.js/auto', () => ({ default: class { destroy() {} } }))
+import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+
+const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
+  planned_entry: l.planned_entry, captured_at: l.captured_at })) }
+async function openBuilder(query) {
+  apiAnswer = real
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT), ...query } })
+  await router.isReady()
+  const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+  await flushPromises()
+  return w
+}
+
+describe('ADR-168: one full builder screen, no level switch', () => {
+  it('attack 1: the page shows every API column (Greeks and IV included) and the details block, and no level control', async () => {
+    const w = await openBuilder({})
+    expect(w.findAll('[data-testid="col-head"]').length).toBe(real.table.columns.length)
+    expect(real.table.columns.map((c) => c.id)).toContain('iv')
+    expect(w.find('[data-testid="advanced-details"]').exists()).toBe(true)
+    expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.advanced_details.length)
+    expect(w.find('[data-testid="strategy-header"]').find('button').exists()).toBe(false)
+    expect(w.find('[data-testid^="ux-"]').exists()).toBe(false)
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-ux')).toBeUndefined()
+    w.unmount()
+  })
+  it('attack 2: an old ?ux=guided link opens the same full screen', async () => {
+    const plain = await openBuilder({})
+    const old = await openBuilder({ ux: 'guided' })
+    expect(old.findAll('[data-testid="col-head"]').length).toBe(plain.findAll('[data-testid="col-head"]').length)
+    expect(old.find('[data-testid="advanced-details"]').exists()).toBe(true)
+    plain.unmount()
+    old.unmount()
+  })
+  it('attack 4: no Guided, Standard or Advanced level text in the header or the details heading', async () => {
+    const w = await openBuilder({})
+    const header = w.find('[data-testid="strategy-header"]').text()
+    const heading = w.find('[data-testid="advanced-details"] h2').text()
+    expect(heading).toBe('Details')
+    for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
+      expect(header).not.toContain(word)
+      expect(heading).not.toContain(word)
+    }
+    w.unmount()
   })
 })
 

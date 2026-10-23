@@ -1,5 +1,5 @@
-<!-- Advanced Details (REQ-035 AC-5): per-leg Bid and Ask, drawn only when the outcome response carries
-     `advanced_details` (the API sends it at the Advanced level only). Every value is the API's string as given. -->
+<!-- Details (REQ-035 AC-5): per-leg Bid and Ask, drawn whenever the outcome response carries
+     `advanced_details` (the API sends it for everyone, ADR-168). Every value is the API's string as given. -->
 <script setup>
 import { healthSentence, missingReason } from '@/lib/dataHealthText'
 
@@ -8,7 +8,7 @@ defineProps({ rows: { type: Array, required: true }, nameOf: { type: Function, r
 
 <template>
   <section class="mt-4 rounded border border-line bg-surface p-3" data-testid="advanced-details">
-    <h2 class="text-sm font-medium">Advanced details</h2>
+    <h2 class="text-sm font-medium">Details</h2>
     <div class="overflow-x-auto" data-h-scroll>
       <table class="mt-2 min-w-full text-sm">
         <thead>

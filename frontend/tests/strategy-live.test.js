@@ -13,7 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
     post: (url, body) => { apiCalls.push({ url, body }); return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer }) } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import real from './fixtures/outcome-condor-advanced.json'
+import real from './fixtures/outcome-condor.json'
 import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
@@ -49,7 +49,7 @@ class FakeSocket {
 // A push as the server sends it: values are display strings already (the browser never computes them).
 const push = (ltp, pnl) => ({ state: 'COMPUTED', legs: [{ instrument_id: 'NSE_FO:44626', ltp, label: null }],
   table: { rows: [{ row_id: '1', cells: { ltp: { display: `₹${ltp}` }, unrealized_pnl: { display: pnl } } }] } })
-const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
+const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }] }
 
 function rig() {
   const pushes = []
@@ -106,9 +106,9 @@ describe('AC-4: the Builder live socket', () => {
     ws.serverOpen()
     live.follow({ ...BODY })
     expect(ws.sent.length).toBe(1)
-    live.follow({ ...BODY, ux_level: 'advanced' })
+    live.follow({ ...BODY, legs: [{ ...BODY.legs[0], lots: 2 }] })
     expect(ws.sent.length).toBe(2)
-    expect(JSON.parse(ws.sent[1]).ux_level).toBe('advanced')
+    expect(JSON.parse(ws.sent[1]).legs[0].lots).toBe(2)
     expect(FakeSocket.all.length).toBe(1)
   })
 
@@ -187,7 +187,7 @@ describe('AC-4: the Builder live socket', () => {
 })
 
 // ---- W-065 phase 3 round 2 (ADR-077, REQ-049 AC-5): the fallback follows THIS page's own socket --------------------------
-// The COMPUTED answer is the real recorded condor outcome (tests/fixtures/outcome-condor-advanced.json); the not-live
+// The COMPUTED answer is the real recorded condor outcome (tests/fixtures/outcome-condor.json); the not-live
 // answer has the shape the server sends (NOT_CONNECTED, AC-5's text, no table, no ltp).
 const AC5 = 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.'
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
@@ -215,6 +215,16 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
   }
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) // flushPromises needs the real microtask/immediate queue
+  })
+
+  it('ADR-168 attack 3: neither the REST request nor the socket body the builder sends carries a ux_level key', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    FakeSocket.all[0].serverOpen()
+    expect(apiCalls.length).toBeGreaterThan(0)
+    for (const c of apiCalls) expect(c.body).not.toHaveProperty('ux_level')
+    expect(JSON.parse(FakeSocket.all[0].sent[0])).not.toHaveProperty('ux_level')
+    w.unmount()
   })
 
   it('a normal load sends fallback false; the socket drop sends fallback true; the socket body never carries it', async () => {
@@ -245,7 +255,7 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     second.serverPush(COMPUTED)
     await flushPromises()
     expect(state(w)).toBe('computed')
-    await w.vm.$router.replace({ query: { ...w.vm.$route.query, ux: 'guided' } })
+    await w.find('[data-testid="recalculate"]').trigger('click')
     await flushPromises()
     expect(apiCalls.at(-1).body.fallback).toBe(false)
     w.unmount()

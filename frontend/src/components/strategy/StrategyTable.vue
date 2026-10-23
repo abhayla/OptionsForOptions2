@@ -6,15 +6,14 @@
 import { computed } from 'vue'
 import '@/assets/styles/strategy-table.css'
 import StrategyLegRow from './StrategyLegRow.vue'
-import { columnsToRender, isCurrentColumn, STICKY_COUNT } from '@/lib/strategyTable'
+import { isCurrentColumn, STICKY_COUNT } from '@/lib/strategyTable'
 
 const props = defineProps({
   table: { type: Object, required: true },
-  uxLevel: { type: String, default: 'standard' },
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
 })
-const cols = computed(() => columnsToRender(props.table.columns))
+const cols = computed(() => props.table.columns)
 </script>
 
 <template>
