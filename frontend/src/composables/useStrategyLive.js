@@ -29,8 +29,8 @@ export function backoffDelay(attempt) {
   return delay > MAX_DELAY_MS ? MAX_DELAY_MS : delay
 }
 
-/** The wait before attempt `attempt`: the back-off plus a random spread of 0 to JITTER_MS - 1 ms (`random` gives [0, 1)). */
-export const reconnectWait = (attempt, random = Math.random) => backoffDelay(attempt) + Math.floor(random() * JITTER_MS)
+/** The wait before attempt `attempt`: the back-off plus a random spread of 0 up to JITTER_MS ms (not including it) (`random` gives [0, 1)). */
+export const reconnectWait = (attempt, random = Math.random) => backoffDelay(attempt) + random() * JITTER_MS // a timer value in ms, never a price or P&L
 
 /** Same-origin socket URL for the current page: never a host from config, never a query string. */
 export function liveUrl(loc = window.location) {
