@@ -3,9 +3,9 @@
 Basis: ADR-109 (2): a strategy owns the fills of orders this app placed; lots beyond that are OUTSIDE lots, shown
 apart and blocking nothing. One GET reads Zerodha's positions through the existing read path, at most once per
 45 s per user (REQ-118 AC-7: ``kite_period_reads.screen_positions``, the same answer the connect-time periodic read
-stores; ``read_at`` is that read's own time) (``kite_reads`` + ``kite_replies.positions_from_reply``) and Zerodha's order book (``fetch_orders`` +
-``kite_replies.orders_from_reply``), and asks W-108's ``attribute_and_compare`` for the split (W-108 loads every stored
-plan itself). The route takes NO held units or outside lots from the client (finding
+stores; ``read_at`` is that read's own time) (``kite_reads`` + ``kite_replies.positions_from_reply``) and Zerodha's
+order book (``fetch_orders`` + ``kite_replies.orders_from_reply``), and asks W-108's ``attribute_and_compare`` for
+the split (W-108 loads every stored plan itself). The route takes NO held units or outside lots from the client (finding
 ``caller-supplied-verdict-trusted``): it has no body and no query. The answer carries units and the owning strategy's id
 only: no price, P&L, margin or Greeks key exists on it (part 2), and no order is ever sent (ADR-002, ADR-027).
 No recorded standalone store exists yet (REQ-060 AC-7), so the standalone map passed is empty: a position in no strategy

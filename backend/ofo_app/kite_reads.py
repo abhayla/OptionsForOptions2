@@ -49,7 +49,7 @@ _PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
 _OK: Final = 200
 _BUSY: Final = 429
 BUSY_CODE: Final = "kite_read_busy"
-TOKEN_CODE: Final = "kite_read_token"  # noqa: S105 - an error code, not a secret. Zerodha refused the token (expired or ended)
+TOKEN_CODE: Final = "kite_read_token"  # noqa: S105 - an error code (token refused or expired), not a secret
 _DENIED: Final = 403
 _SERVER_ERROR: Final = 500
 
