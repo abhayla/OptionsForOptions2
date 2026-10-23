@@ -46,15 +46,15 @@ Records: 121 (COPY 56, DIFFERENT-BY-DECISION 19, NO-SCREEN 13, MATCH 33)
 |---|---|---|---|---|---|
 | 2 | RD-010 | REQ-015 AC-11 | Login panel: is-it-safe explainer, account-opening link, no-extra-charges line (row 2 gap G-02-1) | screen 180 | built |
 | 2 | RD-012 | REQ-015 AC-10 | Trade button shown disabled with a reason when no broker is connected (G-02-3) | catalogue 246 | built |
-| 2 | RD-013 | REQ-015  | Connected broker user id and available margin shown in the profile (G-02-4) | catalogue 216 | open |
-| 2 | RD-014 | REQ-015  | Positions read on their own on a fixed period, so a new connection never waits on a manual step (G-02-5) | catalogue 331 | open |
-| 4 | RD-025 | REQ-117  | Capability flags for brokerage charges, split P&L, holdings and verified P&L (row 4 gap G-04-1) | catalogue 022 | open |
+| 2 | RD-013 | REQ-015 AC-13 | Connected broker user id and available margin shown in the profile (G-02-4) | catalogue 216 | built |
+| 2 | RD-014 | REQ-015 AC-12 | Positions read on their own on a fixed period, so a new connection never waits on a manual step (G-02-5) | catalogue 331 | built |
+| 4 | RD-025 | REQ-117 AC-6 | Capability flags for brokerage charges, split P&L, holdings and verified P&L (row 4 gap G-04-1) | catalogue 022 | built |
 | 5 | RD-035 | REQ-053 AC-3 | Unavailable contract: the reference product hides it, ours explains and offers two other strikes (row 5 match line) | screen 011 | open |
 | 7 | RD-045 | REQ-049 AC-4 | A data-health state explained in a sentence with the reason, not a bare word (G-07-3) | catalogue 245 | built |
 | 7 | RD-048 | REQ-049 AC-4 | Missing values explained in place by a short reason (G-07-6) | catalogue 051 | built |
 | 9 | RD-057 | REQ-113 AC-10 | Browser reconnect adds a random spread of up to 1 s (row 9 gap G-9-1) | catalogue 012 | built |
 | 9 | RD-058 | REQ-113 AC-11 | Browser keeps retrying the live socket and never gives up (G-9-2) | catalogue 012 | built |
-| 10 | RD-063 | REQ-118  | Broker reads on fixed refresh periods: 30 s for numbers, 45 s for positions (G-10-2) | catalogue 012 | open |
+| 10 | RD-063 | REQ-118 AC-7 | Broker reads on fixed refresh periods: 30 s for numbers, 45 s for positions (G-10-2) | catalogue 012 | built |
 | 11 | RD-039 | REQ-114 AC-1 | Socket watchdog constants: 15 s ping, 60 s silence, 30 s back-off cap (row 6 gap G-06-1) | catalogue 012 | built |
 | 11 | RD-046 | REQ-114 AC-7 | Exchange holiday calendar known to the product (G-07-4) | catalogue 200 | built |
 | 11 | RD-047 | REQ-114 AC-1 | Silence measured on the whole connection over 60 s, not per contract over 3 s (G-07-5) | catalogue 012 | built |
