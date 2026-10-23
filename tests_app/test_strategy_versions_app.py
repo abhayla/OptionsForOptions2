@@ -8,6 +8,7 @@ NIFTY26O1923650CE filled); a second plan's rows are those same rows re-tagged. N
 fake transport answers GET reads only and fails the test on anything else.
 """
 
+# ruff: noqa: PLR2004 - unit counts (65 lot, 130 = two lots) read as the recorded replies state them
 from __future__ import annotations
 
 import copy
@@ -73,7 +74,7 @@ class _Plan2Reads(_Reads):
         (trade,) = [copy.deepcopy(r) for r in trades if r["order_id"] == ENTRY_ORDER]
         order.update(order_id=ENTRY_ORDER + "2", tag=make_tag(sid, 2, 0))
         trade.update(order_id=ENTRY_ORDER + "2", trade_id=str(trade["trade_id"]) + "2")
-        super().__init__("122104", orders=orders + [order], trades=trades + [trade])
+        super().__init__("122104", orders=[*orders, order], trades=[*trades, trade])
         self.scale = scale
 
     def __call__(self, method, url, headers, body):
@@ -330,5 +331,6 @@ def test_migration_0022_runs_down_and_up_again():
     """On the fresh database the run uses: down to 0021 (no version rows are stored) and back to head."""
     cmd = [sys.executable, "-m", "alembic", "-c", "backend/ofo_app/alembic.ini"]
     for step in (["downgrade", "0021_strategy_tracking"], ["upgrade", "head"]):
-        done = subprocess.run(cmd + step, cwd=ROOT, capture_output=True, text=True, timeout=300, check=False)
+        done = subprocess.run([*cmd, *step],  # noqa: S603 - fixed argv, no shell
+                               cwd=ROOT, capture_output=True, text=True, timeout=300, check=False)
         assert done.returncode == 0, done.stderr[-2000:]
