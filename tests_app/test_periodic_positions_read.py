@@ -343,3 +343,27 @@ def test_the_periodic_read_is_a_background_request():
     with rate_limit.use(RateLimiter(pacer=Clock())):
         kite_period_reads.background_screen_positions(_R())  # type: ignore[arg-type]
     assert seen == [True] and rate_limit._BACKGROUND.get() is False
+
+
+def test_f2_attack2_a_background_refusal_with_nothing_sent_never_shows_the_users_positions_as_busy(clock, kite):
+    """Review F2 attack 2: the periodic job's read is refused by the limiter (the background queue is full: nothing
+    sent) and kite_reads maps that to its busy code; the user's Positions read inside the same period then reads
+    Zerodha and gets a fresh answer, not the job's busy. The transport passes the limiter as the real door does."""
+    def door(method, url, headers, body, *, timeout=None):
+        try:
+            rate_limit.acquire(GROUP_OTHER, "KEY-periodic")  # the door's limiter, context-aware
+        except KiteBusy:
+            return 429, ""  # as kite_margin.urllib_transport maps the limiter's refusal
+        return kite(method, url, headers, body, timeout=timeout)
+
+    reads = KiteReads(api_key="KEY-periodic", access_token=TOKEN_A, transport=door)
+    with rate_limit.background(), pytest.raises(KiteBusy):  # fill the background share of 'other'
+        for _ in range(1000):
+            rate_limit.acquire(GROUP_OTHER, "KEY-periodic")
+    with pytest.raises(KiteReadError) as busy:
+        kite_period_reads.background_screen_positions(reads)
+    assert busy.value.code == "kite_read_busy"
+    assert kite.count("/portfolio/positions") == 0
+    clock.t = 1.0
+    answer = kite_period_reads.screen_positions(reads)
+    assert answer.fresh is True and kite.count("/portfolio/positions") == 1

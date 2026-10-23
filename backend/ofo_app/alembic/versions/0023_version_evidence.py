@@ -154,6 +154,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Review F2 item 7 (as 0022 refuses with versions stored): a raised reconciliation flag blocks execution (ADR-018)
+    # and a plan's version link is the evidence of what it was built from; refuse rather than silently drop either.
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            EXECUTE 'LOCK TABLE {VERSIONS}, {_M16.PLANS} IN ACCESS EXCLUSIVE MODE';
+            IF EXISTS (SELECT 1 FROM {VERSIONS} WHERE {FLAG}) THEN
+                RAISE EXCEPTION 'refusing downgrade: {VERSIONS} holds a raised {FLAG} flag';
+            END IF;
+            IF EXISTS (SELECT 1 FROM {_M16.PLANS} WHERE {PLAN_LINK} IS NOT NULL) THEN
+                RAISE EXCEPTION 'refusing downgrade: {_M16.PLANS} holds plan version links';
+            END IF;
+        END
+        $$
+        """  # noqa: S608 constant table and column names
+    )
     role = _BASE._app_role()
     allowlist = _BASE.ALLOWLIST_FUNCTION
     op.execute(f'REVOKE INSERT ({PLAN_LINK}) ON TABLE {_M16.PLANS} FROM "{role}"')

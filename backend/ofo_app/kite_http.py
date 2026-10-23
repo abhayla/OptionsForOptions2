@@ -259,19 +259,17 @@ class KiteClient(_httpx.Client):
         transport = self._transport
         group, is_read = _endpoint_of(fresh.method, str(fresh.url))
         key, user = _rate_limit.identity(fresh.headers.get("authorization"), fresh.content)
-        retries = 0
-        while True:
-            _rate_limit.acquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy with nothing sent
-            start = _time.perf_counter()
-            with _egress._door():
-                response = transport.handle_request(fresh)
-            if response.status_code != _TOO_MANY_REQUESTS:
-                break
-            _rate_limit.note_429(group, key, user)  # the group's cooldown: the next acquire waits it out
-            if not is_read or retries >= _rate_limit.MAX_READ_RETRIES:  # only a read is retried (AC-4, AC-5)
-                break
-            retries += 1
-            response.close()
+        with _rate_limit.DoorCall(group, key, user, is_read=is_read) as call:  # one wait limit across every retry
+            while True:
+                _rate_limit.acquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy, nothing sent
+                start = _time.perf_counter()
+                with _egress._door():
+                    response = transport.handle_request(fresh)
+                if response.status_code != _TOO_MANY_REQUESTS:
+                    break
+                if not call.retry(response.headers.get("retry-after")):  # a write, or both retries used: the answer
+                    break
+                response.close()
         if not isinstance(response.stream, _httpx.SyncByteStream):
             raise KiteCallRefused("the transport returned a stream that is not a sync byte stream")
         response.request = fresh
@@ -331,19 +329,17 @@ class KiteAsyncClient(_httpx.AsyncClient):
         transport = self._transport
         group, is_read = _endpoint_of(fresh.method, str(fresh.url))
         key, user = _rate_limit.identity(fresh.headers.get("authorization"), fresh.content)
-        retries = 0
-        while True:
-            await _rate_limit.aacquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy
-            start = _time.perf_counter()
-            with _egress._door():
-                response = await transport.handle_async_request(fresh)
-            if response.status_code != _TOO_MANY_REQUESTS:
-                break
-            _rate_limit.note_429(group, key, user)
-            if not is_read or retries >= _rate_limit.MAX_READ_RETRIES:
-                break
-            retries += 1
-            await response.aclose()
+        with _rate_limit.DoorCall(group, key, user, is_read=is_read) as call:  # one wait limit across every retry
+            while True:
+                await _rate_limit.aacquire(group, key)  # the limiter at the door (REQ-118): a slot, or KiteBusy
+                start = _time.perf_counter()
+                with _egress._door():
+                    response = await transport.handle_async_request(fresh)
+                if response.status_code != _TOO_MANY_REQUESTS:
+                    break
+                if not call.retry(response.headers.get("retry-after")):
+                    break
+                await response.aclose()
         if not isinstance(response.stream, _httpx.AsyncByteStream):
             raise KiteCallRefused("the transport returned a stream that is not an async byte stream")
         response.request = fresh

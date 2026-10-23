@@ -44,6 +44,7 @@ class FakeKite:
         self.hits: list[tuple[float, str, str]] = []
         self.script: dict[str, list[int]] = {}
         self.delay: dict[str, float] = {}
+        self.retry_after: dict[str, str] = {}  # path -> the Retry-After a 429 on it carries (none by default, F-60)
         self.gate: threading.Event | None = None
         self._lock = threading.Lock()
         fake = self
@@ -67,6 +68,8 @@ class FakeKite:
                 payload = BODY if status == 200 else b'{"status": "error", "error_type": "NetworkException"}'
                 try:
                     self.send_response(status)
+                    if status == 429 and path in fake.retry_after:
+                        self.send_header("Retry-After", fake.retry_after[path])
                     self.send_header("Content-Length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
@@ -522,3 +525,92 @@ def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypat
     with pytest.raises(kite_client.KiteExchangeError) as login:
         asyncio.run(kite_client.HttpKiteAuth(KEY, "secret", BusyClient()).exchange("rt"))
     assert login.value.code == "kite_busy"
+
+
+# -- review F2: a user read's retry fits its 5 s when Kite states a short wait (AC-3 + AC-4 together) --------------
+
+def test_f2_attack1_urllib_user_read_429_with_stated_wait_then_200_two_sends_under_5_s(world) -> None:
+    """AC-4 + AC-3 (review F2 attack 1, real urllib door, user context): 429 with Retry-After 1, then 200 -> sent at
+    t=0 and t=1 (Kite's stated wait), the 200 returned, total wait 1 s < 5 s. Before the fix: 1 send, busy."""
+    pacer, limiter, kite, started = world
+    kite.script["/portfolio/positions"] = [429, 200]
+    kite.retry_after["/portfolio/positions"] = "1"
+    out: list = []
+    run(started, lambda: get(kite, "/portfolio/positions"), out)
+    wait_for(lambda: kite.count() == 1 and limiter.in_cooldown("other", KEY), "first 429 noted")
+    pacer.advance(1.0)
+    wait_for(lambda: len(out) == 1, "answered")
+    assert out == [200] and kite.times() == [0.0, 1.0] and pacer.now() < rl.USER_MAX_WAIT_SECONDS
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_f2_attack1_httpx_user_read_429_with_stated_wait_then_200(world, asynchronous: bool) -> None:
+    """The same through the httpx door (sync and async clients): one helper (``DoorCall``) serves both doors."""
+    pacer, limiter, kite, started = world
+    kite.script["/orders"] = [429, 200]
+    kite.retry_after["/orders"] = "2"
+
+    def read():
+        if asynchronous:
+            async def go():
+                async with KiteAsyncClient(base_url=kite.base) as client:
+                    return (await client.get("/orders", headers=AUTH)).status_code
+            return asyncio.run(go())
+        with KiteClient(base_url=kite.base) as client:
+            return client.get("/orders", headers=AUTH).status_code
+
+    out: list = []
+    run(started, read, out)
+    wait_for(lambda: kite.count() == 1 and limiter.in_cooldown("other", KEY), "first 429 noted")
+    pacer.advance(2.0)
+    wait_for(lambda: len(out) == 1, "answered")
+    assert out == [200] and kite.times() == [0.0, 2.0]
+
+
+def test_f2_attack1_user_margin_read_429_three_times_three_sends_then_the_gate_blocks(world) -> None:
+    """AC-4 "at most twice" in user context (stated wait 1 s each): 3 sends at t=0, 1, 2, then the read fails and the
+    margin gate blocks (ADR-094) - no figure, nothing allowed."""
+    pacer, limiter, kite, started = world
+    kite.script["/user/margins"] = [429]
+    kite.retry_after["/user/margins"] = "1"
+    client = kite_margin.KiteMargin(api_key=KEY, access_token=TOKEN, base_url=kite.base)
+    out: list = []
+
+    def verdict():
+        with pytest.raises(kite_margin.KiteMarginError) as busy:
+            client.fetch_available_funds()
+        return busy.value.code, kite_margin.margin_verdict(client, [])
+
+    run(started, verdict, out)
+    for sends in (1, 2, 3, 4, 5):  # the read's three sends, then the gate's own read (its three sends)
+        if out:
+            break
+        wait_for(lambda sends=sends: out or (kite.count() >= sends and limiter.in_cooldown("other", KEY)), "a 429")
+        pacer.advance(1.0)
+    wait_for(lambda: len(out) == 1, "the gate answered")
+    assert kite.times("/user/margins")[:4] == [0.0, 1.0, 2.0, 3.0]  # 3 sends, then the gate's read: never a 4th try
+    code, blocked = out[0]
+    assert code == "kite_margin_busy" and blocked.allowed is False and blocked.available is None
+
+
+def test_f2_standing_a_order_path_read_gets_its_retry_slot_while_a_background_burst_is_queued(world) -> None:
+    """Standing item (a): background reads fill their small queue (``BACKGROUND_QUEUE_SECONDS``) in 'other'; a user
+    read answered 429 (Retry-After 1) then 200 still gets its retry slot and finishes inside its 5 s in total."""
+    pacer, limiter, kite, started = world
+    kite.script["/orders"] = [429, 200]
+    kite.retry_after["/orders"] = "1"
+    background: list = []
+    for _ in range(int(rl.GROUP_RATES["other"] * rl.BACKGROUND_QUEUE_SECONDS) + 5):
+        run(started, lambda: get(kite, "/user/profile"), background, background=True)
+    wait_for(lambda: booked(limiter, "other") >= 1, "background burst queued")
+    out: list = []
+    run(started, lambda: get(kite, "/orders"), out)
+    for _ in range(60):
+        if out:
+            break
+        pacer.advance(0.1)
+        threading.Event().wait(0.01)
+    wait_for(lambda: len(out) == 1, "user read answered")
+    assert out == [200]
+    orders = kite.times("/orders")
+    assert len(orders) == 2 and orders[1] - orders[0] >= 1.0 and orders[1] < rl.USER_MAX_WAIT_SECONDS

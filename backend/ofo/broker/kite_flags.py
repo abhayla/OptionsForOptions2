@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from pathlib import Path
 from typing import Final
 
@@ -19,6 +20,8 @@ from ofo.broker.flags import FlagLoadError, FlagSet, load_flags
 
 FLAG_FILE: Final = Path(__file__).with_name("kite_flags.json")
 _ENTRY_KEYS: Final = frozenset({"on", "source", "date"})
+#: the only date text accepted: Python's ``fromisoformat`` also takes '20261022', week dates and other ISO forms
+_DAY_TEXT: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", re.ASCII)
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -43,7 +46,7 @@ def declared() -> dict[str, tuple[bool, str, datetime.date]]:
         if not isinstance(entry, dict) or set(entry) != _ENTRY_KEYS:
             raise FlagLoadError(f"flag {name}: expected exactly on, source and date")
         stamp = entry["date"]
-        if not isinstance(stamp, str):
+        if not isinstance(stamp, str) or not _DAY_TEXT.fullmatch(stamp):
             raise FlagLoadError(f"flag {name}: the date is text YYYY-MM-DD")
         try:
             day = datetime.date.fromisoformat(stamp)
