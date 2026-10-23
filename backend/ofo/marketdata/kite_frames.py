@@ -65,6 +65,21 @@ class RawTick:
 
 
 @dataclass(frozen=True)
+class DayStats:
+    """What a packet says about the trading day (REQ-080 AC-7); each field ``None`` when the packet does not carry it."""
+
+    day_open: Decimal | None
+    day_high: Decimal | None
+    day_low: Decimal | None
+    prev_close: Decimal | None
+    last_trade_ts: int | None  # epoch seconds, as Kite sends it
+
+    @classmethod
+    def of(cls, tick: RawTick) -> DayStats:
+        return cls(tick.day_open, tick.day_high, tick.day_low, tick.prev_close, tick.last_trade_ts)
+
+
+@dataclass(frozen=True)
 class FrameResult:
     ticks: tuple[RawTick, ...]
     heartbeat: bool = False
