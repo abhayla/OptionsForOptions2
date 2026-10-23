@@ -30,8 +30,12 @@ Copy from: legacy-reuse map row `market_data/rate_limiter.py` (COPY; the map's n
 req/s, verify against Kite's docs) - adapt its bucket, set the limits from F-60, never from the legacy values.
 
 ## Where you work
-Worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1` (head = after row 9 closes;
-`git log --oneline -3` first). Commit with `git add <paths>` (never `-A`); do NOT push. Scratch:
+Worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`, branch `build/seq-chunk-1`, head 335485c7. A PROCESS
+builder works in the same tree at the same time on disjoint files (`scripts/orchestrator/mutation_gate.py`,
+`scripts/hooks/`, `tests/orchestrator/`, `.claude/project/hooks.json`): touch none of those; commit ONLY your own
+paths with `git commit -F <msg> -- <your paths>` as its own call; never `git add -A`, `stash`, `checkout --`, `reset`,
+`restore`; do NOT push. Every mutation result goes to a results file in your scratch folder the moment it finishes and
+your report quotes that file (row-review R18). Scratch:
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a\scratchpad\row10`.
 
 ## What to build (orchestrator decisions, technical, recorded)
