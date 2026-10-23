@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { accountView } from '@/lib/brokerAccount'
 import { NO_EXTRA_CHARGES, OPEN_ACCOUNT_LABEL, SAFE_EXPLAINER, SAFE_EXPLAINER_TITLE, openAccountUrl } from '@/lib/connectHelp'
 
 const openAccount = openAccountUrl() // REQ-015 AC-11 (ADR-175): the one configured link, or null
@@ -30,7 +31,7 @@ const FIX = {
   live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',
   live_feed_capped: 'Live prices are not available: Zerodha\'s connection limit for this app is reached.',
   live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',
-  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',
+  no_read_yet: 'No position read from Zerodha has succeeded since you connected. Positions are read at connect and every 45 seconds; if this stays, use Reconnect.',
   live_data_not_connected: 'Orders are not ready until live market data is connected. Fix the live market data row first.',
   positions_not_synced: 'Orders are not ready until your positions have been read from Zerodha. Fix the position sync row first.',
 }
@@ -41,6 +42,7 @@ const state = ref('loading') // loading | ready | unavailable
 const error = ref(null)
 const disconnecting = ref(false)
 const confirming = ref(false)
+const account = ref(null) // REQ-015 AC-13: the masked id and Zerodha's margin, as the server sent them
 
 const rows = computed(() => ROWS.map(([key, title]) => {
   const item = status.value?.[key] ?? { state: 'disconnected', fix: null }
@@ -59,10 +61,20 @@ async function load() {
     const { data } = await api.get('/broker/status')
     status.value = data
     state.value = 'ready'
+    loadAccount()
   } catch (e) {
     error.value = e?.parts ?? null
     status.value = null
     state.value = 'unavailable'
+  }
+}
+
+async function loadAccount() {
+  try {
+    const { data } = await api.get('/broker/account')
+    account.value = accountView(data)
+  } catch {
+    account.value = accountView(null) // a failed read shows its reason, never a figure
   }
 }
 
@@ -112,6 +124,12 @@ onMounted(load)
         <span v-if="lastSync" data-testid="last-sync-time">{{ lastSync }}</span>
         <span v-else data-testid="last-sync-none">no successful read from Zerodha is recorded yet</span>
       </p>
+
+      <div v-if="account" class="mt-4 rounded border border-line bg-surface p-3" data-testid="broker-account">
+        <p class="text-sm">Zerodha client id: <span v-if="account.id" data-testid="account-id">{{ account.id }}</span><span v-else data-testid="account-id-none">not available</span></p>
+        <p v-if="account.figure" class="mt-1 text-sm" data-testid="account-margin">Available margin (Zerodha): Rs <span data-testid="account-margin-figure">{{ account.figure }}</span>, read at <span data-testid="account-margin-read-at">{{ account.readAt }}</span></p>
+        <p v-else class="mt-1 text-sm" data-testid="account-margin-reason">{{ account.reason }}</p>
+      </div>
 
       <p class="mt-2 text-sm" data-testid="history-statement">Historical market data: not currently available in this version.</p>
 

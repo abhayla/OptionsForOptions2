@@ -95,6 +95,7 @@ describe('/settings/broker-market-data', () => {
     await w.get('[data-testid="disconnect-yes"]').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c[0] === 'post')).toEqual([['post', '/broker/disconnect']])
-    expect(calls.filter((c) => c[0] === 'get').length).toBe(2)
+    // the status is read twice (load + reload); the account block (REQ-015 AC-13) is read after each status read
+    expect(calls.filter((c) => c[0] === 'get' && c[1] === '/broker/status').length).toBe(2)
   })
 })
