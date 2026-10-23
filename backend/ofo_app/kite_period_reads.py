@@ -32,23 +32,22 @@ POSITIONS_CALL: Final = "positions_and_orders"  # both replies of one moment: an
 PROFILE_CALL: Final = "profile_user_id"         # is never compared against positions read 40 s earlier
 MARGIN_CALL: Final = "available_margin"
 _SHOWN_EACH_END: Final = 2
-_MASK: Final = "*"
 
 
 def utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
-def mask_user_id(user_id: str) -> str:
-    """The Zerodha client id with all but its first 2 and last 2 characters hidden (``AB1234`` -> ``AB**34``): enough
-    for the owner to recognise the account, not enough to read the full id off a shared or recorded screen. An id of 4
-    characters or fewer is hidden entirely (showing 2 + 2 of it would show all of it)."""
+def mask_user_id(user_id: str) -> tuple[str | None, int, str | None]:
+    """The Zerodha client id as (first 2 characters, how many are hidden, last 2 characters): ``AB1234`` -> ``("AB", 2,
+    "34")``, shown ``AB**34``. Enough for the owner to recognise the account, not enough to read the full id off a
+    shared or recorded screen; the full id never leaves the server. An id of 4 characters or fewer is hidden entirely
+    (showing 2 + 2 of it would show all of it): ``(None, n, None)``."""
     if not isinstance(user_id, str) or not user_id.strip():
         raise ValueError("no user id to mask")
     if len(user_id) <= 2 * _SHOWN_EACH_END:
-        return _MASK * len(user_id)
-    hidden = len(user_id) - 2 * _SHOWN_EACH_END
-    return user_id[:_SHOWN_EACH_END] + _MASK * hidden + user_id[-_SHOWN_EACH_END:]
+        return None, len(user_id), None
+    return user_id[:_SHOWN_EACH_END], len(user_id) - 2 * _SHOWN_EACH_END, user_id[-_SHOWN_EACH_END:]
 
 
 def screen_positions(reads: KiteReads, *, stamp: Any = None) -> PeriodAnswer[tuple[Any, Any]]:
@@ -57,7 +56,7 @@ def screen_positions(reads: KiteReads, *, stamp: Any = None) -> PeriodAnswer[tup
                                            lambda: (reads.fetch_positions(), reads.fetch_orders()), stamp or utc_now)
 
 
-def masked_user_id(reads: KiteReads, *, stamp: Any = None) -> PeriodAnswer[str]:
+def masked_user_id(reads: KiteReads, *, stamp: Any = None) -> PeriodAnswer[tuple[str | None, int, str | None]]:
     """The masked client id from ``GET /user/profile``, at most once per 30 s per user. The full id never leaves."""
     return rate_limit.read_once_per_period(READ_NUMBERS, PROFILE_CALL, reads.user_ref,
                                            lambda: mask_user_id(reads.fetch_profile().user_id), stamp or utc_now)

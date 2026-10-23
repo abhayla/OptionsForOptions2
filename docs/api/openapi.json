@@ -142,6 +142,30 @@
         "title": "BasketOrderOut",
         "type": "object"
       },
+      "BrokerAccountOut": {
+        "additionalProperties": false,
+        "properties": {
+          "margin": {
+            "$ref": "#/components/schemas/ofo_app__routes__broker_account__MarginOut"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaskedUserIdOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "margin"
+        ],
+        "title": "BrokerAccountOut",
+        "type": "object"
+      },
       "BrokerRedirectOut": {
         "additionalProperties": false,
         "description": "Names the redirect a broker route answers with (the 302 itself has no body).",
@@ -1402,68 +1426,45 @@
         "title": "LoadTemplateIn",
         "type": "object"
       },
-      "MarginOut": {
+      "MaskedUserIdOut": {
         "additionalProperties": false,
-        "description": "ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state.",
+        "description": "The page shows ``start`` + ``hidden`` stars + ``end`` (``AB**34``); start/end are null for a short id.",
         "properties": {
-          "available": {
+          "end": {
             "anyOf": [
               {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Available"
+            "title": "End"
           },
-          "checked_at": {
+          "hidden": {
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "start": {
             "anyOf": [
               {
-                "format": "date-time",
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Checked At"
-          },
-          "needed": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Needed"
-          },
-          "reason": {
-            "title": "Reason"
-          },
-          "shortfall": {
-            "default": false,
-            "title": "Shortfall",
-            "type": "boolean"
-          },
-          "state": {
-            "enum": [
-              "NOT_AVAILABLE_YET",
-              "CHECKED",
-              "UNREADABLE",
-              "NO_BASKET"
-            ],
-            "title": "State",
-            "type": "string"
+            "title": "Start"
           }
         },
         "required": [
-          "state",
-          "reason"
+          "start",
+          "hidden",
+          "end"
         ],
-        "title": "MarginOut",
+        "title": "MaskedUserIdOut",
         "type": "object"
       },
       "OutcomeRequest": {
@@ -1581,7 +1582,7 @@
             "type": "array"
           },
           "margin": {
-            "$ref": "#/components/schemas/MarginOut"
+            "$ref": "#/components/schemas/ofo_app__routes__outcome__MarginOut"
           },
           "output_label": {
             "anyOf": [
@@ -3552,6 +3553,54 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "ofo_app__routes__broker_account__MarginOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "not_connected",
+              "not_offered",
+              "empty",
+              "busy",
+              "session_expired",
+              "read_failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "available",
+          "read_at"
+        ],
+        "title": "MarginOut",
+        "type": "object"
+      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -3773,6 +3822,70 @@
           "label"
         ],
         "title": "LegOut",
+        "type": "object"
+      },
+      "ofo_app__routes__outcome__MarginOut": {
+        "additionalProperties": false,
+        "description": "ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state.",
+        "properties": {
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed"
+          },
+          "reason": {
+            "title": "Reason"
+          },
+          "shortfall": {
+            "default": false,
+            "title": "Shortfall",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "NOT_AVAILABLE_YET",
+              "CHECKED",
+              "UNREADABLE",
+              "NO_BASKET"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason"
+        ],
+        "title": "MarginOut",
         "type": "object"
       },
       "ofo_app__routes__outcome__SummaryOut": {
@@ -4116,6 +4229,24 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/broker/account": {
+      "get": {
+        "operationId": "broker_account_api_broker_account_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerAccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Account"
+      }
+    },
     "/api/broker/capabilities": {
       "get": {
         "operationId": "broker_capabilities_api_broker_capabilities_get",

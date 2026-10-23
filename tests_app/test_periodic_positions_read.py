@@ -1,4 +1,4 @@
-# ruff: noqa: PLR2004, S106
+# ruff: noqa: PLR2004
 """REQ-015 AC-12 (RD-014) and REQ-118 AC-7 (RD-063): positions are read once at connect and then every 45 s, no ask
 inside a user's period reaches Zerodha, and the periodic read never starves the order path.
 
@@ -59,7 +59,7 @@ class FakeKite:
         self.calls: list[tuple[str, str]] = []
         self.status: dict[str, int] = {}
 
-    def __call__(self, method, url, headers, body, *, timeout=None):  # noqa: ARG002 - the transport's signature
+    def __call__(self, method, url, headers, body, *, timeout=None):
         path = url.split("kite.trade", 1)[-1].split("?")[0]
         self.calls.append((method, path))
         assert method == "GET", (method, url)  # a read, never an order call
@@ -249,7 +249,7 @@ async def test_attack3_disconnect_stops_the_job_and_a_reconnect_reads_once_at_co
     await _until(lambda: sleeps.asked)
     job = market._periodic
     await market.stop()  # what Disconnect (``stop_current``) and a new login's restart both call first
-    await _until(lambda: job.done())
+    await _until(job.done)
     assert market._periodic is None and kite.count("/portfolio/positions") == 1
 
     market.holder["token"] = TOKEN_B  # type: ignore[attr-defined]
@@ -271,7 +271,7 @@ async def test_attack3_an_expired_token_ends_the_job_and_no_stored_session_reads
 
     empty, sleeps_empty = _market(monkeypatch, clock, token=None)
     empty.start_periodic_positions()
-    await _until(lambda: empty._periodic.done())
+    await _until(empty._periodic.done)
     assert sleeps_empty.asked == [] and kite.count("/portfolio/positions") == 1
 
 
