@@ -28,9 +28,8 @@ from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.broker.rate_limit import READ_PERIOD_SECONDS, READ_POSITIONS
 from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
-from ofo.market_calendar import is_market_open
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
+from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from redis.exceptions import RedisError
 
@@ -367,9 +366,8 @@ def market_open_at(now: datetime.datetime) -> bool:
     (``FeedState.market_closed``, the one market-state function every quote health reads); with no feed running, the
     same ADR-119 calendar function it defaults to (fail closed on a date the calendar cannot answer)."""
     market = _current
-    feed = None if market is None or market.feed is None else getattr(market.feed.ctx.provider, "feed", None)
-    closed = getattr(feed, "market_closed", None)
-    return is_market_open(now) if closed is None else not closed(now)
+    provider = None if market is None or market.feed is None else market.feed.ctx.provider
+    return not market_closed_for(provider, now)
 
 
 def last_price_time() -> datetime.datetime | None:

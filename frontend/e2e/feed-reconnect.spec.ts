@@ -13,8 +13,9 @@ const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrume
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.',
   table: null, summary: null, payoff: null, scenario: null, advanced_details: undefined, legs: real.legs.map((l: any) => ({ ...l, ltp: null, label: 'x' })) }
-// The real server stamps every outcome push with its own time (`answered_at`, REQ-114 AC-5); the recorded fixture predates
-// that field, so the played server adds it. Without it the page correctly shows the no-time words (frontend/tests).
+// The real server stamps every outcome push with its own time (`answered_at`) and the feed's last price time
+// (`last_price_at`, the time the reconnecting text shows, REQ-114 AC-5); the recorded fixture predates both fields, so the
+// played server adds them. Without `last_price_at` the page correctly shows the no-time words (frontend/tests).
 const PUSH_AT = '2026-10-23T09:20:09+05:30'
 const GAP_MS = 5000 // the server refuses the socket this long
 const RESUME_MS = 10000 // REQ-113 AC-2
@@ -35,7 +36,7 @@ test('AC-2: a dropped live socket reads reconnecting at once, shows no old price
     state.current = ws
     ws.onMessage(() => {
       state.pushes += 1
-      ws.send(JSON.stringify({ ...real, answered_at: PUSH_AT })) // the server's answer to the strategy the page sent
+      ws.send(JSON.stringify({ ...real, answered_at: PUSH_AT, last_price_at: PUSH_AT })) // the server's answer to the strategy the page sent
     })
   })
   await page.goto(`/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(DRAFT) })}`)

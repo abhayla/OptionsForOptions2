@@ -24,7 +24,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
-from ofo.market_calendar import is_market_open
+from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
@@ -160,10 +160,9 @@ def market_state(ctx: MarketContext | None, at: datetime.datetime) -> MarketStat
     """The ONE market-state read behind the outcome, chain and index answers (class market-state-decided-per-surface):
     the provider's own feed answers (``FeedState.market_closed``, which also sets every quote's health); a provider
     with no feed state, or no context at all, gets the same calendar function the feed defaults to (fail closed)."""
-    feed = None if ctx is None else getattr(ctx.provider, "feed", None)
-    closed = getattr(feed, "market_closed", None)
-    return MarketState(closed=(not is_market_open(at)) if closed is None else bool(closed(at)),
-                       last_price_at=getattr(feed, "last_price_at", None))
+    provider = None if ctx is None else ctx.provider
+    return MarketState(closed=market_closed_for(provider, at),
+                       last_price_at=getattr(getattr(provider, "feed", None), "last_price_at", None))
 
 
 def feed_scope(ctx: MarketContext) -> FeedScope | None:

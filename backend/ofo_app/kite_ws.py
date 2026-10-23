@@ -44,6 +44,7 @@ from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.broker.kite_http import plain_str as _plain_str
 from ofo.market_calendar import next_open as _calendar_next_open
+from ofo.marketdata.feed_health import market_closed_for as _market_closed_for
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
 from ofo.marketdata.reconnect_policy import BACKOFF_MAX, BACKOFF_START
 from ofo.marketdata.reconnect_policy import CHECK_EVERY as _CHECK_EVERY
@@ -113,9 +114,9 @@ class KiteSocket:
         self._user_ref = user_ref  # logged with every disconnect / reconnect / recovery (REQ-114 AC-8); never a secret
         self._rng: _Uniform = rng or random.Random()  # noqa: S311 - jitter (AC-3), not a secret
         # ADR-119 calendar: closed hours expect silence (AC-7). The default is the provider's own feed answer
-        # (``FeedState.market_closed``), the one market-state function; ``next_open`` caps the closed wait (REQ-114
-        # AC-7). A test that injects ``market_open`` alone gets no next-open cap (its calendar is its own).
-        self._market_open = market_open or (lambda now: not provider.feed.market_closed(now))
+        # (``feed_health.market_closed_for``: the bus-mode FeedRelay has no feed and gets the calendar);
+        # ``next_open`` caps the closed wait (REQ-114 AC-7). A test that injects ``market_open`` alone gets no next-open cap (its calendar is its own).
+        self._market_open = market_open or (lambda now: not _market_closed_for(provider, now))
         self._next_open = next_open or (_calendar_next_open if market_open is None else (lambda _now: None))
         self._connected_at: datetime.datetime | None = None  # when THIS connection opened (back-off reset rule)
         self._on_check = on_check  # observer of each silence check (tests)
