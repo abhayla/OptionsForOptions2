@@ -319,6 +319,7 @@ decisions:
   ADR-177: S6.7         # one market-closed wording everywhere (Q281)
   ADR-178: S6.7         # leaner builder sequence from the process audit (Q283)
   ADR-179: 4a           # a user read after a Kite 429 is refused busy unless Kite states a wait that fits (REQ-118)
+  ADR-180: S6.7         # one-time manual merge of PR #525: the merge gate cannot read a PR of 300+ files (kit #163)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
