@@ -327,9 +327,6 @@ APP_MODELS = (
     "ofo_app.index_push.IndicesOut",
     "ofo_app.routes.broker.BrokerRedirectOut",
     "ofo_app.routes.broker.RefusalOut",
-    "ofo_app.routes.broker_account.BrokerAccountOut",
-    "ofo_app.routes.broker_account.MarginOut",
-    "ofo_app.routes.broker_account.MaskedUserIdOut",
     "ofo_app.routes.broker_capabilities.CapabilitiesOut",
     "ofo_app.routes.broker_status.BrokerStatusOut",
     "ofo_app.routes.broker_status.DisconnectOut",
@@ -385,6 +382,9 @@ APP_MODELS = (
     "ofo_app.routes.tracking.TrackingIndexOut",
     "ofo_app.routes.tracking.TrackingLegOut",
     "ofo_app.routes.tracking.TrackingOut",
+    "ofo_app.routes.zerodha_account.BrokerAccountOut",
+    "ofo_app.routes.zerodha_account.MarginOut",
+    "ofo_app.routes.zerodha_account.MaskedUserIdOut",
 )
 
 

@@ -22,6 +22,9 @@ REASONS: dict[str, str] = {
         "V1 single-broker wiring: the return check reads Zerodha's orders and positions through the Kite adapter; 'zerodha_units' is the reply field the page shows",
     'backend/ofo_app/routes/positions.py':
         "V1 single-broker wiring: the positions read goes through the Kite adapter; 'zerodha_units' is the reply field the page shows",
+    'backend/ofo_app/routes/zerodha_account.py':
+        "V1 single-broker wiring: Settings' account block reads Zerodha's profile and margin through the Kite adapter "
+        '(RD-013, ADR-016); no branch on the broker',
     'backend/ofo_app/routes/strategies.py':
         'imports the Zerodha eligibility loader (data layer) by its module name; no broker comparison',
     'backend/ofo/strategy/modification.py':
@@ -127,14 +130,34 @@ LINES: dict[str, tuple[str, ...]] = {
         'class _Zerodha:',
         'def _read(session: KiteSession, catalogue: Any) -> _Zerodha:',
         'except (KiteReadError, KiteReplyError, ValueError) as exc:',
-        'return _Zerodha(read.net, orders, index)',
         'async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,',
         'return await ra.attribute_and_compare(ra.Account(db, user_ref), {}, zerodha.net, zerodha.orders, sources, at=now)',
+        'from ofo_app import kite_period_reads',
+        'answer = kite_period_reads.screen_positions(session.reads)  # REQ-118 AC-7: at most one read per 45 s per user',
+        'return _Zerodha(read.net, orders, index, answer.read_at)',
+        'return _answer(result, zerodha.index, zerodha.read_at)',
         'contracts = [{"tradingsymbol": _symbol(key, index), "zerodha_units": result.raw_net.get(key, 0),',
         'session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045',
         'zerodha = _read(session, catalogue)',
         'result = await _attribute(db, user_ref, zerodha, ra.Sources(catalogue, clock), now)',
-        'return _answer(result, zerodha.index, now)',
+    ),
+    'backend/ofo_app/routes/zerodha_account.py': (
+        'from ofo.broker import kite_flags',
+        'from ofo_app import kite_period_reads',
+        'from ofo_app.kite_margin import MARGIN_BUSY_CODE, KiteMarginError',
+        'from ofo_app.kite_reads import KiteReadError',
+        'from ofo_app.routes.execute import KiteSession, get_kite_session',
+        '_MARGIN_STATES: dict[str, MarginState] = {"kite_margin_no_figure": "empty", MARGIN_BUSY_CODE: "busy",',
+        '"kite_margin_token": "session_expired"}',
+        'def _margin(session: KiteSession) -> MarginOut:',
+        'answer = kite_period_reads.available_margin(session.reads, session.margin)',
+        'except KiteMarginError as exc:',
+        'def _user_id(session: KiteSession) -> MaskedUserIdOut | None:',
+        'start, hidden, end = kite_period_reads.masked_user_id(session.reads).value',
+        'except (KiteReadError, ValueError):',
+        'def _account(session: KiteSession, funds_on: bool) -> BrokerAccountOut:',
+        'session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045',
+        'funds_on = is_supported(flags_or_off(kite_flags.load_zerodha_flags), BrokerFlag.FUNDS_READ)',
     ),
     'backend/ofo_app/routes/strategies.py': (
         'from ofo_app import eligibility_from_zerodha as elig',

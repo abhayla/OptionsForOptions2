@@ -146,7 +146,7 @@
         "additionalProperties": false,
         "properties": {
           "margin": {
-            "$ref": "#/components/schemas/ofo_app__routes__broker_account__MarginOut"
+            "$ref": "#/components/schemas/ofo_app__routes__zerodha_account__MarginOut"
           },
           "user_id": {
             "anyOf": [
@@ -3553,54 +3553,6 @@
         "title": "VersionOut",
         "type": "object"
       },
-      "ofo_app__routes__broker_account__MarginOut": {
-        "additionalProperties": false,
-        "properties": {
-          "available": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Available"
-          },
-          "read_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Read At"
-          },
-          "state": {
-            "enum": [
-              "available",
-              "not_connected",
-              "not_offered",
-              "empty",
-              "busy",
-              "session_expired",
-              "read_failed"
-            ],
-            "title": "State",
-            "type": "string"
-          }
-        },
-        "required": [
-          "state",
-          "available",
-          "read_at"
-        ],
-        "title": "MarginOut",
-        "type": "object"
-      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -4219,6 +4171,54 @@
           "updated_at"
         ],
         "title": "SummaryOut",
+        "type": "object"
+      },
+      "ofo_app__routes__zerodha_account__MarginOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "not_connected",
+              "not_offered",
+              "empty",
+              "busy",
+              "session_expired",
+              "read_failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "available",
+          "read_at"
+        ],
+        "title": "MarginOut",
         "type": "object"
       }
     }

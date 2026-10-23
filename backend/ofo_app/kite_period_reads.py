@@ -5,7 +5,7 @@ Each goes through ``ofo.broker.rate_limit.read_once_per_period`` (the one limite
 most one read of each call per user per period (45 s positions, 30 s numbers); inside the period the last answer comes
 back with its own read time, so nothing is ever shown as fresh from an old read. The user is the hash of the access
 token (``KiteReads.user_ref``), so the periodic job's read for the owner is the very answer the Positions screen
-(``ofo_app.routes.positions``) and the Settings account block (``ofo_app.routes.broker_account``) show.
+(``ofo_app.routes.positions``) and the Settings account block (``ofo_app.routes.zerodha_account``) show.
 
 The order path (Execute ``ofo_app.routes.execute``, return ``ofo_app.routes.execution_return``) does NOT come through
 here: it reads Zerodha fresh every time (ADR-016), and the periodic job runs as a background request so the limiter

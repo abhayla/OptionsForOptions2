@@ -16,7 +16,7 @@ from ofo.broker.rate_limit import RateLimiter
 from ofo_app import kite_period_reads
 from ofo_app.kite_margin import KiteMargin
 from ofo_app.kite_reads import KiteReads
-from ofo_app.routes import broker_account as route
+from ofo_app.routes import zerodha_account as route
 
 T0 = datetime.datetime(2026, 10, 23, 9, 30, 0, tzinfo=datetime.UTC)
 PROFILE = {"user_id": "AB1234", "broker": "ZERODHA", "exchanges": ["NFO"], "products": ["NRML"],
