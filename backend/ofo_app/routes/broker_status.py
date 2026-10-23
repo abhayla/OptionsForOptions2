@@ -28,7 +28,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
-from ofo.marketdata.feed_health import FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
+from ofo.marketdata.feed_health import FEED_CAPPED, FEED_ENDED, FEED_HEALTHY, FEED_IDLE, FEED_RECONNECTING, FEED_WAITING
 from ofo.timeutil import market_open
 
 from ofo_app import broker_sync, live_market
@@ -44,7 +44,7 @@ router = APIRouter(route_class=ClosedRoute)
 Level = Literal["connected", "partial", "disconnected"]
 Fix = Literal["connect_zerodha", "session_expired", "live_feed_off", "live_feed_not_running", "live_feed_session_ended",
               "no_read_yet", "live_data_not_connected", "positions_not_synced", "live_feed_waiting",
-              "live_feed_reconnecting", "live_feed_idle", "live_feed_market_closed"]
+              "live_feed_reconnecting", "live_feed_idle", "live_feed_market_closed", "live_feed_capped"]
 
 
 class StatusOut(ApiModel):
@@ -82,7 +82,8 @@ def _live_status(live_state: str, phase: str | None, market_is_open: bool = True
     by_phase = {FEED_HEALTHY: _status("connected"), FEED_WAITING: _status("partial", "live_feed_waiting"),
                 FEED_RECONNECTING: _status("partial", "live_feed_reconnecting"),
                 FEED_ENDED: _status("partial", "live_feed_session_ended"),
-                FEED_IDLE: _status("partial", "live_feed_idle")}
+                FEED_IDLE: _status("partial", "live_feed_idle"),
+                FEED_CAPPED: _status("partial", "live_feed_capped")}
     if phase in by_phase:
         return by_phase[phase]
     if live_state == live_market.SESSION_ENDED:

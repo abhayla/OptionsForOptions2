@@ -37,6 +37,8 @@ MAX_KEPT_TIMES = 20_000
 FEED_HEALTHY, FEED_WAITING, FEED_RECONNECTING, FEED_ENDED = "healthy", "waiting", "reconnecting", "ended"
 #: connected with nothing subscribed (the caller knows the subscriptions): nothing is expected to arrive.
 FEED_IDLE = "idle"
+#: the feed refused this user's socket over Zerodha's connection cap (REQ-113 AC-6, ADR-170): no prices will arrive.
+FEED_CAPPED = "capped"
 
 
 class FeedState:
@@ -48,6 +50,7 @@ class FeedState:
         self.reconnect_window = reconnect_window
         self.connected = False
         self.session_ended = False
+        self.capped = False
         self._last_activity: datetime.datetime | None = None
         self._last_tick_frame: datetime.datetime | None = None  # a PRICE frame only; heartbeats never move it (``phase``)
         self._disconnected_at: datetime.datetime | None = None
@@ -80,12 +83,18 @@ class FeedState:
         self.session_ended = True
         self._disconnected_at = now
 
+    def set_capped(self, capped: bool) -> None:
+        """The feed's own word that it refused this user's socket over a Zerodha cap (read from its status)."""
+        self.capped = capped
+
     def phase(self, now: datetime.datetime) -> str:
         """One of ``FEED_HEALTHY / WAITING / RECONNECTING / ENDED``. ``healthy`` only when a PRICE frame arrived within
         ``feed_stale``: heartbeats (1 byte, every second) prove the link, never prices, so they cannot keep it healthy
         (unlike ``health``, which a quiet contract may keep AVAILABLE on heartbeats, F-32)."""
         if self.session_ended:
             return FEED_ENDED
+        if self.capped:
+            return FEED_CAPPED
         if not self.connected:
             return FEED_RECONNECTING
         fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale

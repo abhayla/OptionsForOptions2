@@ -2617,7 +2617,8 @@
                   "live_feed_waiting",
                   "live_feed_reconnecting",
                   "live_feed_idle",
-                  "live_feed_market_closed"
+                  "live_feed_market_closed",
+                  "live_feed_capped"
                 ],
                 "type": "string"
               },

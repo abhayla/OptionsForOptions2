@@ -44,7 +44,7 @@ _SET_TOKEN = text(
     "UPDATE public.broker_sessions SET token_ciphertext = :ciphertext "
     "WHERE id = :id AND ended_at IS NULL AND token_ciphertext IS NULL RETURNING id")
 _ACTIVE = text(
-    "SELECT id, key_id, token_ciphertext, expected_expiry <= clock_timestamp() AS past FROM public.broker_sessions "
+    "SELECT id, key_id, token_ciphertext, expected_expiry <= clock_timestamp() AS past, expected_expiry FROM public.broker_sessions "
     "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
 
 
@@ -94,12 +94,22 @@ async def access_token_for(conn: Any, user_ref: str, cipher: TokenCipher, *,
     return None if found is None else found[1]
 
 
-async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker: str) -> tuple[int, str] | None:
-    """(session id, decrypted token) of the active session, or None."""
+async def access_session_for(conn: Any, user_ref: str, cipher: TokenCipher, *,
+                             broker: str = BROKER_ZERODHA) -> tuple[str, Any] | None:
+    """REQ-113 AC-8: (decrypted token, expected expiry) of the active session from ONE row read, or None. The token and
+    the expiry always belong to the same session: a login replacing it between two reads cannot pair a new token with
+    the old session's expiry. Same fresh-connection rule and past-expiry ending as ``access_token_for``."""
+    _require_fresh(conn)
+    found = await _read_active(conn, user_ref, cipher, broker=broker)
+    return None if found is None else (found[1], found[2])
+
+
+async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker: str) -> tuple[int, str, Any] | None:
+    """(session id, decrypted token, expected expiry) of the active session, or None."""
     row = (await conn.execute(_ACTIVE, {"user_ref": user_ref, "broker": broker})).one_or_none()
     if row is None:
         return None
-    session_id, key_id, blob, past = row
+    session_id, key_id, blob, past, expiry = row
     if past:
         await _end_committed(conn, session_id, user_ref, EndReason.EXPIRED, broker)
         log.info("broker session %s passed its expected expiry; ended", session_id)
@@ -108,7 +118,7 @@ async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker:
         log.warning("broker session %s is not readable with the current key; treated as no session", session_id)
         return None
     try:
-        return session_id, cipher.decrypt(bytes(blob), associated_data(user_ref, broker, session_id))
+        return session_id, cipher.decrypt(bytes(blob), associated_data(user_ref, broker, session_id)), expiry
     except TokenDecryptError:
         log.warning("broker session %s does not decrypt; treated as no session", session_id)
         return None
@@ -128,8 +138,6 @@ async def active_session_status(conn: Any, user_ref: str, broker: str = BROKER_Z
 
 _ACTIVE_REFS = text("SELECT user_ref FROM public.broker_sessions WHERE broker = :broker AND ended_at IS NULL "
                     "ORDER BY started_at, id")
-_EXPIRY = text("SELECT expected_expiry FROM public.broker_sessions "
-               "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
 
 
 async def active_user_refs(conn: Any, broker: str = BROKER_ZERODHA) -> list[str]:
@@ -137,12 +145,6 @@ async def active_user_refs(conn: Any, broker: str = BROKER_ZERODHA) -> list[str]
     read: the ONE column ``user_ref``, never the ciphertext, key id or any token. A session past its expiry that nobody
     has ended yet is still listed; ``access_token_for`` ends it when the feed reads that user's token."""
     return [str(row[0]) for row in (await conn.execute(_ACTIVE_REFS, {"broker": broker})).all()]
-
-
-async def session_expiry(conn: Any, user_ref: str, broker: str = BROKER_ZERODHA) -> Any:
-    """The active session's expected expiry (a datetime, ADR-053's 06:00), or None without a session. One column."""
-    row = (await conn.execute(_EXPIRY, {"user_ref": user_ref, "broker": broker})).one_or_none()
-    return None if row is None else row[0]
 
 
 async def end_session(conn: Any, user_ref: str, reason: EndReason, broker: str = BROKER_ZERODHA) -> int | None:
@@ -163,7 +165,7 @@ async def call_with_token(conn: Any, user_ref: str, cipher: TokenCipher,
     found = await _read_active(conn, user_ref, cipher, broker=broker)
     if found is None:
         return None
-    session_id, token = found
+    session_id, token, _expiry = found
     try:
         return await call(token)
     except KiteTokenException:

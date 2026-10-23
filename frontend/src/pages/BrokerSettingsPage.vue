@@ -25,6 +25,7 @@ const FIX = {
   live_feed_market_closed: 'The market is closed, so no new prices are arriving. Live prices resume at the next market open (9:15 am IST on a trading day).',
   live_feed_idle: 'Live prices start when you open a strategy or option chain screen.',
   live_feed_reconnecting: 'The live price feed dropped and is reconnecting. It resumes by itself while your Zerodha login is valid.',
+  live_feed_capped: 'Live prices are not available: Zerodha\'s connection limit for this app is reached.',
   live_feed_session_ended: 'Zerodha ended the live feed. Use Reconnect and log in again.',
   no_read_yet: 'No position read from Zerodha has succeeded since you connected. Open Execute for a strategy to read your positions.',
   live_data_not_connected: 'Orders are not ready until live market data is connected. Fix the live market data row first.',

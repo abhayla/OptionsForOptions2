@@ -514,3 +514,18 @@ async def test_full_mode_depth_frames_over_the_bus_reach_latest_depth(world):
     await asyncio.sleep(0.3)
     found = [i for i in all_instrument_ids(new_provider()[2]) if w.provider.latest_depth(i, T0) is not None]
     assert found, "no instrument has a 5-level depth after the recorded full-mode frames came over the bus"
+
+
+async def test_a_capped_status_reads_the_feed_phase_capped_and_never_live(world):
+    """REQ-113 AC-6 (ADR-170): the feed refused this user's socket over Zerodha's cap and says ``capped``. The API reads
+    it the way it reads connected:false (not live) AND names the phase ``capped``, so the status page says live prices
+    are not available; a later status without the flag clears it."""
+    w = world
+    await go_live(w)
+    body = {"u": w.user, "connected": False, "ended": False, "connections": 0, "last_frame_us": None,
+            "phase": "stopped", "capped": True}
+    await w.bus.set(feed_bus.status_key(w.user), json.dumps(body), px=60_000)
+    await poll(lambda: w.provider.feed.phase(w.clock.now) == "capped", "the capped flag to reach the feed phase")
+    assert w.provider.feed.connected is False
+    await w.status(connected=True)  # the cap cleared and the socket connected
+    await poll(lambda: w.provider.feed.phase(w.clock.now) != "capped", "the capped phase to clear")

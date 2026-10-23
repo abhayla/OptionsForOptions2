@@ -185,9 +185,8 @@ live_market.require_safe = lambda *a: None
 feed_mode.redis_url = lambda: 'redis://127.0.0.1:1/0'
 broker_config.load_broker_config = lambda: types.SimpleNamespace(token_key=b'k', api_key='K')
 broker_crypto.TokenCipher = lambda key: None
-broker_token_store.access_token_for = noop
+broker_token_store.access_session_for = noop
 broker_token_store.active_user_refs = nobody
-broker_token_store.session_expiry = noop
 db.verify_pool_budget, db.close_db, db.get_engine = noop, noop, Engine
 feed_main.build_socket = built
 feed_main.run_feed = built

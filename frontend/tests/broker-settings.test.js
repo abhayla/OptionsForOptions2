@@ -55,6 +55,8 @@ describe('/settings/broker-market-data', () => {
     const idle = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_idle' } })
     expect(t(idle, 'fix-live_market_data')).toContain('Live prices start when you open a strategy or option chain screen.')
     expect(t(idle, 'fix-live_market_data')).not.toContain('Reconnect')
+    const capped = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_capped' } })
+    expect(t(capped, 'fix-live_market_data')).toContain("Live prices are not available: Zerodha's connection limit for this app is reached.")
     const back = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_reconnecting' } })
     expect(t(back, 'fix-live_market_data')).toContain('reconnecting')
   })

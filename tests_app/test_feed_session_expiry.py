@@ -102,3 +102,63 @@ async def test_an_expiry_in_the_future_changes_nothing(rig):
     await rig.until(lambda: _reads_since(rig, user, reads, 3), "three re-checks")
     assert kite.accepted == 1 and kite.active == 1
     assert all(m.kind != feed_bus.KIND_ENDED for _i, m in await stream_entries(rig.bus, user))
+
+
+class _Result:
+    def __init__(self, row) -> None:
+        self._row = row
+
+    def one_or_none(self):
+        return self._row
+
+
+class _OneReadConn:
+    """A fake connection that answers each read from a script. A login replacing the session is applied AFTER the first
+    read: a second read of the session (the old two-query shape) would return the NEW session's row."""
+
+    def __init__(self, rows) -> None:
+        self.rows, self.reads = list(rows), 0
+
+    def in_transaction(self) -> bool:
+        return False
+
+    async def execute(self, _stmt, _params=None):
+        self.reads += 1
+        return _Result(self.rows[min(self.reads, len(self.rows)) - 1])
+
+    async def commit(self) -> None:
+        raise AssertionError("a live session must not be ended")
+
+
+async def test_one_read_decides_so_a_login_between_two_reads_cannot_end_the_new_session():
+    """AC-8 (standing item d: present and live | present and expired | absent | replaced mid-check): the token and the
+    expiry come from ONE read of one session. The old session expires in 1 h, the replacing login's in 20 h; the scripted
+    connection returns the replacing login's row on any SECOND read. With one read, the pair is the OLD session's token
+    with the OLD expiry (a consistent session the next supervisor pass replaces), never the old token with the new
+    expiry or the new token with the old expiry, and exactly one read happened."""
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_session_for  # noqa: PLC0415
+
+    cipher = TokenCipher(os.urandom(32))
+    old_expiry, new_expiry = T0 + datetime.timedelta(hours=1), T0 + datetime.timedelta(hours=20)
+
+    def row(sid, token, expiry):
+        return (sid, cipher.key_id, cipher.encrypt(token, associated_data("u1", "zerodha", sid)), False, expiry)
+
+    conn = _OneReadConn([row(1, "TOK-old", old_expiry), row(2, "TOK-new", new_expiry)])
+    assert await access_session_for(conn, "u1", cipher) == ("TOK-old", old_expiry)
+    assert conn.reads == 1, "the token and the expiry must come from one read"
+
+
+async def test_the_one_read_answers_absent_as_none_and_never_pairs_a_missing_expiry():
+    """Standing item (d): no active session -> None (the supervisor then publishes stopped), from one read."""
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_session_for  # noqa: PLC0415
+
+    conn = _OneReadConn([None])
+    assert await access_session_for(conn, "u1", TokenCipher(os.urandom(32))) is None
+    assert conn.reads == 1

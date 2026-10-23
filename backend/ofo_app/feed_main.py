@@ -354,7 +354,7 @@ async def _main() -> int:
     from ofo_app import live_market  # noqa: PLC0415
     from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
     from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
-    from ofo_app.broker_token_store import access_token_for, active_user_refs, session_expiry  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_session_for, active_user_refs  # noqa: PLC0415
     from ofo_app.config import app_env  # noqa: PLC0415
     from ofo_app.db import close_db, get_engine, verify_pool_budget  # noqa: PLC0415
 
@@ -372,12 +372,11 @@ async def _main() -> int:
             return await active_user_refs(conn)
 
     async def read_session(user: str) -> StoredSession | None:
-        async with get_engine().connect() as conn:
-            stored = await access_token_for(conn, user, cipher)
-        if stored is None:
+        async with get_engine().connect() as conn:  # ONE read: the token and the expiry are the same session's
+            found = await access_session_for(conn, user, cipher)
+        if found is None:
             return None
-        async with get_engine().connect() as conn:
-            expiry = await session_expiry(conn, user)
+        stored, expiry = found
         return StoredSession(config.api_key, stored, live_market.token_fingerprint(stored), expiry)
 
     try:

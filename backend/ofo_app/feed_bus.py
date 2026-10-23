@@ -354,6 +354,7 @@ class BusSocket:
             self._set_feed(False, now)
             return False
         self.connections = status["connections"]
+        self._provider.set_capped(status["capped"])  # REQ-113 AC-6: refused over the cap -> phase capped, never silent
         if status["ended"]:
             self._provider.on_session_ended(now)
             return True

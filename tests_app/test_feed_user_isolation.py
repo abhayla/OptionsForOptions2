@@ -446,8 +446,11 @@ async def test_active_user_refs_is_an_allow_list_of_one_column(app_engine):
         assert list(raw.keys()) == ["user_ref"]
     async with maker() as session:
         refs = await store.active_user_refs(session)
-        expiry = await store.session_expiry(session, live_a)
-        none = await store.session_expiry(session, gone)
+    async with maker() as session:
+        found = await store.access_session_for(session, live_a, cipher)
+    async with maker() as session:
+        none = await store.access_session_for(session, gone, cipher)
+    expiry = None if found is None else found[1]
     assert all(type(r) is str for r in refs)
     assert live_a in refs and live_b in refs and gone not in refs
     assert not any(s in " ".join(refs) for s in secrets.values())

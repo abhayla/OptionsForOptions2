@@ -141,6 +141,9 @@ class KiteProvider(MarketDataProvider):
     def on_disconnected(self, now: datetime.datetime) -> None:
         self.feed.on_disconnected(now)
 
+    def set_capped(self, capped: bool) -> None:
+        self.feed.set_capped(capped)
+
     def on_session_ended(self, now: datetime.datetime) -> None:
         self.feed.on_session_ended(now)
 

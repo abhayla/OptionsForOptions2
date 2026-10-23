@@ -14,7 +14,7 @@ import pathlib
 
 import pytest
 from ofo.instruments.parser import parse_instruments_csv
-from ofo.marketdata.feed_health import FEED_RECONNECTING, FEED_STALE
+from ofo.marketdata.feed_health import FEED_CAPPED, FEED_RECONNECTING, FEED_STALE
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app import broker_sync, live_market
 from ofo_app.routes.broker_status import broker_status, build_status
@@ -308,3 +308,11 @@ def test_the_quiet_contract_rule_is_unchanged_health_still_counts_heartbeats(pro
     _frame(provider, clock.now)
     _heartbeats_for(provider, clock, 70)
     assert provider.feed.health(clock.now) is DataHealth.AVAILABLE
+
+
+@pytest.mark.parametrize("open_now", [True, False])
+def test_a_capped_feed_says_live_prices_are_not_available_in_and_out_of_market_hours(open_now):
+    """REQ-113 AC-6 (ADR-170): the feed phase ``capped`` reads its own fix at any hour, never waiting, never 'market closed'."""
+    out = build_status((T0, False), LATER, live_market.current_state(), FEED_CAPPED, open_now)
+    assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", "live_feed_capped")
+    assert out.order_execution.fix == "live_data_not_connected"
