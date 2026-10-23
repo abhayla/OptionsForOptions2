@@ -142,6 +142,15 @@ class FeedState:
         return DataHealth.AVAILABLE
 
 
+def market_closed_for(source: object, now: datetime.datetime) -> bool:
+    """REQ-114 AC-7: the ONE market-state answer for ANY provider shape. A provider (or relay) with a
+    ``FeedState`` answers through ``FeedState.market_closed`` (the same answer its quote healths read); one without
+    (the bus-mode ``FeedRelay``, a test fake, no provider at all) gets the calendar ``FeedState`` defaults to
+    (fail closed)."""
+    closed = getattr(getattr(source, "feed", None), "market_closed", None)
+    return (not is_market_open(now)) if closed is None else bool(closed(now))
+
+
 def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuote:
     """The quote with its health from the feed's state; its own validation and declared delay still count."""
     if feed is not DataHealth.AVAILABLE:

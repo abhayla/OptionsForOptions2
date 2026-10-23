@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import gzip
 import json
 import os
@@ -20,6 +21,7 @@ import time
 
 import pytest
 import redis.asyncio as aioredis
+from ofo.market_calendar import is_market_open
 from ofo.marketdata.kite_frames import iter_recording
 from ofo_app import feed_bus, live_market
 from websockets.asyncio.server import serve
@@ -140,7 +142,10 @@ async def test_api_restart_does_not_reconnect_the_feed_and_fresh_frames_reach_th
                     "the feed to keep receiving frames after the restart", children)
         assert second["pid"] != first["pid"]
         assert second["last_frame_us"] > restart_us, "a frame the new API holds is older than the restart"
-        assert second["phase"] in {"healthy", "waiting"}
+        # the two processes run on the wall clock: outside market hours the phase is market closed whatever frames
+        # arrive (REQ-114 AC-7, review F1); the flowing-feed phases are asserted while the calendar says open
+        assert second["phase"] in ({"healthy", "waiting"} if is_market_open(datetime.datetime.now(datetime.UTC))
+                                   else {"market_closed"})
         assert second["socket"] == "BusSocket", "LiveMarket.start in bus mode built another socket"
         assert children["feed"].poll() is None, "the feed process stopped"
         assert kite.accepted == 1, f"Kite saw {kite.accepted} connections; an API restart must not reconnect"
