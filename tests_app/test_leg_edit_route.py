@@ -31,6 +31,7 @@ TODAY = datetime.date(2026, 10, 1)
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 LOT, INCLUDED_AFTER_UNTICK = 65, 3
 STAMP = datetime.datetime(2026, 10, 1, 9, 20, tzinfo=datetime.UTC)
+STEPPED_DOWN_STRIKE = 23350
 NEW_STAMP = datetime.datetime(2026, 10, 1, 9, 21, 28, tzinfo=datetime.UTC)
 CAT = Catalogue()
 CAT.load(parse_instruments_csv(ROOT / "tests" / "fixtures" / "instruments" / "instruments_slice.csv"))
@@ -80,7 +81,7 @@ def strikes(reply):
 
 
 def test_core_step_recaptures_only_the_stepped_leg_with_a_new_capture_time():
-    """REQ-076 AC-1/AC-2 (core): + on SELL 23400 CE gives 23450 CE priced 88.00 captured at the new time; the other three
+    """REQ-076 AC-1/AC-2 (core): + on SELL 23400 CE gives 23450 CE priced 88.00 captured at the new time; the other
     legs keep their planned entries and capture time; the reply's outcome is built from the new legs."""
     status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": 1}})
     assert status == HTTP_OK
@@ -113,7 +114,7 @@ def test_ac_2_a_stepped_leg_with_no_live_price_is_unpriced_never_the_old_price()
     """REQ-076 AC-2 / ADR-020 Q185: SELL 23400 CE stepped to 23350, which the capture has no price for: that leg comes
     back unpriced, the others keep theirs, and no number is computed."""
     status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": -1}})
-    assert status == HTTP_OK and strikes(reply)[2] == 23350
+    assert status == HTTP_OK and strikes(reply)[2] == STEPPED_DOWN_STRIKE
     stepped = reply["legs"][2]
     assert (stepped["planned_entry"], stepped["captured_at"], stepped["price_source"]) == (None, None, "none")
     assert [leg["planned_entry"] for leg in reply["legs"]] == ["42.50", "86.00", None, "44.00"]
@@ -123,14 +124,14 @@ def test_ac_2_a_stepped_leg_with_no_live_price_is_unpriced_never_the_old_price()
 def test_ac_1_a_past_expiry_and_a_delisted_contract_are_named_not_stepped():
     """REQ-076 AC-1: a leg whose expiry is already past, or whose contract is no longer listed, is refused naming ITS
     leg number and the stored contract."""
-    status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 0, "direction": 1}},
+    status, reply = post({"legs": legs(), "edit": {"control": "multiplier", "multiplier": 2}},
                          today=EXPIRY + datetime.timedelta(days=1))
     assert status == HTTP_UNPROCESSABLE and "Leg 1 (BUY NIFTY 22,800 PE, expiry 06 Oct 2026)" in str(reply)
     gone = Catalogue()
     gone.load(parse_instruments_csv(ROOT / "tests" / "fixtures" / "instruments" / "instruments_slice.csv"))
     segment, _, token = BY_KEY[("CE", 23400)].partition(":")
     gone.get(InstrumentId(segment, int(token))).currently_listed = False
-    status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 0, "direction": 1}}, cat=gone)
+    status, reply = post({"legs": legs(), "edit": {"control": "multiplier", "multiplier": 2}}, cat=gone)
     assert status == HTTP_UNPROCESSABLE and "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026)" in str(reply)
 
 
@@ -202,8 +203,8 @@ def test_ac_6_an_unticked_leg_stays_in_the_reply_and_leaves_every_number(monkeyp
     assert [leg["included"] for leg in reply["legs"]] == [True, True, True, False]
     assert strikes(reply) == [22800, 23000, 23400, 23600]  # the unticked leg is still listed, unchanged
     left_out = BY_KEY[("CE", 23600)]
-    assert seen["outcome"] == seen["margin"] == [i for i in (BY_KEY[("PE", 22800)], BY_KEY[("PE", 23000)],
-                                                             BY_KEY[("CE", 23400)])]
+    assert seen["outcome"] == seen["margin"] == [
+        BY_KEY[("PE", 22800)], BY_KEY[("PE", 23000)], BY_KEY[("CE", 23400)]]
     assert left_out not in seen["outcome"] and len(reply["outcome"]["legs"]) == INCLUDED_AFTER_UNTICK
 
 
@@ -266,4 +267,5 @@ def test_a_control_without_its_fields_or_a_smuggled_leg_key_is_a_plain_validatio
                 {"control": "include", "index": 1}, {"control": "multiplier"}, {"control": "shift", "direction": 1}):
         status, reply = post({"legs": legs(), "edit": bad})
         assert status == HTTP_UNPROCESSABLE and "no further" not in str(reply)
-    assert post({"legs": legs(checked=True), "edit": {"control": "multiplier", "multiplier": 2}})[0] == HTTP_UNPROCESSABLE
+    edit = {"control": "multiplier", "multiplier": 2}
+    assert post({"legs": legs(checked=True), "edit": edit})[0] == HTTP_UNPROCESSABLE

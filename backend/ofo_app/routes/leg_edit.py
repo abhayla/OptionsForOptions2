@@ -34,7 +34,6 @@ from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
 from ofo.execution.freeze import StoredFreeze
 from ofo.instruments.catalogue import Catalogue
-from ofo.instruments.models import ZERODHA
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
@@ -63,6 +62,7 @@ from ofo_app.routes.outcome import (
     outcome_response,
 )
 from ofo_app.routes.planned_entry import capture_entries, get_live_feed
+from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -147,7 +147,7 @@ class EditIn(BaseModel):
 
 class LegEditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    underlying: Literal["NIFTY", "SENSEX"]
+    underlying: Underlying
     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
     edit: EditIn
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
@@ -182,8 +182,8 @@ class LegEditOut(ApiModel):
 # ---- the edit -----------------------------------------------------------------------------------------------------
 
 def _contract_of(cat: Catalogue, item: EditLegIn, underlying: str, number: int, today: datetime.date):
-    """The stored contract of a request leg. A delisted or expired contract is named as the contract it really is; an
-    id the instrument file does not hold (or another underlying's) is refused by the leg's NUMBER, never by a made-up
+    """The stored contract of a request leg. An expired contract is named as the contract it really is; an id the
+    instrument file does not hold (or another underlying's) is refused by the leg's NUMBER, never by a made-up
     contract."""
     segment, _, token = item.instrument_id.partition(":")
     try:
@@ -193,7 +193,7 @@ def _contract_of(cat: Catalogue, item: EditLegIn, underlying: str, number: int, 
     if entry is None or entry.contract.name != underlying:
         raise LegEditRefused("leg_edit_unknown_contract", number=number)
     c = entry.contract
-    if not entry.currently_listed or c.expiry < today:
+    if c.expiry < today:  # a delisted contract is named by _entry_of, the one listedness check
         strike = None if c.instrument_type == "FUT" else c.strike
         shown = Leg(Action(item.action), Instrument(c.instrument_type), strike, c.expiry,
                     item.lots * c.lot_size, Decimal(0))
@@ -224,7 +224,7 @@ def _entry_of(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int):
 
 
 def _live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
-    """The live index level, or None (no feed, no price): the shape is then read from the strikes, no spot is invented."""
+    """The live index level, or None (no feed, no price): the shape is read from the strikes, no spot invented."""
     quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
     return quote.ltp if quote is not None and quote.ltp is not None and quote.ltp > 0 else None
 
@@ -285,7 +285,7 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
     if e.control == "reset_prices":
         return legs, frozenset(range(len(legs)))
-    moved = edit.step_strike(cat, name, legs, _need_index(e, legs), e.direction or 1, today)
+    moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
     return moved.legs, moved.moved
 
 
@@ -299,7 +299,8 @@ def _freeze_blocks(cat: Catalogue, underlying: str, legs: list[EditLeg],
         if entry.id in stored:
             limit, file_date = stored[entry.id]
             limits[i] = StoredFreeze(limit, entry.contract.lot_size, file_date)
-            symbols[i] = entry.ref(ZERODHA).broker_symbol
+            (ref,) = entry.broker_refs.values()  # the one broker row (the store refuses any other count); no name here
+            symbols[i] = ref.broker_symbol
     return edit.freeze_blocks(legs, limits, symbols)
 
 

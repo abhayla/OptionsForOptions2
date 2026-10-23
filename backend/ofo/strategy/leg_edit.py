@@ -65,25 +65,31 @@ def leg_ref(underlying: str, legs: list[EditLeg], index: int, strike: Decimal | 
     return LegValue(index + 1, leg if strike is None else replace(leg, strike=strike), underlying)
 
 
-def listed_strikes(cat: Catalogue, underlying: str, expiry: date, instrument: Instrument,
-                   today: date) -> tuple[Decimal, ...]:
-    """The strikes the leg picker offers today for one underlying, expiry and option type, ascending: listed in the
-    instrument file and not expired (REQ-035 AC-8). ``today`` is required, so the expiry check cannot be skipped."""
-    if expiry < today:
-        return ()
-    return tuple(sorted({e.contract.strike for e in cat.all_entries()
-                         if e.currently_listed and e.contract.name == underlying and e.contract.expiry == expiry
-                         and e.contract.instrument_type == instrument.value}))
+@dataclass(frozen=True)
+class Listing:
+    """What the leg picker offers on one day: the instrument file and today's date (both required, so the expiry check
+    cannot be skipped)."""
+
+    cat: Catalogue
+    today: date
+
+    def strikes(self, underlying: str, expiry: date, instrument: Instrument) -> tuple[Decimal, ...]:
+        """The strikes offered for one underlying, expiry and option type, ascending: listed in the instrument file and
+        not expired (REQ-035 AC-8)."""
+        if expiry < self.today:
+            return ()
+        return tuple(sorted({e.contract.strike for e in self.cat.all_entries()
+                             if e.currently_listed and e.contract.name == underlying and e.contract.expiry == expiry
+                             and e.contract.instrument_type == instrument.value}))
 
 
-def step_strike(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int, direction: int,
-                today: date) -> Moved:
+def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: int, direction: int) -> Moved:
     """REQ-076 AC-1: the next LISTED strike above / below (never strike + a typed constant). A strike that is not
     listed is refused, never rounded; the first / last listed strike has no further step."""
     leg = legs[index].leg
     if leg.strike is None:
         raise LegEditRefused("leg_edit_futures_no_stepper", leg=leg_ref(underlying, legs, index))
-    grid = listed_strikes(cat, underlying, leg.expiry, leg.instrument, today)
+    grid = listing.strikes(underlying, leg.expiry, leg.instrument)
     if leg.strike not in grid:
         raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index))
     at = grid.index(leg.strike) + direction

@@ -12,10 +12,13 @@ import datetime
 import importlib
 import pathlib
 from collections.abc import Callable
+from decimal import Decimal
 
 import pytest
 
-from ofo.errors import UserFacing, UserFacingError, render, user_message_of
+from ofo.engine.legs import Action, Instrument, Leg
+from ofo.errors import LegValue, UserFacing, UserFacingError, render, user_message_of
+from ofo.strategy.leg_edit import LegEditRefused
 
 pytestmark = pytest.mark.repo_scan
 
@@ -95,11 +98,6 @@ def _disconnect_status() -> object:
 
 
 def _leg_edit_refused() -> object:
-    from decimal import Decimal
-
-    from ofo.engine.legs import Action, Instrument, Leg
-    from ofo.errors import LegValue
-    from ofo.strategy.leg_edit import LegEditRefused
     leg = Leg(Action.BUY, Instrument.FUT, None, AT.date(), 65, Decimal("23100"))
     return LegEditRefused("leg_edit_futures_no_stepper", leg=LegValue(1, leg, "NIFTY"))
 
