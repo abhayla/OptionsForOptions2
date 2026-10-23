@@ -110,6 +110,7 @@ jobs:
               # REQ-048 AC-5: the bundle scan runs in this job on the built output, so its files start this job
               - 'tests/test_bundle_secret_scan.py'
               - 'tests/test_app_workflow_bundle_scan.py'
+              - 'tests/orchestrator/test_db_run_fresh.py'
               - '.github/workflows/app-tests.yml'
             # execute-screen-e2e: the Execute screen against the real ofo_app replay API, so API code also feeds it.
             e2e:
@@ -341,6 +342,12 @@ jobs:
         env:
           OFO_REQUIRE_BUNDLE_SCAN: '1'  # here a missing frontend/dist fails the scan; elsewhere the file skips it
         run: python -m pytest -q -p no:cacheprovider tests/test_bundle_secret_scan.py
+
+      # finding test-skipped-in-its-only-ci-job: this file importorskips asyncpg, which only requirements-app.txt
+      # installs, so the kit job always skipped it. Runs here, after "Install backend dependencies". It is pure
+      # (fake runner, no database URL).
+      - name: Database-drop guard tests (asyncpg)
+        run: python -m pytest -q -p no:cacheprovider tests/orchestrator/test_db_run_fresh.py
 
       # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the
       # @playwright/test version), and cap the step.

@@ -89,6 +89,29 @@ def _usage(obj: dict) -> dict | None:
     return u if isinstance(u, dict) else None
 
 
+class UsageOnce:
+    """Usage of assistant messages, counted once per ``message.id``. Claude Code writes one transcript line per content
+    block, each repeating the message's usage; the last line of an id wins, a line without an id counts once
+    (finding transcript-usage-counted-per-line)."""
+
+    def __init__(self) -> None:
+        self._by_id: dict[str, dict] = {}
+        self._anon: list[dict] = []
+
+    def add(self, obj: dict) -> None:
+        u = _usage(obj)
+        if not u:
+            return
+        msg_id = obj["message"].get("id")
+        if isinstance(msg_id, str) and msg_id:
+            self._by_id[msg_id] = u
+        else:
+            self._anon.append(u)
+
+    def usages(self) -> list[dict]:
+        return [*self._by_id.values(), *self._anon]
+
+
 def names_safety_file(text: str) -> bool:
     return any(p in text.replace("\\", "/") for p in SAFETY_SET)
 
@@ -146,13 +169,11 @@ def read_session(path: Path, repo: Path | None = None) -> dict:
     """Stream one orchestrator session: turns, context, table prints, Opus dispatches, DB runs, checker dispatches."""
     s = {"path": str(path), "repo": repo, "turns": 0, "ctx": 0, "tables": 0, "db_runs": 0, "bad_opus": [],
          "checkers": [], "first": None, "last": None}
+    once = UsageOnce()
     for obj in _jsonl(path):
         t = _iso(obj.get("timestamp", ""))
         s["first"], s["last"] = _span(s["first"], s["last"], t)
-        u = _usage(obj)
-        if u:
-            s["turns"] += 1
-            s["ctx"] += sum(u.get(k, 0) or 0 for k in CTX_KEYS)
+        once.add(obj)
         for b in _blocks(obj):
             if b.get("type") == "text" and obj.get("type") == "assistant":
                 txt = b.get("text", "")
@@ -160,6 +181,9 @@ def read_session(path: Path, repo: Path | None = None) -> dict:
                     s["tables"] += 1
             elif b.get("type") == "tool_use":
                 _note_tool(b, t, s)
+    for u in once.usages():
+        s["turns"] += 1
+        s["ctx"] += sum(u.get(k, 0) or 0 for k in CTX_KEYS)
     s["avg_ctx"] = s["ctx"] // s["turns"] if s["turns"] else 0
     return s
 

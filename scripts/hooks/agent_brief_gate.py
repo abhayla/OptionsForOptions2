@@ -47,6 +47,7 @@ def decide(tool_name: str, tool_input: dict) -> str | None:
     for ref in dict.fromkeys(BRIEF_RE.findall(prompt)):
         brief = _resolve(ref)
         if brief is None:
+            sys.stderr.write(f"agent_brief_gate: brief path {ref} does not resolve; not checked (fail open)\n")
             continue
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
         try:
