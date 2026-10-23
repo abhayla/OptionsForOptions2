@@ -19,6 +19,7 @@
  ],
  "occurrences": [
   {"date": "2026-10-22", "where": "row 3 and row 6 close times", "evidence": "meta reviews after rows 3 and 6"},
-  {"date": "2026-10-23", "where": "status report and four files at 09:06-09:11 IST", "evidence": "times 09:20, 09:30, 09:35, 09:40, 09:45 written at 09:06-09:11 (clock 09:11:32 when the owner asked); meta review after row 9 had flagged three typed times minutes earlier"}
+  {"date": "2026-10-23", "where": "status report and four files at 09:06-09:11 IST", "evidence": "times 09:20, 09:30, 09:35, 09:40, 09:45 written at 09:06-09:11 (clock 09:11:32 when the owner asked); meta review after row 9 had flagged three typed times minutes earlier"},
+  {"date": "2026-10-23", "where": "status report to the owner ~12:30 IST", "evidence": "'Row 11b started at about 12:45' written at 12:30 (clock 12:31:44 read right after); R19 existed - prose did not stop it; mechanism now overdue (third occurrence): a report helper that stamps from `date` and a repo test refusing a log time later than its commit"}
  ]
 }

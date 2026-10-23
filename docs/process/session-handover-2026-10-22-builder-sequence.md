@@ -1,6 +1,43 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 2, 2026-10-23 09:06 IST (commit 83707b70) - read this first (newer than the block below)
+## UPDATE session 2 END, 2026-10-23 12:36 IST (clock) - READ THIS FIRST (newest)
+- **Closed:** rows 1-5, 7, 9 (REQ-113), 10 (REQ-118, fb9a3702: Done, AC-6 sender deferred #521, MINORs #522). PARKED:
+  6 (#517), 8 (#519). Chunk branch `build/seq-chunk-1` head fb9a3702, pushed; no PR until row 16.
+- **In flight - four worktrees (ADR-171: four rows in flight, rows close in order, no shared files, ONE db run at a time,
+  older first, one agent per worktree):**
+  - `OptionsForOptions2-builder-next`, branch `build/seq-row-11`: row 11 (REQ-114). Part A committed 799b16ab (gate 15/15
+    killed; no DB run yet). Part B (frontend, `row-11b-...md`) builder dispatched ~12:30 - the session ended before it
+    reported: FIRST `git -C D:/Abhay/Ventures/OptionsForOptions2-builder-next log --oneline -3` and `status --short`;
+    if part B is uncommitted or half done, send a FRESH finisher (R5), never assume. Then verify row 11 with
+    `verify-row-11.md` (fill <HEAD> and <B-SHA>); its DB run uses THIS worktree path in fresh_launch.py.
+  - `OptionsForOptions2-builder-next-12`, branch `build/seq-row-12` (clean, at fb9a3702): row 12's one fix
+    (`row-12-fix-1.md`, REQ-072 AC-2 wrong reason when the index is missing). Dispatch when row 11's verifier is
+    dispatched, after `python scripts/orchestrator/overlap_gate.py <row-11 wt> fb9a3702 <row-12 wt> <plan file>`
+    exits 0 (plan: backend/ofo/outcome/service.py, tests/outcome/test_spot_gate_reason.py).
+  - Rows 13 (REQ-032) and 14 (REQ-033): FULLY re-checked on fb9a3702 - every AC passes (Opus non-DB: hand computations to
+    the paisa; DB part 224 passed). They close right after row 12 (evidence from `verify-rows-12-14.md` results; the two
+    surviving mutants - shared-Greeks key IV (= #519) and days_in_year guard - are MINORs for one deferred issue).
+  - `OptionsForOptions2-process`, branch `build/seq-process` 05c3e431: mutation_gate.py fix (proven), kill_by_name_guard
+    hook (Tier A r2 PASS WITH MINORS, port-owner kill fixed; MINORs #523). MERGE it into the chunk branch when no agent
+    writes in builder-reqs: combine `.claude/project/hooks.json` (the chunk has the night hook, the process branch the
+    kill guard - keep both), regenerate settings with `python tools/kit_settings.py <wt>` from the main checkout, then
+    `tests/hooks` must pass (2 night-hook wiring tests fail on the process branch alone - expected).
+- **Kill guard at user level (Q276, owner approved):** installed in `~/.claude/hooks/kill-guard/`; the OWNER runs
+  `! python "C:/Users/itsab/AppData/Local/Temp/claude/D--Abhay-Ventures-OptionsForOptions2/b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a/scratchpad/wire_kill_guard.py"`
+  (the project gate refuses the settings write). Check whether it is wired before relying on it.
+- **Owner decisions today:** ADR-170 (keep per-user feeds, ask Zerodha at the demo), ADR-171 (four rows in flight, binding
+  overlap gate, one agent per worktree, older first), ADR-172 (IV from the bid-ask mid, else LTP), Q276 (kill guard on
+  now). Open: Q273 (where Redis runs in production - ask at the first deploy brief).
+- **Mechanisms due (Learn-or-block):** finding `report-time-typed-not-read` (3 occurrences): a report/log time stamped
+  from `date`, and a repo test refusing a log time later than its commit - build as the next process item.
+- **Meta review** due after row 12 closes, before any later build. Then rows 15-16, then the chunk 1 PR.
+- **Infra:** the live API on :8765 (run_api_live_wt.py) dies with this session - restart it if a live read is needed;
+  the owner's Kite session (logged in ~09:00 today) is stored and valid until 06:00 tomorrow. DB lock:
+  `D:\Abhay\scratch\ofo2-builder-sequence\db.lock` (fresh_launch.py takes it; a dead holder is cleared).
+- **R17/R19:** no question box 22:00-08:00 or when the owner has not written for ~30 min (owner-questions file);
+  every time written is read from `date` or a commit.
+
+## UPDATE session 2, 2026-10-23 09:06 IST (commit 83707b70) - older
 - **Closed:** row 8 PARKED #519; row 9 (REQ-113) Done 08:59 (9dcd471c; MINORs #520). Meta review after row 9 applied
   (335485c7). Owner decisions: ADR-170 (keep per-user feeds, ask Zerodha at the demo; F-59), ADR-171 (one row may be
   built ahead, rows close in order, NO shared files between rows in flight, ONE database run at a time, older row
