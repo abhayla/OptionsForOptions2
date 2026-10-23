@@ -527,24 +527,25 @@ def test_the_callers_map_a_busy_refusal_to_their_own_fail_closed_codes(monkeypat
     assert login.value.code == "kite_busy"
 
 
-# -- review F2: a user read's retry fits its 5 s when Kite states a short wait (AC-3 + AC-4 together) --------------
+# -- review F2 attack 1, now a decision (ADR-179 floor): a user read after any 429 is refused busy at once ------------
 
-def test_f2_attack1_urllib_user_read_429_with_stated_wait_then_200_two_sends_under_5_s(world) -> None:
-    """AC-4 + AC-3 (review F2 attack 1, real urllib door, user context): 429 with Retry-After 1, then 200 -> sent at
-    t=0 and t=1 (Kite's stated wait), the 200 returned, total wait 1 s < 5 s. Before the fix: 1 send, busy."""
+def test_f2_attack1_urllib_user_read_429_with_stated_wait_2_is_refused_busy_after_one_send(world) -> None:
+    """AC-3 + ADR-179 floor (review F2 attack 1, real urllib door, user context): 429 with Retry-After 2, then 200 ->
+    the 2 s is raised to Kite's 10 s cooldown, past the 5 s user limit: 1 send at t=0, KiteBusy at once, no time
+    passes. The old "a user read never retries" gap is the amended decision, not a defect."""
     pacer, limiter, kite, started = world
     kite.script["/portfolio/positions"] = [429, 200]
-    kite.retry_after["/portfolio/positions"] = "1"
+    kite.retry_after["/portfolio/positions"] = "2"
     out: list = []
     run(started, lambda: get(kite, "/portfolio/positions"), out)
-    wait_for(lambda: kite.count() == 1 and limiter.in_cooldown("other", KEY), "first 429 noted")
-    pacer.advance(1.0)
-    wait_for(lambda: len(out) == 1, "answered")
-    assert out == [200] and kite.times() == [0.0, 1.0] and pacer.now() < rl.USER_MAX_WAIT_SECONDS
+    wait_for(lambda: len(out) == 1, "refused")
+    assert isinstance(out[0], rl.KiteBusy) and str(out[0]) == "Zerodha is busy - try again in a moment"
+    assert kite.times() == [0.0] and pacer.now() == 0.0 and limiter.in_cooldown("other", KEY)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_f2_attack1_httpx_user_read_429_with_stated_wait_then_200(world, asynchronous: bool) -> None:
+def test_f2_attack1_httpx_user_read_429_with_stated_wait_is_refused_busy_after_one_send(world,
+                                                                                    asynchronous: bool) -> None:
     """The same through the httpx door (sync and async clients): one helper (``DoorCall``) serves both doors."""
     pacer, limiter, kite, started = world
     kite.script["/orders"] = [429, 200]
@@ -561,15 +562,14 @@ def test_f2_attack1_httpx_user_read_429_with_stated_wait_then_200(world, asynchr
 
     out: list = []
     run(started, read, out)
-    wait_for(lambda: kite.count() == 1 and limiter.in_cooldown("other", KEY), "first 429 noted")
-    pacer.advance(2.0)
-    wait_for(lambda: len(out) == 1, "answered")
-    assert out == [200] and kite.times() == [0.0, 2.0]
+    wait_for(lambda: len(out) == 1, "refused")
+    assert isinstance(out[0], rl.KiteBusy) and kite.times() == [0.0] and pacer.now() == 0.0
 
 
-def test_f2_attack1_user_margin_read_429_three_times_three_sends_then_the_gate_blocks(world) -> None:
-    """AC-4 "at most twice" in user context (stated wait 1 s each): 3 sends at t=0, 1, 2, then the read fails and the
-    margin gate blocks (ADR-094) - no figure, nothing allowed."""
+def test_f2_attack1_user_margin_read_429_one_send_then_the_gate_blocks_without_a_call(world) -> None:
+    """AC-3 + ADR-179 floor in user context: 429 (stated wait 1 s, raised to 10 s) -> 1 send, the read is refused busy
+    and the margin gate's own read is refused inside the cooldown without a call (ADR-094 blocks: no figure, nothing
+    allowed)."""
     pacer, limiter, kite, started = world
     kite.script["/user/margins"] = [429]
     kite.retry_after["/user/margins"] = "1"
@@ -582,20 +582,16 @@ def test_f2_attack1_user_margin_read_429_three_times_three_sends_then_the_gate_b
         return busy.value.code, kite_margin.margin_verdict(client, [])
 
     run(started, verdict, out)
-    for sends in (1, 2, 3, 4, 5):  # the read's three sends, then the gate's own read (its three sends)
-        if out:
-            break
-        wait_for(lambda sends=sends: out or (kite.count() >= sends and limiter.in_cooldown("other", KEY)), "a 429")
-        pacer.advance(1.0)
     wait_for(lambda: len(out) == 1, "the gate answered")
-    assert kite.times("/user/margins")[:4] == [0.0, 1.0, 2.0, 3.0]  # 3 sends, then the gate's read: never a 4th try
+    assert kite.times("/user/margins") == [0.0]  # 1 send; nothing more inside the cooldown
     code, blocked = out[0]
     assert code == "kite_margin_busy" and blocked.allowed is False and blocked.available is None
 
 
-def test_f2_standing_a_order_path_read_gets_its_retry_slot_while_a_background_burst_is_queued(world) -> None:
+def test_f2_standing_a_order_path_read_is_answered_at_once_while_a_background_burst_is_queued(world) -> None:
     """Standing item (a): background reads fill their small queue (``BACKGROUND_QUEUE_SECONDS``) in 'other'; a user
-    read answered 429 (Retry-After 1) then 200 still gets its retry slot and finishes inside its 5 s in total."""
+    read still goes out inside its 5 s (it never queues behind the burst), and its 429 (Retry-After 1, raised to 10 s)
+    is answered busy at once, with no second send."""
     pacer, limiter, kite, started = world
     kite.script["/orders"] = [429, 200]
     kite.retry_after["/orders"] = "1"
@@ -611,6 +607,6 @@ def test_f2_standing_a_order_path_read_gets_its_retry_slot_while_a_background_bu
         pacer.advance(0.1)
         threading.Event().wait(0.01)
     wait_for(lambda: len(out) == 1, "user read answered")
-    assert out == [200]
+    assert isinstance(out[0], rl.KiteBusy)
     orders = kite.times("/orders")
-    assert len(orders) == 2 and orders[1] - orders[0] >= 1.0 and orders[1] < rl.USER_MAX_WAIT_SECONDS
+    assert len(orders) == 1 and orders[0] < rl.USER_MAX_WAIT_SECONDS

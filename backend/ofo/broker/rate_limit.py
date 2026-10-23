@@ -14,12 +14,12 @@ limiter, so one quote through urllib and one through httpx share one bucket.
   background job may keep only ``BACKGROUND_QUEUE_SECONDS`` of slots booked ahead, so a user action never queues behind
   a long background burst.
 - AC-4 / F-60: a 429 starts a cooldown for that group of the wait Kite states (``stated_wait``: a ``Retry-After``
-  header in plain seconds up to ``MAX_STATED_WAIT_SECONDS``, a larger or unreadable one clamped to it and logged; no
-  header: Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of 10s that must be respected"); nothing is
-  booked or sent into it (a request already waiting re-books after it), so the sliding window
-  is never extended. A read is retried after it, at most ``MAX_READ_RETRIES`` times, and only while the retry starts
-  inside the call's ONE wait limit (``DoorCall``: the 5 s or 30 s is the whole call's, fixed at its first send, so AC-3
-  and AC-4 hold together); a call that creates something is never retried (AC-5).
+  header in plain seconds, floored at ``COOLDOWN_SECONDS``, up to ``MAX_STATED_WAIT_SECONDS``, a larger or
+  unreadable one clamped to it and logged; no header: Kite's documented ``COOLDOWN_SECONDS``, "a cooldown period of
+  10s that must be respected"); nothing is booked or sent into it (a request already waiting re-books after it), so
+  the sliding window is never extended. A read is retried after it, at most ``MAX_READ_RETRIES`` times, and only
+  while the retry starts inside the call's ONE wait limit (``DoorCall``: the 5 s or 30 s is the whole call's, fixed
+  at its first send, so AC-3 and AC-4 hold together); a call that creates something is never retried (AC-5).
 - AC-6: 429s are counted per group and user (a short hash of the access token, never the token) and logged; the
   ``ALERT_THRESHOLD``-th inside ``ALERT_WINDOW_SECONDS`` raises ONE alert through a ``Notifier`` adapter (ADR-029).
   An alert failure never blocks a read.
@@ -121,18 +121,20 @@ _SENT, _REFUSED = 0, 1
 
 
 def stated_wait(retry_after: str | None) -> float:
-    """The seconds to cool a group after a 429 (ADR-179, F-60). No ``Retry-After`` (absent or blank): Kite's documented
-    cooldown ``COOLDOWN_SECONDS`` (F-60: no header was found; Kite staff state 10 s). Plain ASCII seconds up to
-    ``MAX_STATED_WAIT_SECONDS``: that wait. Anything else (more than 60 s, an HTTP date, a fraction, a sign, other
-    text): ``MAX_STATED_WAIT_SECONDS``, logged by its value - never a shorter wait than Kite may have asked, and never
-    the hours one header could otherwise block the group for."""
+    """The seconds to cool a group after a 429 (ADR-179 and its floor, F-60). No ``Retry-After`` (absent or blank):
+    Kite's documented cooldown ``COOLDOWN_SECONDS`` (F-60: no header was found; Kite staff state 10 s). Plain ASCII
+    seconds: that wait, floored at ``COOLDOWN_SECONDS`` (the cooldown "must be respected": a send inside it extends it)
+    and up to ``MAX_STATED_WAIT_SECONDS``. Anything else (more than 60 s, an HTTP date, a fraction, a sign, other text):
+    ``MAX_STATED_WAIT_SECONDS``, logged by its value - never a shorter wait than Kite may have asked, and never the
+    hours one header could otherwise block the group for. The floor is longer than the 5 s user limit, so a user read
+    after a 429 is refused busy at once while F-60 holds."""
     text = (retry_after or "").strip()
     if not text:
         return COOLDOWN_SECONDS
     if _RETRY_AFTER.fullmatch(text):
         seconds = float(text)  # digits only: float() never raises here (a huge value is inf, clamped below)
         if seconds <= MAX_STATED_WAIT_SECONDS:
-            return seconds
+            return max(seconds, COOLDOWN_SECONDS)  # ADR-179 floor: never inside Kite's 10 s cooldown
     log.warning("Kite Retry-After %r is not a wait of at most %.0f s: the group cools for %.0f s",
                 text[:40], MAX_STATED_WAIT_SECONDS, MAX_STATED_WAIT_SECONDS)
     return MAX_STATED_WAIT_SECONDS

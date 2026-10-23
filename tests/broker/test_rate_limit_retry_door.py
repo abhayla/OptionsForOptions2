@@ -77,38 +77,64 @@ def door(script, *, background: bool = False):
         kh._OPENER = original  # type: ignore[misc]
 
 
-def test_ac4_user_read_429_with_stated_wait_then_200_is_retried_within_5_s() -> None:
-    """AC-4 + AC-3 (review attack 1): 429 (Retry-After 1) then 200 in user context -> 2 sends, the 200 returned, the
-    retry sent 1 s later (Kite's stated wait), total wait under the 5 s user limit."""
-    with door([(429, {"Retry-After": "1"}), (200, {})]) as (opener, pacer):
+def test_ac4_user_read_429_with_a_stated_wait_is_refused_busy_at_once_after_one_send() -> None:
+    """AC-3 + ADR-179 floor (review F2 attack 1, now a decision): 429 (Retry-After 2) then 200 in user context -> the
+    stated 2 s is raised to Kite's 10 s cooldown, longer than the 5 s user limit: 1 send, KiteBusy('wait') at once, the
+    clock never moves."""
+    with door([(429, {"Retry-After": "2"}), (200, {})]) as (opener, pacer):
         start = pacer.t
+        with pytest.raises(rl.KiteBusy) as busy:
+            kh.open_url(URL, headers=dict(HEADERS))
+    assert busy.value.reason == "wait"
+    assert len(opener.sent_at) == 1
+    assert pacer.t == start
+
+
+def test_ac4_after_a_user_429_nothing_is_sent_until_the_cooldown_ends() -> None:
+    """ADR-179: a second user read 4 s after the 429 (6 s of cooldown left, more than its 5 s) is refused without a
+    send; one at +6 s waits the last 4 s and goes out at +10 s, when the cooldown ends (the 200), never inside it."""
+    with door([(429, {"Retry-After": "0"}), (200, {})]) as (opener, pacer):
+        start = pacer.t
+        with pytest.raises(rl.KiteBusy):
+            kh.open_url(URL, headers=dict(HEADERS))
+        pacer.t = start + 4
+        with pytest.raises(rl.KiteBusy):
+            kh.open_url(URL, headers=dict(HEADERS))
+        assert len(opener.sent_at) == 1
+        pacer.t = start + 6
         with kh.open_url(URL, headers=dict(HEADERS)) as reply:
             assert reply.status == 200  # noqa: PLR2004
-    assert len(opener.sent_at) == 2  # noqa: PLR2004
-    assert opener.sent_at[1] - opener.sent_at[0] == pytest.approx(1.0)
-    assert pacer.t - start < rl.USER_MAX_WAIT_SECONDS
+    assert opener.sent_at == [start, start + rl.COOLDOWN_SECONDS]
 
 
-def test_ac4_user_read_429_three_times_sends_three_then_the_429_is_the_answer() -> None:
-    """AC-4 "at most twice": 429 x3 (each Retry-After 1) -> 3 sends, then the read fails with the 429; never a 4th."""
-    with door([(429, {"Retry-After": "1"})] * 4) as (opener, pacer), pytest.raises(urllib.error.HTTPError) as err:
+def test_ac4_background_read_429_three_times_sends_three_then_the_429_is_the_answer() -> None:
+    """AC-4 "at most twice" (background, 30 s): 429 x3 (each Retry-After 1, floored to 10 s) -> sends at 0, 10, 20, then
+    the read fails with the 429; never a 4th."""
+    with door([(429, {"Retry-After": "1"})] * 4, background=True) as (opener, pacer), \
+            pytest.raises(urllib.error.HTTPError) as err:
         start = pacer.t
         kh.open_url(URL, headers=dict(HEADERS))
     assert err.value.code == 429  # noqa: PLR2004
-    assert len(opener.sent_at) == 3  # noqa: PLR2004
-    assert pacer.t - start <= rl.USER_MAX_WAIT_SECONDS
+    assert [t - start for t in opener.sent_at] == [0.0, 10.0, 20.0]
 
 
-def test_ac3_user_read_never_waits_past_5_s_in_total_across_retries() -> None:
-    """AC-3: the 5 s is the whole call's limit, not each attempt's: 429 (wait 3) then 429 (wait 3) -> the second retry
-    would start at 6 s, so it is refused busy after 2 sends; the clock never passes the start + 5 s."""
+def test_ac3_user_read_never_waits_in_a_429s_cooldown() -> None:
+    """AC-3: a user read never waits in a cooldown: 429 (wait 3, floored to 10) -> 1 send, busy, no time passes."""
     with door([(429, {"Retry-After": "3"}), (429, {"Retry-After": "3"}), (200, {})]) as (opener, pacer):
         start = pacer.t
         with pytest.raises(rl.KiteBusy) as busy:
             kh.open_url(URL, headers=dict(HEADERS))
     assert busy.value.reason == "wait"
-    assert len(opener.sent_at) == 2  # noqa: PLR2004
+    assert len(opener.sent_at) == 1
     assert pacer.t - start <= rl.USER_MAX_WAIT_SECONDS
+
+
+def test_ac4_background_read_retries_after_the_floor_not_the_shorter_stated_wait() -> None:
+    """ADR-179 floor (background): 429 with Retry-After 2 then 200 -> the retry goes out 10 s later, not 2 s."""
+    with door([(429, {"Retry-After": "2"}), (200, {})], background=True) as (opener, _), \
+            kh.open_url(URL, headers=dict(HEADERS)) as reply:
+        assert reply.status == 200  # noqa: PLR2004
+    assert opener.sent_at[1] - opener.sent_at[0] == pytest.approx(rl.COOLDOWN_SECONDS)
 
 
 def test_ac4_no_stated_wait_uses_kites_10_s_cooldown_user_refused_background_retries() -> None:
@@ -153,12 +179,13 @@ def test_ac5_a_write_is_never_retried_even_with_a_stated_wait() -> None:
     assert len(opener.sent_at) == 1
 
 
-@pytest.mark.parametrize(("header", "seconds"), [("1", 1.0), ("0", 0.0), ("2", 2.0), ("7", 7.0), (" 2 ", 2.0),
-                                                 ("60", 60.0), (None, 10.0), ("", 10.0), ("   ", 10.0)])
-def test_ac4_stated_wait_honours_plain_seconds_up_to_60_else_no_header_is_kites_10_s(
+@pytest.mark.parametrize(("header", "seconds"), [("0", 10.0), ("1", 10.0), ("2", 10.0), (" 2 ", 10.0), ("9", 10.0),
+                                                 ("10", 10.0), ("11", 11.0), ("30", 30.0), ("60", 60.0),
+                                                 (None, 10.0), ("", 10.0), ("   ", 10.0)])
+def test_ac4_stated_wait_is_floored_at_10_s_and_honoured_up_to_60_no_header_is_kites_10_s(
         header: str | None, seconds: float, caplog: pytest.LogCaptureFixture) -> None:
-    """AC-4 / ADR-179: Retry-After as plain ASCII delta-seconds up to 60 s is the wait, no log; no header (absent or
-    blank) is Kite's documented 10 s cooldown (F-60), unchanged."""
+    """AC-4 / ADR-179 floor: Retry-After as plain ASCII delta-seconds is the wait, raised to Kite's 10 s cooldown when
+    shorter (F-60: it "must be respected") and honoured up to 60 s, no log; no header (absent or blank) is the 10 s."""
     with caplog.at_level("WARNING", logger="ofo.broker.rate_limit"):
         assert rl.stated_wait(header) == seconds
     assert caplog.records == []
