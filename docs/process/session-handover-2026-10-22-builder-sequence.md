@@ -8,6 +8,13 @@
   read logs, transcripts, diffs or the 63-row table into context (tail 20 lines, or ask an agent); scripts write briefs,
   evidence, issues. This session (0c676935) ends here for that reason.
 - **NEXT, in order:**
+  0. Enforcement of ADR-178 (owner: "nothing get missed, nothing get assumed"; the auditor's minimum set, ~70 min,
+     ~10M tokens): `docs/process/adr-178-tracker.md` (12 rows, one counter each) is written. Build: (a) one Sonnet
+     builder (Size S, 30 min / 40 calls) adapts the audit's scripts (`measure_sessions.py`, `measure_transcripts.py`,
+     `classify_commits.py`, in the session-3 scratchpad `process-audit/`) into `scripts/orchestrator/measure_process.py`
+     printing the tracker's counters 1-7 and 10 against their limits; (b) one line in the project SessionStart hook
+     printing the tracker's `open` / `missed` rows; (c) a chunk-end conformance brief (Sonnet, 15 min / 25 calls). Run
+     the script at EVERY session end and update the tracker's status column from its output (never typed).
   1. Open the chunk-1 PR as a DRAFT now (`build/seq-chunk-1` -> main; body with the Spec-deviation block) so CI runs
      the app DB suites on every push; stop using the tunnel for selections (only a row's own new DB test file locally).
   2. Row 11: merge `build/seq-row-11` (fix 1 at cffc1da8; 5 items done, gate 9/9) into the chunk branch's current head;
