@@ -15,7 +15,7 @@
     dispatched, after `python scripts/orchestrator/overlap_gate.py <row-11 wt> fb9a3702 <row-12 wt> <plan file>`
     exits 0 (plan: backend/ofo/outcome/service.py, tests/outcome/test_spot_gate_reason.py).
   - Rows 13 (REQ-032) and 14 (REQ-033): FULLY re-checked on fb9a3702 - every AC passes (Opus non-DB: hand computations to
-    the paisa; DB part 224 passed). They close right after row 12 (evidence from `verify-rows-12-14.md` results; the two
+    the paisa; DB part 224 passed). They close right after row 12 (evidence from `results-rows-12-14.md`; the two
     surviving mutants - shared-Greeks key IV (= #519) and days_in_year guard - are MINORs for one deferred issue).
   - `OptionsForOptions2-process`, branch `build/seq-process` 05c3e431: mutation_gate.py fix (proven), kill_by_name_guard
     hook (Tier A r2 PASS WITH MINORS, port-owner kill fixed; MINORs #523). MERGE it into the chunk branch when no agent
@@ -23,7 +23,7 @@
     kill guard - keep both), regenerate settings with `python tools/kit_settings.py <wt>` from the main checkout, then
     `tests/hooks` must pass (2 night-hook wiring tests fail on the process branch alone - expected).
 - **Kill guard at user level (Q276, owner approved):** installed in `~/.claude/hooks/kill-guard/`; the OWNER runs
-  `! python "C:/Users/itsab/AppData/Local/Temp/claude/D--Abhay-Ventures-OptionsForOptions2/b9b5cb32-ea0c-400f-80e1-fbd7045cbf2a/scratchpad/wire_kill_guard.py"`
+  `! python "D:/Abhay/scratch/ofo2-builder-sequence/wire_kill_guard.py"`
   (the project gate refuses the settings write). Check whether it is wired before relying on it.
 - **Owner decisions today:** ADR-170 (keep per-user feeds, ask Zerodha at the demo), ADR-171 (four rows in flight, binding
   overlap gate, one agent per worktree, older first), ADR-172 (IV from the bid-ask mid, else LTP), Q276 (kill guard on
