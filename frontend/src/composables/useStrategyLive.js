@@ -21,6 +21,9 @@ export const BASE_DELAY_MS = 1000
 export const MAX_DELAY_MS = 30000
 export const FAST_ATTEMPTS = 30
 export const JITTER_MS = 1000
+/** While the device reports offline (navigator.onLine false) a retry waits this long (RD-058); the browser's `online`
+ *  event retries at once. */
+export const OFFLINE_RETRY_MS = 5000
 
 /** The delay before reconnect attempt `attempt` (1-based). */
 export function backoffDelay(attempt) {
@@ -50,7 +53,8 @@ export function isOutcome(msg) {
  * sendBody false = a read-only socket that sends nothing (the index strip). 'live' is reported only for an answer push.
  */
 export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {}, isAnswer = isOutcome,
-  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random }) {
+  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random,
+  isOnline = () => globalThis.navigator?.onLine !== false, eventTarget = globalThis.window }) {
   let socket = null
   let body = null // the JSON text last sent or to send
   let attempts = 0 // failed attempts in a row
@@ -95,8 +99,29 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
 
   function schedule() {
     if (stopped || timer !== null) return
+    if (!isOnline()) { // RD-058: the device reports offline: a fixed 5 s between tries (plus the spread), back-off untouched
+      timer = setTimer(open, OFFLINE_RETRY_MS + random() * JITTER_MS)
+      return
+    }
     attempts += 1
     timer = setTimer(open, reconnectWait(attempts, random))
+  }
+
+  /** The browser says the device is back online: try at once instead of waiting out the timer (only while waiting). */
+  function onOnline() {
+    if (stopped || socket || timer === null) return
+    clearTimer(timer)
+    timer = null
+    attempts = 0
+    open()
+  }
+  const events = eventTarget && typeof eventTarget.addEventListener === 'function' ? eventTarget : null
+  let listening = false
+  const listen = (on) => {
+    if (!events || listening === on) return
+    listening = on
+    if (on) events.addEventListener('online', onOnline)
+    else events.removeEventListener('online', onOnline)
   }
 
   /** Follow this strategy body (the OutcomeRequest JSON). An unchanged body sends nothing. */
@@ -107,6 +132,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     if (stopped) {
       stopped = false
       attempts = 0
+      listen(true)
       open()
       return
     }
@@ -122,6 +148,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
   function stop() {
     stopped = true
     body = null
+    listen(false)
     if (timer !== null) clearTimer(timer)
     timer = null
     const ws = socket
