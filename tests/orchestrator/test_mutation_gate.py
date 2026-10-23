@@ -223,7 +223,7 @@ def test_checkout_untouched_while_a_mutant_runs(tmp_path):
     p = run_gate(co, [mutant("probe", "x > 0", "x >= 0", "test_probe.py::test_probe")], tmp_path / "r.jsonl")
     assert p.returncode == 0, p.stdout + p.stderr
     seen = obs.read_text().split()
-    assert len(seen) >= 2  # the clean run and the mutant run both looked at the checkout
+    assert len(seen) >= 2  # noqa: PLR2004 - the clean run and the mutant run both looked at the checkout
     assert set(seen) == {"orig"}
 
 

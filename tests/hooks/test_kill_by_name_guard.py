@@ -217,7 +217,7 @@ def test_pid_based_and_unrelated_commands_pass(command: str, tool: str) -> None:
 
 def test_the_09_47_command_is_refused_as_a_real_hook_process() -> None:
     done = hook({"tool_name": "Bash", "tool_input": {"command": "taskkill //F //IM python.exe"}})
-    assert done.returncode == 2 and REASON in done.stderr
+    assert done.returncode == 2 and REASON in done.stderr  # noqa: PLR2004 - the hook's refusal exit code
 
 
 def test_a_pid_stop_passes_as_a_real_hook_process() -> None:

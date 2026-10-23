@@ -1,14 +1,16 @@
 """PreToolUse hook (Bash|PowerShell): refuse a shell command that stops processes by NAME.
 
 Finding process-kill-by-name-hits-others (third occurrence, 2026-10-23 09:47): `taskkill //F //IM python.exe`, run by a
-process agent, killed the owner's live API. This hook is an ALLOW-LIST of process-stop forms; every other stop is refused:
+process agent, killed the owner's live API. This hook is an ALLOW-LIST of process-stop forms; every other stop is
+refused:
   taskkill   only with /PID <digits> (one or more) plus /F /T, never /IM or /FI
   Stop-Process  only with -Id <digits[,digits]> (plus -Force -PassThru -WhatIf -Confirm -Verbose -ErrorAction)
   kill       only with literal digit PIDs (signal flags allowed)
   pkill, killall, pskill, tskill, `wmic process ... delete|terminate`, `.Kill()` / Terminate on a Get-Process result:
   always refused.
 The command is parsed quote-aware: quoted text and heredoc bodies are data (`grep taskkill`, `git commit -m '...pkill'`
-pass), while `;` `&&` `||` `|` newlines, braces, `$( )`, backticks, `bash -c` / `cmd /c` / `powershell -Command` strings and
+pass), while `;` `&&` `||` `|` newlines, braces, `$( )`, backticks, `bash -c` / `cmd /c` / `powershell -Command`
+strings and
 -EncodedCommand payloads are all judged. A word after a shell keyword (`do then else elif ! if while until`) starts a
 command and is judged like any other. A pipeline whose source selects processes (Get-Process, gps, ps, Get-CimInstance
 or Get-WmiObject Win32_Process, [Diagnostics.Process]::GetProcesses*, pgrep, pidof, tasklist) may flow only into
@@ -27,6 +29,7 @@ cannot judge (nesting deeper than MAX_DEPTH) is refused.
 from __future__ import annotations
 
 import base64
+import contextlib
 import re
 import sys
 from pathlib import Path
@@ -310,7 +313,7 @@ def _wmic(args: list[str]) -> str | None:
     return None
 
 
-def _check_step(words: list[str], depth: int, selecting: bool = False) -> str | None:
+def _check_step(words: list[str], depth: int, selecting: bool = False) -> str | None:  # noqa: PLR0911 - one return per refused form
     low = [w.lower() for w in words]
     for i, word in enumerate(words):
         at_command = all(_wrapperish(w) for w in words[:i]) or (i > 0 and low[i - 1] in EXEC_FLAGS)
@@ -340,10 +343,8 @@ def _check_carried(args: list[str], depth: int) -> str | None:
     candidates = [" ".join(args), *args]
     for j, a in enumerate(args[:-1]):
         if ENC_FLAG.fullmatch(a):
-            try:
+            with contextlib.suppress(ValueError, UnicodeDecodeError):
                 candidates.append(base64.b64decode(args[j + 1], validate=True).decode("utf-16-le"))
-            except (ValueError, UnicodeDecodeError):
-                pass
     for text in candidates:
         if text.strip():
             why = _judge(text, depth + 1)
