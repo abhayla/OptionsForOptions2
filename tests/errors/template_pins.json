@@ -284,7 +284,7 @@
     "reviewed": "pending owner read"
   },
   "marketdata_market_closed": {
-    "sha256": "1a07ee2fb796061c78ee2baf893f8e3ad24a27b77aef3b6726e888bf2da98ad0",
+    "sha256": "83b71e7f7688576d21e41ef2199867d5c49d4be3b485949618b2d2f2e1da96fa",
     "reviewed": "pending owner read"
   },
   "send_request_not_from_sink": {

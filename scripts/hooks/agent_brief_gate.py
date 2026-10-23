@@ -19,8 +19,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from brief_path import resolve_brief  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
+
 BRIEF_RE = re.compile(
     r"^\s*(?:(?:your full brief|your brief) is the file\s*:?|(?:your full brief|brief)\s*:)[\s`'\"]*"
     r"([^\s`'\"]*?docs[/\\]process[/\\](?:[\w.\-]+[/\\])*[\w.\-]+?\.md)",
@@ -30,11 +32,8 @@ TIMEOUT = 60
 
 
 def _resolve(ref: str) -> Path | None:
-    candidates = [Path(ref)]
-    if not Path(ref).is_absolute():
-        base = os.environ.get("CLAUDE_PROJECT_DIR")
-        candidates = ([Path(base) / ref] if base else []) + [REPO / ref, Path.cwd() / ref]
-    return next((c for c in candidates if c.is_file()), None)
+    base = os.environ.get("CLAUDE_PROJECT_DIR")
+    return resolve_brief(ref, ([Path(base)] if base else []) + [REPO, Path.cwd()])
 
 
 def decide(tool_name: str, tool_input: dict) -> str | None:
