@@ -10,9 +10,9 @@
  },
  "fix": "Count usage once per message.id (keep the last line per id); a test feeds a transcript where one id appears three times. Swept: scripts/orchestrator/measure_process.py read_session (lines 152-155) counts turns and ctx per line too - same fix; its avg_ctx is ratio-stable, its turns/ctx totals are not.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Found by an independent recount in a findings-only check. Guarded once both scripts carry the per-id test."
+  "status": "guarded",
+  "checks": ["tests/orchestrator/test_row_actuals.py", "tests/orchestrator/test_measure_process.py"],
+  "note": "Found by an independent recount in a findings-only check. Guarded since 232f25d4: one helper (UsageOnce in measure_process.py, imported by row_actuals.py) counts usage once per message id; both test files feed one id on three lines. Real-data proof 2026-10-23: transcript 7a0c81e3 (415 usage lines, 188 ids) - tool 440947 = per-id input 378 + cache creation 321133 + output 119436."
  },
  "spec_ref": [
   "spec/testing/core-invariants.md"

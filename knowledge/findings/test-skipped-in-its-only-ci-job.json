@@ -10,9 +10,9 @@
  },
  "fix": "Run the skipped file explicitly in a job that installs the dependency (app-tests.yml, after pip install -r requirements-app.txt). Class-level: a repo test that lists every importorskip/skipif-on-dependency file under tests/ and asserts each is named in some app-tests.yml step.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Found by a findings-only review of the CI fix. The class-level repo test above is the detection upgrade."
+  "status": "guarded",
+  "checks": ["tests/test_dependency_skips_have_a_ci_home.py"],
+  "note": "Found by a findings-only review of the CI fix. Guarded since 232f25d4: the repo test finds every pytest.importorskip call under tests/ by AST and fails when its file is named in no app-tests.yml step (red on a workflow copy without the step, green on the real one); fails closed on an unreadable workflow. The step's path filter also lists the scripts under test (82a4ee0f). Not covered: a step whose job is skipped by its path filter for some other changed file."
  },
  "spec_ref": [
   "spec/testing/core-invariants.md"
