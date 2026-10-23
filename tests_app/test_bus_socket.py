@@ -210,12 +210,17 @@ async def test_user_a_frames_never_reach_user_b_consumer(redis_url):
         await asyncio.gather(a.start(), b.start())
         await a.status()
         await b.status()
+        # B's first status read ran before its status key existed; the next one (every STATUS_EVERY_S) marks it
+        # connected. Wait for that, never a fixed sleep: that raced the read on a slow runner (CI 092889ce).
+        await poll(lambda: b.provider.feed.connected, "B's own status key to mark B connected")
         await a.publish("connected", T0)
         await a.publish("frame", T0, PRICE_FRAME)
         await poll(lambda: a.provider.counters["frames"] >= 1, "A's frame")
-        await asyncio.sleep(0.5)
+        await a.publish("dropped", T0)
+        await poll(lambda: a.provider.feed.connected is False, "A's own drop event to mark A down")
+        await asyncio.sleep(0.5)  # the absence of an event on B is what is asserted
         assert b.provider.counters["frames"] == 0
-        assert b.provider.feed.connected is True  # B's own status says connected; A's events did not touch it
+        assert b.provider.feed.connected is True  # A's frame, connect and drop events did not touch B
     finally:
         await asyncio.gather(a.stop(), b.stop())
 
