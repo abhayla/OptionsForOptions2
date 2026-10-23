@@ -30,7 +30,7 @@ from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.market_calendar import is_market_open
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_IDLE, FEED_MARKET_CLOSED, FEED_WAITING
+from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from redis.exceptions import RedisError
 
@@ -353,13 +353,23 @@ def feed_phase() -> str | None:
     if phase is None:
         return None
     now = market.feed.ctx.clock()
-    word = phase(now, is_market_open(now))  # ADR-119 calendar: a closed market reads market closed (REQ-114 AC-7)
-    if word == FEED_MARKET_CLOSED and phase(now) == FEED_HEALTHY:
-        return FEED_HEALTHY  # prices still arriving are never relabelled as closed
+    # ADR-119 calendar, read by the feed itself (``FeedState.market_closed``, the one market-state function every quote
+    # health reads): a closed market reads market closed whatever frames arrive (REQ-114 AC-7, ADR-015)
+    word = phase(now)
     wanted = getattr(market.feed.ctx.provider, "subscribed_tokens", None)
     if word == FEED_WAITING and wanted is not None and not wanted():
         return FEED_IDLE  # socket up, nothing subscribed: no screen is open, nothing is expected to arrive
     return word
+
+
+def market_open_at(now: datetime.datetime) -> bool:
+    """REQ-114 AC-7: is the market open at ``now``? The running provider's own feed answers
+    (``FeedState.market_closed``, the one market-state function every quote health reads); with no feed running, the
+    same ADR-119 calendar function it defaults to (fail closed on a date the calendar cannot answer)."""
+    market = _current
+    feed = None if market is None or market.feed is None else getattr(market.feed.ctx.provider, "feed", None)
+    closed = getattr(feed, "market_closed", None)
+    return is_market_open(now) if closed is None else not closed(now)
 
 
 def last_price_time() -> datetime.datetime | None:

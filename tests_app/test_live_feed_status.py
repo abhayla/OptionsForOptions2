@@ -222,12 +222,14 @@ async def test_the_waiting_row_advises_reconnect_only_inside_market_hours(market
     assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", fix)
 
 
-def test_after_hours_a_session_end_still_says_so_and_a_flowing_feed_stays_connected(market, provider, clock):
+def test_after_hours_a_session_end_still_says_so_and_a_flowing_feed_reads_market_closed(market, provider, clock):
+    """REQ-114 AC-7 (review F1): a closed market reads market closed whatever frames arrive - the same answer the
+    quote health gives (``FeedState.market_closed``), so Settings and every price screen agree."""
     clock.now = _ist(22, 16, 0)
     provider.on_connected(clock.now)
     _frame(provider, clock.now)
     closed = build_status((T0, False), LATER, live_market.current_state(), live_market.feed_phase(), False)
-    assert closed.live_market_data.state == "connected"  # prices arriving is never relabelled
+    assert closed.live_market_data.fix == "live_feed_market_closed"  # a frame after the close is not live
     provider.on_session_ended(clock.now)
     ended = build_status((T0, False), LATER, live_market.current_state(), live_market.feed_phase(), False)
     assert ended.live_market_data.fix == "live_feed_session_ended"  # a genuine 403: Reconnect is the right advice

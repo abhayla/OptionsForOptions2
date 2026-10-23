@@ -4,7 +4,8 @@ runs on an injected clock against a fake connection that plays the recorded fram
 silent.
 
 Kite's socket answer states and what each does (standing item d):
-- data frame (>1 byte)        -> provider.on_frame; counts as a frame of any kind; resets the back-off
+- data frame (>1 byte)        -> provider.on_frame; counts as a frame of any kind; resets the back-off only once the
+                                 connection has stayed up CHECK_EVERY (15 s): one frame then a drop never resets it
 - heartbeat (1 byte)          -> provider.on_frame; counts as a frame of any kind (the link is alive); no back-off reset
 - text frame, order update    -> provider.on_text; session untouched
 - text frame, token error     -> session ended, no retry (tests_app/test_kite_ws.py)
@@ -127,10 +128,10 @@ async def test_the_silence_check_runs_at_least_every_15_seconds():
 
 async def test_a_drop_before_the_first_data_frame_does_not_reset_the_backoff():
     """Attack 4: connections that only ever send heartbeats (no data frame) and then go silent back off 1, 2, 4 s;
-    a connection that delivers a data frame resets the next wait to 1 s."""
+    a connection that has stayed up CHECK_EVERY (15 s) with data resets the next wait to 1 s."""
     data = recorded_frames(1)[0]
     hb_only = [("bytes", HEARTBEAT), ("silence", 300)]
-    with_data = [("bytes", data), ("silence", 300)]
+    with_data = [("bytes", data), ("silence", 15), ("bytes", data), ("silence", 300)]
     rig = _build([hb_only, hb_only, hb_only, with_data, hb_only, []], rng=NoJitter())
     assert await rig.sock.run() == STOPPED
     assert rig.sleeper.sleeps[:3] == [1, 2, 4]
@@ -153,3 +154,44 @@ async def test_market_closed_silence_reconnects_at_most_once_per_5_minutes():
     rig.clock.now = saturday
     assert await rig.sock.run() == STOPPED
     assert rig.sleeper.sleeps == [300]
+
+
+async def test_one_frame_then_a_drop_repeated_backs_off_and_never_storms():
+    """REQ-114 AC-3 (review F1 MINOR 2): a link that sends one data frame then drops, again and again, backs off
+    1, 2, 4, 8 s (nominal); after the third flap no wait is below 1 s, even with the largest jitter."""
+    data = recorded_frames(1)[0]
+    flap = [("bytes", data), ("silence", 300)]
+    rig = _build([flap, flap, flap, flap, flap, []], rng=NoJitter())
+    assert await rig.sock.run() == STOPPED
+    assert rig.sleeper.sleeps == [1, 2, 4, 8, 16]
+
+    class MaxJitter:
+        def uniform(self, low: float, high: float) -> float:
+            return high  # the most jitter: half the nominal wait
+    rig = _build([flap, flap, flap, flap, flap, []], rng=MaxJitter())
+    assert await rig.sock.run() == STOPPED
+    assert rig.sleeper.sleeps == [0.5, 1, 2, 4, 8]
+    assert min(rig.sleeper.sleeps[2:]) >= 1
+
+
+async def test_market_hours_backoff_is_unchanged_after_a_long_healthy_link():
+    """REQ-114 AC-3 (standing item a): a link up >= 15 s with data resets to 1 s; the climb is still 1, 2, 4 ... 30."""
+    data = recorded_frames(1)[0]
+    healthy = [("bytes", data), ("silence", 20), ("bytes", data), ("silence", 300)]
+    refused_like = [("silence", 300)]
+    rig = _build([healthy] + [refused_like] * 7 + [[]], rng=NoJitter())
+    assert await rig.sock.run() == STOPPED
+    assert rig.sleeper.sleeps == [1, 2, 4, 8, 16, 30, 30, 30]
+
+
+async def test_a_drop_just_before_the_open_reconnects_at_the_open_not_5_minutes_later():
+    """REQ-114 AC-7 (review F1 MINOR 3): a drop at 09:14:59 on a trading day (Wed 2026-10-21) waits until 09:15:00 plus
+    a jittered 1 s (here the whole 1 s), never the closed-hours 300 s."""
+    connect_at = datetime.datetime(2026, 10, 21, 9, 13, 59, tzinfo=START.tzinfo)
+    rig = _build([[("silence", 300)], []], rng=NoJitter())
+    rig.clock.now = connect_at
+    assert await rig.sock.run() == STOPPED
+    first, second = rig.connect.sockets[0], rig.connect.sockets[1]
+    assert first.closed_at == datetime.datetime(2026, 10, 21, 9, 14, 59, tzinfo=START.tzinfo)
+    assert rig.sleeper.sleeps == [2.0]  # 1 s to 09:15:00 + 1 s spread
+    assert second.opened_at == datetime.datetime(2026, 10, 21, 9, 15, 1, tzinfo=START.tzinfo)

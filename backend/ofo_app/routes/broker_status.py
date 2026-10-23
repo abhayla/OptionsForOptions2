@@ -28,7 +28,6 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
-from ofo.market_calendar import is_market_open as market_open
 from ofo.marketdata.disconnect import market_closed_error
 from ofo.marketdata.feed_health import (
     FEED_CAPPED,
@@ -150,7 +149,8 @@ async def broker_status(db: Annotated[Any, Depends(get_db)],
                         ) -> BrokerStatusOut:
     session = await active_session_status(db, user_ref)
     return build_status(session, broker_sync.last_read(), live_market.current_state(),
-                        live_market.feed_phase(), market_open(clock()), live_market.last_price_time())
+                        live_market.feed_phase(), live_market.market_open_at(clock()),
+                        live_market.last_price_time())
 
 
 @router.post("/api/broker/disconnect", response_model=DisconnectOut)

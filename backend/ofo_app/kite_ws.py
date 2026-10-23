@@ -43,9 +43,10 @@ from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.broker.kite_http import plain_str as _plain_str
-from ofo.market_calendar import is_market_open as _calendar_is_open
+from ofo.market_calendar import next_open as _calendar_next_open
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
 from ofo.marketdata.reconnect_policy import BACKOFF_MAX, BACKOFF_START
+from ofo.marketdata.reconnect_policy import CHECK_EVERY as _CHECK_EVERY
 from ofo.marketdata.reconnect_policy import SILENT_AFTER as _SILENT_AFTER
 from ofo.marketdata.reconnect_policy import Uniform as _Uniform
 from ofo.marketdata.reconnect_policy import is_silent as _is_silent
@@ -106,11 +107,17 @@ class KiteSocket:
                  on_reconnect: _Callable[[], _Awaitable[None]] | None = None,
                  user_ref: str = "unknown", rng: _Uniform | None = None,
                  market_open: _Callable[[datetime.datetime], bool] | None = None,
+                 next_open: _Callable[[datetime.datetime], datetime.datetime | None] | None = None,
                  on_check: _Callable[[datetime.datetime], None] | None = None) -> None:
         self._provider = provider
         self._user_ref = user_ref  # logged with every disconnect / reconnect / recovery (REQ-114 AC-8); never a secret
         self._rng: _Uniform = rng or random.Random()  # noqa: S311 - jitter (AC-3), not a secret
-        self._market_open = market_open or _calendar_is_open  # ADR-119 calendar: closed hours expect silence (AC-7)
+        # ADR-119 calendar: closed hours expect silence (AC-7). The default is the provider's own feed answer
+        # (``FeedState.market_closed``), the one market-state function; ``next_open`` caps the closed wait (REQ-114
+        # AC-7). A test that injects ``market_open`` alone gets no next-open cap (its calendar is its own).
+        self._market_open = market_open or (lambda now: not provider.feed.market_closed(now))
+        self._next_open = next_open or (_calendar_next_open if market_open is None else (lambda _now: None))
+        self._connected_at: datetime.datetime | None = None  # when THIS connection opened (back-off reset rule)
         self._on_check = on_check  # observer of each silence check (tests)
         self._stopped = asyncio.Event()
         self._last_frame: datetime.datetime | None = None  # the connection's newest frame of any kind, set at connect
@@ -150,7 +157,7 @@ class KiteSocket:
                 task.cancel()
 
     async def _run(self) -> str:
-        self._backoff = BACKOFF_START  # reset only by the first data frame of a connection, not by opening one
+        self._backoff = BACKOFF_START  # reset only by a data frame on a link up CHECK_EVERY, not by opening one
         while not self._stop:
             _check_ws_url(self._url)  # outside the try: a refusal ends the run, it is never retried
             try:
@@ -160,6 +167,7 @@ class KiteSocket:
                     now = self._clock()
                     self._provider.on_connected(now)
                     self._last_frame, self._next_check = now, _next_check(now, now)
+                    self._connected_at = now
                     _log.info("kite socket connected: user=%s connection=%d at=%s", self._user_ref, self.connections,
                               now.isoformat())
                     self._start_reconnect_read()
@@ -185,12 +193,17 @@ class KiteSocket:
             if self._stop:
                 break
             now = self._clock()
-            wait = _reconnect_wait(self._backoff, self._rng, market_open=self._market_open(now))
+            wait = _reconnect_wait(self._backoff, self._rng, market_open=self._market_open(now),
+                                   until_open=self._seconds_until_open(now))
             _log.warning("kite socket reconnecting: user=%s attempt=%d wait=%.1fs at=%s", self._user_ref,
                          self.connections + 1, wait, now.isoformat())
             await self._sleep_or_stop(wait)
             self._backoff = _next_backoff(self._backoff)
         return STOPPED
+
+    def _seconds_until_open(self, now: datetime.datetime) -> float | None:
+        opens = self._next_open(now)
+        return None if opens is None else (opens - now).total_seconds()
 
     async def _sleep_or_stop(self, seconds: float) -> None:
         """Wait ``seconds`` (the injected sleep), but return the moment ``stop`` is called: a 5-minute closed-market
@@ -316,7 +329,10 @@ class KiteSocket:
                 now = self._clock()
                 self._last_frame = now  # a tick or the 1-byte heartbeat: either proves the connection is alive
                 if len(message) > 1:  # a data frame (not a heartbeat) proves the connection is useful
-                    self._backoff = BACKOFF_START
+                    # ... but only a link that has STAYED up ``CHECK_EVERY`` resets the back-off: one frame then a
+                    # drop, repeated, must not reconnect every 0.5-1 s forever (chunk 1 review F1 MINOR 2)
+                    if self._connected_at is not None and now - self._connected_at >= _CHECK_EVERY:
+                        self._backoff = BACKOFF_START
                     self._recovered(now)
                 self._provider.on_frame(message, now)
             else:
