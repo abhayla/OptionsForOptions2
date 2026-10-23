@@ -55,6 +55,7 @@ NIFTY_ID = "NSE_INDEX:256265"
 RATE = D("0.065")
 GRID = [D(s) for s in (22450, 22500, 22550, 22600)]
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
+WIDTH_10_ROWS = 21  # 10 strikes each side + the ATM
 LEVELS, WIDTH_20, WIDTH_40_ROWS, WINDOW_IDS = 5, 20, 81, 9  # depth levels; a width; 2 x 40 + 1; 4 strikes' ids + index
 NO_QUOTE_CELLS, TOLERANCE, PARITY_STRIKES = 6, 0.01, 3  # 8 cells less the 2 priced; forward tolerance; AC-6
 PRICES = {("22500", "CE"): ("151.30", 3218475), ("22550", "PE"): ("145.10", 4022200)}
@@ -175,8 +176,9 @@ def cells(out) -> list:
     return [c for r in out.rows for c in (r.ce, r.pe) if c is not None]
 
 
-def test_core_the_strikes_read_gives_feed_prices_and_engine_iv_and_delta_for_recorded_nifty_strikes():
-    """AC-1/AC-2: the core. Strikes around the ATM, ATM marked; LTP and OI from the feed; IV and delta from the engine
+def test_core_the_strikes_read_on_a_fake_provider_with_two_typed_prices_matches_the_hand_figures():
+    """AC-1/AC-2: the core, on a FAKE provider with two typed prices (the recorded-session run is the replay test at
+    the end of this file). Strikes around the ATM, ATM marked; LTP and OI from the feed; IV and delta from the engine
     equal the independent hand figures; a strike without a price is null."""
     _, feed = priced_provider()
     out = answer(feed)
@@ -649,3 +651,67 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
 def test_the_picker_reuses_the_chain_catalogue_helpers_and_does_not_change_them():
     """AC-2: the helpers it reuses keep their signatures (the chain read and push are unchanged by this row)."""
     assert max(leg_picker.WIDTHS) > chain_push.MAX_STRIKES_EACH_SIDE and leg_picker.WIDTHS == (10, 20, 30, 40)
+
+
+def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_recorded_nifty_session():
+    """AC-1/AC-2/AC-3 on real input: the REAL router over HTTP, fed by a real ``KiteProvider`` replaying the recorded
+    2026-10-08 NIFTY session (``tests/fixtures/kite_ws``), no fake provider, no database. NIFTY 13-Oct, width 10: 21
+    rows, exactly one ATM row, priced cells carrying engine IV and delta; one depth read with 5 bid and 5 ask levels."""
+    import sys  # noqa: PLC0415
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
+    from marketdata._kite_fixture import new_provider, recorded_frames  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    from starlette.testclient import TestClient  # noqa: PLC0415
+
+    provider, clock, items = new_provider()
+    feed = LiveFeed(MarketContext(provider, clock, RATE), FanOut(provider))
+
+    def pick(lc) -> PickableContract:
+        c = lc.contract
+        return PickableContract(0, f"{c.exchange_segment}:{c.exchange_token}", c.exchange_segment, c.exchange_token,
+                                c.instrument_type, c.expiry, c.strike, c.lot_size, "x")
+
+    options = tuple(pick(lc) for lc in items if lc.contract.name == "NIFTY"
+                    and lc.contract.instrument_type in ("CE", "PE") and lc.contract.expiry == EXPIRY)
+    futures = tuple(pick(lc) for lc in items if lc.contract.name == "NIFTY" and lc.contract.instrument_type == "FUT")
+    cat = ChainCatalogue((EXPIRY,), options)
+
+    async def reader(_u, _e):
+        return cat
+
+    async def futures_reader(_u):
+        return FuturesCatalogue((EXPIRY,), futures)
+
+    from ofo_app.main import create_app  # noqa: PLC0415 - built per test, no lifespan (no database)
+
+    app = create_app()
+    app.dependency_overrides[leg_picker.get_feed] = lambda: feed
+    app.dependency_overrides[outcome.get_answer_clock] = lambda: clock
+    app.dependency_overrides[leg_picker.get_picker_reader] = lambda: reader
+    app.dependency_overrides[leg_picker.get_futures_reader] = lambda: futures_reader
+    client = TestClient(app)
+    query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat()}
+    client.get(leg_picker.STRIKES_PATH, params=query)  # the first read takes the lease, before the ticks arrive
+    frames = recorded_frames()
+    provider.on_connected(frames[0][0])
+    for at, frame in frames:
+        clock.now = at
+        provider.on_frame(frame, at)
+
+    response = client.get(leg_picker.STRIKES_PATH, params=query)
+    assert response.status_code == HTTP_OK, response.text
+    out = response.json()
+    assert out["state"] == "LIVE" and out["width"] == leg_picker.DEFAULT_WIDTH
+    assert len(out["rows"]) == WIDTH_10_ROWS and sum(r["is_atm"] for r in out["rows"]) == 1
+    assert out["atm_strike"] is not None and [r["strike"] for r in out["rows"] if r["is_atm"]] == [out["atm_strike"]]
+    priced = [c for r in out["rows"] for c in (r["ce"], r["pe"]) if c and c["ltp"] is not None]
+    assert priced and any(c["iv_percent"] is not None and c["delta"] is not None for c in priced)
+
+    depth = None
+    for instrument_id in sorted(leg_picker.LEASE.held_ids):
+        read = client.get(leg_picker.DEPTH_PATH, params={"instrument_id": instrument_id}).json()
+        if read["state"] == "AVAILABLE" and len(read["bids"]) == LEVELS and len(read["asks"]) == LEVELS:
+            depth = read
+            break
+    assert depth is not None, "no held contract gave a depth read with 5 bid and 5 ask levels"
