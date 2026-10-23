@@ -877,6 +877,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy has an execution or a proposed version still waiting for its result.",
           "Nothing was changed; the active version stays as it is.", "Changing or confirming the strategy now.",
           "Wait for the result, or return from Zerodha to read it, then try again."),
+    _gate("strategy_reconciliation_required", _SV, 418,
+          "Zerodha's position for this strategy differs from its active version, or could not be told apart.",
+          "Nothing was changed; the strategy stays blocked until the difference is resolved.",
+          "Changing or confirming the strategy.",
+          "Open the strategy's reconciliation and record how the difference was resolved."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

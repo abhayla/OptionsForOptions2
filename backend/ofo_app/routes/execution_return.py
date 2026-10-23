@@ -354,13 +354,16 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
 
 
 def _broker_share(history: Sequence[plans.StoredPlan], book: er.TodaysBook, world: _World) -> dict[tuple, int] | None:
-    """W-144 (REQ-038 AC-4): this strategy's share of Zerodha's net per contract it traded (Zerodha's net minus every
-    other strategy's units), the actual position a proposed version is judged by. None - nothing is judged - when a
-    contract is undecidable (another strategy's open or drifted plan) or this strategy's own book has drifted."""
+    """W-144 (REQ-038 AC-4): this strategy's actual units per contract it traded, the position a proposed version is
+    judged by. Where Zerodha agrees with the strategy's own fills (no blocking mismatch) that is its fills: a
+    same-direction surplus is outside lots, never this strategy's (ADR-109). Where Zerodha disagrees (shortfall, side)
+    the broker wins: Zerodha's net minus every other strategy's units. None - the version is not judged and the
+    strategy is flagged - when a contract is undecidable (another strategy's open or drifted plan) or this strategy's
+    own book has drifted."""
     checks = _checks(history, world)
     if er.drifted(history, book) or any(c.undecidable for c in checks):
         return None
-    return {c.key: c.platform_units + c.unexplained for c in checks}  # = the broker's net minus the other strategies'
+    return {c.key: c.platform_units if c.kind is None else c.zerodha_units - c.other_units for c in checks}
 
 
 __all__ = ["ReturnOut", "return_from_kite"]

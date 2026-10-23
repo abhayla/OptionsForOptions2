@@ -146,6 +146,8 @@ class VersionOut(ApiModel):
     confirmed_at: Optional[datetime.datetime]  # noqa: UP045 - None until the user confirms
     reconciled_at: Optional[datetime.datetime]  # noqa: UP045 - None until a reconciled return activates it
     outcome: Optional[Identifier]  # noqa: UP045 - the last execution outcome recorded for it
+    reconciliation_required: bool  # the active version only: Zerodha is away from it (ADR-018); sticky
+    definition: DefinitionOut  # what this version holds: a proposed version is read back here (REQ-038 AC-3)
 
 
 class StrategyOut(ApiModel):
@@ -218,6 +220,7 @@ _STORE_REFUSAL = MappingProxyType({
     store.REVISION_CONFLICT: ("strategy_revision_conflict", Failure.CONFLICT),
     store.RESTORE_AFTER_EXECUTION: ("strategy_restore_after_execution", Failure.CONFLICT),  # W-144, ADR-019
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
+    store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
 })
 
 
@@ -263,13 +266,15 @@ async def _with_tokens(db: Any, *docs: dict) -> None:
 
 async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
     doc = _definition_out(stored.saved)
-    await _with_tokens(db, doc)
+    version_docs = [_definition_out(await store.version_saved(db, v)) for v in stored.versions]
+    await _with_tokens(db, doc, *version_docs)
     return StrategyOut.model_validate({
         "id": stored.id, "status": stored.status, "revision": stored.revision,
         "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
         "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
-                      "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome}
-                     for v in stored.versions]})
+                      "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome,
+                      "reconciliation_required": v.reconciliation_required, "definition": d}
+                     for v, d in zip(stored.versions, version_docs, strict=True)]})
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:

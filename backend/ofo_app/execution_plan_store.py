@@ -146,18 +146,20 @@ class StoredPlan:
     created_at: datetime
     closed_at: Optional[datetime]
     close_reason: Optional[str]
+    strategy_version: Optional[int] = None  # noqa: UP045 - W-144: the version it was built from; None never activates
 
 
 _OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u")
 _HIGHEST = text("SELECT coalesce(max(plan_number), 0) FROM public.execution_plans WHERE strategy_id = :s")
 _OPEN = text("SELECT plan_number FROM public.execution_plans WHERE strategy_id = :s AND status = 'open'")
-_INSERT_PLAN = text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) VALUES (:s, :p, :a)")
+_INSERT_PLAN = text("INSERT INTO public.execution_plans (strategy_id, plan_number, action, strategy_version) "
+                    "VALUES (:s, :p, :a, :v)")
 _INSERT_ORDER = text(
     "INSERT INTO public.execution_plan_orders (strategy_id, plan_number, leg_index, tag, instrument_id, "
     "transaction_type, quantity, price) VALUES (:s, :p, :l, :tag, :iid, :side, :q, :price)")
 _TAGS_TAKEN = text("SELECT tag FROM public.execution_plan_orders WHERE tag = ANY(:tags)")
-_PLANS = text("SELECT plan_number, action, status, created_at, closed_at, close_reason FROM public.execution_plans "
-              "WHERE strategy_id = :s ORDER BY plan_number")
+_PLANS = text("SELECT plan_number, action, status, created_at, closed_at, close_reason, strategy_version "
+              "FROM public.execution_plans WHERE strategy_id = :s ORDER BY plan_number")
 _ORDERS = text("SELECT plan_number, leg_index, tag, instrument_id, transaction_type, quantity, price, "
                "filled_quantity "
                "FROM public.execution_plan_orders WHERE strategy_id = :s ORDER BY plan_number, leg_index")
@@ -275,11 +277,14 @@ def _unique_violation(message: str) -> PlanStoreError:
 
 
 async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: int,  # noqa: PLR0913 fixed API
-                      action: str, orders: Sequence[PlanOrder]) -> StoredPlan:
-    """Stores the plan open, with its orders. The caller commits (and has called ``next_plan_number`` in the same
+                      action: str, orders: Sequence[PlanOrder], *, strategy_version: Optional[int] = None,  # noqa: UP045
+                      ) -> StoredPlan:
+    """Stores the plan open, with its orders, and the version number of the definition it was built from (W-144;
+    None = unknown, such a plan never activates a version). The caller commits (and has called ``next_plan_number`` in the same
     transaction: the strategy lock is taken here too, so a plan can never be recorded around it)."""
     strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     number = _int(plan_number, "plan_number", 1)
+    version = None if strategy_version is None else _int(strategy_version, "strategy_version", 1)
     if action not in ACTIONS:
         raise PlanStoreError(BAD_PLAN, f"action must be ENTRY or EXIT, got {action!r}")
     checked = _checked_orders(strategy_id, number, orders)
@@ -293,7 +298,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
         raise PlanStoreError(BAD_PLAN, f"plan number {number} is not above the highest stored plan number")
     try:
         async with conn.begin_nested():
-            await conn.execute(_INSERT_PLAN, {"s": strategy_id, "p": number, "a": action})
+            await conn.execute(_INSERT_PLAN, {"s": strategy_id, "p": number, "a": action, "v": version})
             for o in checked:
                 await conn.execute(_INSERT_ORDER, {"s": strategy_id, "p": number, "l": o.leg_index, "tag": o.tag,
                                                    "iid": o.instrument_id,
@@ -329,7 +334,8 @@ async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
     return tuple(
         StoredPlan(strategy_id=strategy_id, plan_number=int(r.plan_number), action=r.action, status=r.status,
                    orders=tuple(by_plan.get(int(r.plan_number), ())), created_at=r.created_at, closed_at=r.closed_at,
-                   close_reason=r.close_reason)
+                   close_reason=r.close_reason,
+                   strategy_version=None if r.strategy_version is None else int(r.strategy_version))
         for r in (await conn.execute(_PLANS, {"s": strategy_id})).all())
 
 
