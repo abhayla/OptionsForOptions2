@@ -74,6 +74,7 @@ PR241_SELECTION = {
     "tests_app/test_execute_health_clock.py",  # row 5/7
     "tests_app/test_busy_text_routes.py",  # row 10
     "tests_app/test_strategy_versions_app.py",  # row 16: PUT /strategies/{strategy_id} and its versions
+    "tests_app/test_leg_picker_routes.py",  # row 19: imports ofo_app.catalogue_picker, which the #241 diff changes
 }
 
 
