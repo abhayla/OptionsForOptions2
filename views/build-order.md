@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (8): REQ-020, REQ-032, REQ-033, REQ-035, REQ-040, REQ-057, REQ-059, REQ-072; Superseded, never built (2): REQ-006, REQ-007
+Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superseded, never built (2): REQ-006, REQ-007
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -23,6 +23,7 @@ Done (8): REQ-020, REQ-032, REQ-033, REQ-035, REQ-040, REQ-057, REQ-059, REQ-072
 | REQ-012 | Registration and identity layers | foundation | normal | next |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
 | REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | high | waiting: on REQ-034 |
+| REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
@@ -76,10 +77,10 @@ Done (8): REQ-020, REQ-032, REQ-033, REQ-035, REQ-040, REQ-057, REQ-059, REQ-072
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
 | REQ-070 | Builder history and restore | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
-| REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | normal | waiting: on REQ-028 |
+| REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | normal | waiting: on REQ-028, REQ-035 |
 | REQ-078 | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server | feature | normal | waiting: on REQ-076 |
 | REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | normal | waiting: on REQ-028, REQ-076 |
-| REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | normal | next |
+| REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | normal | waiting: on REQ-035 |
 | REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | normal | waiting: on REQ-034 |
 | REQ-084 | What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples | feature | high | waiting: on REQ-034, REQ-083 |
 | REQ-085 | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape | feature | normal | waiting: on REQ-076 |
