@@ -1,0 +1,16 @@
+{
+  "id": "RD-010",
+  "kind": "COPY",
+  "title": "Login panel: is-it-safe explainer, account-opening link, no-extra-charges line (row 2 gap G-02-1)",
+  "reference_behaviour": "The login page has one large broker login button, an account-opening link for users without a broker account, a link asking whether logging in with the broker is safe, and a line saying there are no extra charges beyond normal brokerage.",
+  "reference_screens": ["screen 180"],
+  "reference_label": "Is it safe to login with my broker?",
+  "ours": "Only a Connect Zerodha link in Settings and the server prompt; no explainer, no account link. ADR-175 decided to add both (link with the partner code); not built yet.",
+  "req": "REQ-015",
+  "adr": "ADR-175",
+  "row": 2,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

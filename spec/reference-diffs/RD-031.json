@@ -1,0 +1,15 @@
+{
+  "id": "RD-031",
+  "kind": "COPY",
+  "title": "Inline leg row with strike steppers, lots list and an editable price (G-05-3)",
+  "reference_behaviour": "Each leg row in the builder has its own expiry list, strike minus and plus steppers that snap to the strike gap, a lots list and an editable price.",
+  "reference_screens": ["screen 011", "screen 012"],
+  "ours": "REQ-076 AC-1 (steppers) not built; legs are added through a separate form with four selects and a lots box. Typed price is REQ-077 AC-1.",
+  "req": "REQ-076",
+  "ac": "AC-1",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

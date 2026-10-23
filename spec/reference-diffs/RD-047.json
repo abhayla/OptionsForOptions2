@@ -1,0 +1,15 @@
+{
+  "id": "RD-047",
+  "kind": "COPY",
+  "title": "Silence measured on the whole connection over 60 s, not per contract over 3 s (G-07-5)",
+  "reference_behaviour": "A connection counts as dead only after 60 s with no packet of any kind on it.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "A price frame must arrive within 3 s or the live row goes waiting, so a quiet market can flip it (hypothesis, unmeasured). REQ-114 AC-1 measures silence on the connection (row 11).",
+  "req": "REQ-114",
+  "ac": "AC-1",
+  "row": 11,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

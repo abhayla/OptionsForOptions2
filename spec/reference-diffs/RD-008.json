@@ -1,0 +1,15 @@
+{
+  "id": "RD-008",
+  "kind": "COPY",
+  "title": "Calendar shape on a monthly-only index: the reference product fails with a server error (row 1 match line, bug)",
+  "reference_behaviour": "Loading the calendar shape on the index that lists only monthly expiries returns an internal server error instead of a result or a message.",
+  "reference_screens": ["catalogue 327", "catalogue 328", "catalogue 329"],
+  "ours": "Measured bug, not copied. Nearest working behaviour kept: REQ-090 AC-4 never offers a shape that needs a missing expiry.",
+  "req": "REQ-090",
+  "ac": "AC-4",
+  "row": 46,
+  "status": "decided",
+  "spec_change": false,
+  "bug": true,
+  "recorded": "2026-10-23"
+}

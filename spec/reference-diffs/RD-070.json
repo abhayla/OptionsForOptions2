@@ -1,0 +1,15 @@
+{
+  "id": "RD-070",
+  "kind": "MATCH",
+  "title": "Socket watchdog: 15 s health check, 60 s silence, back-off capped at 30 s with jitter (row 11 match)",
+  "reference_behaviour": "The live socket is checked every 15 s, reconnected after 60 s of silence, with a doubling delay capped at 30 s plus a random spread; a clock line tells when prices were last updated (bundle-findings 6.1).",
+  "reference_screens": ["catalogue 012"],
+  "ours": "REQ-114 AC-1 to AC-3 copy the same 15 s / 60 s / 30 s cap pattern with jitter (jitter size differs, see RD-065).",
+  "req": "REQ-114",
+  "ac": "AC-1",
+  "row": 11,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

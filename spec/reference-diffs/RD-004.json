@@ -1,0 +1,15 @@
+{
+  "id": "RD-004",
+  "kind": "COPY",
+  "title": "BANKNIFTY and FINNIFTY offered as underlyings (G-01-3)",
+  "reference_behaviour": "Four indices are offered, each with its own strike step and lot (BANKNIFTY step 100, FINNIFTY step 50); FINNIFTY has monthly expiries only.",
+  "reference_screens": ["screen 230", "screen 232"],
+  "ours": "Only NIFTY and SENSEX are offered today; REQ-090 AC-1 adds the two indices at row 46 (already planned, ADR-157).",
+  "req": "REQ-090",
+  "ac": "AC-1",
+  "row": 46,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

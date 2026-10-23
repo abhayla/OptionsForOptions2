@@ -1,0 +1,14 @@
+{
+  "id": "RD-023",
+  "kind": "MATCH",
+  "title": "Order status read from the broker's order book (row 3 match)",
+  "reference_behaviour": "The orders page lists orders and their states as the broker reports them.",
+  "reference_screens": ["catalogue 340", "catalogue 342"],
+  "ours": "Order status comes from one Zerodha orders read.",
+  "req": "REQ-054",
+  "row": 3,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

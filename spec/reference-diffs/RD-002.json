@@ -1,0 +1,16 @@
+{
+  "id": "RD-002",
+  "kind": "COPY",
+  "title": "Live spot and day change beside the underlying name (row 1 gap G-01-1)",
+  "reference_behaviour": "The underlying box at the top of the builder shows the index name with its live spot and the day's change in percent, plus a chart icon and an Info button.",
+  "reference_screens": ["screen 010", "screen 012"],
+  "reference_label": "NIFTY 22976.85 +0.38%",
+  "ours": "REQ-139 AC-1 not built yet: the underlying pickers list names only, with no price or change.",
+  "req": "REQ-139",
+  "ac": "AC-1",
+  "row": 41,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

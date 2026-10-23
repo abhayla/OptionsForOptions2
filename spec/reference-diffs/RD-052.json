@@ -1,0 +1,16 @@
+{
+  "id": "RD-052",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Live means a price frame arrived; heartbeats never count (row 7 match line, ours stricter)",
+  "reference_behaviour": "The watchdog counts any packet, pings included, as a sign of life.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "A quote is live only on price frames, never heartbeats (REQ-049 AC-2); kept as stricter safety under ADR-015 (no stale price shown as live). Connection silence stays per REQ-114 AC-1.",
+  "req": "REQ-049",
+  "ac": "AC-2",
+  "adr": "ADR-015",
+  "row": 7,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

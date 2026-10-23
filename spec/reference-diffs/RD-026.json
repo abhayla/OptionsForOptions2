@@ -1,0 +1,15 @@
+{
+  "id": "RD-026",
+  "kind": "MATCH",
+  "title": "Screens ask a capability flag, never a broker name (row 4 match)",
+  "reference_behaviour": "Feature code checks a per-broker capability flag rather than the broker's name; the only visible off-state is the no-broker trade tooltip.",
+  "reference_screens": ["catalogue 246"],
+  "ours": "REQ-117 AC-3: features ask the flag; a repo test fails on a broker name in feature code.",
+  "req": "REQ-117",
+  "ac": "AC-3",
+  "row": 4,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "RD-045",
+  "kind": "COPY",
+  "title": "A data-health state explained in a sentence with the reason, not a bare word (G-07-3)",
+  "reference_behaviour": "A delayed feed is explained in one sentence that names the delay and how to get real-time prices.",
+  "reference_screens": ["catalogue 245"],
+  "reference_label": "The data feeds are delayed by 1 minute.",
+  "ours": "A leg whose health is not available shows the bare word stale, delayed, unhealthy or unavailable; REQ-049 AC-4 is met only in that bare form.",
+  "req": "REQ-049",
+  "ac": "AC-4",
+  "row": 7,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

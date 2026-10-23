@@ -1,0 +1,15 @@
+{
+  "id": "RD-016",
+  "kind": "MATCH",
+  "title": "Connection is not forced up front for browsing (row 2 match, partly)",
+  "reference_behaviour": "Every page can be browsed while logged out; a broker login is needed only for broker actions.",
+  "reference_screens": ["catalogue 018"],
+  "ours": "REQ-015 AC-1: connection is requested only when a broker-dependent function is used (prices without a session differ, see RD-011).",
+  "req": "REQ-015",
+  "ac": "AC-1",
+  "row": 2,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

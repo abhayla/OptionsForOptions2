@@ -1,0 +1,15 @@
+{
+  "id": "RD-018",
+  "kind": "NO-SCREEN",
+  "title": "Daily broker session expiry and its reconnect screen (row 2 study gap)",
+  "reference_behaviour": "Not captured: no session-expired or re-login screen was seen (searched session expired, re-login, token expired, logged out).",
+  "reference_screens": [],
+  "ours": "Ours shows a card Zerodha session ended. Reconnect to continue (REQ-015 AC-7). Owner to capture the reference screen after the daily expiry.",
+  "req": "REQ-015",
+  "ac": "AC-7",
+  "row": 2,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

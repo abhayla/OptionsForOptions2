@@ -1,0 +1,14 @@
+{
+  "id": "RD-037",
+  "kind": "MATCH",
+  "title": "Lot size per contract is read from the instrument list, never typed (row 5 match)",
+  "reference_behaviour": "The instrument master with lot sizes is loaded per broker and used to build legs.",
+  "reference_screens": ["catalogue 011"],
+  "ours": "Lot size comes from the daily Zerodha list for each contract.",
+  "req": "REQ-053",
+  "row": 5,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

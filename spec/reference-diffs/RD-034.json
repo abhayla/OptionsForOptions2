@@ -1,0 +1,15 @@
+{
+  "id": "RD-034",
+  "kind": "MATCH",
+  "title": "An expired strategy or leg is named as expired (row 5 match)",
+  "reference_behaviour": "Opening an expired strategy shows a banner saying it is expired.",
+  "reference_screens": ["catalogue 127"],
+  "ours": "Ours names the leg and its expiry date (Leg ... expired on <date>), a richer form of the same message.",
+  "req": "REQ-053",
+  "ac": "AC-3",
+  "row": 5,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

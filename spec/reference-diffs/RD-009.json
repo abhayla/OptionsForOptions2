@@ -1,0 +1,15 @@
+{
+  "id": "RD-009",
+  "kind": "NO-SCREEN",
+  "title": "Refusal of an unsupported underlying (row 1 match line: the study has no screen)",
+  "reference_behaviour": "No screen found for an unsupported underlying; only a free-text search box was seen (searched not supported, unsupported, no results).",
+  "reference_screens": [],
+  "ours": "REQ-001 AC-1 refuses any other value with a plain message naming the supported underlyings. Owner to capture what the reference search shows for an unknown name.",
+  "req": "REQ-001",
+  "ac": "AC-1",
+  "row": 1,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

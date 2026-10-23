@@ -1,0 +1,14 @@
+{
+  "id": "RD-025",
+  "kind": "COPY",
+  "title": "Capability flags for brokerage charges, split P&L, holdings and verified P&L (row 4 gap G-04-1)",
+  "reference_behaviour": "Features such as brokerage charges, split booked and unbooked P&L, holdings and verified P&L are switched per broker by capability flags; the screen asks the flag, not the broker name.",
+  "reference_screens": ["catalogue 022"],
+  "ours": "NEW AC NEEDED: our closed flag list has no brokerage_charges (or similar) flag; add each flag with the feature that needs it, fail-closed as REQ-117 requires.",
+  "req": "REQ-117",
+  "row": 4,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

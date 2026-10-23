@@ -1,0 +1,16 @@
+{
+  "id": "RD-005",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Stock options, stock presets and the stock screener are not offered (row 1 deliberate difference D-01-4)",
+  "reference_behaviour": "Stock options are offered alongside the indices, with ready-made shapes for stocks and a stock heatmap and screener.",
+  "reference_screens": ["screen 247", "screen 248", "screen 249"],
+  "ours": "Index options only: NIFTY, BANKNIFTY, FINNIFTY and SENSEX, no stock options (REQ-001 AC-1), decided by the owner in ADR-157.",
+  "req": "REQ-001",
+  "ac": "AC-1",
+  "adr": "ADR-157",
+  "row": 1,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

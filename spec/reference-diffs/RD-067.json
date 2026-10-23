@@ -1,0 +1,15 @@
+{
+  "id": "RD-067",
+  "kind": "NO-SCREEN",
+  "title": "Market-closed wording: the study has no closed-market screen (G-11-3, capture part)",
+  "reference_behaviour": "The study shows only a clock line for prices and one help line saying values are calculated as of the last market close when the market is not open on the target time; no screen for a closed market was captured.",
+  "reference_screens": [],
+  "ours": "ADR-177 fixed one wording everywhere: Market closed. Prices are from <time>. Owner to capture the reference product's screen on a closed day.",
+  "req": "REQ-114",
+  "ac": "AC-7",
+  "row": 11,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

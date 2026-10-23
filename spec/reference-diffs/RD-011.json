@@ -1,0 +1,15 @@
+{
+  "id": "RD-011",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Planning without a broker login on delayed prices (G-02-2)",
+  "reference_behaviour": "Without a broker login the builder, ready-mades and payoff still work on prices delayed by one minute, with a banner explaining the delay and how to get real-time prices; trading stays disabled.",
+  "reference_screens": ["catalogue 245"],
+  "ours": "Without a Zerodha connection no prices or P&L are shown (Live data not connected). Owner decided in ADR-174 not to copy the delayed feed for now; REQ-105 (row 58) stays held.",
+  "req": "REQ-105",
+  "adr": "ADR-174",
+  "row": 58,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "RD-035",
+  "kind": "COPY",
+  "title": "Unavailable contract: the reference product hides it, ours explains and offers two other strikes (row 5 match line)",
+  "reference_behaviour": "Blocked strikes are read and left out of what can be picked; no on-screen text for them was captured.",
+  "reference_screens": ["screen 011"],
+  "ours": "SPEC CHANGE: REQ-053 AC-3 blocks the leg with a refusal that names the impact and offers up to two other strikes, plus Currently unavailable on Zerodha on the chain; an extra of ours for the owner's batch.",
+  "req": "REQ-053",
+  "ac": "AC-3",
+  "row": 5,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

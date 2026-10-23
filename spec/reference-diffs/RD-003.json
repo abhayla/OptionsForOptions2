@@ -1,0 +1,14 @@
+{
+  "id": "RD-003",
+  "kind": "COPY",
+  "title": "Info panel per underlying: lot size, ATM strike, expiries, contract specifications (G-01-2)",
+  "reference_behaviour": "An Info panel per underlying shows price, open-high-low-close, expiry, monthly futures, a derivatives data tab (lot size, ATM strike, put-call ratio, ATM IV, max pain, IV percentile, volatility index), events and a contract specifications link.",
+  "reference_screens": ["catalogue 026", "catalogue 027", "catalogue 028", "catalogue 029", "catalogue 030", "catalogue 031"],
+  "ours": "NEW AC NEEDED: no Info drawer; lot size appears only after a contract is chosen. REQ-139 (header) is the closest; REQ-106 covers ATM IV, PCR, max pain, VIX.",
+  "req": "REQ-139",
+  "row": 41,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

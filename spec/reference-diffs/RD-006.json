@@ -1,0 +1,15 @@
+{
+  "id": "RD-006",
+  "kind": "MATCH",
+  "title": "Six leg types: call or put, buy or sell, plus futures buy or sell (row 1 match)",
+  "reference_behaviour": "A leg is a buy or sell badge with expiry, strike and call or put, plus futures through a buy-future action and the picker's futures tab: the same six leg types.",
+  "reference_screens": ["screen 011", "screen 012", "screen 233"],
+  "ours": "REQ-001 AC-2: the same six leg types.",
+  "req": "REQ-001",
+  "ac": "AC-2",
+  "row": 1,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

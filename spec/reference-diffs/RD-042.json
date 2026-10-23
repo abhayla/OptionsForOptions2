@@ -1,0 +1,14 @@
+{
+  "id": "RD-042",
+  "kind": "MATCH",
+  "title": "Outbound links to the broker's own pages are allowed in the browser bundle (row 6 match)",
+  "reference_behaviour": "The browser bundle carries plain links to the broker's chart, funds and account-opening pages, which are links, not API calls.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "Our bundle scan is an allow-list that permits the broker's basket form and positions page, so the parked AC-5 redesign keeps the allow-list.",
+  "req": "REQ-048",
+  "row": 6,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

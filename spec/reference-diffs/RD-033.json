@@ -1,0 +1,15 @@
+{
+  "id": "RD-033",
+  "kind": "MATCH",
+  "title": "Only listed contracts and valid strikes can be reached (row 5 match)",
+  "reference_behaviour": "Strike steppers snap to the strike gap and stop at the listed minimum and maximum, so only listed strikes are reachable.",
+  "reference_screens": ["screen 011", "screen 012"],
+  "ours": "REQ-053 AC-3: pickers list only contracts from the daily Zerodha list.",
+  "req": "REQ-053",
+  "ac": "AC-3",
+  "row": 5,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "RD-027",
+  "kind": "MATCH",
+  "title": "Flag names map one to one: intraday product, funds read, live positions (row 4 match)",
+  "reference_behaviour": "The product has flags for intraday product support, user funds and live positions.",
+  "reference_screens": ["catalogue 246"],
+  "ours": "intraday_product, funds_read and positions_read carry the same meaning.",
+  "req": "REQ-117",
+  "row": 4,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

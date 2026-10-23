@@ -1,0 +1,16 @@
+{
+  "id": "RD-069",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Old quotes: the reference product keeps the number with a clock, ours labels it stale or refuses it (G-11-4)",
+  "reference_behaviour": "A quote is never labelled stale; the builder keeps computing with the last price it has and shows only the time prices were last updated.",
+  "reference_screens": ["catalogue 012"],
+  "ours": "Quotes carry a health state; stale and delayed are labelled, unhealthy and unavailable are refused (REQ-049 AC-2, AC-4). Kept: stricter safety, ADR-152 exception (a), decided by ADR-015.",
+  "req": "REQ-049",
+  "ac": "AC-4",
+  "adr": "ADR-015",
+  "row": 7,
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

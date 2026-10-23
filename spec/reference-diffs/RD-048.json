@@ -1,0 +1,15 @@
+{
+  "id": "RD-048",
+  "kind": "COPY",
+  "title": "Missing values explained in place by a short reason (G-07-6)",
+  "reference_behaviour": "Where a value is missing, a tooltip on the spot says why it is not available (for example, which markets or expiries lack it).",
+  "reference_screens": ["catalogue 051"],
+  "ours": "Missing values are a bare Not available or a dash, with the reason only at page level; add a reason on each placeholder (REQ-049 AC-4).",
+  "req": "REQ-049",
+  "ac": "AC-4",
+  "row": 7,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

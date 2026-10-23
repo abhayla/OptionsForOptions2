@@ -1,0 +1,14 @@
+{
+  "id": "RD-013",
+  "kind": "COPY",
+  "title": "Connected broker user id and available margin shown in the profile (G-02-4)",
+  "reference_behaviour": "The profile menu shows the connected broker user id and the available margin, with Settings and Logout.",
+  "reference_screens": ["catalogue 216"],
+  "ours": "NEW AC NEEDED: Settings shows statuses and last sync only. Add a masked Zerodha user id and, when funds_read is on, Zerodha's own available margin with its read time (ADR-016, never computed).",
+  "req": "REQ-015",
+  "row": 2,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

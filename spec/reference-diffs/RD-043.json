@@ -1,0 +1,16 @@
+{
+  "id": "RD-043",
+  "kind": "COPY",
+  "title": "One prices-updated stamp on the builder (row 7 gap G-07-1)",
+  "reference_behaviour": "The builder shows one line with the time prices were last updated, refreshed automatically every 30 s.",
+  "reference_screens": ["screen 012"],
+  "reference_label": "Prices last updated at 10:35 AM",
+  "ours": "REQ-135 AC-3 not built: stamps exist per leg, per margin line and on the live card, but no single stamp on the builder.",
+  "req": "REQ-135",
+  "ac": "AC-3",
+  "row": 27,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}

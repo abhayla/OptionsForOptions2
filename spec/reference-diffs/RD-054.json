@@ -1,0 +1,15 @@
+{
+  "id": "RD-054",
+  "kind": "NO-SCREEN",
+  "title": "Live monitoring paused message and badge (row 7 study gap)",
+  "reference_behaviour": "The product has no monitoring feature, so no paused or disconnected monitoring screen exists (searched monitoring, paused, disconnected).",
+  "reference_screens": [],
+  "ours": "REQ-049 AC-5: Live market data disconnected. Last updated: <time>. Live strategy monitoring is paused, with a per-strategy badge.",
+  "req": "REQ-049",
+  "ac": "AC-5",
+  "row": 7,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-23"
+}
