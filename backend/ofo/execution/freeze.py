@@ -18,24 +18,10 @@ from typing import Final
 from ofo.errors import UserFacingError, render
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 from ofo.instruments.models import ZERODHA, InstrumentId
 
 STALE_AFTER_DAYS: Final = 8  # issue 257, ADR-091: the review warns when the file date is MORE than 8 days before it
-
-
-@dataclass(frozen=True)
-class StoredFreeze:
-    """A freeze limit in units, the contract's lot size, and the date of the exchange file that showed it."""
-
-    limit: int
-    lot: int
-    file_date: date
-
-    def __post_init__(self) -> None:
-        if isinstance(self.limit, bool) or not isinstance(self.limit, int) or self.limit <= 0:
-            raise ValueError(f"limit must be a positive integer, got {self.limit!r}")
-        if isinstance(self.lot, bool) or not isinstance(self.lot, int) or self.lot <= 0:
-            raise ValueError(f"lot must be a positive integer, got {self.lot!r}")
 
 
 @dataclass(frozen=True)
@@ -66,11 +52,6 @@ def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
         limit, file_date = stored[entries[0].id]
         out[planned.contract] = StoredFreeze(limit, entries[0].contract.lot_size, file_date)
     return out
-
-
-def largest_allowed_units(stored: StoredFreeze) -> int:
-    """The largest whole-lot order below the limit (NIFTY: 3,511 and lot 65 -> 3,510 = 54 lots)."""
-    return (stored.limit - 1) // stored.lot * stored.lot
 
 
 def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:

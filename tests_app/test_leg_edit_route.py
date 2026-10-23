@@ -115,8 +115,9 @@ def test_ac_1_the_last_listed_strike_a_futures_leg_and_a_forged_index_are_refuse
             "captured_at": STAMP.isoformat()}]
     status, reply = post({"legs": one, "edit": {"control": "step", "index": 0, "direction": 1}})
     assert status == HTTP_UNPROCESSABLE and "futures leg and has no strike to step" in str(reply)
-    status, _ = post({"legs": legs(), "edit": {"control": "step", "index": 9, "direction": 1}})
-    assert status == HTTP_UNPROCESSABLE
+    status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 9, "direction": 1}})
+    # refused by the request model through the API's one error boundary (ofo_app/errors.py), not by the route
+    assert status == HTTP_UNPROCESSABLE and "missing or not in the expected form" in str(reply)
 
 
 def test_ac_2_a_stepped_leg_with_no_live_price_is_unpriced_never_the_old_price():
