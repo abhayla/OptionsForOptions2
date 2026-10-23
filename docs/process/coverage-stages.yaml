@@ -589,6 +589,7 @@ findings:
   F-57: 4a        # Zerodha rule constants checked against current docs; NIFTY freeze 3,510 reported, unconfirmed (row 5)
   F-58: S6.7      # fakeredis TCP server: no pub/sub delivery, Streams work (row 9 bus design)
   F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
+  F-60: S6.7      # Kite REST limits per group (quote 1/s, historical 3/s, other 10/s); 429 = 10 s sliding cooldown
 
 hypotheses:
   H1: done

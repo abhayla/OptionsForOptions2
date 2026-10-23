@@ -885,3 +885,20 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   F-31 (Zerodha grants multi-user access only after a demo; the owner's limits question was not answered); REQ-113 AC-6
   (the cap is held as configuration: 3 per key). ADR-060 keeps the build on the owner's own app, so nothing breaks
   today. Owner decision 2026-10-23: ADR-170 (keep per-user feeds; ask Zerodha at the multi-user demo). Status: **measured from documentation and staff answers**.
+
+## F-60 - Kite REST rate limits per endpoint group; a 429 starts a 10 s sliding cooldown; the scope of the read limits is unstated
+- Read 2026-10-23 ~07:40 IST (builder sequence row 10, REQ-118 AC-1; WebFetch summaries, not raw page reads):
+  https://kite.trade/docs/connect/v3/exceptions/ "API rate limit" table: "Quote | 1req/second", "Historical candle |
+  3req/second", "Order placement | 10req/second", "All other endpoints | 10req/second"; orders also 400 per minute and
+  5000 per day per user/API key, 25 modifications per order (as F-57); "429 | Too many requests to the API (rate
+  limiting)". Kite forum, rakeshr (staff), Oct 2022 edited Jul 2023: "There's a cooldown period of 10s that must be
+  respected whenever you receive a 429 Status Code", a sliding window, so requests during it extend it
+  (https://kite.trade/forum/discussion/11971/api-rate-limits); repeated breaches may get the app blocked for longer
+  (https://kite.trade/forum/discussion/11404/what-happens-after-i-hit-api-limit). Order limits are account (client ID)
+  level, "regardless of the number of app" (https://kite.trade/forum/discussion/15912/...).
+- Not found: whether the quote / historical / other limits count per api_key across all users or per user; the 429
+  reply's `error_type` and message; any Retry-After header.
+- Bears on: REQ-118 AC-1 (limits as configuration with source and date), AC-3 (bounded wait), AC-4 ("retried after the
+  wait Kite indicates" - Kite indicates 10 s, no header). Orchestrator decision (technical, row 10): the unstated scope is
+  taken as the stricter one, per api_key across all users (one bucket per group for the whole app), until Zerodha
+  states otherwise. Not a rule change. Status: **measured from documentation and staff answers**.

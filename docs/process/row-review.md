@@ -74,6 +74,12 @@ the time; slower: what went wrong), and for slower, the change that stops it nex
 - **R16 Slow DB runs start first** (row 8: ~23 s per DB test over the tunnel; a 498-test selection needs ~3 h). The R13
   app run starts first, in the background, with `-o faulthandler_timeout=60`; the report gives its timing. The selection
   is never dropped; CI at the chunk PR runs it in full.
+- **R17 A business question never holds the session** (row 9, 2026-10-22: the question box asked at ~23:35 IST held
+  the whole session ~7.5 h until the owner answered at ~07:15; the question blocked nothing in the build). The
+  question tool is used only while the owner is active in the session (a message from them in the last ~30 minutes,
+  and not between ~22:00 and ~08:00 IST); otherwise the question goes to `docs/process/owner-questions-<date>.md` with
+  the recommendation, Business call and Spec basis, the build continues, and the question is asked with the tool the
+  next time the owner writes.
 - **R7 Measured table per row**: every agent of the row with minutes, tokens and tool calls from its completion notice
   (process agents listed separately), the orchestrator's tool calls, and the close time read from the commit; the
   meta review (every 3rd row) is due before the next row's build; verifier briefs list the known-failing tests (#497).
