@@ -61,10 +61,12 @@ Otherwise, while row N's verifier runs, the session prepares row N+1: READ, MEAS
 1. **Read** the requirement in full (every AC), the decisions it cites, the Sensibull study screens
    (`D:\Abhay\Ventures\competitors\sensibull\2026-10-21\INDEX.md`; screenshots never enter this repo), the
    legacy-reuse map rows (`copy_from_check.py`), and the findings registry (`knowledge/findings/`).
-   BINDING since 2026-10-23 (ADR-173): a Sensibull study role (Sonnet, read-only) reads the study for the row first
-   and returns what Sensibull does with screen numbers; the brief carries `Sensibull: <screens> - copy <what>` or
-   `Sensibull: none - searched <a>, <b>`, and `check_brief.py` refuses a REQ brief without it. Missing screens go on
-   the study-gaps list for the owner. Rows 1-14 were re-studied and get fix rounds wherever they differ.
+   BINDING since 2026-10-23 (ADR-173, ADR-176): a reference-product study role (Sonnet, read-only) reads the study for
+   the row first and writes or updates the row's difference records (ADR-176 register: COPY / DIFFERENT-BY-DECISION /
+   NO-SCREEN / MATCH); the brief carries `Reference: <screens> - copy <what>` (listing the open record ids) or
+   `Reference: none - searched <a>, <b>`, and `check_brief.py` refuses a REQ brief without it. Always copy (ADR-176
+   (5)): never a measured bug; an approved extra goes on the batched SPEC CHANGE list. New text never names the
+   reference product. Rows 1-16 were re-studied and get fix rounds wherever they differ.
 2. **Measure** (rows still to build): a read-only `Explore` agent on Sonnet returns each AC as built / partly /
    missing with file:line, on main AND on the in-flight work: branch `build/W-126-a1-leg-rows` (rows 20 REQ-076,
    30 REQ-078), branch `build/W-127-b2-payoff` (rows 26 REQ-081, 36 REQ-083, 37 REQ-084), PR #509 branch

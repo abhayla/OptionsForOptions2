@@ -1,10 +1,14 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
 ## UPDATE session 3, 2026-10-23 12:51 IST (clock) - READ THIS FIRST (newest)
-- **New binding rule ADR-173 (owner 12:48-12:50):** Sensibull first for every requirement, enforced by `check_brief.py`
-  (process item `process-sensibull-line.md` on build/seq-process); rows 1-14 ALL re-studied against the study and
-  fixed wherever they differ (study output: session scratchpad `sensibull-study/rows-01-07.md`, `rows-08-14.md`).
-  A row in flight closes only after its study is done and its gaps are fixed or recorded.
+- **New binding rules ADR-173..176 (owner 12:48-13:45):** reference product first for every requirement, enforced by
+  `check_brief.py` (process item `process-sensibull-line.md`, built bd2a69d4 - label to be renamed `Reference:`);
+  every difference is a record in the ADR-176 register (to be built), gated at brief / verify / close; always copy,
+  never a bug, approved extras via one batched SPEC CHANGE list; new text never names the reference product.
+  ADR-174 (no prices without Zerodha, revisit at the demo), ADR-175 (account-opening link with the PIFS partner code
+  + "is it safe" explainer). Rows 1-16 studied: session-3 scratchpad `sensibull-study/rows-01-07.md` (23 gaps),
+  `rows-08-14.md` (21), `rows-15-16.md` (17) - to be loaded into the register. A row in flight closes only after its
+  records are built or decided.
 - Process branch merged into the chunk branch (7d93c1bd). Row 11 verify r1 dispatched 12:46 (b04d47f0); row 12 fix 1
   dispatched 12:46 in `-builder-next-12` (overlap gate OK). Known red: one hook test whose sample brief predates the
   mutation-gate rule - fixed in the Sensibull process item.
