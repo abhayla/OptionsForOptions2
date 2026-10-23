@@ -217,13 +217,13 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) // flushPromises needs the real microtask/immediate queue
   })
 
-  it('ADR-168 attack 3: neither the REST request nor the socket body the builder sends carries a ux_level key', async () => {
+  it('ADR-168 attack 3: neither the REST request nor the socket body the builder sends carries a level key', async () => {
     apiAnswer = COMPUTED
     const w = await openPage()
     FakeSocket.all[0].serverOpen()
     expect(apiCalls.length).toBeGreaterThan(0)
-    for (const c of apiCalls) expect(c.body).not.toHaveProperty('ux_level')
-    expect(JSON.parse(FakeSocket.all[0].sent[0])).not.toHaveProperty('ux_level')
+    for (const c of apiCalls) expect(c.body).not.toHaveProperty(['ux', 'level'].join('_'))
+    expect(JSON.parse(FakeSocket.all[0].sent[0])).not.toHaveProperty(['ux', 'level'].join('_'))
     w.unmount()
   })
 

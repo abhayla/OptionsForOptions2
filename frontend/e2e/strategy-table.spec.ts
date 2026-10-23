@@ -36,16 +36,15 @@ async function condorDraft(request: APIRequestContext) {
   return { underlying: 'NIFTY', legs: probe.legs.map((l, i) => ({ ...l, planned_entry: out.legs[i].ltp })) }
 }
 
-function builderUrl(base: string, draft: unknown, ux?: string) {
+function builderUrl(base: string, draft: unknown) {
   const q = new URLSearchParams({ draft: JSON.stringify(draft) })
-  if (ux) q.set('ux', ux)
   return `${base}/strategy/builder?${q.toString()}`
 }
 
-async function openCondor(page: Page, request: APIRequestContext, ux?: string) {
+async function openCondor(page: Page, request: APIRequestContext) {
   const draft = await condorDraft(request)
   const responded = page.waitForResponse((r) => r.url().includes('/api/strategies/outcome') && r.request().method() === 'POST')
-  await page.goto(builderUrl(REPLAY_URL, draft, ux))
+  await page.goto(builderUrl(REPLAY_URL, draft))
   const apiText = await (await responded).text()
   return { draft, apiText, api: JSON.parse(apiText) as Outcome }
 }
@@ -134,18 +133,8 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
   expect(bg).not.toBe(plain)
 })
 
-test('AC-5: Bid and Ask are in Advanced Details at Advanced only, with the API values', async ({ page, request }, info) => {
-  for (const ux of ['guided', 'standard', undefined]) {
-    const { api } = await openCondor(page, request, ux)
-    expect(api.advanced_details).toBeUndefined() // absent, not empty
-    await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
-    await expect(page.getByTestId('advanced-details')).toHaveCount(0)
-    const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
-    expect(heads).not.toContain('bid')
-    expect(heads).not.toContain('ask')
-  }
-  const { api } = await openCondor(page, request, 'advanced')
-  expect(api.ux_level).toBe('advanced')
+test('AC-5: Bid and Ask are in the Details block for everyone, with the API values', async ({ page, request }, info) => {
+  const { api } = await openCondor(page, request)
   expect(api.advanced_details).toHaveLength(4)
   await expect(page.getByTestId('advanced-details')).toBeVisible()
   for (const r of api.advanced_details) {
@@ -155,7 +144,7 @@ test('AC-5: Bid and Ask are in Advanced Details at Advanced only, with the API v
     // RD-045: the cell shows the one-sentence reading of the API's health word, never the bare word
     await expect(row.getByTestId('adv-health')).toHaveText(healthSentence(r.health) ?? 'Available')
   }
-  // the locked table columns are the same as at Standard (AC-2); bid/ask are not among them
+  // the locked table columns are the one set the API sent (AC-2); bid/ask are not among them
   const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
   expect(heads).not.toContain('bid')
   await page.screenshot({ path: `screenshots/strategy-advanced-${info.project.name}.png`, fullPage: true })

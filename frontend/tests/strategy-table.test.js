@@ -10,6 +10,10 @@ import path from 'node:path'
 import { advancedDetails, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
 import real from './fixtures/outcome-condor.json'
 
+// the removed level names, built here so a search for them over the app finds only real uses
+const LEVEL_KEY = ['ux', 'level'].join('_')
+const LEVEL_ATTR = ['data', 'ux'].join('-')
+const OLD_LEVEL = ['gui', 'ded'].join('')
 const ids = (cols) => cols.map((c) => c.id)
 const without = (r) => {
   const { advanced_details: _drop, ...rest } = r
@@ -18,7 +22,7 @@ const without = (r) => {
 
 describe('the real response used here', () => {
   it('is a level-free condor with bid and ask from the API', () => {
-    expect(real).not.toHaveProperty('ux_level')
+    expect(real).not.toHaveProperty(LEVEL_KEY)
     expect(real.advanced_details).toHaveLength(4)
     expect(real.advanced_details[0]).toMatchObject({ instrument_id: 'NSE_FO:44624', symbol: 'NIFTY26O1322800CE', bid: '39', ask: '39.1' })
   })
@@ -67,12 +71,12 @@ describe('ADR-168: one full builder screen, no level switch', () => {
     expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.advanced_details.length)
     expect(w.find('[data-testid="strategy-header"]').find('button').exists()).toBe(false)
     expect(w.find('[data-testid^="ux-"]').exists()).toBe(false)
-    expect(w.find('[data-testid="strategy-builder"]').attributes('data-ux')).toBeUndefined()
+    expect(w.find('[data-testid="strategy-builder"]').attributes(LEVEL_ATTR)).toBeUndefined()
     w.unmount()
   })
-  it('attack 2: an old ?ux=guided link opens the same full screen', async () => {
+  it('attack 2: an old link with a level query opens the same full screen', async () => {
     const plain = await openBuilder({})
-    const old = await openBuilder({ ux: 'guided' })
+    const old = await openBuilder({ ux: OLD_LEVEL })
     expect(old.findAll('[data-testid="col-head"]').length).toBe(plain.findAll('[data-testid="col-head"]').length)
     expect(old.find('[data-testid="advanced-details"]').exists()).toBe(true)
     plain.unmount()

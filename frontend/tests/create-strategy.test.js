@@ -180,7 +180,7 @@ describe('Create Strategy page', () => {
     await w.find('[data-testid="open-in-builder"]').trigger('click')
     const target = push.mock.calls[0][0]
     expect(target.path).toBe('/strategy/builder')
-    expect(target.query.ux).toBe('guided')
+    expect(Object.keys(target.query)).toEqual(['draft']) // ADR-168: no level in the link
     const draft = JSON.parse(target.query.draft)
     expect(draft.underlying).toBe('NIFTY')
     expect(draft.legs.map((l) => [l.instrument_id, l.action, l.lots, l.planned_entry])).toEqual([['NSE_FO:1', 'SELL', 1, '120.50']])

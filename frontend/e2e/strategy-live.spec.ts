@@ -148,7 +148,7 @@ test('AC-4 two holders (ADR-077): another socket holds the same legs, this page\
     ws.onopen = () => ws.send(JSON.stringify(body))
     ws.onmessage = (ev) => resolve(String(ev.data))
     ws.onerror = () => reject(new Error('second socket failed'))
-  }), { ...draft, ux_level: 'standard' })
+  }), { ...draft })
   expect(JSON.parse(otherFirst).state).toBe('COMPUTED') // the second holder is really streaming these legs
 
   await page.goto(`${REPLAY_URL}/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(draft) })}`)
