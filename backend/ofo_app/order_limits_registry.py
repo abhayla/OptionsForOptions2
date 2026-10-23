@@ -136,6 +136,9 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo_app.kite_ws:_SESSION_TOKEN_ERROR", "ofo_app.kite_http:_TIMEOUT_KEYS",
             "ofo_app.kite_reads:PROFILE_LIST_KEYS",
             "ofo_app.kite_reads:PROFILE_TEXT_KEYS", "ofo_app.kite_reads:QUANTITY_FIELDS",
+            "ofo.broker.kite_flags:_DAY_TEXT",  # the flag file's YYYY-MM-DD date text (review F2 item 5)
+            # how a Retry-After header is read (RFC 9110 delta-seconds); Kite's wait itself is COOLDOWN_SECONDS (F-60)
+            "ofo.broker.rate_limit:_RETRY_AFTER",
         ),
         "the product's own basket-tag layout (8 characters in total is the Zerodha rule, MAX_TAG_LENGTH)": (
             "ofo.execution.basket:TAG_DIGITS", "ofo.execution.basket:TAG_LEG_WIDTH",
@@ -177,6 +180,7 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo.broker.kite_flags:FLAG_FILE", "ofo_app.kite_client:SESSION_TOKEN_PATH",
             "ofo.broker.rate_limit:GROUP_QUOTE", "ofo.broker.rate_limit:GROUP_HISTORICAL",
             "ofo.broker.rate_limit:GROUP_OTHER", "ofo.broker.rate_limit:_BACKGROUND",
+            "ofo.broker.rate_limit:_CALL", "ofo.broker.rate_limit:_SENDS",  # the limiter's per-call context markers
         ),
     }),
 }
