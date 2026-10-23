@@ -156,7 +156,7 @@ class MarketState:
     last_price_at: datetime.datetime | None
 
 
-def market_state(ctx: Optional[MarketContext], at: datetime.datetime) -> MarketState:
+def market_state(ctx: MarketContext | None, at: datetime.datetime) -> MarketState:
     """The ONE market-state read behind the outcome, chain and index answers (class market-state-decided-per-surface):
     the provider's own feed answers (``FeedState.market_closed``, which also sets every quote's health); a provider
     with no feed state, or no context at all, gets the same calendar function the feed defaults to (fail closed)."""
@@ -381,7 +381,7 @@ class OutcomeResponse(ApiModel):
     #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the page shows the one market-closed banner)
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
-    last_price_at: Optional[datetime.datetime]
+    last_price_at: datetime.datetime | None
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     legs: list[LegOut]

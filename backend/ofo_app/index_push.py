@@ -96,7 +96,8 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
 
 def _shown_state(body: IndicesOut) -> tuple:
     """What the page shows: the state and each row (never ``answered_at``, which moves on every read)."""
-    return (body.state, body.market_closed, body.last_price_at, tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
+    return (body.state, body.market_closed, body.last_price_at,
+            tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
 
 
 def _ignore(_quote: Any) -> None:

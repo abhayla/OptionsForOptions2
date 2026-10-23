@@ -5,7 +5,6 @@ answer built on it inherits that. A KiteProvider fed the recorded full frame, th
 
 Answer states of the calendar (standing item d): open -> available; closed weekend / holiday / after hours / pre-open ->
 stale + market closed; a date past the calendar's data (NO_CALENDAR) -> stale + market closed (fail closed)."""
-# ruff: noqa: PLR2004
 from __future__ import annotations
 
 import datetime

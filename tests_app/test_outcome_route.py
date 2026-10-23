@@ -75,8 +75,8 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     assert resp.status_code == 200, resp.text
     out = resp.json()
     assert set(out) == {"state", "underlying", "ux_level", "status_label", "reason", "output_label", "valuation",
-                        "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin", "table",
-                        "scenario", "payoff", "summary"}
+                        "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
+                        "table", "scenario", "payoff", "summary"}
     assert (out["state"], out["underlying"], out["ux_level"]) == ("COMPUTED", "NIFTY", "standard")
     assert out["spot_level"] == "22533.25"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET" and isinstance(out["margin"]["reason"], str)

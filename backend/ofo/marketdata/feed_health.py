@@ -10,9 +10,9 @@ is available; beyond that every contract of that feed is stale; disconnected lon
 connected, or session ended: unavailable. A contract's own last change time is kept (``QuoteBook``) as information
 and is never a health input. Provider-agnostic: any provider with a live connection can use ``FeedState``.
 
-Outside market hours (ADR-119 calendar, REQ-114 AC-7) the feed is never live, whatever frames arrive: ``health`` is STALE
-and ``phase`` is ``FEED_MARKET_CLOSED`` (a session ended or a capped socket still say so). The calendar is read HERE, the
-one quote-health path, so every quote, answer and screen built on a ``FeedState`` inherits it (class
+Outside market hours (ADR-119 calendar, REQ-114 AC-7) the feed is never live, whatever frames arrive: ``health`` is
+STALE and ``phase`` is ``FEED_MARKET_CLOSED`` (a session ended or a capped socket still say so). The calendar is read
+HERE, the one quote-health path, so every quote, answer and screen built on a ``FeedState`` inherits it (class
 market-state-decided-per-surface); a date the calendar cannot answer reads closed (``is_market_open`` fails closed).
 """
 from __future__ import annotations
