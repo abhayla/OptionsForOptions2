@@ -229,7 +229,7 @@ def test_process_runner_must_be_classified(tmp_path):
 def test_baseline_accepts_known_hit_and_refuses_new_and_stale_entries(tmp_path, capsys):
     root = _tree(tmp_path, files=DOMAIN, test=TEST_Y)
     base = root / "baseline.json"
-    entry = {"key": "UNREACHED REQ-001 W-001 AC-1", "reason": "r", "issue": "owner decision"}
+    entry = {"key": "UNREACHED REQ-001 W-001 AC-1", "reason": "r - #532", "issue": "#532"}
     base.write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
     assert rc.main(["--root", str(root), "--baseline", str(base)]) == 0
     base.write_text(json.dumps({"entries": []}), encoding="utf-8")
@@ -272,3 +272,15 @@ def test_one_missing_test_file_among_real_ones_is_unresolved(tmp_path):
                  evidence_tests="tests/x/test_a.py tests/x/test_gone.py")
     hits = rc.find_hits(root)
     assert [h["kind"] for h in hits] == ["UNRESOLVED"] and "test_gone.py" in hits[0]["detail"]
+
+
+def test_baseline_reason_without_an_issue_reference_is_refused(tmp_path, capsys):
+    root = _tree(tmp_path, files=DOMAIN, test=TEST_Y)
+    base = root / "baseline.json"
+    entry = {"key": "UNREACHED REQ-001 W-001 AC-1", "reason": "owner decision", "issue": "#532"}
+    base.write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
+    assert rc.main(["--root", str(root), "--baseline", str(base)]) == 1
+    assert "REFUSED baseline reason without an issue reference" in capsys.readouterr().err
+    entry["reason"] = "unreached: ofo.x.y imported by no app entry point - #532"
+    base.write_text(json.dumps({"entries": [entry]}), encoding="utf-8")
+    assert rc.main(["--root", str(root), "--baseline", str(base)]) == 0

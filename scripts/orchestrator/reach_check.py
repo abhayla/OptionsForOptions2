@@ -2,6 +2,13 @@
 
 Finding: verified-on-a-module-the-product-does-not-call.
 
+WHAT IT GUARDS, AND WHAT IT DOES NOT. REACHED means IMPORTED, not called: a module counts as reached when any
+app entry module imports it, even for one dataclass (kite_replies.py imports BrokerOrderStatus from
+ofo.execution.partial). It guards one case: a tested module that no app entry point imports at all (the
+2026-10-17 REQ-058/060 case). NOT covered: a re-implementation that still imports one name from the tested
+module while the behaviour the criterion needs lives elsewhere. The check follows imports from the entry
+modules; it does not read `include_router`, so a route module nothing imports is not an entry.
+
 Usage: python scripts/orchestrator/reach_check.py [--root DIR] [--baseline FILE | --no-baseline] [--json]
 
 For every requirement whose status is Verified, or that an owning work item holds at in_review/done, each PASSING
@@ -47,6 +54,7 @@ DYNAMIC_NAMES = frozenset({"import_module", "__import__"})
 SCOPE_WORK_STATUS = frozenset({"in_review", "done"})
 BASELINE_NAME = "reach_check_baseline.json"
 MIN_TEST_PATH_PARTS = 3  # tests/<area>/<file>.py
+ISSUE_REF = re.compile(r"#\d+")
 TEST_TOKEN = re.compile(r"(?:tests_app|tests)/[A-Za-z0-9_/.\-]*")
 
 
@@ -432,6 +440,11 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError) as exc:
             print(f"reach_check: cannot use the baseline {path}: {exc}", file=sys.stderr)
             return 2
+    unlinked = sorted(k for k, e in baseline.items() if not ISSUE_REF.search(e["reason"]))
+    if unlinked:
+        for k in unlinked:
+            print(f"REFUSED baseline reason without an issue reference (#<number>): {k}", file=sys.stderr)
+        return 1
     hits = find_hits(root)
     keys = {h["key"] for h in hits}
     new = [h for h in hits if h["key"] not in baseline]
