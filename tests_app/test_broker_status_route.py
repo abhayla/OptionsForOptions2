@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from ofo.marketdata.feed_health import FEED_HEALTHY
+from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_RECONNECTING
 from ofo.marketdata.kite_provider import KiteProvider
 from ofo_app import broker_sync, live_market
 from ofo_app import broker_token_store as store
@@ -37,7 +37,7 @@ LATER = T0 + datetime.timedelta(minutes=5)
 EARLIER = T0 - datetime.timedelta(hours=2)
 #: The only keys a status reply may carry (an allow-list, never a list of banned names).
 REPLY_KEYS = frozenset({"account_connection", "live_market_data", "position_sync", "order_execution",
-                        "last_successful_sync", "historical_data", "state", "fix"})
+                        "last_successful_sync", "historical_data", "state", "fix", "live_market_closed"})
 FOUR = ("account_connection", "live_market_data", "position_sync", "order_execution")
 
 
@@ -79,6 +79,19 @@ def test_no_read_since_login_is_partial_and_a_read_before_login_does_not_count()
         assert _states(out)["position_sync"] == ("partial", "no_read_yet")
         assert _states(out)["order_execution"] == ("partial", "positions_not_synced")
         assert out.last_successful_sync is None
+
+
+@pytest.mark.parametrize(("when", "fix"), [
+    (datetime.datetime(2026, 10, 20, 10, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))),
+     "live_feed_market_closed"),  # the 2026-10-20 holiday
+    (datetime.datetime(2026, 10, 21, 10, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))),
+     "live_feed_reconnecting"),  # Wednesday, open: a socket backing off is a fault
+])
+def test_ac7_a_backing_off_socket_reads_by_the_calendar_not_by_the_phase_alone(when, fix):
+    """AC-7: the REAL calendar (ADR-119) decides: holiday 10:00 -> market closed; Wednesday 10:00 -> reconnecting."""
+    from ofo.market_calendar import is_market_open
+    out = build_status((T0, False), LATER, live_market.LIVE, FEED_RECONNECTING, is_market_open(when))
+    assert out.live_market_data.fix == fix
 
 
 def test_no_session_is_disconnected_with_the_guide_everywhere():

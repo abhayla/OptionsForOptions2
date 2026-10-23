@@ -454,7 +454,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"time": Clock}),
     # REQ-114 AC-7: outside market hours silence is expected; the what-happened part is the owner-cited wording.
     _gate("marketdata_market_closed", _MD, 124,
-          "Market closed - last price {time}.",
+          "Market closed. Prices are from {time}.",
           "Prices on screen are the last ones before the close; none are arriving, as expected.",
           "Live strategy monitoring until the market opens.", "Nothing to do; prices resume at the next open.",
           {"time": Clock}),

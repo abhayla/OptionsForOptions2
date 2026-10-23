@@ -32,6 +32,7 @@ import datetime
 import json
 import logging
 import random
+import re
 import sys
 from collections.abc import AsyncIterator as _AsyncIterator
 from collections.abc import Awaitable as _Awaitable
@@ -80,15 +81,20 @@ class _SessionEnded(Exception):
     pass
 
 
+_SESSION_TOKEN_ERROR = re.compile(r"\b(?:TokenException|access[ _]token)\b", re.IGNORECASE)
+
+
 def _is_token_error(message: str) -> bool:
-    """A text frame that says the session's token is no good: ``{"type": "error", "data": "...token..."}``. Any other
-    text (an order update, another error, text that is not JSON) is not: it never ends a session."""
+    """A text frame that says the SESSION's token is no good: ``{"type": "error", "data": "TokenException: ..."}`` or
+    an error naming the access token. An allow-list of those shapes (REQ-114 AC-6): any other text - an order update,
+    another error ("Invalid instrument token 123"), text that is not JSON - is not, and never ends a session; an unknown
+    error keeps reconnecting with back-off."""
     try:
         body = json.loads(message)
     except ValueError:
         return False
     return (isinstance(body, dict) and body.get("type") == "error" and isinstance(body.get("data"), str)
-            and "token" in body["data"].lower())
+            and _SESSION_TOKEN_ERROR.search(body["data"]) is not None)
 
 
 class KiteSocket:

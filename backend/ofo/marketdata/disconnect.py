@@ -34,7 +34,8 @@ def disconnect_message(last_updated: datetime.datetime) -> str:
 
 def market_closed_error(last_price: datetime.datetime) -> UserFacingError:
     """REQ-114 AC-7: outside market hours silence is expected; the catalogue template ``marketdata_market_closed``
-    ("Market closed - last price <time>.") says so instead of the disconnect text. ``last_price`` is timezone-aware."""
+    ("Market closed. Prices are from <time>.", ADR-177) says so instead of the disconnect text.
+    ``last_price`` is timezone-aware."""
     if not isinstance(last_price, datetime.datetime) or last_price.tzinfo is None:
         raise ValueError(f"last_price must be a timezone-aware datetime, got {last_price!r}")
     return render("marketdata_market_closed", time=last_price)

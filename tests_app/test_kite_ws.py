@@ -17,7 +17,12 @@ from ofo.instruments.parser import parse_instruments_csv
 from ofo.marketdata.kite_frames import iter_recording
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
-from ofo_app.kite_ws import SESSION_ENDED, STOPPED, KiteSocket
+from ofo_app.kite_ws import (
+    SESSION_ENDED,
+    STOPPED,
+    KiteSocket,
+    _is_token_error,
+)
 from websockets.asyncio.server import serve
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
@@ -253,6 +258,44 @@ async def test_a_token_error_text_frame_ends_the_session_without_a_retry(caplog)
     assert provider.feed.session_ended is True and provider.feed.health(NOW) is DataHealth.UNAVAILABLE
     assert any("session ended" in r.getMessage() and "user=U-4711" in r.getMessage() for r in caplog.records)
     assert not any(TOKEN in r.getMessage() for r in caplog.records)
+
+
+def test_the_token_check_is_an_allow_list_of_session_token_errors():
+    """AC-6: a TokenException or an access-token message is a session error; an error about an INSTRUMENT token (or any
+    unknown text) is not, so it keeps reconnecting with back-off instead of ending the user's session."""
+    def error(data):
+        return json.dumps({"type": "error", "data": data})
+
+    for data in ("TokenException: Invalid token", "Invalid or expired access token", "invalid access_token"):
+        assert _is_token_error(error(data)) is True, data
+    for data in ("Invalid instrument token 123", "Too many requests", "token", "InputException: bad token list", ""):
+        assert _is_token_error(error(data)) is False, data
+    assert _is_token_error(json.dumps({"type": "order", "data": "TokenException"})) is False
+    assert _is_token_error("TokenException not json") is False
+
+
+async def test_an_instrument_token_error_frame_does_not_end_the_session():
+    """AC-6 through the real socket: 'Invalid instrument token 123' is counted, the session lives on."""
+    done = asyncio.Event()
+
+    async def handler(ws):
+        await ws.recv()
+        await ws.send(json.dumps({"type": "error", "data": "Invalid instrument token 123"}))
+        done.set()
+        await ws.wait_closed()
+
+    provider = _provider()
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        sock = KiteSocket(provider, api_key=API_KEY, access_token=TOKEN, clock=lambda: NOW,
+                          base_url=f"ws://127.0.0.1:{port}", rng=NoJitter())
+        task = asyncio.create_task(sock.run())
+        await asyncio.wait_for(done.wait(), 10)
+        for _ in range(20):
+            await asyncio.sleep(0.05)
+        sock.stop()
+        assert await asyncio.wait_for(task, 10) == STOPPED
+    assert provider.feed.session_ended is False and sock.connections == 1
 
 
 async def test_other_text_frames_do_not_end_the_session():

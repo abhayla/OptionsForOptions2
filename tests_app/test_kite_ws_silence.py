@@ -22,6 +22,7 @@ import types
 from datetime import timedelta
 
 from _fake_kite_ws import API_KEY, START, TOKEN, FakeConnect, NoJitter, SimClock, Sleeper, new_provider, recorded_frames
+from ofo.marketdata.feed_health import FEED_RECONNECTING
 from ofo.rules.inputs import DataHealth
 from ofo_app.kite_ws import STOPPED, KiteSocket
 
@@ -63,9 +64,19 @@ async def test_core_silent_open_socket_is_closed_at_60s_and_reconnected_with_sta
              ("silence", 1)]
     rig = _build([conn1, conn2])
     holder.update(provider=rig.provider, clock=rig.clock)
-    rig.sleeper.on_sleep = probe("during_backoff")
+    states: dict[str, tuple[bool, str]] = {}
+
+    def back_off_probe() -> None:
+        probe("during_backoff")()
+        feed = rig.provider.feed
+        states["during_backoff"] = (feed.connected, feed.phase(rig.clock.now))
+
+    rig.sleeper.on_sleep = back_off_probe
 
     assert await rig.sock.run() == STOPPED
+    # AC-2: the drop marks the provider disconnected and the phase RECONNECTING during the back-off (kills A10:
+    # removing provider.on_disconnected from kite_ws._dropped)
+    assert states["during_backoff"] == (False, FEED_RECONNECTING)
 
     first, second = rig.connect.sockets
     assert first.closed_at - START == timedelta(seconds=SILENT)  # closed at exactly 60.0 s of silence

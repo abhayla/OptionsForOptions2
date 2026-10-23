@@ -232,7 +232,9 @@ def test_after_hours_a_session_end_still_says_so_and_a_flowing_feed_stays_connec
     ended = build_status((T0, False), LATER, live_market.current_state(), live_market.feed_phase(), False)
     assert ended.live_market_data.fix == "live_feed_session_ended"  # a genuine 403: Reconnect is the right advice
     reconnecting = build_status((T0, False), LATER, live_market.current_state(), FEED_RECONNECTING, False)
-    assert reconnecting.live_market_data.fix == "live_feed_reconnecting"
+    assert reconnecting.live_market_data.fix == "live_feed_market_closed"  # AC-7: closed in every phase but ended
+    open_day = build_status((T0, False), LATER, live_market.current_state(), FEED_RECONNECTING, True)
+    assert open_day.live_market_data.fix == "live_feed_reconnecting"
 
 
 def test_after_hours_a_stopped_socket_after_a_session_end_still_says_log_in_again():
@@ -317,3 +319,60 @@ def test_a_capped_feed_says_live_prices_are_not_available_in_and_out_of_market_h
     out = build_status((T0, False), LATER, live_market.current_state(), FEED_CAPPED, open_now)
     assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", "live_feed_capped")
     assert out.order_execution.fix == "live_data_not_connected"
+
+
+# ---- row 11 fix round 1 (REQ-114 AC-7, ADR-177): a closed market with the socket backing off reads market closed ----
+SATURDAY_10 = _ist(24, 10, 0)  # Sat 2026-10-24
+DUSSEHRA_10 = _ist(20, 10, 0)  # the 2026-10-20 holiday (a Tuesday)
+WEDNESDAY_10 = _ist(21, 10, 0)  # an open trading day
+
+
+def _backing_off_at(provider, clock, at):
+    """A price frame arrived at AT (Fri 15:07:20 IST), then the socket dropped at ``at`` and is backing off."""
+    provider.on_connected(AT)
+    _frame(provider, AT)
+    clock.now = at
+    provider.on_disconnected(at)
+
+
+async def test_core_saturday_10am_backoff_reads_market_closed_with_the_banner_text(market, provider, clock):
+    """AC-7 (CORE, verify r1 MAJOR): Sat 10:00 IST, socket in back-off: the REAL feed_phase() and the REAL route read
+    market closed - not reconnecting - and the reply carries the ADR-177 text with the last price's time in IST."""
+    from ofo.marketdata.feed_health import FEED_MARKET_CLOSED
+    _backing_off_at(provider, clock, SATURDAY_10)
+    assert market.running() and live_market.feed_phase() == FEED_MARKET_CLOSED
+    out = await broker_status(_Db(), "owner", clock)
+    assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", "live_feed_market_closed")
+    assert out.live_market_closed.what_happened == "Market closed. Prices are from 03:07:20 PM."  # AT, 15:07:20 IST
+
+
+@pytest.mark.parametrize(("at", "fix"), [
+    (DUSSEHRA_10, "live_feed_market_closed"),   # holiday
+    (SATURDAY_10, "live_feed_market_closed"),   # weekend
+    (_ist(21, 8, 0), "live_feed_market_closed"),  # closed by hours
+    (_ist(21, 16, 0), "live_feed_market_closed"),
+    (WEDNESDAY_10, "live_feed_reconnecting"),   # open day: backing off IS a fault
+    (datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST), "live_feed_market_closed"),  # no calendar data: never open
+])
+async def test_a_backing_off_socket_reads_by_the_calendar_in_every_answer_state(market, provider, clock, at, fix):
+    """Standing item (d): open / closed by hours / weekend / holiday / a date with no calendar data."""
+    _backing_off_at(provider, clock, at)
+    out = await broker_status(_Db(), "owner", clock)
+    assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", fix)
+    assert (out.live_market_closed is not None) == (fix == "live_feed_market_closed")
+
+
+async def test_a_market_closed_reply_with_no_price_ever_has_no_time_text(market, provider, clock):
+    """No price frame ever arrived: the fix says market closed; no time is invented (no text)."""
+    clock.now = SATURDAY_10
+    provider.on_disconnected(clock.now)
+    out = await broker_status(_Db(), "owner", clock)
+    assert out.live_market_data.fix == "live_feed_market_closed" and out.live_market_closed is None
+
+
+async def test_a_session_end_on_a_closed_day_still_says_log_in_again(market, provider, clock):
+    """Closed in every phase EXCEPT ENDED: a genuine 403 on Saturday is still a session to renew."""
+    _backing_off_at(provider, clock, SATURDAY_10)
+    provider.on_session_ended(clock.now)
+    out = await broker_status(_Db(), "owner", clock)
+    assert out.live_market_data.fix == "live_feed_session_ended" and out.live_market_closed is None

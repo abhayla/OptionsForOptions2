@@ -27,8 +27,9 @@ from typing import Callable, Optional  # noqa: UP035
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
+from ofo.market_calendar import is_market_open
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING
+from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_IDLE, FEED_MARKET_CLOSED, FEED_WAITING
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from redis.exceptions import RedisError
 
@@ -302,11 +303,23 @@ def feed_phase() -> str | None:
     phase = getattr(feed, "phase", None)
     if phase is None:
         return None
-    word = phase(market.feed.ctx.clock())
+    now = market.feed.ctx.clock()
+    word = phase(now, is_market_open(now))  # ADR-119 calendar: a closed market reads market closed (REQ-114 AC-7)
+    if word == FEED_MARKET_CLOSED and phase(now) == FEED_HEALTHY:
+        return FEED_HEALTHY  # prices still arriving are never relabelled as closed
     wanted = getattr(market.feed.ctx.provider, "subscribed_tokens", None)
     if word == FEED_WAITING and wanted is not None and not wanted():
         return FEED_IDLE  # socket up, nothing subscribed: no screen is open, nothing is expected to arrive
     return word
+
+
+def last_price_time() -> datetime.datetime | None:
+    """REQ-114 AC-7: when the running socket's provider last received a PRICE frame (never a heartbeat); None when no
+    socket runs, the provider keeps no feed state, or no price ever arrived."""
+    market = _current
+    if market is None or market.feed is None:
+        return None
+    return getattr(getattr(market.feed.ctx.provider, "feed", None), "last_price_at", None)
 
 
 def current_state() -> str:
