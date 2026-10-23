@@ -51,6 +51,11 @@
    "date": "2026-10-17",
    "where": "GC-2e W-101 (PR #365), branch built before #364 merged",
    "evidence": "CI lint-and-test: tests/marketdata/test_provider_replaceable.py::test_nothing_outside_the_kite_adapter_imports_the_kite_modules -> ofo_app/execute_replay.py imports KiteReads; 1 failed, 5334 passed."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "builder sequence row 20 (W-148) on chunk-2 merge 0e565969 (session 06fe7549)",
+   "evidence": "Two independent checkers and the builders ran only the row's own test files; CI App tests failed 5: tests_app/test_error_boundary_scan.py (routes/leg_edit.py imports fastapi.exceptions) and the order-route guard tests (leg_edit imports ofo.execution.freeze without require_order_path). Both scans run without a database and select_app_tests.py would have selected them. Brief change from now: every builder and checker brief runs the select_app_tests.py list's DB-free files, not only the row's own."
   }
  ]
 }
