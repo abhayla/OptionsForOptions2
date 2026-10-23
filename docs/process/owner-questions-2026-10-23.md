@@ -6,6 +6,10 @@
   0818d03f781c), smoke-tested (the 09:47 command refused exit 2; a PID kill and `git log` allowed exit 0). The user
   settings write is owner-only (the project gate refused it): the owner runs
   `scratchpad\wire_kill_guard.py` (idempotent, backup kept). Delivery tooling only - no product spec change.
+- WIRED 2026-10-23 12:42 IST: the owner sent the command twice from remote control (where `!` shell mode does not run);
+  run at the owner's instruction -> "wired; backup at ...settings.json.bak-20261023-124239"; the settings file is valid
+  JSON (entry at line 189); a harmless test `taskkill //IM zz-no-such-process-zz.exe //F` was BLOCKED by the hook in the
+  running session.
 
 ### Original question
 

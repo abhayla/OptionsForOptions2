@@ -24,9 +24,9 @@
     writes in builder-reqs: combine `.claude/project/hooks.json` (the chunk has the night hook, the process branch the
     kill guard - keep both), regenerate settings with `python tools/kit_settings.py <wt>` from the main checkout, then
     `tests/hooks` must pass (2 night-hook wiring tests fail on the process branch alone - expected).
-- **Kill guard at user level (Q276, owner approved):** installed in `~/.claude/hooks/kill-guard/`; the OWNER runs
-  `! python "D:/Abhay/scratch/ofo2-builder-sequence/wire_kill_guard.py"`
-  (the project gate refuses the settings write). Check whether it is wired before relying on it.
+- **Kill guard at user level (Q276): WIRED and LIVE since 2026-10-23 12:42** (run at the owner's instruction; backup
+  `settings.json.bak-20261023-124239`; a test `taskkill //IM ...` was BLOCKED). Any name-based kill is now refused in
+  every project; stop processes only by the PIDs you recorded.
 - **Owner decisions today:** ADR-170 (keep per-user feeds, ask Zerodha at the demo), ADR-171 (four rows in flight, binding
   overlap gate, one agent per worktree, older first), ADR-172 (IV from the bid-ask mid, else LTP), Q276 (kill guard on
   now). Open: Q273 (where Redis runs in production - ask at the first deploy brief).
