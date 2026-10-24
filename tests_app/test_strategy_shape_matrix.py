@@ -24,6 +24,10 @@ from ofo_app import strategy_store as store
 from test_strategy_closed_shape import INSERT_DEFINITION, _iron_condor_text
 from test_strategy_store import CHECK_VIOLATION, _user
 
+# The validator-pin test walks the migrations folder (_newest_validator_pins), a source-tree scan
+# (finding repo-wide-scan-outside-targeted-tests).
+pytestmark = pytest.mark.repo_scan
+
 INSERT_HISTORY = ("INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
                   "definition_schema_version) VALUES (:id, CAST(:s AS JSONB), CAST(:d AS JSONB), 1)")
 REORDERED = json.dumps([{"kind": "legs_reordered"}])

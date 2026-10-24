@@ -14,6 +14,17 @@
             "title": "Order Type",
             "type": "string"
           },
+          "planned_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Price"
+          },
           "price": {
             "title": "Price",
             "type": "string"
@@ -64,6 +75,7 @@
           "variety",
           "quantity",
           "price",
+          "planned_price",
           "readonly",
           "tag"
         ],

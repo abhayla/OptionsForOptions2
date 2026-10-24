@@ -91,6 +91,30 @@ afterEach(() => submitSpy.mockRestore())
 
 const posts = () => calls.filter(([m]) => m === 'POST').map(([, u, b]) => [u, b])
 
+describe('REQ-077 AC-8: the review shows the planned price and the order limit, per leg', () => {
+  const withPlanned = (planned) => ({ ...REPLY, orders: [{ ...REPLY.orders[0], price: '79.40', planned_price: planned }] })
+
+  async function review(reply) {
+    answers['POST /strategies/1/execute'] = ok(reply)
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-8: a typed planned price is shown next to the order limit, both as given', async () => {
+    const w = await review(withPlanned('81.30'))
+    expect(text(w, 'execute-planned-line')).toBe('NIFTY26O1923650CE: Your planned price 81.30 - order limit 79.40')
+  })
+
+  it('AC-8: a leg with no planned price shows only the order limit, never a made-up planned price', async () => {
+    const w = await review(withPlanned(null))
+    expect(text(w, 'execute-planned-line')).toBe('NIFTY26O1923650CE: Order limit 79.40')
+  })
+})
+
 describe('AC-1: live first, then the exact orders and cost, then Kite only on the owner click', () => {
   it('ADR-168: the strategy the Execute page follows live carries no level key', async () => {
     await openExecute('1', 10000)
