@@ -88,8 +88,8 @@ describe('ADR-168: one full builder screen, no level switch', () => {
   it('attack 4: no Guided, Standard or Advanced level text in the header or the details heading', async () => {
     const w = await openBuilder({})
     const header = w.find('[data-testid="strategy-header"]').text()
-    const heading = w.find('[data-testid="advanced-details"] h2').text()
-    expect(heading).toBe('Details')
+    const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
+    expect(heading).toBe('Details: bid and ask per leg')
     for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
       expect(header).not.toContain(word)
       expect(heading).not.toContain(word)
