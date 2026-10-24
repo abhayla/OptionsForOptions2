@@ -324,6 +324,21 @@
    "key": "UNRESOLVED REQ-077 W-149 AC-7",
    "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
    "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-2",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-3",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-4",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
   }
  ]
 }

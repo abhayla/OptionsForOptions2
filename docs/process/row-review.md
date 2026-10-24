@@ -159,6 +159,19 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 23 - REQ-119 Stale replies dropped (closed 2026-10-24, session f1b75d11, Done; W-151 in_review until PR #531)
+- A user sees: after fast edits the screen keeps the newest numbers (an older reply is dropped, the older request
+  cancelled with no error), the numbers marked updating and Execute off until the latest reply lands, never numbers
+  for another view or range, and an Execute built on an older saved version refused "Your plan changed - review it
+  again." before any order work, with the page re-reading the strategy.
+- Expected vs actual: unmeasured per row (session-end script). 23a: build (103 calls vs 80), Opus check FAIL (3 MAJOR
+  in the select_app_tests files the builder never ran), fix (92 calls vs a 48 stop), round 2 FAIL (model_copy on an
+  ApiModel raises - a stand-in test of the wrong base class hid it), independent Opus redesign, check PASS. 23b: build,
+  Opus check FAIL (a leg-edit reply cancelled a newer outcome request; the leg-edit request never sent the view), fix,
+  round 2 PASS.
+- Wrong: a test stand-in that does not share the real class's base proves nothing about the real class; the browser
+  copied Sensibull's request-id rule only after the owner asked whether Sensibull was being consulted.
+
 ### Row 22 - REQ-034 Outcome view and scenario levels (closed 2026-10-24, session f1b75d11, Done with AC-6 what-if part -> row 37; W-150 in_review until PR #531)
 - A user sees: the default level range now widens by the expected move (spot x ATM IV x sqrt(days/365); NIFTY on the
   recorded frames: 330 points), the per-leg Bid/Ask detail collapsed under "Details: bid and ask per leg", and the
