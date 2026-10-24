@@ -3,13 +3,14 @@
      number to compute another. The draft strategy is the legs picked in the LegPicker (W-068: only contracts the
      catalogue API offers); a `draft` query (a JSON body of legs with planned entry and capture time) still opens a
      draft. The outcome API's leg model needs a planned entry, so only priced legs are sent; a leg without one stays in
-     the picker's list with the not-connected wording. The UX level comes from `ux` (guided | standard | advanced).
-     States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced),
+     the picker's list with the not-connected wording. One level for everyone (ADR-168): an old `ux` query is ignored.
+     W-148 (REQ-076): leg rows with -/+, multiplier, tick; each edit is one POST /strategies/leg-edit and its reply is drawn.
+     States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced), left-out,
      refused, error, no-draft.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
@@ -19,13 +20,15 @@ import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
-import { advancedDetails } from '@/lib/strategyTable'
+import { legQuotes } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import LegList from '@/components/strategy/LegList.vue'
+import { applyEditReply, buildEditRequest, executeRefusal } from '@/lib/legEdit'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
@@ -39,7 +42,6 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
 const route = useRoute()
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
-const router = useRouter()
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
@@ -47,7 +49,6 @@ const errorAnsweredAt = ref(null) // the failed request's server answer time (it
 const slow = ref(false)
 let slowTimer = null
 
-const uxLevel = computed(() => (['guided', 'standard', 'advanced'].includes(route.query.ux) ? route.query.ux : 'standard'))
 
 function readDraft() {
   try {
@@ -84,6 +85,14 @@ if (linkRefused.value) {
   state.value = 'error'
   errorParts.value = INVALID_LINK_PARTS
 }
+// W-148 (REQ-076): the leg-edit state. The shape name is the server's (null until a reply named it); `updating` marks the
+// old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
+const shapeName = ref(null)
+const hasReply = ref(false)
+const updating = ref(false)
+const editError = ref(null)
+const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.included === false)
+let editSeq = 0
 let loadSeq = 0 // only the newest outcome answer is shown
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -97,7 +106,7 @@ async function load() {
   slow.value = false
   const draft = buildDraft(legs.value)
   if (!draft) {
-    state.value = legs.value.length ? 'unpriced' : 'no-draft'
+    state.value = legs.value.length ? (allLeftOut() ? 'left-out' : 'unpriced') : 'no-draft'
     data.value = null
     return
   }
@@ -106,7 +115,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value), fallback })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), fallback })
     if (mine !== loadSeq) return
     applyOutcome(res.data)
   } catch (e) {
@@ -163,7 +172,7 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value) })
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value) })
   else live.stop()
 }
 
@@ -185,33 +194,90 @@ const setLegs = (next) => {
   savedRevision.value = null
   linkRefused.value = false
   legs.value = next
+  hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
+  shapeName.value = null
+  editError.value = null
   load()
   syncLive()
+  readShape()
 }
+// REQ-076 AC-8: the shape name and Hedge marks come from the server on load and after Done, before any edit.
+function readShape() {
+  if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
+}
+const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
+  readShape()
 })
-watch(() => route.query.ux, () => {
-  load()
-  syncLive()
-})
+// REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
+// Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.
+async function editLeg(edit) {
+  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit)
+  if (!body) return
+  const mine = ++editSeq
+  updating.value = true
+  editError.value = null
+  try {
+    const reply = (await api.post('/strategies/leg-edit', body)).data
+    if (mine !== editSeq) return
+    if (edit.control === 'read') {
+      // changes no leg and no number: only the contract ids, the name and the Hedge marks are taken (load() owns the outcome)
+      if (Array.isArray(reply?.legs) && reply.legs.length === legs.value.length) {
+        legs.value = applyEditReply(legs.value, reply)
+        shapeName.value = reply.shape_name ?? null
+        hasReply.value = true
+      }
+      return
+    }
+    const keep = edit.control === 'include'
+    legs.value = applyEditReply(legs.value, reply)
+    if (!keep) {
+      savedId.value = null
+      savedRevision.value = null
+    }
+    shapeName.value = reply.shape_name ?? null
+    hasReply.value = true
+    loadSeq++ // the reply carries the numbers: an outcome request still in flight is obsolete
+    clearTimeout(slowTimer)
+    slow.value = false
+    if (reply.outcome) applyOutcome(reply.outcome)
+    else {
+      data.value = null
+      state.value = allLeftOut() ? 'left-out' : 'unpriced'
+    }
+    syncLive()
+  } catch (e) {
+    if (mine !== editSeq || edit.control === 'read') return // a failed read leaves the page as load() drew it, no error text
+    editError.value = e?.parts ?? NEUTRAL_PARTS
+  } finally {
+    if (mine === editSeq) updating.value = false
+  }
+}
+const picker = ref(null)
+// Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
+const openInPicker = (i) => {
+  const leg = legs.value[i]
+  if (leg) picker.value?.startEdit(leg)
+}
+const focusPicker = () => document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
+const refusal = computed(() => executeRefusal(legs.value))
 const setChoice = (next) => {
   choice.value = next
   load()
   syncLive()
 }
-const setUx = (ux) => router.replace({ query: { ...route.query, ux } })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
 const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
-const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
+const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 // ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
@@ -227,7 +293,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 </script>
 
 <template>
-  <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel" :data-live="live.status.value">
+  <section data-testid="strategy-builder" :data-state="state" :data-live="live.status.value">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
@@ -236,11 +302,15 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker :legs="legs" @update:legs="setLegs" />
+    <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
+    <LegList
+      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError"
+      @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
+    />
 
-    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
+    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
 
     <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
@@ -253,6 +323,11 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown because none of the legs has a planned entry from live market data.</p>
       <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+    </div>
+
+    <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
+      <p class="font-medium">Every leg is left out of the numbers.</p>
+      <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
     </div>
 
     <div v-else-if="state === 'error'" class="mt-4">
@@ -276,7 +351,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
     </div>
 
-    <template v-if="showNumbers">
+    <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
       <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
         <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
         <ul v-if="staleLegs.length">
@@ -303,14 +378,13 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
       <StrategyTable
         :table="data.table"
-        :ux-level="uxLevel"
         :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
-      <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
-      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
+      <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
+      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" :execute-refusal="refusal" @recalculate="load" />
       <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
-    </template>
+    </div>
   </section>
 </template>

@@ -1,6 +1,51 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 5 END (5db71e90), 2026-10-23 - START HERE (newest)
+## UPDATE session 6 (06fe7549), 2026-10-24 - START HERE (newest)
+"Session-6 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\06fe7549-4596-4e85-8261-0804902d0768\scratchpad`
+(`chunk2-notes.md` = per-row Measure results and decisions; `chunk2-deferred.md` = items for #532; helpers
+`render_brief.py` (make_brief render + open records of every named REQ + map-row append + both checks),
+`kitrun.py` (kit checkers from a worktree root), `wtrm-batch.ps1` / `wtnew.ps1` (user-level worktree tools by wrapper)).
+Chunk 1 merged before this session (PR #525). Chunk 2 = branch `build/seq-chunk-2`, draft PR #531, sequence worktree
+`D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
+- **DONE (rows close in order):**
+  - Row 17 (REQ-006+007 UX levels removed, W-145 in_review until #531): spec A1-A3 (ADRs, vision, invariants,
+    registers, 13 REQs, 89 re-pins + 134 amends citations, REQ-035 back to Approved), backend (one column set; outcome
+    route ignores a stray `ux_level`, `advanced_details` renamed `leg_quotes`, sent only for a COMPUTED answer), frontend
+    (no switch, no `?ux=`, no level in any request). Opus check + fix round 1 + round 2 PASS (`results-row-17.md`).
+  - Row 18 (REQ-035 strategy table, W-146 in_review): full-AC Opus check found AC-7's heading pair never reached the
+    screen; built (94077a89); round 2 PASS; evidence W-146 AC-1..8.
+  - Chunk 2 process item: `scripts/orchestrator/reach_check.py` + baseline (every entry cites #532/#528) + repo test;
+    checked twice. It reads only python tests (frontend-only evidence = UNRESOLVED by design) and "reached" = imported,
+    not called (row 18's AC-7 is exactly that gap).
+  - Chunk-1 conformance check (late): 13 MISS; tracker updated. Reference study for rows 17-24: RD-122..RD-163.
+  - Issue #532 = chunk 2's ONE deferred issue (reach-check hits + tooling); add items to its body, never a new issue.
+- **Row 19 CLOSED later this session** (W-147 in_review; live check pending: AC-6 futures price at row 63): backend
+  Opus check + MINOR fixes, frontend Sonnet check, fix round 1 (one lease per viewer; visible selection list), round 2
+  PASS; evidence W-147 AC-1..8.
+- **Row 20 IN FLIGHT** (worktree `-row20`, branch `build/seq-row-20`): backend merged into the chunk and checked (Sonnet,
+  9 mutants killed, all backend ACs pass); REQ-076 AC-6's example corrected (0744041e: a naked short put is bounded by
+  its strike). Frontend built (463dca78) but fix round 1 running (brief `row20/brief-20fix2.md`): money guard red,
+  a stepped leg not savable (reply lacks the instrument id), two leg lists, shape name only after the first edit. Then
+  a frontend check, then close (evidence AC-1..10).
+- **NEXT, in order:** row 20 close -> row 21 (REQ-077 typed price/Reset/moved marker; shares 6 files with row 20;
+  notes in `chunk2-notes.md`) -> row 22 (REQ-034: the product never calls ofo/scenario/outcome.py; what-if inputs
+  missing) -> 23 (REQ-119: server-echoed seq, abort, Execute version check) -> 24 (REQ-133: versioned socket frames)
+  -> chunk COPY builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check.
+- **Budget overruns are now 11 occurrences** of `builder-budget-is-prose` (two tonight: 119 and 142 calls vs 80);
+  the dispatch prompt itself now carries "HARD STOP at <80%> of your calls" - keep doing that.
+- **Worktrees to remove when #531 merges** (wt-rm refuses before: merged into the chunk branch, not main; use
+  `-Discard -MergedSha <merge sha>`): `-row17a2`, `-row17b2`, `-row18`, `-OptionsForOptions2-chunk2-process` (odd name:
+  wt-new prefixes the repo name), later `-row19`. An empty locked harness worktree `agent-a59c99e84c09acee8` sits under
+  the project's hidden worktrees folder (9d885bda).
+- **Process lessons this session:** (1) always run overlap_gate.py before ANY row-ahead dispatch (missed once, new
+  finding); (2) a data-feature brief lists the plumbing between decoder and route (provider, feed health), not only the
+  endpoints - row 19's narrow list shipped values always null in production; (3) a merge in progress makes the overlap
+  gate count the whole chunk diff - resolve and commit first; (4) `test_row_review_log.py` still needs `### Row N` per
+  closed row and `### Meta review after row N` every 3rd row (short form is fine); (5) Tier A items stay `in_review`
+  until the chunk PR merges (trace_check wants review_status naming the PR); (6) a builder may rename a response field
+  beyond its brief - read its report for "beyond the brief" and grep the other side before merging.
+
+## UPDATE session 5 END (5db71e90), 2026-10-23 (older)
 "Session-5 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\5db71e90-61e3-4f1b-8a6c-a0ee38c54e11\scratchpad`
 (attack scripts of every review are there: `review-a1..a3`, `review2-*`, `verify-*`).
 Chunk 1 = PR #525. The kit merge gate cannot read a PR of 300+ files (687 here; kit #163), so the owner approved ONE

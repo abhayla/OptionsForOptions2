@@ -76,8 +76,7 @@ def test_master_status_and_metadata(replayed):
 
 def test_unsupported_operations_raise_not_supported(replayed):
     provider, _, _ = replayed
-    with pytest.raises(NotSupported):
-        provider.futures_quote("NIFTY", datetime.date(2026, 10, 27))
+    assert provider.futures_quote("NIFTY", datetime.date(2026, 10, 27)) is None  # REQ-080 AC-6: none held, no tick
     with pytest.raises(NotSupported):
         provider.historical(NIFTY_CE_ID, datetime.datetime(2026, 10, 8, tzinfo=IST), datetime.datetime(2026, 10, 8, tzinfo=IST))
 

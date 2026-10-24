@@ -1,0 +1,18 @@
+{
+  "id": "RD-145",
+  "kind": "COPY",
+  "title": "Typed entry price with an edited marker (G-21-1)",
+  "reference_behaviour": "The price box on each leg is editable; an edited price gets a small corner marker and that leg's figures use it.",
+  "reference_screens": [
+    "screen 112",
+    "screen 210"
+  ],
+  "ours": "REQ-077 AC-1 to AC-3 typed price, labelled Your price, is not built.",
+  "req": "REQ-077",
+  "ac": "AC-1",
+  "row": 21,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

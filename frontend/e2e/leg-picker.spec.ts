@@ -92,3 +92,47 @@ test('without live data the leg is added with no price and the not-connected wor
   for (const id of ['strategy-table', 'payoff-chart', 'summary-cards']) await expect(page.getByTestId(id)).toHaveCount(0)
   await page.screenshot({ path: `screenshots/leg-picker-unpriced-${info.project.name}.png`, fullPage: true })
 })
+
+// W-147 / REQ-080: the Strikes tab and the depth popup. Only the two /api/leg-picker reads are answered here (the backend
+// reads are proven in tests_app/test_leg_picker_routes.py; this API has no feed in e2e), with the exact shape of
+// routes/leg_picker.py StrikesOut / DepthOut using the recorded NIFTY 13-Oct-2026 tokens of CONTRACTS above. The planned-entry
+// capture is the REAL route of the plain API: no provider, so each leg comes back unpriced and asks for a reprice.
+const NOW = '2026-10-08T09:20:09+05:30'
+const pickerCell = (token: number) => ({
+  instrument_id: `NSE_FO:${token}`, lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null,
+})
+const STRIKES = {
+  state: 'NOT_LIVE', reason: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: null, spot_at: null,
+  centre: 'MIDDLE_STRIKE', atm_strike: null, answered_at: NOW, market_closed: false,
+  rows: [
+    { strike: '22400.00', is_atm: false, ce: null, pe: pickerCell(44604) },
+    { strike: '22800.00', is_atm: false, ce: pickerCell(44624), pe: null },
+  ],
+}
+const DEPTH_NOT_AVAILABLE = {
+  state: 'NOT_AVAILABLE', reason: 'NO_SESSION', instrument_id: 'NSE_FO:44624', bids: [], asks: [], day_open: null, day_high: null,
+  day_low: null, prev_close: null, last_trade_at: null, day_stats_reason: 'NOT_HELD', read_at: NOW,
+}
+
+test('Strikes tab without live data: dashes and the reason, two selected contracts added by Done, depth says not available', async ({ page }) => {
+  await seedCatalogue(page)
+  await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: STRIKES }))
+  await page.route('**/api/leg-picker/depth**', (r) => r.fulfill({ json: DEPTH_NOT_AVAILABLE }))
+  await page.goto(`${PLAIN_URL}/strategy/builder`)
+  await page.getByTestId('pick-expiry').selectOption('2026-10-13')
+  await expect(page.getByTestId('strikes-reason')).toHaveText('Live data is not connected, so no prices are shown.')
+  await expect(page.getByTestId('strikes-centre')).toContainText('ATM unknown - no live price')
+  await expect(page.getByTestId('strike-row')).toHaveCount(2)
+  await expect(page.getByTestId('cell-ltp').first()).toHaveText('-')
+  await page.getByTestId('cell-pe').getByTestId('cell-sell').click()
+  await page.getByTestId('cell-ce').getByTestId('cell-buy').click()
+  await page.getByTestId('picker-done').click()
+  await expect(page.getByTestId('leg-row')).toHaveCount(2)
+  await expect(page.getByTestId('leg-reprice-prompt')).toHaveCount(2)
+  await page.getByTestId('depth-icon').first().click()
+  await expect(page.getByTestId('depth-unavailable')).toContainText('Depth not available')
+  await expect(page.getByTestId('depth-reason')).toHaveText('The broker account is not connected.')
+  await expect(page.getByTestId('depth-table')).toHaveCount(0)
+  await page.getByTestId('depth-close').click()
+  await expect(page.getByTestId('depth-popup')).toHaveCount(0)
+})

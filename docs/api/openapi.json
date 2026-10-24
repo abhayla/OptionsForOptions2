@@ -1,78 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdvancedLegOut": {
-        "additionalProperties": false,
-        "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read).",
-        "properties": {
-          "ask": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ask"
-          },
-          "bid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bid"
-          },
-          "health": {
-            "anyOf": [
-              {
-                "enum": [
-                  "available",
-                  "stale",
-                  "delayed",
-                  "unhealthy",
-                  "unavailable"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Health"
-          },
-          "instrument_id": {
-            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
-            "title": "Instrument Id",
-            "type": "string"
-          },
-          "symbol": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Symbol"
-          }
-        },
-        "required": [
-          "instrument_id",
-          "symbol",
-          "bid",
-          "ask",
-          "health"
-        ],
-        "title": "AdvancedLegOut",
-        "type": "object"
-      },
       "BasketOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -85,6 +13,17 @@
             "const": "LIMIT",
             "title": "Order Type",
             "type": "string"
+          },
+          "planned_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Price"
           },
           "price": {
             "title": "Price",
@@ -136,6 +75,7 @@
           "variety",
           "quantity",
           "price",
+          "planned_price",
           "readonly",
           "tag"
         ],
@@ -966,6 +906,169 @@
         "title": "DefinitionOut",
         "type": "object"
       },
+      "DepthLevelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "price",
+          "quantity"
+        ],
+        "title": "DepthLevelOut",
+        "type": "object"
+      },
+      "DepthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/DepthLevelOut"
+            },
+            "title": "Asks",
+            "type": "array"
+          },
+          "bids": {
+            "items": {
+              "$ref": "#/components/schemas/DepthLevelOut"
+            },
+            "title": "Bids",
+            "type": "array"
+          },
+          "day_high": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day High"
+          },
+          "day_low": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Low"
+          },
+          "day_open": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Open"
+          },
+          "day_stats_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NOT_OFFERED",
+                  "NOT_HELD",
+                  "FEED_NOT_HEALTHY",
+                  "PACKET_WITHOUT_DAY_FIELDS"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Stats Reason"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "last_trade_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Trade At"
+          },
+          "prev_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Close"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NO_SESSION",
+                  "FEED_STALE",
+                  "NOT_STREAMING",
+                  "NO_DEPTH_RECEIVED",
+                  "DEPTH_EMPTY"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "AVAILABLE",
+              "NOT_AVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "instrument_id",
+          "bids",
+          "asks",
+          "day_open",
+          "day_high",
+          "day_low",
+          "prev_close",
+          "last_trade_at",
+          "day_stats_reason",
+          "read_at"
+        ],
+        "title": "DepthOut",
+        "type": "object"
+      },
       "DetectionOut": {
         "additionalProperties": false,
         "properties": {
@@ -1050,6 +1153,307 @@
           "disconnected"
         ],
         "title": "DisconnectOut",
+        "type": "object"
+      },
+      "EditIn": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "enum": [
+              "step",
+              "multiplier",
+              "include",
+              "price",
+              "reset_prices",
+              "read"
+            ],
+            "title": "Control",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  1,
+                  -1
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "included": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 20.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "multiplier": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplier"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{1,7}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          }
+        },
+        "required": [
+          "control"
+        ],
+        "title": "EditIn",
+        "type": "object"
+      },
+      "EditLegIn": {
+        "additionalProperties": false,
+        "description": "A builder leg: the outcome route's leg plus the multiplier's base lots, the tick and the typed mark. The entry\nmay be absent (a contract with no live price yet). ``extra=\"forbid\"`` keeps other state out.",
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "base_lots": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Base Lots",
+            "type": "integer"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "included": {
+            "default": true,
+            "title": "Included",
+            "type": "boolean"
+          },
+          "instrument_id": {
+            "examples": [
+              "NSE_FO:44624"
+            ],
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lots": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Lots",
+            "type": "integer"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "pattern": "^\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
+          },
+          "typed": {
+            "default": false,
+            "title": "Typed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "action",
+          "lots",
+          "base_lots"
+        ],
+        "title": "EditLegIn",
+        "type": "object"
+      },
+      "EditLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "base_lots": {
+            "title": "Base Lots",
+            "type": "integer"
+          },
+          "block": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "hedge": {
+            "title": "Hedge",
+            "type": "boolean"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
+          },
+          "price_source": {
+            "enum": [
+              "captured",
+              "typed",
+              "none"
+            ],
+            "title": "Price Source",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "contract_id",
+          "lot_size",
+          "action",
+          "instrument",
+          "strike",
+          "expiry",
+          "lots",
+          "base_lots",
+          "quantity",
+          "planned_entry",
+          "captured_at",
+          "price_source",
+          "included",
+          "hedge",
+          "block"
+        ],
+        "title": "EditLegOut",
         "type": "object"
       },
       "EntryOut": {
@@ -1224,6 +1628,235 @@
           "held"
         ],
         "title": "FeaturesOut",
+        "type": "object"
+      },
+      "ForwardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "forward": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forward"
+          },
+          "label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SPOT_MISSING",
+                  "NOT_PRICEABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "parity",
+                  "spot_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "strikes_used": {
+            "title": "Strikes Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expiry",
+          "forward",
+          "source",
+          "label",
+          "strikes_used",
+          "reason"
+        ],
+        "title": "ForwardOut",
+        "type": "object"
+      },
+      "FutureOut": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "ltp_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NOT_OFFERED",
+                  "NOT_STREAMABLE",
+                  "NO_QUOTE",
+                  "FEED_STALE",
+                  "NOT_LIVE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Reason"
+          }
+        },
+        "required": [
+          "expiry",
+          "instrument_id",
+          "lot_size",
+          "ltp",
+          "health",
+          "ltp_reason"
+        ],
+        "title": "FutureOut",
+        "type": "object"
+      },
+      "FuturesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "forwards": {
+            "items": {
+              "$ref": "#/components/schemas/ForwardOut"
+            },
+            "title": "Forwards",
+            "type": "array"
+          },
+          "futures": {
+            "items": {
+              "$ref": "#/components/schemas/FutureOut"
+            },
+            "title": "Futures",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CATALOGUE_UNREADABLE",
+                  "CATALOGUE_EMPTY",
+                  "NOT_CONNECTED",
+                  "SPOT_MISSING"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_LIVE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "underlying",
+          "spot",
+          "futures",
+          "forwards",
+          "answered_at"
+        ],
+        "title": "FuturesOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1408,6 +2041,170 @@
         "title": "IndicesOut",
         "type": "object"
       },
+      "LegEditIn": {
+        "additionalProperties": false,
+        "properties": {
+          "edit": {
+            "$ref": "#/components/schemas/EditIn"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/EditLegIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "view": {
+            "default": "at_expiry",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs",
+          "edit"
+        ],
+        "title": "LegEditIn",
+        "type": "object"
+      },
+      "LegEditOut": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/EditLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shape": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape"
+          },
+          "shape_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape Name"
+          }
+        },
+        "required": [
+          "legs",
+          "shape",
+          "shape_name",
+          "outcome"
+        ],
+        "title": "LegEditOut",
+        "type": "object"
+      },
+      "LegQuoteOut": {
+        "additionalProperties": false,
+        "description": "REQ-035 AC-5 / ADR-168 (5): Bid/Ask for everyone, in the leg quotes. Taken from the same snapshot as the table (one read).",
+        "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "symbol",
+          "bid",
+          "ask",
+          "health"
+        ],
+        "title": "LegQuoteOut",
+        "type": "object"
+      },
       "LevelOut": {
         "additionalProperties": false,
         "properties": {
@@ -1561,16 +2358,6 @@
             "title": "Underlying",
             "type": "string"
           },
-          "ux_level": {
-            "default": "standard",
-            "enum": [
-              "guided",
-              "standard",
-              "advanced"
-            ],
-            "title": "Ux Level",
-            "type": "string"
-          },
           "view": {
             "default": "at_expiry",
             "enum": [
@@ -1591,20 +2378,6 @@
       "OutcomeResponse": {
         "additionalProperties": false,
         "properties": {
-          "advanced_details": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/AdvancedLegOut"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Advanced Details"
-          },
           "answered_at": {
             "format": "date-time",
             "title": "Answered At",
@@ -1621,6 +2394,20 @@
               }
             ],
             "title": "Last Price At"
+          },
+          "leg_quotes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LegQuoteOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leg Quotes"
           },
           "legs": {
             "items": {
@@ -1743,15 +2530,6 @@
             "title": "Underlying",
             "type": "string"
           },
-          "ux_level": {
-            "enum": [
-              "guided",
-              "standard",
-              "advanced"
-            ],
-            "title": "Ux Level",
-            "type": "string"
-          },
           "valuation": {
             "anyOf": [
               {
@@ -1768,7 +2546,6 @@
         "required": [
           "state",
           "underlying",
-          "ux_level",
           "status_label",
           "reason",
           "output_label",
@@ -1812,6 +2589,140 @@
           "points"
         ],
         "title": "PayoffOut",
+        "type": "object"
+      },
+      "PickerCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "health": {
+            "enum": [
+              "available",
+              "stale",
+              "delayed",
+              "unhealthy",
+              "unavailable"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "iv_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv Percent"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "lot_size",
+          "ltp",
+          "oi",
+          "iv_percent",
+          "delta",
+          "health",
+          "at"
+        ],
+        "title": "PickerCellOut",
+        "type": "object"
+      },
+      "PickerRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ce": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PickerCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_atm": {
+            "title": "Is Atm",
+            "type": "boolean"
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PickerCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strike",
+          "is_atm",
+          "ce",
+          "pe"
+        ],
+        "title": "PickerRowOut",
         "type": "object"
       },
       "PlacedLegOut": {
@@ -2959,6 +3870,132 @@
         "title": "StrategyUpdateIn",
         "type": "object"
       },
+      "StrikesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "atm_strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atm Strike"
+          },
+          "centre": {
+            "enum": [
+              "LIVE_SPOT",
+              "LAST_KNOWN_SPOT",
+              "MIDDLE_STRIKE"
+            ],
+            "title": "Centre",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "market_closed": {
+            "title": "Market Closed",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CATALOGUE_UNREADABLE",
+                  "CATALOGUE_EMPTY",
+                  "EXPIRY_UNKNOWN",
+                  "NOT_CONNECTED",
+                  "SPOT_MISSING",
+                  "FEED_STALE",
+                  "WAITING_FOR_PRICES",
+                  "SOME_PRICES_MISSING"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PickerRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_LIVE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "underlying",
+          "expiry",
+          "width",
+          "spot",
+          "spot_at",
+          "centre",
+          "atm_strike",
+          "rows",
+          "answered_at",
+          "market_closed"
+        ],
+        "title": "StrikesOut",
+        "type": "object"
+      },
       "TableOut": {
         "additionalProperties": false,
         "properties": {
@@ -2983,6 +4020,11 @@
               "$ref": "#/components/schemas/RowOut"
             },
             "title": "Rows",
+            "type": "array"
+          },
+          "scenario_heading": {
+            "items": {},
+            "title": "Scenario Heading",
             "type": "array"
           },
           "spot_at": {
@@ -3022,6 +4064,7 @@
           "spot_level",
           "spot_at",
           "output_label",
+          "scenario_heading",
           "columns",
           "rows"
         ],
@@ -4498,6 +5541,154 @@
         "summary": "Expiries"
       }
     },
+    "/api/leg-picker/depth": {
+      "get": {
+        "operationId": "leg_picker_depth_api_leg_picker_depth_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "instrument_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+              "title": "Instrument Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Picker Depth"
+      }
+    },
+    "/api/leg-picker/futures": {
+      "get": {
+        "operationId": "leg_picker_futures_api_leg_picker_futures_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": true,
+            "schema": {
+              "enum": [
+                "NIFTY",
+                "SENSEX"
+              ],
+              "title": "Underlying",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuturesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Picker Futures"
+      }
+    },
+    "/api/leg-picker/strikes": {
+      "get": {
+        "operationId": "leg_picker_strikes_api_leg_picker_strikes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": true,
+            "schema": {
+              "enum": [
+                "NIFTY",
+                "SENSEX"
+              ],
+              "title": "Underlying",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expiry",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Expiry",
+              "type": "string"
+            }
+          },
+          {
+            "description": "strikes either side of ATM: 10, 20, 30 or 40",
+            "in": "query",
+            "name": "width",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "strikes either side of ATM: 10, 20, 30 or 40",
+              "title": "Width",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrikesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Picker Strikes"
+      }
+    },
     "/api/market/chain": {
       "get": {
         "operationId": "market_chain_api_market_chain_get",
@@ -4615,6 +5806,44 @@
           }
         },
         "summary": "Market Indices"
+      }
+    },
+    "/api/strategies/leg-edit": {
+      "post": {
+        "operationId": "leg_edit_api_strategies_leg_edit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegEditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegEditOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leg Edit"
       }
     },
     "/api/strategies/load-template": {

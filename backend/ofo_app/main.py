@@ -41,6 +41,8 @@ from ofo_app.routes import (
     features,
     health,
     indices,
+    leg_edit,
+    leg_picker,
     live,
     outcome,
     planned_entry,
@@ -80,6 +82,33 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         live_market.set_current(None)  # a login arriving now finds no market (#296)
         await market.close()
     await close_db()
+
+
+def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
+    """Every router and door socket, in the one order the app has always mounted them (one include per route)."""
+    app.include_router(health.router)
+    app.include_router(outcome.router)
+    errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
+    errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
+    app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
+    app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
+    errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
+    app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
+    app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
+    broker.mount(app, config)
+    app.include_router(broker_capabilities.router)  # W-132: the seven named broker flags (read-only, no DB)
+    app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
+    app.include_router(zerodha_account.router)  # RD-013: masked Zerodha id + Zerodha's own margin (read only)
+    app.include_router(strategies.router)  # W-061: Save Draft and activity history
+    app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
+    app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
+    app.include_router(features.router)  # W-121: which switchable features are on (the order path)
+    app.include_router(ready_made.router)  # W-125: ready-made shapes, held (Q211)
+    app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
+    app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
+    app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
+    app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
 
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
@@ -122,25 +151,5 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         from ofo_app import execute_replay  # noqa: PLC0415 - only here: production never reads test fixtures
         # Execute + return answer from the recorded 2026-10-16 replies, no live session
         app.dependency_overrides.update(execute_replay.overrides())
-    app.include_router(health.router)
-    app.include_router(outcome.router)
-    errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
-    errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
-    app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
-    errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
-    app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
-    app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
-    broker.mount(app, config)
-    app.include_router(broker_capabilities.router)  # W-132: the seven named broker flags (read-only, no DB)
-    app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
-    app.include_router(zerodha_account.router)  # RD-013: masked Zerodha id + Zerodha's own margin (read only)
-    app.include_router(strategies.router)  # W-061: Save Draft and activity history
-    app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
-    app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
-    app.include_router(features.router)  # W-121: which switchable features are on (the order path)
-    app.include_router(ready_made.router)  # W-125: ready-made shapes, held (Q211)
-    app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
-    app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
-    app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
-    app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
+    _mount_routes(app, config)
     return app

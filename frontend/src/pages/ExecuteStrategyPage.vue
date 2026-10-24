@@ -75,7 +75,7 @@ onMounted(async () => {
   liveTimer = setTimeout(() => {
     if (phase.value === 'waiting-live') notLive()
   }, props.waitMs)
-  live.follow({ ...draft, ux_level: 'standard' })
+  live.follow({ ...draft })
 })
 onBeforeUnmount(() => clearTimeout(liveTimer))
 
@@ -122,6 +122,13 @@ async function prepare(action) {
           </tr>
         </tbody>
       </table>
+      <ul class="mt-1 text-sm" data-testid="execute-planned-vs-limit">
+        <li v-for="o in reply.orders" :key="o.tag" data-testid="execute-planned-line">
+          {{ o.tradingsymbol }}:
+          <template v-if="o.planned_price">Your planned price {{ o.planned_price }} - order limit {{ o.price }}</template>
+          <template v-else>Order limit {{ o.price }}</template>
+        </li>
+      </ul>
       <ExecuteCost v-if="reply.cost" :cost="reply.cost" />
       <p v-else class="mt-2 text-sm" data-testid="cost-unavailable">The cost of these orders is not available.</p>
       <BasketForm :reply="reply" :strategy-id="strategyId" @sent="sent = true" />

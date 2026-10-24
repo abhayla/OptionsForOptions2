@@ -21,7 +21,7 @@ class FakeEvents {
   fireOnline() { [...this.handlers].forEach((fn) => fn()) }
 }
 
-const BODY = { underlying: 'NIFTY', legs: [], ux_level: 'standard' }
+const BODY = { underlying: 'NIFTY', legs: [] }
 let online
 let events
 

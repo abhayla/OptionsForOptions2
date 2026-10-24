@@ -1,0 +1,18 @@
+{
+  "id": "RD-153",
+  "kind": "COPY",
+  "title": "Target level and target date what-if controls (G-22-1)",
+  "reference_behaviour": "A NIFTY Target slider with a numeric box and a Date slider with arrow stepping, each with Reset; projected P&L, the breakeven at the target date and a projected-P&L badge recompute at once.",
+  "reference_screens": [
+    "screen 020",
+    "screen 021"
+  ],
+  "ours": "REQ-034 AC-6 target level and date inputs (ADR-151) are not built; the controls only switch At Expiry / Estimated Now and set a range.",
+  "req": "REQ-034",
+  "ac": "AC-6",
+  "row": 22,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "RD-130",
+  "kind": "COPY",
+  "title": "Strike IV and delta shown to every user (G-19-2)",
+  "reference_behaviour": "The picker offers LTP, OI and Greeks column sets to every user; none is limited to an advanced level.",
+  "reference_screens": [
+    "screen 032",
+    "screen 033"
+  ],
+  "ours": "REQ-080 AC-2 adds IV and delta only at the Advanced level (ADR-056). ADR-168 (4)(5) removes levels; with the picker not built, build it without the gate.",
+  "req": "REQ-080",
+  "ac": "AC-2",
+  "row": 19,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

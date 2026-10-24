@@ -21,7 +21,8 @@ predefined conditions and controlled execution. It does not promise returns or t
 
 ## Who
 Primary: beginners and intermediate options traders. Advanced users are supported. *Simple on the surface,
-sophisticated underneath* — three UX levels (Guided, Standard, Advanced).
+sophisticated underneath* — one full screen for everyone; beginners are helped by plain definitions on every figure
+(REQ-136) and plain outcome sentences (ADR-168 (5)); guided creation stays its own Create Strategy screen.
 
 ## What it is not
 A Kite clone · an unrestricted trading terminal or order form · an AI investment-advice chatbot · an autonomous

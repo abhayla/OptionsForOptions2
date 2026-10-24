@@ -1,0 +1,18 @@
+{
+  "id": "RD-128",
+  "kind": "MATCH",
+  "title": "The current market level is highlighted in the scenario view",
+  "reference_behaviour": "In the Payoff Table the current price row is highlighted.",
+  "reference_screens": [
+    "screen 017",
+    "screen 212"
+  ],
+  "ours": "The current market level column is highlighted in the scenario columns.",
+  "req": "REQ-035",
+  "ac": "AC-3",
+  "row": 18,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

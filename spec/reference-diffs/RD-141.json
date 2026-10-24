@@ -1,0 +1,18 @@
+{
+  "id": "RD-141",
+  "kind": "COPY",
+  "title": "Lots or quantity for every user on the leg row (G-20-3)",
+  "reference_behaviour": "The Lots or Qty setting applies to the whole builder for every user; quantity shows units (65, 130, 195).",
+  "reference_screens": [
+    "screen 025",
+    "screen 244"
+  ],
+  "ours": "REQ-076 AC-5 shows quantity only at Advanced (REQ-030 AC-7). ADR-168 removes levels.",
+  "req": "REQ-076",
+  "ac": "AC-5",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

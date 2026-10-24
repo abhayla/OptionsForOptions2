@@ -1,0 +1,17 @@
+{
+  "id": "RD-127",
+  "kind": "MATCH",
+  "title": "Per-leg entry price, LTP and P&L with a Total row",
+  "reference_behaviour": "The P&L Table gives each leg its entry price, last traded price and projected P&L, and ends with a Total row.",
+  "reference_screens": [
+    "screen 014"
+  ],
+  "ours": "The strategy table carries Entry Price, LTP, Unrealized P&L per leg and a TOTAL row, from one engine.",
+  "req": "REQ-035",
+  "ac": "AC-2",
+  "row": 18,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

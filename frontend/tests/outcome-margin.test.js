@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import STATES from './fixtures/outcome-margin-states.json'
-import CONDOR from './fixtures/outcome-condor-advanced.json'
+import CONDOR from './fixtures/outcome-condor.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const ON = { basket_margin_quote: true } // REQ-117: the flag the margin line asks

@@ -1,0 +1,18 @@
+{
+  "id": "RD-147",
+  "kind": "COPY",
+  "title": "Per-leg reset is an extra of ours (G-21-3)",
+  "reference_behaviour": "Only one Reset Prices action for the whole strategy exists; no per-leg reset was seen.",
+  "reference_screens": [
+    "screen 011",
+    "screen 211"
+  ],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-077 AC-5 also gives a per-leg reset; copying drops it. For the owner's batch.",
+  "req": "REQ-077",
+  "ac": "AC-5",
+  "row": 21,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

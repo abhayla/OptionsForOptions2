@@ -36,7 +36,7 @@ class FakeSocket {
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 
-const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
+const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }] }
 const T1 = '2026-10-19T05:32:10+00:00' // 11:02:10 IST
 const T1_TEXT = 'Reconnecting - prices as of 11:02:10'
 const OUTCOME = (ltp, at = T1) => ({ state: 'COMPUTED', answered_at: at, last_price_at: at, legs: [{ instrument_id: 'NSE_FO:44626', ltp, label: null }] })

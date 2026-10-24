@@ -159,6 +159,101 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 20 - REQ-076 Leg rows (closed 2026-10-24, session 06fe7549, Done; W-148 in_review until PR #531)
+- A user sees: one leg list on the builder with -/+ strike steps (listed strikes only), a 1-50 multiplier, an include
+  tick ("Left out of the numbers"), the matched template name with Hedge marks from the server, a Lots/Quantity switch,
+  Edit, Reprice and a depth icon per leg; Execute is refused while any leg is unticked.
+- Expected vs actual: unmeasured per row (session-end script). Agents: backend build (142 calls - hit the 100-turn
+  cap), backend finisher, backend check, frontend build, fix round 1 (17 frontend tests left red), finisher (classified
+  every red: a test mock, no hidden regression), frontend check (AC-5 partial), fix, round 2 PASS.
+- Wrong: REQ-076 AC-6's own example was mathematically false (a naked short put is bounded by its strike) - corrected
+  in the spec; my brief copied it from the spec; one fix round removed Edit/Reprice (caught by the orchestrator).
+
+### Row 19 - REQ-080 Leg picker (closed 2026-10-24, session 06fe7549, Done; W-147 in_review until PR #531; live check pending AC-6 futures price)
+- A user sees: a leg picker with Strikes and Futures tabs (prices, OI, engine IV and delta per strike, ATM highlighted,
+  10/20/30/40 strikes), several contracts picked at once with a visible selection list, Lots/Quantity, the forward used
+  for pricing per expiry, and a depth popup per leg (5 levels, day values, refreshed once a second).
+- Expected vs actual: unmeasured per row (session-end script). Agents: build (stopped at budget, gates red), finish round
+  (119 calls vs 80 - overrun), backend Opus check, MINOR fix, frontend build, frontend Sonnet check (2 MAJOR), fix round
+  1, findings-only round 2 PASS. CI red once (pinned selector test outside the guard line).
+- Wrong: my first backend brief listed too few files (provider and feed health left out -> values null in production);
+  the one-lease-per-process design would have starved a second viewer (caught by the frontend check).
+
+### Meta review after row 18 (2026-10-24, session 06fe7549 - no separate meta agent ran; stated, not hidden)
+- Rows 17-18 were reviewed per chunk (ADR-178 (3)); the chunk-2 conformance check runs at the chunk end. This entry
+  lists the process misses the orchestrator measured itself, for that check to verify:
+  (1) row 18 dispatched without overlap_gate.py (new finding row-ahead-dispatched-without-overlap-gate);
+  (2) row 19's backend brief listed too few files (the Kite provider and feed health were left out, so day stats and
+  futures prices came back null in production; the builder stopped at budget with 5 guards red) - a brief defect;
+  (3) a checker brief stated Q264 open from memory (brief-rule-from-memory, 16th);
+  (4) builder B1b renamed a response block beyond its brief (caught before merge);
+  (5) the reach check reads only python tests, so frontend-only evidence is UNRESOLVED by design (#532).
+- Followed: draft PR #531 from the first commit; every row brief rendered by make_brief.py (fix/verify-r2 kinds
+  included); one process item; one deferred issue (#532); findings-only round 2s (15/20 budget).
+
+### Row 18 - REQ-035 Strategy table (closed 2026-10-24, session 06fe7549, Done; W-146 in_review until PR #531)
+- A user sees: the scenario columns of the builder table now carry the heading pair "NIFTY at expiry | You make/lose"
+  (or SENSEX); every column for everyone in the locked order, one highlighted current column, Bid/Ask in Details.
+- Expected vs actual: unmeasured per row (session-end script). Rounds: Opus full-AC check (AC-7 FAIL: heading built
+  but never sent - 5th occurrence of verified-on-a-module-the-product-does-not-call, invisible to the reach check
+  because model.py is imported), one build, Opus findings-only round 2 PASS. MINORs in #532.
+- Wrong: dispatched without the overlap gate (finding row-ahead-dispatched-without-overlap-gate); the merge with row
+  17's fix was clean.
+
+### Row 17 - REQ-006 + REQ-007 UX levels removed (closed 2026-10-24, session 06fe7549, Done; W-145 in_review until PR #531)
+- A user sees: one full builder for everyone - every column (IV, Greeks, % return, breakevens), the Bid/Ask details
+  block, no Guided/Standard/Advanced switch; old `?ux=` links open the same screen; after a Kite session ends no stale
+  Bid/Ask rides in a "not connected" answer (fix round 1).
+- Expected vs actual: unmeasured per row (measure_process.py runs at session end). Rounds: 1 Opus check (check 4
+  partial, 1 MAJOR) + findings-only round 2 PASS. Spec text: 15 ADR/support files, 13 requirements, 89 re-pins + 134
+  amends citations (scripted, none refused).
+- Wrong: builder B1b renamed `advanced_details` beyond its brief (the frontend would have lost the block - caught before
+  merge); my row-17 checker brief stated Q264 open from memory (brief-rule-from-memory, 16th); row 18 was dispatched
+  without the overlap gate (new finding row-ahead-dispatched-without-overlap-gate).
+
+Rows 11-16 use the short form of ADR-178 (3) (what a user sees, open issues); their per-row expected-vs-actual numbers
+were not generated in sessions 4-5 and are written `unmeasured` here, never typed. The chunk-level numbers are the
+chunk-1 conformance check below (measure_process.py, 2026-10-24).
+
+### Meta review after row 15 (2026-10-24, the chunk-1 conformance check, fresh Sonnet agent, 1.3 min / 111k / 11 calls)
+- The chunk-end conformance check (`builder-sequence-briefs/conformance-check-chunk.md`) is the meta review for rows
+  13-15 and the chunk: `measure_process.py --sessions 5 --chunk-start 3ccc8439` = 13 MISS / 16 OK / 2 UNMEASURED.
+- Found: orchestrator context over 250k/turn in 3 of 4 measured sessions; 2 + 3 Opus dispatches without `Why Opus:`;
+  11 / 3 / 5 local database runs; 27 process-tool commits; the draft PR opened ~29 h after row 1; 3 of 16 briefs from
+  the generator; 17 deferred issues against 1.
+- Changed (applied in chunk 2): the draft PR #531 opened at chunk 2's first commit; row briefs rendered by
+  `make_brief.py`; one process-tool item (the reach check); one batched deferred issue at the chunk end. Tracker
+  `docs/process/adr-178-tracker.md` Status column updated from the check's table.
+
+### Row 16 - REQ-038 Save a strategy and load it back exactly (closed 2026-10-23, session 5db71e90, Done with AC-3/AC-4 deferred #527)
+- A user sees: saved versions after execution on the app path (migration 0022, confirm route). AC-3/AC-4 fail end to
+  end: no live plan can activate a proposal until the adjustments row (#527, fix before that row). Expected vs actual:
+  unmeasured.
+
+### Row 15 - REQ-028 Shape templates and shape matching (closed 2026-10-23, session 5db71e90, Done with AC-2 deferred #528)
+- A user sees: shape names matched on the builder. AC-2 fails on the app path: modification, adjustment proposal and
+  exit domain types have no route caller (#528). Expected vs actual: unmeasured.
+
+### Row 14 - REQ-033 Expiry and live P&L formulas (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: expiry and live P&L from the one engine. Shared verifier with rows 12-13; all ACs pass. Expected vs
+  actual: unmeasured.
+
+### Row 13 - REQ-032 Calculation engine (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: every figure from one engine. All ACs pass (shared verifier rows 12-14). Expected vs actual: unmeasured.
+
+### Meta review after row 12 (2026-10-24, covered by the chunk-1 conformance check above)
+- Rows 10-12 were reviewed in the chunk-1 Tier A review (three areas, round 2 PASS on 1006ca32) and the conformance
+  check; no separate meta agent ran for row 12 - stated, not hidden.
+
+### Row 12 - REQ-072 Index spot price (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: the index spot price on the builder. Round 2 PASS with one MINOR (the `except SpotRefused` net).
+  Expected vs actual: unmeasured.
+
+### Row 11 - REQ-114 Price feed health check and reconnect (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: a stale banner and last values labelled stale on every price screen when the feed or the market is
+  closed. AC-7 was re-verdicted FAIL by the chunk Tier A review (closed market shown live), fixed by F1 + an independent
+  redesign, re-recorded pass on 1006ca32. Expected vs actual: unmeasured.
+
 ### Row 10 - REQ-118 Zerodha rate limits for read calls (closed 2026-10-23 ~12:10 IST, Done, #521 deferred, MINORs #522)
 - Expected ~90 min / ~420k (in the brief). Actual: ~180 min wall-clock (build dispatched ~09:07 after 83707b70 at 09:06;
   last code commit 962ab74c at 11:42; close ~12:10) = +100%. Agents (minutes / tokens / calls): build 33.7 / 272k / 78;

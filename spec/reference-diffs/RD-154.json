@@ -1,0 +1,18 @@
+{
+  "id": "RD-154",
+  "kind": "COPY",
+  "title": "Plain-language lines first is an extra of ours (G-22-2)",
+  "reference_behaviour": "Outcome figures appear as labelled tiles (Max Profit, Max Loss, Breakeven, Reward/Risk, POP) with help tooltips; no What can I lose? lead-in.",
+  "reference_screens": [
+    "screen 012",
+    "screen 021"
+  ],
+  "ours": "SPEC CHANGE: an extra of ours. REQ-034 AC-7 puts What can I lose? What can I make? Where do I start losing? first, detail expandable; copying drops it. For the owner's batch.",
+  "req": "REQ-034",
+  "ac": "AC-7",
+  "row": 22,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

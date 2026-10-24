@@ -113,12 +113,15 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/execute_replay.py": "APP_ENV=test replay seeding: inserts the recorded contract",
     "backend/ofo_app/execution_plan_store.py": "key -> broker symbol with its live flag (key -> row)",
     "backend/ofo_app/live_market.py": "imports the store for load_catalogue (live rows by key); no stored id read",
+    "backend/ofo_app/routes/leg_edit.py": "key -> LIVE holder -> its stored id (live_contract_id): never id -> key",
     "backend/ofo_app/routes/outcome.py": "key -> LIVE holder -> its row (live_contract_id first): never id -> key",
     "backend/ofo_app/strategy_store.py": "save-time validation of a picked id (live, terms); returns no feed key",
     # review round 1 (table constants and f-string SQL now seen):
     "backend/ofo_app/eligibility_from_zerodha.py": "by id -> that row's own eligibility status (no key out); the "
                                                    "registry reads LIVE rows only (not retired, not delisted)",
     "backend/ofo_app/freeze_store.py": "exchange_freeze_limits keyed by the exchange file's token; no stored id",
+    "backend/ofo_app/freeze_read.py": "the freeze_store read moved here (row 20): exchange_freeze_limits by the "
+                                      "exchange file's token; no stored id",
     "backend/ofo_app/audit_allowlist.py": "docstring only (exchange_token is not in the order reply); no query",
     "backend/ofo_app/routes/catalogue.py": "docstring names the fields; lists live contracts via catalogue_picker",
 }

@@ -1,0 +1,19 @@
+{
+  "id": "RD-123",
+  "kind": "COPY",
+  "title": "Strategy view tabs follow the reference chart tabs (G-17-2)",
+  "reference_behaviour": "Under the leg list and the always-visible summary strip, the chart area has four tabs: Payoff Graph, P&L Table, Greeks and Strategy Chart. Nothing is hidden behind a level.",
+  "reference_screens": [
+    "screen 012",
+    "screen 014",
+    "screen 015",
+    "screen 016"
+  ],
+  "ours": "NEW AC NEEDED: REQ-007 (superseded at row 17) named eight drill-down tabs; no live requirement owns the chart-area tab set. Re-homed 2026-10-24 to the first row that builds a tab's content (REQ-083 payoff chart, row 36; the P&L table is REQ-137 row 38, Greeks REQ-084 row 37, Strategy Chart REQ-091 row 61 held): write the tab-set AC there.",
+  "req": "REQ-083",
+  "row": 36,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

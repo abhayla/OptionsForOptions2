@@ -208,7 +208,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   exceptions "best bid", "best ask", "best-case", "make sure"; broker/user text quoted only. Recorded in ADR-003
   "Owner decision (Q226)".
 
-## Q227 — DECIDED (owner, 2026-09-29 morning) — Guided scenario column headings (W-004, issue #21)
+## Q227 — DECIDED (owner, 2026-09-29 morning) — Scenario column headings (W-004, issue #21; the "Guided" level part is superseded by ADR-168 (4))
 - Decision: each scenario column is headed by its level (CURRENT and 0-P&L marked); "NIFTY at expiry | You make/lose"
   is the scenario section's caption. Recorded in REQ-035 "Owner clarification (Q227)".
 
@@ -225,8 +225,9 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q231 — DECIDED (owner, 2026-09-29) — Is "safety" banned by the Q230 word-form rule?
 - Decision: no — "safety" (and "safety check/checks/gate") is a reviewed exception. Recorded in ADR-003 "Q231".
 
-## Q232 — DECIDED (owner, 2026-09-29) — Which UX level shows Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
-- Decision: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
+## Q232 — DECIDED (owner, 2026-09-29) — Who sees Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
+- Decision: level part superseded by ADR-168 (4): Greeks are shown to everyone (ADR-168 (5)); REQ-006 is superseded.
+  Originally: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
 
 ## Q233 — DECIDED (owner, 2026-09-29) — Strategy table TOTAL row: P&L % and Entry Value
 - Decision: TOTAL P&L % = unrealized P&L ÷ max loss ("—" if unlimited); Entry Value only for options-only strategies.
@@ -260,8 +261,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q241 — DECIDED (owner, 2026-09-29) — Moneyness column in the strategy table
 - Decision: no — leave it out; the locked column order stays. Recorded in REQ-035.
 
-## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption at every level; TOTAL P&L % "—" cases
-- Decision: caption at all three UX levels; TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
+## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption for everyone; TOTAL P&L % "—" cases
+- Decision: the caption is shown to everyone (level part superseded by ADR-168 (4)); TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
   Recorded in REQ-035.
 
 ## Q243 — DECIDED (owner, 2026-09-29) — Five gaps in the approved state table (found building W-041)

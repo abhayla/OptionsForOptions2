@@ -1,0 +1,19 @@
+{
+  "id": "RD-131",
+  "kind": "COPY",
+  "title": "Lots or quantity choice for every user in the picker (G-19-3)",
+  "reference_behaviour": "Settings offer Lots or Qty to everyone; quantity mode lists multiples of the lot size (65, 130, 195 for the index lot of 65).",
+  "reference_screens": [
+    "screen 035",
+    "screen 244",
+    "screen 245"
+  ],
+  "ours": "REQ-080 AC-4 offers quantity mode only at Advanced; the picker has a lots box only.",
+  "req": "REQ-080",
+  "ac": "AC-4",
+  "row": 19,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

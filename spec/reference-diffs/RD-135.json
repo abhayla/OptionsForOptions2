@@ -1,0 +1,19 @@
+{
+  "id": "RD-135",
+  "kind": "DIFFERENT-BY-DECISION",
+  "title": "Underlying locked while legs exist (reference clears legs silently)",
+  "reference_behaviour": "Switching the underlying silently clears every leg with no confirmation.",
+  "reference_screens": [
+    "screen 130",
+    "screen 131"
+  ],
+  "ours": "REQ-080 AC-1 locks the underlying while any leg exists (ADR-019); the user removes the legs first. Stricter on strategy state, exception (a).",
+  "req": "REQ-080",
+  "ac": "AC-1",
+  "row": 19,
+  "adr": "ADR-019",
+  "status": "decided",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

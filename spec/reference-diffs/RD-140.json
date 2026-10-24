@@ -1,0 +1,17 @@
+{
+  "id": "RD-140",
+  "kind": "COPY",
+  "title": "Tick box to leave a leg out of the numbers (G-20-2)",
+  "reference_behaviour": "Each leg has a tick box; unticking removes the leg from the analysis and every figure recomputes (an iron condor without its bought put reads Max Loss Unlimited).",
+  "reference_screens": [
+    "screen 111"
+  ],
+  "ours": "REQ-076 AC-6 include-in-the-numbers tick box is not built on main (branch W-126 only).",
+  "req": "REQ-076",
+  "ac": "AC-6",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

@@ -9,6 +9,7 @@ from typing import Any
 
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.table import Cell, ColumnSpec, Table
+from ofo.table.model import scenario_caption_parts
 
 
 def _s(value: Decimal | int | None) -> str | None:
@@ -51,7 +52,8 @@ def _column(col: ColumnSpec, visible: set[str]) -> dict[str, Any]:
 def _table(table: Table, visible_cols) -> dict[str, Any]:
     visible = {_col_id(c.id) for c in visible_cols}
     return {"underlying": table.underlying, "spot_level": _s(table.spot_level), "spot_at": _t(table.spot_at),
-            "output_label": table.output_label, "columns": [_column(c, visible) for c in table.columns],
+            "output_label": table.output_label, "scenario_heading": list(scenario_caption_parts(table)),
+            "columns": [_column(c, visible) for c in table.columns],
             "rows": [{"row_id": r.row_id, "cells": {_col_id(k): _cell(c) for k, c in r.cells.items()}}
                      for r in table.rows]}
 
@@ -92,7 +94,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
     return {
-        "state": out.state.value, "underlying": out.underlying, "ux_level": out.ux_level.value,
+        "state": out.state.value, "underlying": out.underlying,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),

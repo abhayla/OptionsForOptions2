@@ -1,0 +1,16 @@
+{
+  "id": "RD-163",
+  "kind": "NO-SCREEN",
+  "title": "A live frame for an older strategy version (study gap)",
+  "reference_behaviour": "Not applicable or not seen: live frames carry quotes by contract, and no strategy version was observed on them.",
+  "reference_screens": [],
+  "ours": "REQ-133 AC-2 drops a frame computed for an older strategy version; not built.",
+  "req": "REQ-133",
+  "ac": "AC-2",
+  "row": 24,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "RD-139",
+  "kind": "COPY",
+  "title": "Strategy multiplier scales every leg's lots (G-20-1)",
+  "reference_behaviour": "A Multiplier list (1 to N) multiplies all lots; with 2, every leg doubles and max profit, max loss, premium and margin double.",
+  "reference_screens": [
+    "screen 103"
+  ],
+  "ours": "REQ-076 AC-4 (multiplier 1 to 50, back to 1 restores base lots) is not built on main; it exists only on branch W-126.",
+  "req": "REQ-076",
+  "ac": "AC-4",
+  "row": 20,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

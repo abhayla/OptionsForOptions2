@@ -3,7 +3,11 @@
 Standard library only, no network, no clock. A frame is: int16 packet count, then per packet an int16 length and
 that many bytes (big-endian). A frame of one byte is a heartbeat. Packet lengths: 8 = ltp, 28/32 = index
 (32 carries the exchange time), 44 = quote, 184 = full (adds OI and exchange time and ten depth entries of
-qty int32, price int32, orders int16, 2 pad bytes). Prices are integer paise on the V1 segments and become
+qty int32, price int32, orders int16, 2 pad bytes). Quote and full packets carry, after the ltp, the last quantity,
+average price, volume, buy and sell quantity, the day's open, high, low and previous close (the ten int32 fields at
+bytes 4..44); a full packet adds the last trade time (44-48), OI (48-52) and exchange time (60-64). Layout source:
+the zerodha-expert skill's websocket-protocol reference (no F-id records the packet layout; F-47 records that the
+previous close was not decoded before this change). Prices are integer paise on the V1 segments and become
 ``Decimal`` rupees (paise / 100); a segment whose divisor is not known here is counted and skipped, never guessed.
 
 Every answer state is counted, never raised: unknown packet length, unsupported segment, truncated frame.
@@ -18,6 +22,8 @@ import struct
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import BinaryIO, Iterator
+
+from ofo.marketdata.provider import DayStats
 
 #: Kite instrument_token low byte -> price divisor (paise per rupee). Only the V1 segments; others are skipped.
 SEGMENT_DIVISOR: dict[int, int] = {1: 100, 2: 100, 4: 100, 5: 100, 9: 100}  # NSE, NFO, BSE, BFO, indices
@@ -51,6 +57,19 @@ class RawTick:
     depth_bids: tuple[tuple[Decimal, int], ...] | None = None
     depth_asks: tuple[tuple[Decimal, int], ...] | None = None
     depth_unusable: bool = False  # full packet with a negative depth quantity: depth None, counted by the caller
+    # the day's open / high / low / previous close and the last trade time (REQ-080 AC-7). Quote and full packets carry
+    # them; ltp / index packets do not (``None``). A price of 0 is absent (F-29), so ``None``, never Rs 0.
+    day_open: Decimal | None = None
+    day_high: Decimal | None = None
+    day_low: Decimal | None = None
+    prev_close: Decimal | None = None  # Kite's ``close`` = previous session's close (F-47)
+    last_trade_ts: int | None = None  # full packet only: epoch seconds of the last trade; 0 = none yet -> None
+
+
+def day_stats_of(tick: RawTick) -> DayStats | None:
+    """What the packet says about the day; ``None`` for a packet that carries none of it (ltp / index)."""
+    stats = DayStats(tick.day_open, tick.day_high, tick.day_low, tick.prev_close, tick.last_trade_ts)
+    return None if stats == DayStats(None, None, None, None, None) else stats
 
 
 @dataclass(frozen=True)
@@ -81,8 +100,11 @@ def _decode(p: bytes, divisor: int, token: int) -> RawTick | None:
     if n == PACKET_QUOTE or n == PACKET_FULL:
         f = struct.unpack(">10i", p[4:44])
         ltp, volume = f[0], f[3]
+        day = {"day_open": _price_or_none(f[6], divisor), "day_high": _price_or_none(f[7], divisor),
+               "day_low": _price_or_none(f[8], divisor), "prev_close": _price_or_none(f[9], divisor)}
         if n == PACKET_QUOTE:
-            return RawTick(token, "quote", _money(ltp, divisor), volume=volume)
+            return RawTick(token, "quote", _money(ltp, divisor), volume=volume, **day)
+        last_trade = struct.unpack(">i", p[44:48])[0]
         oi, ts = struct.unpack(">i", p[48:52])[0], struct.unpack(">i", p[60:64])[0]
         bid = struct.unpack(">i", p[_BID0 + 4:_BID0 + 8])[0]
         ask = struct.unpack(">i", p[_ASK0 + 4:_ASK0 + 8])[0]
@@ -90,7 +112,8 @@ def _decode(p: bytes, divisor: int, token: int) -> RawTick | None:
         bad = bids is None or asks is None  # one untrustworthy side: no depth at all (never half a book)
         return RawTick(token, "full", _money(ltp, divisor), volume=volume, oi=oi,
                        bid=_price_or_none(bid, divisor), ask=_price_or_none(ask, divisor), exchange_ts=ts,
-                       depth_bids=None if bad else bids, depth_asks=None if bad else asks, depth_unusable=bad)
+                       depth_bids=None if bad else bids, depth_asks=None if bad else asks, depth_unusable=bad,
+                       last_trade_ts=last_trade if last_trade > 0 else None, **day)
     return None
 
 

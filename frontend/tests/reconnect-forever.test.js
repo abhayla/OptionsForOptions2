@@ -17,7 +17,7 @@ class FakeSocket {
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 
-const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
+const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }] }
 const SPREAD_MS = 1000 // REQ-113 AC-10: "a random spread of up to 1 s"
 
 beforeEach(() => { FakeSocket.all = [] })

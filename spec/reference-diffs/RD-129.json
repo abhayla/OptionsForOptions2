@@ -1,0 +1,18 @@
+{
+  "id": "RD-129",
+  "kind": "COPY",
+  "title": "Pick several strikes, see the count, Clear All and Done (G-19-1)",
+  "reference_behaviour": "The leg picker keeps a running selection: a footer reads how many legs are selected, with Clear All and Done; Done adds every selected contract to the builder at once.",
+  "reference_screens": [
+    "screen 032",
+    "screen 035"
+  ],
+  "ours": "Today's picker adds one leg per Add press through selects. REQ-080 AC-3 (several contracts, Done adds all) is not built.",
+  "req": "REQ-080",
+  "ac": "AC-3",
+  "row": 19,
+  "status": "open",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

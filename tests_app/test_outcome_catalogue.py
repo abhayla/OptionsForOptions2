@@ -27,7 +27,7 @@ VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
 CONDOR = (("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY"), ("NSE_FO:44604", "SELL"), ("NSE_FO:44595", "BUY"))
 #: Fields of the response that are NOT free text: closed codes, ids, symbols and numbers (typed in the model).
-NOT_TEXT = {"state", "underlying", "ux_level", "kind", "view", "action", "instrument", "health", "side",
+NOT_TEXT = {"state", "underlying", "kind", "view", "action", "instrument", "health", "side",
             "instrument_id", "symbol", "id", "row_id", "value", "per_unit", "vendor", "strike", "planned_entry", "ltp",
             "iv", "spot_level", "level", "pnl", "max_profit", "max_loss", "lower_be", "upper_be", "step", "start",
             "end", "bid", "ask", "expiry", "captured_at", "valuation", "spot_at", "markers"}
@@ -45,20 +45,20 @@ def replayed():
     return provider
 
 
-def _request(provider, ux_level):
+def _request(provider):
     from ofo_app.routes.outcome import OutcomeRequest
 
     legs = [{"instrument_id": iid, "action": action, "lots": 1,
              "planned_entry": f"{provider.book.get(iid, VALUATION).ltp:f}", "captured_at": VALUATION.isoformat()}
             for iid, action in CONDOR]
-    return OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": legs, "ux_level": ux_level})
+    return OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": legs})
 
 
-def _response(provider, ux_level, with_provider=True):
+def _response(provider, with_provider=True):
     from ofo_app.routes.outcome import MarketContext, server_now, strategy_outcome
 
     ctx = MarketContext(provider, lambda: VALUATION, RATE) if with_provider else None
-    return strategy_outcome(_request(provider, ux_level), ctx, now=server_now, stored=None)
+    return strategy_outcome(_request(provider), ctx, now=server_now, stored=None)
 
 
 def _leaf(path, name, value):
@@ -94,29 +94,28 @@ def test_the_response_model_is_an_api_model() -> None:
     assert issubclass(OutcomeResponse, ApiModel)
 
 
-@pytest.mark.parametrize("ux", ["guided", "standard", "advanced"])
-def test_every_text_field_is_a_catalogue_render_at_every_ux_level(replayed, ux) -> None:
-    texts = _text_leaves(_response(replayed, ux))
+def test_every_text_field_is_a_catalogue_render(replayed) -> None:
+    texts = _text_leaves(_response(replayed))
     assert len(texts) >= 30  # status/output labels, leg labels, 20+ column labels, cell displays and reasons
     plain = [(p, repr(v)[:50]) for p, v in texts if type(v) is not ExplanationText]
     assert plain == []
 
 
 def test_every_text_field_is_a_catalogue_render_with_no_provider(replayed) -> None:
-    texts = _text_leaves(_response(replayed, "standard", with_provider=False))
+    texts = _text_leaves(_response(replayed, with_provider=False))
     assert len(texts) >= 6
     assert [(p, repr(v)[:50]) for p, v in texts if type(v) is not ExplanationText] == []
 
 
 async def test_the_three_plain_language_sentences_keep_the_w063_numbers(replayed) -> None:
-    out = _response(replayed, "standard").model_dump(mode="json")
+    out = _response(replayed).model_dump(mode="json")
     s = out["summary"]
     assert (s["what_can_i_lose"], s["what_can_i_make"], s["where_do_i_start_losing"]) == (LOSE, MAKE, START)
     assert (s["max_loss"], s["max_profit"], s["breakevens"]) == ("8245.25", "4754.75", ["22326.85", "22873.15"])
 
 
 def test_status_and_margin_texts_are_exact(replayed) -> None:
-    none = _response(replayed, "standard", with_provider=False).model_dump(mode="json")
+    none = _response(replayed, with_provider=False).model_dump(mode="json")
     assert none["status_label"] == "Draft — Live data not connected"
     assert none["reason"] == "no live market data provider is connected"
     assert none["margin"]["reason"] == "Margin from Zerodha is not shown yet; it needs your Kite login."
@@ -124,7 +123,7 @@ def test_status_and_margin_texts_are_exact(replayed) -> None:
 
 
 def test_column_and_cell_texts_are_exact(replayed) -> None:
-    out = _response(replayed, "standard").model_dump(mode="json")
+    out = _response(replayed).model_dump(mode="json")
     labels = [c["label"] for c in out["table"]["columns"]]
     assert labels[:3] == ["Leg", "Action", "Instrument"] and labels[-3:] == ["Lower Breakeven", "Upper Breakeven", "Status"]
     assert "CURRENT 22,533.25" in labels
@@ -158,7 +157,7 @@ def test_a_plain_string_summary_sentence_is_refused(replayed) -> None:
     """Mutation: return one summary sentence as a plain `str` -> the typed model refuses it."""
     from ofo_app.routes.outcome import OutcomeResponse
 
-    body = _response(replayed, "standard").model_dump()
+    body = _response(replayed).model_dump()
     body["summary"] = {**body["summary"], "what_can_i_lose": "At most 8,245.25 at expiry."}
     with pytest.raises(ValueError):
         OutcomeResponse.model_validate(body)

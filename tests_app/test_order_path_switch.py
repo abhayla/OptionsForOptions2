@@ -21,7 +21,11 @@ from __future__ import annotations
 import ast
 import importlib.util
 import inspect
+import pathlib
+import shutil
 import sys
+import tempfile
+from collections import deque
 from collections.abc import Iterator
 from http import HTTPStatus
 
@@ -338,3 +342,229 @@ def test_ac6_mutation_dropping_the_dependency_from_a_router_is_found(no_dotenv, 
     route = next(r for r in app.routes if getattr(r, "path", "") == "/strategies/{strategy_id}/execute")
     route.dependant.dependencies = [d for d in route.dependant.dependencies if d.call is not switch.require_order_path]
     assert any("/strategies/{strategy_id}/execute" in p for p in unguarded_order_routes(app))
+
+
+# ---- the import closure of the leg-edit route (structural, REQ-076 AC-5 fix round 2) ------------------------------
+# The direct-import scan above saw leg_edit import only ``ofo_app.freeze_store`` and passed, while freeze_store imported
+# ``ofo.execution.freeze``: the route reached an order module one hop away. This walks every hop, function-level imports
+# included. Other routes reach order code too (pre-existing coupling, recorded in #532): not this row, so only the
+# leg-edit route is walked here.
+
+MIN_REASON_WORDS = 4
+BACKEND = pathlib.Path(__file__).resolve().parents[1] / "backend"
+LEG_EDIT = "ofo_app.routes.leg_edit"
+
+#: (importer, order module it imports) -> why that one path is allowed. Exactly four; a fifth is a new path and must be
+#: argued for in the change that adds it (the pinned test below fails until the reason and the pin are both written).
+ALLOWED_ORDER_PATHS: dict[tuple[str, str], str] = {
+    ("ofo.errors.slots", "ofo.execution.safety"): "the error slot catalogue names the safety checks' reason codes",
+    ("ofo.errors.gate_slots", "ofo.execution.context"): "the gate slot catalogue names the execution context's codes",
+    ("ofo_app.api_models", "ofo_app.basket_post"): "the shared API models include the basket-post reply shapes",
+    ("ofo_app.outcome_margin", "ofo.execution.margin_gate"): "the outcome margin read uses the gate's busy code",
+}
+PINNED_PATHS = {
+    ("ofo.errors.slots", "ofo.execution.safety"), ("ofo.errors.gate_slots", "ofo.execution.context"),
+    ("ofo_app.api_models", "ofo_app.basket_post"), ("ofo_app.outcome_margin", "ofo.execution.margin_gate")}
+
+
+def _is_order_module(name: str) -> bool:
+    return _is_order_import(name) or name == "ofo.orders" or name.startswith(("ofo.orders.", "ofo_app.execute"))
+
+
+def _module_file(root: pathlib.Path, module: str) -> pathlib.Path | None:
+    base = root.joinpath(*module.split("."))
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _own(name: str) -> bool:
+    return name in ("ofo", "ofo_app") or name.startswith(("ofo.", "ofo_app."))
+
+
+def _from_import(root: pathlib.Path, package: str, node: ast.ImportFrom) -> tuple[set[str], str | None]:
+    """(modules a ``from`` import brings in, the module it names when that has no source file)."""
+    base = node.module or ""
+    if node.level:
+        parts = package.split(".")
+        base = ".".join(parts[:len(parts) - (node.level - 1)] + ([base] if base else []))
+    if not _own(base):
+        return set(), None
+    if _module_file(root, base) is None:
+        return set(), base
+    return {base} | {f"{base}.{a.name}" for a in node.names if _module_file(root, f"{base}.{a.name}")}, None
+
+
+def _source_imports(root: pathlib.Path, module: str, path: pathlib.Path) -> tuple[set[str], list[str]]:
+    """(ofo / ofo_app modules this file imports, anywhere in it; problems the walker cannot resolve)."""
+    names: set[str] = set()
+    problems: list[str] = []
+    package = module if path.name == "__init__.py" else module.rpartition(".")[0]
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            names |= {a.name for a in node.names if _own(a.name)}
+        elif isinstance(node, ast.ImportFrom):
+            more, missing = _from_import(root, package, node)
+            names |= more
+            if missing:
+                problems.append(f"{module}: imports {missing}, no source file under {root.name}: cannot be walked")
+        elif isinstance(node, ast.Call):
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
+            if called in ("__import__", "import_module"):
+                problems.append(f"{module}: dynamic import at line {node.lineno} ({path.name}): cannot be walked")
+    return names, problems
+
+
+def _reach(root: pathlib.Path, via: set[str | None], name: str,
+           allowed: dict[tuple[str, str], str]) -> tuple[list[str], list[str], set[tuple[str, str]]]:
+    """(non-order modules reached through ``name`` and its packages, order modules refused, allow-list entries used)
+    for the module ``via`` names first (itself, then the module that imported it). An allow-list
+    entry covers its own importer and the one module it directly imports (``via``): outcome_margin and the margin
+    client it uses (kite_margin) both import the gate's busy code, which is the single listed path."""
+    parts = name.split(".")
+    onward: list[str] = []
+    refused: list[str] = []
+    used: set[tuple[str, str]] = set()
+    for reached in (".".join(parts[:i]) for i in range(1, len(parts) + 1)):
+        if _module_file(root, reached) is None:
+            continue
+        if not _is_order_module(reached):
+            onward.append(reached)
+            continue
+        ok = [k for k in allowed if k[0] in via and (reached == k[1] or k[1].startswith(reached + "."))]
+        used |= set(ok)
+        if not ok:
+            refused.append(reached)
+    return onward, refused, used
+
+
+def order_closure_problems(starts: list[str], root: pathlib.Path,
+                           allowed: dict[tuple[str, str], str]) -> tuple[list[str], set[tuple[str, str]]]:
+    """Walk the import closure of ``starts``; a problem for every order module reached outside ``allowed`` (with the
+    chain printed), every dynamic import and every import that cannot be resolved; also the allowed paths used."""
+    parent: dict[str, str | None] = dict.fromkeys(starts)
+    queue = deque(starts)
+    problems: list[str] = []
+    used: set[tuple[str, str]] = set()
+
+    def chain(module: str) -> str:
+        out = []
+        while module:
+            out.append(module)
+            module = parent[module]
+        return " -> ".join(reversed(out))
+
+    while queue:
+        module = queue.popleft()
+        path = _module_file(root, module)
+        if path is None:
+            problems.append(f"{module}: no source file under {root.name}: cannot be walked")
+            continue
+        try:
+            names, found = _source_imports(root, module, path)
+        except SyntaxError as exc:
+            problems.append(f"{module}: cannot be parsed ({exc})")
+            continue
+        problems += found
+        for name in sorted(names):
+            onward, refused, hit = _reach(root, {module, parent[module]}, name, allowed)
+            used |= hit
+            for reached in onward:
+                if reached not in parent:
+                    parent[reached] = module
+                    queue.append(reached)
+            if refused:  # one problem per import, naming the deepest module (its package parents came with it)
+                problems.append(f"order module reached outside the allow-list: {chain(module)} -> {refused[-1]}")
+    return problems, used
+
+
+@pytest.mark.repo_scan
+def test_ac6_the_leg_edit_route_reaches_no_order_module_except_the_four_named_paths():
+    """Core (AC-5 fix round 2): the closure of the leg-edit route holds no ofo.execution / ofo.orders /
+    ofo_app.execute* module except through the four named shared paths, and every one of those is used."""
+    problems, used = order_closure_problems([LEG_EDIT], BACKEND, ALLOWED_ORDER_PATHS)
+    assert not problems, "\n".join(problems)
+    assert used == set(ALLOWED_ORDER_PATHS), "an allow-list entry the leg-edit route no longer uses must be removed"
+
+
+def test_ac6_the_allow_list_is_the_four_named_paths_each_with_a_reason():
+    """A fifth path, or an entry with no reason, fails here until the change that adds it says why."""
+    assert set(ALLOWED_ORDER_PATHS) == PINNED_PATHS
+    assert all(len(reason.split()) >= MIN_REASON_WORDS for reason in ALLOWED_ORDER_PATHS.values())
+
+
+def test_ac6_mutation_a_fifth_allow_list_entry_is_not_the_pinned_four():
+    """Mutation: one more entry (with a reason) differs from the pin, so the pinned test above would go red."""
+    fifth = {("ofo_app.freeze_store", "ofo.execution.freeze"): "the plan side reads the freeze rule"}
+    grown = {**ALLOWED_ORDER_PATHS, **fifth}
+    assert set(grown) != PINNED_PATHS
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_leg_edit_reaching_the_plan_part_of_freeze_store_fails_with_the_chain():
+    """Mutation: leg-edit importing freeze_store (its plan part reaches ofo.execution) is red, chain printed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "backend"
+        shutil.copytree(BACKEND, root, ignore=shutil.ignore_patterns("__pycache__", "alembic"))
+        target = root / "ofo_app" / "routes" / "leg_edit.py"
+        target.write_text(target.read_text(encoding="utf-8") + "\nfrom ofo_app import freeze_store  # noqa: F401\n",
+                          encoding="utf-8")
+        problems, _ = order_closure_problems([LEG_EDIT], root, ALLOWED_ORDER_PATHS)
+    assert any(p.startswith(f"order module reached outside the allow-list: {LEG_EDIT} -> ofo_app.freeze_store -> ")
+               and "ofo.execution" in p for p in problems), problems
+
+
+def _tree(tmp_path: pathlib.Path, files: dict[str, str]) -> pathlib.Path:
+    for rel, body in {"ofo/__init__.py": "", "ofo/execution/__init__.py": "", "ofo/execution/freeze.py": "X = 1\n",
+                      "ofo_app/__init__.py": "", "ofo_app/routes/__init__.py": "", **files}.items():
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_a_two_hop_chain_to_an_order_module_fails_with_the_chain_printed(tmp_path):
+    """Mutation: route -> store (function-level import) -> ofo.execution.freeze is red, naming every hop."""
+    root = _tree(tmp_path, {
+        "ofo_app/routes/r.py": "def f():\n    from ofo_app import store\n    return store\n",
+        "ofo_app/store.py": "from ofo.execution.freeze import X\n"})
+    problems, _ = order_closure_problems(["ofo_app.routes.r"], root, {})
+    assert problems == ["order module reached outside the allow-list: "
+                        "ofo_app.routes.r -> ofo_app.store -> ofo.execution.freeze"]
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_a_listed_path_passes_only_for_its_own_importer(tmp_path):
+    """The allow-list names the importer: the same import from another module is still red."""
+    root = _tree(tmp_path, {
+        "ofo_app/routes/r.py": "from ofo_app import store, other\n",
+        "ofo_app/store.py": "from ofo.execution.freeze import X\n",
+        "ofo_app/other.py": "from ofo.execution.freeze import X\n"})
+    allowed = {("ofo_app.store", "ofo.execution.freeze"): "this store reads the freeze constants only"}
+    problems, used = order_closure_problems(["ofo_app.routes.r"], root, allowed)
+    assert problems == ["order module reached outside the allow-list: "
+                        "ofo_app.routes.r -> ofo_app.other -> ofo.execution.freeze"]
+    assert used == set(allowed)
+
+
+@pytest.mark.repo_scan
+@pytest.mark.parametrize("body", [
+    "import importlib\nm = importlib.import_module('ofo.execution.freeze')\n",
+    "from importlib import import_module\nm = import_module('x')\n",
+    "m = __import__('ofo.execution.freeze')\n"])
+def test_ac6_mutation_a_dynamic_import_fails_closed_naming_the_file(tmp_path, body):
+    root = _tree(tmp_path, {"ofo_app/routes/r.py": body})
+    problems, _ = order_closure_problems(["ofo_app.routes.r"], root, {})
+    assert any("ofo_app.routes.r: dynamic import" in p and "r.py" in p for p in problems)
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_an_unresolvable_import_fails_closed(tmp_path):
+    root = _tree(tmp_path, {"ofo_app/routes/r.py": "from ofo_app.nothere import thing\n"})
+    problems, _ = order_closure_problems(["ofo_app.routes.r"], root, {})
+    assert any("ofo_app.nothere" in p and "cannot be walked" in p for p in problems)
+    assert any("ofo_app.missing: no source file" in p
+               for p in order_closure_problems(["ofo_app.missing"], root, {})[0])

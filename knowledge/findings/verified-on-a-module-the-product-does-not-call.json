@@ -10,9 +10,12 @@
  },
  "fix": "Instance: REQ-058 and REQ-060 set back to Approved with fail evidence in every owning work item; W-107 blocks Execute while the strategy's own closed plan has drifted at Zerodha (the one gap the GC-3 go/no-go review showed reachable in the live run); the rest is the next contract's core (wire the domain reconciler and partial handling into the routes, or re-specify). Class fix proposed: a work item whose requirement is already Verified and whose `affected` paths re-implement that requirement's behaviour must name the requirement's ACs in its own tests_required, so a fresh verifier checks the new path; a verifier brief always asks 'which user-facing path calls the code this test exercises?'.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Caught only by a fresh verifier asked to check the CURRENT text against the path users reach. A check could list, per Verified requirement, the modules its evidence's test files import and fail when no route/app module imports them; not built. A related kit gap (harvest issue): trace_check counts an AC complete when ANY owning work item holds a passing file, so a fresh fail written into one item is hidden by an old pass in another (worked around here by writing the verdict into every owning item)."
+  "status": "guarded",
+  "checks": [
+   "scripts/orchestrator/reach_check.py",
+   "tests/test_reach_check_real.py"
+  ],
+  "note": "Partial guard (chunk 2 process item): scripts/orchestrator/reach_check.py lists, per Verified or finished requirement, every passing evidence file whose tested subject modules no app entry module imports at all (transitively, by AST), exits 1 on a new hit, a stale baseline entry or a baseline reason without an issue reference, and runs in the repo_scan job. It guards that one case, which is the 2026-10-17 REQ-058/060 one: on the tree before GC-3 P0 it flags REQ-060 AC-1..7 and REQ-058 AC-1/2/3/5/6. REACHED MEANS IMPORTED, NOT CALLED: a dataclass import such as kite_replies.py:34 'from ofo.execution.partial import BrokerOrderStatus' counts as reached. NOT COVERED: a re-implementation that still imports one name from the module (REQ-038 AC-2/3 versions.py is imported by the app and still unused at the path users reach); a fresh verifier is still asked which screen or route shows each criterion. A related kit gap (harvest issue): trace_check counts an AC complete when ANY owning work item holds a passing file, so a fresh fail written into one item is hidden by an old pass in another (worked around here by writing the verdict into every owning item)."
  },
  "spec_ref": [
   "spec/requirements/REQ-058.md",
@@ -40,6 +43,11 @@
    "date": "2026-10-23",
    "where": "chunk 1 Tier A review on 29d2dece (areas 1 and 3, session 5db71e90): two recorded passes re-verdicted fail",
    "evidence": "W-139 AC-7 (REQ-114 market closed) passed on the Settings card only; quote health ignores the calendar (feed_health.py:115), so the price screens read live on a Saturday. W-144 AC-4 (REQ-038 broker actual wins) passed through settle_versions branches that need a plan linked to the proposed version, which Execute never records (execute.py:400). Fourth occurrence: in both the row check named the module, not the screen or route users reach. Brief change from now: every check brief asks 'which screen/route shows this, and did you exercise it there?' per AC."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "builder sequence row 18 check, REQ-035 AC-7 on chunk-2 head 412b56c6 (session 06fe7549)",
+   "evidence": "The heading pair 'NIFTY at expiry | You make/lose' is built by scenario_caption() (backend/ofo/table/model.py:600) and tested only there (tests/table/test_one_column_set.py:97); nothing serialises it and StrategyTable.vue renders no caption: grep 'make/lose' over frontend/ and backend/ofo_app returns 0. Fifth occurrence, and the first after the reach check landed: the check cannot see it because model.py IS imported by the app - a never-called FUNCTION inside a reached module is the documented uncovered part. Caught by the check brief's per-AC 'which screen shows this, and did you exercise it there?'."
   }
  ]
 }

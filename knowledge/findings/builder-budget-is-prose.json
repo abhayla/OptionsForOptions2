@@ -62,6 +62,16 @@
    "date": "2026-10-17",
    "where": "GC-2c builders (Sonnet, builder type, maxTurns 100)",
    "evidence": "tool calls used / budget: W-093 62/50, W-097 71/56, W-098 65/56, W-094 76/64 (and a 49-minute run against a 60-minute time budget, ending on an unfinished background mirror). W-095 round 1 (Opus) 78/80 stayed inside but stopped with the core unproven. Overruns sit at +12..+24% of budget, under the 100-turn hard stop."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "builder sequence row 19 backend finish round (session 06fe7549)",
+   "evidence": "Brief Budget: 60 min / 80 calls; the builder used 119 tool calls (completion record) and finished green."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "builder sequence row 20 backend build (session 06fe7549)",
+   "evidence": "Brief Budget: 60 min / 80 calls with the 80% hard-stop line; the builder used 142 tool calls, hit the agent's 100-turn limit and stopped with work uncommitted and the ruff ratchet red; a finisher round followed. Orchestrator mitigation since: the dispatch prompt itself says 'HARD STOP at 64 of your 80 calls'."
   }
  ]
 }
