@@ -2,6 +2,7 @@
 // random spread of up to 1 s so tabs do not reconnect in the same second. Fake socket, recorded timers. Expected waits come
 // from the requirement (1 s apart for the first 30 attempts, then 2, 4, 8 ... capped at 30 s, plus a spread under 1 s).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { FAST_ATTEMPTS, MAX_DELAY_MS, createLiveSocket, useStrategyLive } from '@/composables/useStrategyLive'
@@ -13,7 +14,7 @@ class FakeSocket {
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

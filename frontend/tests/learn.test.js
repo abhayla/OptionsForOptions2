@@ -1,6 +1,7 @@
 // W-117 (REQ-011 AC-1; REQ-009 AC-4/AC-6; ADR-114, ADR-003): Learn, Alerts and Market context with a fake route reply and a
 // fake index socket. Texts shown must equal the fake reply's texts as given; the empty lines are the brief's quoted wording.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
@@ -25,7 +26,7 @@ class FakeSocket {
   constructor(url) { this.url = url; this.readyState = 0; FakeSocket.all.push(this) }
   send() {}
   close() { this.readyState = 3 }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

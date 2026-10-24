@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -33,7 +34,7 @@ import LegList from '@/components/strategy/LegList.vue'
 import { EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
-import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
+import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isCurrentVersion, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -57,7 +58,7 @@ class FakeSocket {
     this.onopen?.()
   }
   serverPush(obj) {
-    this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) })
+    this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(echoSeq(this, obj)) })
   }
   serverClose() {
     this.readyState = 3
@@ -129,6 +130,26 @@ describe('AC-4: the Builder live socket', () => {
     expect(ws.sent.length).toBe(2)
     expect(JSON.parse(ws.sent[1]).legs[0].lots).toBe(2)
     expect(FakeSocket.all.length).toBe(1)
+  })
+
+  it('REQ-133 AC-2: a versioned socket sends seq = its own counter, bumped once per changed body, and draws only that version', () => {
+    const pushes = []
+    const live = createLiveSocket({ url: 'ws://x', onPush: (m) => pushes.push(m), versioned: true, WebSocketImpl: FakeSocket })
+    live.follow(BODY)
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    expect(JSON.parse(ws.sent[0])).toEqual({ ...BODY, seq: 1 })
+    live.follow({ ...BODY }) // unchanged: nothing sent, the version stays
+    expect(ws.sent.length).toBe(1)
+    live.follow({ ...BODY, legs: [{ ...BODY.legs[0], lots: 2 }] })
+    expect(JSON.parse(ws.sent[1]).seq).toBe(2)
+    expect(live.version()).toBe(2)
+    ws.serverPush({ ...push('30.05', '₹1'), seq: 1 }) // v1 arriving after v2 was sent
+    ws.serverPush(push('30.10', '₹2')) // the fake echoes v2
+    expect(pushes.map((p) => p.seq)).toEqual([2])
+    expect(isCurrentVersion({ seq: 3 }, 2)).toBe(false) // a seq never sent is not current either
+    expect(isCurrentVersion({}, 0)).toBe(true) // no version sent, none echoed: the old behaviour
+    expect(isCurrentVersion({}, 1)).toBe(false)
   })
 
   it('AC-4: a drop calls the REST fallback and reconnects with backoff; pushes resume on the new socket', () => {
@@ -302,6 +323,27 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     await flushPromises()
     expect(state(w)).toBe('not-connected')
     ws.serverPush(COMPUTED)
+    await flushPromises()
+    expect(state(w)).toBe('computed')
+    w.unmount()
+  })
+
+  it('REQ-133 AC-2: a push for an older strategy version is dropped by the Builder even when its legs match; the current one is drawn', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openPage()
+    expect(state(w)).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    const current = JSON.parse(ws.sent.at(-1)).seq
+    expect(Number.isInteger(current) && current >= 1).toBe(true) // the follow message carries the page's version
+    ws.serverPush({ ...COMPUTED, seq: current - 1 }) // late frame of the previous version, same legs (v1 after v2)
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    // no version although the page sent one (sent as raw text: the fake socket echoes the seq into an object push)
+    ws.serverPush(JSON.stringify(Object.fromEntries(Object.entries(COMPUTED).filter(([k]) => k !== 'seq'))))
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    ws.serverPush({ ...COMPUTED, seq: current })
     await flushPromises()
     expect(state(w)).toBe('computed')
     w.unmount()

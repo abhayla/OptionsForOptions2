@@ -943,6 +943,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_not_connected", "values_seen", "Draft — Live data not connected"),
     # REQ-077 AC-9: no live data, At Expiry numbers from the user's own prices (never a live price)
     ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices - no live data"),
+    # REQ-133 AC-3: the feed just (re)connected and no price frame arrived yet, inside the staleness limit: no number
+    ExplanationTemplate("outcome_waiting_first_price", "values_seen", "Waiting for the first live price"),
     ExplanationTemplate("outcome_from_entries_centre", "values_seen",
                         "There is no live index price, so the levels are centred on your strike {level}.",
                         {"level": Points}),

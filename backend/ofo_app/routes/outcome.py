@@ -25,7 +25,7 @@ from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
-from ofo.marketdata.feed_health import market_closed_for
+from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import (
@@ -39,7 +39,7 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import Margin
+from ofo.outcome.service import Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
@@ -230,7 +230,7 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
-    seq: RequestSeq | None = None  # REQ-119 AC-1: echoed by the REST route only, never by the live push
+    seq: RequestSeq | None = None  # REQ-119 AC-1 (REST) / REQ-133 AC-2 (the live push): echoed unchanged
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -420,7 +420,7 @@ class OutcomeResponse(ApiModel):
     leg_quotes: list[LegQuoteOut] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
-    #: REQ-119 AC-1: the request's ``seq``, unchanged; absent (unset) when the request sent none, and on the live push
+    #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
 
@@ -509,7 +509,9 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
-        if live_blocked:
+        if not live_blocked and awaiting_first_price_for(ctx.provider, answered_at):
+            out = waiting_first_price(definition, snapshot)  # REQ-133 AC-3: no number until the first price frame
+        elif live_blocked:
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override)
@@ -528,7 +530,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
-    # REQ-119 AC-1: only a caller that was sent one passes seq (the REST route); else no key
+    # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
     return echo_seq(OutcomeResponse.model_validate(body), seq)
 
 

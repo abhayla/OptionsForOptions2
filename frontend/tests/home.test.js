@@ -1,6 +1,7 @@
 // W-115 (REQ-008 AC-2/AC-4/AC-5; ADR-114, ADR-003): the Home overview with a fake GET /strategies and a fake index socket.
 // Expected texts come from the fixtures written here and from the spec's wording, never from the page's output.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
@@ -24,7 +25,7 @@ class FakeSocket {
   constructor(url) { this.url = url; this.readyState = 0; FakeSocket.all.push(this) }
   send() {}
   close() { this.readyState = 3; this.closed = true }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

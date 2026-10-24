@@ -2,6 +2,7 @@
 // that show index values (the index page and the Home strip), because both read one state machine (useIndexAnswer).
 // Expected texts are the pushes the tests write, never the screens' output.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { flushPromises, mount } from '@vue/test-utils'
 
 let apiAnswer = null
@@ -18,7 +19,7 @@ class FakeSocket {
   constructor(url) { this.url = url; FakeSocket.all.push(this) }
   send() {}
   close() {}
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.onclose?.() }
 }
 

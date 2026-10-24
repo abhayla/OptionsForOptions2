@@ -2,6 +2,7 @@
 // 1 s spread of AC-10) without growing the back-off, and the browser's `online` event retries at once. Fake socket,
 // recorded timers, a faked navigator.onLine and a fake event target.
 import { beforeEach, describe, expect, it } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { JITTER_MS, OFFLINE_RETRY_MS, createLiveSocket } from '@/composables/useStrategyLive'
 
 class FakeSocket {
@@ -10,7 +11,7 @@ class FakeSocket {
   send() {}
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

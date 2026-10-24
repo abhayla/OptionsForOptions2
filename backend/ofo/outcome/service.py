@@ -56,6 +56,8 @@ from ofo.timeutil import IST
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
 #: REQ-077 AC-9: the label of an At Expiry answer built from the user's own prices when there is no live data
 FROM_ENTRIES_LABEL: Final = render_explanation("outcome_from_entries")
+#: REQ-133 AC-3: a just (re)connected feed with no price frame yet, inside the staleness limit
+WAITING_FIRST_PRICE_LABEL: Final = render_explanation("outcome_waiting_first_price")
 MARGIN_NOT_AVAILABLE_YET: Final = "NOT_AVAILABLE_YET"
 #: ADR-099 margin states: Zerodha's figures read for the planned orders / Zerodha could not be read / the planned orders
 #: cannot be sent to Zerodha (a leg that is not a listed Zerodha contract). No session stays NOT_AVAILABLE_YET.
@@ -242,6 +244,15 @@ def not_connected(definition: StrategyDefinition,
     legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL, stored)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, NOT_CONNECTED_LABEL,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
+
+
+def waiting_first_price(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcome:
+    """REQ-133 AC-3: the feed has just connected or reconnected and no price frame has arrived yet, still inside the
+    feed's staleness limit (``FeedState.awaiting_first_price``). The answer is the not-connected state with the
+    waiting words on the answer and on every leg, and no number at all (no LTP, no table): the quotes held from before
+    the drop are not current, and the alarm (the stale labels) comes only once the limit passes with no frame."""
+    legs = _unpriced_legs(definition, snapshot, WAITING_FIRST_PRICE_LABEL)
+    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, WAITING_FIRST_PRICE_LABEL, None, legs, MARGIN)
 
 
 def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcome:
