@@ -425,6 +425,26 @@ describe('the Builder page', () => {
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
   })
 
+  it('ADR-086 item 1 (W-073): the not-connected answer names each known contract in draft-legs, never the fixed unavailable wording, never the instrument id', async () => {
+    const draftLegs = [
+      { instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 1, planned_entry: '100.00', captured_at: AT },
+      { instrument_id: 'NSE_FO:44632', action: 'BUY', lots: 1, planned_entry: '100.00', captured_at: AT },
+    ]
+    // the server's not-live answer names each leg's contract (underlying, expiry, type, strike), as it does for the page
+    const known = [['CE', '22800.00'], ['CE', '23000.00']]
+    answers['POST /strategies/outcome'] = {
+      ...OUTCOME_NOT_CONNECTED,
+      legs: draftLegs.map((l, i) => ({ ...l, underlying: 'NIFTY', expiry: '2026-10-13', instrument_type: known[i][0], strike: known[i][1] })),
+    }
+    const w = await open({ draft: JSON.stringify({ underlying: 'NIFTY', legs: draftLegs }) })
+    expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
+    const text = t(w, 'draft-legs').text()
+    expect(text).toContain('NIFTY')
+    expect(w.findAll('[data-testid="draft-legs"] [data-testid="leg-name"]')).toHaveLength(2)
+    expect(text).not.toContain('Contract details not available')
+    for (const l of draftLegs) expect(text).not.toContain(l.instrument_id)
+  })
+
   it('when the outcome call and the catalogue call both fail the page shows exactly one error-what', async () => {
     const parts = { what_happened: 'outcome down', impact: 'b', what_is_blocked: 'c', next_action: 'd' }
     answers['GET /catalogue/NIFTY/expiries'] = Object.assign(new Error('x'), { parts: { ...parts, what_happened: 'catalogue down' } })

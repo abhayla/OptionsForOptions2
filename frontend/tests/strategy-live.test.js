@@ -365,6 +365,10 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     await flushPromises()
     expect(state(w)).toBe('unpriced')
     expect(w.find('[data-testid="state-unpriced"]').exists()).toBe(true)
+    // the text is true for a partly priced draft (one leg HAS an entry), so it must not say "none of the legs"
+    const text = w.find('[data-testid="state-unpriced"]').text()
+    expect(text).toContain('not every leg has a planned entry')
+    expect(text).not.toContain('none of the legs')
     expect(w.find('[data-testid="strategy-table"]').exists()).toBe(false)
     expect(apiCalls).toEqual([])
     expect(FakeSocket.all).toHaveLength(0)
