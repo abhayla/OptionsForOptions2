@@ -150,6 +150,16 @@ def test_forward_pin_that_stopped_forwarding_is_refused(tmp_path: Path) -> None:
     assert len(problems) == 1 and "no longer calls connectToServer(" in problems[0]
 
 
+def test_forward_pin_that_is_no_longer_a_live_fake_is_refused(tmp_path: Path) -> None:
+    """AC-2: a stale pin (the file now routes another socket) is refused, not silently ignored."""
+    root = _copy_tree(tmp_path)
+    _edit(root, "live-strategies.spec.ts", "**/api/strategies/live", "**/api/other/feed")
+    _, problems = scan(root)
+    assert problems == [
+        "frontend/e2e/live-strategies.spec.ts: pinned as forward-only but it is no longer a strategy live-socket fake"
+    ]
+
+
 def test_new_spec_sending_its_own_live_pushes_is_refused(tmp_path: Path) -> None:
     """AC-2: a new spec that sends on the live route with no echoSeq and no pin is refused."""
     root = _copy_tree(tmp_path)
