@@ -8,7 +8,8 @@
   "req": "REQ-076",
   "ac": "AC-1",
   "row": 20,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 20, commit 463dca78 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-1 (attack 1): a futures leg has no stepper; an option leg steps down and up'.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

@@ -9,6 +9,7 @@
   "ac": "AC-1",
   "row": 19,
   "status": "open",
+  "note": "Not built here: the Straddles and Strangles tabs are REQ-079 AC-7, held on owner question Q211. The Strikes and Futures tabs are built (RD-129, RD-134).",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

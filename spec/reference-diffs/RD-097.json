@@ -8,7 +8,8 @@
   "req": "REQ-076",
   "ac": "AC-8",
   "row": 20,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 20, commit 463dca78 (W-148): the Hedge MARK is shown from the server reply; pinned by frontend/tests/leg-edit.test.js 'AC-8/AC-9 (attack 4): name and Hedge marks come only from the reply'. The Hedge CONTROL that moves those legs is REQ-078, a later row.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

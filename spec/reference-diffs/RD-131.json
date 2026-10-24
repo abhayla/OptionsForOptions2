@@ -12,7 +12,8 @@
   "req": "REQ-080",
   "ac": "AC-4",
   "row": 19,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 19, commit 1637ed25 (W-147); pinned by frontend/tests/leg-picker.test.js 'AC-4: quantity mode on SENSEX lists multiples of the SENSEX lot size'.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

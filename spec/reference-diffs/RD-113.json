@@ -8,7 +8,8 @@
   "req": "REQ-077",
   "ac": "AC-7",
   "row": 21,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 21, commit 7029b484 (W-149) built the marker; chunk 2 adds the reopen test frontend/tests/leg-edit.test.js 'REQ-077 AC-7 (RD-113)': a saved strategy reopened through the saved-drafts Open path shows the moved marker and captures nothing.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

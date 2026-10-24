@@ -11,7 +11,8 @@
   "req": "REQ-080",
   "ac": "AC-2",
   "row": 19,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 19, commit 1637ed25 (W-147): IV and delta shown to every user; pinned by frontend/tests/leg-picker.test.js 'AC-1/AC-2/AC-3 core' (cell-iv, cell-delta).",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

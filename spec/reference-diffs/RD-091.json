@@ -8,7 +8,8 @@
   "req": "REQ-076",
   "ac": "AC-8",
   "row": 20,
-  "status": "open",
+  "status": "built",
+  "built_in": "row 20, commit 463dca78 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-8: on the page the name and the marks are the reply's and update on every edit'.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

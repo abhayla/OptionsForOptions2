@@ -31,8 +31,8 @@ STATUSES = ("open", "built", "verified", "deferred", "decided")
 CLEARED = ("verified",)  # deferred needs an issue and decided its reason: both are read in is_blocking
 REQUIRED = ("id", "kind", "title", "reference_behaviour", "reference_screens", "ours", "req", "row", "status",
             "spec_change", "bug", "recorded")
-OPTIONAL = ("reference_label", "ac", "adr", "issue")
-MAX_LEN = {"title": 120, "reference_behaviour": 400, "reference_label": 40, "ours": 400}
+OPTIONAL = ("reference_label", "ac", "adr", "issue", "built_in", "note")
+MAX_LEN = {"title": 120, "reference_behaviour": 400, "reference_label": 40, "ours": 400, "built_in": 400, "note": 400}
 MAX_SCREENS = 20
 EXIT_UNREADABLE = 2  # bad usage, or a register the gates cannot trust
 INT_FIELDS = (("row", "a builder row number"), ("issue", "an issue number"))
@@ -143,7 +143,7 @@ def _field_errors(rec: dict) -> list[str]:
 
 def _text_errors(rec: dict) -> list[str]:
     errs: list[str] = []
-    for key in ("title", "reference_behaviour", "ours", "reference_label"):
+    for key in ("title", "reference_behaviour", "ours", "reference_label", "built_in", "note"):
         if key in rec and not _is_str(rec[key]):
             errs.append(f"`{key}` must be non-empty text")
         elif key in rec and len(rec[key]) > MAX_LEN[key]:

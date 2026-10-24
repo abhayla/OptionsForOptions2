@@ -12,6 +12,7 @@
   "ac": "AC-5",
   "row": 20,
   "status": "open",
+  "note": "Not built here: a saved per-user Lots/Quantity setting is REQ-138, a later row. The picker's local Lots/Quantity choice exists (RD-131).",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"
