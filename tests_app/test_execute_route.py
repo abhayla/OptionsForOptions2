@@ -284,11 +284,12 @@ async def _strategy_one(conn, user: str, app_role: str, units: int = 65) -> int:
     return await store_strategy_one(conn, user, app_role, units)
 
 
-async def _post(app, strategy_id: int, action: str):
+async def _post(app, strategy_id: int, action: str, revision: int = 1):
+    """W-151: Execute names the revision the review was built from; the stored strategy 1 is at revision 1."""
     from test_strategy_store import _client  # noqa: PLC0415
 
     async with _client(app) as ac:
-        return await ac.post(f"/strategies/{strategy_id}/execute", json={"action": action})
+        return await ac.post(f"/strategies/{strategy_id}/execute", json={"action": action, "revision": revision})
 
 
 @pytest.mark.usefixtures("app_engine")

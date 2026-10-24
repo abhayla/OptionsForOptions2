@@ -31,6 +31,7 @@ from typing import Any, Literal, Mapping, Optional, Sequence
 
 from ofo.execution.basket import make_tag
 from ofo.instruments.models import ZERODHA
+from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -49,7 +50,6 @@ SIDES = ("BUY", "SELL")
 UNRESOLVED = "unresolved_from_positions"
 CLOSE_REASONS = ("filled", "exited", "nothing_placed", "partial", UNRESOLVED)
 _NO_FILLS_REASONS = ("nothing_placed", UNRESOLVED)  # closes that store 0 for every order and take no fills
-INTEGER_MAX = 2**31 - 1  # plan_number, leg_index, quantity (INTEGER)
 PRICE_LIMIT = Decimal(10) ** 12  # NUMERIC(14,2)
 _UNIQUE_VIOLATION = "23505"
 _CHECK_VIOLATION = "23514"

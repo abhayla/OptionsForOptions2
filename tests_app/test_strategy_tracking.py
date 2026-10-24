@@ -267,7 +267,8 @@ async def test_ac1_a_tracked_strategy_never_reaches_execute(db):
         paper_body = await c.post(f"/strategies/{stored.id}/execute",
                                   json={"action": "ENTRY", "paper_entry": {"entry_price": "39.15"}})
         assert paper_body.status_code in {HTTPStatus.CONFLICT, HTTPStatus.UNPROCESSABLE_ENTITY}
-        plain = await c.post(f"/strategies/{stored.id}/execute", json={"action": "ENTRY"})
+        plain = await c.post(f"/strategies/{stored.id}/execute",
+                             json={"action": "ENTRY", "revision": stored.revision})
     assert plain.status_code >= HTTPStatus.BAD_REQUEST
     async with _same(db) as conn:
         plans = (await conn.execute(text("SELECT count(*) FROM public.execution_plans WHERE strategy_id = :i"),

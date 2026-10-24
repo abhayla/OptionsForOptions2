@@ -1,0 +1,27 @@
+{
+ "id": "health-dropped-at-response-boundary",
+ "scope": "generic",
+ "class": "A value that carries its own data health inside the domain (a forward from a stale spot, a level from a delayed quote) loses that health when it is turned into the API response, so the screen shows a number built from stale data as if it were current - often next to other values that do say stale.",
+ "mechanism": "backend/ofo/marketdata/forward.py parity_forward accepts a STALE or DELAYED spot by design and records `spot_health`; backend/ofo_app/routes/leg_picker.py:472-494 (`_forward`) and `ForwardOut` had no field for it, so LegPicker.vue showed \"Forward used for pricing: 22557.59 (estimated from spot)\" from a 20-minute-old spot while the futures beside it said FEED_STALE.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 2 Tier A review, area C (Opus), on build/seq-chunk-2 7f86296a; row 19 built the futures tab",
+  "evidence": "review-c/probe_forward.py: a STALE NIFTY spot (22533.25, 20 min old) -> {'forward': '22557.59', 'source': 'spot_fallback', 'label': 'estimated from spot', 'reason': None}; grep of tests_app/test_leg_picker*.py for forward + stale/health/delayed: 0 lines."
+ },
+ "fix": "Instance: ForwardOut carries the spot health and the screen shows it. Class: every domain object with a health field reaching a response is listed per route with carried / dropped (fix round on build/seq-chunk2-rev-c).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded for the forward row when its stale/delayed route tests merge. Not covered: a new response model that drops a health field - a repo test comparing domain dataclasses' health fields with their response models would close it."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-015.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "chunk 2 Tier A review area C",
+   "evidence": "as first_seen"
+  }
+ ]
+}

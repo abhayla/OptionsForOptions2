@@ -6,7 +6,7 @@
   "reference_screens": [
     "screen 210"
   ],
-  "ours": "REQ-077 AC-6 marker on a live leg is not built.",
+  "ours": "Open: Not changed: our marker text is REQ-077 AC-6's own wording; the reference's shorter text is SPEC CHANGE record RD-149, waiting for the owner.",
   "req": "REQ-077",
   "ac": "AC-6",
   "row": 21,

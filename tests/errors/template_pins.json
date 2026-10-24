@@ -1498,5 +1498,25 @@
   "strategy_reconciliation_required": {
     "sha256": "2cbf1b075a315c2eec0628517cc73fed232d722810c315b6ddb8819357c1bb1f",
     "reviewed": "pending owner read"
+  },
+  "execute_plan_changed": {
+    "sha256": "882454d22e5487df31bf2deb7203e496c56e340cdd89d5413156b488f3ee2eea",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries": {
+    "sha256": "b5fafa6d2097e303a38c172a5abb4d28b982d4e5f11f6a15c9f25cb7ceaa899c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries_centre": {
+    "sha256": "b56007be32cbe99590dc7367807572279e16f653f802737201f7b11a43c78893",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries_no_estimate": {
+    "sha256": "79a23806968bcb8de08bfc236e44fe8b917728920087b39fb8f1c59aa942098f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_waiting_first_price": {
+    "sha256": "c71a7f5be7447cf1c01bed4a127464652f6bdb52613496623391242622a1f364",
+    "reviewed": "pending owner read"
   }
 }

@@ -15,12 +15,14 @@ The engine rounds IV and delta to 4 places, so each is compared within 0.00006 o
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from decimal import Decimal
 
 import pytest
 from ofo.engine.chain_values import CellValues, cell_values, chain_greeks, in_the_money
 from ofo.engine.legs import Instrument
+from ofo.engine.model import iv_price
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 
@@ -125,3 +127,78 @@ def test_sensex_lot_20_per_lot_and_a_future_is_not_an_option_side():
 def test_req_087_ac_2_in_the_money_sides(kind, strike, spot, expected):
     """REQ-087 AC-2: calls below the spot and puts above it; None without a live spot."""
     assert in_the_money(kind, D(strike), spot) is expected
+
+
+# --- One IV price rule (ADR-172) for the picker and the outcome leg: chunk-2 Tier A review, area A ---------------
+NEAR = datetime.date(2026, 10, 13)
+ANCHOR = "NSE_FO:44614"  # one recorded NIFTY 13-Oct option: the snapshot then carries the whole 13-Oct chain
+
+
+@pytest.fixture(scope="module")
+def recorded():
+    """The 2026-10-08 09:20:09 replay: the NIFTY 13-Oct chain with its parity forward and live bid/ask."""
+    from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+    from ofo.outcome import read_snapshot
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider, read_snapshot(provider, "NIFTY", [ANCHOR], VALUATION, RATE)
+
+
+def _outcome_leg_iv(provider, instrument_id):
+    from ofo.engine.legs import Action
+    from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+    snap = read_snapshot(provider, "NIFTY", [instrument_id], VALUATION, RATE)
+    plan = StrategyDefinition("NIFTY", (PlannedLeg(instrument_id, Action.BUY, 1, D("10"), VALUATION),))
+    return build_outcome(plan, snap).legs[0].iv
+
+
+def test_core_picker_iv_equals_outcome_leg_iv_on_the_recorded_frames(recorded):
+    """The core: the leg picker's IV and the outcome leg's IV for one contract at one instant are one engine number,
+    because both solve from the one ADR-172 price (mid when both sides are live and ask >= bid, else LTP). Before the
+    fix the 22150 CE (deep in the money, stale LTP, live mid) showed 0.147669 in the picker vs 0.138008 on the leg."""
+    provider, snap = recorded
+    chain = snap.chains[NEAR]
+    picker = chain_greeks(chain, snap.spot, NEAR, VALUATION, RATE)
+    by_key = {(q.instrument_type, q.strike): q for q in chain}
+    for kind, strike in ((Instrument.CE, "22150"), (Instrument.CE, "22550"), (Instrument.PE, "22550"),
+                         (Instrument.PE, "22900"), (Instrument.CE, "23000")):
+        q = by_key[(kind, D(strike))]
+        leg_iv = _outcome_leg_iv(provider, q.instrument_id)
+        assert leg_iv is not None and q.instrument_id in picker, (kind, strike)
+        assert picker[q.instrument_id].iv == leg_iv, (kind, strike, picker[q.instrument_id].iv, leg_iv)
+    ce = by_key[(Instrument.CE, D("22150"))]
+    assert ce.bid and ce.ask and ce.ask >= ce.bid and ce.ltp != iv_price(ce)  # the mid branch, on real data
+
+
+def _priced(ltp, bid, ask):
+    q = _quote("NSE_FO:44612", "NIFTY", Instrument.CE, NEAR, "22500", "1")
+    return dataclasses.replace(q, ltp=None if ltp is None else D(ltp), bid=None if bid is None else D(bid),
+                               ask=None if ask is None else D(ask))
+
+
+@pytest.mark.parametrize(("ltp", "bid", "ask", "expected"), [
+    ("151.30", "150.00", "151.05", "150.52"),  # both sides live, ask >= bid: the mid (half-even to 0.01)
+    ("151.30", "150.00", "150.00", "150.00"),  # a zero-width book is still a mid
+    ("151.30", None, "151.05", "151.30"),      # no bid: LTP
+    ("151.30", "150.00", None, "151.30"),      # no ask: LTP
+    ("151.30", "0", "151.05", "151.30"),       # a bid of 0 is no live side: LTP
+    ("151.30", "151.05", "150.00", "151.30"),  # ask < bid (crossed): LTP
+    (None, None, None, None),                  # no LTP and no mid: no IV price
+])
+def test_iv_price_is_the_mid_when_both_sides_live_else_the_ltp(ltp, bid, ask, expected):
+    """ADR-172 answer states: mid / one side missing / zero side / crossed / nothing."""
+    assert iv_price(_priced(ltp, bid, ask)) == (None if expected is None else D(expected))
+
+
+def test_picker_solves_from_the_mid_and_a_crossed_book_from_the_ltp():
+    """The picker itself (not only the helper) takes the ADR-172 price: a live book moves the IV off the LTP figure;
+    a crossed book leaves it on the LTP figure."""
+    spot = _quote("INDEX", "NIFTY", None, None, None, "22533.25")
+
+    def iv(q):
+        return chain_greeks([q], spot, NEAR, VALUATION, RATE)["NSE_FO:44612"].iv
+    on_ltp = iv(_priced("151.30", None, None))
+    assert iv(_priced("151.30", "151.05", "150.00")) == on_ltp
+    on_mid = iv(_priced("151.30", "140.00", "141.00"))
+    assert on_mid < on_ltp

@@ -2,22 +2,25 @@
 import dataclasses
 from decimal import Decimal as D
 
+import ofo.outcome.service as service_module
 import pytest
-
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.estimate import MODEL, estimate_now
 from ofo.engine.legs import Action, Instrument
+from ofo.outcome import OutcomeState
 from ofo.scenario.config import ScenarioConfig
 from ofo.scenario.levels import build_level_set
-from ofo.scenario.outcome import scenario_table
 from ofo.scenario.views import DEFAULT_VIEW, View, scenario_values
+from outcome.test_same_engine import formula_pnl, outcome_of
 from scenario_fixtures import nifty_input, nifty_leg
+
+LEGS = 4  # the condor's legs
 
 
 def test_ac6_at_expiry_is_default_and_exact(golden, settings):
     """AC-6: the default view is At Expiry, kind exact, with the §6 values at the inserted columns."""
     assert DEFAULT_VIEW is View.AT_EXPIRY
-    table = scenario_table(golden, settings.for_index("NIFTY"))
-    values = table.values
+    values = scenario_values(build_level_set(golden, settings.for_index("NIFTY")), golden, DEFAULT_VIEW)
     assert (values.view, values.label, values.kind, values.available) == (View.AT_EXPIRY, "At Expiry", "exact", True)
     by_level = dict(zip(values.levels, values.totals))
     assert by_level[D("22909")] == D("0") and by_level[D("23491")] == D("0")
@@ -84,3 +87,51 @@ def test_views_fail_closed(golden, settings):
     other = nifty_input(golden.legs, spot=D("23100"))
     with pytest.raises(ValueError, match="different strategy input"):
         scenario_values(ls, other, View.AT_EXPIRY)
+
+
+@pytest.fixture(scope="module")
+def replayed():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider
+
+
+# ---- the same two modes on the product's path: build_outcome (the outcome route and the live push call it) -----------
+def test_ac6_build_outcome_default_is_at_expiry_exact(replayed):
+    """AC-6 on build_outcome, real 2026-10-08 frames: the default is At Expiry, exact, every cell the formula."""
+    out = outcome_of(replayed)
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    values = out.scenario
+    assert (values.view, values.label, values.kind, values.available) == (View.AT_EXPIRY, "At Expiry", "exact", True)
+    assert values.assumptions is None
+    assert len(values.leg_rows) == LEGS and all(len(row) == len(values.levels) for row in values.leg_rows)
+    for level, total in zip(values.levels, values.totals, strict=True):
+        assert total == formula_pnl(level, replayed), level
+
+
+def test_ac6_build_outcome_estimated_now_is_labelled_estimate(replayed):
+    """AC-6 on build_outcome: Estimated Now is an estimate from the engine with the legs' solved IVs, and differs from
+    the expiry number 5 days out."""
+    out = outcome_of(replayed, view=View.ESTIMATED_NOW)
+    values = out.scenario
+    assert (values.view, values.kind, values.available) == (View.ESTIMATED_NOW, "estimate", True)
+    assert "estimate" in values.label.lower()
+    assert values.assumptions.model == MODEL
+    assert values.assumptions.ivs == tuple(leg.iv for leg in out.legs) and None not in values.assumptions.ivs
+    exact = outcome_of(replayed).scenario
+    assert exact.levels == values.levels
+    at = values.levels.index(D("22500"))
+    assert values.totals[at] != exact.totals[at]
+
+
+def test_ac6_build_outcome_without_iv_estimated_now_unavailable_never_zero(replayed, monkeypatch):
+    """AC-6 negative on build_outcome: no solved IV -> Estimated Now unavailable with its reason; At Expiry kept."""
+    monkeypatch.setattr(service_module, "_leg_iv", lambda *a, **k: None)
+    out = outcome_of(replayed, view=View.ESTIMATED_NOW)
+    values = out.scenario
+    assert values.available is False
+    assert values.totals is None and values.leg_rows is None and out.payoff_points == ()
+    names = ", ".join(leg.symbol for leg in out.legs)
+    assert values.unavailable_reason == f"Estimated Now is unavailable: no implied volatility for {names}"
+    assert outcome_of(replayed).scenario.available is True

@@ -25,7 +25,8 @@ import {
   CUSTOM_STRATEGY, EXECUTE_NEEDS_ALL_TICKED, LEFT_OUT_LABEL, NO_LEGS_YET, applyEditReply, buildEditRequest, canStep, executeRefusal,
   MULTIPLIER_CHOICES, shapeLabel,
 } from '@/lib/legEdit'
-import { buildDraft } from '@/lib/legPicker'
+import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
+import { movedMarker } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -40,7 +41,8 @@ const replyLeg = (l, extra = {}) => ({ instrument_id: l.instrument_id, action: l
 const STEPPED = {
   legs: [replyLeg(real.legs[0], { instrument_id: 'NSE_FO:44625', strike: '22850.00', planned_entry: '95.00' }), ...real.legs.slice(1).map((l) => replyLeg(l))],
   shape: null, shape_name: null,
-  outcome: { ...real, summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
+  outcome: { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, instrument_id: 'NSE_FO:44625', planned_entry: '95.00' } : l)), // the legs the reply names
+    summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
 }
 // The server's answer to the read control on load: the legs as sent, the matched name and the two Hedge marks (the wings).
 const READ = {
@@ -112,7 +114,7 @@ describe('the request carries one edit and nothing computed', () => {
   it('an edit missing its fields, an unknown control or a leg with no id builds nothing (no guess)', () => {
     expect(buildEditRequest('NIFTY', legs, { control: 'step', index: 0 })).toBeNull()
     expect(buildEditRequest('NIFTY', legs, { control: 'shift', direction: 1 })).toBeNull() // REQ-078, not this row
-    expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0, price: '81.35' })).toBeNull() // REQ-077, not this row
+    expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0 })).toBeNull() // a price edit without its text
     expect(buildEditRequest('NIFTY', [{ ...legs[0], instrument_id: null }], { control: 'include', index: 0, included: false })).toBeNull()
     expect(buildEditRequest('NIFTY', [], { control: 'multiplier', multiplier: 2 })).toBeNull()
   })
@@ -317,7 +319,7 @@ describe('AC-7 (attack 2): Execute is refused while any leg is unticked', () => 
     const w = await openPage()
     const actions = w.findComponent(StrategyActions)
     expect(actions.props('executeRefusal')).toBeNull()
-    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l, i) => replyLeg(l, { included: i !== 1 })), outcome: real }
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l, i) => replyLeg(l, { included: i !== 1 })), outcome: { ...real, legs: real.legs.filter((_, i) => i !== 1) } } // the numbers of the ticked legs
     await all(w, 'leg-tick')[1].setValue(false)
     await flushPromises()
     expect(actions.props('executeRefusal')).toBe(EXECUTE_NEEDS_ALL_TICKED)
@@ -441,5 +443,229 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     if (add.exists() && !add.element.disabled) await add.trigger('click')
     await flushPromises()
     expect(w.findComponent({ name: 'LegPicker' }).props('legs')).toHaveLength(0)
+  })
+})
+
+// ---- W-149 / REQ-077 (row 21c): typed price, Reset Prices, per-leg reset, the price-has-moved marker ----
+const typedReply = (index, price, extra = {}) => ({
+  ...READ,
+  legs: READ.legs.map((l, i) => (i === index
+    ? { ...l, planned_entry: price, captured_at: '2026-10-24T10:35:12+05:30', price_source: 'typed', price_reason: null, ...extra } : l)),
+})
+const typeInto = async (w, i, text) => {
+  await row(w, i).find('[data-testid="price-input"]').setValue(text)
+  await row(w, i).find('[data-testid="price-set"]').trigger('click')
+  await flushPromises()
+}
+const REFUSED_PRICE = { parts: { what_happened: 'The price 81.32 is not a multiple of the tick size 0.05.', impact: 'Your price was not used.',
+  what_is_blocked: 'The planned entry of this leg is unchanged.', next_action: 'Type a price that is a multiple of 0.05.' } }
+async function openWithOutcome(outcome) {
+  answers['POST /strategies/outcome'] = outcome
+  answers['POST /strategies/leg-edit'] = READ
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+  await router.isReady()
+  const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+  await flushPromises()
+  return w
+}
+
+describe('REQ-077 AC-1 Core: typing 81.30 on a leg row', () => {
+  it('AC-1: the request carries price "81.30" as a string, and the reply\'s typed leg renders Your price with its time', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = typedReply(0, '81.30')
+    await typeInto(w, 0, '81.30')
+    expect(edits()).toHaveLength(1)
+    expect(edits()[0].body.edit).toEqual({ control: 'price', index: 0, price: '81.30' })
+    expect(typeof edits()[0].body.edit.price).toBe('string')
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe('Your price 81.30')
+    expect(row(w, 0).find('[data-testid="leg-captured"]').text()).toBe('typed 24 Oct 2026, 10:35:12 IST')
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].planned_entry}`)
+  })
+  it('AC-1: "81.3" is sent as the text typed and the row shows the reply\'s 2-decimal text', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = typedReply(2, '81.30')
+    await typeInto(w, 2, '81.3')
+    expect(edits()[0].body.edit.price).toBe('81.3')
+    expect(row(w, 2).find('[data-testid="leg-entry"]').text()).toBe('Your price 81.30')
+  })
+  it('AC-1: a price is never sent as a number', () => {
+    const legs = real.legs.map((l) => ({ ...l, instrument_type: l.instrument }))
+    expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0, price: 81.3 })).toBeNull()
+    expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0, price: '81.30' }).edit.price).toBe('81.30')
+  })
+})
+
+describe('REQ-077 AC-2 a refused price', () => {
+  it('AC-2: the four-part error shows under that field and the previous price stays', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = Object.assign(new Error('refused'), REFUSED_PRICE)
+    await typeInto(w, 1, '81.32')
+    const under = row(w, 1).find('[data-testid="price-error"]')
+    expect(under.exists()).toBe(true)
+    for (const part of Object.values(REFUSED_PRICE.parts)) expect(under.text()).toContain(part)
+    expect(all(w, 'price-error')).toHaveLength(1)
+    expect(all(w, 'edit-error')).toHaveLength(0) // not also at the top of the list
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].planned_entry}`)
+  })
+})
+
+describe('REQ-077 AC-5 Reset Prices and the per-leg reset', () => {
+  const afterTyped = async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = typedReply(0, '81.30')
+    await typeInto(w, 0, '81.30')
+    const first = typedReply(0, '81.30')
+    answers['POST /strategies/leg-edit'] = { ...first, legs: first.legs.map((l, i) => (i === 1
+      ? { ...l, planned_entry: '30.00', captured_at: '2026-10-24T10:36:00+05:30', price_source: 'typed' } : l)) }
+    await typeInto(w, 1, '30.00')
+    return w
+  }
+  const yours = (w) => all(w, 'leg-entry').filter((x) => x.text().startsWith('Your price'))
+  it('AC-5: Reset Prices sends reset_prices and clears every Your price from the reply', async () => {
+    const w = await afterTyped()
+    expect(yours(w)).toHaveLength(2)
+    answers['POST /strategies/leg-edit'] = READ
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_prices' })
+    expect(yours(w)).toHaveLength(0)
+    expect(all(w, 'leg-entry').every((x) => x.text().startsWith('Planned entry'))).toBe(true)
+  })
+  it('AC-5: a per-leg reset sends reset_leg for that index and touches only that row', async () => {
+    const w = await afterTyped()
+    answers['POST /strategies/leg-edit'] = { ...READ, legs: READ.legs.map((l, i) => (i === 1 ? { ...l, planned_entry: '30.00', price_source: 'typed' } : l)) }
+    await row(w, 0).find('[data-testid="reset-leg"]').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_leg', index: 0 })
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe('Your price 30.00')
+  })
+  it('AC-5: a per-leg reset on row 1 sends index 1 and leaves row 0\'s typed price on screen', async () => {
+    const w = await afterTyped()
+    const kept = typedReply(0, '81.30')
+    answers['POST /strategies/leg-edit'] = kept
+    await row(w, 1).find('[data-testid="reset-leg"]').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_leg', index: 1 })
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe('Your price 81.30')
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].planned_entry}`)
+  })
+  it('AC-5: Reset Prices clears every row, not only row 0', async () => {
+    const w = await afterTyped()
+    answers['POST /strategies/leg-edit'] = READ
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_prices' })
+    expect(all(w, 'leg-entry').every((x) => x.text().startsWith('Planned entry'))).toBe(true)
+  })
+  it('AC-1: a typed price on row 1 sends index 1', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = typedReply(1, '30.00')
+    await typeInto(w, 1, '30.00')
+    expect(edits()[0].body.edit).toEqual({ control: 'price', index: 1, price: '30.00' })
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+  })
+  it('AC-5: a planned entry without a capture time keeps the not-connected label', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { ...READ, legs: READ.legs.map((l, i) => (i === 2 ? { ...l, captured_at: null } : l)) }
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(row(w, 2).find('[data-testid="leg-unpriced"]').text()).toBe(NOT_CONNECTED_LABEL)
+    expect(row(w, 2).find('[data-testid="leg-price-reason"]').exists()).toBe(false)
+    expect(row(w, 1).find('[data-testid="leg-unpriced"]').exists()).toBe(false)
+  })
+  it('AC-5: an unpriced leg after a reset shows the reply\'s price_reason text; none for a priced leg', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { ...READ, outcome: null, legs: READ.legs.map((l, i) => (i === 3
+      ? { ...l, planned_entry: null, captured_at: null, price_source: 'none', price_reason: 'no_live_price' } : l)) }
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(row(w, 3).find('[data-testid="leg-price-reason"]').text()).toBe('This contract has no live price right now, so it has no planned entry.')
+    expect(row(w, 3).find('[data-testid="leg-unpriced"]').exists()).toBe(true)
+    expect(row(w, 0).find('[data-testid="leg-price-reason"]').exists()).toBe(false)
+  })
+  it('AC-5: price_reason not_connected reads the existing live-data-not-connected wording', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { ...READ, outcome: null, legs: READ.legs.map((l, i) => (i === 0
+      ? { ...l, planned_entry: null, captured_at: null, price_source: 'none', price_reason: 'not_connected' } : l)) }
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(row(w, 0).find('[data-testid="leg-price-reason"]').text()).toBe('Live data is not connected, so no prices are shown.')
+  })
+})
+
+describe('REQ-077 AC-6 / AC-7 the price-has-moved marker', () => {
+  const leg = { planned_entry: '44.90', captured_at: '2026-10-24T10:35:12+05:30' }
+  it('AC-6: differing strings give the marker with the time, planned and now exactly as sent', () => {
+    expect(movedMarker(leg, '47.15')).toBe('Price has moved since 24 Oct 2026, 10:35:12 IST: planned 44.90, now 47.15')
+  })
+  it('AC-6: equal strings (also 44.9 vs 44.90) give no marker; no live data gives none', () => {
+    expect(movedMarker(leg, '44.90')).toBeNull()
+    expect(movedMarker(leg, '44.9')).toBeNull()
+    expect(movedMarker(leg, null)).toBeNull()
+    expect(movedMarker(leg, undefined)).toBeNull()
+    expect(movedMarker({ planned_entry: null, captured_at: null }, '47.15')).toBeNull()
+  })
+  it('AC-6/AC-7: on the page a leg whose LTP differs shows the marker and keeps the planned entry; an equal one shows none', async () => {
+    const w = await openWithOutcome({ ...real, legs: real.legs.map((l, i) => (i === 1 ? { ...l, ltp: l.planned_entry } : l)) })
+    expect(row(w, 0).find('[data-testid="price-moved"]').text()).toContain(`planned ${real.legs[0].planned_entry}, now ${real.legs[0].ltp}`)
+    expect(row(w, 1).find('[data-testid="price-moved"]').exists()).toBe(false)
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+    expect(edits()).toHaveLength(0) // opening re-priced nothing: only the read control went out
+  })
+  it('AC-6: with no live data (no ltp in the answer) no leg shows a marker', async () => {
+    const w = await openWithOutcome({ ...real, legs: real.legs.map((l) => ({ ...l, ltp: null })) })
+    expect(all(w, 'leg-row')).toHaveLength(4)
+    expect(all(w, 'price-moved')).toHaveLength(0)
+  })
+})
+
+describe('REQ-077 AC-7 (RD-113): a reopened SAVED strategy marks the legs whose live price moved and captures nothing', () => {
+  // The saved definition (LegOut shape) of the recorded condor: leg 0 was saved at 100.00 and trades at 39.15 now; leg 1 was saved
+  // AT its live price 12.95 -> no marker. The save/open path is SaveDraftBar -> fetchSavedDraft -> legsFromSaved.
+  const tokenOf = (l) => Number(l.instrument_id.split(':')[1])
+  const savedLeg = (l, entry) => ({
+    contract_id: tokenOf(l), contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: tokenOf(l), instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, action: l.action, quantity: l.quantity, planned_entry: entry, captured_at: l.captured_at,
+    entry_source: 'captured',
+  })
+  const entries = [real.legs[0].planned_entry, real.legs[1].ltp, real.legs[2].planned_entry, real.legs[3].planned_entry]
+  const SAVED = { revision: 3, definition: { underlying: 'NIFTY', legs: real.legs.map((l, i) => savedLeg(l, entries[i])) } }
+  const CATALOGUE = {
+    underlying: 'NIFTY',
+    contracts: real.legs.map((l) => ({
+      contract_id: tokenOf(l), exchange_segment: 'NSE_FO', exchange_token: tokenOf(l), instrument_type: l.instrument,
+      expiry: l.expiry, strike: l.strike, lot_size: l.lot_size, symbol: l.symbol,
+    })),
+  }
+
+  async function reopenSaved() {
+    answers['GET /strategies'] = { strategies: [{ id: 7, underlying: 'NIFTY', updated_at: '2026-10-24T10:35:12+05:30' }] }
+    answers['GET /strategies/7'] = SAVED
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CATALOGUE
+    const w = await openPage()
+    calls.length = 0
+    answers['POST /strategies/leg-edit'] = { ...READ, legs: real.legs.map((l, i) => replyLeg(l, { planned_entry: entries[i], hedge: false })) }
+    await t(w, 'open-draft-7').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-7: leg 0 (saved 100.00, live 39.15) shows the marker with both prices; leg 1 (saved at live) none; the saved entries stay', async () => {
+    const w = await reopenSaved()
+    expect(all(w, 'leg-row')).toHaveLength(4)
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain('GET /strategies/7')
+    expect(row(w, 0).find('[data-testid="price-moved"]').text()).toContain(`planned ${real.legs[0].planned_entry}, now ${real.legs[0].ltp}`)
+    expect(row(w, 1).find('[data-testid="price-moved"]').exists()).toBe(false)
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].ltp}`)
+  })
+
+  it('AC-7: reopening captures nothing - no planned-entry request, no leg-edit step, and the legs sent carry the SAVED entries', async () => {
+    await reopenSaved()
+    expect(calls.filter((c) => c.url === '/strategies/planned-entry')).toHaveLength(0)
+    expect(edits()).toHaveLength(0)
+    expect(calls.filter((c) => c.url === '/strategies/outcome').flatMap((c) => c.body.legs.map((l) => l.planned_entry))).toEqual(entries)
   })
 })

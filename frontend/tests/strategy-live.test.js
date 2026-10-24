@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -13,7 +14,7 @@ let apiAnswer = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')),
-    post: (url, body) => {
+    post: (url, body, opts) => {
       // The read control (REQ-076 AC-8) is its own request: it is recorded apart (readCalls) and answered with the legs as sent,
       // in the real LegEditOut shape, so the tests below keep counting OUTCOME requests only. A test that sets a function
       // answer handles every request itself.
@@ -22,14 +23,18 @@ vi.mock('@/services/api', async (importActual) => {
         return Promise.resolve({ data: { legs: body.legs.map((l) => ({ ...l, ...legFacts(l.instrument_id), price_source: 'captured', hedge: false, block: null })),
           shape: null, shape_name: null, outcome: null } })
       }
-      apiCalls.push({ url, body })
-      return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer })
+      apiCalls.push({ url, body, opts })
+      return typeof apiAnswer === 'function' ? apiAnswer(body, url, opts) : Promise.resolve({ data: apiAnswer })
     } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
+import LegList from '@/components/strategy/LegList.vue'
+import { EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
-import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
+import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isCurrentVersion, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
   static all = []
@@ -53,7 +58,7 @@ class FakeSocket {
     this.onopen?.()
   }
   serverPush(obj) {
-    this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) })
+    this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(echoSeq(this, obj)) })
   }
   serverClose() {
     this.readyState = 3
@@ -125,6 +130,26 @@ describe('AC-4: the Builder live socket', () => {
     expect(ws.sent.length).toBe(2)
     expect(JSON.parse(ws.sent[1]).legs[0].lots).toBe(2)
     expect(FakeSocket.all.length).toBe(1)
+  })
+
+  it('REQ-133 AC-2: a versioned socket sends seq = its own counter, bumped once per changed body, and draws only that version', () => {
+    const pushes = []
+    const live = createLiveSocket({ url: 'ws://x', onPush: (m) => pushes.push(m), versioned: true, WebSocketImpl: FakeSocket })
+    live.follow(BODY)
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    expect(JSON.parse(ws.sent[0])).toEqual({ ...BODY, seq: 1 })
+    live.follow({ ...BODY }) // unchanged: nothing sent, the version stays
+    expect(ws.sent.length).toBe(1)
+    live.follow({ ...BODY, legs: [{ ...BODY.legs[0], lots: 2 }] })
+    expect(JSON.parse(ws.sent[1]).seq).toBe(2)
+    expect(live.version()).toBe(2)
+    ws.serverPush({ ...push('30.05', '₹1'), seq: 1 }) // v1 arriving after v2 was sent
+    ws.serverPush(push('30.10', '₹2')) // the fake echoes v2
+    expect(pushes.map((p) => p.seq)).toEqual([2])
+    expect(isCurrentVersion({ seq: 3 }, 2)).toBe(false) // a seq never sent is not current either
+    expect(isCurrentVersion({}, 0)).toBe(true) // no version sent, none echoed: the old behaviour
+    expect(isCurrentVersion({}, 1)).toBe(false)
   })
 
   it('AC-4: a drop calls the REST fallback and reconnects with backoff; pushes resume on the new socket', () => {
@@ -210,6 +235,12 @@ const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: null, summary: null, payoff: null, scenario: null,
   leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, label: AC5 })) }
 const COMPUTED = real
+// The shape `_assert_from_entries_after_drop` (tests_app/test_strategy_live_push.py) checks: AC-5's text on the state,
+// REQ-077 AC-9's label as the output label, the At Expiry table kept, no ltp, no leg_quotes.
+const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_ENTRIES = { ...real, state: 'FROM_ENTRIES', status_label: AC5, output_label: FROM_YOUR_PRICES, spot_level: null, spot_at: null,
+  leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, iv: null, health: null })),
+  table: { ...real.table, spot_level: null, spot_at: null, output_label: FROM_YOUR_PRICES } }
 const OTHER_STRATEGY = { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) }
 
 describe('W-065 p3 r2: the page asks for the not-live answer when its own socket is down', () => {
@@ -297,6 +328,27 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     w.unmount()
   })
 
+  it('REQ-133 AC-2: a push for an older strategy version is dropped by the Builder even when its legs match; the current one is drawn', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openPage()
+    expect(state(w)).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    const current = JSON.parse(ws.sent.at(-1)).seq
+    expect(Number.isInteger(current) && current >= 1).toBe(true) // the follow message carries the page's version
+    ws.serverPush({ ...COMPUTED, seq: current - 1 }) // late frame of the previous version, same legs (v1 after v2)
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    // no version although the page sent one (sent as raw text: the fake socket echoes the seq into an object push)
+    ws.serverPush(JSON.stringify(Object.fromEntries(Object.entries(COMPUTED).filter(([k]) => k !== 'seq'))))
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    ws.serverPush({ ...COMPUTED, seq: current })
+    await flushPromises()
+    expect(state(w)).toBe('computed')
+    w.unmount()
+  })
+
   it('the not-live message stays on screen during a fallback reload (no loading in between)', async () => {
     apiAnswer = NOT_LIVE
     const w = await openPage()
@@ -316,6 +368,81 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     await flushPromises()
     expect(state(w)).toBe('not-connected')
     w.unmount()
+  })
+
+  it('REQ-049 AC-5 + REQ-077 AC-9: a FROM_ENTRIES answer after the drop shows the server\'s AC-5 message and the from-your-prices label, no live number', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    FakeSocket.all[0].serverOpen()
+    apiAnswer = FROM_ENTRIES
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(state(w)).toBe('from-entries')
+    expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
+    expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
+    expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('a FROM_ENTRIES push is applied like any outcome (the socket of an ended session pushes it)', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    ws.serverPush(FROM_ENTRIES)
+    await flushPromises()
+    expect(state(w)).toBe('from-entries')
+    expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
+    w.unmount()
+  })
+
+  it('REQ-077 AC-9: a draft with one priced leg and one unpriced leg sends no outcome request, opens no socket, shows the unpriced state', async () => {
+    apiAnswer = COMPUTED
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    FakeSocket.all.length = 0
+    const partly = { ...DRAFT, legs: [DRAFT.legs[0], { ...DRAFT.legs[1], planned_entry: null, captured_at: null }] }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(partly) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(state(w)).toBe('unpriced')
+    expect(w.find('[data-testid="state-unpriced"]').exists()).toBe(true)
+    // the text is true for a partly priced draft (one leg HAS an entry), so it must not say "none of the legs"
+    const text = w.find('[data-testid="state-unpriced"]').text()
+    expect(text).toContain('not every leg has a planned entry')
+    expect(text).not.toContain('none of the legs')
+    expect(w.find('[data-testid="strategy-table"]').exists()).toBe(false)
+    expect(apiCalls).toEqual([])
+    expect(FakeSocket.all).toHaveLength(0)
+    w.unmount()
+  })
+})
+
+describe('FROM_ENTRIES on the socket: accepted, never marks the socket live', () => {
+  it('isOutcome accepts exactly the four outcome states', () => {
+    for (const s of ['COMPUTED', 'NOT_CONNECTED', 'REFUSED', 'FROM_ENTRIES']) expect(isOutcome({ state: s })).toBe(true)
+    for (const s of ['LIVE', 'from-entries', '', undefined]) expect(isOutcome({ state: s })).toBe(false)
+  })
+  it('a FROM_ENTRIES push reaches onPush untouched and records no last-price time', async () => {
+    const { useStrategyLive } = await import('@/composables/useStrategyLive')
+    const { effectScope } = await import('vue')
+    const got = []
+    const scope = effectScope()
+    const live = scope.run(() => useStrategyLive({ url: 'ws://app.test/x', WebSocketImpl: FakeSocket, onPush: (m) => got.push(m) }))
+    live.follow(BODY)
+    const ws = FakeSocket.all.at(-1)
+    ws.serverOpen()
+    ws.serverPush({ ...FROM_ENTRIES, last_price_at: '2026-10-19T10:15:00+05:30' })
+    expect(got).toHaveLength(1)
+    expect(got[0].state).toBe('FROM_ENTRIES')
+    expect(live.reconnectingText.value).not.toMatch(/\d\d:\d\d/) // a typed-price answer is not a price time
+    ws.serverPush({ ...COMPUTED, last_price_at: '2026-10-19T10:15:00+05:30' })
+    expect(live.reconnectingText.value).toMatch(/\d\d:\d\d/) // the control: a COMPUTED push does
+    scope.stop()
   })
 })
 
@@ -485,3 +612,206 @@ describe('W-148 (REQ-076 AC-3, AC-6): the live push still matches after a leg ed
   })
 })
 
+
+// W-151 (REQ-119 AC-2, AC-3, AC-4): two edits sent as seq 1 then seq 2, answered 2 then 1, on the mounted Builder page.
+describe('REQ-119 23b core: the newest edit wins on the mounted page, out of order', () => {
+  const REPLY = (label, id) => ({ legs: real.legs.map((l, i) => ({ instrument_id: i === 0 ? id : l.instrument_id, action: l.action, instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry, captured_at: l.captured_at,
+    price_source: 'captured', included: true, hedge: false, block: null })), shape: null, shape_name: null,
+  outcome: { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, instrument_id: id } : l)), summary: { ...real.summary, what_can_i_lose: label } } })
+  const parked = [] // the edit requests (and, when parkOutcome is set, the outcome requests) in flight, each with its resolver, rejecter and abort signal
+  let parkOutcome = false
+  async function openRig() {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    parked.length = 0
+    parkOutcome = false
+    apiAnswer = (body, url, opts) => {
+      if (url === '/strategies/outcome' && !parkOutcome) return Promise.resolve({ data: { ...real, seq: body.seq } })
+      if (url !== '/strategies/outcome' && body.edit.control === 'read') return Promise.resolve({ data: { ...REPLY('read', real.legs[0].instrument_id), outcome: null, seq: body.seq } })
+      return new Promise((resolve, reject) => {
+        const signal = opts?.signal
+        const entry = { url, body, seq: body.seq, signal, answer: (data) => resolve({ data: { ...data, seq: body.seq } }), fail: reject }
+        signal?.addEventListener('abort', () => honourAbort && reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED', __CANCEL__: true })))
+        parked.push(entry)
+      })
+    }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    return w
+  }
+  const txt = (w, id) => w.find(`[data-testid="${id}"]`).text()
+  let honourAbort = true // false = a transport that ignores the abort: the reply still arrives, and is dropped by its seq
+  afterEach(() => { apiAnswer = null; honourAbort = true })
+
+  it('a reply 1 that arrives after reply 2 although its request was aborted is still dropped by its seq', async () => {
+    honourAbort = false
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625'))
+    await flushPromises()
+    parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(w.text()).not.toContain('REPLY ONE')
+    w.unmount()
+  })
+
+  it('replies 2 then 1: the screen keeps reply 2, and request 1 was aborted', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    expect(parked).toHaveLength(2)
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(parked[0].signal?.aborted).toBe(true)
+    expect(parked[1].seq).toBeGreaterThan(parked[0].seq) // each edit carries its own, rising seq (the server echoes it)
+    expect(w.text()).not.toContain('Something went wrong')
+    expect(w.find('[data-testid="edit-error"]').exists()).toBe(false) // the abort of request 1 is no edit error (AC-3)
+    expect(w.text()).toContain('REPLY TWO')
+    w.unmount()
+  })
+
+  it('AC-4: the numbers are marked updating and Execute is refused with its reason until the latest reply is applied', async () => {
+    const w = await openRig()
+    const refusal = () => w.findComponent(StrategyActions).props('executeRefusal')
+    expect(refusal()).toBeNull()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('true')
+    expect(w.find('[data-testid="numbers-updating"]').exists()).toBe(true)
+    expect(refusal()).toBe(EXECUTE_WAITS_FOR_LATEST)
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625')) // the newest answers; the older was aborted
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    expect(refusal()).toBeNull()
+    w.unmount()
+  })
+
+  // The checker's probe P1 (23b fix round 1): the leg-edit reply used to draw its At Expiry numbers under an Estimated Now
+  // choice and cancel the newer outcome request. One rule now: numbers are drawn only when they match the legs AND choice.
+  const choose = (w, c) => w.findComponent(ScenarioControls).vm.$emit('update:choice', c)
+  const ESTIMATED = { view: 'estimated_now', rangeStart: '', rangeEnd: '' }
+  const estimatedBody = (label, id) => ({ ...REPLY(label, id).outcome, scenario: { ...real.scenario, view: 'estimated_now', customised: false } })
+  const actions = (w) => w.findComponent(StrategyActions)
+  const executeWaits = (w) => !actions(w).exists() || actions(w).props('executeRefusal') !== null // no Execute button, or a refusal
+  const edits = () => parked.filter((p) => p.url !== '/strategies/outcome')
+  const outcomes = () => parked.filter((p) => p.url === '/strategies/outcome')
+
+  it('P1 core: leg-edit reply first, then the newer Estimated Now request: no at-expiry numbers, newer request kept, Execute waits', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parkOutcome = true
+    choose(w, ESTIMATED)
+    await flushPromises()
+    const [edit] = edits()
+    const [newer] = outcomes()
+    edit.answer(REPLY('LEG-EDIT REPLY (at_expiry)', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.text()).not.toContain('LEG-EDIT REPLY (at_expiry)')
+    expect(newer.signal.aborted).toBe(false)
+    expect(w.find('[data-testid="numbers"]').exists()).toBe(false) // no numbers drawn while the matching ones are awaited
+    expect(executeWaits(w)).toBe(true)
+    newer.answer(estimatedBody('OUTCOME estimated_now (old legs)', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    expect(txt(w, 'sum-lose')).toBe('OUTCOME estimated_now (old legs)')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('an outcome reply made for the legs before the edit is dropped and asked again for the new legs', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parkOutcome = true
+    choose(w, ESTIMATED)
+    await flushPromises()
+    const [edit] = edits()
+    edit.answer(REPLY('LEG-EDIT REPLY', 'NSE_FO:44625'))
+    await flushPromises()
+    outcomes()[0].answer(estimatedBody('OLD LEGS', real.legs[0].instrument_id)) // sent with the legs before the edit
+    await flushPromises()
+    expect(w.text()).not.toContain('OLD LEGS')
+    expect(outcomes()).toHaveLength(2)
+    expect(outcomes()[1].body.legs[0].instrument_id).toBe('NSE_FO:44625')
+    expect(outcomes()[1].body.view).toBe('estimated_now')
+    expect(executeWaits(w)).toBe(true)
+    outcomes()[1].answer(estimatedBody('NEW LEGS', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('NEW LEGS')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('edit while on Estimated Now, no race: the request carries the view and no at-expiry numbers are ever drawn', async () => {
+    const w = await openRig()
+    choose(w, ESTIMATED)
+    await flushPromises()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    const [edit] = edits()
+    expect(edit.body.view).toBe('estimated_now')
+    expect(edit.body.range_start).toBeUndefined() // the server's leg-edit has no range field
+    edit.answer({ ...REPLY('ESTIMATED NOW', 'NSE_FO:44625'), outcome: estimatedBody('ESTIMATED NOW', 'NSE_FO:44625') })
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('ESTIMATED NOW')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('edit with a custom range on screen: the legs are applied and the numbers are asked again with the range', async () => {
+    const w = await openRig()
+    choose(w, { view: 'at_expiry', rangeStart: '24000', rangeEnd: '26000' })
+    await flushPromises()
+    parkOutcome = true
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    const [edit] = edits()
+    expect(edit.body.range_start).toBeUndefined()
+    edit.answer(REPLY('AT EXPIRY DEFAULT RANGE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.text()).not.toContain('AT EXPIRY DEFAULT RANGE')
+    expect(w.findComponent(LegList).props('legs')[0].instrument_id).toBe('NSE_FO:44625') // the edit itself is kept
+    expect(outcomes()).toHaveLength(1)
+    expect(outcomes()[0].body.range_start).toBe('24000')
+    expect(outcomes()[0].body.range_end).toBe('26000')
+    expect(executeWaits(w)).toBe(true)
+    w.unmount()
+  })
+
+  it('every outcome request carries a seq and an abort signal', async () => {
+    const w = await openRig()
+    const outcomes = apiCalls.filter((c) => c.url === '/strategies/outcome')
+    expect(outcomes.length).toBeGreaterThan(0)
+    for (const c of outcomes) {
+      expect(Number.isInteger(c.body.seq)).toBe(true)
+      expect(c.opts.signal).toBeInstanceOf(AbortSignal)
+    }
+    w.unmount()
+  })
+
+  it('a failed newest edit shows its error and ends the updating mark', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parked[0].fail({ parts: { what_happened: 'That strike is not listed.', impact: 'Nothing changed.', what_is_blocked: 'No step was made.', next_action: 'Pick another strike.' } })
+    await flushPromises()
+    expect(w.text()).toContain('That strike is not listed.')
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    w.unmount()
+  })
+})

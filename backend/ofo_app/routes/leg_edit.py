@@ -1,7 +1,8 @@
 """POST /api/strategies/leg-edit (W-148; REQ-076; ADR-008, ADR-068, ADR-092, ADR-150).
 
 Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo_app/routes/leg_edit.py), REQ-076 controls only:
-``step``, ``multiplier``, ``include``, ``price``, ``reset_prices`` and ``read`` (changes no leg: it answers the current
+``step``, ``multiplier``, ``include``, ``price``, ``reset_prices``, ``reset_leg`` (REQ-077 AC-5: the same re-capture
+for ONE leg) and ``read`` (changes no leg: it answers the current
 numbers, shape name and Hedge marks of the legs as sent, REQ-076 AC-8). Shift / Width / Hedge and the controls read are
 REQ-078 (row 30) and are not here.
 
@@ -32,18 +33,29 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
-from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
+from ofo.strategy import stored_form
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import OutcomeMargin
@@ -53,6 +65,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     OutcomeRequest,
     OutcomeResponse,
+    RequestSeq,
     get_answer_clock,
     get_margin_source,
     get_market_context,
@@ -61,7 +74,7 @@ from ofo_app.routes.outcome import (
     margin_for_request,
     outcome_response,
 )
-from ofo_app.routes.planned_entry import capture_entries, get_live_feed
+from ofo_app.routes.planned_entry import Reason, capture_entries, get_live_feed
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -138,25 +151,33 @@ class EditLegIn(LegIn):
 
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
-    base_lots: int = Field(gt=0, le=10000)
+    base_lots: StrictInt = Field(gt=0, le=10000)  # strict like the shared leg's lots: true, 1.0, "2" refused
     included: StrictBool = True
     typed: StrictBool = False
 
 
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    control: Literal["step", "multiplier", "include", "price", "reset_prices", "read"]
-    direction: Literal[1, -1] | None = None
+    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read"]
+    direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
-    price: str | None = Field(default=None, pattern=r"^\d{1,7}(\.\d{1,2})?$")
+    price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+
+    @field_validator("direction", mode="before")
+    @classmethod
+    def _strict_direction(cls, value: object) -> object:
+        """A Literal[1, -1] alone accepts True and 1.0 (equal to 1); only a JSON integer is a direction."""
+        if value is not None and type(value) is not int:
+            raise ValueError("direction is the integer 1 or -1")
+        return value
 
     @model_validator(mode="after")
     def _control_has_its_fields(self) -> EditIn:
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
-                 "multiplier": ("multiplier",), "reset_prices": (), "read": ()}[self.control]
+                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": ()}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
                  "multiplier": self.multiplier}
         missing = [name for name in needs if given[name] is None]
@@ -171,6 +192,7 @@ class LegEditIn(BaseModel):
     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
     edit: EditIn
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
+    seq: RequestSeq | None = None  # REQ-119 AC-1: echoed unchanged as the reply's seq
 
     @model_validator(mode="after")
     def _index_is_inside_the_legs(self) -> LegEditIn:
@@ -198,6 +220,7 @@ class EditLegOut(ApiModel):
     price_source: Literal["captured", "typed", "none"]
     included: bool
     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
+    price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
     block: CatalogueText | None  # the ADR-092 reason when the quantity is not below the freeze limit (never split)
 
 
@@ -206,6 +229,7 @@ class LegEditOut(ApiModel):
     shape: Identifier | None  # the matched template id, None = Custom Strategy; a label only (REQ-076 AC-9)
     shape_name: CatalogueText | None  # the matched template's name from the reviewed catalogue; None = Custom Strategy
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry, or no leg is included
+    seq: int | None = None  # REQ-119 AC-1: the request's seq, unchanged; absent when the request sent none
 
 
 # ---- the edit -----------------------------------------------------------------------------------------------------
@@ -237,6 +261,11 @@ def _legs_of(cat: Catalogue, req: LegEditIn, today: datetime.date) -> list[EditL
         entry = Decimal(item.planned_entry) if item.planned_entry is not None else Decimal(0)
         leg = Leg(Action(item.action), Instrument(c.instrument_type), None if c.instrument_type == "FUT" else c.strike,
                   c.expiry, item.lots * c.lot_size, entry)
+        if item.planned_entry is not None and not stored_form.is_entry_price_text(item.planned_entry):
+            # the stored form's own rule (a zero the save would refuse is refused here, the same price error)
+            kind = ContractKind.FUTURE if c.instrument_type == "FUT" else ContractKind.OPTION
+            raise LegEditRefused("leg_edit_price_not_tick", leg=LegValue(number, leg, req.underlying),
+                                 tick=cat.tick_size(req.underlying, c.expiry, kind))
         out.append(EditLeg(leg, item.lots, item.base_lots, item.included, item.typed))
     return out
 
@@ -310,10 +339,9 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     if e.control == "multiplier":
         return edit.apply_multiplier(cat, name, legs, e.multiplier or 1), frozenset()
     if e.control == "price":
-        price = Decimal(e.price) if e.price is not None else Decimal(0)
-        return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
-    if e.control == "reset_prices":
-        return legs, frozenset(range(len(legs)))
+        return edit.set_typed_price(cat, name, legs, _need_index(e, legs), e.price), frozenset()
+    if e.control in ("reset_prices", "reset_leg"):  # REQ-077 AC-5: every leg, or ONE leg; the others stay as sent
+        return legs, frozenset(range(len(legs)) if e.control == "reset_prices" else {_need_index(e, legs)})
     if e.control == "read":
         return legs, frozenset()
     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
@@ -354,7 +382,11 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
+    reasons: dict[int, Reason] = {}
     recapture = sorted(moved | unpriced) if req.edit.control == "reset_prices" else sorted(moved)
+    if req.edit.control == "price" and req.edit.index is not None:  # REQ-077 AC-4: a typed price carries its own time
+        stamps[req.edit.index] = now()
+        unpriced.discard(req.edit.index)
     if recapture:
         valuation, got = await capture(ctx, feed, req.underlying, [ids[i] for i in recapture])
         entries = {}
@@ -362,6 +394,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
             price = got.get(ids[i])
             if price is None:  # AC-2: no live price -> the stepped leg is unpriced, never the old price
                 unpriced.add(i)
+                reasons[i] = "not_connected" if valuation is None else "no_live_price"  # AC-5: the screen says why
                 stamps[i] = None
             else:
                 entries[i] = price.price
@@ -375,10 +408,11 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
         "strike": x.leg.strike, "expiry": x.leg.expiry, "lots": x.lots, "base_lots": x.base_lots,
-        "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price,
+        "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
         "captured_at": None if i in unpriced else stamps[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
-        "included": x.included, "hedge": i in hedged, "block": blocks.get(i)} for i, x in enumerate(new_legs)]
+        "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
+        "block": blocks.get(i)} for i, x in enumerate(new_legs)]
     outcome = None
     shown = [i for i, x in enumerate(new_legs) if x.included]
     if shown and not any(i in unpriced for i in shown):
@@ -390,5 +424,6 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
-    return LegEditOut.model_validate({"legs": out_legs, "shape": None if template is None else template.id,
-                                      "shape_name": name, "outcome": outcome})
+    reply = {"legs": out_legs, "shape": None if template is None else template.id, "shape_name": name,
+             "outcome": outcome}
+    return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1

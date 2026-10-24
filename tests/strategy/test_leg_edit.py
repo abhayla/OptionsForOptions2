@@ -188,9 +188,54 @@ def test_ac_6_a_stepped_leg_is_re_captured_and_a_typed_price_is_a_tick_multiple(
         assert err.value.template == "leg_edit_price_not_tick"
 
 
+@pytest.mark.parametrize("whole_digits", [27, 30])
+@pytest.mark.parametrize("as_decimal", [False, True])
+def test_an_oversized_typed_price_is_the_price_refusal_never_a_crash(cat, whole_digits, as_decimal):
+    """Chunk-2 Tier A review, area A: 27+ whole digits made quantize raise InvalidOperation; any typed price above the
+    absurd-price cap is the one price refusal (USER_INPUT_013), the legs unchanged."""
+    text = "9" * whole_digits + ".05"
+    legs = condor()
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.set_typed_price(cat, NIFTY, legs, 1, D(text) if as_decimal else text)
+    assert err.value.template == "leg_edit_price_not_tick"
+    assert [x.leg.entry_price for x in legs] == [x.leg.entry_price for x in condor()]
+
+
+def test_a_61_digit_typed_price_is_refused_never_raised(cat):
+    """30 whole + 30 fractional digits (61 characters with the point): the longest text the shape check passes."""
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.set_typed_price(cat, NIFTY, condor(), 1, "9" * 30 + "." + "5" * 30)
+    assert err.value.template == "leg_edit_price_not_tick"
+
+
 def test_refusals_are_user_facing_catalogue_text(cat):
     """Every refusal renders from the error catalogue (no ad-hoc string) and names the leg."""
     with pytest.raises(LegEditRefused) as err:
         leg_edit.step_strike(LISTING, NIFTY, [one(Instrument.CE, str(LAST_LISTED))], 0, 1)
     assert "no further listed strike" in err.value.message.what_happened
     assert "Leg 1" in err.value.message.what_happened
+
+
+def test_ac_2_typed_zero_negative_text_off_tick_and_three_decimals_are_refused_with_four_parts_and_keep_the_price(cat):
+    """REQ-077 AC-2 (attack 1): 0, -5, 'abc', 81.32, 81.305 and NaN are refused with the four-part catalogue error
+    naming leg 1 and the 0.05 tick; the legs as sent keep their previous price and mark."""
+    legs = condor()
+    before = [(x.leg.entry_price, x.typed) for x in legs]
+    for bad in (D("0"), -5, "abc", D("81.32"), D("81.305"), D("NaN"), D("-5"), 81.3, "-5", "0", "0.00", "81.32",
+                "81.305", "1e2", " 5", "NaN", "", "٨١", None):
+        with pytest.raises(LegEditRefused) as err:
+            leg_edit.set_typed_price(cat, NIFTY, legs, 0, bad)
+        parts = err.value.message
+        assert err.value.template == "leg_edit_price_not_tick"
+        assert "Leg 1" in parts.what_happened and "0.05" in parts.what_happened
+        assert all(getattr(parts, name) for name in ("what_happened", "impact", "what_is_blocked", "next_action"))
+    assert [(x.leg.entry_price, x.typed) for x in legs] == before
+    ok = leg_edit.set_typed_price(cat, NIFTY, legs, 0, D("81.30"))
+    assert ok[0].leg.entry_price == D("81.30") and ok[0].typed and [x.typed for x in ok[1:]] == [False] * 3
+
+
+def test_ac_2_a_typed_price_is_stored_and_echoed_with_two_decimals(cat):
+    """REQ-077 AC-2: the text "81.3" (and the Decimal 81.3) is stored as the 2-decimal 81.30, never "81.3"."""
+    for typed in ("81.3", D("81.3"), "81.30"):
+        out = leg_edit.set_typed_price(cat, NIFTY, condor(), 0, typed)
+        assert str(out[0].leg.entry_price) == "81.30"

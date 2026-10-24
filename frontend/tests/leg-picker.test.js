@@ -321,11 +321,27 @@ describe('a late async reply never overwrites newer user state', () => {
 describe('buildDraft: the body the outcome API takes', () => {
   const priced = { underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT, symbol: 'x' }
   const unpriced = { ...priced, instrument_id: 'NSE_FO:44632', planned_entry: null, captured_at: null }
-  it('sends only priced legs, with exactly the five fields its leg model has', () => {
-    expect(buildDraft([priced, unpriced])).toEqual({
+  it('sends every leg, with exactly the five fields its leg model has', () => {
+    expect(buildDraft([priced])).toEqual({
       underlying: 'NIFTY',
       legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
     })
+  })
+  it('REQ-077 AC-9: an included leg without an entry next to a priced one sends no draft', () => {
+    expect(buildDraft([priced, unpriced])).toBeNull()
+    expect(buildDraft([unpriced, priced])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, included: true }])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, captured_at: AT }])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, planned_entry: '1.00' }])).toBeNull()
+  })
+  it('W-148: an unticked unpriced leg is left out and the priced rest is sent', () => {
+    expect(buildDraft([priced, { ...unpriced, included: false }])).toEqual({
+      underlying: 'NIFTY',
+      legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
+    })
+  })
+  it('issue #500: a leg that is not live still wins', () => {
+    expect(buildDraft([priced, { ...priced, not_live: true }])).toBeNull()
   })
   it('is null when no leg has a planned entry', () => {
     expect(buildDraft([unpriced])).toBeNull()
@@ -363,6 +379,7 @@ describe('the Builder page', () => {
       underlying: 'NIFTY',
       legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
       fallback: false,
+      seq: 2, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1
     })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
     expect(t(w, 'status-label').text()).toBe(NOT_CONNECTED_LABEL)
@@ -403,10 +420,30 @@ describe('the Builder page', () => {
     const w = await open({ draft: JSON.stringify(draft) })
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
-    expect(out[0].body).toEqual({ ...draft, fallback: false })
+    expect(out[0].body).toEqual({ ...draft, fallback: false, seq: 1 })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2) // the one list is LegList's
     expect(w.findAll('[data-testid="leg-list"]')).toHaveLength(0) // the picker draws no list of its own on the Builder
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
+  })
+
+  it('ADR-086 item 1 (W-073): the not-connected answer names each known contract in draft-legs, never the fixed unavailable wording, never the instrument id', async () => {
+    const draftLegs = [
+      { instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 1, planned_entry: '100.00', captured_at: AT },
+      { instrument_id: 'NSE_FO:44632', action: 'BUY', lots: 1, planned_entry: '100.00', captured_at: AT },
+    ]
+    // the server's not-live answer names each leg's contract (underlying, expiry, type, strike), as it does for the page
+    const known = [['CE', '22800.00'], ['CE', '23000.00']]
+    answers['POST /strategies/outcome'] = {
+      ...OUTCOME_NOT_CONNECTED,
+      legs: draftLegs.map((l, i) => ({ ...l, underlying: 'NIFTY', expiry: '2026-10-13', instrument_type: known[i][0], strike: known[i][1] })),
+    }
+    const w = await open({ draft: JSON.stringify({ underlying: 'NIFTY', legs: draftLegs }) })
+    expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
+    const text = t(w, 'draft-legs').text()
+    expect(text).toContain('NIFTY')
+    expect(w.findAll('[data-testid="draft-legs"] [data-testid="leg-name"]')).toHaveLength(2)
+    expect(text).not.toContain('Contract details not available')
+    for (const l of draftLegs) expect(text).not.toContain(l.instrument_id)
   })
 
   it('when the outcome call and the catalogue call both fail the page shows exactly one error-what', async () => {
@@ -747,6 +784,39 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
   })
 
+  it('AC-3 (RD-129) core: three picked strikes show "3 selected" in a footer with Clear All and Done; Clear All empties it; Done adds all three', async () => {
+    const pickThree = async (w) => {
+      await sideOf(w, '22450.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+      await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+      await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    }
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-clear-all').attributes('disabled')).toBeDefined()
+    await pickThree(w)
+    const footer = t(w, 'picker-footer')
+    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    expect(footer.find('[data-testid="picker-clear-all"]').text()).toBe('Clear All')
+    expect(footer.find('[data-testid="picker-done"]').text()).toBe('Done')
+    // Clear All: no selection row, no pressed Buy/Sell, Done disabled, nothing sent
+    await t(w, 'picker-clear-all').trigger('click')
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(w.findAll('[data-testid="selection-row"]')).toHaveLength(0)
+    expect(w.findAll('[aria-pressed="true"]')).toHaveLength(0)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+    // a cleared cell forgets its lots, and Done adds all three at once
+    await pickThree(w)
+    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44000', 'BUY'], ['NSE_FO:44002', 'SELL'], ['NSE_FO:44005', 'BUY']])
+    expect(w.emitted('update:legs')).toHaveLength(1)
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+  })
+
   it('AC-3 attack 6: Done with nothing selected adds nothing and sends no request', async () => {
     const w = mountPicker()
     await flushPromises()
@@ -812,6 +882,26 @@ describe('REQ-080 futures tab (W-147)', () => {
       { expiry: '2026-11-24', forward: null, source: null, label: null, strikes_used: 0, reason: 'NOT_PRICEABLE' },
     ],
   }
+  it('ADR-015: a forward computed from a stale or delayed spot is labelled with that health; an available one is not', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = {
+      ...futuresAnswer,
+      forwards: [
+        { expiry: '2026-10-13', forward: '22557.59', source: 'spot_fallback', label: 'estimated from spot', strikes_used: 0, reason: null, spot_health: 'stale' },
+        { expiry: '2026-10-27', forward: '22548.00', source: 'spot_fallback', label: 'estimated from spot', strikes_used: 0, reason: null, spot_health: 'delayed' },
+        { expiry: '2026-11-24', forward: '22540.10', source: 'parity', label: null, strikes_used: 3, reason: null, spot_health: 'available' },
+        { expiry: '2026-12-29', forward: '22540.10', source: 'parity', label: null, strikes_used: 3, reason: null },
+      ],
+    }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    const fw = w.findAll('[data-testid="forward-row"]')
+    expect(fw[0].find('[data-testid="forward-health"]').text()).toContain('Stale:')
+    expect(fw[1].find('[data-testid="forward-health"]').text()).toContain('Delayed:')
+    expect(fw[2].find('[data-testid="forward-health"]').exists()).toBe(false)
+    expect(fw[3].find('[data-testid="forward-health"]').text()).toContain('not known')
+  })
   it('AC-6: every future with its LTP or reason, and each expiry\'s forward labelled "Forward used for pricing" with its source', async () => {
     answers['GET /leg-picker/futures?underlying=NIFTY'] = futuresAnswer
     const w = mountPicker()
@@ -830,6 +920,56 @@ describe('REQ-080 futures tab (W-147)', () => {
     expect(fw[1].find('[data-testid="forward-source"]').text()).toBe('(estimated from spot)')
     expect(fw[2].find('[data-testid="forward-reason"]').text()).toBe('(The engine cannot price this expiry right now.)')
     expect(t(w, 'futures-reason').exists()).toBe(false)
+  })
+
+  const openFutures = async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = futuresAnswer
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-24'] = { underlying: 'NIFTY', contracts: [c(48705, 'FUT', null, 'NIFTY26NOVFUT', '2026-11-24')] }
+    answers['POST /strategies/planned-entry'] = entryFor({ 48704: '22610.40' })
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-9 (RD-134): Buy and Sell on a real future add a BUY / SELL futures leg, priced, through the normal capture path', async () => {
+    const w = await openFutures()
+    const row = (n) => w.findAll('[data-testid="future-row"]')[n]
+    await row(0).find('[data-testid="future-buy"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.instrument_type, l.strike, l.expiry, l.action, l.lots, l.planned_entry, l.captured_at]))
+      .toEqual([['NSE_FO:48704', 'FUT', null, '2026-10-27', 'BUY', 1, '22610.40', AT]])
+    expect(calls.filter((x) => x.method === 'POST').map((x) => x.body)).toEqual([{ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] }])
+    await row(0).find('[data-testid="future-sell"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => l.action)).toEqual(['BUY', 'SELL'])
+  })
+
+  it('AC-9: an unpriced real future is still added, with no entry and the reprice prompt (existing unpriced rules)', async () => {
+    const w = await openFutures()
+    await w.findAll('[data-testid="future-row"]')[1].find('[data-testid="future-sell"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toMatchObject([{ instrument_id: 'NSE_FO:48705', action: 'SELL', planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }])
+  })
+
+  it('AC-9: a future the catalogue cannot confirm adds nothing and says so', async () => {
+    const w = await openFutures()
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-24'] = new Error('down')
+    await w.findAll('[data-testid="future-row"]')[1].find('[data-testid="future-buy"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(t(w, 'future-add-error').exists()).toBe(true)
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+  })
+
+  it('AC-9: the forward (calculated price) rows have no Buy or Sell; only real futures do', async () => {
+    const w = await openFutures()
+    expect(w.findAll('[data-testid="future-buy"]')).toHaveLength(2)
+    expect(w.findAll('[data-testid="future-sell"]')).toHaveLength(2)
+    const fw = w.findAll('[data-testid="forward-row"]')
+    expect(fw).toHaveLength(3)
+    expect(fw.every((r) => r.findAll('button').length === 0)).toBe(true)
   })
 
   it('AC-5: a list-level reason shows above the futures, and a failed read shows no old list', async () => {

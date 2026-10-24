@@ -1,5 +1,6 @@
 // W-118 (REQ-029 AC-1/AC-2/AC-6/AC-8; REQ-049 AC-4): the Option Chain screen with a fake chain socket and a scripted REST.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -26,7 +27,7 @@ class FakeSocket {
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

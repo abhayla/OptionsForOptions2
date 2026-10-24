@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
+import { echoSeq } from './support/echoSeq'
 
 const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor.json', import.meta.url)), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
@@ -34,9 +35,11 @@ test('AC-2: a dropped live socket reads reconnecting at once, shows no old price
     }
     state.opened += 1
     state.current = ws
-    ws.onMessage(() => {
+    const echo = echoSeq()
+    ws.onMessage((message) => {
       state.pushes += 1
-      ws.send(JSON.stringify({ ...real, answered_at: PUSH_AT, last_price_at: PUSH_AT })) // the server's answer to the strategy the page sent
+      echo.remember(message)
+      ws.send(JSON.stringify(echo.stamp({ ...real, answered_at: PUSH_AT, last_price_at: PUSH_AT }))) // the server's answer to the strategy the page sent
     })
   })
   await page.goto(`/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(DRAFT) })}`)

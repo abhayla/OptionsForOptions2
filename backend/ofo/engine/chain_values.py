@@ -13,7 +13,9 @@ Money is ``Decimal`` end to end (ADR-008); the browser only draws the strings.
   LTP-dependent value is None; no spot -> intrinsic, time value and breakeven % are None. A breakeven at or below zero
   (a deep put) is None: the contract cannot break even inside the index's range.
 - Greeks come from the engine's own model at the live spot with the expiry's forward (ADR-056/063), never from the
-  vendor's numbers: the contract's implied volatility from its price, then ``bs_greeks``. Any refusal gives no Greeks.
+  vendor's numbers: the contract's implied volatility from the engine's one IV price (``iv_price``, ADR-172: the mid
+  when both sides are live and not crossed, else the LTP - the same number the outcome leg shows), then
+  ``bs_greeks``. Any refusal gives no Greeks.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from ofo.engine.legs import Instrument
-from ofo.engine.model import expiry_model, greeks, implied_vol
+from ofo.engine.model import expiry_model, greeks, implied_vol, iv_price
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH, PAISE
@@ -102,7 +104,7 @@ def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote |
         if q.instrument_type not in (Instrument.CE, Instrument.PE) or q.strike is None or not is_live_price(q.ltp):
             continue
         try:
-            vol = implied_vol(em, q.instrument_type, q.ltp, q.strike).iv
+            vol = implied_vol(em, q.instrument_type, iv_price(q), q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
         except (ValueError, ArithmeticError):
             continue

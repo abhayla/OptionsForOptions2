@@ -75,10 +75,12 @@ class FeedState:
         self._last_tick_frame: datetime.datetime | None = None  # a PRICE frame only; heartbeats never move it (``phase``)
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
+        self._connected_at: datetime.datetime | None = None  # when the current connection opened (REQ-133 AC-3)
 
     def on_connected(self, now: datetime.datetime) -> None:
         self.connected = True
         self._disconnected_at = None
+        self._connected_at = now
         self._last_activity = now  # a fresh connection starts the 'something must arrive' clock
         self._awaiting_data = True
 
@@ -134,6 +136,17 @@ class FeedState:
         fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale
         return FEED_HEALTHY if fresh and not self._awaiting_data else FEED_WAITING
 
+    def awaiting_first_price(self, now: datetime.datetime) -> bool:
+        """REQ-133 AC-3: connected (or reconnected) and no price frame yet, still inside ``feed_stale`` (the one
+        staleness limit) of the connection opening. Then the screen waits for its first price; past the limit with no
+        frame, the quotes read STALE as before (the alarm). A closed market, an ended session or a capped feed never
+        waits: they say so."""
+        if self.session_ended or self.capped or not self.connected or not self._awaiting_data:
+            return False
+        if self._connected_at is None or self.market_closed(now):
+            return False
+        return now - self._connected_at <= self.feed_stale
+
     def health(self, now: datetime.datetime) -> DataHealth:
         if self.session_ended:
             return DataHealth.UNAVAILABLE
@@ -156,6 +169,13 @@ def market_closed_for(source: object, now: datetime.datetime) -> bool:
     (fail closed)."""
     closed = getattr(getattr(source, "feed", None), "market_closed", None)
     return (not is_market_open(now)) if closed is None else bool(closed(now))
+
+
+def awaiting_first_price_for(source: object, now: datetime.datetime) -> bool:
+    """REQ-133 AC-3 for ANY provider shape: a provider with a ``FeedState`` answers through
+    ``FeedState.awaiting_first_price``; one without (a relay, a test fake, no provider) never waits."""
+    waiting = getattr(getattr(source, "feed", None), "awaiting_first_price", None)
+    return False if waiting is None else waiting(now) is True
 
 
 def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuote:

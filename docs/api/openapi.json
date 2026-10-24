@@ -1165,6 +1165,7 @@
               "include",
               "price",
               "reset_prices",
+              "reset_leg",
               "read"
             ],
             "title": "Control",
@@ -1225,7 +1226,7 @@
           "price": {
             "anyOf": [
               {
-                "pattern": "^\\d{1,7}(\\.\\d{1,2})?$",
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -1410,6 +1411,24 @@
             ],
             "title": "Planned Entry"
           },
+          "price_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_connected",
+                  "no_live_price",
+                  "unknown_instrument",
+                  "wrong_underlying",
+                  "expired"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Reason"
+          },
           "price_source": {
             "enum": [
               "captured",
@@ -1451,6 +1470,7 @@
           "price_source",
           "included",
           "hedge",
+          "price_reason",
           "block"
         ],
         "title": "EditLegOut",
@@ -1500,10 +1520,32 @@
             ],
             "title": "Action",
             "type": "string"
+          },
+          "revision": {
+            "description": "the saved revision the review was built from",
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           }
         },
         "required": [
-          "action"
+          "action",
+          "revision"
         ],
         "title": "ExecuteIn",
         "type": "object"
@@ -1547,6 +1589,17 @@
           "plan_number": {
             "title": "Plan Number",
             "type": "integer"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           },
           "tags": {
             "items": {
@@ -1687,6 +1740,24 @@
               }
             ],
             "title": "Source"
+          },
+          "spot_health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Health"
           },
           "strikes_used": {
             "title": "Strikes Used",
@@ -2056,6 +2127,20 @@
             "title": "Legs",
             "type": "array"
           },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2101,6 +2186,17 @@
                 "type": "null"
               }
             ]
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           },
           "shape": {
             "anyOf": [
@@ -2350,6 +2446,20 @@
             ],
             "title": "Range Start"
           },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2382,6 +2492,15 @@
             "format": "date-time",
             "title": "Answered At",
             "type": "string"
+          },
+          "centre_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Centre Label"
           },
           "last_price_at": {
             "anyOf": [
@@ -2461,6 +2580,17 @@
               }
             ]
           },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
           "spot_at": {
             "anyOf": [
               {
@@ -2487,6 +2617,7 @@
           "state": {
             "enum": [
               "COMPUTED",
+              "FROM_ENTRIES",
               "NOT_CONNECTED",
               "REFUSED"
             ],
@@ -4815,8 +4946,15 @@
             "title": "Ltp"
           },
           "planned_entry": {
-            "title": "Planned Entry",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
           },
           "quantity": {
             "anyOf": [
@@ -5079,6 +5217,22 @@
             "title": "Contract Id",
             "type": "integer"
           },
+          "entry_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "typed",
+                  "captured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is captured_at); absent or 'captured' otherwise. Only with the pair",
+            "title": "Entry Source"
+          },
           "planned_entry": {
             "anyOf": [
               {
@@ -5153,6 +5307,21 @@
               }
             ],
             "title": "Contract State"
+          },
+          "entry_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "typed",
+                  "captured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Source"
           },
           "exchange_segment": {
             "anyOf": [

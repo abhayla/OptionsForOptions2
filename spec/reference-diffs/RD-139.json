@@ -6,11 +6,11 @@
   "reference_screens": [
     "screen 103"
   ],
-  "ours": "REQ-076 AC-4 (multiplier 1 to 50, back to 1 restores base lots) is not built on main; it exists only on branch W-126.",
+  "ours": "Built in row 20, commit b6ae07a4 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-4: the multiplier is a choice from the list: choosing 3 and 50 emits those numbers'.",
   "req": "REQ-076",
   "ac": "AC-4",
   "row": 20,
-  "status": "open",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

@@ -14,14 +14,21 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.engine.legs import Action, Instrument
 from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
 from ofo.strategy import stored_form
+from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo_app.main import create_app
 from ofo_app.routes import execute, leg_edit, strategies
 from ofo_app.routes.leg_edit import get_capture, get_contract_ids, get_edit_catalogue, get_edit_today, get_freeze_limits
-from ofo_app.routes.outcome import get_margin_source, get_market_context, load_charge_rates
+from ofo_app.routes.outcome import (
+    get_answer_clock,
+    get_margin_source,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.routes.planned_entry import get_live_feed
 from pydantic import ValidationError
 
@@ -29,10 +36,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPIRY = datetime.date(2026, 10, 6)
 TODAY = datetime.date(2026, 10, 1)
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
+PRICE_REFUSED = "USER_INPUT_013"  # the catalogue code of leg_edit_price_not_tick
 LOT, INCLUDED_AFTER_UNTICK = 65, 3
 STAMP = datetime.datetime(2026, 10, 1, 9, 20, tzinfo=datetime.UTC)
 STEPPED_DOWN_STRIKE = 23350
 NEW_STAMP = datetime.datetime(2026, 10, 1, 9, 21, 28, tzinfo=datetime.UTC)
+TYPED_STAMP = datetime.datetime(2026, 10, 1, 9, 30, 5, tzinfo=datetime.UTC)  # the answer clock of every route test
 CAT = Catalogue()
 CAT.load(parse_instruments_csv(ROOT / "tests" / "fixtures" / "instruments" / "instruments_slice.csv"))
 BY_ID = {f"{e.contract.exchange_segment}:{e.contract.exchange_token}": e.contract for e in CAT.all_entries()}
@@ -66,7 +75,7 @@ async def fake_contract_ids(instrument_ids):
     return {i: STORED[i] for i in instrument_ids if i in STORED and i != BY_KEY[("CE", 23350)]}
 
 
-def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
+def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture) -> tuple[int, dict]:
     app = create_app()
     app.dependency_overrides[get_edit_catalogue] = lambda: cat
     app.dependency_overrides[get_edit_today] = lambda: today
@@ -74,9 +83,10 @@ def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
     app.dependency_overrides[get_market_context] = lambda: None
     app.dependency_overrides[get_margin_source] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
-    app.dependency_overrides[get_capture] = lambda: fake_capture
+    app.dependency_overrides[get_capture] = lambda: capture
     app.dependency_overrides[get_contract_ids] = lambda: fake_contract_ids
     app.dependency_overrides[load_charge_rates] = lambda: None
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: TYPED_STAMP
 
     async def go():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -314,3 +324,203 @@ def test_ac_1_a_negative_index_is_a_validation_error_never_a_leg():
                  {"control": "include", "index": -1, "included": False},
                  {"control": "price", "index": -1, "price": "81.32"}):
         assert post({"legs": legs(), "edit": edit})[0] == HTTP_UNPROCESSABLE, edit
+
+
+# ---- REQ-077 part 21a: typed price time, Reset Prices, per-leg reset ----------------------------------------------
+RESET = {("PE", 22800): "40.00", ("PE", 23000): "88.15", ("CE", 23400): "93.20", ("CE", 23600): "45.05"}
+
+
+def reset_capture(prices=None, seen=None):
+    """A fake capture that prices every leg of the condor from RESET (hand-typed), or None where ``prices`` says so;
+    ``seen`` collects the ids it was asked about."""
+    table = RESET if prices is None else prices
+
+    async def capture(ctx, feed, underlying, ids):
+        if seen is not None:
+            seen.append(sorted(ids))
+        got = {}
+        for i in ids:
+            c = BY_ID[i]
+            price = table.get((c.instrument_type, int(c.strike)))
+            got[i] = None if price is None else PlannedEntry(Decimal(price), "ltp")
+        return NEW_STAMP, got
+    return capture
+
+
+def marks(reply):
+    return [(leg["planned_entry"], leg["price_source"], leg["captured_at"][:19] if leg["captured_at"] else None)
+            for leg in reply["legs"]]
+
+
+def test_ac_1_ac_4_a_typed_price_comes_back_typed_with_its_own_time_and_the_others_keep_theirs():
+    """REQ-077 AC-1/AC-4: typing 81.35 on leg 2 returns that leg 'typed' at the moment it was typed (the answer clock),
+    never the old capture time; the other legs keep price, mark and capture time."""
+    status, reply = post({"legs": legs(), "edit": {"control": "price", "index": 1, "price": "81.35"}})
+    assert status == HTTP_OK
+    assert marks(reply) == [("42.50", "captured", "2026-10-01T09:20:00"), ("81.35", "typed", "2026-10-01T09:30:05"),
+                            ("91.50", "captured", "2026-10-01T09:20:00"), ("44.00", "captured", "2026-10-01T09:20:00")]
+    assert reply["outcome"] is not None
+
+
+def test_ac_2_a_refused_typed_price_changes_nothing_and_answers_in_catalogue_text():
+    """REQ-077 AC-2 (attack 1): 0, -5, abc, 81.32 and 81.305 are refused (422) and no leg comes back."""
+    for bad in ("0", "0.00", "-5", "abc", "81.32", "81.305", "1e2", " 5", "NaN", ""):
+        status, reply = post({"legs": legs(), "edit": {"control": "price", "index": 1, "price": bad}})
+        assert status == HTTP_UNPROCESSABLE and "legs" not in reply, bad
+        assert reply["code"] == PRICE_REFUSED and "positive multiple of" in reply["what_happened"], bad
+        assert all(reply[k] for k in ("what_happened", "impact", "what_is_blocked", "next_action")), bad
+
+
+def test_ac_2_a_typed_price_is_echoed_as_the_two_decimal_string():
+    """REQ-077 AC-2 / money rule: 81.3 is accepted and comes back as "81.30" (leg and outcome); a leg sent with
+    planned_entry "42.5" is echoed "42.50"."""
+    sent = legs()
+    sent[0]["planned_entry"] = "42.5"
+    status, reply = post({"legs": sent, "edit": {"control": "price", "index": 1, "price": "81.3"}})
+    assert status == HTTP_OK
+    assert [leg["planned_entry"] for leg in reply["legs"]][:2] == ["42.50", "81.30"]
+    assert reply["outcome"]["legs"][1]["planned_entry"] == "81.30"
+
+
+def test_ac_1_a_typed_price_on_an_unpriced_leg_prices_it():
+    """REQ-077 AC-1: a leg with no live price (planned_entry null) takes the typed price and is no longer unpriced."""
+    sent = legs()
+    sent[1].pop("planned_entry")
+    sent[1].pop("captured_at")
+    status, reply = post({"legs": sent, "edit": {"control": "price", "index": 1, "price": "81.35"}})
+    assert status == HTTP_OK and marks(reply)[1] == ("81.35", "typed", "2026-10-01T09:30:05")
+
+
+def test_ac_5_reset_prices_recaptures_every_leg_with_one_new_time_and_clears_every_typed_mark():
+    """REQ-077 AC-5 (attack 4): two typed legs and two captured; Reset Prices gives all four the hand-typed current
+    prices, ONE capture time, and no 'typed' mark."""
+    sent = legs()
+    sent[0] |= {"typed": True, "planned_entry": "99.95"}
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    seen: list = []
+    status, reply = post({"legs": sent, "edit": {"control": "reset_prices"}}, capture=reset_capture(seen=seen))
+    assert status == HTTP_OK
+    assert marks(reply) == [(p, "captured", "2026-10-01T09:21:28") for p in RESET.values()]
+    assert [leg["planned_entry"] for leg in reply["outcome"]["legs"]] == list(RESET.values())
+    assert len(seen) == 1 and len(seen[0]) == len(sent)  # one capture call for every leg: one capture time
+
+
+def test_ac_5_reset_leg_changes_one_leg_only():
+    """REQ-077 AC-5 (attack 4): reset of leg 3 re-captures that leg alone (its typed mark ends); the typed leg 1 and
+    the captured legs 2 and 4 keep price, mark and time; the capture was asked about that leg only."""
+    sent = legs()
+    sent[0] |= {"typed": True, "planned_entry": "99.95"}
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    seen: list = []
+    edit_leg_3 = {"control": "reset_leg", "index": 2}
+    status, reply = post({"legs": sent, "edit": edit_leg_3}, capture=reset_capture(seen=seen))
+    assert status == HTTP_OK
+    assert marks(reply) == [("99.95", "typed", "2026-10-01T09:20:00"), ("86.00", "captured", "2026-10-01T09:20:00"),
+                            ("93.20", "captured", "2026-10-01T09:21:28"), ("44.00", "captured", "2026-10-01T09:20:00")]
+    assert seen == [[BY_KEY[("CE", 23400)]]]
+
+
+def test_ac_5_a_reset_with_no_live_price_leaves_that_leg_unpriced_never_the_old_price():
+    """REQ-077 AC-5 / ADR-020 Q185 (attack 5): the typed leg has no live price on reset: it comes back unpriced, not
+    typed and without a time (never 81.30 as current); the others are re-captured; no number is computed."""
+    sent = legs()
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    table = {k: v for k, v in RESET.items() if k != ("CE", 23400)}
+    status, reply = post({"legs": sent, "edit": {"control": "reset_prices"}}, capture=reset_capture(table))
+    assert status == HTTP_OK
+    assert marks(reply)[2] == (None, "none", None) and reply["outcome"] is None
+    assert [m[0] for m in marks(reply)] == ["40.00", "88.15", None, "45.05"]
+    status, reply = post({"legs": sent, "edit": {"control": "reset_leg", "index": 2}}, capture=reset_capture(table))
+    assert status == HTTP_OK and marks(reply)[2] == (None, "none", None)
+    assert [m[0] for m in marks(reply)] == ["42.50", "86.00", None, "44.00"] and reply["outcome"] is None
+    assert [leg["price_reason"] for leg in reply["legs"]] == [None, None, "no_live_price", None]
+
+
+def test_ac_5_a_reset_with_no_live_price_carries_the_reason_on_every_unpriced_leg():
+    """REQ-077 AC-5: Reset Prices with a capture that prices nothing: every leg unpriced, each with the reason code the
+    planned-entry route uses ("no_live_price"); with no valuation time at all (not connected): "not_connected"; a
+    priced leg carries none."""
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=reset_capture({}))
+    assert status == HTTP_OK and [leg["price_reason"] for leg in reply["legs"]] == ["no_live_price"] * 4
+
+    async def offline(ctx, feed, underlying, ids):
+        return None, dict.fromkeys(ids)
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=offline)
+    assert [leg["price_reason"] for leg in reply["legs"]] == ["not_connected"] * 4
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=reset_capture())
+    assert [leg["price_reason"] for leg in reply["legs"]] == [None] * 4
+
+
+def test_ac_5_reset_leg_needs_its_index_and_a_forged_one_is_a_validation_error():
+    """REQ-077 AC-5: reset_leg with no index, or with an index outside the legs, is a plain 422."""
+    assert post({"legs": legs(), "edit": {"control": "reset_leg"}})[0] == HTTP_UNPROCESSABLE
+    assert post({"legs": legs(), "edit": {"control": "reset_leg", "index": 9}})[0] == HTTP_UNPROCESSABLE
+
+
+def test_ac_4_ac_7_reopening_returns_exactly_the_saved_entries_marks_and_times_and_invents_none():
+    """REQ-077 AC-4/AC-7 (attack 2, the response half): the answer built from a saved definition holds 81.30 typed at
+    its time, a captured leg captured at its own time, and NO price, time or mark for a leg saved without an entry; it
+    reads no market and calls no capture (the function takes only the saved definition)."""
+    day = datetime.date(2026, 10, 27)
+    at = datetime.datetime(2026, 10, 21, 10, 35, 12, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+    later = at + datetime.timedelta(minutes=7)
+    definition = StrategyDefinition("NIFTY", (
+        DefinitionLeg(Action.BUY, Instrument.CE, Decimal("23000"), day, LOT),
+        DefinitionLeg(Action.SELL, Instrument.CE, Decimal("23200"), day, LOT),
+        DefinitionLeg(Action.BUY, Instrument.PE, Decimal("22800"), day, LOT)))
+    saved = stored_form.SavedDefinition(definition, (101, 102, 103), (
+        stored_form.LegEntry(Decimal("81.30"), later, stored_form.SOURCE_TYPED),
+        stored_form.LegEntry(Decimal("30.00"), at), None))
+    legs_out = strategies._definition_out(saved)["legs"]
+    assert [(x.get("planned_entry"), x.get("captured_at"), x.get("entry_source")) for x in legs_out] == [
+        (Decimal("81.30"), later, "typed"), (Decimal("30.00"), at, "captured"), (None, None, None)]
+    assert "planned_entry" not in legs_out[2] and "entry_source" not in legs_out[2]
+    assert "entry_source" in strategies.LegOut.model_fields
+
+
+@pytest.mark.parametrize(("where", "key", "bad"), [
+    ("leg", "base_lots", True), ("leg", "base_lots", 1.0), ("leg", "base_lots", "2"),
+    ("leg", "lots", True), ("leg", "lots", 1.0), ("leg", "lots", "2"),
+    ("edit", "direction", True), ("edit", "direction", 1.0), ("edit", "direction", "1"),
+    ("edit", "index", True), ("edit", "multiplier", 2.0)])
+def test_every_numeric_request_field_is_strict(where, key, bad):
+    """Chunk 2 review area B (attack item 3): a bool, a float or a numeric string is a malformed request (a plain 422
+    validation error, no legs), never coerced to the integer it resembles."""
+    edit = {"control": "step", "index": 1, "direction": 1}
+    if key == "multiplier":
+        edit = {"control": "multiplier", "multiplier": bad}
+    elif where == "edit":
+        edit = edit | {key: bad}
+    sent = legs()
+    if where == "leg":
+        sent[1] = sent[1] | {key: bad}
+    status, reply = post({"legs": sent, "edit": edit})
+    assert status == HTTP_UNPROCESSABLE and "legs" not in reply, (key, bad)
+    assert reply.get("code") != PRICE_REFUSED, (key, bad)
+
+
+@pytest.mark.parametrize("bad", ["0", "0.00", "00.5", "0012.50"])
+def test_a_leg_sent_with_a_price_the_stored_form_refuses_is_the_price_error(bad):
+    """Chunk 2 review area B (attack item 4): a leg whose planned entry is zero (or any price the stored form's
+    is_entry_price_text refuses) is refused with USER_INPUT_013 and its four parts, as the save would refuse it -
+    never priced at zero."""
+    sent = legs()
+    sent[2] = sent[2] | {"planned_entry": bad}
+    status, reply = post({"legs": sent, "edit": {"control": "read"}})
+    assert status == HTTP_UNPROCESSABLE and "legs" not in reply, bad
+    assert reply["code"] == PRICE_REFUSED and "positive multiple of" in reply["what_happened"], bad
+    assert all(reply[k] for k in ("what_happened", "impact", "what_is_blocked", "next_action")), bad
+    with pytest.raises(stored_form.StoredFormError):
+        stored_form.entry_from_text(bad, STAMP.isoformat(), "legs[2]")
+
+
+def test_the_leg_edit_and_the_stored_form_share_one_price_rule():
+    """One judge, not two: LegEntry refuses exactly what is_entry_price_text refuses."""
+    for price in ("0", "0.00", "0.05", "81.35", "1.5"):
+        ok = stored_form.is_entry_price_text(price)
+        try:
+            stored_form.LegEntry(Decimal(price), STAMP)
+            built = True
+        except stored_form.StoredFormError:
+            built = False
+        assert ok is built, price

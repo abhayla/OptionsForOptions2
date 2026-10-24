@@ -90,21 +90,21 @@ Records: 163 (COPY 76, DIFFERENT-BY-DECISION 21, NO-SCREEN 27, MATCH 39)
 | 18 | RD-124 | REQ-035 AC-1 | Separate P&L Table, Greeks and Payoff Table views instead of one table (G-18-1) | screen 014, screen 015, screen 017 | open |
 | 18 | RD-125 | REQ-035 AC-7 | Table columns do not depend on a UX level (G-18-2) | screen 014, screen 015, screen 013 | verified |
 | 19 | RD-032 | REQ-080 AC-1 | Leg picker with Straddles, Strangles, Strikes and Futures tabs and price columns (G-05-4) | screen 032, screen 033, screen 034, screen 035, screen 036, screen 037, screen 038 | open |
-| 19 | RD-129 | REQ-080 AC-3 | Pick several strikes, see the count, Clear All and Done (G-19-1) | screen 032, screen 035 | open |
-| 19 | RD-130 | REQ-080 AC-2 | Strike IV and delta shown to every user (G-19-2) | screen 032, screen 033 | open |
-| 19 | RD-131 | REQ-080 AC-4 | Lots or quantity choice for every user in the picker (G-19-3) | screen 035, screen 244, screen 245 | open |
-| 19 | RD-132 | REQ-080 AC-7 | A depth icon on each leg opens a popup (G-19-4) | screen 024 | open |
+| 19 | RD-129 | REQ-080 AC-3 | Pick several strikes, see the count, Clear All and Done (G-19-1) | screen 032, screen 035 | verified |
+| 19 | RD-130 | REQ-080 AC-2 | Strike IV and delta shown to every user (G-19-2) | screen 032, screen 033 | verified |
+| 19 | RD-131 | REQ-080 AC-4 | Lots or quantity choice for every user in the picker (G-19-3) | screen 035, screen 244, screen 245 | verified |
+| 19 | RD-132 | REQ-080 AC-7 | A depth icon on each leg opens a popup (G-19-4) | screen 024 | built |
 | 19 | RD-133 | REQ-080 AC-7 | Depth popup extras of ours: 5 levels, last trade time, read time (G-19-5) | screen 024 | open |
-| 19 | RD-134 | REQ-080 AC-6 | Futures prices per expiry with synthetic futures (G-19-6) | screen 031, screen 034 | open |
-| 20 | RD-031 | REQ-076 AC-1 | Inline leg row with strike steppers, lots list and an editable price (G-05-3) | screen 011, screen 012 | open |
-| 20 | RD-091 | REQ-076 AC-8 | The matched shape name shown in the builder (G-15-2) | screen 011, screen 012 | open |
-| 20 | RD-097 | REQ-076 AC-8 | Hedge legs marked when a shape is loaded or detected (G-15-8) | screen 012 | open |
-| 20 | RD-139 | REQ-076 AC-4 | Strategy multiplier scales every leg's lots (G-20-1) | screen 103 | open |
-| 20 | RD-140 | REQ-076 AC-6 | Tick box to leave a leg out of the numbers (G-20-2) | screen 111 | open |
+| 19 | RD-134 | REQ-080 AC-6 | Futures prices per expiry with synthetic futures (G-19-6) | screen 031, screen 034 | verified |
+| 20 | RD-031 | REQ-076 AC-1 | Inline leg row with strike steppers, lots list and an editable price (G-05-3) | screen 011, screen 012 | verified |
+| 20 | RD-091 | REQ-076 AC-8 | The matched shape name shown in the builder (G-15-2) | screen 011, screen 012 | verified |
+| 20 | RD-097 | REQ-076 AC-8 | Hedge legs marked when a shape is loaded or detected (G-15-8) | screen 012 | built |
+| 20 | RD-139 | REQ-076 AC-4 | Strategy multiplier scales every leg's lots (G-20-1) | screen 103 | verified |
+| 20 | RD-140 | REQ-076 AC-6 | Tick box to leave a leg out of the numbers (G-20-2) | screen 111 | verified |
 | 20 | RD-141 | REQ-076 AC-5 | Lots or quantity for every user on the leg row (G-20-3) | screen 025, screen 244 | open |
-| 21 | RD-113 | REQ-077 AC-7 | A reopened strategy marks legs whose price moved since it was saved (G-16-8) | catalogue 254, catalogue 257, catalogue 272 | open |
-| 21 | RD-145 | REQ-077 AC-1 | Typed entry price with an edited marker (G-21-1) | screen 112, screen 210 | open |
-| 21 | RD-146 | REQ-077 AC-5 | Reset Prices re-bases every leg to the live price (G-21-2) | screen 011, screen 209, screen 211 | open |
+| 21 | RD-113 | REQ-077 AC-7 | A reopened strategy marks legs whose price moved since it was saved (G-16-8) | catalogue 254, catalogue 257, catalogue 272 | verified |
+| 21 | RD-145 | REQ-077 AC-1 | Typed entry price with an edited marker (G-21-1) | screen 112, screen 210 | verified |
+| 21 | RD-146 | REQ-077 AC-5 | Reset Prices re-bases every leg to the live price (G-21-2) | screen 011, screen 209, screen 211 | verified |
 | 21 | RD-147 | REQ-077 AC-5 | Per-leg reset is an extra of ours (G-21-3) | screen 011, screen 211 | open |
 | 21 | RD-148 | REQ-077 AC-6 | Marker when a leg's live price moved from its entry (G-21-4) | screen 210 | open |
 | 21 | RD-149 | REQ-077 AC-6 | Moved-price marker text with times and both prices is an extra of ours (G-21-5) | screen 210 | open |

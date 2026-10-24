@@ -3,7 +3,7 @@
 // Strings stay strings: a planned entry and a capture time are sent and shown exactly as the API gave them.
 
 /** The Save Draft body. Per leg exactly: contract_id, action, quantity (units = lots x lot size, a count, not money) and,
- *  when the leg has one, planned_entry + captured_at together. Never a live price, never an instrument id. */
+ *  when the leg has one, planned_entry + captured_at together (+ entry_source 'typed' for a typed price). Never a live price, never an instrument id. */
 export function buildSaveBody(legs, rulesRef) {
   const body = {
     underlying: legs[0].underlying,
@@ -12,6 +12,7 @@ export function buildSaveBody(legs, rulesRef) {
       if (l.planned_entry != null && l.captured_at != null) {
         out.planned_entry = l.planned_entry
         out.captured_at = l.captured_at
+        if (l.typed === true) out.entry_source = 'typed' // REQ-077 AC-4: the mark goes with the pair; a captured leg sends none
       }
       return out
     }),
@@ -79,6 +80,7 @@ export function legsFromSaved(definition, contracts) {
       lots: l.quantity / c.lot_size,
       planned_entry: l.planned_entry ?? null,
       captured_at: l.captured_at ?? null,
+      typed: l.entry_source === 'typed', // REQ-077 AC-4/AC-7: the saved mark is shown and re-sent as it was
       source: null,
       reason_code: l.planned_entry == null ? 'needs_reprice' : null,
     })

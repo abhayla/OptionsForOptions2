@@ -88,8 +88,8 @@ describe('ADR-168: one full builder screen, no level switch', () => {
   it('attack 4: no Guided, Standard or Advanced level text in the header or the details heading', async () => {
     const w = await openBuilder({})
     const header = w.find('[data-testid="strategy-header"]').text()
-    const heading = w.find('[data-testid="advanced-details"] h2').text()
-    expect(heading).toBe('Details')
+    const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
+    expect(heading).toBe('Details: bid and ask per leg')
     for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
       expect(header).not.toContain(word)
       expect(heading).not.toContain(word)
@@ -230,5 +230,54 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
   it('only the two named files may parse an API number, and they exist', () => {
     expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
+  })
+})
+
+
+describe('REQ-077 AC-9: with no live data the page shows At Expiry from the user\'s prices, labelled, with no live number', () => {
+  const FROM_YOUR_PRICES = 'From your prices - no live data'
+  const answer = () => ({
+    ...real, state: 'FROM_ENTRIES', status_label: FROM_YOUR_PRICES, output_label: FROM_YOUR_PRICES,
+    centre_label: 'There is no live index price, so the levels are centred on the middle of your strikes, 22,800.',
+    spot_level: null, spot_at: null, leg_quotes: undefined,
+    legs: real.legs.map((l) => ({ ...l, ltp: null, iv: null, health: null })),
+    table: { ...real.table, spot_level: null, spot_at: null, output_label: FROM_YOUR_PRICES },
+  })
+  async function openFromEntries(body) {
+    await openBuilder({})
+    apiAnswer = body
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  it('shows the label, the centre line and the numbers, and no live level, no Bid/Ask block, no priced-at time', async () => {
+    const w = await openFromEntries(answer())
+    expect(w.find('[data-testid="numbers"]').exists()).toBe(true)
+    expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(w.find('[data-testid="centre-label"]').text()).toContain('22,800')
+    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
+    expect(w.find('[data-testid="footer-valuation"]').exists()).toBe(false)
+    expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Draft — Live data not connected')
+    w.unmount()
+  })
+  it('Estimated Now is shown unavailable with the server\'s reason', async () => {
+    const body = answer()
+    body.scenario = { ...real.scenario, view: 'estimated_now', available: false, totals: null,
+      unavailable_reason: 'Estimated Now needs live prices, which are not available. At Expiry is shown from your prices.' }
+    body.payoff = { view: 'estimated_now', points: [] }
+    const w = await openFromEntries(body)
+    expect(w.find('[data-testid="estimate-unavailable"]').text()).toContain('needs live prices')
+    w.unmount()
+  })
+  it('a COMPUTED answer shows neither the centre line nor an unavailable note', async () => {
+    const w = await openBuilder({})
+    expect(w.find('[data-testid="centre-label"]').exists()).toBe(false)
+    expect(w.find('[data-testid="estimate-unavailable"]').exists()).toBe(false)
+    w.unmount()
   })
 })

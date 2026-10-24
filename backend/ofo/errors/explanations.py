@@ -941,6 +941,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
     ExplanationTemplate("outcome_not_connected", "values_seen", "Draft — Live data not connected"),
+    # REQ-077 AC-9: no live data, At Expiry numbers from the user's own prices (never a live price)
+    ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices - no live data"),
+    # REQ-133 AC-3: the feed just (re)connected and no price frame arrived yet, inside the staleness limit: no number
+    ExplanationTemplate("outcome_waiting_first_price", "values_seen", "Waiting for the first live price"),
+    ExplanationTemplate("outcome_from_entries_centre", "values_seen",
+                        "There is no live index price, so the levels are centred on your strike {level}.",
+                        {"level": Points}),
+    ExplanationTemplate("outcome_from_entries_no_estimate", "values_seen",
+                        "Estimated Now needs live prices, which are not available. At Expiry is shown from your "
+                        "prices."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),

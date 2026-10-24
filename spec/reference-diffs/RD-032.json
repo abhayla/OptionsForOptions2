@@ -4,7 +4,7 @@
   "title": "Leg picker with Straddles, Strangles, Strikes and Futures tabs and price columns (G-05-4)",
   "reference_behaviour": "A leg picker drawer has tabs for straddles, strangles, strikes and futures, an expiry list, a quick distance pick (50 to 200 points), price, OI and Greeks columns, and buy and sell buttons per strike.",
   "reference_screens": ["screen 032", "screen 033", "screen 034", "screen 035", "screen 036", "screen 037", "screen 038"],
-  "ours": "REQ-080 AC-1 to AC-3 not built: today's picker has plain selects and no columns. Straddle and strangle quick picks are REQ-079 AC-7 (held, Q211).",
+  "ours": "Open, partly built: the Strikes and Futures tabs with price, IV and delta columns are built (RD-129, RD-130, RD-134). The Straddles and Strangles tabs are not built: they are REQ-079 AC-7, held on owner question Q211.",
   "req": "REQ-080",
   "ac": "AC-1",
   "row": 19,

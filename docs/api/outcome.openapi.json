@@ -348,7 +348,14 @@
             "title": "Quantity"
           },
           "planned_entry": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Planned Entry"
           },
           "captured_at": {
@@ -652,6 +659,20 @@
             "title": "Fallback",
             "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
             "default": false
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "description": "the request's sequence id; the reply echoes it unchanged as seq"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           }
         },
         "additionalProperties": false,
@@ -668,6 +689,7 @@
             "type": "string",
             "enum": [
               "COMPUTED",
+              "FROM_ENTRIES",
               "NOT_CONNECTED",
               "REFUSED"
             ],
@@ -827,6 +849,26 @@
               }
             ],
             "title": "Leg Quotes"
+          },
+          "centre_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Centre Label"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           }
         },
         "additionalProperties": false,

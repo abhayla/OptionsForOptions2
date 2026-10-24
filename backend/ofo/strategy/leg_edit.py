@@ -19,18 +19,22 @@ block) / not stored (no block here; the order review warns).
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
+from ofo.charges.calculator import MAX_PRICE
 from ofo.engine.executable_price import round_to_tick
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacing, UserFacingError, render
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
+from ofo.money import PAISE
 
 MULTIPLIER_MIN, MULTIPLIER_MAX = 1, 50  # REQ-076 AC-4: whole numbers 1 to 50
+_TYPED_PRICE = re.compile(r"-?[0-9]{1,30}(\.[0-9]{1,30})?")  # ASCII digits only; the shape check, the rules come after
 
 
 class LegEditRefused(UserFacing, ValueError):
@@ -141,15 +145,30 @@ def included_legs(legs: list[EditLeg]) -> list[EditLeg]:
     return [x for x in legs if x.included]
 
 
-def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int, price: Decimal) -> list[EditLeg]:
-    """REQ-077 AC-1/AC-2: a typed planned entry is a positive multiple of the file's tick size for that contract."""
+def typed_price_of(text: object) -> Decimal | None:
+    """The price as the user typed it: plain digits with an optional sign and fraction, nothing else; a Decimal passes
+    through. Anything else (a float, an int, 'abc', '1e2', ' 5', 'NaN') is None, never guessed."""
+    if type(text) is Decimal:
+        return text if text.is_finite() else None
+    if type(text) is str and _TYPED_PRICE.fullmatch(text):
+        return Decimal(text)
+    return None
+
+
+def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int, price: object) -> list[EditLeg]:
+    """REQ-077 AC-1/AC-2: a typed planned entry is a positive multiple of the file's tick size for that contract, with
+    at most two decimals. ``price`` is the user's text (or a Decimal); every refusal is the one price error and the
+    legs stay as they were. The stored price is the 2-decimal value (81.3 becomes 81.30)."""
     leg = legs[index].leg
     kind = ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
     tick = cat.tick_size(underlying, leg.expiry, kind)
-    if (type(price) is not Decimal or not price.is_finite() or price <= 0
-            or round_to_tick(price, tick, Action.BUY) != price):
+    value = typed_price_of(price)
+    # bounded BEFORE quantize: 27+ whole digits make quantize raise InvalidOperation; above the charges module's
+    # absurd-price cap is no option or future price, so it is the same one price refusal, never a crash
+    if (value is None or value <= 0 or value > MAX_PRICE or value != value.quantize(PAISE)
+            or round_to_tick(value, tick, Action.BUY) != value):
         raise LegEditRefused("leg_edit_price_not_tick", leg=leg_ref(underlying, legs, index), tick=tick)
-    return [replace(x, leg=replace(x.leg, entry_price=price), typed=True) if i == index else x
+    return [replace(x, leg=replace(x.leg, entry_price=value.quantize(PAISE)), typed=True) if i == index else x
             for i, x in enumerate(legs)]
 
 

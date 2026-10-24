@@ -42,6 +42,7 @@ ENTRIES = ("44.90", "11.75", "79.05", "37.15")  # ADR-075's source line, in Iron
 REPRICED = ("46.10", "12.05", "77.80", "36.40")
 REPRICED_AT = "2026-10-15T09:41:30+05:30"
 CHECK_VIOLATION = "23514"
+HTTP_CREATED, HTTP_UNPROCESSABLE = 201, 422
 INSERT = ("INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
           "VALUES (:u, 'NIFTY', CAST(:d AS JSONB), 1)")
 
@@ -392,5 +393,40 @@ async def test_0011_downgrade_refuses_with_an_entry_then_round_trips_without_one
             for sql in up:
                 await conn.execute(text(sql))
             assert await _expect_refused(conn, INSERT, {"u": _user(), "d": json.dumps(good)}) is None
+        finally:
+            await trans.rollback()
+
+
+async def test_ac4_ac7_a_typed_price_is_saved_with_its_mark_and_time_and_reopening_captures_nothing(app_engine):
+    """REQ-077 AC-4/AC-7 (core): a typed 81.30 on leg 1 is saved with entry_source 'typed' and its time; a GET (the
+    reopen) returns exactly 81.30, typed, at that time and every other leg captured; the stored text is unchanged by
+    the reopen; a mark without the pair is refused and stores nothing."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            body = _body(ids, entries=("81.30", *ENTRIES[1:]))
+            body["legs"][0]["entry_source"] = "typed"
+            async with _client(conn, user) as ac:
+                saved = await ac.post("/strategies", json=body)
+                assert saved.status_code == HTTP_CREATED, saved.text
+                strategy_id = saved.json()["id"]
+                text_before = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
+                                                  {"id": strategy_id})).scalar_one()
+                got = (await ac.get(f"/strategies/{strategy_id}")).json()["definition"]
+                text_after = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
+                                                 {"id": strategy_id})).scalar_one()
+                no_pair = _body(ids, entries=(None, *ENTRIES[1:]))
+                no_pair["legs"][0]["entry_source"] = "typed"
+                refused = await ac.post("/strategies", json=no_pair)
+            assert [(leg["planned_entry"], leg["captured_at"], leg["entry_source"]) for leg in got["legs"]] == [
+                ("81.30", CAPTURED, "typed"), *[(e, CAPTURED, "captured") for e in ENTRIES[1:]]]
+            stored_legs = json.loads(text_before)["legs"]
+            assert stored_legs[0]["entry_source"] == "typed" and all("entry_source" not in x for x in stored_legs[1:])
+            assert text_after == text_before
+            loaded = await store.load(conn, user, strategy_id)
+            assert loaded.saved.entries[0] == sf.LegEntry(Decimal("81.30"), CAPTURED_AT, sf.SOURCE_TYPED)
+            assert refused.status_code == HTTP_UNPROCESSABLE
         finally:
             await trans.rollback()

@@ -882,6 +882,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was changed; the strategy stays blocked until the difference is resolved.",
           "Changing or confirming the strategy.",
           "Open the strategy's reconciliation and record how the difference was resolved."),
+    # W-151 (REQ-119 AC-5): Execute names the saved revision its review was built from; another saved version since.
+    _gate("execute_plan_changed", _SV, 419,
+          "Your plan changed - review it again.",
+          "No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.",
+          "Preparing orders from an older version of this strategy.",
+          "Review the current plan, then prepare the orders again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

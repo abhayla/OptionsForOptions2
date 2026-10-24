@@ -126,16 +126,6 @@
    "issue": "#532"
   },
   {
-   "key": "UNREACHED REQ-034 W-003 AC-6",
-   "reason": "unreached: ofo.scenario.outcome imported by no app entry point - #532",
-   "issue": "#532"
-  },
-  {
-   "key": "UNREACHED REQ-034 W-003 AC-8",
-   "reason": "unreached: ofo.scenario.outcome imported by no app entry point - #532",
-   "issue": "#532"
-  },
-  {
    "key": "UNRESOLVED REQ-035 W-064 AC-3",
    "reason": "unresolved: evidence names no python test - #532",
    "issue": "#532"
@@ -313,6 +303,41 @@
   {
    "key": "UNRESOLVED REQ-117 W-132 AC-3",
    "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-034 W-150 AC-1",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-034 W-150 AC-7",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-077 W-149 AC-6",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-077 W-149 AC-7",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-2",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-3",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-4",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
    "issue": "#532"
   }
  ]

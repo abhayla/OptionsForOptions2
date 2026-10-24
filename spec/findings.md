@@ -902,3 +902,17 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   wait Kite indicates" - Kite indicates 10 s, no header). Orchestrator decision (technical, row 10): the unstated scope is
   taken as the stricter one, per api_key across all users (one bucket per group for the whole app), until Zerodha
   states otherwise. Not a rule change. Status: **measured from documentation and staff answers**.
+
+## F-61 - A false "data disconnected" alarm after a reconnect comes from the SERVER's Kite feed reconnecting, not the browser's socket
+- Measured 2026-10-24 (builder sequence row 24, REQ-133 AC-3) on the recorded 2026-10-08 replay frames, before the fix
+  (chunk head 8f317c6f), and re-measured by an independent checker: (1) the BROWSER's strategy socket drops and
+  reconnects before the next tick - the first push is `COMPUTED`, `status_label` none, every leg `health: available`
+  with its LTP (39.15 / 12.95 / 82.75 / 35.8): no false alarm; (2) the SERVER's Kite feed reconnects before its first
+  tick - the outcome answered `COMPUTED` with "Live market data disconnected. Last updated: 09:20:09 AM. Live strategy
+  monitoring is paused." and every leg `stale since 09:20 IST` while the feed was connected: a false alarm with stale
+  numbers drawn.
+- Bears on: REQ-133 AC-3 (its "Why" placed the defect in "a screen that has just reconnected"; the measured cause is
+  the feed connection on the server). Built: while the feed is connected, has had no price yet and is inside the
+  existing staleness setting (`FEED_STALE`, ADR-015 "an implementation setting"), the outcome answers not-connected
+  "Waiting for the first live price"; past it with no price, the stale alarm returns. Not a rule change.
+  Status: **measured on recorded data, reproduced by the row 24 checker (3 tests red on the base, green after)**.

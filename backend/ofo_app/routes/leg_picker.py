@@ -151,6 +151,7 @@ class ForwardOut(ApiModel):
     label: CatalogueText | None  # "estimated from spot" on the fallback
     strikes_used: int
     reason: Literal["SPOT_MISSING", "NOT_PRICEABLE"] | None
+    spot_health: HealthCode | None = None  # the index spot's own health the forward was computed from (ADR-015); None: no forward
 
 
 class FuturesOut(ApiModel):
@@ -483,7 +484,7 @@ def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: Norma
                           reason="NOT_PRICEABLE")
     return ForwardOut(expiry=expiry, forward=fwd.forward.quantize(PAISE),
                       source="parity" if fwd.source == "parity" else "spot_fallback", label=fwd.label,
-                      strikes_used=fwd.strikes_used, reason=None)
+                      strikes_used=fwd.strikes_used, reason=None, spot_health=fwd.spot_health.value)
 
 
 def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,

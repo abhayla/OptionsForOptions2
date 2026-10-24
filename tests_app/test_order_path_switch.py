@@ -161,7 +161,7 @@ async def test_ac6_the_dependency_is_what_stops_it_not_the_stubs(no_dotenv, monk
     monkeypatch.setenv(switch.ENV_NAME, "1")
     counter = _Counter()
     async with _client(_app_with_counters(counter)) as ac:
-        response = await ac.post("/strategies/1/execute", json={"action": "ENTRY"})
+        response = await ac.post("/strategies/1/execute", json={"action": "ENTRY", "revision": 1})
     assert counter.kite == 1  # the stub's own error is the error boundary's 500: not the order-path refusal
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
 

@@ -23,9 +23,11 @@ Answer states (run-discipline B4 (d)), each with its label or refusal:
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from collections.abc import Mapping
 from enum import Enum
 from typing import Final
 
@@ -33,24 +35,29 @@ from ofo.charges import ChargeRates
 from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, round_trip_charges
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
-from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError, StrategyMetrics, strategy_metrics
+from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, iv_price, join_labels,
                              leg_greeks_unrounded, model_inputs)
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
-from ofo.marketdata.forward import ForwardUnavailable, mid_price
+from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set
+from ofo.scenario.levels import ColumnKind, ExpectedMove, LevelColumn, LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
-from ofo.scenario.views import DEFAULT_VIEW, ScenarioValues, View, scenario_values
+from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
+from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
+#: REQ-077 AC-9: the label of an At Expiry answer built from the user's own prices when there is no live data
+FROM_ENTRIES_LABEL: Final = render_explanation("outcome_from_entries")
+#: REQ-133 AC-3: a just (re)connected feed with no price frame yet, inside the staleness limit
+WAITING_FIRST_PRICE_LABEL: Final = render_explanation("outcome_waiting_first_price")
 MARGIN_NOT_AVAILABLE_YET: Final = "NOT_AVAILABLE_YET"
 #: ADR-099 margin states: Zerodha's figures read for the planned orders / Zerodha could not be read / the planned orders
 #: cannot be sent to Zerodha (a leg that is not a listed Zerodha contract). No session stays NOT_AVAILABLE_YET.
@@ -62,6 +69,7 @@ _UNUSABLE: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 
 class OutcomeState(Enum):
     COMPUTED = "COMPUTED"
+    FROM_ENTRIES = "FROM_ENTRIES"  # REQ-077 AC-9: no live data; At Expiry numbers from the user's prices, never live
     NOT_CONNECTED = "NOT_CONNECTED"
     REFUSED = "REFUSED"
 
@@ -73,7 +81,7 @@ class PlannedLeg:
     instrument_id: str
     action: Action
     lots: int
-    planned_entry: Decimal
+    planned_entry: Decimal | None  # None = saved without a price (ADR-085): the leg needs a reprice
     captured_at: datetime.datetime
 
     def __post_init__(self) -> None:
@@ -106,7 +114,7 @@ class OutcomeLeg:
     lots: int
     lot_size: int | None
     quantity: int | None
-    planned_entry: Decimal
+    planned_entry: Decimal | None
     captured_at: datetime.datetime
     ltp: Decimal | None
     iv: Decimal | None
@@ -167,6 +175,7 @@ class Outcome:
     visible_columns: tuple[ColumnSpec, ...] = ()
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
+    centre_label: ExplanationText | None = None  # FROM_ENTRIES only: where the level grid is centred, and why
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -235,6 +244,15 @@ def not_connected(definition: StrategyDefinition,
     legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL, stored)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, NOT_CONNECTED_LABEL,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
+
+
+def waiting_first_price(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcome:
+    """REQ-133 AC-3: the feed has just connected or reconnected and no price frame has arrived yet, still inside the
+    feed's staleness limit (``FeedState.awaiting_first_price``). The answer is the not-connected state with the
+    waiting words on the answer and on every leg, and no number at all (no LTP, no table): the quotes held from before
+    the drop are not current, and the alarm (the stale labels) comes only once the limit passes with no frame."""
+    legs = _unpriced_legs(definition, snapshot, WAITING_FIRST_PRICE_LABEL)
+    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, WAITING_FIRST_PRICE_LABEL, None, legs, MARGIN)
 
 
 def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcome:
@@ -361,6 +379,147 @@ def _shared_leg_greeks(model, snapshot, shared):
     return out
 
 
+def _usable(q: NormalizedQuote | None) -> bool:
+    """A quote an IV may be solved from: present, a live last price (never 0) and a health that is not unusable - the
+    same refusals a leg's quote gets in build_outcome."""
+    return q is not None and q.ltp is not None and is_live_price(q.ltp) and q.health not in _UNUSABLE
+
+
+def atm_iv(snapshot: MarketSnapshot, expiry: datetime.date, shared: FeedScope | None = None,
+           known: Mapping[str, Decimal] | None = None) -> Decimal | None:
+    """REQ-106 AC-1: the mean of the CE and PE implied volatilities at the strike of ``expiry``'s chain nearest that
+    expiry's parity forward (ties: the lower strike), each solved like a leg's IV (same engine call, same price basis,
+    same quote refusals). None when there is no forward or chain for the expiry, either quote is missing or unusable,
+    or either IV is not solved. ``known``: IVs this answer already solved per instrument id (its legs), read back
+    instead of solved twice - the same engine call on the same inputs."""
+    fwd = snapshot.forwards.get(expiry)
+    chain = [q for q in snapshot.chains.get(expiry, ()) if q.expiry == expiry and q.strike is not None
+             and q.instrument_type in (Instrument.CE, Instrument.PE)]
+    if fwd is None or not chain or snapshot.spot is None:
+        return None
+    strike = min({q.strike for q in chain}, key=lambda k: (abs(k - fwd.forward), k))
+    try:
+        em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=snapshot.underlying)
+    except (ValueError, ArithmeticError):
+        return None
+    ivs = []
+    for kind in (Instrument.CE, Instrument.PE):
+        q = next((x for x in chain if x.strike == strike and x.instrument_type is kind), None)
+        if not _usable(q):
+            return None
+        where = (snapshot.underlying, expiry, snapshot.valuation, "leg_iv", q.instrument_id)
+        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, iv_price(q), strike, fwd), shared, where)
+        if iv is None:
+            return None
+        ivs.append(iv)
+    return (ivs[0] + ivs[1]) / 2
+
+
+def _expected_move(legs, snapshot: MarketSnapshot, valuation: datetime.datetime,
+                   shared: FeedScope | None = None, known: Mapping[str, Decimal] | None = None) -> ExpectedMove | None:
+    """REQ-027 (Q254) / REQ-034 AC-4: the one expected move the product computes (the default range today; REQ-083's
+    SD bands and REQ-027's suggestions call this too). IV = :func:`atm_iv` of the nearest leg expiry; days = calendar
+    days from the valuation date in India time to that expiry, at least 1. None when there are no legs, the ATM IV is
+    not solved, or the engine's ExpectedMove refuses the values: the range is then today's (spot, strikes, breakevens,
+    risk boundaries)."""
+    if not legs:
+        return None
+    expiry = min(leg.expiry for leg in legs)
+    iv = atm_iv(snapshot, expiry, shared, known)
+    if iv is None:
+        return None
+    days = max((expiry - valuation.astimezone(IST).date()).days, 1)
+    try:
+        return ExpectedMove(iv, days)
+    except ValueError:
+        return None
+
+
+def _centre_of(strikes) -> Decimal:
+    """The middle strike (the lower one of two) of the legs: with no live index price the grid has to centre
+    somewhere, and this is the one place the answer says where (REQ-077 AC-9). No arithmetic: a strike of the legs."""
+    ordered = sorted(set(strikes))
+    return ordered[(len(ordered) - 1) // 2]
+
+
+def _no_current(level_set: LevelSet) -> LevelSet:
+    """The centre is not a market price: no column of the grid is marked CURRENT."""
+    cols = []
+    for c in level_set.columns:
+        kinds = c.kinds - {ColumnKind.CURRENT}
+        if kinds:  # a column that existed only as CURRENT (an off-grid centre) is dropped
+            cols.append(LevelColumn(c.level, kinds))
+    return dataclasses.replace(level_set, columns=tuple(cols))
+
+
+def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None, stored,  # noqa: PLR0913
+                 valuation: datetime.datetime, *, view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
+                 rates: ChargeRates | None = None, override: RangeOverride | None = None) -> Outcome | None:
+    """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
+    from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
+    today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
+    not one expiry or there is no strike to centre on. No price here is live: no LTP, IV, Greek, bid/ask or index
+    price is set; Estimated Now is unavailable with its reason. When live data DROPPED (a snapshot that held a quote),
+    ``status_label`` is REQ-049 AC-5's message with its last-update time (REQ-049 AC-5 and REQ-077 AC-9 both hold);
+    ``output_label`` always carries the from-your-prices label."""
+    if any(p.planned_entry is None for p in definition.legs):
+        return None
+    legs: list[OutcomeLeg] = []
+    inputs: list[LegInput] = []
+    for p in definition.legs:
+        lm = None if snapshot is None else snapshot.legs.get(p.instrument_id)
+        listed = lm.contract if lm is not None and lm.contract is not None else (stored or {}).get(p.instrument_id)
+        if listed is None:
+            return None
+        c = listed.contract
+        symbol, kind, strike, _expiry = _contract_fields(snapshot, p.instrument_id, stored)
+        quantity = p.lots * c.lot_size
+        legs.append(OutcomeLeg(p.instrument_id, symbol, p.action, kind, strike, c.expiry, p.lots, c.lot_size, quantity,
+                               p.planned_entry, p.captured_at, None, None, None, None))
+        inputs.append(LegInput(definition.underlying, symbol or p.instrument_id, p.action, kind, strike, c.expiry,
+                               quantity, p.planned_entry))
+    config = config or ScenarioSettings().for_index(definition.underlying)
+    strikes = [leg.strike for leg in inputs if leg.strike is not None]
+    if not strikes:
+        return None
+    centre = _centre_of(strikes)
+    rate = Decimal(0)  # At Expiry uses no rate or forward; the gate needs one consistent value
+    try:
+        reading = SpotReading(centre, valuation, DataHealth.AVAILABLE)
+        forwards = {leg.expiry: spot_fallback_forward(leg.expiry, centre, valuation, valuation, rate)
+                    for leg in inputs}
+        model = model_inputs(StrategyInput(definition.underlying, reading, valuation, rate, tuple(inputs)), forwards)
+        level_set = _no_current(build_level_set(model, config, override=override))
+    except (MultiExpiryError, ForwardUnavailable):
+        return None
+    charges = None
+    if rates is not None:
+        try:
+            charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
+        except ChargesNotComputable:
+            charges = None
+    # the ONE computation: always the At Expiry view; Estimated Now needs live prices and is never computed here
+    values = scenario_values(level_set, model, View.AT_EXPIRY, rates=None if charges is None else rates)
+    shown = values
+    if view is View.ESTIMATED_NOW:
+        shown = ScenarioValues(view, LABELS[view], "estimate", values.levels, False,
+                               render_explanation("outcome_from_entries_no_estimate"), None, None,
+                               spot_level=values.spot_level, spot_at=values.spot_at)
+    table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
+                                output_label=FROM_ENTRIES_LABEL)
+    points = tuple(zip(shown.levels, shown.totals)) if shown.available and shown.totals is not None else ()
+    dropped = None if snapshot is None else _not_live_label(snapshot)
+    if dropped is NOT_CONNECTED_LABEL:  # no quote was ever held: nothing dropped, no last update to name
+        dropped = None
+    return Outcome(
+        state=OutcomeState.FROM_ENTRIES, underlying=definition.underlying, status_label=dropped or FROM_ENTRIES_LABEL,
+        reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation, output_label=FROM_ENTRIES_LABEL,
+        spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
+        visible_columns=visible_columns(table), payoff_points=points,
+        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
+        centre_label=render_explanation("outcome_from_entries_centre", level=centre))
+
+
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
@@ -379,8 +538,12 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     boundaries and the zero-P&L columns are the locked ADR-008 values and never move with charges."""
     if not isinstance(definition, StrategyDefinition):
         raise ValueError(f"definition must be a StrategyDefinition, got {definition!r}")
-    if snapshot is None or snapshot.status.session_ended:
+    if snapshot is None:
         return not_connected(definition, snapshot)
+    if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
+        return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
+                             override=override)
+                or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
     valuation = snapshot.valuation if valuation is None else valuation
@@ -393,6 +556,12 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     problems: list[ExplanationText] = []
     for p in definition.legs:
         lm = snapshot.legs.get(p.instrument_id)
+        if p.planned_entry is None:  # an unpriced leg (ADR-085) is never computed
+            why = render_explanation("draft_leg_needs_reprice")
+            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id, why=why))
+            legs.append(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None,
+                                   None, p.captured_at, None, None, None, why))
+            continue
         if lm is None or lm.contract is None or lm.problem is not None:
             why = (lm.problem if lm is not None and lm.problem is not None
                    else render_explanation("outcome_why_not_in_snapshot"))
@@ -413,7 +582,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             ltp, label = q.ltp, _quote_label(q)
             fwd = snapshot.forwards.get(c.expiry)
             if kind is not Instrument.FUT and fwd is not None and snapshot.spot is not None:
-                price = mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
+                price = iv_price(q)
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
                     where = (snapshot.underlying, c.expiry, snapshot.valuation, "leg_iv", p.instrument_id)
@@ -454,7 +623,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return _refused(definition, render_explanation("outcome_forward_refused"), legs, message)
 
     config = config or ScenarioSettings().for_index(definition.underlying)
-    level_set = build_level_set(model, config, override=override)
+    solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
+    move = _expected_move(inputs, snapshot, valuation, shared, solved)
+    level_set = build_level_set(model, config, expected_move=move, override=override)
     charges = None
     if rates is not None:
         try:

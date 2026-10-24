@@ -7,11 +7,11 @@
     "screen 112",
     "screen 210"
   ],
-  "ours": "REQ-077 AC-1 to AC-3 typed price, labelled Your price, is not built.",
+  "ours": "Built in row 21, commit 7029b484 (W-149); pinned by frontend/tests/leg-edit.test.js 'AC-1: the request carries price \"81.30\" as a string, and the reply's typed leg renders Your price with its time'.",
   "req": "REQ-077",
   "ac": "AC-1",
   "row": 21,
-  "status": "open",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"
