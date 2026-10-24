@@ -65,8 +65,9 @@ test('legs are named by contract, times are IST words, and no raw id or ISO time
     .formatToParts(new Date(raw)).reduce((m: Record<string, string>, p) => ({ ...m, [p.type]: p.value }), {})
   const expected = `${parts.day} ${parts.month} ${parts.year}, ${parts.hour}:${parts.minute}:${parts.second} IST`
   await expect(first.getByTestId('leg-captured')).toHaveText(`captured ${expected}`)
-  await expect(page.getByTestId('footer-valuation')).toHaveText(IST_TEXT)
-  await expect(page.getByTestId('summary-cards')).toContainText(IST_TEXT)
+  // REQ-135 AC-3: the footer's 'Priced at' and the summary card's clock are gone; the one 'Prices as of' stamp replaces them
+  await expect(page.getByTestId('footer-valuation')).toHaveCount(0)
+  await expect(page.getByTestId('summary-cards')).not.toContainText(IST_TEXT)
   await noRawValues(page)
 })
 

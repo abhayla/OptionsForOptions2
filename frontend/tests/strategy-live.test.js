@@ -301,7 +301,12 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     second.serverPush(COMPUTED)
     await flushPromises()
     expect(state(w)).toBe('computed')
-    await w.find('[data-testid="recalculate"]').trigger('click')
+    expect(w.find('[data-testid="recalculate"]').exists()).toBe(false) // REQ-135 AC-3: no manual refresh; the push above is the refresh
+    expect(w.text()).not.toContain('ReCalculate')
+    second.serverPush({ ...COMPUTED, legs: COMPUTED.legs.map((l) => ({ ...l, ltp: '41.00' })) })
+    await flushPromises()
+    expect(state(w)).toBe('computed')
+    await w.vm.load() // what any later reload does (the old button called it): the flag was cleared by the push
     await flushPromises()
     expect(apiCalls.at(-1).body.fallback).toBe(false)
     w.unmount()
@@ -812,6 +817,131 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     expect(w.text()).toContain('That strike is not listed.')
     expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    w.unmount()
+  })
+})
+
+// ---- W-155 (REQ-135 AC-3, AC-4): one 'Prices as of' stamp, no manual refresh, the lone futures leg ------------------------
+// COMPUTED is the recorded condor outcome; the fields the engine added for REQ-135 (last_price_at, summary extras) are set to
+// the shapes backend/ofo/outcome/serialize.py writes (pinned by tests_app/test_outcome_route.py and tests/engine/test_lone_future_summary.py).
+describe('REQ-135 AC-3: one Prices-as-of stamp from last_price_at, never a refresh button', () => {
+  const PRICED = '2026-10-19T10:15:00+05:30'
+  const ANSWERED = '2026-10-19T10:15:07+05:30'
+  const FRESH = { ...real, last_price_at: PRICED, answered_at: ANSWERED }
+  async function open(answer = FRESH, draft = DRAFT) {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    apiAnswer = answer
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(draft) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  const stamp = (w) => w.find('[data-testid="prices-as-of"]')
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) })
+
+  it('shows exactly one stamp read from last_price_at (not answered_at); the two old clocks and the refresh button are gone', async () => {
+    const w = await open()
+    expect(stamp(w).text()).toBe('Prices as of 10:15:00 IST')
+    expect(w.findAll('[data-testid="prices-as-of"]')).toHaveLength(1)
+    expect(w.text().match(/Prices as of/g)).toHaveLength(1)
+    expect(w.find('[data-testid="footer-valuation"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Priced at')
+    expect(w.find('[data-testid="recalculate"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('ReCalculate')
+    w.unmount()
+  })
+
+  it('each live push moves the stamp, and no push changes any leg\'s planned entry or capture time', async () => {
+    const w = await open()
+    const before = w.findAll('[data-testid="leg-row"]').map((r) => [r.attributes('data-entry'), r.attributes('data-captured')])
+    const ws = FakeSocket.all.at(-1)
+    ws.serverOpen()
+    ws.serverPush({ ...FRESH, last_price_at: '2026-10-19T10:15:01+05:30', legs: FRESH.legs.map((l) => ({ ...l, ltp: '41.00' })) })
+    await flushPromises()
+    expect(stamp(w).text()).toBe('Prices as of 10:15:01 IST')
+    expect(w.findAll('[data-testid="leg-row"]').map((r) => [r.attributes('data-entry'), r.attributes('data-captured')])).toEqual(before)
+    expect(before.every(([entry, at]) => entry && at)).toBe(true)
+    w.unmount()
+  })
+
+  it('a stale answer shows its data-health label in place of the time', async () => {
+    const w = await open({ ...FRESH, output_label: 'Prices are 4 minutes old' })
+    expect(stamp(w).text()).toBe('Prices are 4 minutes old')
+    expect(stamp(w).attributes('data-kind')).toBe('health')
+    expect(w.text()).not.toContain('Prices as of')
+    w.unmount()
+  })
+
+  it('a stale leg label (staleLegs) also replaces the time', async () => {
+    const w = await open({ ...FRESH, legs: FRESH.legs.map((l, i) => (i === 0 ? { ...l, label: 'Price 3 minutes old' } : l)) })
+    expect(stamp(w).text()).toBe('Price 3 minutes old')
+    expect(w.text()).not.toContain('Prices as of')
+    w.unmount()
+  })
+
+  it('while the feed reconnects the reconnecting sentence is shown and no second time is', async () => {
+    const w = await open()
+    const ws = FakeSocket.all.at(-1)
+    ws.serverOpen()
+    ws.serverPush(FRESH)
+    await flushPromises()
+    ws.serverClose()
+    await flushPromises()
+    expect(w.find('[data-testid="live-reconnecting"]').text()).toContain('10:15:00')
+    expect(stamp(w).exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('no stamp while the market-closed banner carries the time, and none when the answer has no price time', async () => {
+    const closed = await open({ ...FRESH, market_closed: true })
+    expect(closed.findComponent({ name: 'MarketClosedBanner' }).exists()).toBe(true)
+    expect(stamp(closed).exists()).toBe(false)
+    closed.unmount()
+    const none = await open({ ...real, last_price_at: null })
+    expect(none.find('[data-testid="numbers"]').exists()).toBe(true)
+    expect(stamp(none).exists()).toBe(false)
+    none.unmount()
+  })
+})
+
+describe('REQ-135 AC-4: a strategy of one futures leg', () => {
+  const FUT = { ...real.legs[0], instrument: 'FUT', strike: null }
+  const LONE = { ...real, legs: [{ ...FUT, action: 'BUY' }], last_price_at: '2026-10-19T10:15:00+05:30',
+    summary: { ...real.summary, max_profit: null, max_profit_unlimited: true, max_loss: '1560000.00', max_loss_unlimited: false,
+      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00' } }
+  const DRAFT_ONE = { underlying: 'NIFTY', legs: [{ instrument_id: FUT.instrument_id, action: 'BUY', lots: FUT.lots, planned_entry: FUT.planned_entry, captured_at: FUT.captured_at }] }
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) })
+
+  async function open(answer) {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiAnswer = answer
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT_ONE) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+
+  it('shows Unlimited profit, Reward/Risk dash with the server reason, Time and Intrinsic value as sent, and no strike stepper', async () => {
+    const w = await open(LONE)
+    expect(w.find('[data-testid="max-profit"]').text()).toBe('Unlimited')
+    expect(w.find('[data-testid="reward-risk"]').text()).toBe('-')
+    expect(w.find('[data-testid="reward-risk-reason"]').text()).toBe('(No fixed maximum)')
+    expect(w.find('[data-testid="time-value"]').text()).toBe('0.00')
+    expect(w.find('[data-testid="intrinsic-value"]').text()).toBe('0.00')
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
+    expect(w.find('[data-testid="strike-minus"]').exists()).toBe(false)
+    expect(w.find('[data-testid="strike-plus"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('an ordinary strategy (the extras are null) shows none of the three rows', async () => {
+    const w = await open(real)
+    expect(w.find('[data-testid="summary-extras"]').exists()).toBe(false)
     w.unmount()
   })
 })
