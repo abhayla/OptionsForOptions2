@@ -45,7 +45,7 @@ from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import OutcomeMargin
@@ -55,6 +55,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     OutcomeRequest,
     OutcomeResponse,
+    RequestSeq,
     get_answer_clock,
     get_margin_source,
     get_market_context,
@@ -173,6 +174,7 @@ class LegEditIn(BaseModel):
     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
     edit: EditIn
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
+    seq: RequestSeq | None = None  # REQ-119 AC-1: echoed unchanged as the reply's seq
 
     @model_validator(mode="after")
     def _index_is_inside_the_legs(self) -> LegEditIn:
@@ -209,6 +211,7 @@ class LegEditOut(ApiModel):
     shape: Identifier | None  # the matched template id, None = Custom Strategy; a label only (REQ-076 AC-9)
     shape_name: CatalogueText | None  # the matched template's name from the reviewed catalogue; None = Custom Strategy
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry, or no leg is included
+    seq: int | None = None  # REQ-119 AC-1: the request's seq, unchanged; absent when the request sent none
 
 
 # ---- the edit -----------------------------------------------------------------------------------------------------
@@ -398,5 +401,6 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
-    return LegEditOut.model_validate({"legs": out_legs, "shape": None if template is None else template.id,
-                                      "shape_name": name, "outcome": outcome})
+    reply = {"legs": out_legs, "shape": None if template is None else template.id, "shape_name": name,
+             "outcome": outcome}
+    return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1

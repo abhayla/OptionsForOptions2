@@ -1499,6 +1499,10 @@
     "sha256": "2cbf1b075a315c2eec0628517cc73fed232d722810c315b6ddb8819357c1bb1f",
     "reviewed": "pending owner read"
   },
+  "execute_plan_changed": {
+    "sha256": "882454d22e5487df31bf2deb7203e496c56e340cdd89d5413156b488f3ee2eea",
+    "reviewed": "pending owner read"
+  },
   "explanation:outcome_from_entries": {
     "sha256": "b5fafa6d2097e303a38c172a5abb4d28b982d4e5f11f6a15c9f25cb7ceaa899c",
     "reviewed": "pending owner read"

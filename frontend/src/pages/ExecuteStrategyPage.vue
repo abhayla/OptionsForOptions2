@@ -17,7 +17,7 @@ import ReturnCheck from '@/components/execution/ReturnCheck.vue'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
-import { fetchSavedLegs } from '@/lib/saveDraft'
+import { fetchSavedDraft } from '@/lib/saveDraft'
 import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
@@ -30,6 +30,7 @@ const reply = ref(null)
 const sent = ref(false)
 const errorParts = ref(null)
 let draft = null
+let revision = null // W-151 (REQ-119 AC-5): the saved revision this review was loaded at; Execute names it
 let liveTimer = null
 
 const live = useStrategyLive({
@@ -64,7 +65,9 @@ onMounted(async () => {
     return
   }
   try {
-    draft = buildDraft(await fetchSavedLegs(api, strategyId.value))
+    const saved = await fetchSavedDraft(api, strategyId.value) // the one saved-strategy read: legs and revision
+    revision = saved.revision
+    draft = buildDraft(saved.legs)
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     phase.value = 'error'
@@ -84,11 +87,12 @@ async function prepare(action) {
   phase.value = 'executing'
   errorParts.value = null
   try {
-    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action })).data
+    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action, revision })).data
     if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
+    reply.value = null // a refusal (e.g. 409 "Your plan changed") keeps no plan on screen
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     phase.value = liveNow.value ? 'live' : 'not-live' // the socket may have dropped while Execute was answering
   }

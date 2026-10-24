@@ -179,6 +179,18 @@ class ApiModel(BaseModel):
             check_field_type(annotation, f"{cls.__name__}.{name}")
 
 
+def echo_seq[ReplyT: ApiModel](reply: ReplyT, seq: int | None) -> ReplyT:
+    """REQ-119 AC-1, the one way a reply echoes the request's ``seq``: unchanged when sent, no key when not.
+
+    Rebuilt by validation (``model_copy`` is refused above): the reply's SET fields keep their own values (not their
+    serialized form - a CatalogueText or a BasketPost re-validates only as itself), plus ``seq``; unset fields stay unset,
+    so ``response_model_exclude_unset`` writes exactly today's keys and ``seq``."""
+    if seq is None:
+        return reply
+    kept = {name: value for name, value in reply if name in reply.model_fields_set}
+    return type(reply).model_validate({**kept, "seq": seq})
+
+
 # ---- the door: the one serializer ---------------------------------------------------------------------------------------
 
 class DoorRefused(Exception):
