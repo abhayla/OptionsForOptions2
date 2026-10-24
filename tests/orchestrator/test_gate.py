@@ -626,20 +626,22 @@ def test_every_pytest_step_turns_the_local_only_hypothesis_plugin_off():
 
 
 def test_the_app_selected_run_also_turns_the_plugin_off():
-    assert gate.APP_SELECTED_RUN == [*PYTEST_APP, "-rs"]
-    assert NO_HYPOTHESIS == gate.APP_SELECTED_RUN[-3:-1]
+    assert [*PYTEST_APP, "-rs"] == gate.APP_SELECTED_RUN
+    assert gate.APP_SELECTED_RUN[-3:-1] == NO_HYPOTHESIS
 
 
 BAD, GOOD = "BAD <div></div>", "good"
 
 
 class FormatRunner(FakeRunner):
-    """git answers for the format ratchet and a fake prettier: exit 1 when a file starts with BAD, else `prettier_code`."""
+    """git answers for the format ratchet and a fake prettier: exit 1 when a file starts with BAD, else `prettier_code`.
+    Exit codes to force: prettier_code, show_code (git show of the base file), merge_base_code."""
 
-    def __init__(self, names, added=(), base=None, prettier_code=None, show_code=0, merge_base_code=0):
+    def __init__(self, names, added=(), base=None, **codes):
         super().__init__()
         self.names, self.added, self.base = names, set(added), base or {}
-        self.prettier_code, self.show_code, self.merge_base_code = prettier_code, show_code, merge_base_code
+        self.prettier_code = codes.get("prettier_code")
+        self.show_code, self.merge_base_code = codes.get("show_code", 0), codes.get("merge_base_code", 0)
         self.prettier_calls = []
 
     def __call__(self, argv, cwd, env, log):
@@ -732,8 +734,10 @@ def test_format_unreadable_merge_base_fails_closed(tree, monkeypatch):
 @pytest.mark.parametrize("code_in", [2, 7, 127])
 def test_format_prettier_error_exit_fails_closed(tree, monkeypatch, code_in):
     """Standing item (d): prettier answers 0 formatted, 1 unformatted; anything else (2 = error) is a failure."""
-    code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], prettier_code=code_in), {"a.vue": GOOD})
+    runner = FormatRunner(["a.vue"], prettier_code=code_in)
+    code, lines = format_run(tree, monkeypatch, runner, {"a.vue": GOOD})
     assert (code, lines[-1]) == (1, f"GATE FAIL frontend-format: exit {code_in}")
+    assert runner.prettier_calls == [["src/a.vue"]]  # the batch answer is final: no per-file or base runs
 
 
 def test_format_prettier_error_on_one_file_during_the_ratchet_fails_closed(tree, monkeypatch):
@@ -741,7 +745,7 @@ def test_format_prettier_error_on_one_file_during_the_ratchet_fails_closed(tree,
 
     class Flaky(FormatRunner):
         def __call__(self, argv, cwd, env, log):
-            if argv[:3] == ["npx", "prettier", "--check"] and self.prettier_calls:
+            if argv[:3] == ["npx", "prettier", "--check"] and self.prettier_calls and "gate-base-copy" not in argv[3]:
                 self.prettier_calls.append(argv[3:])
                 log.write_text("boom\n", encoding="utf-8")
                 return 2

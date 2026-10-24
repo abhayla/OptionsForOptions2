@@ -9,6 +9,9 @@ import subprocess
 import pytest
 from ofo.broker import egress
 
+# What the conftest left in platform's own cache before ANY test module ran (read at import, i.e. at collection).
+CACHE_AT_COLLECTION = getattr(platform, "_uname_cache", "no such cache in this Python")
+
 PLATFORM_CALLS = (
     platform.uname,
     platform.win32_ver,
@@ -26,6 +29,13 @@ def test_platform_calls_do_not_start_a_process_under_the_installed_hook(call):
     call()  # would raise EgressRefused if the cache were cold and the hook installed
     importlib.import_module("platform")
     call()
+
+
+def test_the_conftest_filled_the_platform_cache_before_the_hook_was_installed():
+    """On Windows a cold cache means the first call starts `ver` (platform._syscmd_ver), which the hook refuses."""
+    if isinstance(CACHE_AT_COLLECTION, str):
+        pytest.skip(CACHE_AT_COLLECTION)
+    assert CACHE_AT_COLLECTION is not None
 
 
 def test_the_hook_is_still_installed_and_still_refuses_a_new_process():
