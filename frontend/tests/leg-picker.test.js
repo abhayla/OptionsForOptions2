@@ -882,6 +882,26 @@ describe('REQ-080 futures tab (W-147)', () => {
       { expiry: '2026-11-24', forward: null, source: null, label: null, strikes_used: 0, reason: 'NOT_PRICEABLE' },
     ],
   }
+  it('ADR-015: a forward computed from a stale or delayed spot is labelled with that health; an available one is not', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = {
+      ...futuresAnswer,
+      forwards: [
+        { expiry: '2026-10-13', forward: '22557.59', source: 'spot_fallback', label: 'estimated from spot', strikes_used: 0, reason: null, spot_health: 'stale' },
+        { expiry: '2026-10-27', forward: '22548.00', source: 'spot_fallback', label: 'estimated from spot', strikes_used: 0, reason: null, spot_health: 'delayed' },
+        { expiry: '2026-11-24', forward: '22540.10', source: 'parity', label: null, strikes_used: 3, reason: null, spot_health: 'available' },
+        { expiry: '2026-12-29', forward: '22540.10', source: 'parity', label: null, strikes_used: 3, reason: null },
+      ],
+    }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    const fw = w.findAll('[data-testid="forward-row"]')
+    expect(fw[0].find('[data-testid="forward-health"]').text()).toContain('Stale:')
+    expect(fw[1].find('[data-testid="forward-health"]').text()).toContain('Delayed:')
+    expect(fw[2].find('[data-testid="forward-health"]').exists()).toBe(false)
+    expect(fw[3].find('[data-testid="forward-health"]').text()).toContain('not known')
+  })
   it('AC-6: every future with its LTP or reason, and each expiry\'s forward labelled "Forward used for pricing" with its source', async () => {
     answers['GET /leg-picker/futures?underlying=NIFTY'] = futuresAnswer
     const w = mountPicker()

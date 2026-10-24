@@ -11,6 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
+import { healthSentence } from '@/lib/dataHealthText'
 import {
   DEFAULT_STRIKE_WIDTH,
   FORWARD_LABEL,
@@ -509,6 +510,7 @@ defineExpose({ startEdit })
               {{ f.expiry }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
               <span v-if="f.source === 'parity'" data-testid="forward-source">(from put-call parity)</span>
               <span v-else-if="f.source === 'spot_fallback'" data-testid="forward-source">({{ f.label ?? 'estimated from spot' }})</span>
+              <span v-if="f.forward != null && f.spot_health !== 'available'" data-testid="forward-health">({{ healthSentence(f.spot_health) }})</span>
               <span v-if="f.reason" data-testid="forward-reason">({{ forwardReasonText(f.reason) }})</span>
             </li>
           </ul>
