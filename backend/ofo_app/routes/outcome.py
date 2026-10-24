@@ -48,6 +48,7 @@ from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.strategy_store import INTEGER_MAX
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -201,6 +202,11 @@ class LegIn(BaseModel):
 #: the one request key a client may still send after ADR-168; it is dropped, never read
 RETIRED_LEVEL_KEY = "ux_level"
 
+#: REQ-119 AC-1: a builder-screen request's sequence id, echoed unchanged as ``seq`` in its reply (absent in the request
+#: -> absent in the reply). Strict: a bool, a string or a float is a malformed request, never coerced.
+RequestSeq = Annotated[int, Field(strict=True, ge=0, le=INTEGER_MAX,
+                                  description="the request's sequence id; the reply echoes it unchanged as seq")]
+
 
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -224,6 +230,7 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
+    seq: Optional[RequestSeq] = None  # REQ-119 AC-1: echoed by the REST route only, never by the live push
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -413,6 +420,8 @@ class OutcomeResponse(ApiModel):
     leg_quotes: Optional[list[LegQuoteOut]] = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
+    #: REQ-119 AC-1: the request's ``seq``, unchanged; absent (unset) when the request sent none, and on the live push
+    seq: Optional[int] = None
 
 
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
@@ -478,7 +487,8 @@ def live_context() -> Optional[MarketContext]:
 def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
                      stored: Optional[Mapping[str, ListedContract]] = None,
-                     rates: Optional[ChargeRates] = None, margin: Margin | None = None) -> OutcomeResponse:
+                     rates: Optional[ChargeRates] = None, margin: Margin | None = None,
+                     seq: Optional[int] = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -518,6 +528,8 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
+    if seq is not None:  # REQ-119 AC-1: only a caller that was sent one passes it (the REST route); else no key
+        body["seq"] = seq
     return OutcomeResponse.model_validate(body)
 
 
@@ -554,4 +566,4 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,
-                            margin=margin if isinstance(margin, Margin) else None)
+                            margin=margin if isinstance(margin, Margin) else None, seq=req.seq)
