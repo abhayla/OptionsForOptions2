@@ -11,6 +11,10 @@ import importlib.util
 import pathlib
 import re
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan  # reads every migration file
+
 VERSIONS_DIR = pathlib.Path(__file__).resolve().parent.parent / "backend" / "ofo_app" / "alembic" / "versions"
 CREATE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?(\S+) \(")
 CLOSE = re.compile(r"^\s*\)\s*$", re.MULTILINE)
