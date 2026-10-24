@@ -1,5 +1,44 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
+## UPDATE session 7 END (f1b75d11), 2026-10-24 ~14:00 IST - START HERE (newest)
+Three rows closed this session, so a fresh session takes row 24 (goal: "fresh session about every 3 rows").
+Chunk 2 = branch `build/seq-chunk-2`, draft PR #531, sequence worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`
+(it now carries `.run-active.lock` + `.worktree-meta.json`, both git-ignored: DELETE the lock when chunk 2 merges, then
+wt-rm the tree). "Session-7 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\f1b75d11-b824-4940-9f49-1ea2148dae97\scratchpad`
+(briefs `brief-*.md`, measure JSONs, evidence block JSONs `w149/w150/w151-blocks.json`, helpers `fixbrief.py` (finish a
+hand-written brief: map rows + open records + both checks), `acfp.py` (kit AC fingerprints), `findcheck.py` (findings
+index --check), `simrun.py` (spec_similar), `wtrm-agent.ps1` / `wtsweep.ps1` (harness worktrees / sweep report)).
+Chunk notes and the deferred list stay in the session-6 scratchpad (`chunk2-notes.md`, `chunk2-deferred.md`).
+- **DONE:** CI red on 4a08ce01 fixed (screens did not know the FROM_ENTRIES answer; buildDraft priced a partly priced
+  strategy - two new findings). Row 21 closed (evidence W-149 AC-1..9), row 22 closed (W-150 AC-1..8; AC-6 recorded
+  fail = its what-if part is row 37 by decision; expected move now spot x ATM IV x sqrt(days/365) per Q254/REQ-106),
+  row 23 closed (W-151 AC-1..5; 23a needed an independent redesign after round 2). CI green on 39285ade; 49fe0462
+  pushed with every local gate green (its CI is the first thing to read).
+- **NEXT, in order:** (1) `gh run list --branch build/seq-chunk-2` - red -> `gh run view <id> --log-failed`, tail only.
+  (2) Row 24 (REQ-133, W-152): versioned socket frames (a frame for an older strategy version is dropped - reuse the
+  23b `drawable` rule + the server's seq: the follow message carries a version and every push echoes it; choke point
+  `useStrategyLive.js` createLiveSocket + `backend/ofo_app/live_push.py` / `routes/live.py`) and "Waiting for the first
+  live price" after a (re)connect until the first tick or the REQ-049 health window (today only the chain page has a
+  waiting state). Grep the Sensibull study folder (not only INDEX.md) for reconnect / first tick / waiting before the
+  brief, and put the hit count on the Reference line. (3) Chunk reference-copy builder for rows 17-24's open COPY
+  records. (4) Chunk Tier A review (read `chunk2-deferred.md` first - the user-visible MINOR there: a typed custom range
+  '22000' vs the server's '22000.00' stops live pushes). (5) Conformance check. (6) ONE #532 body update from
+  `chunk2-deferred.md`. (7) Land chunk 2: it is ALREADY OVER the limit - 334 files vs origin/main at 49fe0462 (293 at
+  12:10) against merge.py's 300-file gate (kit #163). Plan the split into PRs under 300 files (e.g. rows 17-20, then
+  21-24, each a merge of row branches onto main) BEFORE row 24 adds more; do not ask for a second manual merge.
+- **Rules learned this session (keep):** run the FULL push chain (repo_scan included) before EVERY push - a push without
+  repo_scan went red on the reach baseline; frontend-only evidence needs a reach-baseline entry (#532) the same commit;
+  never dispatch a checker while a builder must commit (the commit gate blocks it - cost three rounds of retries);
+  `npm ci` in every new worktree before a frontend check (one check was wasted); a test stand-in must share the real
+  class's base (ApiModel); a twin e2e case uses the smallest realistic shape (one priced + one unpriced leg); a
+  decision labelled "technical" still needs the spec grep and a Sensibull grep with the hit count.
+- **Open for the owner:** Q1 in `docs/process/owner-questions-2026-10-25.md` (unchanged). New user-facing texts
+  pending owner read in tests/errors/template_pins.json: `execute_plan_changed` ("Your plan changed - review it again.").
+- **Worktrees** (remove after chunk 2 merges, wt-rm with `-Discard -MergedSha <sha>` where it refuses): -row17a2,
+  -row17b2, -row18, -OptionsForOptions2-chunk2-process, -row19, -row20, -row21, -row21d, -ci21, -row22, -row22b,
+  -row23, -row23b. Harness trees agent-a71cec/aec312/afc010 removed this session (W-127's 4 local-only commits pushed
+  first).
+
 ## UPDATE session 6 END (06fe7549), 2026-10-24 ~08:45 IST - START HERE (newest)
 Handed over at ~95% context. Chunk 2 branch `build/seq-chunk-2` (draft PR #531); sequence worktree
 `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
