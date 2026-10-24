@@ -193,7 +193,7 @@ class LegIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     instrument_id: InstrumentId = Field(examples=["NSE_FO:44624"])
     action: Literal["BUY", "SELL"]
-    lots: int = Field(gt=0, le=10000)
+    lots: int = Field(strict=True, gt=0, le=10000)  # true, 1.0 and "2" are a malformed request, never coerced
     planned_entry: str = Field(pattern=r"^\d+(\.\d{1,2})?$", examples=["104.65"],
                                description="the planned entry price, a decimal string (never a float)")
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")

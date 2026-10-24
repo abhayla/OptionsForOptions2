@@ -139,6 +139,13 @@ def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def is_entry_price_text(text: object) -> bool:
+    """ADR-075 / REQ-077 AC-2: the one rule for a planned entry price as text - plain decimal in whole paise (at most 12
+    digits before the point, no leading zero, no sign or exponent) and above zero. LegEntry (every stored and sent
+    price) and the leg-edit route's legs both judge a price here, so "0" or "0.00" is refused by each the same way."""
+    return type(text) is str and re.fullmatch(ENTRY_PRICE_PATTERN, text) is not None and Decimal(text) > 0
+
+
 @dataclass(frozen=True)
 class LegEntry:
     """ADR-075: one leg's planned entry price and the time it was captured. The user's own planned price (captured
@@ -152,8 +159,7 @@ class LegEntry:
         if type(self.source) is not str or self.source not in ENTRY_SOURCES:
             raise StoredFormError(INVALID_PLANNED_ENTRY, f"an entry source is one of {list(ENTRY_SOURCES)}")
         price = self.price
-        if (not isinstance(price, Decimal) or not price.is_finite() or price <= 0
-                or re.fullmatch(ENTRY_PRICE_PATTERN, str(price)) is None):
+        if not isinstance(price, Decimal) or not price.is_finite() or not is_entry_price_text(str(price)):
             raise StoredFormError(INVALID_PLANNED_ENTRY, "a planned entry is a positive price in whole paise (at most "
                                                          "12 digits before the point)")
         at = self.captured_at

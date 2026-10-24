@@ -33,17 +33,27 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
-from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
+from ofo.strategy import stored_form
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
@@ -141,7 +151,7 @@ class EditLegIn(LegIn):
 
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
-    base_lots: int = Field(gt=0, le=10000)
+    base_lots: StrictInt = Field(gt=0, le=10000)  # strict like the shared leg's lots: true, 1.0, "2" refused
     included: StrictBool = True
     typed: StrictBool = False
 
@@ -149,11 +159,19 @@ class EditLegIn(LegIn):
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read"]
-    direction: Literal[1, -1] | None = None
+    direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
     price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+
+    @field_validator("direction", mode="before")
+    @classmethod
+    def _strict_direction(cls, value: object) -> object:
+        """A Literal[1, -1] alone accepts True and 1.0 (equal to 1); only a JSON integer is a direction."""
+        if value is not None and type(value) is not int:
+            raise ValueError("direction is the integer 1 or -1")
+        return value
 
     @model_validator(mode="after")
     def _control_has_its_fields(self) -> EditIn:
@@ -243,6 +261,11 @@ def _legs_of(cat: Catalogue, req: LegEditIn, today: datetime.date) -> list[EditL
         entry = Decimal(item.planned_entry) if item.planned_entry is not None else Decimal(0)
         leg = Leg(Action(item.action), Instrument(c.instrument_type), None if c.instrument_type == "FUT" else c.strike,
                   c.expiry, item.lots * c.lot_size, entry)
+        if item.planned_entry is not None and not stored_form.is_entry_price_text(item.planned_entry):
+            # the stored form's own rule (a zero the save would refuse is refused here, the same price error)
+            kind = ContractKind.FUTURE if c.instrument_type == "FUT" else ContractKind.OPTION
+            raise LegEditRefused("leg_edit_price_not_tick", leg=LegValue(number, leg, req.underlying),
+                                 tick=cat.tick_size(req.underlying, c.expiry, kind))
         out.append(EditLeg(leg, item.lots, item.base_lots, item.included, item.typed))
     return out
 

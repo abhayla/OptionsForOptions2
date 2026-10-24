@@ -476,3 +476,51 @@ def test_ac_4_ac_7_reopening_returns_exactly_the_saved_entries_marks_and_times_a
         (Decimal("81.30"), later, "typed"), (Decimal("30.00"), at, "captured"), (None, None, None)]
     assert "planned_entry" not in legs_out[2] and "entry_source" not in legs_out[2]
     assert "entry_source" in strategies.LegOut.model_fields
+
+
+@pytest.mark.parametrize(("where", "key", "bad"), [
+    ("leg", "base_lots", True), ("leg", "base_lots", 1.0), ("leg", "base_lots", "2"),
+    ("leg", "lots", True), ("leg", "lots", 1.0), ("leg", "lots", "2"),
+    ("edit", "direction", True), ("edit", "direction", 1.0), ("edit", "direction", "1"),
+    ("edit", "index", True), ("edit", "multiplier", 2.0)])
+def test_every_numeric_request_field_is_strict(where, key, bad):
+    """Chunk 2 review area B (attack item 3): a bool, a float or a numeric string is a malformed request (a plain 422
+    validation error, no legs), never coerced to the integer it resembles."""
+    edit = {"control": "step", "index": 1, "direction": 1}
+    if key == "multiplier":
+        edit = {"control": "multiplier", "multiplier": bad}
+    elif where == "edit":
+        edit = edit | {key: bad}
+    sent = legs()
+    if where == "leg":
+        sent[1] = sent[1] | {key: bad}
+    status, reply = post({"legs": sent, "edit": edit})
+    assert status == HTTP_UNPROCESSABLE and "legs" not in reply, (key, bad)
+    assert reply.get("code") != PRICE_REFUSED, (key, bad)
+
+
+@pytest.mark.parametrize("bad", ["0", "0.00", "00.5", "0012.50"])
+def test_a_leg_sent_with_a_price_the_stored_form_refuses_is_the_price_error(bad):
+    """Chunk 2 review area B (attack item 4): a leg whose planned entry is zero (or any price the stored form's
+    is_entry_price_text refuses) is refused with USER_INPUT_013 and its four parts, as the save would refuse it -
+    never priced at zero."""
+    sent = legs()
+    sent[2] = sent[2] | {"planned_entry": bad}
+    status, reply = post({"legs": sent, "edit": {"control": "read"}})
+    assert status == HTTP_UNPROCESSABLE and "legs" not in reply, bad
+    assert reply["code"] == PRICE_REFUSED and "positive multiple of" in reply["what_happened"], bad
+    assert all(reply[k] for k in ("what_happened", "impact", "what_is_blocked", "next_action")), bad
+    with pytest.raises(stored_form.StoredFormError):
+        stored_form.entry_from_text(bad, STAMP.isoformat(), "legs[2]")
+
+
+def test_the_leg_edit_and_the_stored_form_share_one_price_rule():
+    """One judge, not two: LegEntry refuses exactly what is_entry_price_text refuses."""
+    for price in ("0", "0.00", "0.05", "81.35", "1.5"):
+        ok = stored_form.is_entry_price_text(price)
+        try:
+            stored_form.LegEntry(Decimal(price), STAMP)
+            built = True
+        except stored_form.StoredFormError:
+            built = False
+        assert ok is built, price
