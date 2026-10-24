@@ -151,8 +151,7 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
     <h2 class="mt-3 text-sm font-medium">Saved drafts</h2>
     <ul v-if="drafts.length" class="mt-1 text-sm" data-testid="saved-drafts">
       <li v-for="d in drafts" :key="d.id" class="flex flex-wrap items-center gap-2" data-testid="saved-draft-row">
-        <span data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}</span>
-        <span>{{ d.underlying }}, updated {{ istTime(d.updated_at) }}</span>
+        <span data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}, {{ d.underlying }}, updated {{ istTime(d.updated_at) }}</span>
         <button type="button" :data-testid="`open-draft-${d.id}`" class="underline" :disabled="busy" @click="open(d.id)">Open</button>
       </li>
     </ul>

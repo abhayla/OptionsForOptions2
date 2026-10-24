@@ -368,7 +368,7 @@ describe('REQ-134: the saved list in the bar shows the name, and the old text wh
     const w = mount(SaveDraftBar, { props: { legs: LEGS } })
     await flushPromises()
     const names = w.findAll('[data-testid="saved-draft-name"]')
-    expect(names.map((n) => n.text())).toEqual(['<i>Condor</i>', 'Draft 9'])
+    expect(names.map((n) => n.text().split(', updated')[0])).toEqual(['<i>Condor</i>, NIFTY', 'Draft 9, NIFTY'])
     expect(names[0].find('i').exists()).toBe(false)
   })
 })
