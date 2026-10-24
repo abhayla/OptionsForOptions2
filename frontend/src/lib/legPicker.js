@@ -52,7 +52,12 @@ export function buildDraft(legs) {
   // other legs alone would show a P&L that is not the strategy's.
   if (legs.some((l) => l.not_live)) return null
   // W-148 (REQ-076 AC-6): an unticked leg is left out of every number, so it is never sent to the outcome.
-  const priced = legs.filter((l) => l.included !== false && l.planned_entry != null && l.captured_at != null)
+  const included = legs.filter((l) => l.included !== false)
+  // REQ-077 AC-9 (fail closed): a strategy is priced only when EVERY included leg has its entry and capture time; one
+  // unpriced leg next to a priced one would otherwise be priced as if it did not exist. The server's own rule (a leg
+  // without an entry -> not connected / reprice) then never has to run because that leg is never sent.
+  if (included.some((l) => l.planned_entry == null || l.captured_at == null)) return null
+  const priced = included
   if (!priced.length) return null
   return {
     underlying: priced[0].underlying,
