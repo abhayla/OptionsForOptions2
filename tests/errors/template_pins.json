@@ -1522,5 +1522,21 @@
   "explanation:outcome_waiting_first_price": {
     "sha256": "c71a7f5be7447cf1c01bed4a127464652f6bdb52613496623391242622a1f364",
     "reviewed": "pending owner read"
+  },
+  "strategy_name_empty": {
+    "sha256": "3a4bbfb301ba601ee3c8e75a4059c283ba0a7b24eb1f29b42d0661b82edd3b4b",
+    "reviewed": "pending owner read"
+  },
+  "strategy_name_invalid": {
+    "sha256": "5766fd1930960fb2dd0f695d1028577c5523491ce7bbeb34ad3765a490a7ca34",
+    "reviewed": "pending owner read"
+  },
+  "explanation:strategy_name_shown": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_renamed": {
+    "sha256": "3fe9ee4a130c6fe38e4adc1fb5895210f0027f3ef00dafb7e564d0bbfb434cfb",
+    "reviewed": "pending owner read"
   }
 }
