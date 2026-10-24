@@ -10,9 +10,11 @@
  },
  "fix": "Instances fixed (23a: the test drives a real ExecuteOut; row 24: one e2e helper echoes seq like live_push.py). Class mechanism (second occurrence - Learn-or-block): a repo test that fails when a Playwright spec answers `**/api/strategies/live` itself without the shared echo helper, and a brief standing item: every double named in a test is built from, or checked against, the real class or server behaviour.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Two occurrences on 2026-10-24; the mechanism (repo test for strategy-socket fakes) is due and owned by the chunk-2 deferred issue #532 until built. CI e2e caught the second one; the first was caught by an independent check only."
+  "status": "guarded",
+  "checks": [
+   "tests/test_e2e_live_socket_fakes.py"
+  ],
+  "note": "Guarded for the Playwright half only: tests/test_e2e_live_socket_fakes.py refuses a spec that answers the strategy live socket without the shared echoSeq helper. The stand-in-class half (row 23a: a double built from an assumed base class) is covered by the builder-brief standing item, a brief line and not a test, so it is not machine-checked. Two occurrences on 2026-10-24; CI e2e caught the second one; the first was caught by an independent check only."
  },
  "spec_ref": [
   "spec/requirements/REQ-119.md",
