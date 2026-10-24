@@ -210,6 +210,12 @@ const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: null, summary: null, payoff: null, scenario: null,
   leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, label: AC5 })) }
 const COMPUTED = real
+// The shape `_assert_from_entries_after_drop` (tests_app/test_strategy_live_push.py) checks: AC-5's text on the state,
+// REQ-077 AC-9's label as the output label, the At Expiry table kept, no ltp, no leg_quotes.
+const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_ENTRIES = { ...real, state: 'FROM_ENTRIES', status_label: AC5, output_label: FROM_YOUR_PRICES, spot_level: null, spot_at: null,
+  leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, iv: null, health: null })),
+  table: { ...real.table, spot_level: null, spot_at: null, output_label: FROM_YOUR_PRICES } }
 const OTHER_STRATEGY = { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) }
 
 describe('W-065 p3 r2: the page asks for the not-live answer when its own socket is down', () => {
@@ -316,6 +322,58 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     await flushPromises()
     expect(state(w)).toBe('not-connected')
     w.unmount()
+  })
+
+  it('REQ-049 AC-5 + REQ-077 AC-9: a FROM_ENTRIES answer after the drop shows the server\'s AC-5 message and the from-your-prices label, no live number', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    FakeSocket.all[0].serverOpen()
+    apiAnswer = FROM_ENTRIES
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(state(w)).toBe('from-entries')
+    expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
+    expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
+    expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('a FROM_ENTRIES push is applied like any outcome (the socket of an ended session pushes it)', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    ws.serverPush(FROM_ENTRIES)
+    await flushPromises()
+    expect(state(w)).toBe('from-entries')
+    expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
+    w.unmount()
+  })
+})
+
+describe('FROM_ENTRIES on the socket: accepted, never marks the socket live', () => {
+  it('isOutcome accepts exactly the four outcome states', () => {
+    for (const s of ['COMPUTED', 'NOT_CONNECTED', 'REFUSED', 'FROM_ENTRIES']) expect(isOutcome({ state: s })).toBe(true)
+    for (const s of ['LIVE', 'from-entries', '', undefined]) expect(isOutcome({ state: s })).toBe(false)
+  })
+  it('a FROM_ENTRIES push reaches onPush untouched and records no last-price time', async () => {
+    const { useStrategyLive } = await import('@/composables/useStrategyLive')
+    const { effectScope } = await import('vue')
+    const got = []
+    const scope = effectScope()
+    const live = scope.run(() => useStrategyLive({ url: 'ws://app.test/x', WebSocketImpl: FakeSocket, onPush: (m) => got.push(m) }))
+    live.follow(BODY)
+    const ws = FakeSocket.all.at(-1)
+    ws.serverOpen()
+    ws.serverPush({ ...FROM_ENTRIES, last_price_at: '2026-10-19T10:15:00+05:30' })
+    expect(got).toHaveLength(1)
+    expect(got[0].state).toBe('FROM_ENTRIES')
+    expect(live.reconnectingText.value).not.toMatch(/\d\d:\d\d/) // a typed-price answer is not a price time
+    ws.serverPush({ ...COMPUTED, last_price_at: '2026-10-19T10:15:00+05:30' })
+    expect(live.reconnectingText.value).toMatch(/\d\d:\d\d/) // the control: a COMPUTED push does
+    scope.stop()
   })
 })
 

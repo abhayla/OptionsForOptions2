@@ -60,6 +60,10 @@ const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', statu
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
 const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
+const FROM_YOUR_PRICES = 'From your prices - no live data'
+// The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).
+const fromEntries = () => ({ state: 'FROM_ENTRIES', underlying: 'NIFTY', status_label: SERVER_LABEL, output_label: FROM_YOUR_PRICES, reason: null,
+  answered_at: '2026-10-19T10:16:00+05:30', spot_level: null, spot_at: null, summary: computed().summary, legs: [leg({ ltp: null, health: null })] })
 
 async function mountPage() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
@@ -194,6 +198,35 @@ describe('AC-5: the disconnect message is the server\'s', () => {
     const c = cards(w)[0]
     expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
     expect(c.find('[data-testid="live-spot"]').exists()).toBe(false) // no number shown as live
+  })
+
+  it('REQ-049 AC-5 + REQ-077 AC-9: a FROM_ENTRIES answer after the drop shows both server labels, stays paused, shows no figure', async () => {
+    postAnswer = fromEntries()
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(computed())
+    await flushPromises()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
+    expect(c.find('[data-testid="live-output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(c.attributes('data-paused')).toBe('true')
+    expect(c.find('[data-testid="live-paused-badge"]').exists()).toBe(true)
+    expect(c.find('[data-testid="live-health-dot"]').attributes('data-health')).toBe('unknown')
+    for (const id of ['live-spot', 'live-leg', 'live-leg-ltp', 'live-max-profit']) expect(c.find(`[data-testid="${id}"]`).exists()).toBe(false)
+  })
+
+  it('a FROM_ENTRIES push (an ended session) is accepted and the card shows it paused', async () => {
+    const w = await mountPage()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverPush(fromEntries())
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
+    expect(c.find('[data-testid="live-output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(c.attributes('data-paused')).toBe('true')
+    expect(c.find('[data-testid="live-spot"]').exists()).toBe(false)
   })
 
   it('ADR-168: neither the socket body nor the REST fallback body a live card sends carries a level key', async () => {

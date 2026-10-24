@@ -42,7 +42,7 @@ export function liveUrl(loc = window.location) {
 
 /** True for the server's outcome answer (the only push that changes the numbers). */
 export function isOutcome(msg) {
-  return !!msg && typeof msg === 'object' && ['COMPUTED', 'NOT_CONNECTED', 'REFUSED'].includes(msg.state)
+  return !!msg && typeof msg === 'object' && ['COMPUTED', 'NOT_CONNECTED', 'REFUSED', 'FROM_ENTRIES'].includes(msg.state)
 }
 
 /**

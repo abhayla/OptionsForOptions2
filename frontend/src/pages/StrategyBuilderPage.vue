@@ -356,6 +356,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 
     <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
       <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
+        <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
         <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
         <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
         <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
