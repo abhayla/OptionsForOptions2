@@ -366,6 +366,9 @@ async def test_update_path_validates_too(app_engine):
             await trans.rollback()
 
 
+MD5_HEX_LENGTH = 32  # a pin is the hex md5 of the function source
+
+
 def _newest_validator_pins() -> dict:
     """Each validator's md5 pin from the NEWEST migration that re-created it (walks the migrations in order).
 
@@ -386,7 +389,7 @@ def _newest_validator_pins() -> dict:
         if hasattr(module, "NEW_PIN"):
             assert getattr(module, "LEG_SIGNATURE", None), f"{path.name} has NEW_PIN but no LEG_SIGNATURE"
             pins[module.LEG_SIGNATURE] = module.NEW_PIN
-    assert pins and all(isinstance(pin, str) and len(pin) == 32 for pin in pins.values()), pins
+    assert pins and all(isinstance(pin, str) and len(pin) == MD5_HEX_LENGTH for pin in pins.values()), pins
     return pins
 
 
