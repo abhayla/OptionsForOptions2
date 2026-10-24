@@ -25,7 +25,7 @@ import {
   CUSTOM_STRATEGY, EXECUTE_NEEDS_ALL_TICKED, LEFT_OUT_LABEL, NO_LEGS_YET, applyEditReply, buildEditRequest, canStep, executeRefusal,
   MULTIPLIER_CHOICES, shapeLabel,
 } from '@/lib/legEdit'
-import { buildDraft } from '@/lib/legPicker'
+import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { movedMarker } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 
@@ -539,6 +539,40 @@ describe('REQ-077 AC-5 Reset Prices and the per-leg reset', () => {
     expect(edits().at(-1).body.edit).toEqual({ control: 'reset_leg', index: 0 })
     expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
     expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe('Your price 30.00')
+  })
+  it('AC-5: a per-leg reset on row 1 sends index 1 and leaves row 0\'s typed price on screen', async () => {
+    const w = await afterTyped()
+    const kept = typedReply(0, '81.30')
+    answers['POST /strategies/leg-edit'] = kept
+    await row(w, 1).find('[data-testid="reset-leg"]').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_leg', index: 1 })
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe('Your price 81.30')
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].planned_entry}`)
+  })
+  it('AC-5: Reset Prices clears every row, not only row 0', async () => {
+    const w = await afterTyped()
+    answers['POST /strategies/leg-edit'] = READ
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(edits().at(-1).body.edit).toEqual({ control: 'reset_prices' })
+    expect(all(w, 'leg-entry').every((x) => x.text().startsWith('Planned entry'))).toBe(true)
+  })
+  it('AC-1: a typed price on row 1 sends index 1', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = typedReply(1, '30.00')
+    await typeInto(w, 1, '30.00')
+    expect(edits()[0].body.edit).toEqual({ control: 'price', index: 1, price: '30.00' })
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+  })
+  it('AC-5: a planned entry without a capture time keeps the not-connected label', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = { ...READ, legs: READ.legs.map((l, i) => (i === 2 ? { ...l, captured_at: null } : l)) }
+    await t(w, 'reset-prices').trigger('click')
+    await flushPromises()
+    expect(row(w, 2).find('[data-testid="leg-unpriced"]').text()).toBe(NOT_CONNECTED_LABEL)
+    expect(row(w, 2).find('[data-testid="leg-price-reason"]').exists()).toBe(false)
+    expect(row(w, 1).find('[data-testid="leg-unpriced"]').exists()).toBe(false)
   })
   it('AC-5: an unpriced leg after a reset shows the reply\'s price_reason text; none for a priced leg', async () => {
     const w = await openPage()

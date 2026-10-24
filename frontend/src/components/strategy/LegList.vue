@@ -102,9 +102,9 @@ function setMultiplier(index) {
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
           <span v-if="leg.planned_entry != null && leg.captured_at != null" class="text-ink-muted" data-testid="leg-captured">{{ leg.typed === true ? 'typed' : 'captured' }} {{ istTime(leg.captured_at) }}</span>
-          <template v-else-if="leg.planned_entry == null">
+          <template v-else>
             <span data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
-            <span v-if="priceReasonText(leg.price_reason)" class="text-ink-muted" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
+            <span v-if="leg.planned_entry == null && priceReasonText(leg.price_reason)" class="text-ink-muted" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
           </template>
           <span v-if="movedMarker(leg, ltpById[leg.instrument_id])" class="text-ink-muted" data-testid="price-moved">{{ movedMarker(leg, ltpById[leg.instrument_id]) }}</span>
           <input v-model="typedText[i]" type="text" inputmode="decimal" class="w-20 rounded border border-line px-1" :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @keydown.enter="setPrice(i)" />
