@@ -38,6 +38,15 @@ def test_the_conftest_filled_the_platform_cache_before_the_hook_was_installed():
     assert CACHE_AT_COLLECTION is not None
 
 
+def test_win32_ver_is_cached_for_the_test_process():
+    """win32_ver() keeps no cache of its own, and its fallback (_syscmd_ver, used when the WMI query fails under load)
+    starts a process; the conftest wraps it so every later call returns the answer primed before the hook."""
+    assert hasattr(platform.win32_ver, "cache_info"), "tests/conftest.py must cache platform.win32_ver"
+    hits = platform.win32_ver.cache_info().hits
+    platform.win32_ver()
+    assert platform.win32_ver.cache_info().hits == hits + 1
+
+
 def test_the_hook_is_still_installed_and_still_refuses_a_new_process():
     """Priming must not loosen the gate: an unlisted program is still refused (the hook is the test's own session's)."""
     with pytest.raises(egress.EgressRefused):
