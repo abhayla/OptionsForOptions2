@@ -1,0 +1,64 @@
+{
+ "row": "c1",
+ "w_id": "W-152",
+ "req": "REQ-133",
+ "title": "Repo guard: a Playwright spec that answers the strategy live socket itself must stamp its pushes with the shared echoSeq helper (#532 C1, finding test-double-encodes-old-assumption)",
+ "tier": "B",
+ "files": [
+  "tests/test_e2e_live_socket_fakes.py",
+  "knowledge/findings/test-double-encodes-old-assumption.json"
+ ],
+ "items": [
+  "New repo test `tests/test_e2e_live_socket_fakes.py`, marked `@pytest.mark.repo_scan` (it reads the whole frontend/e2e tree). It scans every `*.ts` file under `frontend/e2e/` (support files included) with plain text reading, no Node. A file is IN SCOPE when it contains `routeWebSocket(`. For every `routeWebSocket(` call the first argument must be a string literal; a non-literal pattern (a variable, a template with `${`) fails closed naming file:line. A call whose literal pattern contains `strategies/live` is a live-socket fake. The file is allowed by exactly one of three named categories (an allow-list, never a forbidden list - finding guard-as-forbidden-list): (1) ECHO: it imports from `./support/echoSeq` or `./echoSeq` (an `import ... from '...echoSeq'` line) AND calls `.stamp(`; (2) FORWARD: it is listed in a pinned dict FORWARD_ONLY {path: reason (>= 4 words)} - today exactly `frontend/e2e/strategy-live.spec.ts` and `frontend/e2e/live-strategies.spec.ts`, which forward the real replay server's frames (`ws.connectToServer()`, `server.onMessage((m) => ... ws.send(m))`), so the server's own seq echo reaches the page - and the file must still contain `connectToServer(` (an entry whose file stopped forwarding fails); (3) SILENT: the file contains no `.send(` at all (frontend/e2e/support/quiet-live.ts). A live-socket fake in none of the three fails with the file and the remedy: `import { echoSeq } from './support/echoSeq'` and stamp every push. A FORWARD file that also contains a `.send(` whose argument is not the forwarded message variable is out of the static check's reach: say so in the test's docstring (out of scope), do not pretend to detect it.",
+  "Pin test: FORWARD_ONLY equals the two pinned paths; every reason has >= 4 words; every pinned path exists (a stale entry fails). Report test (prints, asserts): the in-scope files today are exactly execute-screen.spec.ts and feed-reconnect.spec.ts (ECHO), strategy-live.spec.ts and live-strategies.spec.ts (FORWARD), support/quiet-live.ts (SILENT) - confirm this list by grep before writing it; if grep shows another file, put it in its real category and report it.",
+  "Mutation tests in the same file (tmp_path copies, never editing the real tree): an ECHO spec with its echoSeq import removed fails; an ECHO spec with the import but no `.stamp(` fails; a FORWARD entry whose file lost `connectToServer(` fails; a new spec that calls `ws.send(` on the live route with no echoSeq and no pin fails; a `routeWebSocket(pattern, ...)` with a variable pattern fails closed. Run `python scripts/orchestrator/mutation_gate.py` with single-line finds on the real guard (category checks) and quote the results.",
+  "Update `knowledge/findings/test-double-encodes-old-assumption.json`: detection.status `guarded` only for the Playwright half, with the check `tests/test_e2e_live_socket_fakes.py` named in detection.checks and the note saying the stand-in-class half is covered by the builder-brief standing item (a brief line, not a test). Do NOT regenerate knowledge/findings/INDEX.md (the orchestrator regenerates it once in the batch)."
+ ],
+ "core": "on today's real frontend/e2e tree the scan classifies each of the five files that route the strategy live socket into ECHO, FORWARD or SILENT, and a copy of execute-screen.spec.ts with its echoSeq import removed is refused.",
+ "proof": "step 1 - run the new test file on the real tree (pass, with the report test printing the five files and their category), then on a tmp_path copy with the echoSeq import line deleted from execute-screen.spec.ts (fail naming that file); quote both runs.",
+ "spec_basis": "REQ-133 AC-2 \"The same rule holds on the live socket: a frame computed for an older strategy version than the one on screen\"",
+ "copy_from": "none - a repo guard test over this repo's own e2e specs; reuse the scan shape of the existing repo_scan tests in tests/ (pathlib + text read), no legacy row names this guard",
+ "attack": [
+  {
+   "text": "An ECHO spec with the echoSeq import removed is refused",
+   "test_file": "tests/test_e2e_live_socket_fakes.py"
+  },
+  {
+   "text": "An ECHO spec that imports echoSeq but never stamps a push is refused",
+   "test_file": "tests/test_e2e_live_socket_fakes.py"
+  },
+  {
+   "text": "A FORWARD pin whose file no longer calls connectToServer is refused",
+   "test_file": "tests/test_e2e_live_socket_fakes.py"
+  },
+  {
+   "text": "A new spec sending its own live pushes with no echoSeq and no pin is refused",
+   "test_file": "tests/test_e2e_live_socket_fakes.py"
+  },
+  {
+   "text": "A routeWebSocket call with a non-literal pattern fails closed",
+   "test_file": "tests/test_e2e_live_socket_fakes.py"
+  }
+ ],
+ "standing": {
+  "a": "n/a: no time-budgeted job",
+  "b": "n/a: no CI step changes; the test runs in the kit tests job's default pytest run and in repo_scan",
+  "c": "applied: the static detector fails closed on a non-literal routeWebSocket pattern and on a FORWARD pin whose file stopped forwarding; it names the helper by its import source (`echoSeq` module path), not by identifier text",
+  "d": "n/a: the guard decides on no other system's answer"
+ },
+ "threat_model": "in scope - a Playwright spec that plays the strategy live server itself and sends pushes without the version the page sent (the row-24 CI red), a pinned forward-only file that stopped forwarding, a route pattern the scan cannot read; out of scope - a FORWARD file that also injects its own pushes (stated in the docstring), sockets other than /api/strategies/live, Vitest fakes (frontend/tests, covered by the brief standing item)",
+ "findings_checked": [
+  "test-double-encodes-old-assumption",
+  "guard-as-forbidden-list",
+  "repo-wide-scan-outside-targeted-tests"
+ ],
+ "expected": {
+  "minutes": 25,
+  "tokens": 2000000
+ },
+ "ci": "kit tests job (default pytest run and `-m repo_scan`); vars: none",
+ "search_terms": [
+  "websocket",
+  "stale"
+ ]
+}

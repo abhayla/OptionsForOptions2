@@ -1,0 +1,47 @@
+{
+ "row": 24,
+ "w_id": "W-152",
+ "req": "REQ-133",
+ "title": "Old live frames dropped; a screen that just (re)connected waits for its first price instead of reporting bad data",
+ "tier": "A",
+ "files": [
+  "backend/ofo_app/live_push.py",
+  "backend/ofo_app/routes/outcome.py",
+  "frontend/src/composables/useStrategyLive.js",
+  "frontend/src/pages/StrategyBuilderPage.vue",
+  "frontend/src/components/live/LiveStrategyCard.vue",
+  "frontend/src/pages/ExecuteStrategyPage.vue",
+  "tests_app/test_strategy_live_push.py",
+  "tests_app/test_live_frame_version.py",
+  "frontend/tests/strategy-live.test.js",
+  "frontend/tests/live-strategies.test.js"
+ ],
+ "items": [
+  "Step 1 = MEASURE AC-3 on the real replay feed (APP_ENV=test + OUTCOME_REPLAY=1 and the recorded 2026-10-08 frames, the way tests_app/test_strategy_live_push.py drives the socket): open the strategy socket, drop it, reconnect BEFORE the next tick, and record exactly what the first push carries (state, each leg's health and label, status_label) and what the Builder page, the Live Strategies card and the Execute screen draw from it. REQ-133 says a just-reconnected screen reports unhealthy data before its first tick; if the measurement shows it does NOT, record that with the push body and build only the tests that pin the good behaviour - never a change for a defect you could not reproduce. The 'data-health window' is not a number in the spec (ADR-015: per-field staleness thresholds are an implementation setting): reuse the existing staleness threshold the quote health already uses (find its one home; do not add a second constant).",
+  "AC-2 (versioned frames): the strategy follow message the page sends on the socket (frontend/src/composables/useStrategyLive.js follow(); backend/ofo_app/live_push.py reads it) carries the page's strategy version - reuse the 23b numbers rule: the version is the outcome `seq` of the newest numbers request (frontend/src/lib/newestWins.js) or a socket-own counter, ONE source - and every push echoes the version of the follow message it was computed for (same helper as the REST echo: `echo_seq`, backend/ofo_app/api_models.py, or its socket twin `socket_body`; no second echo rule). A push whose version is older than the page's current one is dropped by the page through the existing `drawable` rule (StrategyBuilderPage.vue) and the card's/Execute screen's equivalent; a push with no version (an old server) is treated as the old behaviour only if the page sent none.",
+  "AC-3 (only if step 1 reproduces the false alarm): a screen whose socket has just connected or reconnected and has had no tick yet shows `Waiting for the first live price` (one literal, one home - check frontend/src/lib/legPicker.js WAITING_FOR_PRICES and the chain page's waiting text before adding one) and draws no live number; unhealthy / DATA_UNHEALTHY appears only after the staleness threshold passes with no tick. Decide server vs browser by where the defect is: if the first push itself mislabels the legs, fix the push (live_push.py), not three screens.",
+  "Tests: tests_app/test_live_frame_version.py (follow v1 then v2, pushes echo the version they were computed for; out-of-order delivery of v1 after v2 is dropped by the page - the browser part in frontend/tests/strategy-live.test.js and live-strategies.test.js); the AC-4 reconnect test (no unhealthy inside the threshold, unhealthy after it with no tick) on the replay feed with a controllable clock - never a wall-clock sleep (repo test test_no_wall_clock_asserts.py). Run ALL DB-free files select_app_tests.py selects, the guard line, repo_scan, ruff ratchet, frontend lint + the changed vitest files (not the full vitest: flaky under load here). Mutation gate (pytest) on: push without version echo (must fail), version echo +1 (must fail); scratch vitest runner on: page draws an older-version push (must fail), waiting text never shown (must fail, only if AC-3 was built). HARD STOP at 64 of 80 calls."
+ ],
+ "core": "on the replay feed, a socket that drops and reconnects before the next tick: the first push after the reconnect is recorded exactly (state, every leg's health and label), proving or disproving REQ-133's claim that the screen reports unhealthy data before its first tick.",
+ "proof": "step 1 - a tests_app probe test on the recorded 2026-10-08 frames that reconnects before a tick and asserts the first push's leg health; quote the push body and what each screen draws from it; red if the false alarm exists (then fix), green-and-pinned if it does not.",
+ "spec_basis": "REQ-133 AC-2 \"a frame computed for an older strategy version than the one on screen is dropped\"; REQ-133 AC-3 \"shows the DATA_UNHEALTHY state only when the data-health window of REQ-049 passes with\"; ADR-015 consequence \"Staleness thresholds per field are an implementation setting.\"",
+ "copy_from": "none - this repo's own live socket; the legacy ticker rows (REQ-049 ADAPT) are already in the product",
+ "attack": [
+  {"text": "Reconnect before a tick on the replay feed: the first push's leg health recorded and asserted", "test_file": "tests_app/test_strategy_live_push.py"},
+  {"text": "Pushes echo the version of the follow message they were computed for", "test_file": "tests_app/test_live_frame_version.py"},
+  {"text": "A v1 push arriving after v2 is on screen is dropped by the Builder", "test_file": "frontend/tests/strategy-live.test.js"},
+  {"text": "The Live Strategies card drops an older-version push", "test_file": "frontend/tests/live-strategies.test.js"},
+  {"text": "No unhealthy state inside the staleness threshold after a reconnect; unhealthy after it with no tick (controllable clock)", "test_file": "tests_app/test_strategy_live_push.py"}
+ ],
+ "standing": {
+  "a": "n/a: no time-budgeted job (the push loop's pacing is unchanged; say so if you touch it)",
+  "b": "n/a: no CI step changes",
+  "c": "n/a: no static detector added",
+  "d": "applied: socket states - first connect, reconnect before a tick, reconnect after a tick, dropped, refused; push states - COMPUTED, FROM_ENTRIES, NOT_CONNECTED, REFUSED, each with or without a version; version states - current (drawn), older (dropped), absent (old behaviour only when the page sent none)"
+ },
+ "threat_model": "in scope - a frame for an older strategy version drawn as current, a false unhealthy alarm on reconnect, a waiting state that hides real stale data past the threshold, a second staleness constant; out of scope - REST late replies (REQ-119, row 23, done), the reconnect backoff itself (REQ-114, row 11)",
+ "findings_checked": ["new-answer-state-without-reader-sweep", "verified-on-a-module-the-product-does-not-call", "repo-wide-scan-outside-targeted-tests", "brief-rule-from-memory"],
+ "expected": {"minutes": 60, "tokens": 450000},
+ "ci": "app-tests job (`tests_app/test_live_frame_version.py`, `tests_app/test_strategy_live_push.py`; Vitest `strategy-live.test.js`, `live-strategies.test.js`)",
+ "search_terms": ["reconnect", "first tick", "waiting for", "unhealthy", "version"]
+}
