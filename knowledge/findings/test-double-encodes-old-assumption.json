@@ -1,0 +1,33 @@
+{
+ "id": "test-double-encodes-old-assumption",
+ "scope": "generic",
+ "class": "A test double (a stand-in model, a fake server, a socket fake) is written from the builder's assumption of the real thing - an older protocol, a different base class - so tests pass against the double while the real thing fails, or tests fail against the double while the real thing works; the double is not checked against the real implementation it imitates.",
+ "mechanism": "(1) Row 23a: the Execute seq-echo test used a plain BaseModel stand-in for ExecuteOut; the real class is an ApiModel whose model_copy raises, so every Execute with seq crashed while the test passed. (2) Row 24: the page began dropping live pushes without the version it sent; the Vitest socket fakes were updated, but two Playwright specs that play the server themselves (execute-screen.spec.ts, feed-reconnect.spec.ts) kept sending pushes without seq, so CI failed while the real server was right.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "row 23a round-2 check (stand-in base class) and CI App tests run 40083846807 on 7f86296a (row 24 e2e fakes)",
+  "evidence": "23a: probe with an ApiModel stand-in -> TypeError model_copy(update=...) skips validation. Row 24: execute-screen.spec.ts:18 'no Execute action: phase=waiting-live'; feed-reconnect.spec.ts:23 data-live 'connecting' instead of 'live'."
+ },
+ "fix": "Instances fixed (23a: the test drives a real ExecuteOut; row 24: one e2e helper echoes seq like live_push.py). Class mechanism (second occurrence - Learn-or-block): a repo test that fails when a Playwright spec answers `**/api/strategies/live` itself without the shared echo helper, and a brief standing item: every double named in a test is built from, or checked against, the real class or server behaviour.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Two occurrences on 2026-10-24; the mechanism (repo test for strategy-socket fakes) is due and owned by the chunk-2 deferred issue #532 until built. CI e2e caught the second one; the first was caught by an independent check only."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-119.md",
+  "spec/requirements/REQ-133.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "row 23a, chunk 2",
+   "evidence": "plain BaseModel stand-in for ExecuteOut"
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 24, chunk 2",
+   "evidence": "two Playwright strategy-socket fakes without seq"
+  }
+ ]
+}

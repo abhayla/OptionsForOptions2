@@ -1,0 +1,27 @@
+{
+ "id": "rule-over-tables-as-typed-list",
+ "scope": "generic",
+ "class": "A rule that must hold for every table holding a kind of data (every table that stores a strategy definition, every table with a money column) is written as a hand-typed list of table names; a table added by an earlier or later migration is silently left out, and the rule's own test only exercises the tables it names.",
+ "mechanism": "backend/ofo_app/alembic/versions/0024_typed_entry_mark.py:133-137 refused a downgrade only when `strategies` or `strategy_history` held a typed mark; `strategy_versions` (migration 0022) stores the same leg document (strategy_store.py:424/454) behind a guard trigger that blocks DELETE and changes to `definition`, so a downgrade with an executed typed-price strategy strands a row the old code cannot read.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 2 Tier A review, area B (Opus), on build/seq-chunk-2 7f86296a; row 21 part 21m wrote the migration",
+  "evidence": "Code read of 0024:133-137, strategy_store.py:424,454 and 0022:148 (not run: no local database). tests_app/test_migration_0024_typed_entry.py:148 puts the marked leg only in `strategies`."
+ },
+ "fix": "Instance: the downgrade checks strategy_versions too, from one list. Class: a DB-free test that reads every migration's definition JSONB columns and fails when the downgrade's list misses one (fix round on build/seq-chunk2-rev-b).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when the table-list test merges; the DB downgrade test runs in CI only."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-077.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "chunk 2 Tier A review area B",
+   "evidence": "as first_seen"
+  }
+ ]
+}

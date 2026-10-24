@@ -1,0 +1,27 @@
+{
+ "id": "engine-input-chosen-per-caller",
+ "scope": "generic",
+ "class": "When each caller of an engine function chooses the input it passes (which price an IV is solved from, which time, which spot), two screens show two different engine numbers for the same thing at the same instant; each caller's own tests pass because none compares the callers with each other.",
+ "mechanism": "backend/ofo/engine/chain_values.py:105 solved the leg picker's strike IV from `q.ltp`; backend/ofo/outcome/service.py solves the leg IV from `_iv_price` (bid-ask mid when both sides are live and ask >= bid, else LTP - the locked rule, ADR-172). The picker showed one IV and delta, the leg row after picking another.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 2 Tier A review, area A (Opus), on build/seq-chunk-2 7f86296a; row 19 introduced chain_values.py",
+  "evidence": "review-a/probe_iv.py on the recorded 2026-10-08 frames (13-Oct expiry, forward 22529.17): all 42 contracts 22000-23000 differ; 22150 CE picker 0.147669 vs outcome 0.138008; deep ITM 20200 CE 2.151493 vs 0.425341 (stale LTP). Mutant switching chain_values to the mid: tests/engine/test_chain_values.py 20 passed (no test pins the price)."
+ },
+ "fix": "Structural: one engine function chooses the IV price and every implied_vol caller uses it; a test asserts picker IV == outcome leg IV for the same quotes (fix round on build/seq-chunk2-rev-a).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when the picker-vs-outcome equality test merges. Not covered: a third caller added later that bypasses the shared function - a grep test over implied_vol callers would close that."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-172.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "chunk 2 Tier A review area A",
+   "evidence": "as first_seen"
+  }
+ ]
+}
