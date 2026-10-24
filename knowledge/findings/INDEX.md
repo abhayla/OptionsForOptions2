@@ -2,7 +2,7 @@
 
 # Findings index
 
-100 finding(s), generated from `knowledge/findings/*.json`.
+101 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -10,6 +10,7 @@
 | advice-wording-denylist-per-module | Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another. | unguarded | occurrences, scope, spec_ref |
 | agent-worktree-from-stale-local-main | Any isolated agent worktree created from the orchestrator's LOCAL main starts from whatever that checkout last pulled; if merges landed on origin since, the agent builds on a stale base, misses files the work depends on (its own work item) and invents substitutes that conflict later. | unguarded | occurrences, scope, spec_ref |
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | scope, spec_ref |
+| alias-import-in-e2e-loaded-module | A frontend module that Playwright specs import in plain Node (directly or through its static import chain) gains an import through the bundler's path alias ('@/...'); the bundler and the unit runner resolve the alias, Node does not, so every e2e spec in the run fails at load while lint, unit tests and the build stay green. | unguarded | occurrences, scope, spec_ref |
 | basket-tag-exceeds-publisher-limit | Any identifier built for one channel from the limit of a different channel of the same vendor (the API order tag allows 20 characters, the Publisher basket page allows 8) exceeds the stricter channel's limit once a counter inside it grows a digit, so the feature works for the first nine entities and fails for every one after. | unguarded | occurrences, scope, spec_ref |
 | branch-migration-tests-move-shared-db | Running a branch's migration (replay) tests against a database shared with other checkouts applies the branch's unmerged migration and can leave the shared database at a different revision than main - every other checkout's local DB tests then run against a schema they do not have. | guarded | occurrences, scope, spec_ref |
 | brief-rule-from-memory | Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it. | unguarded | occurrences, scope, spec_ref |

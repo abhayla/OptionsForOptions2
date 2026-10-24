@@ -2,7 +2,7 @@
 // Changed: same-origin base '/api' (ADR-012), httpOnly-cookie credentials, NO localStorage token, and an error mapper
 // that shows a neutral message (the REQ-065 error mapping waits for W-024).
 import axios from 'axios'
-import { isSuperseded } from '@/lib/newestWins'
+import { isSuperseded } from '../lib/newestWins' // relative, not '@/': e2e specs load this file in plain Node (router -> orderPath -> api)
 
 export const NEUTRAL_ERROR = 'Something went wrong. Please try again.'
 
