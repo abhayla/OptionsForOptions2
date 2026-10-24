@@ -27,7 +27,7 @@ const CONTROL_FIELDS = {
   step: ['index', 'direction'],
   include: ['index', 'included'],
   multiplier: ['multiplier'],
-  price: ['index', 'price'], // REQ-077 AC-1/AC-2: the user's TEXT, judged by the server only
+  price: ['index', 'price'], // REQ-077 AC-1/AC-2: the typed TEXT as entered, judged by the server only
   reset_prices: [], // REQ-077 AC-5: every leg is re-captured from its current price
   reset_leg: ['index'], // REQ-077 AC-5: the same for one leg
   read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
