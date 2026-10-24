@@ -699,7 +699,8 @@ def test_format_file_formatted_at_base_now_unformatted_fails(tree, monkeypatch):
     code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD})
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
     assert "src/a.vue: formatted at the merge base, unformatted now" in lines
-    assert not list((tree / "frontend" / "src").glob(f"{gate.COPY_PREFIX}*"))  # the temp copies are removed
+    left = [n for n in os.listdir(tree / "frontend" / "src") if n.startswith(gate.COPY_PREFIX)]
+    assert left == []  # the temp copies are removed
 
 
 def test_format_old_debt_still_unformatted_passes_and_is_counted(tree, monkeypatch):
@@ -851,7 +852,7 @@ def test_format_never_overwrites_or_leaves_a_file_named_like_a_copy(tmp_path):
     code, _ = real_format(repo, tmp_path)
     assert code == 1
     src = repo / "frontend" / "src"
-    assert sorted(p.name for p in src.iterdir()) == sorted(["a.vue", *names])
+    assert sorted(os.listdir(src)) == sorted(["a.vue", *names])
     assert [(src / n).read_text() for n in names] == ["mine\n", "mine\n"]
 
 
