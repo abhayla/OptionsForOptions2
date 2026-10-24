@@ -62,6 +62,14 @@ const REFUSAL = { what_happened: 'The market is closed. Orders can be placed onc
   impact: 'No order can be placed while the market is closed.', what_is_blocked: 'Execution of this strategy.',
   next_action: 'Return during market hours and execute again.' }
 
+// W-151 (REQ-119 AC-5): the saved revision the review was loaded at (GET /strategies/1), sent with every Execute
+const REVISION = 3
+// the server's execute_plan_changed parts (backend/ofo/errors/templates.py), shown as given
+const PLAN_CHANGED = { what_happened: 'Your plan changed - review it again.',
+  impact: 'No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.',
+  what_is_blocked: 'Preparing orders from an older version of this strategy.',
+  next_action: 'Review the current plan, then prepare the orders again.' }
+
 const ok = (data) => () => Promise.resolve({ data })
 const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
@@ -79,7 +87,7 @@ beforeEach(() => {
   calls.length = 0
   live.follow.mockReset()
   answers = {
-    'GET /strategies/1': ok({ definition: DEF }),
+    'GET /strategies/1': ok({ definition: DEF, revision: REVISION }),
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-19': ok({ contracts: [CONTRACT] }),
     'POST /strategies/1/execute': ok(REPLY),
     'POST /strategies/1/execution/return': ok(RETURN),
@@ -132,7 +140,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     expect(posts()).toEqual([]) // live alone calls nothing
     await w.get('[data-testid="prepare-entry"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY' }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION }]])
     const row = w.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())
     expect(row).toEqual(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
     expect(text(w, 'cost-net-premium')).toBe('-217.75')
@@ -170,9 +178,26 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     await w.get('[data-testid="prepare-exit"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT' }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT', revision: REVISION }]])
     expect(text(w, 'execute-error-what')).toBe(REFUSAL.what_happened)
     expect(text(w, 'execute-error-next')).toBe(REFUSAL.next_action)
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+  })
+
+  it('W-151 (REQ-119 AC-5): a 409 plan-changed refusal shows its four parts and no plan', async () => {
+    answers['POST /strategies/1/execute'] = () => Promise.reject({ status: 409, parts: PLAN_CHANGED })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION }]])
+    expect(calls.filter(([m, u]) => m === 'GET' && u === '/strategies/1')).toHaveLength(1) // no second read
+    expect(text(w, 'execute-error-what')).toBe(PLAN_CHANGED.what_happened)
+    expect(text(w, 'execute-error-impact')).toBe(PLAN_CHANGED.impact)
+    expect(text(w, 'execute-error-blocked')).toBe(PLAN_CHANGED.what_is_blocked)
+    expect(text(w, 'execute-error-next')).toBe(PLAN_CHANGED.next_action)
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
     expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
   })
 

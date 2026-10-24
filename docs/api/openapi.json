@@ -1520,10 +1520,32 @@
             ],
             "title": "Action",
             "type": "string"
+          },
+          "revision": {
+            "description": "the saved revision the review was built from",
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           }
         },
         "required": [
-          "action"
+          "action",
+          "revision"
         ],
         "title": "ExecuteIn",
         "type": "object"
@@ -1567,6 +1589,17 @@
           "plan_number": {
             "title": "Plan Number",
             "type": "integer"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           },
           "tags": {
             "items": {
@@ -2076,6 +2109,20 @@
             "title": "Legs",
             "type": "array"
           },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2121,6 +2168,17 @@
                 "type": "null"
               }
             ]
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           },
           "shape": {
             "anyOf": [
@@ -2370,6 +2428,20 @@
             ],
             "title": "Range Start"
           },
+          "seq": {
+            "anyOf": [
+              {
+                "description": "the request's sequence id; the reply echoes it unchanged as seq",
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2489,6 +2561,17 @@
                 "type": "null"
               }
             ]
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           },
           "spot_at": {
             "anyOf": [

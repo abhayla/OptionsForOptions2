@@ -43,9 +43,19 @@ async def _stored_revision(conn, sid: int) -> int:
     return (await conn.execute(text("SELECT revision FROM public.strategies WHERE id = :i"), {"i": sid})).scalar_one()
 
 
-async def _bump_revision(conn, sid: int) -> int:
-    """Another change saved after the review (as a leg edit or a second tab would): the stored revision moves on."""
-    await conn.execute(text("UPDATE public.strategies SET revision = revision + 1 WHERE id = :i"), {"i": sid})
+async def _bump_revision(conn, user: str, sid: int, reviewed: int) -> int:
+    """Another change saved after the review (as a leg edit or a second tab would), through the store's own update
+    (the database trigger moves the revision on a definition change; ``revision`` is never written directly): the
+    same contract, 130 units instead of 65."""
+    from ofo.engine import Action  # noqa: PLC0415
+    from ofo.strategy import stored_form as sf  # noqa: PLC0415
+    from ofo_app import strategy_store as store  # noqa: PLC0415
+
+    stored = await store.load(conn, user, sid)
+    (cid,) = stored.saved.contract_ids
+    saved = await store.build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, 130, None)],
+                                         rules_ref=None, risk_limits={}, preferences={})
+    await store.update(conn, user, sid, saved, expected_revision=reviewed)
     return await _stored_revision(conn, sid)
 
 
@@ -65,7 +75,7 @@ async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = F
             sid = await _strategy_one(conn, user, app_engine.url.username)
             reviewed = await _stored_revision(conn, sid)  # the version the user reviewed
             if bump:
-                assert await _bump_revision(conn, sid) == reviewed + 1
+                assert await _bump_revision(conn, user, sid, reviewed) == reviewed + 1
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
