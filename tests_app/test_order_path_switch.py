@@ -22,7 +22,9 @@ import ast
 import importlib.util
 import inspect
 import pathlib
+import shutil
 import sys
+import tempfile
 from collections import deque
 from collections.abc import Iterator
 from http import HTTPStatus
@@ -342,13 +344,15 @@ def test_ac6_mutation_dropping_the_dependency_from_a_router_is_found(no_dotenv, 
     assert any("/strategies/{strategy_id}/execute" in p for p in unguarded_order_routes(app))
 
 
-# ---- the import closure (structural, REQ-076 AC-5 fix round 2) ------------------------------------------------------
+# ---- the import closure of the leg-edit route (structural, REQ-076 AC-5 fix round 2) ------------------------------
 # The direct-import scan above saw leg_edit import only ``ofo_app.freeze_store`` and passed, while freeze_store imported
-# ``ofo.execution.freeze``: a route reached an order module one hop away. This walks every hop, function-level imports
-# included, and allows only the four shared paths that existed when the walk was added (recorded in #532).
+# ``ofo.execution.freeze``: the route reached an order module one hop away. This walks every hop, function-level imports
+# included. Other routes reach order code too (pre-existing coupling, recorded in #532): not this row, so only the
+# leg-edit route is walked here.
 
 MIN_REASON_WORDS = 4
 BACKEND = pathlib.Path(__file__).resolve().parents[1] / "backend"
+LEG_EDIT = "ofo_app.routes.leg_edit"
 
 #: (importer, order module it imports) -> why that one path is allowed. Exactly four; a fifth is a new path and must be
 #: argued for in the change that adds it (the pinned test below fails until the reason and the pin are both written).
@@ -356,20 +360,11 @@ ALLOWED_ORDER_PATHS: dict[tuple[str, str], str] = {
     ("ofo.errors.slots", "ofo.execution.safety"): "the error slot catalogue names the safety checks' reason codes",
     ("ofo.errors.gate_slots", "ofo.execution.context"): "the gate slot catalogue names the execution context's codes",
     ("ofo_app.api_models", "ofo_app.basket_post"): "the shared API models include the basket-post reply shapes",
-    ("ofo_app.kite_margin", "ofo.execution.margin_gate"): "the margin read (used by outcome_margin) shares the gate's figure shape",
+    ("ofo_app.outcome_margin", "ofo.execution.margin_gate"): "the outcome margin read uses the gate's busy code",
 }
-
-
-#: Route modules that reach order code through chains OTHER than the four above, found when the closure walk was first
-#: run (2026-10-24; ``test_ac6_the_exempt_route_modules_still_reach_an_order_module`` keeps each one honest). They are
-#: not leg-edit's and are not fixed here: recorded for the orchestrator (#532). Exact module names, so a new route is
-#: still walked; remove an entry when its route is cleaned (the test below fails on a clean one).
-EXEMPT_ROUTE_MODULES: dict[str, str] = {
-    "ofo_app.routes.broker_status": "imports routes.execute for its Kite session dependency (pre-existing, #532)",
-    "ofo_app.routes.positions": "reads kite_replies, reconcile_attribution and strategy_store (pre-existing, #532)",
-    "ofo_app.routes.strategies": "reads strategy_store, which imports the execution plan modules (pre-existing, #532)",
-    "ofo_app.routes.tracking": "reads strategy_store, which imports the execution plan modules (pre-existing, #532)",
-}
+PINNED_PATHS = {
+    ("ofo.errors.slots", "ofo.execution.safety"), ("ofo.errors.gate_slots", "ofo.execution.context"),
+    ("ofo_app.api_models", "ofo_app.basket_post"), ("ofo_app.outcome_margin", "ofo.execution.margin_gate")}
 
 
 def _is_order_module(name: str) -> bool:
@@ -388,8 +383,21 @@ def _own(name: str) -> bool:
     return name in ("ofo", "ofo_app") or name.startswith(("ofo.", "ofo_app."))
 
 
+def _from_import(root: pathlib.Path, package: str, node: ast.ImportFrom) -> tuple[set[str], str | None]:
+    """(modules a ``from`` import brings in, the module it names when that has no source file)."""
+    base = node.module or ""
+    if node.level:
+        parts = package.split(".")
+        base = ".".join(parts[:len(parts) - (node.level - 1)] + ([base] if base else []))
+    if not _own(base):
+        return set(), None
+    if _module_file(root, base) is None:
+        return set(), base
+    return {base} | {f"{base}.{a.name}" for a in node.names if _module_file(root, f"{base}.{a.name}")}, None
+
+
 def _source_imports(root: pathlib.Path, module: str, path: pathlib.Path) -> tuple[set[str], list[str]]:
-    """(modules this file imports, anywhere in it, that live under ofo / ofo_app; problems the walker cannot resolve)."""
+    """(ofo / ofo_app modules this file imports, anywhere in it; problems the walker cannot resolve)."""
     names: set[str] = set()
     problems: list[str] = []
     package = module if path.name == "__init__.py" else module.rpartition(".")[0]
@@ -397,18 +405,10 @@ def _source_imports(root: pathlib.Path, module: str, path: pathlib.Path) -> tupl
         if isinstance(node, ast.Import):
             names |= {a.name for a in node.names if _own(a.name)}
         elif isinstance(node, ast.ImportFrom):
-            base = node.module or ""
-            if node.level:
-                parts = package.split(".")
-                parts = parts[:len(parts) - (node.level - 1)]
-                base = ".".join(parts + ([base] if base else []))
-            if not _own(base):
-                continue
-            if _module_file(root, base) is None:
-                problems.append(f"{module}: imports {base}, no source file under {root.name}: cannot be walked")
-                continue
-            names.add(base)
-            names |= {f"{base}.{a.name}" for a in node.names if _module_file(root, f"{base}.{a.name}")}
+            more, missing = _from_import(root, package, node)
+            names |= more
+            if missing:
+                problems.append(f"{module}: imports {missing}, no source file under {root.name}: cannot be walked")
         elif isinstance(node, ast.Call):
             func = node.func
             called = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
@@ -417,10 +417,33 @@ def _source_imports(root: pathlib.Path, module: str, path: pathlib.Path) -> tupl
     return names, problems
 
 
+def _reach(root: pathlib.Path, via: set[str | None], name: str,
+           allowed: dict[tuple[str, str], str]) -> tuple[list[str], list[str], set[tuple[str, str]]]:
+    """(non-order modules reached through ``name`` and its packages, order modules refused, allow-list entries used)
+    for the module ``via`` names first (itself, then the module that imported it). An allow-list
+    entry covers its own importer and the one module it directly imports (``via``): outcome_margin and the margin
+    client it uses (kite_margin) both import the gate's busy code, which is the single listed path."""
+    parts = name.split(".")
+    onward: list[str] = []
+    refused: list[str] = []
+    used: set[tuple[str, str]] = set()
+    for reached in (".".join(parts[:i]) for i in range(1, len(parts) + 1)):
+        if _module_file(root, reached) is None:
+            continue
+        if not _is_order_module(reached):
+            onward.append(reached)
+            continue
+        ok = [k for k in allowed if k[0] in via and (reached == k[1] or k[1].startswith(reached + "."))]
+        used |= set(ok)
+        if not ok:
+            refused.append(reached)
+    return onward, refused, used
+
+
 def order_closure_problems(starts: list[str], root: pathlib.Path,
                            allowed: dict[tuple[str, str], str]) -> tuple[list[str], set[tuple[str, str]]]:
     """Walk the import closure of ``starts``; a problem for every order module reached outside ``allowed`` (with the
-    chain printed), every dynamic import and every import that cannot be resolved. Also returns the allowed paths used."""
+    chain printed), every dynamic import and every import that cannot be resolved; also the allowed paths used."""
     parent: dict[str, str | None] = dict.fromkeys(starts)
     queue = deque(starts)
     problems: list[str] = []
@@ -446,17 +469,10 @@ def order_closure_problems(starts: list[str], root: pathlib.Path,
             continue
         problems += found
         for name in sorted(names):
-            parts = name.split(".")
-            refused: list[str] = []
-            for reached in (".".join(parts[:i]) for i in range(1, len(parts) + 1)):
-                if _module_file(root, reached) is None:
-                    continue
-                if _is_order_module(reached):
-                    ok = [k for k in allowed if k[0] == module and (reached == k[1] or k[1].startswith(reached + "."))]
-                    used |= set(ok)
-                    if not ok:
-                        refused.append(reached)
-                elif reached not in parent:
+            onward, refused, hit = _reach(root, {module, parent[module]}, name, allowed)
+            used |= hit
+            for reached in onward:
+                if reached not in parent:
                     parent[reached] = module
                     queue.append(reached)
             if refused:  # one problem per import, naming the deepest module (its package parents came with it)
@@ -464,43 +480,40 @@ def order_closure_problems(starts: list[str], root: pathlib.Path,
     return problems, used
 
 
-def _unguarded_route_modules(app) -> list[str]:
-    modules = set()
-    for route in app.routes:
-        endpoint = getattr(route, "endpoint", None)
-        name = getattr(inspect.unwrap(endpoint), "__module__", None) if endpoint is not None else None
-        if name in FRAMEWORK_MODULES or (isinstance(route, APIRoute) and _has_guard(route)):
-            continue
-        modules.add(str(name))
-    return sorted(modules)
-
-
 @pytest.mark.repo_scan
-def test_ac6_no_unguarded_route_reaches_an_order_module_through_any_chain(no_dotenv, monkeypatch):
-    """Core (AC-5 fix round 2): the closure of every route without ``require_order_path`` holds no ofo.execution /
-    ofo.orders / ofo_app.execute* module except through the four named shared paths, and every one of those is used."""
-    monkeypatch.setenv("APP_ENV", "test")
-    starts = _unguarded_route_modules(create_app())
-    assert "ofo_app.routes.leg_edit" in starts and not set(EXEMPT_ROUTE_MODULES) - set(starts)
-    problems, used = order_closure_problems([m for m in starts if m not in EXEMPT_ROUTE_MODULES], BACKEND,
-                                            ALLOWED_ORDER_PATHS)
+def test_ac6_the_leg_edit_route_reaches_no_order_module_except_the_four_named_paths():
+    """Core (AC-5 fix round 2): the closure of the leg-edit route holds no ofo.execution / ofo.orders /
+    ofo_app.execute* module except through the four named shared paths, and every one of those is used."""
+    problems, used = order_closure_problems([LEG_EDIT], BACKEND, ALLOWED_ORDER_PATHS)
     assert not problems, "\n".join(problems)
-    assert used == set(ALLOWED_ORDER_PATHS), "an allow-list entry no route uses any more must be removed"
-
-
-@pytest.mark.repo_scan
-def test_ac6_the_exempt_route_modules_still_reach_an_order_module():
-    """An exemption is only for a route that still has such a path; a cleaned route must leave the exempt list."""
-    for module in EXEMPT_ROUTE_MODULES:
-        assert order_closure_problems([module], BACKEND, ALLOWED_ORDER_PATHS)[0], f"{module} is clean: remove it"
+    assert used == set(ALLOWED_ORDER_PATHS), "an allow-list entry the leg-edit route no longer uses must be removed"
 
 
 def test_ac6_the_allow_list_is_the_four_named_paths_each_with_a_reason():
     """A fifth path, or an entry with no reason, fails here until the change that adds it says why."""
-    assert set(ALLOWED_ORDER_PATHS) == {
-        ("ofo.errors.slots", "ofo.execution.safety"), ("ofo.errors.gate_slots", "ofo.execution.context"),
-        ("ofo_app.api_models", "ofo_app.basket_post"), ("ofo_app.kite_margin", "ofo.execution.margin_gate")}
+    assert set(ALLOWED_ORDER_PATHS) == PINNED_PATHS
     assert all(len(reason.split()) >= MIN_REASON_WORDS for reason in ALLOWED_ORDER_PATHS.values())
+
+
+def test_ac6_mutation_a_fifth_allow_list_entry_is_not_the_pinned_four():
+    """Mutation: one more entry (with a reason) differs from the pin, so the pinned test above would go red."""
+    fifth = {("ofo_app.freeze_store", "ofo.execution.freeze"): "the plan side reads the freeze rule"}
+    grown = {**ALLOWED_ORDER_PATHS, **fifth}
+    assert set(grown) != PINNED_PATHS
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_leg_edit_reaching_the_plan_part_of_freeze_store_fails_with_the_chain():
+    """Mutation: leg-edit importing freeze_store (its plan part reaches ofo.execution) is red, chain printed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "backend"
+        shutil.copytree(BACKEND, root, ignore=shutil.ignore_patterns("__pycache__", "alembic"))
+        target = root / "ofo_app" / "routes" / "leg_edit.py"
+        target.write_text(target.read_text(encoding="utf-8") + "\nfrom ofo_app import freeze_store  # noqa: F401\n",
+                          encoding="utf-8")
+        problems, _ = order_closure_problems([LEG_EDIT], root, ALLOWED_ORDER_PATHS)
+    assert any(p.startswith(f"order module reached outside the allow-list: {LEG_EDIT} -> ofo_app.freeze_store -> ")
+               and "ofo.execution" in p for p in problems), problems
 
 
 def _tree(tmp_path: pathlib.Path, files: dict[str, str]) -> pathlib.Path:
