@@ -431,7 +431,7 @@ NAME_EMPTY = "empty"
 NAME_INVALID = "invalid"
 #: One line of text: no control character and no line or paragraph separator (U+2028, U+2029).
 _NAME_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
-#: Unicode categories that draw nothing: a name made only of these looks empty (space, format, control, line, paragraph).
+#: Unicode categories that draw nothing: a name of only these looks empty (space, format, control, line, paragraph).
 NAME_INVISIBLE_CATEGORIES = frozenset({"Zs", "Zl", "Zp", "Cf", "Cc"})
 
 

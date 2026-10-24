@@ -77,6 +77,9 @@ def _replaced_once(sql: str, old: str, new: str) -> str:
     return sql.replace(old, new, 1)
 
 
+BMP_MAX = 0xFFFF  # above it a regex escape needs the eight-digit form
+
+
 def _regex_class(chars) -> str:
     """The characters of ``chars`` (a predicate over one character) as the inside of a regex bracket expression."""
     parts, start, end = [], None, None
@@ -92,7 +95,7 @@ def _regex_class(chars) -> str:
         parts.append((start, end))
 
     def one(code: int) -> str:
-        return f"\\u{code:04x}" if code <= 0xFFFF else f"\\U{code:08x}"
+        return f"\\u{code:04x}" if code <= BMP_MAX else f"\\U{code:08x}"
 
     return "".join(one(a) if a == b else f"{one(a)}-{one(b)}" for a, b in parts)
 
@@ -106,7 +109,7 @@ INVISIBLE_CLASS = _regex_class(lambda char: unicodedata.category(char) in INVISI
 
 def _name_text_ok(text_expr: str) -> str:
     """The one database rule for a strategy name held in the text expression ``text_expr``; the domain's
-    ofo.strategy.stored_form.shown_name accepts exactly the same set (tests_app/test_migration_0025_strategy_name.py)."""
+    ofo.strategy.stored_form.shown_name accepts exactly the same set (tests_app/test_migration_0025_*.py)."""
     return (f"(char_length({text_expr}) BETWEEN 1 AND {NAME_MAX} AND {text_expr} !~ '{CONTROL_REGEX}' "
             f"AND {text_expr} !~ '^[{TRIM_CLASS}]' AND {text_expr} !~ '[{TRIM_CLASS}]$' "
             f"AND {text_expr} ~ '[^{INVISIBLE_CLASS}]')")

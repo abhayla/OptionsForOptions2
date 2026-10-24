@@ -264,18 +264,23 @@ def test_the_migration_constants_equal_the_domains():
     assert (migration.NAME_MAX, migration.DEFAULT_NAME) == (sf.STRATEGY_NAME_MAX, sf.DEFAULT_STRATEGY_NAME)
     assert Path(VERSIONS / MIGRATION).exists()
 
-# --- one rule for the database and the read path (Opus check round 1, findings 1 and 2) --------------------------------
+# --- one rule for the database and the read path (Opus check round 1, findings 1 and 2) ---------------------------
 
 #: name -> accepted? One table, run through BOTH the database CHECKs and the domain read path (shown_name).
 SHARED_NAMES = [
-    ("a", True), ("x" * 40, True), ("<b>You should buy now</b>", True), ("two words", True), ("日本語", True),
-    ("\U0001f600", True), ("a­b", True), ("a​", True), ("​a", True), ("a⁠b", True),
-    ("", False), (" ", False), ("x" * 41, False), (" padded", False), ("padded ", False), ("x ", False),
-    (" x", False), ("x　", False), (" x", False), ("x ", False), ("x ", False),
-    ("​", False), ("​​", False), ("﻿", False), ("⁠​", False), (" ", False),
-    ("a b", False), ("a b", False), ("a ", False), (" ", False), ("a\nb", False),
+    ("a", True), ("x" * 40, True), ("<b>You should buy now</b>", True), ("two words", True),
+    ("\u65e5\u672c\u8a9e", True),
+    ("\U0001f600", True), ("a\u00adb", True), ("a\u200b", True), ("\u200ba", True), ("a\u2060b", True),
+    ("", False), (" ", False), ("x" * 41, False), (" padded", False), ("padded ", False), ("x\u00a0", False),
+    ("\u00a0x", False), ("x\u3000", False), ("\u2003x", False), ("x\u202f", False), ("x\u1680", False),
+    ("\u200b", False), ("\u200b\u200b", False), ("\ufeff", False), ("\u2060\u200b", False), ("\u00a0", False),
+    ("a\u2028b", False), ("a\u2029b", False), ("a\u2028", False), ("\u2028", False), ("a\nb", False),
     ("tab\there", False), ("a\x1fb", False), ("a\x7fb", False), ("a\x85", False), ("a\x9fb", False),
 ]
+
+
+#: Code points a UTF-8 text cannot hold (UTF-16 surrogates).
+SURROGATES = range(0xD800, 0xE000)
 
 
 def _read_path_accepts(name: str) -> bool:
@@ -327,8 +332,8 @@ async def test_the_database_rule_equals_the_read_path_on_every_code_point(app_en
     """Finding 1, whole class: for all 1,112,064 storable characters (alone, after and before a letter) the database
     rule answers exactly as the domain's read path does, so no storable name can make a user's list unreadable."""
     rule = _migration()._name_text_ok("shaped.n")
-    codes = [code for code in range(1, 0x110000) if not 0xD800 <= code <= 0xDFFF]
-    shapes = {"alone": lambda c: chr(c), "after_a": lambda c: "a" + chr(c), "before_a": lambda c: chr(c) + "a"}
+    codes = [code for code in range(1, 0x110000) if code not in SURROGATES]
+    shapes = {"alone": chr, "after_a": lambda c: "a" + chr(c), "before_a": lambda c: chr(c) + "a"}
     async with app_engine.connect() as conn:
         rows = (await conn.execute(text(SWEEP.format(rule=rule)))).all()
     assert [r.shape for r in rows] == sorted(shapes)
