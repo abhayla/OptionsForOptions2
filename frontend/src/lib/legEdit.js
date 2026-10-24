@@ -20,6 +20,10 @@ export const EXECUTE_WAITS_FOR_LATEST = 'Waiting for the latest numbers: Execute
 export const EXECUTE_NEEDS_ALL_TICKED = 'Tick every leg to execute: the whole strategy is sent as one plan.'
 /** REQ-076 AC-10: the empty list's sentence. */
 export const NO_LEGS_YET = 'No legs yet'
+/** REQ-135 AC-1: the Clear all legs question (N = the number of legs on the list) and how long Undo stays offered. */
+export const removeAllPrompt = (n) => `Remove all ${n} legs?`
+export const LEGS_CLEARED = 'All legs removed.'
+export const CLEAR_UNDO_MS = 10000
 
 /** The multiplier is CHOSEN from this fixed list (REQ-076 AC-4), never parsed from text: the server still refuses any
  *  other value. A fixed list, so the page converts no text to a number (ADR-008). */
@@ -99,6 +103,7 @@ export function applyEditReply(prev, reply) {
       instrument_type: r.instrument,
       strike: r.strike,
       expiry: r.expiry,
+      days_to_expiry: r.days_to_expiry ?? null, // REQ-135 AC-2: the server's day count, drawn as sent
     }
   })
 }

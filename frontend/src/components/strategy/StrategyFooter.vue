@@ -4,10 +4,6 @@
 <template>
   <div class="mt-4 flex items-center justify-between text-sm text-gray-500" data-testid="strategy-footer">
     <div class="flex items-center gap-4">
-      <span v-if="lastUpdated">Priced at: <span data-testid="footer-valuation">{{ istTime(lastUpdated) }}</span></span>
-      <span v-else>Not calculated yet</span>
-    </div>
-    <div class="flex items-center gap-4">
       <span v-if="currentSpot">
         {{ underlying }} level: <span class="font-medium text-gray-900">{{ currentSpot }}</span>
       </span>
@@ -16,9 +12,7 @@
 </template>
 
 <script setup>
-import { istTime } from '@/lib/displayFormat'
 defineProps({
-  lastUpdated: { type: String, default: '' },
   currentSpot: { type: String, default: '' },
   underlying: { type: String, default: 'NIFTY' },
 })

@@ -28,14 +28,14 @@ import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, executeRefusal, EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
-import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import { istClock, istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -147,7 +147,7 @@ function nameLegsFrom(body) {
   if (!legs.value.some((l) => !l.expiry && known.has(l.instrument_id))) return
   legs.value = legs.value.map((l) => {
     const a = known.get(l.instrument_id)
-    return l.expiry || !a ? l : { ...l, expiry: a.expiry, instrument_type: a.instrument, strike: a.strike ?? null }
+    return l.expiry || !a ? l : { ...l, expiry: a.expiry, days_to_expiry: a.days_to_expiry ?? null, instrument_type: a.instrument, strike: a.strike ?? null }
   })
 }
 
@@ -213,6 +213,7 @@ const onSaved = (id, revision) => {
   savedRevision.value = revision ?? null
 }
 const setLegs = (next) => {
+  dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
   savedRevision.value = null
   linkRefused.value = false
@@ -229,6 +230,29 @@ function readShape() {
   if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
 }
 const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
+
+// REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for CLEAR_UNDO_MS; the clear is
+// an ordinary edit (the saved copy changes only on Save), exactly as removing the last leg is. One timer, not a recurring one.
+const undoHeld = ref(null) // { legs, savedId, savedRevision } of the last clear, or null (expired, used, superseded, left)
+let undoTimer = null
+function dropUndo() {
+  clearTimeout(undoTimer)
+  undoHeld.value = null
+}
+function clearAll() {
+  if (!legs.value.length) return
+  const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value } // taken BEFORE setLegs([]) nulls them
+  setLegs([])
+  undoHeld.value = held
+  undoTimer = setTimeout(dropUndo, CLEAR_UNDO_MS)
+}
+function undoClear() {
+  const held = undoHeld.value
+  if (!held) return
+  setLegs(held.legs) // drops the Undo, reloads the numbers and the live follow
+  savedId.value = held.savedId
+  savedRevision.value = held.savedRevision
+}
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
@@ -310,7 +334,10 @@ const setChoice = (next) => {
   load()
   syncLive()
 }
-onBeforeUnmount(() => clearTimeout(slowTimer))
+onBeforeUnmount(() => {
+  clearTimeout(slowTimer)
+  clearTimeout(undoTimer)
+})
 
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
@@ -333,6 +360,17 @@ const checkedAt = computed(() => {
   return istTime(state.value === 'error' ? errorAnsweredAt.value : data.value?.answered_at)
 })
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
+// REQ-135 AC-3: the ONE 'Prices as of' stamp, from the answer's last_price_at. A stale answer shows its data-health label in
+// place of the time; while the feed reconnects the reconnecting sentence (same helper, already on the page) is that label;
+// while the market-closed banner shows, the banner carries the time. Nothing here when the answer has no price time.
+const pricesStamp = computed(() => {
+  const d = data.value
+  if (!d || fromEntries.value || d.market_closed || live.reconnecting.value) return null
+  const label = d.output_label || staleLegs.value[0]?.label
+  if (label) return { kind: 'health', text: label }
+  const at = istClock(d.last_price_at)
+  return at ? { kind: 'time', text: `Prices as of ${at} IST` } : null
+})
 </script>
 
 <template>
@@ -351,6 +389,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
       @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
+      :undo-offered="undoHeld !== null" @clear-all="clearAll" @undo-clear="undoClear"
     />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
@@ -415,8 +454,12 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :where-i-start-losing="data.summary.where_do_i_start_losing"
         :current-spot="data.spot_level ?? NO_LIVE_LEVEL"
         :underlying="data.underlying"
-        :last-updated="fromEntries ? '' : data.valuation"
+        :reward-risk="data.summary.reward_risk ?? null"
+        :reward-risk-reason="data.summary.reward_risk_reason ?? null"
+        :time-value="data.summary.time_value ?? null"
+        :intrinsic-value="data.summary.intrinsic_value ?? null"
       />
+      <p v-if="pricesStamp" class="px-4 text-xs text-ink-muted" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
       <PopFigure :pop="data.probability_of_profit ?? null" />
       <MarginLine :margin="data.margin" :capabilities="capabilities" />
 
@@ -428,9 +471,9 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
       <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
-      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" :execute-refusal="refusal" @recalculate="load" />
+      <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
       <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
-      <StrategyFooter :last-updated="fromEntries ? '' : data.valuation" :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
+      <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
     </div>
   </section>
 </template>
