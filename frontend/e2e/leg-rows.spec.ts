@@ -80,3 +80,48 @@ test('with no legs the page says No legs yet and shows no numbers', async ({ pag
   await expect(page.getByTestId('no-legs-chain')).toBeVisible()
   await expect(page.getByTestId('numbers')).toHaveCount(0)
 })
+
+// REQ-135 AC-1: Clear all legs asks first, empties the list, and Undo (offered 10 seconds) brings back the same legs with their
+// planned entry and capture time. No order panel is touched.
+test('REQ-135 AC-1: Clear all legs -> Confirm -> Undo restores every leg with its planned entry and capture time', async ({ page }) => {
+  await page.route('**/api/strategies/leg-edit', async (route) => {
+    await route.fulfill({ json: replyFrom(route.request().postDataJSON(), () => ({})) })
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
+  const rows = page.getByTestId('leg-row')
+  await expect(rows).toHaveCount(4)
+  const snapshot = async () => rows.evaluateAll((els) => els.map((e) => [e.getAttribute('data-instrument-id'), e.getAttribute('data-entry'), e.getAttribute('data-captured'), e.getAttribute('data-lots')]))
+  const before = await snapshot()
+  await page.getByTestId('clear-all-legs').click()
+  await expect(page.getByTestId('clear-confirm-text')).toHaveText('Remove all 4 legs?')
+  await page.getByTestId('clear-confirm-no').click()
+  await expect(rows).toHaveCount(4)
+  await page.getByTestId('clear-all-legs').click()
+  await page.getByTestId('clear-confirm-yes').click()
+  await expect(page.getByTestId('no-legs-text')).toHaveText('No legs yet')
+  await page.getByTestId('clear-undo').click()
+  await expect(rows).toHaveCount(4)
+  expect(await snapshot()).toEqual(before)
+  await expect(page.getByTestId('clear-undo')).toHaveCount(0)
+})
+
+// REQ-135 AC-4: a strategy of one futures leg: Unlimited, Reward/Risk dash with the server's reason, no strike stepper.
+test('REQ-135 AC-4: a lone futures leg shows Unlimited, Reward/Risk - with its reason, and no strike stepper', async ({ page }) => {
+  const fut = { ...real.legs[0], instrument: 'FUT', strike: null, action: 'BUY' }
+  const lone = { ...real, legs: [fut], last_price_at: '2026-10-19T10:15:00+05:30',
+    summary: { ...real.summary, max_profit: null, max_profit_unlimited: true, max_loss: '1560000.00', max_loss_unlimited: false,
+      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00' } }
+  await page.route('**/api/strategies/outcome', async (route) => {
+    const sent = route.request().postDataJSON()
+    await route.fulfill({ json: { ...lone, seq: sent.seq } })
+  })
+  const one = { underlying: 'NIFTY', legs: [{ instrument_id: fut.instrument_id, action: 'BUY', lots: fut.lots, planned_entry: fut.planned_entry, captured_at: fut.captured_at }] }
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(one))}`)
+  await expect(page.getByTestId('max-profit')).toHaveText('Unlimited')
+  await expect(page.getByTestId('reward-risk')).toHaveText('-')
+  await expect(page.getByTestId('reward-risk-reason')).toContainText('No fixed maximum')
+  await expect(page.getByTestId('time-value')).toHaveText('0.00')
+  await expect(page.getByTestId('intrinsic-value')).toHaveText('0.00')
+  await expect(page.getByTestId('strike-plus')).toHaveCount(0)
+  await expect(page.getByTestId('prices-as-of')).toHaveText('Prices as of 10:15:00 IST')
+})

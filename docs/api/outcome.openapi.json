@@ -321,6 +321,17 @@
             ],
             "title": "Expiry"
           },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
           "lots": {
             "type": "integer",
             "title": "Lots"
@@ -1155,6 +1166,48 @@
             "type": "boolean",
             "title": "Charges Unavailable",
             "default": false
+          },
+          "reward_risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Risk"
+          },
+          "reward_risk_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Risk Reason"
+          },
+          "time_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value"
+          },
+          "intrinsic_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value"
           }
         },
         "additionalProperties": false,

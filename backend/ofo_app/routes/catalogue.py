@@ -16,6 +16,7 @@ import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from ofo.timeutil import days_to_expiry
 
 from ofo_app import catalogue_picker as picker
 from ofo_app.api_models import ApiModel, Identifier, Money
@@ -26,9 +27,15 @@ from ofo_app.underlying import Underlying, require_supported
 router = APIRouter(route_class=ClosedRoute)
 
 
+class ExpiryDaysOut(ApiModel):
+    expiry: datetime.date
+    days: int | None  # calendar days from today (IST, the database clock) to the expiry; 0 on expiry day
+
+
 class ExpiriesOut(ApiModel):
     underlying: Underlying
     expiries: list[datetime.date]
+    expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
 
 
 class ContractOut(ApiModel):
@@ -56,8 +63,10 @@ async def get_today(db: Any = Depends(get_db)) -> datetime.date:
 async def expiries(underlying: str, db: Any = Depends(get_db),
                    today: datetime.date = Depends(get_today)) -> ExpiriesOut:
     require_supported(underlying)
-    return ExpiriesOut.model_validate({"underlying": underlying,
-                                       "expiries": await picker.pickable_expiries(db, underlying, today)})
+    listed = await picker.pickable_expiries(db, underlying, today)
+    return ExpiriesOut.model_validate({
+        "underlying": underlying, "expiries": listed,
+        "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
 
 
 @router.get("/api/catalogue/{underlying}/contracts", response_model=ContractsOut)

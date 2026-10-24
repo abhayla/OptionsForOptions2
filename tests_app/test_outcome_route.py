@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, new_provider_with_futures, replay  # noqa: E402
 
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import read_snapshot  # noqa: E402
@@ -270,3 +270,84 @@ async def test_an_ended_kite_session_every_leg_priced_is_from_entries_not_the_ol
     assert "leg_quotes" not in out and out["spot_level"] is None
     assert all(leg["ltp"] is None for leg in out["legs"])
     assert out["summary"]["max_loss"] == "3334.50" and out["summary"]["max_profit"] == "9665.50"
+
+
+# ---- W-155 / REQ-135 AC-4: a strategy of one futures leg, on the recorded 2026-10-08 frames ----------------------
+def provider_with_nifty_futures():
+    """The replay provider with the real NIFTY futures rows of the instrument-list slice added (the recorded frames
+    carry options only, so a futures leg has a listed contract but no quote of its own)."""
+    provider, clock, items, futures = new_provider_with_futures("NIFTY")
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider, futures
+
+
+def _future_body(futures, action):
+    c = futures[1].contract  # NIFTY 27 Oct 2026 futures
+    return {"underlying": "NIFTY", "legs": [{
+        "instrument_id": f"{c.exchange_segment}:{c.exchange_token}", "action": action, "lots": 1,
+        "planned_entry": "24000", "captured_at": VALUATION.isoformat()}]}
+
+
+@pytest.mark.parametrize(("action", "unlimited_side", "finite_side"),
+                         [("BUY", "max_profit", "max_loss"), ("SELL", "max_loss", "max_profit")])
+async def test_a_lone_future_summary_body_carries_the_ac4_answers(action, unlimited_side, finite_side):
+    """AC-4 on the real route: the unlimited side is null + its flag, the other side is finite, Reward/Risk is null
+    with the reason 'No fixed maximum', Time value and Intrinsic value are 0.00 (a string, never a float)."""
+    provider, futures = provider_with_nifty_futures()
+    resp = await _post(_future_body(futures, action), provider)
+    assert resp.is_success, resp.text
+    out = resp.json()
+    s = out["summary"]
+    assert out["state"] == "COMPUTED"
+    assert s[unlimited_side] is None and s[f"{unlimited_side}_unlimited"] is True
+    assert s[finite_side] == "1560000" and s[f"{finite_side}_unlimited"] is False
+    assert (s["reward_risk"], s["reward_risk_reason"]) == (None, "No fixed maximum")
+    assert (s["time_value"], s["intrinsic_value"]) == ("0.00", "0.00")
+    _no_floats(out)
+
+
+async def test_a_bounded_strategy_summary_carries_the_new_keys_as_null(replayed):
+    """A strategy that is not a lone futures leg keeps the AC-4 keys present and null (row 26 owns its ratio)."""
+    s = (await _post(_body(replayed), replayed)).json()["summary"]
+    assert (s["reward_risk"], s["reward_risk_reason"], s["time_value"], s["intrinsic_value"]) == (None,) * 4
+
+
+async def test_every_outcome_leg_carries_days_to_expiry_counted_from_the_answers_ist_date(replayed):
+    """AC-2: the condor legs expire 13 Oct, the answer is 8 Oct 09:20 IST -> 5 days; a futures leg 27 Oct -> 19."""
+    legs = (await _post(_body(replayed), replayed)).json()["legs"]
+    assert {leg["expiry"] for leg in legs} == {"2026-10-13"}
+    assert [leg["days_to_expiry"] for leg in legs] == [5] * 4
+    provider, futures = provider_with_nifty_futures()
+    future_leg = (await _post(_future_body(futures, "BUY"), provider)).json()["legs"][0]
+    assert (future_leg["expiry"], future_leg["days_to_expiry"]) == ("2026-10-27", 19)
+
+
+async def test_the_day_count_follows_the_answers_ist_date_not_the_utc_date(replayed):
+    """Off-by-one guard: 00:30 IST on 13 Oct is 19:00 UTC on 12 Oct; the legs expiring 13 Oct read 0, not 1."""
+    from ofo_app.routes.outcome import MarketContext, OutcomeRequest, outcome_response
+
+    utc_instant = datetime.datetime(2026, 10, 12, 19, 0, tzinfo=datetime.UTC)
+    req = OutcomeRequest.model_validate(_body(replayed))
+    legs = outcome_response(req, MarketContext(replayed, lambda: utc_instant, RATE)).model_dump(mode="json")["legs"]
+    assert [leg["expiry"] for leg in legs] == ["2026-10-13"] * 4
+    assert [leg["days_to_expiry"] for leg in legs] == [0] * 4
+
+
+async def test_last_price_at_is_null_before_the_first_frame_and_an_aware_time_after_in_rest_and_push(replayed):
+    """AC-3: the stamp reads the feed's own last price time. REST and the live push build the body with the same
+    function (outcome_response), so they carry the same value; before any frame it is null."""
+    from ofo_app.live_push import outcome_response as pushed  # the push loop's own import
+    from ofo_app.routes.outcome import MarketContext, OutcomeRequest, outcome_response
+
+    assert pushed is outcome_response
+    after = (await _post(_body(replayed), replayed)).json()
+    stamp = datetime.datetime.fromisoformat(after["last_price_at"])
+    assert stamp.utcoffset() is not None
+    req = OutcomeRequest.model_validate(_body(replayed))
+    push = outcome_response(req, MarketContext(replayed, lambda: VALUATION, RATE)).model_dump(mode="json")
+    assert datetime.datetime.fromisoformat(push["last_price_at"]) == stamp
+
+    fresh, _clock, _items = new_provider()  # connected to nothing: no frame has arrived
+    before = outcome_response(req, MarketContext(fresh, lambda: VALUATION, RATE)).model_dump(mode="json")
+    assert before["last_price_at"] is None

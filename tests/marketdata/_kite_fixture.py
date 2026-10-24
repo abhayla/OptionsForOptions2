@@ -51,3 +51,16 @@ def new_provider():
     items = listed()
     clock = Clock(recorded_frames()[0][0])
     return KiteProvider(items, clock=clock), clock, items
+
+
+INSTRUMENT_SLICE = FIXTURES.parent / "instruments" / "instruments_slice.csv"
+
+
+def new_provider_with_futures(underlying="NIFTY"):
+    """The replay provider with the real futures rows of ``underlying`` from the instrument-list slice added. The
+    recorded frames carry options only, so a futures leg has a listed contract but no quote of its own (REQ-135)."""
+    futures = [x for x in parse_instruments_csv(INSTRUMENT_SLICE)
+               if x.contract.instrument_type == "FUT" and x.contract.name == underlying]
+    items = listed() + futures
+    clock = Clock(recorded_frames()[0][0])
+    return KiteProvider(items, clock=clock), clock, items, futures

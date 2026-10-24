@@ -10,6 +10,7 @@ import { VIEW_GROUPS, popText, replacePrompt, templatesInGroup } from '@/lib/rea
 
 let held = ['platform_strikes', 'probability_of_profit']
 let loadAnswer
+let expiryReply = {} // REQ-135: the server's `expiry_days` rides on the same reply
 const gets = []
 const posts = []
 vi.mock('@/services/api', async (importActual) => {
@@ -21,7 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
         gets.push(url)
         if (url === '/features') return Promise.resolve({ data: { order_path: 'off', held } })
         if (url === '/strategy-templates') return Promise.resolve({ data: { templates: TEMPLATES } })
-        if (url.endsWith('/expiries')) return Promise.resolve({ data: { expiries: ['2026-10-27', '2026-11-03'] } })
+        if (url.endsWith('/expiries')) return Promise.resolve({ data: { expiries: ['2026-10-27', '2026-11-03'], ...expiryReply } })
         return Promise.reject(new Error(url))
       },
       post: (url, body) => { posts.push([url, body]); return loadAnswer(url, body) },
@@ -58,6 +59,7 @@ async function panel(legs = [], query = {}) {
 }
 
 beforeEach(() => {
+  expiryReply = {}
   held = ['platform_strikes', 'probability_of_profit']
   gets.length = 0
   posts.length = 0
@@ -179,5 +181,24 @@ describe('REQ-082 AC-1, AC-3, AC-5: the probability figure', () => {
     await flushPromises()
     expect(w.find('[data-testid="pop-figure"]').exists()).toBe(false)
     expect(w.html()).not.toContain('Probability')
+  })
+})
+
+describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the option value stays the ISO date', () => {
+  it('labels each expiry with its days and still requests the ISO date', async () => {
+    expiryReply = { expiry_days: [{ expiry: '2026-10-27', days: 6 }, { expiry: '2026-11-03', days: 13 }] }
+    const w = await panel()
+    const opts = w.findAll('[data-testid="rm-expiry"] option')
+    expect(opts.map((o) => o.text())).toEqual(['27 Oct (6 days)', '3 Nov (13 days)'])
+    expect(opts.map((o) => o.element.value)).toEqual(['2026-10-27', '2026-11-03'])
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    expect(posts.at(-1)[1].expiry).toBe('2026-10-27')
+  })
+
+  it('expiry day shows Today (0 days); a null day count shows the date alone', async () => {
+    expiryReply = { expiry_days: [{ expiry: '2026-10-27', days: 0 }, { expiry: '2026-11-03', days: null }] }
+    const w = await panel()
+    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '2026-11-03'])
   })
 })

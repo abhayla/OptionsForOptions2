@@ -669,3 +669,28 @@ describe('REQ-077 AC-7 (RD-113): a reopened SAVED strategy marks the legs whose 
     expect(calls.filter((c) => c.url === '/strategies/outcome').flatMap((c) => c.body.legs.map((l) => l.planned_entry))).toEqual(entries)
   })
 })
+
+describe('REQ-135 AC-2: the leg row shows the server\'s days to expiry', () => {
+  it('applyEditReply copies days_to_expiry (6, 0, absent -> null); the row text comes from it', async () => {
+    const prev = real.legs.map((l, i) => ({ id: i + 1, underlying: 'NIFTY', ...l }))
+    const reply = { ...STEPPED, legs: [replyLeg(real.legs[0], { days_to_expiry: 6 }), replyLeg(real.legs[1], { days_to_expiry: 0 }), replyLeg(real.legs[2]), replyLeg(real.legs[3], { days_to_expiry: null })] }
+    expect(applyEditReply(prev, reply).map((l) => l.days_to_expiry)).toEqual([6, 0, null, null])
+    const w = mount(LegList, { props: { legs: applyEditReply(prev, reply) } })
+    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(['13 Oct (6 days)', 'Today (0 days)', '2026-10-13', '2026-10-13'])
+    w.unmount()
+  })
+
+  it('a leg opened from a link takes days_to_expiry from the outcome answer with its contract fields', async () => {
+    const withDays = { ...real, legs: real.legs.map((l) => ({ ...l, days_to_expiry: 6 })) }
+    answers['POST /strategies/outcome'] = withDays
+    answers['POST /strategies/leg-edit'] = READ
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    answers['POST /strategies/leg-edit'] = () => Promise.reject(new Error('read failed')) // the read would name the legs itself: only the outcome answer does here
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(Array(4).fill('13 Oct (6 days)'))
+    w.unmount()
+  })
+})

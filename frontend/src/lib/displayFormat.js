@@ -23,6 +23,19 @@ function strikeText(strike) {
   return /^0*$/.test(m[2] ?? '') ? m[1] : `${m[1]}.${m[2]}`
 }
 
+/** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser
+ *  counts nothing: a missing or non-integer day count shows the date as it was sent (never a guessed number). */
+export function expiryWithDays(expiry, days) {
+  const day = expiryText(expiry)
+  if (!Number.isInteger(days) || days < 0 || !day) return expiry ?? ''
+  return days === 0 ? 'Today (0 days)' : `${day} (${days} days)`
+}
+
+/** The server's `expiry_days` list ([{expiry, days}], 1:1 with the expiries) as an object by expiry; unreadable -> {}. */
+export function daysByExpiry(list) {
+  return Object.fromEntries((Array.isArray(list) ? list : []).filter((x) => typeof x?.expiry === 'string').map((x) => [x.expiry, x.days]))
+}
+
 /** The leg's contract name: '<UNDERLYING> <D Mon> <strike> <CE|PE>', or '<UNDERLYING> <D Mon> FUT'. Built from underlying,
  *  expiry, strike and type only; never from an instrument id or a broker trading symbol. A leg missing any of them shows
  *  CONTRACT_UNAVAILABLE. The type is `instrument_type` (picker legs) or `instrument` (outcome answer legs). */

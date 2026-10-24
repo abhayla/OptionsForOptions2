@@ -524,3 +524,19 @@ def test_the_leg_edit_and_the_stored_form_share_one_price_rule():
         except stored_form.StoredFormError:
             built = False
         assert ok is built, price
+
+
+def test_req_135_ac_2_every_leg_carries_days_to_expiry_from_the_routes_ist_date_a_futures_leg_too():
+    """REQ-135 AC-2: the condor expires 6 Oct; from 1 Oct that is 5 days, the day before 1, on expiry day 0. A NIFTY
+    futures leg (27 Oct) carries its own count (26 days from 1 Oct) in the same reply, next to its expiry."""
+    for today, days in ((TODAY, 5), (EXPIRY - datetime.timedelta(days=1), 1), (EXPIRY, 0)):
+        status, reply = post({"legs": legs(), "edit": {"control": "read"}}, today=today)
+        assert status == HTTP_OK
+        assert [leg["days_to_expiry"] for leg in reply["legs"]] == [days] * 4
+    fut = next(i for i, c in BY_ID.items() if c.name == "NIFTY" and c.instrument_type == "FUT" and c.expiry >= TODAY)
+    one = [{"instrument_id": fut, "action": "BUY", "lots": 1, "base_lots": 1, "planned_entry": "23100.00",
+            "captured_at": STAMP.isoformat()}]
+    status, reply = post({"legs": one, "edit": {"control": "read"}})
+    assert status == HTTP_OK
+    leg = reply["legs"][0]
+    assert (leg["expiry"], leg["days_to_expiry"]) == (BY_ID[fut].expiry.isoformat(), (BY_ID[fut].expiry - TODAY).days)

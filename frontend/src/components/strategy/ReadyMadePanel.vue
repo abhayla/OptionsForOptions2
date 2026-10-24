@@ -10,6 +10,7 @@ import { useRoute } from 'vue-router'
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { QUICK_PICK_DISTANCES, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
 
@@ -23,6 +24,7 @@ const underlyingLocked = computed(() => props.legs.length > 0)
 const templates = ref([])
 const expiries = ref([])
 const expiry = ref('')
+const expiryDays = ref({}) // REQ-135 AC-2: the server's day count by expiry
 const group = ref(VIEW_GROUPS[0].key)
 const side = ref('SELL')
 const pending = ref(null) // the request waiting for the Replace / Cancel answer
@@ -35,7 +37,9 @@ const distances = computed(() => QUICK_PICK_DISTANCES[underlying.value] ?? [])
 async function start() {
   try {
     templates.value = (await api.get('/strategy-templates')).data?.templates ?? []
-    expiries.value = (await api.get(`/catalogue/${underlying.value}/expiries`)).data?.expiries ?? []
+    const reply = (await api.get(`/catalogue/${underlying.value}/expiries`)).data
+    expiries.value = reply?.expiries ?? []
+    expiryDays.value = daysByExpiry(reply?.expiry_days)
     expiry.value = expiries.value[0] ?? ''
     errorParts.value = null
   } catch (e) {
@@ -90,7 +94,7 @@ onMounted(async () => {
       </label>
       <label>Expiry
         <select v-model="expiry" class="ml-1 rounded border border-line p-1" data-testid="rm-expiry">
-          <option v-for="e in expiries" :key="e" :value="e">{{ e }}</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e]) }}</option>
         </select>
       </label>
     </div>
