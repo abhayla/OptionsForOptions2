@@ -2383,6 +2383,15 @@
             "title": "Answered At",
             "type": "string"
           },
+          "centre_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Centre Label"
+          },
           "last_price_at": {
             "anyOf": [
               {
@@ -2487,6 +2496,7 @@
           "state": {
             "enum": [
               "COMPUTED",
+              "FROM_ENTRIES",
               "NOT_CONNECTED",
               "REFUSED"
             ],
@@ -4815,8 +4825,15 @@
             "title": "Ltp"
           },
           "planned_entry": {
-            "title": "Planned Entry",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
           },
           "quantity": {
             "anyOf": [

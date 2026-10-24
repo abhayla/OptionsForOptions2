@@ -32,6 +32,7 @@ from ofo.outcome import (
     PlannedLeg,
     StrategyDefinition,
     build_outcome,
+    from_entries,
     not_connected,
     not_live,
     read_snapshot,
@@ -370,7 +371,7 @@ class LegOut(ApiModel):
     lots: int
     lot_size: Optional[int]
     quantity: Optional[int]
-    planned_entry: Money
+    planned_entry: Money | None  # None only for a leg saved without a price (ADR-085)
     captured_at: datetime.datetime
     ltp: Optional[Money]
     iv: Optional[Money]
@@ -388,7 +389,7 @@ class LegQuoteOut(ApiModel):
 
 
 class OutcomeResponse(ApiModel):
-    state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
+    state: Literal["COMPUTED", "FROM_ENTRIES", "NOT_CONNECTED", "REFUSED"]
     underlying: Underlying
     status_label: Optional[CatalogueText]
     reason: Optional[CatalogueText]
@@ -410,6 +411,8 @@ class OutcomeResponse(ApiModel):
     summary: Optional[SummaryOut]
     #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
     leg_quotes: Optional[list[LegQuoteOut]] = None
+    #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
+    centre_label: CatalogueText | None = None
 
 
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
@@ -484,7 +487,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     live_blocked = False
     if ctx is None:
         answered_at = now()
-        out = not_connected(definition, None, stored)
+        config, override = req.scenario_choice()
+        out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
+                            override=override)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+               or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)
@@ -494,7 +500,10 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
         if live_blocked:
-            out = not_live(definition, snapshot)
+            config, override = req.scenario_choice()
+            out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
+                                config=config, override=override)
+                   or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,

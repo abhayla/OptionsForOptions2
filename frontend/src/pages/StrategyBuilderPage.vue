@@ -147,6 +147,7 @@ function applyOutcome(body) {
   data.value = body
   nameLegsFrom(body)
   if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
+  else if (body.state === 'FROM_ENTRIES') state.value = 'from-entries' // REQ-077 AC-9: At Expiry from the user's prices, nothing live
   else if (body.state === 'NOT_CONNECTED') state.value = 'not-connected'
   else state.value = 'refused'
 }
@@ -273,7 +274,9 @@ const setChoice = (next) => {
 }
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
-const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
+const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
+const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
+const fromEntries = computed(() => state.value === 'from-entries')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
@@ -354,6 +357,8 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
       <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
         <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
+        <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
+        <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
         <ul v-if="staleLegs.length">
           <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
         </ul>
@@ -367,9 +372,9 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :what-can-i-make="data.summary.what_can_i_make"
         :what-can-i-lose="data.summary.what_can_i_lose"
         :where-i-start-losing="data.summary.where_do_i_start_losing"
-        :current-spot="data.spot_level"
+        :current-spot="data.spot_level ?? NO_LIVE_LEVEL"
         :underlying="data.underlying"
-        :last-updated="data.valuation"
+        :last-updated="fromEntries ? '' : data.valuation"
       />
       <PopFigure :pop="data.probability_of_profit ?? null" />
       <MarginLine :margin="data.margin" :capabilities="capabilities" />
@@ -384,7 +389,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" :execute-refusal="refusal" @recalculate="load" />
       <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
-      <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
+      <StrategyFooter :last-updated="fromEntries ? '' : data.valuation" :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
     </div>
   </section>
 </template>

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.outcome import read_snapshot  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -42,11 +43,14 @@ def _body(provider):
     return {"underlying": "NIFTY", "legs": legs}
 
 
-async def _post(body, provider=None):
+async def _post(body, provider=None, stored_lookup=None):
     from ofo_app.main import create_app
-    from ofo_app.routes.outcome import MarketContext, get_market_context
+    from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_contract_lookup, get_market_context
 
     app = create_app()
+    if stored_lookup is not None:  # the stored catalogue answers for the legs, at the replay's clock
+        app.dependency_overrides[get_contract_lookup] = lambda: stored_lookup
+        app.dependency_overrides[get_answer_clock] = lambda: (lambda: VALUATION)
     if provider is not None:
         app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -182,3 +186,71 @@ async def test_route_returns_the_scenario_heading_pair(replayed):
     resp = await _post(_body(replayed), replayed)
     assert resp.is_success, resp.text
     assert resp.json()["table"]["scenario_heading"] == ["NIFTY at expiry", "You make/lose"]
+
+
+# ---- REQ-077 AC-9 (row 21d): no live data, every leg priced -> At Expiry from the user's prices --------------------
+
+LABEL_FROM_ENTRIES = "From your prices - no live data"
+SPREAD = (("NSE_FO:44624", "BUY", "81.30"), ("NSE_FO:44632", "SELL", "30.00"))
+
+
+def _spread_body(view="at_expiry", fallback=False):
+    legs = [{"instrument_id": iid, "action": action, "lots": 1, "planned_entry": entry,
+             "captured_at": VALUATION.isoformat()} for iid, action, entry in SPREAD]
+    return {"underlying": "NIFTY", "legs": legs, "view": view, "fallback": fallback}
+
+
+def provider_for_catalogue():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider
+
+
+async def _post_stored(body, provider=None):
+    """Like _post, with the stored catalogue answering for the legs (the database read replaced by the replay's)."""
+    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE)
+    found = {iid: snap.legs[iid].contract for iid, *_ in SPREAD}
+
+    async def lookup(ids):
+        return {i: found[i] for i in ids if i in found}
+
+    return await _post(body, provider, stored_lookup=lookup)
+
+
+async def test_no_provider_every_leg_priced_shows_at_expiry_from_the_users_prices():
+    resp = await _post_stored(_spread_body())
+    assert resp.is_success, resp.text
+    out = resp.json()
+    assert out["state"] == "FROM_ENTRIES" and out["status_label"] == LABEL_FROM_ENTRIES
+    assert out["output_label"] == LABEL_FROM_ENTRIES and "22,800" in out["centre_label"]
+    assert out["spot_level"] is None and out["spot_at"] is None
+    assert out["summary"]["max_loss"] == "3334.50" and out["summary"]["max_profit"] == "9665.50"
+    assert "leg_quotes" not in out  # no Bid/Ask: nothing here is a live quote
+    assert all(leg["ltp"] is None and leg["iv"] is None and leg["health"] is None for leg in out["legs"])
+    assert out["table"]["spot_level"] is None and out["scenario"]["available"] is True
+    assert not any(lv["current"] for lv in out["scenario"]["levels"])
+    assert out["margin"]["state"] == "NOT_AVAILABLE_YET"
+    _no_floats(out)
+
+
+async def test_no_provider_estimated_now_is_unavailable_with_its_reason():
+    out = (await _post_stored(_spread_body("estimated_now"))).json()
+    assert out["state"] == "FROM_ENTRIES"
+    assert out["scenario"]["available"] is False and out["scenario"]["totals"] is None
+    assert "needs live prices" in out["scenario"]["unavailable_reason"]
+    assert out["payoff"]["points"] == []
+
+
+async def test_no_provider_and_no_stored_contract_keeps_the_not_connected_answer():
+    out = (await _post(_spread_body())).json()  # no database in this process: the catalogue answers nothing
+    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == "Draft — Live data not connected"
+    assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
+
+
+async def test_a_dropped_socket_fallback_is_from_entries_with_no_leg_quotes(replayed):
+    out = (await _post_stored(_spread_body(fallback=True), replayed)).json()
+    assert out["state"] == "FROM_ENTRIES" and out["status_label"] == LABEL_FROM_ENTRIES
+    assert "leg_quotes" not in out and out["spot_level"] is None
+    assert all(leg["ltp"] is None for leg in out["legs"])
+    assert out["summary"]["max_loss"] == "3334.50"
