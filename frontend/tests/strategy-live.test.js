@@ -13,7 +13,7 @@ let apiAnswer = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')),
-    post: (url, body) => {
+    post: (url, body, opts) => {
       // The read control (REQ-076 AC-8) is its own request: it is recorded apart (readCalls) and answered with the legs as sent,
       // in the real LegEditOut shape, so the tests below keep counting OUTCOME requests only. A test that sets a function
       // answer handles every request itself.
@@ -22,11 +22,13 @@ vi.mock('@/services/api', async (importActual) => {
         return Promise.resolve({ data: { legs: body.legs.map((l) => ({ ...l, ...legFacts(l.instrument_id), price_source: 'captured', hedge: false, block: null })),
           shape: null, shape_name: null, outcome: null } })
       }
-      apiCalls.push({ url, body })
-      return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer })
+      apiCalls.push({ url, body, opts })
+      return typeof apiAnswer === 'function' ? apiAnswer(body, url, opts) : Promise.resolve({ data: apiAnswer })
     } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import { EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
 import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
@@ -566,3 +568,111 @@ describe('W-148 (REQ-076 AC-3, AC-6): the live push still matches after a leg ed
   })
 })
 
+
+// W-151 (REQ-119 AC-2, AC-3, AC-4): two edits sent as seq 1 then seq 2, answered 2 then 1, on the mounted Builder page.
+describe('REQ-119 23b core: the newest edit wins on the mounted page, out of order', () => {
+  const REPLY = (label, id) => ({ legs: real.legs.map((l, i) => ({ instrument_id: i === 0 ? id : l.instrument_id, action: l.action, instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry, captured_at: l.captured_at,
+    price_source: 'captured', included: true, hedge: false, block: null })), shape: null, shape_name: null,
+  outcome: { ...real, summary: { ...real.summary, what_can_i_lose: label } } })
+  const parked = [] // the edit requests in flight, each with its resolver, rejecter and abort signal
+  async function openRig() {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    parked.length = 0
+    apiAnswer = (body, url, opts) => {
+      if (url === '/strategies/outcome') return Promise.resolve({ data: { ...real, seq: body.seq } })
+      if (body.edit.control === 'read') return Promise.resolve({ data: { ...REPLY('read', real.legs[0].instrument_id), outcome: null, seq: body.seq } })
+      return new Promise((resolve, reject) => {
+        const signal = opts?.signal
+        const entry = { seq: body.seq, signal, answer: (data) => resolve({ data: { ...data, seq: body.seq } }), fail: reject }
+        signal?.addEventListener('abort', () => honourAbort && reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED', __CANCEL__: true })))
+        parked.push(entry)
+      })
+    }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
+    await flushPromises()
+    return w
+  }
+  const txt = (w, id) => w.find(`[data-testid="${id}"]`).text()
+  let honourAbort = true // false = a transport that ignores the abort: the reply still arrives, and is dropped by its seq
+  afterEach(() => { apiAnswer = null; honourAbort = true })
+
+  it('a reply 1 that arrives after reply 2 although its request was aborted is still dropped by its seq', async () => {
+    honourAbort = false
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625'))
+    await flushPromises()
+    parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(w.text()).not.toContain('REPLY ONE')
+    w.unmount()
+  })
+
+  it('replies 2 then 1: the screen keeps reply 2, and request 1 was aborted', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    expect(parked).toHaveLength(2)
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(parked[0].signal?.aborted).toBe(true)
+    expect(parked[1].seq).toBeGreaterThan(parked[0].seq) // each edit carries its own, rising seq (the server echoes it)
+    expect(w.text()).not.toContain('Something went wrong')
+    expect(w.find('[data-testid="edit-error"]').exists()).toBe(false) // the abort of request 1 is no edit error (AC-3)
+    expect(w.text()).toContain('REPLY TWO')
+    w.unmount()
+  })
+
+  it('AC-4: the numbers are marked updating and Execute is refused with its reason until the latest reply is applied', async () => {
+    const w = await openRig()
+    const refusal = () => w.findComponent(StrategyActions).props('executeRefusal')
+    expect(refusal()).toBeNull()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('true')
+    expect(w.find('[data-testid="numbers-updating"]').exists()).toBe(true)
+    expect(refusal()).toBe(EXECUTE_WAITS_FOR_LATEST)
+    parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625')) // the newest answers; the older was aborted
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    expect(refusal()).toBeNull()
+    w.unmount()
+  })
+
+  it('every outcome request carries a seq and an abort signal', async () => {
+    const w = await openRig()
+    const outcomes = apiCalls.filter((c) => c.url === '/strategies/outcome')
+    expect(outcomes.length).toBeGreaterThan(0)
+    for (const c of outcomes) {
+      expect(Number.isInteger(c.body.seq)).toBe(true)
+      expect(c.opts.signal).toBeInstanceOf(AbortSignal)
+    }
+    w.unmount()
+  })
+
+  it('a failed newest edit shows its error and ends the updating mark', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parked[0].fail({ parts: { what_happened: 'That strike is not listed.', impact: 'Nothing changed.', what_is_blocked: 'No step was made.', next_action: 'Pick another strike.' } })
+    await flushPromises()
+    expect(w.text()).toContain('That strike is not listed.')
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    w.unmount()
+  })
+})

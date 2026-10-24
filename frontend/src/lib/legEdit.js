@@ -15,6 +15,8 @@ export const CUSTOM_STRATEGY = 'Custom Strategy'
 /** REQ-076 AC-6: the label on an unticked leg. */
 export const LEFT_OUT_LABEL = 'Left out of the numbers'
 /** REQ-076 AC-7: why Execute is refused while any leg is unticked (the requirement's own sentence). */
+// REQ-119 AC-4: shown beside the disabled Execute while the newest outcome or edit request has no applied reply
+export const EXECUTE_WAITS_FOR_LATEST = 'Waiting for the latest numbers: Execute opens once they have arrived.'
 export const EXECUTE_NEEDS_ALL_TICKED = 'Tick every leg to execute: the whole strategy is sent as one plan.'
 /** REQ-076 AC-10: the empty list's sentence. */
 export const NO_LEGS_YET = 'No legs yet'

@@ -379,6 +379,7 @@ describe('the Builder page', () => {
       underlying: 'NIFTY',
       legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
       fallback: false,
+      seq: 2, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1
     })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
     expect(t(w, 'status-label').text()).toBe(NOT_CONNECTED_LABEL)
@@ -419,7 +420,7 @@ describe('the Builder page', () => {
     const w = await open({ draft: JSON.stringify(draft) })
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
-    expect(out[0].body).toEqual({ ...draft, fallback: false })
+    expect(out[0].body).toEqual({ ...draft, fallback: false, seq: 1 })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2) // the one list is LegList's
     expect(w.findAll('[data-testid="leg-list"]')).toHaveLength(0) // the picker draws no list of its own on the Builder
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
