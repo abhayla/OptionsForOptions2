@@ -52,6 +52,12 @@ _PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0024")  
 _M8 = _M11._M8
 _M4 = _M11._M4
 _BASE = _M11._BASE  # 0001
+_M22 = _load("0022_strategy_versions.py", "ofo_migration_0022_for_0024")
+
+#: Every table that stores a strategy definition (a JSONB ``definition`` column whose legs may carry the mark). The
+#: downgrade refuses while ANY of them holds a mark; tests_app/test_migration_0024_definition_tables.py reads every
+#: migration's CREATE TABLE and fails when a definition table is missing here.
+DEFINITION_TABLES = (_M8.STRATEGIES, _M8.HISTORY, _M22.VERSIONS)
 
 #: ofo.strategy.stored_form will name the same two values in part 21a (a migration never imports application code).
 ENTRY_SOURCE_KEY = "entry_source"
@@ -122,24 +128,30 @@ def upgrade() -> None:
     _install(_new_leg_sql(), extended_allowlist_sql())
 
 
+def _refusal_sql(table: str) -> str:
+    """One table's check: a leg with the mark in any stored definition refuses the downgrade, naming the table."""
+    return f"""
+            EXECUTE 'SELECT EXISTS (SELECT 1 FROM {table} d, jsonb_array_elements(d.definition -> ''legs'') l
+                                    WHERE l ? ''{ENTRY_SOURCE_KEY}'')' INTO has_marks;
+            IF has_marks THEN
+                RAISE EXCEPTION 'refusing to downgrade {revision}: a stored strategy in % holds an entry source mark',
+                    '{table}';
+            END IF;"""  # noqa: S608 constant table and key names
+
+
 def downgrade() -> None:
     # A typed mark is the user's data and history is append-only: refuse rather than strip or strand it.
+    tables = ", ".join(DEFINITION_TABLES)
+    checks = "".join(_refusal_sql(t) for t in DEFINITION_TABLES)
     op.execute(
         f"""
         DO $down$
         DECLARE
             has_marks BOOLEAN := FALSE;
         BEGIN
-            EXECUTE 'LOCK TABLE {_M8.STRATEGIES}, {_M8.HISTORY} IN ACCESS EXCLUSIVE MODE';
-            EXECUTE 'SELECT EXISTS (SELECT 1 FROM {_M8.STRATEGIES} s, jsonb_array_elements(s.definition -> ''legs'') l
-                                    WHERE l ? ''{ENTRY_SOURCE_KEY}'')
-                     OR EXISTS (SELECT 1 FROM {_M8.HISTORY} h, jsonb_array_elements(h.definition -> ''legs'') l
-                                WHERE l ? ''{ENTRY_SOURCE_KEY}'')' INTO has_marks;
-            IF has_marks THEN
-                RAISE EXCEPTION 'refusing to downgrade {revision}: a stored strategy holds an entry source mark';
-            END IF;
+            EXECUTE 'LOCK TABLE {tables} IN ACCESS EXCLUSIVE MODE';{checks}
         END
         $down$;
-        """  # noqa: S608 constant table and key names
+        """
     )
     _install(_old_leg_sql(), previous_allowlist_sql())
