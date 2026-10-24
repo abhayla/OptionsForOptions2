@@ -14,7 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation, strike_text, user_words
+from ofo.errors.explanations import DEFAULT_STRATEGY_NAME, render_explanation, strike_text, user_words
 
 import datetime
 import re
@@ -426,7 +426,6 @@ def _render_items(items: object) -> tuple:
 #: request door (stored_form.check_strategy_name), the history item below and migration 0025's CHECKs (pinned equal by
 #: tests_app/test_migration_0025_strategy_name.py) all read these.
 STRATEGY_NAME_MAX = 40
-DEFAULT_STRATEGY_NAME = "New Strategy"
 NAME_EMPTY = "empty"
 NAME_INVALID = "invalid"
 _NAME_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")

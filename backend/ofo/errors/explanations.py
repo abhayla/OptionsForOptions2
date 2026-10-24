@@ -117,6 +117,10 @@ class Quoted(SlotType):
         return f'"{str.__str__(value)}"'
 
 
+#: REQ-134 AC-1: the name a strategy holds until the user types one (the prefill, and every row saved before
+#: migration 0025). Kept in the wording door; ofo.strategy.definition re-exports it for the strategy code.
+DEFAULT_STRATEGY_NAME = "New Strategy"
+
 _USER_WORDS_MINT = object()
 
 #: The request-parsing layer (W-024 round 10 item 3): the modules where a value the user typed first enters the
