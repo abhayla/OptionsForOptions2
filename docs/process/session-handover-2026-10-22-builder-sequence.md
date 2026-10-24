@@ -12,8 +12,11 @@ Chunk notes and the deferred list stay in the session-6 scratchpad (`chunk2-note
 - **DONE:** CI red on 4a08ce01 fixed (screens did not know the FROM_ENTRIES answer; buildDraft priced a partly priced
   strategy - two new findings). Row 21 closed (evidence W-149 AC-1..9), row 22 closed (W-150 AC-1..8; AC-6 recorded
   fail = its what-if part is row 37 by decision; expected move now spot x ATM IV x sqrt(days/365) per Q254/REQ-106),
-  row 23 closed (W-151 AC-1..5; 23a needed an independent redesign after round 2). CI green on 39285ade; 49fe0462
-  pushed with every local gate green (its CI is the first thing to read).
+  row 23 closed (W-151 AC-1..5; 23a needed an independent redesign after round 2). CI green on 39285ade. App tests then
+  FAILED on 49fe0462 (23b merged): every Playwright file died at load - `services/api.js` imported `@/lib/newestWins`,
+  which Playwright's plain-Node loader cannot resolve (router -> orderPath -> api). Fixed in 3e340275 (relative import;
+  finding alias-import-in-e2e-loaded-module) and pushed with the handover; its App-tests run is the first thing to read.
+  Not market-related: CI replays recorded 2026-10-08 frames.
 - **NEXT, in order:** (1) `gh run list --branch build/seq-chunk-2` - red -> `gh run view <id> --log-failed`, tail only.
   (2) Row 24 (REQ-133, W-152): versioned socket frames (a frame for an older strategy version is dropped - reuse the
   23b `drawable` rule + the server's seq: the follow message carries a version and every push echoes it; choke point
