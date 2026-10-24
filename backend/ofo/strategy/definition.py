@@ -14,7 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation, strike_text
+from ofo.errors.explanations import render_explanation, strike_text, user_words
 
 import datetime
 import re
@@ -294,7 +294,7 @@ _LEG_KEYS = frozenset({"action", "instrument", "strike", "expiry", "quantity"})
 _ITEM_KEYS = {"underlying": {"kind", "old", "new"}, "leg_removed": {"kind", "leg"}, "leg_added": {"kind", "leg"},
               "quantity": {"kind", "leg", "before"}, "field": {"kind", "map", "name", "old", "new"},
               "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"},
-              "entries_repriced": {"kind"}}
+              "entries_repriced": {"kind"}, "renamed": {"kind", "from", "to"}}
 #: A field change item: ``map`` -> the closed list of ``name`` (ADR-064); ``old``/``new`` are None (absent) or ADR-069's
 #: value type (a plain-digit number for a risk limit, an identifier otherwise). One item per changed name; never repr.
 _FIELD_NAMES = {"rules_ref": frozenset({"rules_ref"}), "risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}
@@ -410,6 +410,9 @@ def _render_items(items: object) -> tuple:
                 out.append(render_explanation("change_legs_reordered"))
             elif kind == "entries_repriced":  # ADR-075: the planned entries changed (a reprice)
                 out.append(render_explanation("change_entries_repriced"))
+            elif kind == "renamed":  # REQ-134 AC-3: the user's own two names, quoted in their labelled slots (ADR-003)
+                out.append(render_explanation("change_renamed", old=_stored_name(item["from"]),
+                                              new=_stored_name(item["to"])))
             else:
                 out.append(render_explanation("change_replaced_unreadable"))
     except DefinitionError:
@@ -417,6 +420,34 @@ def _render_items(items: object) -> tuple:
     except (TypeError, ValueError, KeyError, ArithmeticError) as exc:  # a slot that does not validate
         raise DefinitionError(detail=f"a change item does not validate: {type(exc).__name__}") from None
     return tuple(out)
+
+
+#: REQ-134 AC-1: a saved strategy's name is 1..40 characters after trimming, on one line. The one home of the rule: the
+#: request door (stored_form.check_strategy_name), the history item below and migration 0025's CHECKs (pinned equal by
+#: tests_app/test_migration_0025_strategy_name.py) all read these.
+STRATEGY_NAME_MAX = 40
+DEFAULT_STRATEGY_NAME = "New Strategy"
+NAME_EMPTY = "empty"
+NAME_INVALID = "invalid"
+_NAME_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def name_problem(trimmed: object) -> str | None:
+    """None when ``trimmed`` (already stripped) is a valid strategy name, else NAME_EMPTY or NAME_INVALID."""
+    if type(trimmed) is not str:
+        return NAME_INVALID
+    if not trimmed:
+        return NAME_EMPTY
+    if len(trimmed) > STRATEGY_NAME_MAX or _NAME_CONTROL.search(trimmed):
+        return NAME_INVALID
+    return None
+
+
+def _stored_name(value: object):
+    """A stored name of a ``renamed`` item as the user's words: a trimmed, valid name, else DefinitionError."""
+    if type(value) is not str or value != value.strip() or name_problem(value) is not None:
+        raise DefinitionError(detail="a change item's name is not a valid strategy name")
+    return user_words(value)
 
 
 def _leg_sort_key(key: tuple) -> tuple:

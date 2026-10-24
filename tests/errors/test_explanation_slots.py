@@ -99,7 +99,8 @@ def test_user_text_from_an_exception_outside_the_request_layer_raises() -> None:
 
 def test_request_layer_is_pinned() -> None:
     """A new module allowed to mint user text fails here until reviewed."""
-    assert set(ex.REQUEST_LAYER) == {"ofo.admin.client_id", "ofo.rules.model", "ofo.strategy.definition"}
+    assert set(ex.REQUEST_LAYER) == {"ofo.admin.client_id", "ofo.rules.model", "ofo.strategy.definition",
+                                       "ofo.strategy.stored_form"}
 
 
 def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: pytest.MonkeyPatch) -> None:

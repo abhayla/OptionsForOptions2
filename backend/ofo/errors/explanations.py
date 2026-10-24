@@ -125,6 +125,7 @@ REQUEST_LAYER: Mapping[str, str] = MappingProxyType({
     "ofo.admin.client_id": "the Client ID an admin types (normalise_client_id)",
     "ofo.rules.model": "a rule's name and description the user typed (Rule.shown_name)",
     "ofo.strategy.definition": "the strategy settings the user changed (rules_ref, risk_limits, preferences)",
+    "ofo.strategy.stored_form": "a strategy's name the user typed (check_strategy_name)",
 })
 
 
@@ -937,6 +938,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_replaced_unreadable", "values_seen", "definition replaced, the previous one could not be compared"),
     ExplanationTemplate("change_summary_unreadable", "values_seen", "this change could not be shown"),
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),
+    ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
+                        {"old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
