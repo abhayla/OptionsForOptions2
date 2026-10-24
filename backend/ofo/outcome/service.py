@@ -390,7 +390,9 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
     not one expiry or there is no strike to centre on. No price here is live: no LTP, IV, Greek, bid/ask or index
-    price is set; Estimated Now is unavailable with its reason."""
+    price is set; Estimated Now is unavailable with its reason. When live data DROPPED (a snapshot that held a quote),
+    ``status_label`` is REQ-049 AC-5's message with its last-update time (REQ-049 AC-5 and REQ-077 AC-9 both hold);
+    ``output_label`` always carries the from-your-prices label."""
     if any(p.planned_entry is None for p in definition.legs):
         return None
     legs: list[OutcomeLeg] = []
@@ -437,8 +439,11 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
     points = tuple(zip(shown.levels, shown.totals)) if shown.available and shown.totals is not None else ()
+    dropped = None if snapshot is None else _not_live_label(snapshot)
+    if dropped is NOT_CONNECTED_LABEL:  # no quote was ever held: nothing dropped, no last update to name
+        dropped = None
     return Outcome(
-        state=OutcomeState.FROM_ENTRIES, underlying=definition.underlying, status_label=FROM_ENTRIES_LABEL,
+        state=OutcomeState.FROM_ENTRIES, underlying=definition.underlying, status_label=dropped or FROM_ENTRIES_LABEL,
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation, output_label=FROM_ENTRIES_LABEL,
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,

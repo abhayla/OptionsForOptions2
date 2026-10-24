@@ -119,3 +119,29 @@ def test_attack_5_sensex_uses_its_own_lot_size_and_step():
     assert out.summary.max_loss == Decimal("51.30") * 20
     assert out.summary.max_profit == (width - Decimal("51.30")) * 20
     assert out.level_set.step == Decimal(300)
+
+
+def _snapshot_after_drop():
+    """The replay's last frame (09:20:09 IST) held, then every subscription ended: the feed has dropped."""
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+
+
+def test_attack_6_dropped_feed_status_is_ac5_message_and_output_label_is_from_your_prices():
+    """REQ-049 AC-5 and REQ-077 AC-9 both hold: a snapshot that held quotes gives status_label = AC-5's message with the
+    newest time held; output_label stays the from-your-prices label; still no live value."""
+    snap = _snapshot_after_drop()
+    out = from_entries(_spread(), snap, None, VALUATION)
+    assert out is not None and out.state is OutcomeState.FROM_ENTRIES
+    assert out.status_label.startswith("Live market data disconnected. Last updated: ")
+    assert out.status_label.endswith(". Live strategy monitoring is paused.")
+    assert out.output_label == LABEL and out.table.output_label == LABEL
+    assert out.spot_level is None and all(leg.ltp is None for leg in out.legs)
+    assert out.summary.max_loss == Decimal("3334.50")
+
+
+def test_attack_6b_a_leg_without_an_entry_keeps_not_live_exactly_with_a_dropped_snapshot():
+    snap = _snapshot_after_drop()
+    assert from_entries(_spread(entry_high=None), snap, None, VALUATION) is None

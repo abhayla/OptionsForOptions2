@@ -250,7 +250,8 @@ async def test_no_provider_and_no_stored_contract_keeps_the_not_connected_answer
 
 async def test_a_dropped_socket_fallback_is_from_entries_with_no_leg_quotes(replayed):
     out = (await _post_stored(_spread_body(fallback=True), replayed)).json()
-    assert out["state"] == "FROM_ENTRIES" and out["status_label"] == LABEL_FROM_ENTRIES
+    assert out["state"] == "FROM_ENTRIES" and out["output_label"] == LABEL_FROM_ENTRIES  # REQ-077 AC-9 label
+    assert out["status_label"].startswith("Live market data disconnected. Last updated: ")  # REQ-049 AC-5 message
     assert "leg_quotes" not in out and out["spot_level"] is None
     assert all(leg["ltp"] is None for leg in out["legs"])
     assert out["summary"]["max_loss"] == "3334.50"

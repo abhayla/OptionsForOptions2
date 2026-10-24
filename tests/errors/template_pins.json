@@ -1498,5 +1498,17 @@
   "strategy_reconciliation_required": {
     "sha256": "2cbf1b075a315c2eec0628517cc73fed232d722810c315b6ddb8819357c1bb1f",
     "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries": {
+    "sha256": "b5fafa6d2097e303a38c172a5abb4d28b982d4e5f11f6a15c9f25cb7ceaa899c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries_centre": {
+    "sha256": "97a9bd7b7803752bd9b4f8a499c9a916d64c8484ba84df3272df8bdd9b7dd3da",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_from_entries_no_estimate": {
+    "sha256": "79a23806968bcb8de08bfc236e44fe8b917728920087b39fb8f1c59aa942098f",
+    "reviewed": "pending owner read"
   }
 }
