@@ -141,6 +141,13 @@ class Summary:
     # a leg the rate table cannot price - the sentences then keep ADR-071's "before charges and taxes" wording)
     charges: Decimal | None = None
     charges_unavailable: bool = False
+    # REQ-135 AC-4 (W-155): a strategy of one futures leg. A side with no fixed maximum has no Reward/Risk, and the
+    # reason says so; a futures leg holds no time value and no intrinsic value (both 0.00). Every other strategy keeps
+    # these None: the money-summary requirement (W-154) owns its Reward/Risk, Time value and Intrinsic value.
+    reward_risk: Decimal | None = None
+    reward_risk_reason: ExplanationText | None = None
+    time_value: Decimal | None = None
+    intrinsic_value: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -329,9 +336,14 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
         make = render_explanation("summary_make_at_most_with_charges", amount=max_profit, charges=charges)
     lo, up = level_set.lower_be, level_set.upper_be
     start = _start_losing(metrics.loss_regions, idx)
+    legs = inputs.strategy.legs
+    reason = render_explanation("summary_reward_risk_none") if profit_unl or loss_unl else None
+    future_only = len(legs) == 1 and legs[0].instrument is Instrument.FUT
+    nothing = Decimal(0).quantize(HUNDREDTH) if future_only else None  # a futures leg: no time, no intrinsic value
     return Summary(lose, make, start, None if profit_unl else max_profit,
                    None if loss_unl else max_loss, profit_unl, loss_unl, level_set.breakevens,
-                   lo, up, level_set.risk_boundaries, charges, charges_unavailable)
+                   lo, up, level_set.risk_boundaries, charges, charges_unavailable,
+                   reward_risk_reason=reason, time_value=nothing, intrinsic_value=nothing)
 
 
 def _refused(definition, reason: ExplanationText, legs, message=None) -> Outcome:

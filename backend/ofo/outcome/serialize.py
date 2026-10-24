@@ -10,6 +10,7 @@ from typing import Any
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts
+from ofo.timeutil import days_to_expiry
 
 
 def _s(value: Decimal | int | None) -> str | None:
@@ -58,16 +59,18 @@ def _table(table: Table, visible_cols) -> dict[str, Any]:
                      for r in table.rows]}
 
 
-def _leg(leg: OutcomeLeg) -> dict[str, Any]:
+def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
     return {"instrument_id": leg.instrument_id, "symbol": leg.symbol, "action": leg.action.value,
             "instrument": None if leg.instrument is None else leg.instrument.value, "strike": _s(leg.strike),
-            "expiry": None if leg.expiry is None else leg.expiry.isoformat(), "lots": leg.lots,
+            "expiry": None if leg.expiry is None else leg.expiry.isoformat(),
+            "days_to_expiry": None if today is None else days_to_expiry(leg.expiry, today), "lots": leg.lots,
             "lot_size": leg.lot_size, "quantity": leg.quantity, "planned_entry": _s(leg.planned_entry),
             "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "iv": _s(leg.iv),
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 
-def outcome_to_dict(out: Outcome) -> dict[str, Any]:
+def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
+    """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
     if out.scenario is not None and out.level_set is not None:
         v, ls = out.scenario, out.level_set
@@ -90,6 +93,8 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),
             "risk_boundaries": [_s(b) for b in s.risk_boundaries],
             "charges": _s(s.charges), "charges_unavailable": s.charges_unavailable,
+            "reward_risk": _s(s.reward_risk), "reward_risk_reason": s.reward_risk_reason,
+            "time_value": _s(s.time_value), "intrinsic_value": _s(s.intrinsic_value),
         }
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
@@ -97,7 +102,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
         "state": out.state.value, "underlying": out.underlying,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
-        "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
+        "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
     }
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys

@@ -209,7 +209,10 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
                     resp = await ac.get("/api/catalogue/SENSEX/expiries")
                     assert resp.status_code == 200, resp.text
                     assert resp.json() == {"underlying": "SENSEX", "expiries": [
-                        "2026-10-08", "2026-10-15", "2026-10-29", "2026-11-26", "2026-12-31"]}
+                        "2026-10-08", "2026-10-15", "2026-10-29", "2026-11-26", "2026-12-31"],
+                        "expiry_days": [{"expiry": "2026-10-08", "days": 1}, {"expiry": "2026-10-15", "days": 8},
+                                        {"expiry": "2026-10-29", "days": 22}, {"expiry": "2026-11-26", "days": 50},
+                                        {"expiry": "2026-12-31", "days": 85}]}  # REQ-135 AC-2
                     resp = await ac.get("/api/catalogue/SENSEX/contracts", params={"expiry": "2026-10-08"})
                     assert resp.status_code == 200, resp.text
                     body = resp.json()
@@ -237,6 +240,30 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
                         assert (resp.status_code, resp.json()) == (200, {"underlying": "NIFTY", "contracts": []})
         finally:
             await trans.rollback()
+
+
+@pytest.mark.parametrize(("today", "days"), [(date(2026, 10, 21), 6), (date(2026, 10, 26), 1), (date(2026, 10, 27), 0)])
+async def test_expiry_days_are_aligned_one_to_one_with_expiries_and_count_from_the_given_ist_date(
+        monkeypatch: pytest.MonkeyPatch, today: date, days: int) -> None:
+    """REQ-135 AC-2: `expiries` keeps its old shape; `expiry_days` lists the same dates in the same order with the
+    calendar days left from the route's own `today` (a fixed date, never the wall clock): 27 Oct from 21 Oct is 6,
+    the day before an expiry reads 1, the expiry day itself 0. The picker's database read is replaced by the real
+    NIFTY expiries of the instrument-list slice (this test needs no database)."""
+    from ofo_app.routes import catalogue
+
+    listed = sorted({r.contract.expiry for r in _slice()
+                     if r.contract.name == "NIFTY" and r.contract.expiry >= today})
+
+    async def pickable(_db, _underlying, _today):
+        return listed
+
+    monkeypatch.setattr(catalogue.picker, "pickable_expiries", pickable)
+    async with await _picker_client(None, today) as ac:
+        body = (await ac.get("/api/catalogue/NIFTY/expiries")).json()
+    assert body["expiries"] == [d.isoformat() for d in listed] and date(2026, 10, 27) in listed
+    assert [x["expiry"] for x in body["expiry_days"]] == body["expiries"]
+    assert {x["expiry"]: x["days"] for x in body["expiry_days"]}["2026-10-27"] == days
+    assert all(x["days"] is not None and x["days"] >= 0 for x in body["expiry_days"])
 
 
 async def test_unsupported_underlying_and_bad_input_use_catalogue_messages(app_engine: AsyncEngine) -> None:

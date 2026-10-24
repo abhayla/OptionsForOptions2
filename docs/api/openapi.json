@@ -1365,6 +1365,17 @@
             ],
             "title": "Contract Id"
           },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
           "expiry": {
             "format": "date",
             "title": "Expiry",
@@ -1462,6 +1473,7 @@
           "instrument",
           "strike",
           "expiry",
+          "days_to_expiry",
           "lots",
           "base_lots",
           "quantity",
@@ -1631,6 +1643,13 @@
             "title": "Expiries",
             "type": "array"
           },
+          "expiry_days": {
+            "items": {
+              "$ref": "#/components/schemas/ExpiryDaysOut"
+            },
+            "title": "Expiry Days",
+            "type": "array"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -1642,9 +1661,37 @@
         },
         "required": [
           "underlying",
-          "expiries"
+          "expiries",
+          "expiry_days"
         ],
         "title": "ExpiriesOut",
+        "type": "object"
+      },
+      "ExpiryDaysOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expiry",
+          "days"
+        ],
+        "title": "ExpiryDaysOut",
         "type": "object"
       },
       "FeaturesOut": {
@@ -4848,6 +4895,17 @@
             "title": "Captured At",
             "type": "string"
           },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
           "expiry": {
             "anyOf": [
               {
@@ -5101,6 +5159,17 @@
             "title": "Charges Unavailable",
             "type": "boolean"
           },
+          "intrinsic_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value"
+          },
           "lower_be": {
             "anyOf": [
               {
@@ -5142,12 +5211,43 @@
             "title": "Max Profit Unlimited",
             "type": "boolean"
           },
+          "reward_risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Risk"
+          },
+          "reward_risk_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Risk Reason"
+          },
           "risk_boundaries": {
             "items": {
               "type": "string"
             },
             "title": "Risk Boundaries",
             "type": "array"
+          },
+          "time_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value"
           },
           "upper_be": {
             "anyOf": [
