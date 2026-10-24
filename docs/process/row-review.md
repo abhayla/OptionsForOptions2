@@ -159,6 +159,39 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 22 - REQ-034 Outcome view and scenario levels (closed 2026-10-24, session f1b75d11, Done with AC-6 what-if part -> row 37; W-150 in_review until PR #531)
+- A user sees: the default level range now widens by the expected move (spot x ATM IV x sqrt(days/365); NIFTY on the
+  recorded frames: 330 points), the per-leg Bid/Ask detail collapsed under "Details: bid and ask per leg", and the
+  margin line proven on the Builder page. Nothing else on the screen changed.
+- Expected vs actual: unmeasured per row (session-end script). Agents: build (Opus), Opus check PASS (on the wrong
+  formula), rework (Opus) to the spec's ATM IV, Opus round 2 PASS, two Sonnet AC-1/5/7 checks (the first could not run
+  the frontend - no node_modules in its tree: an orchestrator setup miss), 22b build + Sonnet check PASS.
+- Wrong: the orchestrator wrote the expected-move formula from memory (nearest-leg IV) while the spec had decided ATM
+  IV (Q254, REQ-106) - brief-rule-from-memory 17th; its Reference line claimed a Sensibull search that never ran (the
+  study has screens 013/020) - the owner asked the same hour. The first check passed it because it checked the brief,
+  not the spec.
+
+### Meta review after row 21 (2026-10-24, session f1b75d11 - no separate meta agent ran; stated, not hidden)
+- Process misses measured by the orchestrator, for the chunk-2 conformance check to verify: (1) builders kept skipping
+  the files select_app_tests.py selects (23a: 3 MAJORs sat in them - repo-wide-scan-outside-targeted-tests 10th);
+  (2) builder budgets overrun again (103, 92 vs 80/48 - builder-budget-is-prose 12th-13th); (3) a running checker's
+  commit gate blocked builders' commits three times (sequencing: dispatch checkers when no builder needs to commit);
+  (4) a 21d check without e2e or a reader grep let a new answer state through (new-answer-state-without-reader-sweep);
+  (5) a twin e2e case written with every leg unpriced hid a real partial-strategy defect - review twins for the
+  smallest realistic shape.
+- Followed: check -> fix -> findings-only round 2 on every part; one independent redesign after a round-2 MAJOR (23a)
+  instead of a third guess; evidence from checkers only.
+
+### Row 21 - REQ-077 Builder entry prices (closed 2026-10-24, sessions 06fe7549 + f1b75d11, Done; W-149 in_review until PR #531)
+- A user sees: a "Your price" field per leg (typed text, tick-checked, four-part error under that leg), Reset Prices
+  and a per-leg reset, "Price has moved since <time>: planned 44.90, now 47.15", typed prices saved and reopened
+  marked typed, the Execute review showing "Your planned price 81.30 - order limit 79.40" (limit from depth only), and
+  with no live data the At Expiry numbers labelled "From your prices - no live data" with the disconnected message.
+- Expected vs actual: unmeasured per row (session-end script). Five part builds, each with a check and round 2; CI red
+  once (6 e2e: the screens did not know FROM_ENTRIES) -> CI fix + 2 rounds; Opus closing check PASS on 9730cda2.
+- Wrong: the browser priced a partly priced strategy as if the unpriced leg did not exist (old defect found by the
+  orchestrator in a twin case; finding browser-drops-unpriced-leg-from-strategy).
+
 ### Row 20 - REQ-076 Leg rows (closed 2026-10-24, session 06fe7549, Done; W-148 in_review until PR #531)
 - A user sees: one leg list on the builder with -/+ strike steps (listed strikes only), a 1-50 multiplier, an include
   tick ("Left out of the numbers"), the matched template name with Hedge marks from the server, a Lots/Quantity switch,
