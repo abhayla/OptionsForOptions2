@@ -46,7 +46,7 @@ from ofo.scenario.views import View
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app import charge_rates_store, db
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.underlying import Underlying
@@ -528,9 +528,8 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
-    if seq is not None:  # REQ-119 AC-1: only a caller that was sent one passes it (the REST route); else no key
-        body["seq"] = seq
-    return OutcomeResponse.model_validate(body)
+    # REQ-119 AC-1: only a caller that was sent one passes seq (the REST route); else no key
+    return echo_seq(OutcomeResponse.model_validate(body), seq)
 
 
 def get_margin_source() -> OutcomeMargin | None:

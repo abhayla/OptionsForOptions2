@@ -75,7 +75,7 @@ from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money, echo_seq
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_picker import loaded_before
 from ofo_app.catalogue_store import load_catalogue
@@ -306,8 +306,7 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
             raise _refuse("gate_broker_not_connected")
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
-        if body.seq is not None:  # REQ-119 AC-1: echoed unchanged; no seq sent -> no seq key
-            out = out.model_copy(update={"seq": body.seq})  # marks seq as set, the other keys as they were
+        out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()

@@ -45,7 +45,7 @@ from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import OutcomeMargin
@@ -403,6 +403,4 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
     reply = {"legs": out_legs, "shape": None if template is None else template.id, "shape_name": name,
              "outcome": outcome}
-    if req.seq is not None:  # REQ-119 AC-1: echoed unchanged; no seq sent -> no seq key
-        reply["seq"] = req.seq
-    return LegEditOut.model_validate(reply)
+    return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1
