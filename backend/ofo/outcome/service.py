@@ -46,10 +46,11 @@ from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.scenario.levels import ColumnKind, LevelColumn, LevelSet, RangeOverride, build_level_set
+from ofo.scenario.levels import ColumnKind, ExpectedMove, LevelColumn, LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
+from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
 #: REQ-077 AC-9: the label of an At Expiry answer built from the user's own prices when there is no live data
@@ -366,6 +367,24 @@ def _shared_leg_greeks(model, snapshot, shared):
     return out
 
 
+def _expected_move(legs, spot: Decimal, valuation: datetime.datetime) -> ExpectedMove | None:
+    """REQ-034 AC-4: the expected move the default range covers. IV = the solved IV of the OPTION leg whose strike is
+    nearest ``spot``, on the nearest expiry among option legs with a solved IV (ties: the lower strike); days =
+    calendar days from the valuation date in India time to that expiry, at least 1. None when no option leg has a
+    solved IV (futures only, IV not solved) or the engine's ExpectedMove refuses the values: the range is then
+    today's (spot, strikes, breakevens, risk boundaries)."""
+    solved = [leg for leg in legs if leg.instrument is not Instrument.FUT and leg.iv is not None]
+    if not solved:
+        return None
+    expiry = min(leg.expiry for leg in solved)
+    leg = min((x for x in solved if x.expiry == expiry), key=lambda x: (abs(x.strike - spot), x.strike))
+    days = max((expiry - valuation.astimezone(IST).date()).days, 1)
+    try:
+        return ExpectedMove(leg.iv, days)
+    except ValueError:
+        return None
+
+
 def _centre_of(strikes) -> Decimal:
     """The middle strike (the lower one of two) of the legs: with no live index price the grid has to centre
     somewhere, and this is the one place the answer says where (REQ-077 AC-9). No arithmetic: a strike of the legs."""
@@ -554,7 +573,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return _refused(definition, render_explanation("outcome_forward_refused"), legs, message)
 
     config = config or ScenarioSettings().for_index(definition.underlying)
-    level_set = build_level_set(model, config, override=override)
+    move = _expected_move(inputs, model.spot_level, valuation)
+    level_set = build_level_set(model, config, expected_move=move, override=override)
     charges = None
     if rates is not None:
         try:
