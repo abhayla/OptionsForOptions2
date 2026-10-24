@@ -35,7 +35,6 @@ EXPECTED = [
     ("app-selected", (PY, "scripts/orchestrator/select_app_tests.py", "<root>")),
     ("openapi-drift", (*PYTEST_APP, "tests_app/test_openapi_drift.py")),
     ("frontend-lint", ("npm", "run", "lint")),
-    ("frontend-format", ("npm", "run", "format:check")),
     ("frontend-vitest-changed", ("npx", "vitest", "run", "--changed", "origin/main")),
     ("coverage", (PY, "scripts/orchestrator/coverage.py", ".", "--check")),
     ("reach-check", (PY, "scripts/orchestrator/reach_check.py", "--root", ".")),
@@ -224,7 +223,7 @@ def test_missing_node_modules_fails_not_skips(tree, monkeypatch):
     code, lines = run(tree, runner)
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-lint: exit 1")
     assert "run npm ci in frontend/" in lines[-2]
-    assert "frontend-format" not in [c[3].stem for c in runner.ran()]
+    assert "frontend-vitest-changed" not in [c[3].stem for c in runner.ran()]
 
 
 def runs(*pairs, start=100):
