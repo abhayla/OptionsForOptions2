@@ -9,7 +9,10 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
-import { CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, canStep } from '@/lib/legEdit'
+import {
+  CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  canStep, movedMarker, priceReasonText,
+} from '@/lib/legEdit'
 
 const props = defineProps({
   legs: { type: Array, required: true },
@@ -17,11 +20,14 @@ const props = defineProps({
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
   updating: { type: Boolean, default: false },
   errorParts: { type: Object, default: null },
+  errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that field (REQ-077 AC-2)
+  ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
 })
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg'])
 
 const multiplier = ref(1)
 const legUnit = ref('lots') // REQ-076 AC-5: lots by default; Quantity draws the reply's own quantity (no multiplication here)
+const typedText = ref({}) // the text in each row's price field, by index: sent as typed, never parsed here
 const depthFor = ref(null) // the leg whose depth popup is open
 
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
@@ -29,6 +35,20 @@ const shown = computed(() => (props.hasReply ? props.shapeName ?? CUSTOM_STRATEG
 const legName = (l) => contractName(l)
 // ADR-085: a leg saved without a planned entry says so and offers Reprice (REQ-077 AC-7); Edit and Reprice both open the picker's own edit form
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
+
+function setPrice(index) {
+  const text = typedText.value[index]
+  if (typeof text === 'string' && text.trim() !== '') emit('edit', { control: 'price', index, price: text.trim() })
+}
+function resetLeg(index) {
+  typedText.value = { ...typedText.value, [index]: '' }
+  emit('edit', { control: 'reset_leg', index })
+}
+function resetPrices() {
+  typedText.value = {}
+  emit('edit', { control: 'reset_prices' })
+}
+const entryLabel = (l) => (l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_LABEL)
 
 function setMultiplier(index) {
   const choice = MULTIPLIER_CHOICES[index] // chosen from the fixed list: nothing is parsed from text
@@ -59,7 +79,8 @@ function setMultiplier(index) {
           <option  value="quantity">Quantity</option>
         </select>
       </label>
-      <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
+      <button type="button" class="mt-1 rounded border border-line px-2 py-1" data-testid="reset-prices" @click="resetPrices">Reset Prices</button>
+      <ErrorMessage v-if="errorParts && errorIndex === null" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
       <ul>
         <li
           v-for="(leg, i) in legs" :key="leg.id ?? i" class="flex flex-wrap items-center gap-2 py-1"
@@ -79,9 +100,16 @@ function setMultiplier(index) {
           <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
           <span v-if="leg.hedge === true" class="tag" data-testid="hedge-mark">Hedge</span>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
-          <span v-if="leg.planned_entry != null" data-testid="leg-entry">planned entry {{ leg.planned_entry }}</span>
-          <span v-if="leg.planned_entry != null && leg.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ istTime(leg.captured_at) }}</span>
-          <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
+          <span v-if="leg.planned_entry != null" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
+          <span v-if="leg.planned_entry != null && leg.captured_at != null" class="text-ink-muted" data-testid="leg-captured">{{ leg.typed === true ? 'typed' : 'captured' }} {{ istTime(leg.captured_at) }}</span>
+          <template v-else-if="leg.planned_entry == null">
+            <span data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
+            <span v-if="priceReasonText(leg.price_reason)" class="text-ink-muted" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
+          </template>
+          <span v-if="movedMarker(leg, ltpById[leg.instrument_id])" class="text-ink-muted" data-testid="price-moved">{{ movedMarker(leg, ltpById[leg.instrument_id]) }}</span>
+          <input v-model="typedText[i]" type="text" inputmode="decimal" class="w-20 rounded border border-line px-1" :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @keydown.enter="setPrice(i)" />
+          <button type="button" class="rounded border border-line px-1" data-testid="price-set" @click="setPrice(i)">Set price</button>
+          <button type="button" class="underline" data-testid="reset-leg" @click="resetLeg(i)">Reset</button>
           <span v-if="leg.included === false" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
           <span v-if="leg.block" class="text-ink-muted" data-testid="leg-block">{{ leg.block }}</span>
           <template v-if="needsReprice(leg)">
@@ -91,6 +119,7 @@ function setMultiplier(index) {
           <button type="button" data-testid="depth-icon" class="underline" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i">Depth</button>
           <button type="button" data-testid="edit-leg" class="underline" @click="emit('edit-leg', i)">Edit</button>
           <button type="button" class="underline" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" @click="emit('remove', i)">Remove</button>
+          <ErrorMessage v-if="errorParts && errorIndex === i" class="w-full" :parts="errorParts" compact prefix="price-error" data-testid="price-error" />
           <DepthPopup v-if="depthFor === i" class="w-full" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
         </li>
       </ul>
