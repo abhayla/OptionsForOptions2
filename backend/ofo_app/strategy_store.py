@@ -64,6 +64,7 @@ class StoredStrategy:
     saved: sf.SavedDefinition
     revision: int
     versions: tuple[StoredVersion, ...] = ()  # W-144: every version after the first execution, by number
+    name: str = sf.DEFAULT_STRATEGY_NAME  # REQ-134: the user's name for it (rows saved before 0025 hold the default)
 
 
 @dataclass(frozen=True)
@@ -73,18 +74,49 @@ class StrategySummary:
     status: str
     created_at: datetime
     updated_at: datetime
+    name: str = sf.DEFAULT_STRATEGY_NAME  # REQ-134 AC-4: the saved-strategies list shows it
+    leg_count: int = 0  # the ACTIVE definition's legs (the active version's after the first execution)
+    first_leg: Optional[FirstLeg] = None  # its first leg's contract terms; the browser writes "... and N more"
 
 
-_COLUMNS = "id, user_ref, status, created_at, updated_at, revision, definition::text AS definition_text"
+@dataclass(frozen=True)
+class FirstLeg:
+    """REQ-134 AC-4: the terms of the first leg of the active definition, as stored (closed values, no free text)."""
+
+    instrument: str
+    strike: Optional[str]  # None for a future
+    expiry: str
+
+
+@dataclass(frozen=True)
+class RenamedStrategy:
+    """REQ-134 AC-3: what a rename answers. Nothing of the definition is read, so a strategy whose contract later
+    changed can still be renamed."""
+
+    id: int
+    name: str
+    revision: int
+    updated_at: datetime
+
+
+_COLUMNS = "id, user_ref, status, created_at, updated_at, revision, name, definition::text AS definition_text"
 BIGINT_MAX = 2**63 - 1  # strategies.id (BIGSERIAL)
 _INSERT = text(
-    "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
-    f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version) RETURNING {_COLUMNS}")
+    "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version, name) "
+    f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref")
 _SELECT_FOR_UPDATE = text(
     f"SELECT {_COLUMNS}, underlying FROM public.strategies WHERE id = :id AND user_ref = :user_ref FOR UPDATE")
-_LIST = text("SELECT id, underlying, status, created_at, updated_at FROM public.strategies "
-             "WHERE user_ref = :user_ref ORDER BY id")
+#: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
+#: row's), only for the signed-in user's rows (REQ-134 AC-6).
+_LIST = text(
+    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, "
+    "d.definition -> 'legs' AS legs "
+    "FROM public.strategies AS s "
+    "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
+    "WHERE v.strategy_id = s.id AND v.state = 'active'), s.definition) AS definition) AS d "
+    "WHERE s.user_ref = :user_ref ORDER BY s.id")
+_RENAME = text("UPDATE public.strategies SET name = :name WHERE id = :id RETURNING id, name, revision, updated_at")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
     "VALUES (:id, CAST(:summary AS JSONB), CAST(:definition AS JSONB), :version) RETURNING seq")
@@ -171,7 +203,7 @@ async def build_definition(conn: Any, underlying: str, choices: Sequence[sf.LegC
 
 def _stored(row: Any, saved: sf.SavedDefinition) -> StoredStrategy:
     return StoredStrategy(id=int(row.id), user_ref=row.user_ref, status=row.status, created_at=row.created_at,
-                          updated_at=row.updated_at, saved=saved, revision=int(row.revision))
+                          updated_at=row.updated_at, saved=saved, revision=int(row.revision), name=row.name)
 
 
 async def _check_saveable(conn: Any, saved: sf.SavedDefinition) -> str:
@@ -182,15 +214,36 @@ async def _check_saveable(conn: Any, saved: sf.SavedDefinition) -> str:
     return sf.dumps(saved)
 
 
-async def save_draft(conn: Any, user_ref: str, saved: sf.SavedDefinition) -> StoredStrategy:
-    """Save Draft: a new strategy row. The caller commits."""
+async def save_draft(conn: Any, user_ref: str, saved: sf.SavedDefinition,
+                     name: str = sf.DEFAULT_STRATEGY_NAME) -> StoredStrategy:
+    """Save Draft / Save As: a new strategy row with the user's name (REQ-134 AC-1/AC-2; duplicates are allowed, each
+    row keeps its own id). The caller commits."""
     if not isinstance(user_ref, str) or not user_ref:
         raise StrategyStoreError(NOT_FOUND, "a strategy belongs to a user")
+    chosen = sf.check_strategy_name(name)  # before any query: an empty or over-long name stores nothing
     document = await _check_saveable(conn, saved)
     async with conn.begin_nested():
         row = (await conn.execute(_INSERT, {"user_ref": user_ref, "underlying": saved.definition.underlying,
-                                            "definition": document, "version": sf.SCHEMA_VERSION})).one()
+                                            "definition": document, "version": sf.SCHEMA_VERSION,
+                                            "name": str.__str__(chosen)})).one()
     return _stored(row, saved)
+
+
+async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
+                 expected_revision: int) -> RenamedStrategy:
+    """REQ-134 AC-3: changes only the name, plus one history entry ``renamed`` (from, to). The definition, the revision,
+    the last-saved time and every version stay as they are; a strategy that already sent a basket can be renamed.
+    Another user's strategy answers NOT_FOUND like a missing one (AC-6); a stale ``expected_revision`` writes nothing.
+    The same name again is not a change. The caller commits."""
+    chosen = str.__str__(sf.check_strategy_name(new_name))  # before any query
+    async with conn.begin_nested():
+        row = await _locked(conn, user_ref, strategy_id)
+        _check_revision(row, expected_revision)
+        if row.name == chosen:
+            return RenamedStrategy(int(row.id), row.name, int(row.revision), row.updated_at)
+        await _write_history(conn, row.id, sf.rename_summary(row.name, chosen), row.definition_text)
+        written = (await conn.execute(_RENAME, {"id": row.id, "name": chosen})).one()
+    return RenamedStrategy(int(written.id), written.name, int(written.revision), written.updated_at)
 
 
 async def _write_history(conn: Any, strategy_id: int, summary: str, current_text: str) -> int:
@@ -568,7 +621,13 @@ async def version_saved(conn: Any, version: StoredVersion) -> sf.SavedDefinition
 
 async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
-    return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at) for r in rows]
+    return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
+                            len(r.legs), _first_leg(r.legs)) for r in rows]
+
+
+def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:
+    leg = legs[0]  # the database's validator holds 1..20 legs in every stored definition
+    return FirstLeg(instrument=leg["instrument"], strike=leg["strike"], expiry=leg["expiry"])
 
 
 async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.HistoryEntry]:

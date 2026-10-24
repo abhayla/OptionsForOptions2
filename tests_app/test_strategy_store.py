@@ -60,7 +60,7 @@ CHECK_VIOLATION = "23514"
 LIVE_COLUMN_WORDS = {"ltp", "bid", "ask", "volume", "oi", "iv", "delta", "gamma", "theta", "vega", "pnl", "margin",
                      "spot", "price"}  # the brief's list; LIVE_STATE_NAMES (from the LiveState classes) is checked too
 STRATEGY_COLUMNS = {"id", "user_ref", "underlying", "status", "created_at", "updated_at", "definition", "revision",
-                    "definition_schema_version"}
+                    "definition_schema_version", "name"}
 HISTORY_COLUMNS = {"id", "strategy_id", "seq", "at", "change_summary", "definition", "definition_schema_version"}
 
 
@@ -680,5 +680,42 @@ async def test_ac5_filled_limits_and_preferences_round_trip_through_history_and_
             doc2 = json.loads(after[1][2])
             assert doc2["risk_limits"] == FILLED_LIMITS | {"max_loss": "12000.75"}
             assert doc2["preferences"] == FILLED_PREFS | {"market_view": "bullish"}
+        finally:
+            await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# REQ-134 (W-157): the name beside the definition, at store level
+# ---------------------------------------------------------------------------------------------------------------
+
+
+async def test_req134_save_draft_stores_the_name_and_rename_changes_only_it(app_engine):
+    """AC-1/AC-3: save_draft(name) stores it; rename keeps definition, revision and updated_at, writes one history
+    entry holding the unchanged definition, and a stale revision writes nothing."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            ids = await _ids(conn)
+            stored = await store.save_draft(conn, user, await _saved_in(conn, user, ids), "  NIFTY Oct condor ")
+            assert (stored.name, stored.revision) == ("NIFTY Oct condor", 1)
+            renamed = await store.rename(conn, user, stored.id, "Condor wider", expected_revision=1)
+            assert (renamed.name, renamed.revision, renamed.updated_at) == ("Condor wider", 1, stored.updated_at)
+            loaded = await store.load(conn, user, stored.id)
+            assert (loaded.name, loaded.saved, loaded.revision) == ("Condor wider", stored.saved, 1)
+            rows = await _history_rows(conn, stored.id)
+            assert len(rows) == 1
+            with pytest.raises(store.StrategyStoreError) as stale:
+                await store.rename(conn, user, stored.id, "Late", expected_revision=2)
+            assert stale.value.code == store.REVISION_CONFLICT
+            with pytest.raises(store.StrategyStoreError) as other:
+                await store.rename(conn, "someone-else", stored.id, "Mine now", expected_revision=1)
+            assert other.value.code == store.NOT_FOUND
+            with pytest.raises(sf.StoredFormError) as empty:
+                await store.rename(conn, user, stored.id, "  ", expected_revision=1)
+            assert empty.value.code == sf.STRATEGY_NAME_EMPTY
+            assert (await store.load(conn, user, stored.id)).name == "Condor wider"
+            assert await _history_rows(conn, stored.id) == rows
         finally:
             await trans.rollback()

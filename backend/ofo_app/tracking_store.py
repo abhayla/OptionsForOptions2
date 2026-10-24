@@ -31,6 +31,7 @@ _INSERT_LEG = text(
     "price_at) VALUES (:id, :leg_index, :contract_id, :side, :quantity, :entry_price, :price_at)")
 _SELECT_TRACKING = text("SELECT started_at, prices_at, strategy_revision FROM public.strategy_tracking "
                         "WHERE strategy_id = :id")
+_SELECT_TRACKED = text("SELECT strategy_id FROM public.strategy_tracking WHERE strategy_id = ANY(CAST(:ids AS BIGINT[]))")
 _SELECT_LEGS = text("SELECT leg_index, contract_id, side, quantity, entry_price, price_at "
                     "FROM public.strategy_tracking_legs WHERE strategy_id = :id ORDER BY leg_index")
 
@@ -80,6 +81,15 @@ async def start(conn: Any, user_ref: str, strategy_id: int, revision: int,  # no
     if found is None:
         raise RuntimeError(f"strategy {strategy_id}: the tracking just written cannot be read back")
     return found
+
+
+async def tracked_ids(conn: Any, strategy_ids: Sequence[int]) -> set[int]:
+    """REQ-134 AC-4: which of the given strategies (already filtered to the signed-in user's own) have a tracking row.
+    A read failure raises: the caller decides what 'unknown' shows."""
+    if not strategy_ids:
+        return set()
+    rows = await conn.execute(_SELECT_TRACKED, {"ids": list(strategy_ids)})
+    return {int(r.strategy_id) for r in rows}
 
 
 async def load(conn: Any, strategy_id: int) -> Tracking | None:

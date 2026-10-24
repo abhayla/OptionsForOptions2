@@ -938,6 +938,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_replaced_unreadable", "values_seen", "definition replaced, the previous one could not be compared"),
     ExplanationTemplate("change_summary_unreadable", "values_seen", "this change could not be shown"),
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),
+    # REQ-134 AC-1: a strategy's name as the API shows it - the user's own words, quoted word for word (ADR-003)
+    ExplanationTemplate("strategy_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",

@@ -602,6 +602,14 @@ def check_strategy_name(text: object) -> UserWords:
     raise StoredFormError(STRATEGY_NAME_INVALID, f"a strategy name is 1..{STRATEGY_NAME_MAX} characters on one line")
 
 
+def shown_name(stored: object):
+    """A stored strategy name as the API shows it: the user's own words in the catalogue's quoted slot (ADR-003), so it
+    reaches a response only as quoted user text. A value that is not a valid trimmed name is MALFORMED, never shown."""
+    if type(stored) is not str or stored != stored.strip() or name_problem(stored) is not None:
+        raise StoredFormError(MALFORMED, "the stored strategy name is not a valid name")
+    return render_explanation("strategy_name_shown", name=user_words(stored))
+
+
 def rename_summary(old: str, new: str) -> str:
     """The history summary of a rename (REQ-134 AC-3): one closed ``renamed`` item holding the two names as typed."""
     return summary_text([{"kind": "renamed", "from": old, "to": new}])
