@@ -28,6 +28,8 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
+import LegList from '@/components/strategy/LegList.vue'
 import { EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
@@ -574,18 +576,20 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
   const REPLY = (label, id) => ({ legs: real.legs.map((l, i) => ({ instrument_id: i === 0 ? id : l.instrument_id, action: l.action, instrument: l.instrument,
     strike: l.strike, expiry: l.expiry, lots: l.lots, base_lots: l.lots, quantity: l.quantity, planned_entry: l.planned_entry, captured_at: l.captured_at,
     price_source: 'captured', included: true, hedge: false, block: null })), shape: null, shape_name: null,
-  outcome: { ...real, summary: { ...real.summary, what_can_i_lose: label } } })
-  const parked = [] // the edit requests in flight, each with its resolver, rejecter and abort signal
+  outcome: { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, instrument_id: id } : l)), summary: { ...real.summary, what_can_i_lose: label } } })
+  const parked = [] // the edit requests (and, when parkOutcome is set, the outcome requests) in flight, each with its resolver, rejecter and abort signal
+  let parkOutcome = false
   async function openRig() {
     vi.stubGlobal('WebSocket', FakeSocket)
     apiCalls.length = 0
     parked.length = 0
+    parkOutcome = false
     apiAnswer = (body, url, opts) => {
-      if (url === '/strategies/outcome') return Promise.resolve({ data: { ...real, seq: body.seq } })
-      if (body.edit.control === 'read') return Promise.resolve({ data: { ...REPLY('read', real.legs[0].instrument_id), outcome: null, seq: body.seq } })
+      if (url === '/strategies/outcome' && !parkOutcome) return Promise.resolve({ data: { ...real, seq: body.seq } })
+      if (url !== '/strategies/outcome' && body.edit.control === 'read') return Promise.resolve({ data: { ...REPLY('read', real.legs[0].instrument_id), outcome: null, seq: body.seq } })
       return new Promise((resolve, reject) => {
         const signal = opts?.signal
-        const entry = { seq: body.seq, signal, answer: (data) => resolve({ data: { ...data, seq: body.seq } }), fail: reject }
+        const entry = { url, body, seq: body.seq, signal, answer: (data) => resolve({ data: { ...data, seq: body.seq } }), fail: reject }
         signal?.addEventListener('abort', () => honourAbort && reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED', __CANCEL__: true })))
         parked.push(entry)
       })
@@ -651,6 +655,99 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
     expect(refusal()).toBeNull()
+    w.unmount()
+  })
+
+  // The checker's probe P1 (23b fix round 1): the leg-edit reply used to draw its At Expiry numbers under an Estimated Now
+  // choice and cancel the newer outcome request. One rule now: numbers are drawn only when they match the legs AND choice.
+  const choose = (w, c) => w.findComponent(ScenarioControls).vm.$emit('update:choice', c)
+  const ESTIMATED = { view: 'estimated_now', rangeStart: '', rangeEnd: '' }
+  const estimatedBody = (label, id) => ({ ...REPLY(label, id).outcome, scenario: { ...real.scenario, view: 'estimated_now', customised: false } })
+  const actions = (w) => w.findComponent(StrategyActions)
+  const executeWaits = (w) => !actions(w).exists() || actions(w).props('executeRefusal') !== null // no Execute button, or a refusal
+  const edits = () => parked.filter((p) => p.url !== '/strategies/outcome')
+  const outcomes = () => parked.filter((p) => p.url === '/strategies/outcome')
+
+  it('P1 core: leg-edit reply first, then the newer Estimated Now request: no at-expiry numbers, newer request kept, Execute waits', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parkOutcome = true
+    choose(w, ESTIMATED)
+    await flushPromises()
+    const [edit] = edits()
+    const [newer] = outcomes()
+    edit.answer(REPLY('LEG-EDIT REPLY (at_expiry)', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.text()).not.toContain('LEG-EDIT REPLY (at_expiry)')
+    expect(newer.signal.aborted).toBe(false)
+    expect(w.find('[data-testid="numbers"]').exists()).toBe(false) // no numbers drawn while the matching ones are awaited
+    expect(executeWaits(w)).toBe(true)
+    newer.answer(estimatedBody('OUTCOME estimated_now (old legs)', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
+    expect(txt(w, 'sum-lose')).toBe('OUTCOME estimated_now (old legs)')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('an outcome reply made for the legs before the edit is dropped and asked again for the new legs', async () => {
+    const w = await openRig()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    parkOutcome = true
+    choose(w, ESTIMATED)
+    await flushPromises()
+    const [edit] = edits()
+    edit.answer(REPLY('LEG-EDIT REPLY', 'NSE_FO:44625'))
+    await flushPromises()
+    outcomes()[0].answer(estimatedBody('OLD LEGS', real.legs[0].instrument_id)) // sent with the legs before the edit
+    await flushPromises()
+    expect(w.text()).not.toContain('OLD LEGS')
+    expect(outcomes()).toHaveLength(2)
+    expect(outcomes()[1].body.legs[0].instrument_id).toBe('NSE_FO:44625')
+    expect(outcomes()[1].body.view).toBe('estimated_now')
+    expect(executeWaits(w)).toBe(true)
+    outcomes()[1].answer(estimatedBody('NEW LEGS', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('NEW LEGS')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('edit while on Estimated Now, no race: the request carries the view and no at-expiry numbers are ever drawn', async () => {
+    const w = await openRig()
+    choose(w, ESTIMATED)
+    await flushPromises()
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    const [edit] = edits()
+    expect(edit.body.view).toBe('estimated_now')
+    expect(edit.body.range_start).toBeUndefined() // the server's leg-edit has no range field
+    edit.answer({ ...REPLY('ESTIMATED NOW', 'NSE_FO:44625'), outcome: estimatedBody('ESTIMATED NOW', 'NSE_FO:44625') })
+    await flushPromises()
+    expect(txt(w, 'sum-lose')).toBe('ESTIMATED NOW')
+    expect(actions(w).props('executeRefusal')).toBeNull()
+    w.unmount()
+  })
+
+  it('edit with a custom range on screen: the legs are applied and the numbers are asked again with the range', async () => {
+    const w = await openRig()
+    choose(w, { view: 'at_expiry', rangeStart: '24000', rangeEnd: '26000' })
+    await flushPromises()
+    parkOutcome = true
+    await w.findAll('[data-testid="strike-plus"]')[0].trigger('click')
+    await flushPromises()
+    const [edit] = edits()
+    expect(edit.body.range_start).toBeUndefined()
+    edit.answer(REPLY('AT EXPIRY DEFAULT RANGE', 'NSE_FO:44625'))
+    await flushPromises()
+    expect(w.text()).not.toContain('AT EXPIRY DEFAULT RANGE')
+    expect(w.findComponent(LegList).props('legs')[0].instrument_id).toBe('NSE_FO:44625') // the edit itself is kept
+    expect(outcomes()).toHaveLength(1)
+    expect(outcomes()[0].body.range_start).toBe('24000')
+    expect(outcomes()[0].body.range_end).toBe('26000')
+    expect(executeWaits(w)).toBe(true)
     w.unmount()
   })
 

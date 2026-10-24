@@ -41,7 +41,8 @@ const replyLeg = (l, extra = {}) => ({ instrument_id: l.instrument_id, action: l
 const STEPPED = {
   legs: [replyLeg(real.legs[0], { instrument_id: 'NSE_FO:44625', strike: '22850.00', planned_entry: '95.00' }), ...real.legs.slice(1).map((l) => replyLeg(l))],
   shape: null, shape_name: null,
-  outcome: { ...real, summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
+  outcome: { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, instrument_id: 'NSE_FO:44625', planned_entry: '95.00' } : l)), // the legs the reply names
+    summary: { ...real.summary, what_can_i_make: 'REPLY: make nothing' }, output_label: 'REPLY LABEL' },
 }
 // The server's answer to the read control on load: the legs as sent, the matched name and the two Hedge marks (the wings).
 const READ = {
@@ -318,7 +319,7 @@ describe('AC-7 (attack 2): Execute is refused while any leg is unticked', () => 
     const w = await openPage()
     const actions = w.findComponent(StrategyActions)
     expect(actions.props('executeRefusal')).toBeNull()
-    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l, i) => replyLeg(l, { included: i !== 1 })), outcome: real }
+    answers['POST /strategies/leg-edit'] = { ...STEPPED, legs: real.legs.map((l, i) => replyLeg(l, { included: i !== 1 })), outcome: { ...real, legs: real.legs.filter((_, i) => i !== 1) } } // the numbers of the ticked legs
     await all(w, 'leg-tick')[1].setValue(false)
     await flushPromises()
     expect(actions.props('executeRefusal')).toBe(EXECUTE_NEEDS_ALL_TICKED)

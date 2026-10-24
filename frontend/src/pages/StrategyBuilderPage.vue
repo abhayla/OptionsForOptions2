@@ -115,12 +115,16 @@ async function load() {
   }
   const mine = guard.next('outcome') // aborts the outcome request still in flight
   const fallback = socketDropped
+  const sentKey = inputsKey()
   // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
     const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
+    // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
+    // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
+    if (!drawable(res.data) && sentKey !== inputsKey()) return reask('outcome', mine)
     applyOutcome(res.data)
   } catch (e) {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
@@ -147,6 +151,19 @@ function nameLegsFrom(body) {
   })
 }
 
+// REQ-119 AC-4: THE one rule for every place numbers are drawn (REST outcome reply, leg-edit reply's outcome, live push):
+// they are drawn only when they were made for the legs AND the choice on screen now.
+const inputsKey = () => JSON.stringify([buildDraft(legs.value), choiceFields(choice.value)])
+function drawable(body) {
+  return matchesLegs(body, buildDraft(legs.value)) && matchesChoice(body, choice.value)
+}
+// A reply that is not drawable is dropped (debug log); when it answered the newest outcome request, ask again for the
+// current legs and choice (load() keeps the numbers marked updating and Execute disabled until that reply lands).
+function reask(kind, ticket) {
+  console.debug(`${kind} reply dropped: it does not match the legs and choice on screen`)
+  if (guard.isNewest(kind, ticket)) load()
+}
+
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
@@ -163,7 +180,7 @@ function applyOutcome(body) {
 const live = useStrategyLive({
   onPush: (body) => {
     // A late push of the previous strategy (the socket was told the new one a moment ago) is dropped, never shown.
-    if (!matchesLegs(body, buildDraft(legs.value)) || !matchesChoice(body, choice.value)) return
+    if (!drawable(body)) return
     socketDropped = false
     guard.cancel('outcome') // the push answers: an outcome request still in flight is obsolete
     clearTimeout(slowTimer)
@@ -222,6 +239,11 @@ onMounted(() => {
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
 // Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.
+// The server's leg-edit takes the view but has no range field: a custom range is never sent there (it is asked for by load()).
+const editView = () => {
+  const { view } = choiceFields(choice.value)
+  return view ? { view } : {}
+}
 async function editLeg(edit) {
   const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit)
   if (!body) return
@@ -229,7 +251,7 @@ async function editLeg(edit) {
   editError.value = null
   editErrorIndex.value = null
   try {
-    const reply = (await api.post('/strategies/leg-edit', { ...body, seq: mine.seq }, { signal: mine.signal })).data
+    const reply = (await api.post('/strategies/leg-edit', { ...body, ...editView(), seq: mine.seq }, { signal: mine.signal })).data
     if (!guard.claim('leg-edit', reply, mine)) return
     if (edit.control === 'read') {
       // changes no leg and no number: only the contract ids, the name and the Hedge marks are taken (load() owns the outcome)
@@ -248,13 +270,22 @@ async function editLeg(edit) {
     }
     shapeName.value = reply.shape_name ?? null
     hasReply.value = true
-    guard.cancel('outcome') // the reply carries the numbers: an outcome request still in flight is obsolete
-    clearTimeout(slowTimer)
-    slow.value = false
-    if (reply.outcome) applyOutcome(reply.outcome)
-    else {
+    // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
+    // choice on screen and no outcome request is pending (that one is never cancelled here: its reply is checked the same way).
+    if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
+      guard.cancel('outcome')
+      clearTimeout(slowTimer)
+      slow.value = false
+      applyOutcome(reply.outcome)
+    } else if (!reply.outcome) {
+      guard.cancel('outcome')
+      clearTimeout(slowTimer)
+      slow.value = false
       data.value = null
       state.value = allLeftOut() ? 'left-out' : 'unpriced'
+    } else if (!guard.pending.outcome) {
+      console.debug('leg-edit outcome dropped: it does not match the legs and choice on screen')
+      load() // the numbers for the current legs and choice
     }
     syncLive()
   } catch (e) {
