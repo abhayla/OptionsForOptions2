@@ -29,6 +29,7 @@ import { buildDraft } from '@/lib/legPicker'
 import real from './fixtures/outcome-condor.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
+const row = (w, i) => w.findAll('[data-testid="leg-row"]')[i]
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
@@ -79,8 +80,7 @@ describe('REQ-076 AC-8 / one leg list: the page draws the shape name on load and
     const w = await openPage()
     expect(all(w, 'leg-edit-list')).toHaveLength(1)
     expect(all(w, 'leg-list')).toHaveLength(0)
-    expect(all(w, 'leg-row')).toHaveLength(0)
-    expect(all(w, 'leg-edit-row-0')).toHaveLength(1)
+    expect(all(w, 'leg-row')).toHaveLength(4) // one row per leg, all LegList's
   })
 })
 
@@ -139,7 +139,7 @@ describe('LegList rows (screens 011, 012)', () => {
     const w = mount(LegList, { props: { legs: rows } })
     expect(all(w, 'strike-minus')).toHaveLength(1)
     expect(all(w, 'strike-plus')).toHaveLength(1)
-    expect(t(w, 'leg-edit-row-1').find('[data-testid="strike-plus"]').exists()).toBe(false)
+    expect(row(w, 1).find('[data-testid="strike-plus"]').exists()).toBe(false)
     await t(w, 'strike-plus').trigger('click')
     await t(w, 'strike-minus').trigger('click')
     expect(w.emitted('edit')).toEqual([[{ control: 'step', index: 0, direction: 1 }], [{ control: 'step', index: 0, direction: -1 }]])
@@ -171,8 +171,8 @@ describe('LegList rows (screens 011, 012)', () => {
     expect(all(w, 'left-out-label')).toHaveLength(1)
     expect(t(w, 'left-out-label').text()).toBe(LEFT_OUT_LABEL)
     expect(LEFT_OUT_LABEL).toBe('Left out of the numbers')
-    expect(t(w, 'leg-edit-row-1').classes()).toContain('opacity-60')
-    expect(t(w, 'leg-edit-row-0').classes()).not.toContain('opacity-60')
+    expect(row(w, 1).classes()).toContain('opacity-60')
+    expect(row(w, 0).classes()).not.toContain('opacity-60')
     expect(all(w, 'leg-tick').map((c) => c.element.checked)).toEqual([true, false])
     await all(w, 'leg-tick')[0].setValue(false)
     expect(w.emitted('edit')).toEqual([[{ control: 'include', index: 0, included: false }]])
@@ -194,7 +194,7 @@ describe('LegList rows (screens 011, 012)', () => {
     await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
     expect(t(w, 'shape-name').text()).toContain('Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(1)
-    expect(t(w, 'leg-edit-row-0').find('[data-testid="hedge-mark"]').text()).toBe('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('Hedge')
     expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
     expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
   })
@@ -235,12 +235,12 @@ describe('LegList rows (screens 011, 012)', () => {
     answers['GET /leg-picker/depth?instrument_id=NSE_FO%3A51000'] = { state: 'NOT_AVAILABLE', reason: 'DEPTH_NOT_STORED' }
     answers['GET /leg-picker/depth?instrument_id=NSE_FO%3A44624'] = { state: 'NOT_AVAILABLE', reason: 'DEPTH_NOT_STORED' }
     const w = mount(LegList, { props: { legs: rows } })
-    expect(all(w, 'leg-depth-icon')).toHaveLength(2)
-    await all(w, 'leg-depth-icon')[1].trigger('click')
+    expect(all(w, 'depth-icon')).toHaveLength(2)
+    await all(w, 'depth-icon')[1].trigger('click')
     await flushPromises()
     expect(all(w, 'depth-popup')).toHaveLength(1)
     expect(t(w, 'depth-popup').attributes('data-instrument-id')).toBe('NSE_FO:51000')
-    await all(w, 'leg-depth-icon')[0].trigger('click')
+    await all(w, 'depth-icon')[0].trigger('click')
     await flushPromises()
     expect(all(w, 'depth-popup')).toHaveLength(1)
     expect(t(w, 'depth-popup').attributes('data-instrument-id')).toBe('NSE_FO:44624')
@@ -407,14 +407,14 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
   it('AC-5: on the page the reply quantity reaches the row; switching to Quantity shows it', async () => {
     const w = await openReply({ ...READ, legs: READ.legs.map((l, i) => (i === 0 ? { ...l, lots: 3, quantity: 195 } : l)) })
     await t(w, 'lots-quantity-switch').setValue('quantity')
-    expect(t(w, 'leg-edit-row-0').find('[data-testid="leg-quantity"]').text()).toBe('195')
+    expect(row(w, 0).find('[data-testid="leg-quantity"]').text()).toBe('195')
   })
   it('ADR-092: a reply leg carrying block shows the reason on that leg only', async () => {
     const reason = 'Quantity 1950 is above the freeze limit 1800.'
     const w = await openReply({ ...READ, legs: READ.legs.map((l, i) => (i === 1 ? { ...l, block: reason } : l)) })
     expect(all(w, 'leg-block')).toHaveLength(1)
-    expect(t(w, 'leg-edit-row-1').find('[data-testid="leg-block"]').text()).toBe(reason)
-    expect(t(w, 'leg-edit-row-0').find('[data-testid="leg-block"]').exists()).toBe(false)
+    expect(row(w, 1).find('[data-testid="leg-block"]').text()).toBe(reason)
+    expect(row(w, 0).find('[data-testid="leg-block"]').exists()).toBe(false)
   })
   it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> empty form, Add adds nothing of A', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
@@ -432,9 +432,9 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     await t(w, 'edit-leg').trigger('click')
     await flushPromises()
     expect(t(w, 'pick-strike').element.value).toBe('22800.00')
-    await t(w, 'leg-remove').trigger('click')
+    await t(w, 'remove-leg').trigger('click')
     await flushPromises()
-    expect(all(w, 'leg-edit-row-0')).toHaveLength(0)
+    expect(all(w, 'leg-row')).toHaveLength(0)
     expect(w.find('h2').text()).not.toBe('Edit leg')
     expect([t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value, t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['', '', 'SELL', '1'])
     const add = t(w, 'add-leg')

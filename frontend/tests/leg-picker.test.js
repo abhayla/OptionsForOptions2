@@ -309,7 +309,7 @@ describe('a late async reply never overwrites newer user state', () => {
     await t(w, 'add-leg').trigger('click')
     await flushPromises()
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('loading')
-    await t(w, 'leg-remove').trigger('click')
+    await t(w, 'remove-leg').trigger('click')
     await flushPromises()
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('no-draft')
     release()
@@ -386,7 +386,7 @@ describe('the Builder page', () => {
     await pick(w, { type: 'CE', strike: '22800.00' })
     await t(w, 'add-leg').trigger('click')
     await flushPromises()
-    await t(w, 'leg-remove').trigger('click')
+    await t(w, 'remove-leg').trigger('click')
     await flushPromises()
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('no-draft')
   })
@@ -404,8 +404,8 @@ describe('the Builder page', () => {
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
     expect(out[0].body).toEqual({ ...draft, fallback: false })
-    expect(w.findAll('[data-testid^="leg-edit-row-"]')).toHaveLength(2) // the picker draws no list of its own on the Builder
-    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(0)
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2) // the one list is LegList's
+    expect(w.findAll('[data-testid="leg-list"]')).toHaveLength(0) // the picker draws no list of its own on the Builder
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
   })
 

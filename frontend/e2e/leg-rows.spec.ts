@@ -26,27 +26,27 @@ const replyFrom = (sent: any, overrides: (i: number) => object) => ({
 })
 
 test('a + sends one edit and the row shows the reply; the tick labels a leg; the depth icon opens that leg', async ({ page }) => {
-  const sent: any[] = []
+  const sent: any[] = [] // the user's edits only: the page's own one-time 'read' on load (readShape, 2+ legs) is not an edit
   await page.route('**/api/strategies/leg-edit', async (route) => {
     const body = route.request().postDataJSON()
-    sent.push(body)
+    if (body.edit.control !== 'read') sent.push(body)
     await route.fulfill({ json: replyFrom(body, (i) => (body.edit.control === 'step' && i === 0 ? { strike: '22850.00' } : {})) })
   })
   await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
-  await expect(page.getByTestId('leg-edit-row-0')).toBeVisible()
+  await expect(page.getByTestId('leg-row').nth(0)).toBeVisible()
 
-  await page.getByTestId('leg-edit-row-0').getByTestId('strike-plus').click()
-  await expect(page.getByTestId('leg-edit-row-0').getByTestId('leg-strike')).toHaveText('22850.00')
+  await page.getByTestId('leg-row').nth(0).getByTestId('strike-plus').click()
+  await expect(page.getByTestId('leg-row').nth(0).getByTestId('leg-strike')).toHaveText('22850.00')
   expect(sent).toHaveLength(1)
   expect(sent[0].edit).toEqual({ control: 'step', index: 0, direction: 1 })
   await expect(page.getByTestId('shape-name')).toContainText('Custom Strategy')
 
-  await page.getByTestId('leg-edit-row-1').getByTestId('leg-tick').uncheck()
-  await expect(page.getByTestId('leg-edit-row-1').getByTestId('left-out-label')).toHaveText('Left out of the numbers')
+  await page.getByTestId('leg-row').nth(1).getByTestId('leg-tick').uncheck()
+  await expect(page.getByTestId('leg-row').nth(1).getByTestId('left-out-label')).toHaveText('Left out of the numbers')
   expect(sent).toHaveLength(2)
   expect(sent[1].edit).toEqual({ control: 'include', index: 1, included: false })
 
-  await page.getByTestId('leg-edit-row-2').getByTestId('leg-depth-icon').click()
+  await page.getByTestId('leg-row').nth(2).getByTestId('depth-icon').click()
   await expect(page.getByTestId('depth-popup')).toHaveAttribute('data-instrument-id', real.legs[2].instrument_id)
 })
 

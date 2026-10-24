@@ -40,7 +40,7 @@ describe('item 1: a leg opened from a link is named once the catalogue answer is
     // contract is now named by the row's own parts. The mock answers every POST with the recorded outcome, so the read
     // control's reply is made leg-edit shaped here (the recorded legs, as the server names them).
     const w = await openPage()
-    const rows = w.findAll('[data-testid^="leg-edit-row-"]')
+    const rows = w.findAll('[data-testid="leg-row"]')
     expect(rows).toHaveLength(4)
     expect(rows.map((r) => [r.find('[data-testid="leg-expiry"]').text(), r.find('[data-testid="leg-strike"]').text(), r.find('[data-testid="leg-type"]').text()]))
       .toEqual(real.legs.map((l) => [l.expiry, l.strike, l.instrument]))

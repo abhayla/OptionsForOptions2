@@ -7,7 +7,7 @@
 import { computed, ref } from 'vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
-import { contractName } from '@/lib/displayFormat'
+import { contractName, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import { CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, canStep } from '@/lib/legEdit'
 
@@ -63,7 +63,9 @@ function setMultiplier(index) {
       <ul>
         <li
           v-for="(leg, i) in legs" :key="leg.id ?? i" class="flex flex-wrap items-center gap-2 py-1"
-          :class="leg.included === false ? 'text-ink-muted opacity-60' : ''" :data-testid="`leg-edit-row-${i}`" :data-included="leg.included === false ? 'false' : 'true'">
+          :class="leg.included === false ? 'text-ink-muted opacity-60' : ''" :data-testid="'leg-row'" :data-index="i" :data-included="leg.included === false ? 'false' : 'true'"
+          :data-instrument-id="leg.instrument_id" :data-action="leg.action" :data-lots="leg.lots" :data-entry="leg.planned_entry ?? ''"
+          :data-captured="leg.captured_at ?? ''" :data-strike="leg.strike ?? ''" :data-type="leg.instrument_type" :data-expiry="leg.expiry">
           <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
           <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'">{{ leg.action }}</span>
           <span data-testid="leg-expiry">{{ leg.expiry ?? '' }}</span>
@@ -76,7 +78,9 @@ function setMultiplier(index) {
           <span v-if="legUnit === 'quantity'" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
           <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
           <span v-if="leg.hedge === true" class="tag" data-testid="hedge-mark">Hedge</span>
+          <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" data-testid="leg-entry">planned entry {{ leg.planned_entry }}</span>
+          <span v-if="leg.planned_entry != null && leg.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ istTime(leg.captured_at) }}</span>
           <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
           <span v-if="leg.included === false" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
           <span v-if="leg.block" class="text-ink-muted" data-testid="leg-block">{{ leg.block }}</span>
@@ -84,9 +88,9 @@ function setMultiplier(index) {
             <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
             <button type="button" data-testid="reprice-leg" class="underline" @click="emit('edit-leg', i)">Reprice</button>
           </template>
-          <button type="button" data-testid="leg-depth-icon" class="underline" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i">Depth</button>
+          <button type="button" data-testid="depth-icon" class="underline" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i">Depth</button>
           <button type="button" data-testid="edit-leg" class="underline" @click="emit('edit-leg', i)">Edit</button>
-          <button type="button" class="underline" data-testid="leg-remove" :aria-label="`Remove ${legName(leg)}`" @click="emit('remove', i)">Remove</button>
+          <button type="button" class="underline" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" @click="emit('remove', i)">Remove</button>
           <DepthPopup v-if="depthFor === i" class="w-full" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
         </li>
       </ul>
