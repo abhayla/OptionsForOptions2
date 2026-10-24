@@ -351,6 +351,25 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
     w.unmount()
   })
+
+  it('REQ-077 AC-9: a draft with one priced leg and one unpriced leg sends no outcome request, opens no socket, shows the unpriced state', async () => {
+    apiAnswer = COMPUTED
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    FakeSocket.all.length = 0
+    const partly = { ...DRAFT, legs: [DRAFT.legs[0], { ...DRAFT.legs[1], planned_entry: null, captured_at: null }] }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(partly) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(state(w)).toBe('unpriced')
+    expect(w.find('[data-testid="state-unpriced"]').exists()).toBe(true)
+    expect(w.find('[data-testid="strategy-table"]').exists()).toBe(false)
+    expect(apiCalls).toEqual([])
+    expect(FakeSocket.all).toHaveLength(0)
+    w.unmount()
+  })
 })
 
 describe('FROM_ENTRIES on the socket: accepted, never marks the socket live', () => {

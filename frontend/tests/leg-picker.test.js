@@ -321,11 +321,27 @@ describe('a late async reply never overwrites newer user state', () => {
 describe('buildDraft: the body the outcome API takes', () => {
   const priced = { underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT, symbol: 'x' }
   const unpriced = { ...priced, instrument_id: 'NSE_FO:44632', planned_entry: null, captured_at: null }
-  it('sends only priced legs, with exactly the five fields its leg model has', () => {
-    expect(buildDraft([priced, unpriced])).toEqual({
+  it('sends every leg, with exactly the five fields its leg model has', () => {
+    expect(buildDraft([priced])).toEqual({
       underlying: 'NIFTY',
       legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
     })
+  })
+  it('REQ-077 AC-9: an included leg without an entry next to a priced one sends no draft', () => {
+    expect(buildDraft([priced, unpriced])).toBeNull()
+    expect(buildDraft([unpriced, priced])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, included: true }])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, captured_at: AT }])).toBeNull()
+    expect(buildDraft([priced, { ...unpriced, planned_entry: '1.00' }])).toBeNull()
+  })
+  it('W-148: an unticked unpriced leg is left out and the priced rest is sent', () => {
+    expect(buildDraft([priced, { ...unpriced, included: false }])).toEqual({
+      underlying: 'NIFTY',
+      legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
+    })
+  })
+  it('issue #500: a leg that is not live still wins', () => {
+    expect(buildDraft([priced, { ...priced, not_live: true }])).toBeNull()
   })
   it('is null when no leg has a planned entry', () => {
     expect(buildDraft([unpriced])).toBeNull()

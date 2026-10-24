@@ -9,6 +9,7 @@ let listAnswer
 let postAnswer
 let failDetailFor = new Set()
 let notLiveFor = new Set() // issue #500: drafts whose leg's stored contract is no longer live
+let partlyPricedFor = new Set() // REQ-077 AC-9: drafts with one priced leg and one leg that has no planned entry
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
@@ -19,7 +20,10 @@ vi.mock('@/services/api', async (importActual) => {
       detailGets.push(id)
       if (failDetailFor.has(id)) return Promise.reject({ parts: { what_happened: `Server says draft ${id} failed`, impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
       return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, ...(notLiveFor.has(id) ? { contract_state: 'token_reassigned', exchange_segment: null, exchange_token: null } : { contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1000 + id }),
-        action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' }] } } })
+        action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' },
+      // REQ-077 AC-9: a second, live leg with no planned entry next to the priced one
+      ...(partlyPricedFor.has(id) ? [{ contract_id: id + 1, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1001 + id,
+        action: 'BUY', instrument: 'CE', strike: '22900', expiry: '2026-10-13', quantity: 65, planned_entry: null, captured_at: null }] : [])] } } })
     }
     const cat = /^\/catalogue\/NIFTY\/contracts/.exec(url)
     if (cat) {
@@ -93,6 +97,7 @@ beforeEach(() => {
   vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
   notLiveFor = new Set()
+  partlyPricedFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
@@ -179,6 +184,18 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     expect(label.attributes('data-not-live')).toBe('true')
     expect(label.text()).toBe(LEG_NOT_LIVE_LABEL)
     expect(label.text()).not.toBe(NOT_CONNECTED_LABEL)
+    expect(FakeSocket.all).toHaveLength(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  it('REQ-077 AC-9: a strategy with one priced leg and one unpriced leg is unpriced and paused, never followed, shows no figure', async () => {
+    partlyPricedFor = new Set([1])
+    listAnswer = { strategies: [row(1)] }
+    const w = await mountPage()
+    const card = cards(w)[0]
+    expect(card.attributes('data-state')).toBe('unpriced')
+    expect(card.find('[data-testid="live-paused-badge"]').exists()).toBe(true)
+    expect(card.find('[data-testid="live-spot"]').exists()).toBe(false)
     expect(FakeSocket.all).toHaveLength(0)
     expect(posts).toHaveLength(0)
   })
