@@ -1,0 +1,29 @@
+{
+ "id": "static-guard-scoped-by-name-text",
+ "scope": "generic",
+ "class": "A static repo guard that decides WHICH code it checks by whether the source text contains the target's name (a URL fragment, a helper's identifier, a file-level keyword) misses every case that reaches the same target without spelling the name: a glob or regex pattern that matches it, a helper imported from another file that does the work, an alias, or a second call site in a file that already passed once (per-file instead of per-site checks).",
+ "mechanism": "Chunk 3 PR 2 (#532 C1): the first cut of tests/test_e2e_live_socket_fakes.py scoped a Playwright spec as a strategy-live fake only when its routeWebSocket pattern text contained `strategies/live` and judged each FILE once (ECHO if it imported echoSeq and called `.stamp(` anywhere, SILENT if it had no `.send(`). An independent Opus check showed a spec routing `'**/live'` (which Playwright matches against /api/strategies/live) was never scanned, and a spec whose handler was imported from a support file that sent unstamped pushes was classed SILENT and passed.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 3 PR 2 round-1 check of build/c3-c2-order-closure head 54f933ef",
+  "evidence": "checker scratch chk2/c1attack.py: A4 (handler imported from a support file that calls ws.send without seq) -> passed the guard; A5 `'**/live'` and A5b `'**/api/strategies/*'` -> not in scope, passed; A3 one extra unstamped send in an ECHO file -> passed; A8 `.stamp(` only in a comment -> passed."
+ },
+ "fix": "Evaluate what the code would match, not what it names: translate each pattern with the framework's own glob rules and test it against the real target URL; check every call site (each send), not each file; follow helpers and aliases by import source; fail closed on a pattern or call the scan cannot evaluate. Prefer a structural guarantee (one shared helper every fake must go through) when the language allows too many shapes.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "tests/test_e2e_live_socket_fakes.py"
+  ],
+  "note": "PARTLY guarded, so status stays unguarded: tests/test_e2e_live_socket_fakes.py (after fix round 1) translates every routeWebSocket pattern with Playwright's glob rules, checks every send, follows echoSeq by import source and the support files inside frontend/e2e a live file imports, and fails closed on a pattern or send it cannot attribute (8 mutants killed). Round-2 Opus check (2026-10-24) still passed two bypasses: a live-route handler imported from OUTSIDE frontend/e2e (`import { go } from '../src/fakeLive'`: _resolve returns None and nothing fails closed), and a forwarded message variable reassigned before the send (`m = JSON.stringify({...}); ws.send(m)` counts as a forward). Owned by the chunk-3 deferred issue; its fix is structural (run-discipline C8): one shared support helper is the only caller of routeWebSocket on any pattern that can match the live URL, and it stamps every push itself."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-133.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "chunk 3 PR 2, C1 guard round 1",
+   "evidence": "A4/A5 bypasses of tests/test_e2e_live_socket_fakes.py"
+  }
+ ]
+}

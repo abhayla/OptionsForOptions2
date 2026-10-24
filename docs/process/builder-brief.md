@@ -96,6 +96,12 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   does. Example: GC-3L met Kite's `InputException` "tag should be max 8 characters", a state no brief had listed.
 
 ## Quality bar (the reviewer will check exactly this)
+- **Gate before PASS (ADR-181):** run `python scripts/orchestrator/gate.py` on your clean worktree after your last
+  commit and paste its last 5 lines, `GATE PASS <sha>` included; a report or a checker PASS without them is not a pass.
+- **Test doubles from the real thing** (finding test-double-encodes-old-assumption, #532 C1): every stand-in model,
+  fake server or socket fake is built from the real class (same base, e.g. ApiModel) or checked against the real
+  server's behaviour; a Playwright spec that answers `**/api/strategies/live` itself stamps every push with
+  `frontend/e2e/support/echoSeq.ts` (repo test `tests/test_e2e_live_socket_fakes.py`).
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
 - **Run the brief's `Attack list:` yourself before reporting** (row-review R1, 2026-10-22: row 2's round 1 failed on
   an attack nobody listed, "a heartbeat alone must not count as a price"). Each item gets a test or a scratch run
