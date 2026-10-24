@@ -162,5 +162,5 @@ export async function fetchSavedDraft(client, id) {
   }
   const legs = legsFromSaved(def, contracts)
   if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
-  return { legs, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
+  return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
 }

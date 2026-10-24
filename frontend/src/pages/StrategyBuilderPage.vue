@@ -239,7 +239,7 @@ async function openFromUrl() {
   try {
     const saved = await fetchSavedDraft(api, id)
     if (legs.value !== before) return // the user changed the legs while the read was out: never overwrite them
-    openSaved(saved.legs, Number(id), saved.revision, saved.name)
+    openSaved(saved.legs, saved.id, saved.revision, saved.name)
   } catch (e) {
     openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
   }
