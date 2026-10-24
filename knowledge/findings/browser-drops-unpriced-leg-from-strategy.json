@@ -1,0 +1,28 @@
+{
+ "id": "browser-drops-unpriced-leg-from-strategy",
+ "scope": "generic",
+ "class": "When the browser builds the request for a strategy's numbers by filtering its legs to the ones it can price, a strategy with one unpriced leg is sent as a smaller strategy, and the screen shows that smaller strategy's P&L as if it were the whole one; the server's own refusal for an unpriced leg never runs because the leg never reaches it.",
+ "mechanism": "frontend/src/lib/legPicker.js buildDraft kept `legs.filter(l => included && planned_entry != null && captured_at != null)` and returned a draft whenever at least one leg survived; all six callers (Builder page x3, Live Strategies card, Execute screen, My Strategies) sent that draft. backend/ofo/outcome/service.py build_outcome answers 'reprice' for a leg without an entry, but only for legs it receives.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "row 21 CI fix (branch build/seq-ci-21), found while reviewing the twin e2e case: the builder's twin used a draft with EVERY leg unpriced, which hides the partial case",
+  "evidence": "frontend/tests/leg-picker.test.js: buildDraft([priced, unpriced]) returned a one-leg draft on 6bac88cf (1 failed), null after 507f7662 (passes); mutant removing the guard failed 12 tests, mutant ignoring `included` failed the W-148 unticked-leg test. Real path: REQ-077 AC-5 per-leg reset with no live price leaves one leg unpriced next to a priced one."
+ },
+ "fix": "Structural: buildDraft returns null when ANY included leg lacks planned_entry or captured_at (same fail-closed shape as the issue #500 not_live guard); unticked legs (W-148) are still left out on purpose. Every caller then shows its unpriced / not-live state.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["frontend/tests/leg-picker.test.js"],
+  "note": "Guarded by the buildDraft unit cases (priced+unpriced -> null; priced + unticked unpriced -> priced-only draft) and the two Playwright twins with one priced and one unpriced leg (e2e/strategy-live.spec.ts, e2e/live-strategies.spec.ts). Not covered: a future caller that builds its own draft without buildDraft."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-077.md",
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "row 21 CI fix, chunk 2",
+   "evidence": "as first_seen"
+  }
+ ]
+}
