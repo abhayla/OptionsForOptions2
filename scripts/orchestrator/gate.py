@@ -26,14 +26,18 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
 PYTHON = sys.executable
-PYTEST = [PYTHON, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-PYTEST_APP = [PYTHON, "-m", "pytest", "-c", "pytest-app.ini", "-q", "-p", "no:cacheprovider"]
+# Finding local-pytest-plugin-not-in-ci: a plugin only this PC has (hypothesis) ran at the end of a session under the
+# egress hook and failed the run; no repo test imports it and CI does not install it, so every pytest step turns it off.
+NO_HYPOTHESIS = ["-p", "no:hypothesispytest"]
+PYTEST = [PYTHON, "-m", "pytest", "-q", "-p", "no:cacheprovider", *NO_HYPOTHESIS]
+PYTEST_APP = [PYTHON, "-m", "pytest", "-c", "pytest-app.ini", "-q", "-p", "no:cacheprovider", *NO_HYPOTHESIS]
 GUARD_GLOB = "tests/test_*.py"
 MONEY_GUARD = "tests/test_money_outside_engine.py"
 ROOT_ARG = "<root>"
@@ -45,7 +49,8 @@ TAIL_LINES = 30
 WORKFLOW = "App tests"
 GH_RUN_LIMIT = 10
 # `npm run format:check` is `prettier --check src/` and is red on 93 files of main, so the gate checks only the
-# files this branch changed under frontend/src/, with the extensions prettier handles there.
+# files this branch changed under frontend/src/, with the extensions prettier handles there, and fails a file only when
+# it is new or was formatted at the merge base (an old unformatted file the branch touches is counted, not failed).
 FORMAT_DIR = "src/"
 FORMAT_EXT = (".js", ".mjs", ".cjs", ".ts", ".vue", ".css", ".json", ".html", ".md")
 # The database variables the app-selected child must not see (database tests then skip, tests_app/conftest.py).
@@ -271,21 +276,120 @@ def parse_selection(lines: list) -> list | None:
     return files
 
 
-def run_format(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
-    """prettier --check on the frontend files changed against origin/main; none changed = pass, `0 files`."""
-    log = log_dir / f"{step.name}.log"
-    list_log = log_dir / f"{step.name}-files.log"
-    diff = ["git", "diff", "--name-only", "--diff-filter=ACMR", "origin/main...HEAD", "--", f"{FRONTEND}/"]
-    code = runner(diff, root, env, list_log)
+PRETTIER_OK, PRETTIER_UNFORMATTED = 0, 1  # any other prettier exit code (2 = error) fails closed
+FORMAT_PREFIX = "frontend-format:"
+
+
+class Ctx(NamedTuple):
+    """What one step needs to run commands: its definition, checkout, runner, log folder and environment."""
+
+    step: Step
+    root: Path
+    runner: Runner
+    log_dir: Path
+    env: dict
+
+
+def diff_args(kinds: str) -> list:
+    """git diff of the frontend files of kind `kinds` (A added, C copied, M modified, R renamed) against origin/main;
+    --no-renames turns a rename into delete + add, so a moved file counts as new."""
+    return ["diff", "--name-only", "--no-renames", f"--diff-filter={kinds}", "origin/main...HEAD", "--", f"{FRONTEND}/"]
+
+
+def git_lines(ctx: Ctx, log_name: str, args: list) -> tuple:
+    """(exit code, output lines) of one git command run without a shell; the log keeps its output."""
+    log = ctx.log_dir / log_name
+    code = ctx.runner(["git", *args], ctx.root, ctx.env, log)
+    return code, [ln.strip() for ln in tail(log, 100000) if ln.strip()]
+
+
+COPY_PREFIX = ".gate-copy-"
+
+
+def committed_answer(ctx: Ctx, rev: str, rel: str) -> tuple:
+    """(git exit code, prettier exit code) for the version of `rel` committed at `rev`. The blob (`git show`, so the
+    checkout's line endings never count) is written to a fresh temp file in the file's own folder with its extension
+    (same prettier config, same line endings for both sides) and removed after; a non-zero git code = "cannot tell"."""
+    show_log = ctx.log_dir / "frontend-format-show.log"
+    code = ctx.runner(["git", "show", f"{rev}:{FRONTEND}/{rel}"], ctx.root, ctx.env, show_log)
     if code != 0:
-        return code, list_log.name
+        return code, PRETTIER_OK
+    folder = ctx.root / FRONTEND / Path(rel).parent
+    with tempfile.NamedTemporaryFile(dir=folder, prefix=COPY_PREFIX, suffix=Path(rel).suffix, delete=False) as copy:
+        copy.write(show_log.read_bytes())
+    try:
+        name = (Path(rel).parent / Path(copy.name).name).as_posix()
+        return 0, ctx.runner([*ctx.step.argv, name], ctx.root / ctx.step.cwd, ctx.env,
+                             ctx.log_dir / "frontend-format-file.log")
+    finally:
+        Path(copy.name).unlink(missing_ok=True)
+
+
+def ratchet(ctx: Ctx, files: list, added: set) -> tuple:
+    """(exit code, log lines): which of `files` fail the ratchet. Each file's prettier answer is read on its own."""
+    code, base = git_lines(ctx, "frontend-format-base-sha.log", ["merge-base", "origin/main", "HEAD"])
+    if code != 0 or len(base) != 1 or not SHA.fullmatch(base[0]):
+        return code or GATE_FAILED, ["cannot read the merge base: failing closed"]
+    failed: list = []
+    old_debt = 0
+    for rel in files:
+        code, answer = committed_answer(ctx, "HEAD", rel)
+        if code != 0:
+            return code, [f"cannot read the committed version of {rel} (exit {code}): failing closed"]
+        if answer == PRETTIER_OK:
+            continue
+        if answer != PRETTIER_UNFORMATTED:
+            return answer, [f"prettier exited {answer} on {rel}: failing closed"]
+        if rel in added:
+            failed.append(f"{rel}: new file, not formatted")
+            continue
+        code, base_answer = committed_answer(ctx, base[0], rel)
+        if code != 0:
+            return code, [f"cannot read or check the base version of {rel} (exit {code}): failing closed"]
+        if base_answer not in (PRETTIER_OK, PRETTIER_UNFORMATTED):
+            return base_answer, [f"prettier exited {base_answer} on the base version of {rel}: failing closed"]
+        if base_answer == PRETTIER_UNFORMATTED:
+            old_debt += 1
+        else:
+            failed.append(f"{rel}: formatted at the merge base, unformatted now")
+    summary = [f"{FORMAT_PREFIX} {len(files)} checked, {old_debt} already unformatted at base (not failed)"]
+    return (GATE_FAILED if failed else 0), [*failed, *summary]
+
+
+def run_format(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
+    """prettier --check on the frontend files changed against origin/main, as a ratchet: a file fails when it is
+    unformatted now AND (new on this branch OR formatted at the merge base). None changed = pass, `0 files`."""
+    ctx = Ctx(step, root, runner, log_dir, env)
+    log = log_dir / f"{step.name}.log"
+    code, names = git_lines(ctx, f"{step.name}-files.log", diff_args("ACMR"))
+    if code != 0:
+        return code, f"{step.name}-files.log"
+    code, added = git_lines(ctx, f"{step.name}-new.log", diff_args("A"))
+    if code != 0:
+        return code, f"{step.name}-new.log"
     prefix = f"{FRONTEND}/"
-    files = [n[len(prefix):] for n in tail(list_log, 100000)
+    files = [n[len(prefix):] for n in names
              if n.startswith(prefix + FORMAT_DIR) and n.endswith(FORMAT_EXT) and (root / n).is_file()]
     if not files:
         log.write_text("0 files\n", encoding="utf-8")
         return 0, None
-    return runner([*step.argv, *files], root / step.cwd, env, log), None
+    code = runner([*step.argv, *files], root / step.cwd, env, log)  # the common case: every file is formatted
+    if code == PRETTIER_OK:
+        log.write_text(f"{FORMAT_PREFIX} {len(files)} checked, 0 already unformatted at base (not failed)\n",
+                       encoding="utf-8")
+        return 0, None
+    if code != PRETTIER_UNFORMATTED:
+        return code, None
+    code, summary = ratchet(ctx, files, {a[len(prefix):] for a in added})
+    log.write_text("\n".join(summary) + "\n", encoding="utf-8")
+    return code, None
+
+
+def print_format_summary(log_dir: Path, step: Step, out: Callable[[str], None]) -> None:
+    """After a passing format step: its `N checked, M already unformatted at base` line (nothing for `0 files`)."""
+    for line in tail(log_dir / f"{step.name}.log", 1):
+        if line.startswith(FORMAT_PREFIX):
+            out(line)
 
 
 def changed_names(runner: Runner, root: Path, env: dict, list_log: Path, folder: str) -> tuple:
@@ -379,6 +483,8 @@ def run_gate(root: Path, log_dir: Path, runner: Runner, out: Callable[[str], Non
                 out(line)
             out(f"GATE FAIL {step.name}: exit {code}")
             return GATE_FAILED
+        if step.kind == "format":
+            print_format_summary(log_dir, step, out)
     code, dirty = git_text(runner, root, log_dir, "clean-tree-after", ["status", "--porcelain"])
     code2, head_after = git_text(runner, root, log_dir, "head-after", ["rev-parse", "HEAD"])
     if code != 0 or dirty or code2 != 0 or head_after != head:
