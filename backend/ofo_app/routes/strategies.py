@@ -436,8 +436,8 @@ async def _tracked_ids(db: Any, ids: list[int]) -> set[int] | None:
 
 
 @router.patch("/strategies/{strategy_id}/name", response_model=RenamedOut, response_model_exclude_unset=True)
-async def rename_strategy(strategy_id: int, body: StrategyNameIn, db: Any = Depends(get_db),
-                          user_ref: str = Depends(current_user_ref)) -> RenamedOut:
+async def rename_strategy(strategy_id: int, body: StrategyNameIn, db: Annotated[Any, Depends(get_db)],
+                          user_ref: Annotated[str, Depends(current_user_ref)]) -> RenamedOut:
     """REQ-134 AC-3: changes only the name (and adds one history entry). 404 for another user's strategy, 409 on a
     stale revision, 422 for an empty or over-long name."""
     async def work():

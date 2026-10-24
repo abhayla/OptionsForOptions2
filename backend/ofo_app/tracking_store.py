@@ -31,7 +31,8 @@ _INSERT_LEG = text(
     "price_at) VALUES (:id, :leg_index, :contract_id, :side, :quantity, :entry_price, :price_at)")
 _SELECT_TRACKING = text("SELECT started_at, prices_at, strategy_revision FROM public.strategy_tracking "
                         "WHERE strategy_id = :id")
-_SELECT_TRACKED = text("SELECT strategy_id FROM public.strategy_tracking WHERE strategy_id = ANY(CAST(:ids AS BIGINT[]))")
+_SELECT_TRACKED = text(
+    "SELECT strategy_id FROM public.strategy_tracking WHERE strategy_id = ANY(CAST(:ids AS BIGINT[]))")
 _SELECT_LEGS = text("SELECT leg_index, contract_id, side, quantity, entry_price, price_at "
                     "FROM public.strategy_tracking_legs WHERE strategy_id = :id ORDER BY leg_index")
 

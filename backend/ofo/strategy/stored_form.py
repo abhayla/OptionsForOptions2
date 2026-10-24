@@ -590,9 +590,9 @@ def check_summary_text(text: str) -> str:
 
 
 def check_strategy_name(text: object) -> UserWords:
-    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_MAX characters, one line. Returns the
-    user's words (the request door, ofo.errors.explanations.REQUEST_LAYER); StoredFormError otherwise. Duplicates are
-    allowed, so nothing here looks at other names."""
+    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_MAX characters, one line. Returns
+    the user's words (the request door, ofo.errors.explanations.REQUEST_LAYER); StoredFormError otherwise.
+    Duplicates are allowed, so nothing here looks at other names."""
     trimmed = text.strip() if type(text) is str else text
     problem = name_problem(trimmed)
     if problem is None:

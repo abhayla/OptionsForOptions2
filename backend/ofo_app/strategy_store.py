@@ -102,8 +102,9 @@ class RenamedStrategy:
 _COLUMNS = "id, user_ref, status, created_at, updated_at, revision, name, definition::text AS definition_text"
 BIGINT_MAX = 2**63 - 1  # strategies.id (BIGSERIAL)
 _INSERT = text(
-    "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version, name) "
-    f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}")
+    "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version, name) "  # noqa: S608
+    f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}"
+)
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref")
 _SELECT_FOR_UPDATE = text(
     f"SELECT {_COLUMNS}, underlying FROM public.strategies WHERE id = :id AND user_ref = :user_ref FOR UPDATE")

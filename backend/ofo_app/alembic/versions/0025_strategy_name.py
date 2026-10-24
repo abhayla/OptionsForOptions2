@@ -159,7 +159,8 @@ def upgrade() -> None:
     op.execute(f"SELECT {_BASE.ALLOWLIST_FUNCTION}('{role}', 'pre')")
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} ADD COLUMN {NAME_COLUMN} TEXT NOT NULL DEFAULT '{DEFAULT_NAME}'")
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} ADD CONSTRAINT {NAME_CONSTRAINT} CHECK ("
-               f"char_length(btrim({NAME_COLUMN})) BETWEEN 1 AND {NAME_MAX} AND char_length({NAME_COLUMN}) <= {NAME_MAX} "
+               f"char_length(btrim({NAME_COLUMN})) BETWEEN 1 AND {NAME_MAX} "
+               f"AND char_length({NAME_COLUMN}) <= {NAME_MAX} "
                f"AND {NAME_COLUMN} !~ '{CONTROL_REGEX}')")
     op.execute(f'GRANT INSERT ({NAME_COLUMN}) ON TABLE {_M8.STRATEGIES} TO "{role}"')
     op.execute(f'GRANT UPDATE ({NAME_COLUMN}) ON TABLE {_M8.STRATEGIES} TO "{role}"')
@@ -175,7 +176,8 @@ def downgrade() -> None:
             has_names BOOLEAN := FALSE;
         BEGIN
             EXECUTE 'LOCK TABLE {_M8.STRATEGIES}, {_M8.HISTORY} IN ACCESS EXCLUSIVE MODE';
-            EXECUTE 'SELECT EXISTS (SELECT 1 FROM {_M8.STRATEGIES} WHERE {NAME_COLUMN} <> ''{DEFAULT_NAME}'')' INTO has_names;
+            EXECUTE 'SELECT EXISTS (SELECT 1 FROM {_M8.STRATEGIES}
+                                    WHERE {NAME_COLUMN} <> ''{DEFAULT_NAME}'')' INTO has_names;
             IF has_names THEN
                 RAISE EXCEPTION 'refusing to downgrade {revision}: a strategy in {_M8.STRATEGIES} has a name the user chose';
             END IF;
@@ -186,7 +188,7 @@ def downgrade() -> None:
             END IF;
         END
         $down$;
-        """
+        """  # noqa: E501, S608 constant names, one message line
     )
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} DROP CONSTRAINT {NAME_CONSTRAINT}")
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} DROP COLUMN {NAME_COLUMN}")  # its column grants go with it

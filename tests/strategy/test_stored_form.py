@@ -293,7 +293,8 @@ from ofo.errors import explanations  # noqa: E402
 from ofo.errors.explanations import UserWords  # noqa: E402
 
 
-@pytest.mark.parametrize("typed,stored", [("a", "a"), ("x" * 40, "x" * 40), ("  NIFTY Oct condor  ", "NIFTY Oct condor"),
+@pytest.mark.parametrize("typed,stored", [("a", "a"), ("x" * 40, "x" * 40),
+                                          ("  NIFTY Oct condor  ", "NIFTY Oct condor"),
                                           ("You should buy now", "You should buy now"),
                                           ("<b>bold</b>", "<b>bold</b>"), ("New Strategy", "New Strategy")])
 def test_req134_ac1_a_name_of_1_to_40_characters_after_trimming_is_accepted_as_the_users_words(typed, stored):

@@ -1,8 +1,8 @@
 """REQ-134 AC-1/AC-3 (W-157, part 29b): migration 0025 stores a strategy's name beside its definition.
 
-Spec basis (quoted): REQ-134 AC-1 "1 to 40 characters after trimming spaces"; "Two strategies of one user may share a name";
-AC-3 "Renaming changes only the name; it adds a history entry ... and never changes legs, prices, tracking state or
-version"; ADR-048 (the limited application role keeps what it had, plus the name column).
+Spec basis (quoted): REQ-134 AC-1 "1 to 40 characters after trimming spaces"; "Two strategies of one user may share a
+name"; AC-3 "Renaming changes only the name; it adds a history entry ... and never changes legs, prices, tracking
+state or version"; ADR-048 (the limited application role keeps what it had, plus the name column).
 
 Core proof (first three tests): the limited ofo_app role writes a name on INSERT, a name-only UPDATE passes the guard
 trigger and leaves the definition, the revision and the last-saved time alone, and an UPDATE of any other column is
@@ -31,7 +31,8 @@ INSERT_NO_NAME = ("INSERT INTO public.strategies (user_ref, underlying, definiti
                   "VALUES (:u, 'NIFTY', CAST(:d AS JSONB), 1) RETURNING id")
 INSERT_HISTORY = ("INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
                   "definition_schema_version) VALUES (:id, CAST(:s AS JSONB), CAST(:d AS JSONB), 1)")
-SNAPSHOT = text("SELECT name, revision, updated_at, definition::text AS definition FROM public.strategies WHERE id = :id")
+SNAPSHOT = text(
+    "SELECT name, revision, updated_at, definition::text AS definition FROM public.strategies WHERE id = :id")
 LEG = {"contract_id": 1001, "action": "SELL", "instrument": "CE", "strike": "23000", "expiry": "2026-10-29",
        "quantity": 75}
 DEFINITION = json.dumps({"schema_version": 1, "underlying": "NIFTY", "legs": [LEG], "rules_ref": None,
@@ -102,10 +103,10 @@ async def test_core_3_an_update_of_any_other_column_is_still_refused_for_the_app
         trans = await conn.begin()
         try:
             strategy_id = await _new_strategy(conn, "test-0025-other")
-            state, _ = await _verdict(conn, f"UPDATE public.strategies SET {column} = {value} WHERE id = :id",
+            state, _ = await _verdict(conn, f"UPDATE public.strategies SET {column} = {value} WHERE id = :id",  # noqa: S608
                                       {"id": strategy_id})
             assert state == NO_PRIVILEGE, f"{column}: {state}"
-            state, _ = await _verdict(conn, f"UPDATE public.strategies SET name = 'x', {column} = {value} "
+            state, _ = await _verdict(conn, f"UPDATE public.strategies SET name = 'x', {column} = {value} "  # noqa: S608
                                             "WHERE id = :id", {"id": strategy_id})
             assert state == NO_PRIVILEGE, f"name + {column}: {state}"
         finally:
@@ -121,7 +122,7 @@ async def test_the_guard_itself_refuses_every_fixed_column_even_for_the_owner(ad
         try:
             strategy_id = await _new_strategy(conn, "test-0025-guard")
             state, message = await _verdict(
-                conn, f"UPDATE public.strategies SET name = 'renamed', {column} = {value} WHERE id = :id",
+                conn, f"UPDATE public.strategies SET name = 'renamed', {column} = {value} WHERE id = :id",  # noqa: S608
                 {"id": strategy_id})
             assert state in (GUARD_REFUSAL, CHECK_VIOLATION), f"{column}: {state} {message}"
             assert (await conn.execute(SNAPSHOT, {"id": strategy_id})).one().name == "NIFTY Oct condor"
@@ -185,7 +186,7 @@ async def test_duplicate_names_are_allowed(app_engine):
     ([{"kind": "renamed_by_someone", "from": "Old", "to": "New"}], False),
 ])
 async def test_the_renamed_history_item_is_a_closed_shape(app_engine, summary, ok):
-    """AC-3: the history item is exactly kind, from, to - two trimmed 1..40 character strings; anything else is refused."""
+    """AC-3: the history item is exactly kind, from, to: two trimmed 1..40 character strings; all else is refused."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
