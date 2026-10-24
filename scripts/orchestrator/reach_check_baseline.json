@@ -126,16 +126,6 @@
    "issue": "#532"
   },
   {
-   "key": "UNREACHED REQ-034 W-003 AC-6",
-   "reason": "unreached: ofo.scenario.outcome imported by no app entry point - #532",
-   "issue": "#532"
-  },
-  {
-   "key": "UNREACHED REQ-034 W-003 AC-8",
-   "reason": "unreached: ofo.scenario.outcome imported by no app entry point - #532",
-   "issue": "#532"
-  },
-  {
    "key": "UNRESOLVED REQ-035 W-064 AC-3",
    "reason": "unresolved: evidence names no python test - #532",
    "issue": "#532"

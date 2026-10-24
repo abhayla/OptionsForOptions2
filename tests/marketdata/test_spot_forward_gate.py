@@ -14,7 +14,7 @@ import math
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.model import ModelInputs, SpotRefused, estimate, expiry_model, greeks, implied_vol, model_inputs
@@ -23,12 +23,9 @@ from ofo.marketdata.kite_provider import IST
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
 from ofo.scenario.levels import build_level_set
-from ofo.scenario.outcome import payoff_graph, scenario_table
 from ofo.scenario.views import View, scenario_values
 from ofo.table.columns import ColumnId
 from ofo.table.model import build_table
-
-from _kite_fixture import all_instrument_ids, new_provider, replay
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -76,16 +73,12 @@ def _all_outputs(model):
     ls = build_level_set(model, CONFIG)
     est_view = scenario_values(ls, model, View.ESTIMATED_NOW)
     table = build_table(model, level_set=ls, scenario=est_view)
-    graph = payoff_graph(model, CONFIG, View.ESTIMATED_NOW)
-    st = scenario_table(model, CONFIG, View.ESTIMATED_NOW)
     est = estimate(model, model.spot_level)
     em = model.expiry_model(EXPIRY)
     iv = implied_vol(em, Instrument.CE, Decimal("100.00"), STRIKE)
     g = greeks(em, Instrument.CE, STRIKE, VOL)
     return [
         ("scenario_values", est_view.totals, est_view.spot_level, est_view.spot_at, est_view.output_label),
-        ("scenario_table", st.values.totals, st.values.spot_level, st.values.spot_at, st.values.output_label),
-        ("payoff_graph", graph.points, graph.spot_level, graph.spot_at, graph.output_label),
         ("build_table", table.rows[-1].cell(ColumnId.DELTA).value, table.spot_level, table.spot_at, table.output_label),
         ("estimate", est.total, est.spot_level, est.spot_at, est.label),
         ("implied_vol", iv.iv, iv.spot_level, iv.spot_at, iv.label),
@@ -167,7 +160,7 @@ def test_every_entry_point_refuses_an_ungated_input(live_forward):
     model = model_inputs(raw, {EXPIRY: live_forward})
     ls = build_level_set(model, CONFIG)
     calls = [lambda: build_level_set(raw, CONFIG), lambda: scenario_values(ls, raw, View.ESTIMATED_NOW),
-             lambda: scenario_table(raw, CONFIG), lambda: payoff_graph(raw, CONFIG), lambda: build_table(raw),
+             lambda: build_table(raw),
              lambda: estimate(raw, Decimal("22533.25")),
              lambda: greeks(raw, Instrument.CE, STRIKE, VOL), lambda: implied_vol(raw, Instrument.CE,
                                                                                   Decimal("100.00"), STRIKE)]
