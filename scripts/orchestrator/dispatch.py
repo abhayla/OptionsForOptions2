@@ -2,15 +2,18 @@
 
 Usage: python scripts/orchestrator/dispatch.py <row> <measure.json> --kind build|fix|verify-r2 --out <brief.md>
            --worktree <builder worktree> (--in-flight <worktree>=<start-ref> [...] | --no-in-flight)
-           [--ledger <path>] [--root <repo>]
+           [--redesign "<reason>"] [--ledger <path> --test-ledger] [--root <repo>]
 
 Runs STEPS in order and stops at the first refusal. Exit 0 accepted (one line appended to the ledger, then
 `DISPATCH OK ...`), 1 a step refused, 2 bad usage (including neither --in-flight nor --no-in-flight: nobody silently
 skips the overlap check), 4 the builder worktree is not ready (the setup steps are printed). Every child runs as an argv
 list without a shell and its exit code is read directly: only 0 passes; any other code, or a child that cannot be
 started, refuses. The ledger (default `<git common dir>/ofo-dispatch-ledger.jsonl`, shared by every worktree) holds
-accepted dispatches only; a third `fix` dispatch of one row is refused (ADR-106: park or redesign after round 2), and an
-unreadable ledger line refuses instead of counting as empty. CI and the merge gate stay the authority (ADR-181).
+accepted dispatches only; after two `fix` dispatches of one row every further `build` or `fix` of it is refused (ADR-106:
+park or redesign after round 2) unless `--redesign "<reason>"` (at least four words, naming the independent reviewer or
+the redesign) is given, and the reason is recorded in the ledger line; `verify-r2` is never counted or blocked. A
+`--ledger` other than the default is refused without `--test-ledger` (tests only), and an unreadable ledger line
+refuses instead of counting as empty. CI and the merge gate stay the authority (ADR-181).
 """
 from __future__ import annotations
 
@@ -32,9 +35,11 @@ STEPS = ("round-limit", "worktree-ready", "make-brief", "check-brief", "copy-fro
 MAX_FIX_ROUNDS = 2
 EXIT_REFUSED, EXIT_USAGE, EXIT_NOT_READY = 1, 2, 4
 ROUND_REFUSAL = ("third fix round - park it (run-discipline B1) or get an independent redesign "
-                 "(ADR-106)")
+                 "(ADR-106) and pass --redesign \"<reason>\"")
+GATED_KINDS = ("build", "fix")  # kinds a row that used up its fix rounds may not be dispatched under
+MIN_REDESIGN_WORDS = 4
 LEDGER_NAME = "ofo-dispatch-ledger.jsonl"
-LEDGER_KEYS = ("row", "kind", "round", "brief", "brief_sha256", "at", "session")
+LEDGER_KEYS = ("row", "kind", "round", "brief", "brief_sha256", "at", "session", "redesign")
 MAIN_BRANCH = "main"
 Runner = Callable[[list[str]], int]
 
@@ -133,8 +138,11 @@ def _planned_files(measure: Path, kind: str) -> list[str]:
     return files
 
 
-def _ledger_path(root: Path, given: str | None) -> Path:
+def _ledger_path(root: Path, given: str | None, test_ledger: bool) -> Path:
     if given:
+        if not test_ledger:
+            raise Refused("--ledger names a ledger other than the shared one: only tests may (--test-ledger); "
+                          "a fresh path would reset every row's round count")
         return Path(given)
     common = _git(root, "rev-parse", "--git-common-dir")
     if not common:
@@ -157,6 +165,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--in-flight", action="append", default=[], metavar="WORKTREE=START_REF")
     ap.add_argument("--no-in-flight", action="store_true")
     ap.add_argument("--ledger", default=None)
+    ap.add_argument("--test-ledger", action="store_true")
+    ap.add_argument("--redesign", default="")
     ap.add_argument("--root", default=str(HERE.parents[1]))
     return ap
 
@@ -174,6 +184,8 @@ class Job:
     out: Path
     measure: Path
     ledger_arg: str | None
+    test_ledger: bool
+    redesign: str
     in_flight: tuple[tuple[str, str], ...]
     runner: Runner
     now: Callable[[], datetime] | None
@@ -190,15 +202,23 @@ def _parse(argv: Sequence[str] | None, runner: Runner, now: Callable[[], datetim
         if not sep or not where or not ref:
             ap.error(f"--in-flight needs <worktree>=<start-ref>, got {spec!r}")
         pairs.append((where, ref))
+    redesign = " ".join(args.redesign.split())
+    if redesign and len(redesign.split()) < MIN_REDESIGN_WORDS:
+        ap.error(f"--redesign needs at least {MIN_REDESIGN_WORDS} words naming the independent reviewer or redesign")
     return Job(args.row, args.kind, Path(args.root).resolve(), Path(args.worktree).resolve(), Path(args.out),
-               Path(args.measure), args.ledger, tuple(pairs), runner, now)
+               Path(args.measure), args.ledger, args.test_ledger, redesign, tuple(pairs), runner, now)
+
+
+def _check_rounds(job: Job, entries: list[dict]) -> None:
+    """After MAX_FIX_ROUNDS accepted fixes of a row, build and fix of it need a recorded redesign reference."""
+    if job.kind in GATED_KINDS and count_rounds(entries, job.row, "fix") >= MAX_FIX_ROUNDS and not job.redesign:
+        raise Refused(ROUND_REFUSAL)
 
 
 def _step_round_limit(job: Job) -> Path:
-    ledger = _ledger_path(job.root, job.ledger_arg)
+    ledger = _ledger_path(job.root, job.ledger_arg, job.test_ledger)
     entries = read_ledger(ledger)  # always: a corrupt ledger refuses every kind, before any child runs
-    if job.kind == "fix" and count_rounds(entries, job.row, "fix") >= MAX_FIX_ROUNDS:
-        raise Refused(ROUND_REFUSAL)
+    _check_rounds(job, entries)
     return ledger
 
 
@@ -257,8 +277,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = _real_runner,
 
 def _record(job: Job, ledger: Path) -> None:
     entries = read_ledger(ledger)  # read again: another session may have dispatched since the first look
-    if job.kind == "fix" and count_rounds(entries, job.row, "fix") >= MAX_FIX_ROUNDS:
-        raise Refused(ROUND_REFUSAL)
+    _check_rounds(job, entries)
     try:
         digest = hashlib.sha256(job.out.read_bytes()).hexdigest()
     except OSError as exc:
@@ -266,14 +285,14 @@ def _record(job: Job, ledger: Path) -> None:
     number = count_rounds(entries, job.row, job.kind) + 1
     stamp = (job.now or (lambda: datetime.now(UTC)))().isoformat()
     entry = dict(zip(LEDGER_KEYS, (norm(job.row), job.kind, number, str(job.out), digest, stamp,
-                                   os.environ.get("CLAUDE_SESSION_ID") or "unknown"), strict=True))
+                                   os.environ.get("CLAUDE_SESSION_ID") or "unknown", job.redesign), strict=True))
     try:
         ledger.parent.mkdir(parents=True, exist_ok=True)
         with ledger.open("a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(entry) + "\n")
     except OSError as exc:
         raise Refused(f"cannot write ledger {ledger} ({type(exc).__name__})") from exc
-    sys.stdout.write(f"DISPATCH OK row {norm(job.row)} {job.kind} round {number} brief {job.out}\n")
+    sys.stdout.write(f"DISPATCH OK row {norm(job.row)} {job.kind} round {number} brief {job.out} ledger {ledger}\n")
 
 
 if __name__ == "__main__":

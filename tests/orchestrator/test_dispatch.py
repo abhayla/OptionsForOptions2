@@ -18,6 +18,8 @@ sys.path.insert(0, str(REPO / "scripts" / "orchestrator"))
 import dispatch  # noqa: E402
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "measure-24.json"
+FIXTURE_C1 = pathlib.Path(__file__).parent / "fixtures" / "measure-c1.json"
+STALE_REASON = "REFUSED: the rendered brief fails its checks"  # make_brief's own refusal line, not a traceback
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t.invalid"]
 SCRIPT_ORDER = ["make_brief.py", "check_brief.py", "copy_from_check.py", "overlap_gate.py"]
 STEP_OF = {"make_brief.py": "make-brief", "check_brief.py": "check-brief", "copy_from_check.py": "copy-from",
@@ -81,10 +83,10 @@ class Fake:
         return [pathlib.Path(c[1]).name for c in self.calls]
 
 
-def run(env, row="21c", kind="build", fake=None, in_flight=("--no-in-flight",), **over):
+def run(env, row="21c", kind="build", fake=None, in_flight=("--no-in-flight",), redesign=None, **over):
     argv = [row, str(over.get("measure") or env["measure"]), "--kind", kind, "--out", str(env["out"]),
-            "--worktree", str(over.get("wt") or env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]),
-            *in_flight]
+            "--worktree", str(over.get("wt") or env["wt"]), "--ledger", str(env["ledger"]), "--test-ledger",
+            "--root", str(env["root"]), *in_flight, *(["--redesign", redesign] if redesign else [])]
     fake = fake or Fake()
     return dispatch.main(argv, runner=fake), fake
 
@@ -153,6 +155,87 @@ def test_build_and_verify_r2_are_never_counted_as_fix_rounds(env):
                       ("fix", 1), ("fix", 2)]
 
 
+REDESIGN = "independent reviewer Opus fresh context found the cause"
+
+
+def test_build_after_two_fix_rounds_is_refused_without_a_redesign(env, capsys):
+    """Attack 1 (round-1 MAJOR): two fixes then a build of the same row was `DISPATCH OK row c1 build round 1`."""
+    assert [run(env, kind="fix")[0] for _ in range(2)] == [0, 0]
+    code, fake = run(env, kind="build")
+    assert (code, fake.calls) == (1, [])
+    assert "DISPATCH REFUSED row 21c: third fix round" in capsys.readouterr().out
+    assert [e["kind"] for e in ledger_lines(env)] == ["fix", "fix"]
+
+
+@pytest.mark.parametrize("kind", ["build", "fix"])
+def test_redesign_reason_lets_the_row_through_and_is_recorded(env, capsys, kind):
+    for _ in range(2):
+        run(env, kind="fix")
+    code, _ = run(env, kind=kind, redesign=REDESIGN)
+    assert code == 0
+    assert ledger_lines(env)[-1]["redesign"] == REDESIGN
+    assert ledger_lines(env)[0]["redesign"] == ""
+    assert "DISPATCH OK row 21c" in capsys.readouterr().out
+
+
+def test_verify_r2_is_not_blocked_after_two_fix_rounds(env):
+    for _ in range(2):
+        run(env, kind="fix")
+    assert run(env, kind="verify-r2")[0] == 0
+
+
+def test_another_row_is_not_blocked_by_this_rows_fix_rounds(env):
+    for _ in range(2):
+        run(env, kind="fix")
+    assert run(env, row="22", kind="build")[0] == 0
+
+
+def test_normalised_row_build_after_two_fixes_is_refused(env):
+    for row in ("21c", " 21C"):
+        run(env, row=row, kind="fix")
+    assert run(env, row="21C ", kind="build")[0] == 1
+
+
+@pytest.mark.parametrize("reason", ["fixed", "too few words", "   "])
+def test_redesign_with_fewer_than_four_words_is_a_usage_error(env, reason):
+    for _ in range(2):
+        run(env, kind="fix")
+    if not reason.strip():
+        assert run(env, kind="build", redesign=reason)[0] == 1  # blank = no reference given
+        return
+    with pytest.raises(SystemExit) as exc:
+        run(env, kind="build", redesign=reason)
+    assert exc.value.code == dispatch.EXIT_USAGE
+
+
+def test_redesign_is_also_checked_when_recording(env):
+    """Another session's second fix lands between our first look and our write: the second look refuses."""
+    class Racing(Fake):
+        def __call__(self, argv):
+            if pathlib.Path(argv[1]).name == "copy_from_check.py":
+                env["ledger"].write_text("".join(json.dumps({"row": "21c", "kind": "fix"}) + "\n" for _ in range(2)))
+            return super().__call__(argv)
+
+    code, _ = run(env, kind="build", fake=Racing())
+    assert code == 1
+    assert len(ledger_lines(env)) == dispatch.MAX_FIX_ROUNDS
+
+
+def test_ledger_path_without_test_ledger_is_refused_and_runs_nothing(env, capsys):
+    """Attack 2: a fresh --ledger path resets every row's count, so only tests may name one."""
+    fake = Fake()
+    argv = ["21c", str(env["measure"]), "--kind", "build", "--out", str(env["out"]), "--worktree", str(env["wt"]),
+            "--ledger", str(env["ledger"]), "--root", str(env["root"]), "--no-in-flight"]
+    assert dispatch.main(argv, runner=fake) == 1
+    assert fake.calls == [] and ledger_lines(env) == []
+    assert "DISPATCH REFUSED row 21c: --ledger names a ledger other than the shared one" in capsys.readouterr().out
+
+
+def test_ok_line_names_the_ledger(env, capsys):
+    run(env)
+    assert f"ledger {env['ledger']}" in capsys.readouterr().out
+
+
 def test_row_key_in_other_case_and_spacing_is_the_same_row(env):
     assert [run(env, row=r, kind="fix")[0] for r in ("21c", " 21C", "21C ")] == [0, 0, 1]
 
@@ -180,8 +263,8 @@ def test_round_limit_is_re_checked_when_recording(env):
         return real_call(argv)
 
     code = dispatch.main(["21c", str(env["measure"]), "--kind", "fix", "--out", str(env["out"]), "--worktree",
-                          str(env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]),
-                          "--no-in-flight"], runner=racing)
+                          str(env["wt"]), "--ledger", str(env["ledger"]), "--test-ledger", "--root",
+                          str(env["root"]), "--no-in-flight"], runner=racing)
     assert code == 1
     assert len(ledger_lines(env)) == dispatch.MAX_FIX_ROUNDS
 
@@ -316,11 +399,25 @@ def test_default_ledger_lives_in_the_shared_git_common_dir(env):
     assert json.loads(shared.read_text())["row"] == "21c"
 
 
-def test_real_children_refuse_the_recorded_row_24_measure_json_and_write_no_ledger(env, capsys):
+def test_real_children_refuse_the_recorded_row_24_measure_json_and_write_no_ledger(env, capfd):
     """Core: the real make_brief/check_brief/copy_from_check run on the recorded JSON. It was recorded before
     REQ-049's open reference records and legacy map rows applied to a row-24 brief, so the gate must refuse it."""
     argv = ["24", str(FIXTURE), "--kind", "build", "--out", str(env["out"]), "--worktree", str(env["wt"]),
-            "--ledger", str(env["ledger"]), "--root", str(REPO), "--no-in-flight"]
+            "--ledger", str(env["ledger"]), "--test-ledger", "--root", str(REPO), "--no-in-flight"]
     assert dispatch.main(argv) == 1
-    assert "DISPATCH REFUSED row 24: step make-brief exited 1" in capsys.readouterr().out
+    seen = capfd.readouterr()
+    assert "DISPATCH REFUSED row 24: step make-brief exited 1" in seen.out
+    assert STALE_REASON in seen.out + seen.err  # make_brief's own refusal text: a crash (traceback) cannot pass
     assert ledger_lines(env) == []
+
+
+def test_real_children_accept_the_recorded_row_c1_measure_json(env, capsys):
+    """Attack 6: make_brief, check_brief and copy_from_check all run for real on a Measure JSON that rendered
+    `DISPATCH OK` on 2026-10-24, and the accepted dispatch is recorded."""
+    argv = ["c1", str(FIXTURE_C1), "--kind", "build", "--out", str(env["out"]), "--worktree", str(env["wt"]),
+            "--ledger", str(env["ledger"]), "--test-ledger", "--root", str(REPO), "--no-in-flight"]
+    assert dispatch.main(argv) == 0
+    assert f"DISPATCH OK row c1 build round 1 brief {env['out']}" in capsys.readouterr().out
+    [line] = ledger_lines(env)
+    assert (line["row"], line["kind"], line["round"]) == ("c1", "build", 1)
+    assert line["brief_sha256"] == hashlib.sha256(env["out"].read_bytes()).hexdigest()
