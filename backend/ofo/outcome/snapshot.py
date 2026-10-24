@@ -12,6 +12,7 @@ Answer states per input (run-discipline B4 (d)):
 - leg with no quote yet: ``quote`` None (the outcome labels it "no live quote").
 - forward refused (spot missing/unhealthy, expired, absurd chain): ``forward_errors[expiry]`` holds the reason.
 - spot fallback: the ``ExpiryForward`` itself carries "estimated from spot".
+- an expiry's chain: ``chains[expiry]`` holds every quote read for it (empty mapping when no leg expiry was read).
 
 Standard library only.
 """
@@ -57,6 +58,9 @@ class MarketSnapshot:
     forward_errors: Mapping[datetime.date, ExplanationText] = field(default_factory=dict)
     #: ADR-077: the kept last quote TIME of each input (spot index, legs) that holds no quote now; never a price.
     ended_times: Mapping[str, datetime.datetime] = field(default_factory=dict)
+    #: REQ-106 AC-1 / REQ-027 (Q254): each read expiry's chain quotes, kept so the outcome finds the ATM strike (nearest
+    #: that expiry's forward) and solves its CE and PE IV for the expected move; read at the same instant as the rest.
+    chains: Mapping[datetime.date, tuple[NormalizedQuote, ...]] = field(default_factory=dict)
 
 
 #: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
@@ -137,4 +141,5 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
         t = provider.last_quote_time(iid) if held is None else None
         if t is not None:
             ended[iid] = t
-    return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended)
+    return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended,
+                          {expiry: tuple(chain) for expiry, chain in chains.items()})

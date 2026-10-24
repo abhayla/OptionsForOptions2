@@ -27,6 +27,7 @@ import dataclasses
 import datetime
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from collections.abc import Mapping
 from enum import Enum
 from typing import Final
 
@@ -367,20 +368,64 @@ def _shared_leg_greeks(model, snapshot, shared):
     return out
 
 
-def _expected_move(legs, spot: Decimal, valuation: datetime.datetime) -> ExpectedMove | None:
-    """REQ-034 AC-4: the expected move the default range covers. IV = the solved IV of the OPTION leg whose strike is
-    nearest ``spot``, on the nearest expiry among option legs with a solved IV (ties: the lower strike); days =
-    calendar days from the valuation date in India time to that expiry, at least 1. None when no option leg has a
-    solved IV (futures only, IV not solved) or the engine's ExpectedMove refuses the values: the range is then
-    today's (spot, strikes, breakevens, risk boundaries)."""
-    solved = [leg for leg in legs if leg.instrument is not Instrument.FUT and leg.iv is not None]
-    if not solved:
+def _iv_price(q: NormalizedQuote) -> Decimal | None:
+    """The price an IV is solved from, for a leg and for the ATM pair alike: the bid-ask mid when both sides are there
+    and not crossed, else the LTP."""
+    return mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
+
+
+def _usable(q: NormalizedQuote | None) -> bool:
+    """A quote an IV may be solved from: present, a live last price (never 0) and a health that is not unusable - the
+    same refusals a leg's quote gets in build_outcome."""
+    return q is not None and q.ltp is not None and is_live_price(q.ltp) and q.health not in _UNUSABLE
+
+
+def atm_iv(snapshot: MarketSnapshot, expiry: datetime.date, shared: FeedScope | None = None,
+           known: Mapping[str, Decimal] | None = None) -> Decimal | None:
+    """REQ-106 AC-1: the mean of the CE and PE implied volatilities at the strike of ``expiry``'s chain nearest that
+    expiry's parity forward (ties: the lower strike), each solved like a leg's IV (same engine call, same price basis,
+    same quote refusals). None when there is no forward or chain for the expiry, either quote is missing or unusable,
+    or either IV is not solved. ``known``: IVs this answer already solved per instrument id (its legs), read back
+    instead of solved twice - the same engine call on the same inputs."""
+    fwd = snapshot.forwards.get(expiry)
+    chain = [q for q in snapshot.chains.get(expiry, ()) if q.expiry == expiry and q.strike is not None
+             and q.instrument_type in (Instrument.CE, Instrument.PE)]
+    if fwd is None or not chain or snapshot.spot is None:
         return None
-    expiry = min(leg.expiry for leg in solved)
-    leg = min((x for x in solved if x.expiry == expiry), key=lambda x: (abs(x.strike - spot), x.strike))
+    strike = min({q.strike for q in chain}, key=lambda k: (abs(k - fwd.forward), k))
+    try:
+        em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=snapshot.underlying)
+    except (ValueError, ArithmeticError):
+        return None
+    ivs = []
+    for kind in (Instrument.CE, Instrument.PE):
+        q = next((x for x in chain if x.strike == strike and x.instrument_type is kind), None)
+        if not _usable(q):
+            return None
+        where = (snapshot.underlying, expiry, snapshot.valuation, "leg_iv", q.instrument_id)
+        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, _iv_price(q), strike, fwd), shared, where)
+        if iv is None:
+            return None
+        ivs.append(iv)
+    return (ivs[0] + ivs[1]) / 2
+
+
+def _expected_move(legs, snapshot: MarketSnapshot, valuation: datetime.datetime,
+                   shared: FeedScope | None = None, known: Mapping[str, Decimal] | None = None) -> ExpectedMove | None:
+    """REQ-027 (Q254) / REQ-034 AC-4: the one expected move the product computes (the default range today; REQ-083's
+    SD bands and REQ-027's suggestions call this too). IV = :func:`atm_iv` of the nearest leg expiry; days = calendar
+    days from the valuation date in India time to that expiry, at least 1. None when there are no legs, the ATM IV is
+    not solved, or the engine's ExpectedMove refuses the values: the range is then today's (spot, strikes, breakevens,
+    risk boundaries)."""
+    if not legs:
+        return None
+    expiry = min(leg.expiry for leg in legs)
+    iv = atm_iv(snapshot, expiry, shared, known)
+    if iv is None:
+        return None
     days = max((expiry - valuation.astimezone(IST).date()).days, 1)
     try:
-        return ExpectedMove(leg.iv, days)
+        return ExpectedMove(iv, days)
     except ValueError:
         return None
 
@@ -532,7 +577,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             ltp, label = q.ltp, _quote_label(q)
             fwd = snapshot.forwards.get(c.expiry)
             if kind is not Instrument.FUT and fwd is not None and snapshot.spot is not None:
-                price = mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
+                price = _iv_price(q)
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
                     where = (snapshot.underlying, c.expiry, snapshot.valuation, "leg_iv", p.instrument_id)
@@ -573,7 +618,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return _refused(definition, render_explanation("outcome_forward_refused"), legs, message)
 
     config = config or ScenarioSettings().for_index(definition.underlying)
-    move = _expected_move(inputs, model.spot_level, valuation)
+    solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
+    move = _expected_move(inputs, snapshot, valuation, shared, solved)
     level_set = build_level_set(model, config, expected_move=move, override=override)
     charges = None
     if rates is not None:
