@@ -40,6 +40,24 @@ describe('buildSaveBody', () => {
   })
 })
 
+describe('REQ-077 AC-4 the typed mark', () => {
+  it('AC-4: a typed leg sends entry_source "typed" with the pair; a captured leg sends none', () => {
+    const body = buildSaveBody([leg({ typed: true }), leg({ typed: false, contract_id: 5 })], '')
+    expect(body.legs[0]).toEqual({ contract_id: 2381960, action: 'SELL', quantity: 130, planned_entry: '101.25',
+      captured_at: '2026-10-14T15:25:00+05:30', entry_source: 'typed' })
+    expect(Object.keys(body.legs[1])).not.toContain('entry_source')
+  })
+  it('AC-4: the mark needs the pair: a typed leg with no entry sends no entry_source', () => {
+    expect(Object.keys(buildSaveBody([leg({ typed: true, planned_entry: null, captured_at: null })], '').legs[0]).sort()).toEqual(['action', 'contract_id', 'quantity'])
+  })
+  it('AC-4/AC-7: reopening a saved typed leg shows it typed with the saved price; a captured one is not typed', () => {
+    const [t] = legsFromSaved(saved({ entry_source: 'typed' }), [contract])
+    expect(t).toMatchObject({ typed: true, planned_entry: '101.25', captured_at: '2026-10-14T15:25:00+05:30' })
+    expect(legsFromSaved(saved({ entry_source: 'captured' }), [contract])[0].typed).toBe(false)
+    expect(legsFromSaved(saved(), [contract])[0].typed).toBe(false)
+  })
+})
+
 describe('legsFromSaved', () => {
   it('rebuilds every field exactly as stored; entry and capture time are not re-captured', () => {
     const [l] = legsFromSaved(saved(), [contract])
@@ -84,11 +102,11 @@ describe('a saved leg that is no longer live (issue #500)', () => {
 })
 
 describe('W-148 (REQ-076 AC-7): the tick is never saved', () => {
-  it('AC-7: an unticked leg, a Hedge mark and a typed mark leave the saved body exactly as before', () => {
-    const body = buildSaveBody([leg({ included: false, hedge: true, typed: true, base_lots: 1 })], '')
+  it('AC-7: an unticked leg, a Hedge mark and a base-lots count leave the saved body exactly as before', () => {
+    const body = buildSaveBody([leg({ included: false, hedge: true, base_lots: 1 })], '')
     expect(Object.keys(body.legs[0]).sort()).toEqual(['action', 'captured_at', 'contract_id', 'planned_entry', 'quantity'])
     const text = JSON.stringify(body)
-    for (const word of ['included', 'hedge', 'typed', 'base_lots']) expect(text).not.toContain(word)
+    for (const word of ['included', 'hedge', 'base_lots']) expect(text).not.toContain(word)
   })
   it('AC-7: an unticked leg is still saved as a leg (the tick does not drop it from the strategy)', () => {
     expect(buildSaveBody([leg(), leg({ included: false })], '').legs).toHaveLength(2)

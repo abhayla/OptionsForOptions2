@@ -91,6 +91,7 @@ const shapeName = ref(null)
 const hasReply = ref(false)
 const updating = ref(false)
 const editError = ref(null)
+const editErrorIndex = ref(null) // the leg of a refused typed price (its error shows under that field), else null
 const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.included === false)
 let editSeq = 0
 let loadSeq = 0 // only the newest outcome answer is shown
@@ -223,6 +224,7 @@ async function editLeg(edit) {
   const mine = ++editSeq
   updating.value = true
   editError.value = null
+  editErrorIndex.value = null
   try {
     const reply = (await api.post('/strategies/leg-edit', body)).data
     if (mine !== editSeq) return
@@ -255,6 +257,7 @@ async function editLeg(edit) {
   } catch (e) {
     if (mine !== editSeq || edit.control === 'read') return // a failed read leaves the page as load() drew it, no error text
     editError.value = e?.parts ?? NEUTRAL_PARTS
+    editErrorIndex.value = edit.control === 'price' ? edit.index : null
   } finally {
     if (mine === editSeq) updating.value = false
   }
@@ -280,6 +283,8 @@ const fromEntries = computed(() => state.value === 'from-entries')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
+// REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
+const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
@@ -309,7 +314,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
     <LegList
-      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError"
+      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
       @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker"
     />
 

@@ -55,6 +55,24 @@ test('a + sends one edit and the row shows the reply; the tick labels a leg; the
   await expect(page.getByTestId('depth-popup')).toHaveAttribute('data-instrument-id', real.legs[2].instrument_id)
 })
 
+test('REQ-077 AC-1: typing a price on a leg row sends it as text and the row shows Your price with its time', async ({ page }) => {
+  const sent: any[] = []
+  await page.route('**/api/strategies/leg-edit', async (route) => {
+    const body = route.request().postDataJSON()
+    if (body.edit.control !== 'read') sent.push(body)
+    await route.fulfill({ json: replyFrom(body, (i) => (body.edit.control === 'price' && i === body.edit.index
+      ? { planned_entry: '81.30', captured_at: '2026-10-24T10:35:12+05:30', price_source: 'typed' } : {})) })
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
+  const first = page.getByTestId('leg-row').nth(0)
+  await expect(first).toBeVisible()
+  await first.getByTestId('price-input').fill('81.30')
+  await first.getByTestId('price-set').click()
+  await expect(first.getByTestId('leg-entry')).toHaveText('Your price 81.30')
+  expect(sent).toHaveLength(1)
+  expect(sent[0].edit).toEqual({ control: 'price', index: 0, price: '81.30' })
+})
+
 test('with no legs the page says No legs yet and shows no numbers', async ({ page }) => {
   await page.goto(`${REPLAY_URL}/strategy/builder`)
   await expect(page.getByTestId('no-legs-text')).toHaveText('No legs yet')
