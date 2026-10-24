@@ -24,13 +24,19 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 
 from ofo.errors import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
+from ofo.marketdata.feed_health import FEED_STALE  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo_app import live_market  # noqa: E402
 from ofo_app.config import Settings  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
 from ofo_app.routes import live as live_route  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
-from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: E402
+from ofo_app.routes.outcome import (  # noqa: E402
+    MarketContext,
+    OutcomeRequest,
+    get_market_context,
+    outcome_response,
+)
 from starlette.testclient import TestClient as StarletteClient  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
@@ -513,15 +519,11 @@ def test_ac4_the_socket_route_pushes_exactly_the_rest_outcome_on_the_replay(monk
     """AC-4: a client of the REAL app's /api/strategies/live (APP_ENV=test, OUTCOME_REPLAY) receives, as its first
     push, byte-for-byte the JSON the REST outcome route returns for the same body and the same replay snapshot (one
     engine: both are outcome_response). Bad input on the socket gets the one catalogue message, and the socket goes on."""
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
+    client = StarletteClient(_replay_app(monkeypatch))
     body = _replay_request()
     rest = client.post("/api/strategies/outcome", json=body)
     assert rest.status_code == 200 and rest.json()["state"] == "COMPUTED"
-    with client.websocket_connect(live.PATH) as ws:
+    with client.websocket_connect(live_route.PATH) as ws:
         ws.send_text("not json")
         assert ws.receive_json() == ERROR
         ws.send_json(body)
@@ -533,18 +535,14 @@ def test_ac4_the_socket_route_pushes_exactly_the_rest_outcome_on_the_replay(monk
 def test_ac4_the_socket_takes_no_credential_in_its_url(monkeypatch):
     """AC-4 / REQ-048 AC-5: the route's path has no parameter and the endpoint never sees the query string; a token
     appended to the URL changes nothing (the same first push) and is never echoed."""
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
-    route = next(r for r in client.app.routes if getattr(r, "path", "") == live.PATH)
+    client = StarletteClient(_replay_app(monkeypatch))
+    route = next(r for r in client.app.routes if getattr(r, "path", "") == live_route.PATH)
     assert route.param_convertors == {}
-    with client.websocket_connect(live.PATH) as ws:
+    with client.websocket_connect(live_route.PATH) as ws:
         ws.send_json(_replay_request())
         plain = ws.receive_text()
-    client = TestClient(_replay_app(monkeypatch))  # a fresh replay: the frames do not refill after the first release
-    with client.websocket_connect(live.PATH + "?token=SECRETVALUE123") as ws:
+    client = StarletteClient(_replay_app(monkeypatch))  # a fresh replay: frames do not refill after the first release
+    with client.websocket_connect(live_route.PATH + "?token=SECRETVALUE123") as ws:
         ws.send_json(_replay_request())
         with_token = ws.receive_text()
     assert with_token == plain and "SECRETVALUE123" not in with_token
@@ -733,14 +731,10 @@ def test_ac4_the_replay_serves_every_connection_and_its_pushes_change(monkeypatc
     (planned entry 100.00 - LTP) x 65 units (one NIFTY lot)."""
     import time
 
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
+    client = StarletteClient(_replay_app(monkeypatch))
     for _ in range(2):
         pushes, times = [], []
-        with client.websocket_connect(live.PATH) as ws:
+        with client.websocket_connect(live_route.PATH) as ws:
             ws.send_json(_spread_request())
             for _ in range(4):
                 pushes.append(json.loads(ws.receive_text()))
@@ -761,22 +755,18 @@ def test_ac4_replay_rest_is_not_live_after_the_socket_drops_and_live_again_while
     AC-9) with AC-5's message and the newest price time the replay held (the last recorded frame, 09:20:09), no live
     numbers; while a socket holds the legs again,
     REST computes. A strategy whose legs no socket ever held is unaffected by another strategy's drop."""
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
+    client = StarletteClient(_replay_app(monkeypatch))
     body = _spread_request()
     before = client.post("/api/strategies/outcome", json=body).json()
     assert before["state"] == "COMPUTED" and before["status_label"] is None
-    with client.websocket_connect(live.PATH) as ws:
+    with client.websocket_connect(live_route.PATH) as ws:
         ws.send_json(body)
         ws.receive_text()
     after = client.post("/api/strategies/outcome", json=body).json()
     _assert_from_entries_after_drop(after, AC5_AFTER_DROP)  # every leg priced: REQ-077 AC-9 and AC-5 both hold
     other = client.post("/api/strategies/outcome", json=_replay_request()).json()  # the condor: never held
     assert other["state"] == "COMPUTED"
-    with client.websocket_connect(live.PATH) as ws:
+    with client.websocket_connect(live_route.PATH) as ws:
         ws.send_json(body)
         ws.receive_text()
         held = client.post("/api/strategies/outcome", json=body).json()
@@ -819,16 +809,12 @@ def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monk
     page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer:
     every leg has an entry, so FROM_ENTRIES (REQ-077 AC-9) with AC-5's exact text and the newest price time kept (09:20:09), no LTP, no
     leg_quotes. The same request without the flag (or false) is unchanged (COMPUTED)."""
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
+    client = StarletteClient(_replay_app(monkeypatch))
     body = _spread_request()
-    with client.websocket_connect(live.PATH) as other:
+    with client.websocket_connect(live_route.PATH) as other:
         other.send_json(body)
         other.receive_text()
-        with client.websocket_connect(live.PATH) as mine:
+        with client.websocket_connect(live_route.PATH) as mine:
             mine.send_json(body)
             mine.receive_text()
         fallback = client.post("/api/strategies/outcome", json={**body, "fallback": True}).json()
@@ -888,7 +874,7 @@ async def test_an_ended_session_answers_from_entries_on_the_rest_route_and_the_p
 
 
 
-# ---- REQ-133 AC-3 / AC-4: a just-(re)connected screen waits for its first price; the alarm only after the limit ---------
+# ---- REQ-133 AC-3 / AC-4: a just-(re)connected screen waits for its first price; alarm only after the limit ----
 
 WAITING = "Waiting for the first live price"  # REQ-133 AC-3's words (catalogue outcome_waiting_first_price)
 
@@ -897,16 +883,12 @@ def test_req133_browser_socket_reconnect_before_a_tick_first_push_is_live_not_an
     """REQ-133 AC-3 step 1 (measured, row 24): the BROWSER socket drops and reconnects before the next tick on the real
     app's replay feed. The server's feed never dropped, so the first push after the reconnect is the live answer exactly
     as before the drop: COMPUTED, every leg AVAILABLE with no label, no status label (no false alarm to fix here)."""
-    from starlette.testclient import TestClient
-
-    from ofo_app.routes import live
-
-    client = TestClient(_replay_app(monkeypatch))
+    client = StarletteClient(_replay_app(monkeypatch))
     body = _replay_request()
-    with client.websocket_connect(live.PATH) as ws:
+    with client.websocket_connect(live_route.PATH) as ws:
         ws.send_json(body)
         before = ws.receive_json()
-    with client.websocket_connect(live.PATH) as ws:  # the reconnect, no tick in between
+    with client.websocket_connect(live_route.PATH) as ws:  # the reconnect, no tick in between
         ws.send_json(body)
         first = ws.receive_json()
     for p in (before, first):
@@ -926,8 +908,6 @@ def _feed_rig():
 
 
 def _answer(provider, ctx) -> dict:
-    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
-
     return outcome_response(OutcomeRequest.model_validate(request(provider)), ctx).model_dump(
         mode="json", exclude_unset=True)
 
@@ -940,12 +920,11 @@ def _assert_waiting(out: dict) -> None:
 
 
 def test_req133_feed_reconnect_before_a_tick_waits_inside_the_limit_then_alarms():
-    """REQ-133 AC-3 / AC-4 (measured, row 24: before the fix the first answer after the FEED reconnected said 'Live market
-    data disconnected ... paused' with every leg 'stale since 09:20' while the feed was connected). Now: inside the feed's
-    one staleness limit (FEED_STALE) with no price frame -> the waiting answer, no number; past it with no frame -> the
+    """REQ-133 AC-3 / AC-4 (measured, row 24: before the fix the first answer after the FEED reconnected said
+    'Live market data disconnected ... paused' with every leg 'stale since 09:20' while the feed was connected).
+    Now: inside the feed's one staleness limit (FEED_STALE) with no price frame -> the waiting answer, no
+    number; past it with no frame -> the
     stale alarm as before; the same clock in both, moved by hand."""
-    from ofo.marketdata.feed_health import FEED_STALE
-
     provider, now, ctx = _feed_rig()
     assert _answer(provider, ctx)["state"] == "COMPUTED"
     provider.on_disconnected(now[0])
