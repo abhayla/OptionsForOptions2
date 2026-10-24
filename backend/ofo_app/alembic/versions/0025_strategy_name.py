@@ -29,6 +29,8 @@ Revises: 0024_typed_entry_mark
 from __future__ import annotations
 
 import importlib.util
+import sys
+import unicodedata
 from pathlib import Path
 
 from alembic import op
@@ -58,8 +60,8 @@ _BASE = _PREVIOUS._BASE  # 0001
 #: Copied on purpose (a migration never imports application code); tests pin them equal to ofo.strategy.stored_form's.
 NAME_MAX = 40
 DEFAULT_NAME = "New Strategy"
-#: C0 controls (except none), DEL and C1 controls: a name is one line of printable text.
-CONTROL_REGEX = r"[\x01-\x1f\x7f-\x9f]"
+#: One line of text: C0 controls (NUL cannot be stored), DEL, C1 controls, and the line and paragraph separators.
+CONTROL_REGEX = r"[\x01-\x1f\x7f-\x9f\u2028\u2029]"
 NAME_COLUMN = "name"
 NAME_CONSTRAINT = "strategies_name_shape"
 
@@ -75,9 +77,44 @@ def _replaced_once(sql: str, old: str, new: str) -> str:
     return sql.replace(old, new, 1)
 
 
+def _regex_class(chars) -> str:
+    """The characters of ``chars`` (a predicate over one character) as the inside of a regex bracket expression."""
+    parts, start, end = [], None, None
+    for code in range(1, sys.maxunicode + 1):  # NUL cannot be stored, so it is never in a class
+        if chars(chr(code)):
+            if start is None:
+                start = code
+            end = code
+        elif start is not None:
+            parts.append((start, end))
+            start = None
+    if start is not None:
+        parts.append((start, end))
+
+    def one(code: int) -> str:
+        return f"\\u{code:04x}" if code <= 0xFFFF else f"\\U{code:08x}"
+
+    return "".join(one(a) if a == b else f"{one(a)}-{one(b)}" for a, b in parts)
+
+
+#: A name is refused at either edge by these (what str.strip() trims) and when it holds nothing drawn (only the
+#: categories ofo.strategy.definition.NAME_INVISIBLE_CATEGORIES): the same set the read path (shown_name) accepts.
+TRIM_CLASS = _regex_class(str.isspace)
+INVISIBLE_CATEGORIES = ("Zs", "Zl", "Zp", "Cf", "Cc")
+INVISIBLE_CLASS = _regex_class(lambda char: unicodedata.category(char) in INVISIBLE_CATEGORIES)
+
+
+def _name_text_ok(text_expr: str) -> str:
+    """The one database rule for a strategy name held in the text expression ``text_expr``; the domain's
+    ofo.strategy.stored_form.shown_name accepts exactly the same set (tests_app/test_migration_0025_strategy_name.py)."""
+    return (f"(char_length({text_expr}) BETWEEN 1 AND {NAME_MAX} AND {text_expr} !~ '{CONTROL_REGEX}' "
+            f"AND {text_expr} !~ '^[{TRIM_CLASS}]' AND {text_expr} !~ '[{TRIM_CLASS}]$' "
+            f"AND {text_expr} ~ '[^{INVISIBLE_CLASS}]')")
+
+
 def _name_ok(expr: str) -> str:
-    return (f"(jsonb_typeof({expr}) = 'string' AND char_length({expr} #>> '{{}}') BETWEEN 1 AND {NAME_MAX} "
-            f"AND btrim({expr} #>> '{{}}') = ({expr} #>> '{{}}') AND ({expr} #>> '{{}}') !~ '{CONTROL_REGEX}')")
+    text_expr = f"({expr} #>> '{{}}')"
+    return f"(jsonb_typeof({expr}) = 'string' AND {_name_text_ok(text_expr)})"
 
 
 # --- the guard -------------------------------------------------------------------------------------------------------
@@ -158,10 +195,7 @@ def upgrade() -> None:
     role = _BASE._app_role()
     op.execute(f"SELECT {_BASE.ALLOWLIST_FUNCTION}('{role}', 'pre')")
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} ADD COLUMN {NAME_COLUMN} TEXT NOT NULL DEFAULT '{DEFAULT_NAME}'")
-    op.execute(f"ALTER TABLE {_M8.STRATEGIES} ADD CONSTRAINT {NAME_CONSTRAINT} CHECK ("
-               f"char_length(btrim({NAME_COLUMN})) BETWEEN 1 AND {NAME_MAX} "
-               f"AND char_length({NAME_COLUMN}) <= {NAME_MAX} "
-               f"AND {NAME_COLUMN} !~ '{CONTROL_REGEX}')")
+    op.execute(f"ALTER TABLE {_M8.STRATEGIES} ADD CONSTRAINT {NAME_CONSTRAINT} CHECK ({_name_text_ok(NAME_COLUMN)})")
     op.execute(f'GRANT INSERT ({NAME_COLUMN}) ON TABLE {_M8.STRATEGIES} TO "{role}"')
     op.execute(f'GRANT UPDATE ({NAME_COLUMN}) ON TABLE {_M8.STRATEGIES} TO "{role}"')
     _install(_new_guard_sql(), _new_items_sql(), extended_allowlist_sql())

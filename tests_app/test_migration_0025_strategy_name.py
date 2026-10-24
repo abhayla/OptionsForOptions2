@@ -263,3 +263,80 @@ def test_the_migration_constants_equal_the_domains():
     migration = _migration()
     assert (migration.NAME_MAX, migration.DEFAULT_NAME) == (sf.STRATEGY_NAME_MAX, sf.DEFAULT_STRATEGY_NAME)
     assert Path(VERSIONS / MIGRATION).exists()
+
+# --- one rule for the database and the read path (Opus check round 1, findings 1 and 2) --------------------------------
+
+#: name -> accepted? One table, run through BOTH the database CHECKs and the domain read path (shown_name).
+SHARED_NAMES = [
+    ("a", True), ("x" * 40, True), ("<b>You should buy now</b>", True), ("two words", True), ("日本語", True),
+    ("\U0001f600", True), ("a­b", True), ("a​", True), ("​a", True), ("a⁠b", True),
+    ("", False), (" ", False), ("x" * 41, False), (" padded", False), ("padded ", False), ("x ", False),
+    (" x", False), ("x　", False), (" x", False), ("x ", False), ("x ", False),
+    ("​", False), ("​​", False), ("﻿", False), ("⁠​", False), (" ", False),
+    ("a b", False), ("a b", False), ("a ", False), (" ", False), ("a\nb", False),
+    ("tab\there", False), ("a\x1fb", False), ("a\x7fb", False), ("a\x85", False), ("a\x9fb", False),
+]
+
+
+def _read_path_accepts(name: str) -> bool:
+    from ofo.strategy import stored_form as sf  # noqa: PLC0415
+
+    try:
+        sf.shown_name(name)
+    except sf.StoredFormError:
+        return False
+    return True
+
+
+def _stored_name_ok(name: str) -> bool:
+    """shown_name's own condition, without rendering (3.3 million calls in the sweep below)."""
+    from ofo.strategy import definition  # noqa: PLC0415
+
+    return name == name.strip() and definition.name_problem(name) is None
+
+
+@pytest.mark.parametrize("name,ok", SHARED_NAMES)
+async def test_the_database_and_the_read_path_give_the_same_answer_for_a_name(app_engine, name, ok):
+    """Finding 1 (REQ-134 AC-1, one rule): the column CHECK, the rename history item and the domain's shown_name agree
+    on every name in the table; ' padded' and 'x\\u00a0' (the checker's A7, A8) are refused by all three."""
+    assert _read_path_accepts(name) is ok and _stored_name_ok(name) is ok, ("read path", name)
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            state, _ = await _verdict(conn, INSERT, {"u": "test-0025-shared", "d": DEFINITION, "n": name})
+            assert state == (None if ok else CHECK_VIOLATION), ("column", name, state)
+            strategy_id = await _new_strategy(conn, "test-0025-shared-history")
+            for slot in ("from", "to"):
+                item = {"kind": "renamed", "from": "Old", "to": "New", slot: name}
+                state, _ = await _verdict(conn, INSERT_HISTORY, {"id": strategy_id, "d": DEFINITION,
+                                                                 "s": json.dumps([item])})
+                assert state == (None if ok else CHECK_VIOLATION), ("history", slot, name, state)
+        finally:
+            await trans.rollback()
+
+
+#: The same rule evaluated on every code point alone, after 'a', and before 'a' (surrogates cannot be stored).
+SWEEP = (
+    "SELECT shape, string_agg(CASE WHEN {rule} THEN '1' ELSE '0' END, '' ORDER BY code) AS flags "
+    "FROM (SELECT code FROM generate_series(1, 1114111) AS code WHERE code NOT BETWEEN 55296 AND 57343) AS codes "
+    "CROSS JOIN LATERAL (VALUES ('alone', chr(code)), ('after_a', 'a' || chr(code)), ('before_a', chr(code) || 'a'))"
+    " AS shaped(shape, n) GROUP BY shape ORDER BY shape")
+
+
+async def test_the_database_rule_equals_the_read_path_on_every_code_point(app_engine):
+    """Finding 1, whole class: for all 1,112,064 storable characters (alone, after and before a letter) the database
+    rule answers exactly as the domain's read path does, so no storable name can make a user's list unreadable."""
+    rule = _migration()._name_text_ok("shaped.n")
+    codes = [code for code in range(1, 0x110000) if not 0xD800 <= code <= 0xDFFF]
+    shapes = {"alone": lambda c: chr(c), "after_a": lambda c: "a" + chr(c), "before_a": lambda c: chr(c) + "a"}
+    async with app_engine.connect() as conn:
+        rows = (await conn.execute(text(SWEEP.format(rule=rule)))).all()
+    assert [r.shape for r in rows] == sorted(shapes)
+    for row in rows:
+        expected = "".join("1" if _stored_name_ok(shapes[row.shape](code)) else "0" for code in codes)
+        assert len(row.flags) == len(expected)
+        if row.flags != expected:
+            at = next(i for i, (a, b) in enumerate(zip(row.flags, expected)) if a != b)
+            pytest.fail(f"{row.shape}: U+{codes[at]:04X} database {row.flags[at]} read path {expected[at]}")
+
+

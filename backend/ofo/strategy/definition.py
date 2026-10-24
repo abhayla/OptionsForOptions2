@@ -18,6 +18,7 @@ from ofo.errors.explanations import DEFAULT_STRATEGY_NAME, render_explanation, s
 
 import datetime
 import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Mapping, Union
@@ -428,14 +429,17 @@ def _render_items(items: object) -> tuple:
 STRATEGY_NAME_MAX = 40
 NAME_EMPTY = "empty"
 NAME_INVALID = "invalid"
-_NAME_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+#: One line of text: no control character and no line or paragraph separator (U+2028, U+2029).
+_NAME_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+#: Unicode categories that draw nothing: a name made only of these looks empty (space, format, control, line, paragraph).
+NAME_INVISIBLE_CATEGORIES = frozenset({"Zs", "Zl", "Zp", "Cf", "Cc"})
 
 
 def name_problem(trimmed: object) -> str | None:
     """None when ``trimmed`` (already stripped) is a valid strategy name, else NAME_EMPTY or NAME_INVALID."""
     if type(trimmed) is not str:
         return NAME_INVALID
-    if not trimmed:
+    if all(unicodedata.category(char) in NAME_INVISIBLE_CATEGORIES for char in trimmed):  # includes ""
         return NAME_EMPTY
     if len(trimmed) > STRATEGY_NAME_MAX or _NAME_CONTROL.search(trimmed):
         return NAME_INVALID
