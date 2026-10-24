@@ -61,9 +61,8 @@ def test_echo_seq_without_seq_returns_the_reply_untouched():
 
 
 def test_echo_seq_still_runs_the_models_own_validation():
-    from pydantic import ValidationError  # noqa: PLC0415
-
     from ofo_app.api_models import echo_seq  # noqa: PLC0415
+    from pydantic import ValidationError  # noqa: PLC0415
 
     built = _sample_model().model_validate({"plan_number": 9, "tag": "T1"})
     with pytest.raises(ValidationError):
@@ -75,7 +74,7 @@ def test_leg_edit_echoes_seq_through_the_one_helper(monkeypatch):
 
     seen = _spy(monkeypatch, leg_edit)
     assert leg_edit_post({"legs": legs(), "edit": STEP, "seq": 6})[1]["seq"] == 6  # noqa: PLR2004
-    assert seen == [6]  # noqa: PLR2004
+    assert seen == [6]
 
 
 def _spy(monkeypatch, module):
