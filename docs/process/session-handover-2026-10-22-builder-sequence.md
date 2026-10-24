@@ -22,15 +22,25 @@ Chunk 1 merged before this session (PR #525). Chunk 2 = branch `build/seq-chunk-
 - **Row 19 CLOSED later this session** (W-147 in_review; live check pending: AC-6 futures price at row 63): backend
   Opus check + MINOR fixes, frontend Sonnet check, fix round 1 (one lease per viewer; visible selection list), round 2
   PASS; evidence W-147 AC-1..8.
-- **Row 20 IN FLIGHT** (worktree `-row20`, branch `build/seq-row-20`): backend merged into the chunk and checked (Sonnet,
-  9 mutants killed, all backend ACs pass); REQ-076 AC-6's example corrected (0744041e: a naked short put is bounded by
-  its strike). Frontend built (463dca78) but fix round 1 running (brief `row20/brief-20fix2.md`): money guard red,
-  a stepped leg not savable (reply lacks the instrument id), two leg lists, shape name only after the first edit. Then
-  a frontend check, then close (evidence AC-1..10).
-- **NEXT, in order:** row 20 close -> row 21 (REQ-077 typed price/Reset/moved marker; shares 6 files with row 20;
-  notes in `chunk2-notes.md`) -> row 22 (REQ-034: the product never calls ofo/scenario/outcome.py; what-if inputs
-  missing) -> 23 (REQ-119: server-echoed seq, abort, Execute version check) -> 24 (REQ-133: versioned socket frames)
-  -> chunk COPY builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check.
+- **Row 20** was closed (evidence W-148 AC-1..10), then REOPENED by CI: (1) the leg-edit route reached order code
+  (ofo.execution.freeze) - fixed by moving the freeze lookup to `ofo/instruments/freeze_limits.py` + `ofo_app/freeze_read.py`,
+  a leg_edit-scoped import-closure guard in `tests_app/test_order_path_switch.py` (four allow-listed shared paths), two
+  Opus checks PASS; (2) 22 e2e failures from the one-leg-list change - `leg-row` ids restored, then the leg-rows spec's
+  stand-in applied the include edit; (3) the freeze_read SQL needed its reviewed-identity entry. Last push carries all;
+  if its App tests are green, re-close row 20 (table status back to Done, no new evidence needed).
+- **Row 21 IN FLIGHT** (worktree `-row21`, branch `build/seq-row-21`): 21m migration 0024 DONE (Opus PASS; pin test now
+  walks the migrations, module marked repo_scan); 21b order path DONE (a typed price cannot move the limit - proven by an
+  Opus trace + 6/7 mutants, route test added, round 2 PASS). Owner question Q1 parked in
+  `docs/process/owner-questions-2026-10-25.md` (ADR-095 tolerance base vs AC-8, before price protection is wired).
+  NEXT for row 21: 21a backend (brief `row21/brief-21a.md` ready; waits for row 20's re-close - shares routes/leg_edit.py),
+  then 21c frontend (typed price, Reset/per-leg reset, moved marker = string equality, no arithmetic), then 21d AC-9
+  (outcome with typed entries and no live data - safety set, Opus).
+- **NEXT after row 21:** row 22 (REQ-034: the product never calls ofo/scenario/outcome.py; what-if inputs missing) -> 23
+  (REQ-119: server-echoed seq, abort, Execute version check) -> 24 (REQ-133: versioned socket frames) -> chunk COPY
+  builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check -> one batched #532 body.
+- **Lessons added tonight:** every builder AND checker brief runs ALL DB-free files `select_app_tests.py` selects (9
+  occurrences of repo-wide-scan-outside-targeted-tests now); never push twice inside one App-tests run (four runs were
+  cancelled by back-to-back pushes); chain gates with `&&` before a push (one push went out with the ratchet red).
 - **Budget overruns are now 11 occurrences** of `builder-budget-is-prose` (two tonight: 119 and 142 calls vs 80);
   the dispatch prompt itself now carries "HARD STOP at <80%> of your calls" - keep doing that.
 - **Worktrees to remove when #531 merges** (wt-rm refuses before: merged into the chunk branch, not main; use
