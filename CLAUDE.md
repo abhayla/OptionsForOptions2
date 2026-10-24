@@ -27,6 +27,10 @@ args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|r
 in the ADR/REQ/Q it cites (finding brief-rule-from-memory). Also run `copy_from_check.py . <brief>` (exit 0, or
 `--append` the missing rows): every legacy-reuse map row naming the brief's requirements must be in the brief (owner
 2026-10-22: "you are not reinventing the wheel"; 15 of 24 lane briefs had left rows out, ADAPT rows included).
+ADR-181 tools: dispatch every builder/checker brief with `dispatch.py <row> <measure.json> --kind build|fix|verify-r2
+--out <brief> --worktree <wt> (--in-flight <wt>=<ref> | --no-in-flight)` (make_brief + check_brief + copy_from_check +
+overlap_gate; refuses a third fix round). Every builder and checker runs `gate.py` in its worktree and pastes the last 5
+lines (`GATE PASS <sha>`); push only as `python scripts/orchestrator/gate.py --pre-push && git push` (~8 min).
 
 ## Read first
 1. `spec/decisions/ADR-*.md` — the owner's decisions. They win over everything else. Each carries the Q-numbers and
