@@ -635,21 +635,29 @@ BAD, GOOD = "BAD <div></div>", "good"
 
 class FormatRunner(FakeRunner):
     """git answers for the format ratchet and a fake prettier: exit 1 when a file starts with BAD, else `prettier_code`.
-    Exit codes to force: prettier_code, show_code (git show of the base file), merge_base_code."""
+    Exit codes to force: prettier_code, show_code (git show of the base file), head_show_code, merge_base_code."""
 
     def __init__(self, names, added=(), base=None, **codes):
         super().__init__()
         self.names, self.added, self.base = names, set(added), base or {}
         self.prettier_code = codes.get("prettier_code")
         self.show_code, self.merge_base_code = codes.get("show_code", 0), codes.get("merge_base_code", 0)
+        self.head_show_code = codes.get("head_show_code", 0)
         self.prettier_calls = []
+
+    def show(self, ref, cwd, log):
+        """`git show <rev>:frontend/<rel>`: HEAD is what the work tree holds in these tests, any other rev the base."""
+        rev, rel = ref.split(":frontend/", 1)
+        if rev == "HEAD":
+            log.write_text((cwd / "frontend" / rel).read_text(encoding="utf-8"), encoding="utf-8")
+            return self.head_show_code
+        log.write_text(self.base.get(rel, ""), encoding="utf-8")
+        return self.show_code
 
     def __call__(self, argv, cwd, env, log):
         if argv[:2] == ["git", "show"]:
             self.calls.append((list(argv), cwd, dict(env), log))
-            rel = argv[2].split(":frontend/", 1)[1]
-            log.write_text(self.base.get(rel, ""), encoding="utf-8")
-            return self.show_code
+            return self.show(argv[2], cwd, log)
         if argv[:2] == ["git", "merge-base"] and self.merge_base_code:
             self.calls.append((list(argv), cwd, dict(env), log))
             log.write_text("fatal\n", encoding="utf-8")
@@ -691,7 +699,7 @@ def test_format_file_formatted_at_base_now_unformatted_fails(tree, monkeypatch):
     code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD})
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
     assert "src/a.vue: formatted at the merge base, unformatted now" in lines
-    assert not (tree / "frontend" / "src" / "gate-base-copy.vue").exists()  # the base copy is removed
+    assert not list((tree / "frontend" / "src").glob(f"{gate.COPY_PREFIX}*"))  # the temp copies are removed
 
 
 def test_format_old_debt_still_unformatted_passes_and_is_counted(tree, monkeypatch):
@@ -726,6 +734,13 @@ def test_format_unreadable_base_fails_closed(tree, monkeypatch):
     assert any("cannot read or check the base version of src/a.vue" in ln for ln in lines)
 
 
+def test_format_unreadable_committed_version_fails_closed(tree, monkeypatch):
+    """Standing item (d): `git show HEAD:<file>` fails -> fail, never judged by the work-tree copy."""
+    code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], head_show_code=128), {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 128")
+    assert any("cannot read the committed version of src/a.vue" in ln for ln in lines)
+
+
 def test_format_unreadable_merge_base_fails_closed(tree, monkeypatch):
     code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], merge_base_code=128), {"a.vue": BAD})
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 128")
@@ -745,7 +760,7 @@ def test_format_prettier_error_on_one_file_during_the_ratchet_fails_closed(tree,
 
     class Flaky(FormatRunner):
         def __call__(self, argv, cwd, env, log):
-            if argv[:3] == ["npx", "prettier", "--check"] and self.prettier_calls and "gate-base-copy" not in argv[3]:
+            if argv[:3] == ["npx", "prettier", "--check"] and self.prettier_calls:
                 self.prettier_calls.append(argv[3:])
                 log.write_text("boom\n", encoding="utf-8")
                 return 2
@@ -753,3 +768,100 @@ def test_format_prettier_error_on_one_file_during_the_ratchet_fails_closed(tree,
 
     code, lines = format_run(tree, monkeypatch, Flaky(["a.vue"]), {"a.vue": BAD})
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 2")
+
+
+# --- real git: the verdict follows the committed blobs, never the checkout (finding gate-output-read-by-eye) ---------
+GOOD_TWO, BAD_TWO = "good two\n", "BAD two\n"
+
+
+def git_bytes(repo, *args):
+    """Raw stdout of one real git command (through the gate's own runner), failing the test on a non-zero exit."""
+    log = repo.parent / "git.out"
+    assert gate.default_runner(["git", *args], repo, dict(os.environ), log) == 0
+    return log.read_bytes()
+
+
+def git(repo, *args):
+    return git_bytes(repo, *args).decode().strip()
+
+
+def real_runner(argv, cwd, env, log):
+    """Real git; a fake prettier that, like prettier's endOfLine=lf, calls a file unformatted for BAD text or a CR."""
+    if argv[:3] != ["npx", "prettier", "--check"]:
+        return gate.default_runner(argv, cwd, env, log)
+    log.write_text("prettier\n", encoding="utf-8")
+    texts = [(cwd / f).read_bytes().decode() for f in argv[3:]]
+    return 1 if any("BAD" in t or "\r" in t for t in texts) else 0
+
+
+def make_repo(tmp_path, base_files):
+    repo = tmp_path / "real"
+    (repo / "frontend" / "src").mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "main")
+    for key, value in (("user.email", "c@x"), ("user.name", "c"), ("core.autocrlf", "true")):
+        git(repo, "config", key, value)
+    for name, text in base_files.items():
+        (repo / "frontend" / "src" / name).write_bytes(text.encode())
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "base")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(repo, "checkout", "-qb", "br")
+    return repo
+
+
+def commit_edit(repo, name, data):
+    (repo / "frontend" / "src" / name).write_bytes(data)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "edit")
+
+
+def real_format(repo, tmp_path):
+    step = gate.Step("frontend-format", ("npx", "prettier", "--check"), "frontend", "format")
+    logs = tmp_path / "logs"
+    logs.mkdir(exist_ok=True)
+    code, _ = gate.run_format(step, repo, real_runner, logs, dict(os.environ))
+    return code, (logs / "frontend-format.log").read_text(encoding="utf-8")
+
+
+def test_format_crlf_checkout_of_a_formatted_file_passes(tmp_path):
+    """Attack 1: a file formatted at base and in HEAD, with real CRLF bytes in the work tree, passes."""
+    repo = make_repo(tmp_path, {"a.vue": "good\n"})
+    commit_edit(repo, "a.vue", GOOD_TWO.replace("\n", "\r\n").encode())
+    assert b"\r\n" in (repo / "frontend" / "src" / "a.vue").read_bytes()
+    assert b"\r" not in git_bytes(repo, "show", "HEAD:frontend/src/a.vue")
+    code, log = real_format(repo, tmp_path)
+    assert code == 0, log
+    assert "1 checked" in log
+
+
+def test_format_formatted_at_base_made_unformatted_still_fails_with_real_git(tmp_path):
+    """Attack 2: the same setup, but the committed text is unformatted -> fail naming the file."""
+    repo = make_repo(tmp_path, {"a.vue": "good\n"})
+    commit_edit(repo, "a.vue", BAD_TWO.encode())
+    code, log = real_format(repo, tmp_path)
+    assert code == 1
+    assert "src/a.vue: formatted at the merge base, unformatted now" in log
+
+
+def test_format_never_overwrites_or_leaves_a_file_named_like_a_copy(tmp_path):
+    """Attack 3: real files named like the old fixed copy name and like the new prefix survive the step untouched."""
+    names = ["gate-base-copy.vue", f"{gate.COPY_PREFIX}x.vue"]
+    repo = make_repo(tmp_path, {"a.vue": "good\n", **dict.fromkeys(names, "mine\n")})
+    commit_edit(repo, "a.vue", BAD_TWO.encode())
+    code, _ = real_format(repo, tmp_path)
+    assert code == 1
+    src = repo / "frontend" / "src"
+    assert sorted(p.name for p in src.iterdir()) == sorted(["a.vue", *names])
+    assert [(src / n).read_text() for n in names] == ["mine\n", "mine\n"]
+
+
+def test_format_a_renamed_old_unformatted_file_counts_as_new(tmp_path):
+    """Attack 4: --no-renames makes a moved file new, so an unformatted moved file fails (as a rename it would be
+    old debt and pass)."""
+    repo = make_repo(tmp_path, {"old.vue": BAD_TWO})
+    git(repo, "mv", "frontend/src/old.vue", "frontend/src/moved.vue")
+    git(repo, "commit", "-qm", "mv")
+    assert git(repo, "diff", "--name-status", "origin/main...HEAD").startswith("R")  # git itself sees a rename
+    code, log = real_format(repo, tmp_path)
+    assert code == 1
+    assert "src/moved.vue: new file, not formatted" in log

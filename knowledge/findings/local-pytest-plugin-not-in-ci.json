@@ -8,14 +8,15 @@
   "where": "chunk 3: dispatch builder (test_dispatch.py crashed twice at session end) and the PR 2 round-2 checker's gate run on build/c3-c2-order-closure bf3565d0",
   "evidence": "ofo-gate/guard-tests.log: every test dot printed to [100%], then Traceback ... _hypothesis_pytestplugin.py line 400 pytest_terminal_summary -> hypothesis/__init__.py -> ... -> egress.py line 278 EgressRefused: subprocess.Popen refused; GATE FAIL guard-tests: exit 1. The same branch printed GATE PASS bf3565d0 in the builder's earlier run (order-dependent)."
  },
- "fix": "The local gate runs every pytest step with `-p no:hypothesispytest` (no repo test uses hypothesis), so a local run loads only what CI loads for that purpose. Do not uninstall the owner's packages.",
+ "fix": "Two mechanisms. (1) The local gate runs every pytest step with `-p no:hypothesispytest` (no repo test uses hypothesis), so a local run loads only what CI loads for that purpose. (2) tests/conftest.py and tests_app/conftest.py prime platform (uname, win32_ver, platform, system, release, version, machine, python_implementation) before the no-process audit hook goes in, and cache platform.win32_ver with functools.cache (it keeps no cache, and its fallback starts a process under load). Do not uninstall the owner's packages.",
  "detection": {
   "status": "guarded",
   "checks": [
    "tests/test_egress_platform_primed.py",
+   "tests_app/test_egress_platform_primed_app.py",
    "tests/orchestrator/test_gate.py"
   ],
-  "note": "Mechanism due at this second occurrence: gate.py adds `-p no:hypothesispytest` to every pytest argv, with a test asserting it (chunk 3 PR 1). Other user-site plugins (allure_pytest, django, xdist) are not disabled; a recurrence from one of them is a new occurrence of this class."
+  "note": "Mechanism due at the second occurrence (a third followed, see occurrences; the platform priming is mechanism 2): gate.py adds `-p no:hypothesispytest` to every pytest argv, with a test asserting it (chunk 3 PR 1). Other user-site plugins (allure_pytest, django, xdist) are not disabled; a recurrence from one of them is a new occurrence of this class."
  },
  "spec_ref": [
   "spec/decisions/ADR-181.md"

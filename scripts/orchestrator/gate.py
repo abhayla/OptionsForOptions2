@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -302,27 +303,26 @@ def git_lines(ctx: Ctx, log_name: str, args: list) -> tuple:
     return code, [ln.strip() for ln in tail(log, 100000) if ln.strip()]
 
 
-def prettier_answer(ctx: Ctx, rel: str) -> int:
-    """prettier --check on one file under frontend/ (so the frontend prettier config applies); its exit code."""
-    return ctx.runner([*ctx.step.argv, rel], ctx.root / ctx.step.cwd, ctx.env, ctx.log_dir / "frontend-format-file.log")
+COPY_PREFIX = ".gate-copy-"
 
 
-def base_unformatted(ctx: Ctx, base: str, rel: str) -> tuple:
-    """(exit code, unformatted at the merge base?). The base version is written next to the file (same folder and
-    extension, so the same prettier config applies) and removed after; a non-zero code means "could not tell"."""
-    show_log = ctx.log_dir / "frontend-format-base.log"
-    code = ctx.runner(["git", "show", f"{base}:{FRONTEND}/{rel}"], ctx.root, ctx.env, show_log)
+def committed_answer(ctx: Ctx, rev: str, rel: str) -> tuple:
+    """(git exit code, prettier exit code) for the version of `rel` committed at `rev`. The blob (`git show`, so the
+    checkout's line endings never count) is written to a fresh temp file in the file's own folder with its extension
+    (same prettier config, same line endings for both sides) and removed after; a non-zero git code = "cannot tell"."""
+    show_log = ctx.log_dir / "frontend-format-show.log"
+    code = ctx.runner(["git", "show", f"{rev}:{FRONTEND}/{rel}"], ctx.root, ctx.env, show_log)
     if code != 0:
-        return code, False  # unreadable base version: fail closed, never "no base, so pass"
-    copy = ctx.root / FRONTEND / Path(rel).with_name(f"gate-base-copy{Path(rel).suffix}")
-    copy.write_bytes(show_log.read_bytes())
+        return code, PRETTIER_OK
+    folder = ctx.root / FRONTEND / Path(rel).parent
+    with tempfile.NamedTemporaryFile(dir=folder, prefix=COPY_PREFIX, suffix=Path(rel).suffix, delete=False) as copy:
+        copy.write(show_log.read_bytes())
     try:
-        answer = prettier_answer(ctx, copy.relative_to(ctx.root / FRONTEND).as_posix())
+        name = (Path(rel).parent / Path(copy.name).name).as_posix()
+        return 0, ctx.runner([*ctx.step.argv, name], ctx.root / ctx.step.cwd, ctx.env,
+                             ctx.log_dir / "frontend-format-file.log")
     finally:
-        copy.unlink(missing_ok=True)
-    if answer not in (PRETTIER_OK, PRETTIER_UNFORMATTED):
-        return answer, False
-    return 0, answer == PRETTIER_UNFORMATTED
+        Path(copy.name).unlink(missing_ok=True)
 
 
 def ratchet(ctx: Ctx, files: list, added: set) -> tuple:
@@ -333,7 +333,9 @@ def ratchet(ctx: Ctx, files: list, added: set) -> tuple:
     failed: list = []
     old_debt = 0
     for rel in files:
-        answer = prettier_answer(ctx, rel)
+        code, answer = committed_answer(ctx, "HEAD", rel)
+        if code != 0:
+            return code, [f"cannot read the committed version of {rel} (exit {code}): failing closed"]
         if answer == PRETTIER_OK:
             continue
         if answer != PRETTIER_UNFORMATTED:
@@ -341,10 +343,12 @@ def ratchet(ctx: Ctx, files: list, added: set) -> tuple:
         if rel in added:
             failed.append(f"{rel}: new file, not formatted")
             continue
-        code, was_unformatted = base_unformatted(ctx, base[0], rel)
+        code, base_answer = committed_answer(ctx, base[0], rel)
         if code != 0:
             return code, [f"cannot read or check the base version of {rel} (exit {code}): failing closed"]
-        if was_unformatted:
+        if base_answer not in (PRETTIER_OK, PRETTIER_UNFORMATTED):
+            return base_answer, [f"prettier exited {base_answer} on the base version of {rel}: failing closed"]
+        if base_answer == PRETTIER_UNFORMATTED:
             old_debt += 1
         else:
             failed.append(f"{rel}: formatted at the merge base, unformatted now")
