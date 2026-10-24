@@ -53,6 +53,32 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def _route_problems(rel: str, text: str) -> tuple[bool, list[str]]:
+    """Return (the file routes the strategy live socket, a problem per non-literal pattern)."""
+    literals = {m.start(): m.group(2) for m in LITERAL_ARG.finditer(text)}
+    starts = [m.start() for m in re.finditer(re.escape(ROUTE_CALL), text)]
+    problems = [
+        f"{rel}:{_line_of(text, at)}: routeWebSocket pattern is not a string literal"
+        for at in starts
+        if at not in literals
+    ]
+    return any(LIVE_MARK in literals.get(at, "") for at in starts), problems
+
+
+def _classify(rel: str, text: str) -> tuple[str | None, str | None]:
+    """Return (category, problem) for a file known to fake the strategy live socket."""
+    imports = IMPORT_LINE.findall(text)
+    if rel in FORWARD_ONLY:
+        if "connectToServer(" not in text:
+            return FORWARD, f"{rel}: pinned as forward-only but no longer calls connectToServer("
+        return FORWARD, None
+    if any(src in HELPER_SOURCES for src in imports) and ".stamp(" in text:
+        return ECHO, None
+    if ".send(" not in text:
+        return SILENT, None
+    return None, f"{rel}: answers {LIVE_MARK} itself without echoing the page's seq; {REMEDY}"
+
+
 def scan(root: Path) -> tuple[dict[str, str], list[str]]:
     """Return ({live-fake file: category}, problems) for the e2e tree under `root`."""
     found: dict[str, str] = {}
@@ -63,31 +89,20 @@ def scan(root: Path) -> tuple[dict[str, str], list[str]]:
     for path in sorted(e2e.rglob("*.ts")):
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
-        if ROUTE_CALL not in text:
-            continue
-        literals = {m.start(): m.group(2) for m in LITERAL_ARG.finditer(text)}
-        live = False
-        for m in re.finditer(re.escape(ROUTE_CALL), text):
-            if m.start() not in literals:
-                problems.append(f"{rel}:{_line_of(text, m.start())}: routeWebSocket pattern is not a string literal")
-            elif LIVE_MARK in literals[m.start()]:
-                live = True
+        live, route_problems = _route_problems(rel, text) if ROUTE_CALL in text else (False, [])
+        problems.extend(route_problems)
         if not live:
             continue
-        imports = IMPORT_LINE.findall(text)
-        if rel in FORWARD_ONLY:
-            found[rel] = FORWARD
-            if "connectToServer(" not in text:
-                problems.append(f"{rel}: pinned as forward-only but no longer calls connectToServer(")
-        elif any(src in HELPER_SOURCES for src in imports) and ".stamp(" in text:
-            found[rel] = ECHO
-        elif ".send(" not in text:
-            found[rel] = SILENT
-        else:
-            problems.append(f"{rel}: answers {LIVE_MARK} itself without echoing the page's seq; {REMEDY}")
-    for pinned in FORWARD_ONLY:
-        if pinned not in found:
-            problems.append(f"{pinned}: pinned as forward-only but it is no longer a strategy live-socket fake")
+        category, problem = _classify(rel, text)
+        if category:
+            found[rel] = category
+        if problem:
+            problems.append(problem)
+    problems.extend(
+        f"{pinned}: pinned as forward-only but it is no longer a strategy live-socket fake"
+        for pinned in FORWARD_ONLY
+        if pinned not in found
+    )
     return found, problems
 
 
