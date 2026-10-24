@@ -123,7 +123,7 @@ async function priceCard(template, legs) {
   if (legs.some((l) => !byId[l.instrument_id] || byId[l.instrument_id].planned_entry === null)) return card // never guessed
   card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at }))
   const out = await read(async () => (await api.post('/strategies/outcome', {
-    underlying: underlying.value, ux_level: 'guided',
+    underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
   })).data)
   if (out?.summary) { card.summary = out.summary; card.margin = out.margin ?? null; card.priced = true }
@@ -147,7 +147,7 @@ function back() {
 }
 
 function openInBuilder(card) {
-  router.push({ path: '/strategy/builder', query: { ux: 'guided', draft: JSON.stringify({ underlying: underlying.value, legs: card.legs }) } })
+  router.push({ path: '/strategy/builder', query: { draft: JSON.stringify({ underlying: underlying.value, legs: card.legs }) } })
 }
 
 const money = (v, unlimited) => (unlimited ? 'Unlimited' : v ?? '—')

@@ -1,0 +1,344 @@
+{
+ "entries": [
+  {
+   "key": "UNRESOLVED REQ-001 W-129 AC-3",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-004 W-055 AC-1",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-1",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-2",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-3",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-4",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-5",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-6",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-7",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-009 W-054 AC-8",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-015 W-130 AC-3",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-015 W-130 AC-6",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-010 AC-1",
+   "reason": "unreached: ofo.admin.client_id,ofo.admin.qualifying,ofo.admin.qualifying_store,ofo.admin.untrusted_text imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-010 AC-2",
+   "reason": "unreached: ofo.admin.qualifying,ofo.admin.qualifying_store imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-010 AC-3",
+   "reason": "unreached: ofo.admin.client_id,ofo.admin.qualifying,ofo.admin.qualifying_store imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-010 AC-4",
+   "reason": "unreached: ofo.admin.qualifying,ofo.admin.qualifying_store imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-010 AC-5",
+   "reason": "unreached: ofo.admin.client_id,ofo.admin.qualifying,ofo.admin.qualifying_store imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-035 AC-1",
+   "reason": "unreached: ofo.admin.client_id,ofo.admin.qualifying,ofo.admin.qualifying_store imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-020 W-035 AC-2",
+   "reason": "unreached: ofo.admin.client_id,ofo.admin.qualifying,ofo.admin.qualifying_store,ofo.admin.untrusted_text imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-3",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-5",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-6",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-7",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-028 W-143 AC-4",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-028 W-143 AC-5",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-035 W-064 AC-3",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-035 W-146 AC-1",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-035 W-146 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-037 W-027 AC-1",
+   "reason": "unresolved: test uses __import__ (mock.patch wraps) AND ofo.strategy.modification is unreached (imported by no app entry point) - #528",
+   "issue": "#528"
+  },
+  {
+   "key": "UNREACHED REQ-037 W-027 AC-2",
+   "reason": "unreached: ofo.strategy.modification imported by no app entry point - #528",
+   "issue": "#528"
+  },
+  {
+   "key": "UNRESOLVED REQ-037 W-027 AC-4",
+   "reason": "unresolved: test uses __import__ (mock.patch wraps) AND ofo.strategy.modification is unreached (imported by no app entry point) - #528",
+   "issue": "#528"
+  },
+  {
+   "key": "UNRESOLVED REQ-037 W-027 AC-5",
+   "reason": "unresolved: test uses __import__ (mock.patch wraps) AND ofo.strategy.modification is unreached (imported by no app entry point) - #528",
+   "issue": "#528"
+  },
+  {
+   "key": "UNRESOLVED REQ-038 W-144 AC-2",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-049 W-113 AC-4",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-049 W-113 AC-5",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-049 W-113 AC-6",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-053 W-030 AC-1",
+   "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-053 W-038 AC-1",
+   "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-053 W-133 AC-4",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-053 W-133 AC-5",
+   "reason": "unreached: ofo_app.order_limits_registry imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-054 W-131 AC-1",
+   "reason": "unresolved: test uses __import__ AND ofo_app.kite_broker_reader is unreached (imported by no app entry point) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-056 W-022 AC-5",
+   "reason": "unreached: ofo.execution.review imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-067 W-040 AC-1",
+   "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-070 W-016 AC-1",
+   "reason": "unreached: ofo.strategy.builder_history imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-070 W-016 AC-2",
+   "reason": "unreached: ofo.strategy.builder_history imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-070 W-016 AC-3",
+   "reason": "unreached: ofo.strategy.builder_history imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-070 W-016 AC-4",
+   "reason": "unreached: ofo.strategy.builder_history imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-070 W-016 AC-5",
+   "reason": "unreached: ofo.strategy.builder_history imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-071 W-045 AC-2",
+   "reason": "unreached: ofo.adjustment.registry imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-072 W-060 AC-2",
+   "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-073 W-121 AC-6",
+   "reason": "unresolved: evidence names missing file tests_app/test_gap.py (evidence defect) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-5",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-7",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-076 W-148 AC-10",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-080 W-147 AC-3",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-080 W-147 AC-4",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-080 W-147 AC-7",
+   "reason": "unresolved: evidence names only frontend tests (vitest/e2e), which the check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-113 W-137 AC-6",
+   "reason": "unreached: ofo_app.order_limits_registry imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-114 W-139 AC-5",
+   "reason": "unresolved: evidence names no python test - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-117 W-132 AC-3",
+   "reason": "unresolved: test imports no product module - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-034 W-150 AC-1",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-034 W-150 AC-7",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-077 W-149 AC-6",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-077 W-149 AC-7",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-2",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-3",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-119 W-151 AC-4",
+   "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
+   "issue": "#532"
+  }
+ ]
+}

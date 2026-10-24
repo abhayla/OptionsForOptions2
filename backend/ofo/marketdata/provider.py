@@ -2,15 +2,17 @@
 
 Operations: live quote stream, option-chain snapshot, instrument/contract master, underlying quote, futures quote,
 optional historical data, health/status, source metadata. An operation a provider does not offer raises
-``NotSupported`` (V1 Kite: futures quote and historical data).
+``NotSupported`` (V1 Kite: historical data).
 """
 from __future__ import annotations
 
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from decimal import Decimal
+from typing import Callable, Literal, Sequence
 
+from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ListedContract
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
@@ -20,6 +22,37 @@ QuoteListener = Callable[[NormalizedQuote], None]
 
 class NotSupported(Exception):
     """The provider does not offer this operation."""
+
+
+#: Why a contract's day values cannot be given (REQ-080 AC-7, AC-8): never a silent null.
+DayStatsReason = Literal["NOT_OFFERED", "NOT_HELD", "FEED_NOT_HEALTHY", "PACKET_WITHOUT_DAY_FIELDS"]
+NOT_OFFERED: DayStatsReason = "NOT_OFFERED"
+NOT_HELD: DayStatsReason = "NOT_HELD"
+FEED_NOT_HEALTHY: DayStatsReason = "FEED_NOT_HEALTHY"
+PACKET_WITHOUT_DAY_FIELDS: DayStatsReason = "PACKET_WITHOUT_DAY_FIELDS"
+
+
+@dataclass(frozen=True)
+class DayStats:
+    """What a packet says about the trading day (REQ-080 AC-7); a field is ``None`` when the packet lacks it."""
+
+    day_open: Decimal | None
+    day_high: Decimal | None
+    day_low: Decimal | None
+    prev_close: Decimal | None  # the previous session's close (F-47)
+    last_trade_ts: int | None  # epoch seconds, as the vendor sends it
+
+
+@dataclass(frozen=True)
+class DayStatsAnswer:
+    """Day values or the reason there are none: exactly one of ``stats`` and ``reason`` is set."""
+
+    stats: DayStats | None = None
+    reason: DayStatsReason | None = None
+
+    @classmethod
+    def unavailable(cls, reason: DayStatsReason) -> DayStatsAnswer:
+        return cls(None, reason)
 
 
 @dataclass(frozen=True)
@@ -52,6 +85,16 @@ class MarketDataProvider(abc.ABC):
         """ADR-077: the time (never the price) of the last quote held for an instrument whose subscription ended;
         None when none was kept. A provider that keeps no such time inherits this."""
         return None
+
+    def latest_depth(self, instrument_id: str, now: datetime.datetime | None = None) -> Depth | None:
+        """The 5-level depth of the latest full packet, or None (none held, not healthy, or a provider without depth:
+        a provider that offers none inherits this)."""
+        return None
+
+    def latest_day_stats(self, instrument_id: str, now: datetime.datetime | None = None) -> DayStatsAnswer:
+        """The day's open / high / low / previous close and last trade time, or the reason there are none. A provider
+        that offers none inherits this and says ``NOT_OFFERED``."""
+        return DayStatsAnswer.unavailable(NOT_OFFERED)
 
     @abc.abstractmethod
     def underlying_quote(self, underlying: str) -> NormalizedQuote | None: ...

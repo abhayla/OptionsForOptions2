@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildSaveBody, canSaveLegs, legsFromSaved } from '@/lib/saveDraft'
 import { buildDraft } from '@/lib/legPicker'
+import { applyEditReply } from '@/lib/legEdit'
 
 const leg = (over = {}) => ({
   id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 2381960, lot_size: 65, action: 'SELL', lots: 2,
@@ -36,6 +37,24 @@ describe('buildSaveBody', () => {
     expect(canSaveLegs([leg()])).toBe(true)
     expect(canSaveLegs([leg({ contract_id: undefined })])).toBe(false)
     expect(canSaveLegs([leg({ lot_size: 0 })])).toBe(false)
+  })
+})
+
+describe('REQ-077 AC-4 the typed mark', () => {
+  it('AC-4: a typed leg sends entry_source "typed" with the pair; a captured leg sends none', () => {
+    const body = buildSaveBody([leg({ typed: true }), leg({ typed: false, contract_id: 5 })], '')
+    expect(body.legs[0]).toEqual({ contract_id: 2381960, action: 'SELL', quantity: 130, planned_entry: '101.25',
+      captured_at: '2026-10-14T15:25:00+05:30', entry_source: 'typed' })
+    expect(Object.keys(body.legs[1])).not.toContain('entry_source')
+  })
+  it('AC-4: the mark needs the pair: a typed leg with no entry sends no entry_source', () => {
+    expect(Object.keys(buildSaveBody([leg({ typed: true, planned_entry: null, captured_at: null })], '').legs[0]).sort()).toEqual(['action', 'contract_id', 'quantity'])
+  })
+  it('AC-4/AC-7: reopening a saved typed leg shows it typed with the saved price; a captured one is not typed', () => {
+    const [t] = legsFromSaved(saved({ entry_source: 'typed' }), [contract])
+    expect(t).toMatchObject({ typed: true, planned_entry: '101.25', captured_at: '2026-10-14T15:25:00+05:30' })
+    expect(legsFromSaved(saved({ entry_source: 'captured' }), [contract])[0].typed).toBe(false)
+    expect(legsFromSaved(saved(), [contract])[0].typed).toBe(false)
   })
 })
 
@@ -79,5 +98,37 @@ describe('a saved leg that is no longer live (issue #500)', () => {
   })
   it('a live leg still builds its own key', () => {
     expect(legsFromSaved(saved(), [contract])[0].instrument_id).toBe('NSE_FO:44624')
+  })
+})
+
+describe('W-148 (REQ-076 AC-7): the tick is never saved', () => {
+  it('AC-7: an unticked leg, a Hedge mark and a base-lots count leave the saved body exactly as before', () => {
+    const body = buildSaveBody([leg({ included: false, hedge: true, base_lots: 1 })], '')
+    expect(Object.keys(body.legs[0]).sort()).toEqual(['action', 'captured_at', 'contract_id', 'planned_entry', 'quantity'])
+    const text = JSON.stringify(body)
+    for (const word of ['included', 'hedge', 'base_lots']) expect(text).not.toContain(word)
+  })
+  it('AC-7: an unticked leg is still saved as a leg (the tick does not drop it from the strategy)', () => {
+    expect(buildSaveBody([leg(), leg({ included: false })], '').legs).toHaveLength(2)
+  })
+  it('a leg whose contract the server changed (no contract_id) cannot be saved with a stale one', () => {
+    expect(canSaveLegs([leg({ contract_id: null, lot_size: null })])).toBe(false)
+  })
+})
+
+describe('W-148 (REQ-076 AC-2): a stepped leg is a new contract and stays savable', () => {
+  const stepReply = (over = {}) => ({ legs: [{ instrument_id: 'NSE_FO:44625', contract_id: 2381961, lot_size: 65, action: 'SELL', instrument: 'CE',
+    strike: '22850.00', expiry: '2026-10-19', lots: 2, base_lots: 2, planned_entry: '88.00', captured_at: '2026-10-14T15:26:00+05:30',
+    included: true, hedge: false, price_source: 'captured', ...over }] })
+  it('AC-2: step then Save Draft posts the NEW contract id and the new entry, never the old contract', () => {
+    const [stepped] = applyEditReply([leg()], stepReply())
+    expect(canSaveLegs([stepped])).toBe(true)
+    expect(buildSaveBody([stepped], '').legs[0]).toEqual({ contract_id: 2381961, action: 'SELL', quantity: 130, planned_entry: '88.00',
+      captured_at: '2026-10-14T15:26:00+05:30' })
+    expect(JSON.stringify(buildSaveBody([stepped], ''))).not.toContain('2381960')
+  })
+  it('AC-2: a reply that names no contract id leaves the leg unsavable, not saved with the old one', () => {
+    const [stepped] = applyEditReply([leg()], stepReply({ contract_id: null }))
+    expect(canSaveLegs([stepped])).toBe(false)
   })
 })

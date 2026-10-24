@@ -1,6 +1,7 @@
 // W-113 (REQ-049 AC-4, AC-5, AC-6; ADR-008, ADR-077): the Live Strategies page, with a fake socket per card and a mocked
 // API. Expected texts come from the pushes and answers the test hands in; the page must show them untouched.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -9,6 +10,7 @@ let listAnswer
 let postAnswer
 let failDetailFor = new Set()
 let notLiveFor = new Set() // issue #500: drafts whose leg's stored contract is no longer live
+let partlyPricedFor = new Set() // REQ-077 AC-9: drafts with one priced leg and one leg that has no planned entry
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
@@ -19,7 +21,10 @@ vi.mock('@/services/api', async (importActual) => {
       detailGets.push(id)
       if (failDetailFor.has(id)) return Promise.reject({ parts: { what_happened: `Server says draft ${id} failed`, impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
       return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, ...(notLiveFor.has(id) ? { contract_state: 'token_reassigned', exchange_segment: null, exchange_token: null } : { contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1000 + id }),
-        action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' }] } } })
+        action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' },
+      // REQ-077 AC-9: a second, live leg with no planned entry next to the priced one
+      ...(partlyPricedFor.has(id) ? [{ contract_id: id + 1, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 1001 + id,
+        action: 'BUY', instrument: 'CE', strike: '22900', expiry: '2026-10-13', quantity: 65, planned_entry: null, captured_at: null }] : [])] } } })
     }
     const cat = /^\/catalogue\/NIFTY\/contracts/.exec(url)
     if (cat) {
@@ -49,7 +54,7 @@ class FakeSocket {
   send(t) { this.sent.push(t) }
   close() { this.closed = true; this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 
@@ -60,6 +65,10 @@ const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', statu
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
 const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
+const FROM_YOUR_PRICES = 'From your prices - no live data'
+// The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).
+const fromEntries = () => ({ state: 'FROM_ENTRIES', underlying: 'NIFTY', status_label: SERVER_LABEL, output_label: FROM_YOUR_PRICES, reason: null,
+  answered_at: '2026-10-19T10:16:00+05:30', spot_level: null, spot_at: null, summary: computed().summary, legs: [leg({ ltp: null, health: null })] })
 
 async function mountPage() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
@@ -89,6 +98,7 @@ beforeEach(() => {
   vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
   notLiveFor = new Set()
+  partlyPricedFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
@@ -138,6 +148,23 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     expect(cards(w)[0].find('[data-testid="live-spot-at"]').text()).toBe('19 Oct 2026, 10:15:00 IST')
   })
 
+  it('REQ-133 AC-2: the card drops a push for an older strategy version and draws the current one', async () => {
+    const w = await mountPage()
+    openAll()
+    const ws = FakeSocket.all[0]
+    const current = JSON.parse(ws.sent.at(-1)).seq
+    expect(Number.isInteger(current) && current >= 1).toBe(true)
+    ws.serverPush(computed({ spot_level: '11111.11', seq: current - 1 })) // a late frame of the previous version
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').exists()).toBe(false)
+    ws.serverPush(computed({ spot_level: '25123.45', seq: current }))
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').text()).toBe('25123.45')
+    ws.serverPush(computed({ spot_level: '11111.11', seq: current - 1 }))
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').text()).toBe('25123.45') // never drawn over the current one
+  })
+
   it('AC-4: spot_at null is shown as a dash, never the request time', async () => {
     const w = await mountPage()
     openAll()
@@ -178,6 +205,18 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     expect(FakeSocket.all).toHaveLength(0)
     expect(posts).toHaveLength(0)
   })
+
+  it('REQ-077 AC-9: a strategy with one priced leg and one unpriced leg is unpriced and paused, never followed, shows no figure', async () => {
+    partlyPricedFor = new Set([1])
+    listAnswer = { strategies: [row(1)] }
+    const w = await mountPage()
+    const card = cards(w)[0]
+    expect(card.attributes('data-state')).toBe('unpriced')
+    expect(card.find('[data-testid="live-paused-badge"]').exists()).toBe(true)
+    expect(card.find('[data-testid="live-spot"]').exists()).toBe(false)
+    expect(FakeSocket.all).toHaveLength(0)
+    expect(posts).toHaveLength(0)
+  })
 })
 
 describe('AC-5: the disconnect message is the server\'s', () => {
@@ -194,6 +233,49 @@ describe('AC-5: the disconnect message is the server\'s', () => {
     const c = cards(w)[0]
     expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
     expect(c.find('[data-testid="live-spot"]').exists()).toBe(false) // no number shown as live
+  })
+
+  it('REQ-049 AC-5 + REQ-077 AC-9: a FROM_ENTRIES answer after the drop shows both server labels, stays paused, shows no figure', async () => {
+    postAnswer = fromEntries()
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(computed())
+    await flushPromises()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
+    expect(c.find('[data-testid="live-output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(c.attributes('data-paused')).toBe('true')
+    expect(c.find('[data-testid="live-paused-badge"]').exists()).toBe(true)
+    expect(c.find('[data-testid="live-health-dot"]').attributes('data-health')).toBe('unknown')
+    for (const id of ['live-spot', 'live-leg', 'live-leg-ltp', 'live-max-profit']) expect(c.find(`[data-testid="${id}"]`).exists()).toBe(false)
+  })
+
+  it('a FROM_ENTRIES push (an ended session) is accepted and the card shows it paused', async () => {
+    const w = await mountPage()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverPush(fromEntries())
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="live-status-label"]').text()).toBe(SERVER_LABEL)
+    expect(c.find('[data-testid="live-output-label"]').text()).toBe(FROM_YOUR_PRICES)
+    expect(c.attributes('data-paused')).toBe('true')
+    expect(c.find('[data-testid="live-spot"]').exists()).toBe(false)
+  })
+
+  it('ADR-168: neither the socket body nor the REST fallback body a live card sends carries a level key', async () => {
+    const LEVEL_KEY = ['ux', 'level'].join('_')
+    const w = await mountPage()
+    openAll()
+    expect(JSON.parse(FakeSocket.all[0].sent[0])).not.toHaveProperty(LEVEL_KEY)
+    FakeSocket.all[0].serverPush(computed())
+    await flushPromises()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(posts).toHaveLength(1)
+    expect(posts[0].body).not.toHaveProperty(LEVEL_KEY)
+    expect(w.exists()).toBe(true)
   })
 
   it('AC-5: the page source writes no copy of the disconnect sentence', async () => {

@@ -1,0 +1,23 @@
+{
+  "id": "RD-122",
+  "kind": "COPY",
+  "title": "One full builder for everyone, no level switch (G-17-1)",
+  "reference_behaviour": "The builder shows every control to every user at once: summary figures, all chart tabs, Greeks, IV, what-if and settings. There is no beginner/advanced switch; features are gated by paid plan only.",
+  "reference_screens": [
+    "screen 010",
+    "screen 011",
+    "screen 012",
+    "screen 014",
+    "screen 015",
+    "screen 168",
+    "screen 206"
+  ],
+  "ours": "Row 17 (W-145, 2026-10-24): no level switch anywhere; the outcome route ignores a stray level key and returns every column and the leg quotes for every user (backend/ofo_app/routes/outcome.py, frontend/src/pages/StrategyBuilderPage.vue). Checked: docs/process/builder-sequence-briefs/results-row-17.md.",
+  "req": "REQ-006",
+  "ac": "AC-1",
+  "row": 17,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

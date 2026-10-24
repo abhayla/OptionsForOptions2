@@ -49,7 +49,7 @@ const live = useStrategyLive({
     const mine = ++seq
     try {
       // ADR-077: `fallback: true` makes the server answer the not-live message even if another socket holds the contracts
-      const res = await api.post('/strategies/outcome', { ...draft, ux_level: 'standard', fallback: true })
+      const res = await api.post('/strategies/outcome', { ...draft, fallback: true })
       if (gone || mine !== seq) return
       data.value = res.data
     } catch (e) {
@@ -76,7 +76,7 @@ async function begin() {
       return
     }
     state.value = 'ready'
-    live.follow({ ...draft, ux_level: 'standard' })
+    live.follow({ ...draft })
   } catch (e) {
     if (gone) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -99,7 +99,9 @@ onBeforeUnmount(() => {
 const down = computed(() => live.status.value === 'down' || live.status.value === 'off' || (wasLive.value && live.status.value !== 'live'))
 const notConnected = computed(() => data.value?.state === 'NOT_CONNECTED')
 // AC-6: a card with no live answer is paused; an unpriced card has nothing to follow.
-const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || down.value)))
+// REQ-077 AC-9: FROM_ENTRIES (live data dropped, every leg has an entry) is paused monitoring too; the card shows its two labels only.
+const fromEntries = computed(() => state.value === 'ready' && data.value?.state === 'FROM_ENTRIES')
+const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || fromEntries.value || down.value)))
 const showFigures = computed(() => state.value === 'ready' && data.value?.state === 'COMPUTED' && !paused.value)
 const refused = computed(() => state.value === 'ready' && data.value?.state === 'REFUSED')
 const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at) : '-'))
@@ -131,7 +133,8 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL }}</p>
 
     <template v-else>
-      <p v-if="notConnected || refused" class="mt-2 text-sm font-medium" data-testid="live-status-label">{{ data.status_label }}</p>
+      <p v-if="notConnected || refused || fromEntries" class="mt-2 text-sm font-medium" data-testid="live-status-label">{{ data.status_label }}</p>
+      <p v-if="fromEntries && data.output_label" class="mt-1 text-sm" data-testid="live-output-label">{{ data.output_label }}</p>
       <p v-if="refused && data.reason" class="mt-1 text-sm" data-testid="live-reason">{{ data.reason }}</p>
       <p v-if="data && !showFigures" class="mt-1 text-sm text-ink-muted">No numbers are shown as live for this strategy.</p>
       <p v-if="data" class="mt-1 text-sm text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>

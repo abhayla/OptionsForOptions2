@@ -51,6 +51,26 @@
    "date": "2026-10-17",
    "where": "GC-2e W-101 (PR #365), branch built before #364 merged",
    "evidence": "CI lint-and-test: tests/marketdata/test_provider_replaceable.py::test_nothing_outside_the_kite_adapter_imports_the_kite_modules -> ofo_app/execute_replay.py imports KiteReads; 1 failed, 5334 passed."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "builder sequence row 20 (W-148) on chunk-2 merge 0e565969 (session 06fe7549)",
+   "evidence": "Two independent checkers and the builders ran only the row's own test files; CI App tests failed 5: tests_app/test_error_boundary_scan.py (routes/leg_edit.py imports fastapi.exceptions) and the order-route guard tests (leg_edit imports ofo.execution.freeze without require_order_path). Both scans run without a database and select_app_tests.py would have selected them. Brief change from now: every builder and checker brief runs the select_app_tests.py list's DB-free files, not only the row's own."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 21 part 21m (migration 0024) on chunk-2 c89e23c9 (session 06fe7549)",
+   "evidence": "The Opus check ran only the new migration test file; CI failed tests_app/test_strategy_shape_matrix.py::test_validators_are_pinned_and_the_app_role_has_no_execute, which pinned the leg validator's md5 from 0011. Fixed by a helper that walks the migrations for the newest pin (module marked repo_scan). Lesson: a migration check runs every test naming the changed DB function (grep pg_proc / md5 / pins)."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 20 CI fix round 2 on chunk-2 43edf26c (session 06fe7549)",
+   "evidence": "The finisher ran four named app guard files but not tests_app/test_strategy_tracking_imports.py; CI flagged the identity SQL that moved into backend/ofo_app/freeze_read.py. The orchestrator then ran ALL 64 DB-free files select_app_tests.py selects (1324 passed) before the next push, which went green (1b5348bd)."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 23a builder (session f1b75d11, branch build/seq-row-23)",
+   "evidence": "The builder stopped without running the DB-free files select_app_tests.py selects; the Opus check found 3 MAJORs in exactly those files: tests_app/test_order_path_switch.py ac6 (routes/outcome.py imported INTEGER_MAX from strategy_store, pulling execute_plan into the leg-edit route), tests/test_door_names_private.py (getattr at routes/execute.py:310), tests_app/test_connect_gate_routes.py:36 (ExecuteIn without revision). Plus outcome.openapi.json not regenerated (found by the orchestrator). Tenth occurrence although the brief listed the command - prose in a brief is not enforcement."
   }
  ]
 }

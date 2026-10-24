@@ -20,7 +20,7 @@
         {{ isLoading ? 'Calculating...' : 'ReCalculate' }}
       </button>
       <RouterLink
-        v-if="savedId && orderPathOn && brokerConnected"
+        v-if="savedId && orderPathOn && brokerConnected && !executeRefusal"
         :to="`/strategy/${savedId}/execute`"
         data-testid="execute-strategy"
         class="px-4 py-2 text-sm font-medium rounded-lg border border-line"
@@ -32,25 +32,29 @@
           type="button"
           disabled
           data-testid="execute-strategy-disabled"
-          :title="TRADE_NEEDS_BROKER_REASON"
+          :title="disabledReason"
           class="px-4 py-2 text-sm font-medium rounded-lg border border-line text-gray-400 cursor-not-allowed"
         >
           Execute Strategy
         </button>
-        <span class="text-xs text-gray-600" data-testid="execute-strategy-reason">{{ TRADE_NEEDS_BROKER_REASON }}</span>
+        <span class="text-xs text-gray-600" data-testid="execute-strategy-reason">{{ disabledReason }}</span>
       </template>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useOrderPath } from '@/lib/orderPath'
 import { TRADE_NEEDS_BROKER_REASON, useBrokerConnected } from '@/lib/brokerConnected'
 
-defineProps({
+const props = defineProps({
   hasLegs: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
   savedId: { type: Number, default: null },
+  // W-148 (REQ-076 AC-7): the reason Execute is refused while any leg is unticked, or null. The tick is page state; the
+  // Execute screen opens the SAVED strategy, which never carries it.
+  executeRefusal: { type: String, default: null },
 })
 
 defineEmits(['recalculate'])
@@ -59,4 +63,5 @@ defineEmits(['recalculate'])
 const orderPathOn = useOrderPath()
 // REQ-015 AC-10 (RD-012): with no broker connected the action is shown disabled with its reason, before any click.
 const brokerConnected = useBrokerConnected()
+const disabledReason = computed(() => (brokerConnected.value ? props.executeRefusal : TRADE_NEEDS_BROKER_REASON))
 </script>

@@ -1,0 +1,16 @@
+{
+  "id": "RD-151",
+  "kind": "NO-SCREEN",
+  "title": "Whether a typed price reaches the basket order price (study gap)",
+  "reference_behaviour": "Not covered: the study stopped before any order step on the typed price (needs an order).",
+  "reference_screens": [],
+  "ours": "REQ-077 AC-8 keeps the order limit from depth and tolerance; a typed price is a planning number only. Owner to capture only if the order panel can be opened safely.",
+  "req": "REQ-077",
+  "ac": "AC-8",
+  "row": 21,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

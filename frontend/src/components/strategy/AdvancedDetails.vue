@@ -1,5 +1,6 @@
-<!-- Advanced Details (REQ-035 AC-5): per-leg Bid and Ask, drawn only when the outcome response carries
-     `advanced_details` (the API sends it at the Advanced level only). Every value is the API's string as given. -->
+<!-- Details (REQ-035 AC-5): per-leg Bid and Ask, drawn whenever the outcome response carries
+     `leg_quotes` (the API sends it for everyone, ADR-168). Every value is the API's string as given.
+     REQ-034 AC-7: a native <details>, closed by default; the rows stay in the DOM. -->
 <script setup>
 import { healthSentence, missingReason } from '@/lib/dataHealthText'
 
@@ -7,8 +8,8 @@ defineProps({ rows: { type: Array, required: true }, nameOf: { type: Function, r
 </script>
 
 <template>
-  <section class="mt-4 rounded border border-line bg-surface p-3" data-testid="advanced-details">
-    <h2 class="text-sm font-medium">Advanced details</h2>
+  <details class="mt-4 rounded border border-line bg-surface p-3" data-testid="advanced-details">
+    <summary class="cursor-pointer text-sm font-medium">Details: bid and ask per leg</summary>
     <div class="overflow-x-auto" data-h-scroll>
       <table class="mt-2 min-w-full text-sm">
         <thead>
@@ -26,5 +27,5 @@ defineProps({ rows: { type: Array, required: true }, nameOf: { type: Function, r
         </tbody>
       </table>
     </div>
-  </section>
+  </details>
 </template>

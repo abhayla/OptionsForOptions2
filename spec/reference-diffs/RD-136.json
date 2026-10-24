@@ -1,0 +1,16 @@
+{
+  "id": "RD-136",
+  "kind": "NO-SCREEN",
+  "title": "Strikes around ATM: default count and the 10/20/30/40 choice (study gap)",
+  "reference_behaviour": "Not recorded: how many strikes the picker lists around ATM and whether the count can be changed (searched strikes each side, number of strikes).",
+  "reference_screens": [],
+  "ours": "REQ-080 AC-1: 10 strikes each side by default, with 10, 20, 30 or 40 selectable. Owner to capture the picker.",
+  "req": "REQ-080",
+  "ac": "AC-1",
+  "row": 19,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

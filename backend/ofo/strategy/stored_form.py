@@ -68,6 +68,12 @@ DOCUMENT_KEYS = frozenset({"schema_version", "underlying", "legs", "rules_ref", 
 LEG_KEYS = frozenset({"contract_id", "action", "instrument", "strike", "expiry", "quantity"})
 #: ADR-075: the optional pair a leg carries when it has a planned entry (both or neither; nothing else is optional).
 ENTRY_LEG_KEYS = frozenset({"planned_entry", "captured_at"})
+#: REQ-077 AC-4 (migration 0024): the optional ninth key, allowed only with the pair. A leg with the pair and no mark
+#: (saved before 0024) reads as captured; a typed price is written with ``entry_source: "typed"``.
+ENTRY_SOURCE_KEY = "entry_source"
+SOURCE_CAPTURED = "captured"
+SOURCE_TYPED = "typed"
+ENTRY_SOURCES = (SOURCE_TYPED, SOURCE_CAPTURED)
 #: The database's patterns (migration 0011): a price as plain digits, at most 12 before and 2 after the point
 #: (NUMERIC(14,2)); a capture time as Python's isoformat of an aware datetime with a whole-minute offset.
 ENTRY_PRICE_PATTERN = r"(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?"
@@ -79,7 +85,7 @@ ENTRY_KEYS = frozenset({"schema_version", "seq", "at", "change_summary", "defini
 LIVE_STATE_NAMES = frozenset(
     {f.name for cls in (_live_state.LiveState, _live_state.LegQuote, _live_state.Greeks)
      for f in dataclasses.fields(cls)} - {"leg_index"}) | {"price"}
-if LIVE_STATE_NAMES & (DOCUMENT_KEYS | LEG_KEYS | ENTRY_LEG_KEYS | ENTRY_KEYS):  # pragma: no cover - a definition key is never live data
+if LIVE_STATE_NAMES & (DOCUMENT_KEYS | LEG_KEYS | ENTRY_LEG_KEYS | ENTRY_KEYS | {ENTRY_SOURCE_KEY}):  # pragma: no cover - a definition key is never live data
     raise RuntimeError("a stored-form key is a live-state name")
 
 # Fixed refusal codes (the API returns them as-is).
@@ -140,8 +146,11 @@ class LegEntry:
 
     price: Decimal
     captured_at: datetime.datetime
+    source: str = SOURCE_CAPTURED  # REQ-077 AC-4: "typed" (the user's own price, its time is captured_at) or "captured"
 
     def __post_init__(self) -> None:
+        if type(self.source) is not str or self.source not in ENTRY_SOURCES:
+            raise StoredFormError(INVALID_PLANNED_ENTRY, f"an entry source is one of {list(ENTRY_SOURCES)}")
         price = self.price
         if (not isinstance(price, Decimal) or not price.is_finite() or price <= 0
                 or re.fullmatch(ENTRY_PRICE_PATTERN, str(price)) is None):
@@ -154,7 +163,7 @@ class LegEntry:
                                                          "whole-minute offset")
 
 
-def entry_from_text(price: Any, captured_at: Any, where: str) -> LegEntry:
+def entry_from_text(price: Any, captured_at: Any, where: str, source: Any = SOURCE_CAPTURED) -> LegEntry:
     """The pair as stored / sent text: the price is exact decimal text (``str(Decimal)`` of itself, no float, no
     exponent) and the time is ISO 8601 with its offset, written exactly as ``isoformat`` writes it back."""
     if type(price) is not str or re.fullmatch(ENTRY_PRICE_PATTERN, price) is None:
@@ -167,14 +176,15 @@ def entry_from_text(price: Any, captured_at: Any, where: str) -> LegEntry:
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not a real datetime") from None
     if at.isoformat() != captured_at:
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not in its canonical form")
-    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at)
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at, source)
 
 
 #: A capture time later than the server clock by more than this is refused (a clock that runs ahead, or a forged time).
 MAX_CAPTURE_AHEAD = datetime.timedelta(minutes=5)
 
 
-def entry_from_input(price: Any, captured_at: Any, now: datetime.datetime, where: str) -> LegEntry:
+def entry_from_input(price: Any, captured_at: Any, now: datetime.datetime, where: str,
+                     source: Any = SOURCE_CAPTURED) -> LegEntry:
     """The pair as a Save Draft body sends it (the strings POST /api/strategies/planned-entry returned): the price is
     exact plain decimal text in whole paise (a JSON number or float is refused); the time is any ISO 8601 text WITH an
     offset ("Z" included), stored in its canonical ``isoformat`` form, and never later than ``now`` +
@@ -191,7 +201,7 @@ def entry_from_input(price: Any, captured_at: Any, now: datetime.datetime, where
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at has no UTC offset")
     if not isinstance(now, datetime.datetime) or now.tzinfo is None or at > now + MAX_CAPTURE_AHEAD:
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is in the future")
-    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at)
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at, source)
 
 
 @dataclass(frozen=True)
@@ -271,7 +281,8 @@ def to_document(saved: SavedDefinition) -> dict[str, Any]:
             "expiry": leg.expiry.isoformat(),
             "quantity": leg.quantity,
         } | ({} if entry is None else {"planned_entry": str(entry.price),
-                                       "captured_at": entry.captured_at.isoformat()}))
+                                       "captured_at": entry.captured_at.isoformat()})
+          | ({ENTRY_SOURCE_KEY: SOURCE_TYPED} if entry is not None and entry.source == SOURCE_TYPED else {}))
     return {
         "schema_version": SCHEMA_VERSION,
         "underlying": d.underlying,
@@ -426,8 +437,11 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
     for i, raw in enumerate(raw_legs):
         where = f"leg_{i + 1}"
         with_entry = isinstance(raw, dict) and bool(ENTRY_LEG_KEYS & set(raw))
-        raw = _exact_keys(raw, LEG_KEYS | ENTRY_LEG_KEYS if with_entry else LEG_KEYS, where)
-        entries.append(entry_from_text(raw["planned_entry"], raw["captured_at"], where) if with_entry else None)
+        marked = with_entry and ENTRY_SOURCE_KEY in raw  # the ninth key: only ever with the pair (the database's rule)
+        raw = _exact_keys(raw, (LEG_KEYS | ENTRY_LEG_KEYS | ({ENTRY_SOURCE_KEY} if marked else set())) if with_entry
+                          else LEG_KEYS, where)
+        entries.append(entry_from_text(raw["planned_entry"], raw["captured_at"], where,
+                                       raw[ENTRY_SOURCE_KEY] if marked else SOURCE_CAPTURED) if with_entry else None)
         contract_id = _int_from(raw["contract_id"], f"{where}.contract_id", MISSING_CONTRACT_ID)
         if not 0 < contract_id <= MAX_CONTRACT_ID:
             raise StoredFormError(MISSING_CONTRACT_ID,

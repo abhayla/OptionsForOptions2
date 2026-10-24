@@ -1,0 +1,19 @@
+{
+  "id": "RD-157",
+  "kind": "MATCH",
+  "title": "At expiry exact, and a model estimate labelled as one",
+  "reference_behaviour": "Figures are shown at expiry and at a target date; the target-date value is labelled a projection from a pricing model that may differ from real P&L.",
+  "reference_screens": [
+    "screen 017",
+    "screen 120",
+    "screen 123"
+  ],
+  "ours": "At Expiry is exact and Estimated Now carries the server's estimate label.",
+  "req": "REQ-034",
+  "ac": "AC-6",
+  "row": 22,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

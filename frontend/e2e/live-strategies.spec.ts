@@ -108,11 +108,66 @@ test('AC-5: a saved strategy shows pushes with different spot_at, then the serve
     if (r.url().endsWith('/api/strategies/outcome') && r.request().method() === 'POST') restAnswers.push(await r.json())
   })
   await sock.kill()
-  await expect.poll(() => restAnswers.some((a) => a.state === 'NOT_CONNECTED'), { timeout: 15000 }).toBe(true)
-  const rest = restAnswers.find((a) => a.state === 'NOT_CONNECTED')
+  // every leg of the saved strategy has a planned entry, so (REQ-077 AC-9) the answer is FROM_ENTRIES: AC-5's message and
+  // the from-your-prices label, both the server's text, and no live number
+  await expect.poll(() => restAnswers.some((a) => a.state === 'FROM_ENTRIES'), { timeout: 15000 }).toBe(true)
+  const rest = restAnswers.find((a) => a.state === 'FROM_ENTRIES')
   expect(rest.status_label).toMatch(AC5)
+  expect(rest.output_label).toBeTruthy()
+  expect(rest.legs.every((l: any) => l.ltp == null)).toBe(true)
   await expect(card.getByTestId('live-status-label')).toHaveText(rest.status_label)
+  await expect(card.getByTestId('live-output-label')).toHaveText(rest.output_label)
   await expect(card.getByTestId('live-paused-badge')).toBeVisible()
   await expect(card.getByTestId('live-health-dot')).toContainText('Health unknown')
   await expect(card.getByTestId('live-spot')).toHaveCount(0) // no number shown as live (REQ-049 AC-4)
+})
+
+test('REQ-049 AC-5 twin: a saved strategy with no planned entry on any leg is never followed: unpriced label, paused, no socket, no figure', async ({ page, request }, testInfo) => {
+  // The card sends only legs that carry a planned entry (buildDraft), so NOT_CONNECTED for "a leg without an entry" cannot
+  // be reached from the card; what it really shows is the unpriced state with the not-connected draft label and a paused badge.
+  const legs = LEGS[testInfo.project.name]
+  const cat = await (await request.get(`${PINNED_URL}/api/catalogue/NIFTY/contracts?expiry=${EXPIRY}`)).json()
+  const res = await request.post(`${PINNED_URL}/api/strategies`, { data: { underlying: 'NIFTY', rules_ref: TAG, legs: legs.map(([token, action]) => {
+    const c = cat.contracts.find((x: any) => x.exchange_token === token)
+    expect(c, `token ${token} is in the pinned catalogue`).toBeTruthy()
+    return { contract_id: c.contract_id, action, quantity: c.lot_size }
+  }) } })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  const id = (await res.json()).id
+  const sock = socketControl(page)
+  await sock.install()
+  await narrowPage(page, request, id)
+  await page.goto(`${REPLAY_URL}/strategies/live-strategies`)
+  const card = page.getByTestId('live-strategy-card')
+  await expect(card).toHaveCount(1)
+  await expect(card).toHaveAttribute('data-state', 'unpriced')
+  await expect(card.getByTestId('live-status-label')).toBeVisible()
+  await expect(card.getByTestId('live-paused-badge')).toBeVisible()
+  await expect(card.getByTestId('live-health-dot')).toContainText('Health unknown')
+  await expect(card.getByTestId('live-spot')).toHaveCount(0)
+  expect(sock.ctl.pushes).toEqual([])
+})
+
+test('REQ-077 AC-9 twin: a saved strategy with one priced leg and one unpriced leg is never followed: unpriced, paused, no socket, no figure', async ({ page, request }, testInfo) => {
+  // The card's draft is null when any leg has no planned entry, so the priced leg's own figures are never shown as the strategy's.
+  const legs = LEGS[testInfo.project.name]
+  const cat = await (await request.get(`${PINNED_URL}/api/catalogue/NIFTY/contracts?expiry=${EXPIRY}`)).json()
+  const res = await request.post(`${PINNED_URL}/api/strategies`, { data: { underlying: 'NIFTY', rules_ref: TAG, legs: legs.map(([token, action], i) => {
+    const c = cat.contracts.find((x: any) => x.exchange_token === token)
+    expect(c, `token ${token} is in the pinned catalogue`).toBeTruthy()
+    return i === 0 ? { contract_id: c.contract_id, action, quantity: c.lot_size, planned_entry: '100.00', captured_at: CAPTURED_AT }
+      : { contract_id: c.contract_id, action, quantity: c.lot_size }
+  }) } })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  const id = (await res.json()).id
+  const sock = socketControl(page)
+  await sock.install()
+  await narrowPage(page, request, id)
+  await page.goto(`${REPLAY_URL}/strategies/live-strategies`)
+  const card = page.getByTestId('live-strategy-card')
+  await expect(card).toHaveCount(1)
+  await expect(card).toHaveAttribute('data-state', 'unpriced')
+  await expect(card.getByTestId('live-paused-badge')).toBeVisible()
+  await expect(card.getByTestId('live-spot')).toHaveCount(0)
+  expect(sock.ctl.pushes).toEqual([])
 })

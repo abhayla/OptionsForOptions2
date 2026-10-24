@@ -25,6 +25,15 @@ export const JITTER_MS = 1000
  *  event retries at once. */
 export const OFFLINE_RETRY_MS = 5000
 
+/** REQ-133 AC-2: true when a push may be drawn for the strategy version on screen. `version` is the socket's own counter
+ *  (0 = the page sent none): a push echoes the `seq` of the follow message it was computed for, so only a push whose
+ *  seq IS the current version is drawn; an older (or any other) seq is dropped. A push with no seq is the old behaviour,
+ *  accepted only while the page has sent no version. */
+export function isCurrentVersion(msg, version) {
+  if (Number.isInteger(msg?.seq)) return msg.seq === version
+  return version === 0
+}
+
 /** The delay before reconnect attempt `attempt` (1-based). */
 export function backoffDelay(attempt) {
   if (attempt <= FAST_ATTEMPTS) return BASE_DELAY_MS
@@ -42,7 +51,7 @@ export function liveUrl(loc = window.location) {
 
 /** True for the server's outcome answer (the only push that changes the numbers). */
 export function isOutcome(msg) {
-  return !!msg && typeof msg === 'object' && ['COMPUTED', 'NOT_CONNECTED', 'REFUSED'].includes(msg.state)
+  return !!msg && typeof msg === 'object' && ['COMPUTED', 'NOT_CONNECTED', 'REFUSED', 'FROM_ENTRIES'].includes(msg.state)
 }
 
 /**
@@ -51,15 +60,19 @@ export function isOutcome(msg) {
  * onDown(): the socket closed without stop() - the page falls back to REST. onStatus(status): connecting | live | down |
  * off (only after stop()). isAnswer(msg) says which message is the screen's answer (default: the outcome check; the Option Chain passes its own).
  * sendBody false = a read-only socket that sends nothing (the index strip). 'live' is reported only for an answer push.
+ * versioned true (the strategy socket, REQ-133 AC-2): every changed body is sent with `seq` = the socket's own version
+ * counter, and an answer push that is not for the current version (isCurrentVersion) is dropped before onPush.
  */
 export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = () => {}, onStatus = () => {}, isAnswer = isOutcome,
-  sendBody = true, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random,
+  sendBody = true, versioned = false, WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout, random = Math.random,
   isOnline = () => globalThis.navigator?.onLine !== false, eventTarget = globalThis.window }) {
   let socket = null
   let body = null // the JSON text last sent or to send
+  let sentPlain = null // the body as the page gave it (no seq): what "changed" compares
   let attempts = 0 // failed attempts in a row
   let timer = null
   let stopped = true
+  let version = 0 // REQ-133 AC-2: bumped once per changed strategy body; the ONE version source of this socket
 
   const status = (s) => onStatus(s)
 
@@ -80,6 +93,10 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
         return // the server mints every message; anything else is ignored, never shown
       }
       if (isAnswer(msg)) {
+        if (versioned && !isCurrentVersion(msg, version)) {
+          console.debug(`live push dropped: seq ${msg.seq}, version on screen ${version}`) // REQ-133 AC-2
+          return
+        }
         attempts = 0 // a real answer arrived: the connection works
         status('live')
         onPush(msg)
@@ -126,8 +143,11 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
 
   /** Follow this strategy body (the OutcomeRequest JSON). An unchanged body sends nothing. */
   function follow(next) {
-    const text = JSON.stringify(next)
-    const changed = text !== body
+    const plain = JSON.stringify(next)
+    const changed = plain !== sentPlain
+    sentPlain = plain
+    if (versioned && changed) version += 1
+    const text = versioned ? JSON.stringify({ ...next, seq: version }) : plain
     body = text
     if (stopped) {
       stopped = false
@@ -148,6 +168,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
   function stop() {
     stopped = true
     body = null
+    sentPlain = null
     listen(false)
     if (timer !== null) clearTimer(timer)
     timer = null
@@ -157,7 +178,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     status('off')
   }
 
-  return { follow, resend, stop, attempts: () => attempts }
+  return { follow, resend, stop, attempts: () => attempts, version: () => version }
 }
 
 /**
@@ -190,7 +211,7 @@ export function useReconnectingText(status) {
 export function useStrategyLive({ onPush, onMessage, onDown, url = liveUrl(), WebSocketImpl } = {}) {
   const status = ref('off')
   const shown = useReconnectingText(status)
-  const live = createLiveSocket({ url, onMessage, onDown, WebSocketImpl, onStatus: (s) => (status.value = s),
+  const live = createLiveSocket({ url, onMessage, onDown, WebSocketImpl, versioned: true, onStatus: (s) => (status.value = s),
     onPush: (msg) => { shown.note(msg, msg?.state === 'COMPUTED'); onPush?.(msg) } })
   onBeforeUnmount(() => live.stop())
   return { status, reconnecting: useReconnecting(status), reconnectingText: shown.text, follow: live.follow, stop: live.stop }

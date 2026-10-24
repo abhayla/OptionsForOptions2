@@ -1,6 +1,7 @@
 // W-120 + W-118-sel part 2 (REQ-030 AC-1/2/4/5/6/7/8/9/10/11/15/16; ADR-002, ADR-132): the Option Chain's leg selection, on a fake chain socket, and the
 // chainSelection store on its own. Each test name starts with its AC id.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -22,7 +23,7 @@ class FakeSocket {
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
 }
 const sock = () => FakeSocket.all.at(-1)
 

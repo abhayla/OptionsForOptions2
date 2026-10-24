@@ -1,0 +1,16 @@
+{
+  "id": "RD-159",
+  "kind": "NO-SCREEN",
+  "title": "A late reply never draws over a newer edit (code evidence only)",
+  "reference_behaviour": "Read in the product's code, not seen on a screen: every edit sends a new request with an id and an older reply arriving late is thrown away.",
+  "reference_screens": [],
+  "ours": "REQ-119 AC-1 and AC-2 sequence ids; not built. Owner to capture two fast edits on a throttled network if a screen proof is wanted.",
+  "req": "REQ-119",
+  "ac": "AC-2",
+  "row": 23,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

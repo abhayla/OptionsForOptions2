@@ -6,23 +6,40 @@
      Adapted from the legacy StrategyBuilderView leg-row form shape only (client P&L, price fallbacks and the basket call
      are dropped). -->
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import {
+  DEFAULT_STRIKE_WIDTH,
+  FORWARD_LABEL,
   LEG_NOT_LIVE_LABEL,
   NOT_CONNECTED_LABEL,
+  PICKER_REFRESH_MS,
   REPRICE_PROMPT,
+  STRIKE_WIDTHS,
   UNDERLYINGS,
+  centreText,
+  contractByInstrumentId,
+  forwardReasonText,
+  futureReasonText,
+  futuresListReasonText,
   instrumentId,
+  listReasonText,
+  lotChoices,
   lotsValid,
   offeredStrikes,
   offeredTypes,
   selectedContract,
+  shown,
 } from '@/lib/legPicker'
 
-const props = defineProps({ legs: { type: Array, default: () => [] } })
+const props = defineProps({
+  // the Strategy Builder draws the ONE leg list (LegList.vue), so it passes false
+  showLegList: { type: Boolean, default: true },
+  legs: { type: Array, default: () => [] },
+})
 const emit = defineEmits(['update:legs'])
 
 const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
@@ -98,7 +115,119 @@ function onType(value) {
   strike.value = ''
 }
 
-onMounted(loadExpiries)
+// ---- REQ-080: Strikes / Futures tabs, multi-select and Done (W-147). Every figure is what the server sent; a read that
+// fails or is superseded leaves NO old list on screen. ----
+const tab = ref('strikes')
+const width = ref(DEFAULT_STRIKE_WIDTH)
+const lotsMode = ref('lots') // 'lots' | 'quantity' (the per-user setting is REQ-138; here a local choice)
+const strikesData = ref(null)
+const strikesFailed = ref(false)
+const futuresData = ref(null)
+const futuresFailed = ref(false)
+const picked = ref({}) // instrument_id -> 'BUY' | 'SELL'
+const cellLots = ref({}) // instrument_id -> lots chosen in that cell
+const doneError = ref('')
+const depthFor = ref(null) // the leg whose depth popup is open
+let stSeq = 0
+let fuSeq = 0
+let timer = null
+
+const centreLine = computed(() => centreText(strikesData.value, istTime))
+const strikesReason = computed(() => listReasonText(strikesData.value?.reason))
+const futuresReason = computed(() => futuresListReasonText(futuresData.value?.reason))
+const pickedCount = computed(() => Object.keys(picked.value).length)
+
+async function loadStrikes() {
+  if (!expiry.value) return
+  const mine = ++stSeq
+  try {
+    const res = await api.get(`/leg-picker/strikes?underlying=${underlying.value}&expiry=${expiry.value}&width=${width.value}`)
+    if (mine !== stSeq) return
+    strikesData.value = res.data
+    strikesFailed.value = false
+  } catch {
+    if (mine !== stSeq) return
+    strikesData.value = null
+    strikesFailed.value = true
+  }
+}
+
+async function loadFutures() {
+  const mine = ++fuSeq
+  try {
+    const res = await api.get(`/leg-picker/futures?underlying=${underlying.value}`)
+    if (mine !== fuSeq) return
+    futuresData.value = res.data
+    futuresFailed.value = false
+  } catch {
+    if (mine !== fuSeq) return
+    futuresData.value = null
+    futuresFailed.value = true
+  }
+}
+
+function refreshOpenTab() {
+  return tab.value === 'futures' ? loadFutures() : loadStrikes()
+}
+
+// A new underlying, expiry or width is a new list: the old one and its selections go before the new read starts.
+watch([underlying, expiry, width], () => {
+  stSeq++
+  strikesData.value = null
+  strikesFailed.value = false
+  picked.value = {}
+  cellLots.value = {}
+  if (tab.value === 'strikes') loadStrikes()
+})
+watch(underlying, () => {
+  fuSeq++
+  futuresData.value = null
+  futuresFailed.value = false
+  if (tab.value === 'futures') loadFutures()
+})
+watch(tab, refreshOpenTab)
+// a leg removed by the page (the one list lives outside this component) while it is being edited leaves no stale form
+watch(() => props.legs, (now) => { if (editingId.value !== null && !now.some((l) => l.id === editingId.value)) resetForm() })
+
+onMounted(() => {
+  loadExpiries()
+  timer = setInterval(refreshOpenTab, PICKER_REFRESH_MS)
+})
+onBeforeUnmount(() => clearInterval(timer))
+
+/** Buy or Sell on a cell selects that contract with that side; the same button again unselects it. */
+function choose(id, side) {
+  const next = { ...picked.value }
+  if (next[id] === side) delete next[id]
+  else next[id] = side
+  picked.value = next
+}
+const lotsOf = (id) => cellLots.value[id] ?? 1
+/** Drop one selection (from the selection list): Done then no longer adds it. */
+function unpick(id) {
+  const { [id]: _side, ...rest } = picked.value
+  const { [id]: _lots, ...restLots } = cellLots.value
+  picked.value = rest
+  cellLots.value = restLots
+}
+/** Clear All (REQ-080 AC-3): the whole selection and its lots go; nothing is added or sent. */
+function clearAll() {
+  picked.value = {}
+  cellLots.value = {}
+  doneError.value = ''
+}
+/** Every leg Done will add, as the user reads it: contract, side, lots. */
+const selection = computed(() => Object.keys(picked.value).map((id) => {
+  const c = contractByInstrumentId(contracts.value, id)
+  const name = c ? contractName({ underlying: underlying.value, expiry: c.expiry, instrument_type: c.instrument_type, strike: c.strike }) : id
+  return { id, name, action: picked.value[id], lots: lotsOf(id) }
+}))
+const choicesFor = (cell) => lotChoices(lotsMode.value, cell?.lot_size)
+/** The select's text maps back to one of the offered choices (never parsed): an unknown text changes nothing. */
+function setLots(cell, text) {
+  const choice = choicesFor(cell).find((o) => String(o.value) === text)
+  if (choice) cellLots.value = { ...cellLots.value, [cell.instrument_id]: choice.value }
+}
 
 function resetForm() {
   editingId.value = null
@@ -181,7 +310,75 @@ function remove(leg) {
   emit('update:legs', props.legs.filter((l) => l.id !== leg.id))
 }
 
+/** Done (REQ-080 AC-3): every selected contract becomes a leg, each through the same planned-entry capture as a single
+ *  add. A leg whose capture finds no price is still added and carries the reprice prompt (ADR-085). Never an order. */
+async function done() {
+  const ids = Object.keys(picked.value)
+  if (busy.value || !ids.length) return
+  const chosen = ids.map((id) => ({ id, c: contractByInstrumentId(contracts.value, id), action: picked.value[id], lots: lotsOf(id) }))
+  if (chosen.some((x) => !x.c || !lotsValid(String(x.lots)))) {
+    doneError.value = 'Contract details are not available for every selected contract, so nothing was added.'
+    return
+  }
+  doneError.value = ''
+  busy.value = true
+  picked.value = {} // picks made while the entries are captured belong to the next batch
+  cellLots.value = {}
+  await addChosen(chosen, underlying.value)
+}
+
+/** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
+ *  a leg with no price is still added and carries the reprice prompt. Caller has set busy. */
+async function addChosen(chosen, und) {
+  try {
+    const pricing = await Promise.all(chosen.map((x) => capture(x.id, und)))
+    const added = chosen.map((x, i) => ({
+      id: nextId++,
+      underlying: und,
+      instrument_id: x.id,
+      contract_id: x.c.contract_id,
+      symbol: x.c.symbol,
+      expiry: x.c.expiry,
+      instrument_type: x.c.instrument_type,
+      strike: x.c.strike,
+      lot_size: x.c.lot_size,
+      action: x.action,
+      lots: x.lots,
+      ...pricing[i],
+      reason_code: pricing[i].planned_entry == null ? 'needs_reprice' : null,
+    }))
+    emit('update:legs', [...props.legs, ...added])
+  } finally {
+    busy.value = false
+  }
+}
+
+/** Buy or Sell on a REAL future (REQ-080 AC-9): its contract details come from the catalogue for that future's own expiry
+ *  (the Futures tab lists every expiry, the form holds one), then the leg is added through addChosen. No contract found
+ *  or a failed read adds nothing. The forward row is a calculated price and has no such button. */
+async function addFuture(f, side) {
+  if (busy.value) return
+  doneError.value = ''
+  busy.value = true
+  const und = underlying.value
+  let c = null
+  try {
+    const res = await api.get(`/catalogue/${und}/contracts?expiry=${f.expiry}`)
+    c = contractByInstrumentId(res.data.contracts, f.instrument_id)
+  } catch {
+    c = null
+  }
+  if (!c || c.instrument_type !== 'FUT') {
+    busy.value = false
+    doneError.value = 'Contract details are not available for this future, so nothing was added.'
+    return
+  }
+  await addChosen([{ id: f.instrument_id, c, action: side, lots: 1 }], und)
+}
+
 const legName = (l) => contractName(l)
+// the Builder's one leg list (LegList.vue) opens the same edit form through this, as the picker's own Edit did
+defineExpose({ startEdit })
 </script>
 
 <template>
@@ -228,7 +425,98 @@ const legName = (l) => contractName(l)
     <p v-if="!lotsOk" class="mt-1 text-sm" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
     <p v-if="contract" class="mt-1 text-sm text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
 
-    <ul v-if="legs.length" class="mt-3 text-sm" data-testid="leg-list">
+    <div class="mt-3 text-sm" data-testid="picker-tabs">
+      <div class="flex flex-wrap items-center gap-2" role="tablist">
+        <button type="button" role="tab" data-testid="tab-strikes" :aria-selected="tab === 'strikes'" :class="tab === 'strikes' ? 'font-semibold underline' : ''" @click="tab = 'strikes'">Strikes</button>
+        <button type="button" role="tab" data-testid="tab-futures" :aria-selected="tab === 'futures'" :class="tab === 'futures' ? 'font-semibold underline' : ''" @click="tab = 'futures'">Futures</button>
+        <label v-if="tab === 'strikes'" class="ml-4">Strikes each side
+          <select v-model.number="width" data-testid="pick-width">
+            <option v-for="w in STRIKE_WIDTHS" :key="w" :value="w">{{ w }}</option>
+          </select>
+        </label>
+        <label v-if="tab === 'strikes'">Size in
+          <select v-model="lotsMode" data-testid="pick-lots-mode">
+            <option value="lots">Lots</option>
+            <option value="quantity">Quantity</option>
+          </select>
+        </label>
+      </div>
+
+      <div v-if="tab === 'strikes'" data-testid="strikes-panel">
+        <p v-if="!expiry" data-testid="strikes-choose-expiry">Choose an expiry to see its strikes.</p>
+        <p v-else-if="strikesFailed" data-testid="strikes-error">The strikes could not be read right now.</p>
+        <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
+        <template v-else>
+          <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
+          <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
+          <div
+            v-for="row in strikesData.rows" :key="row.strike" class="grid grid-cols-3 gap-2 border-b border-line py-1"
+            :class="row.is_atm ? 'bg-amber-100 font-semibold' : ''" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'">
+            <div class="order-2 text-center" data-testid="row-strike">{{ row.strike }}<span v-if="row.is_atm" class="ml-1" data-testid="atm-mark">ATM</span></div>
+            <div v-for="side in ['ce', 'pe']" :key="side" :class="side === 'ce' ? 'order-1' : 'order-3'" :data-testid="`cell-${side}`">
+              <template v-if="row[side]">
+                <span class="mr-2">{{ side.toUpperCase() }} LTP <span data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span></span>
+                <span class="mr-2">OI <span data-testid="cell-oi">{{ shown(row[side].oi) }}</span></span>
+                <span class="mr-2">IV <span data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span></span>
+                <span class="mr-2">Delta <span data-testid="cell-delta">{{ shown(row[side].delta) }}</span></span>
+                <template v-if="choicesFor(row[side]).length">
+                  <button type="button" data-testid="cell-buy" :aria-pressed="picked[row[side].instrument_id] === 'BUY'" :class="picked[row[side].instrument_id] === 'BUY' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'BUY')">Buy</button>
+                  <button type="button" class="ml-1" data-testid="cell-sell" :aria-pressed="picked[row[side].instrument_id] === 'SELL'" :class="picked[row[side].instrument_id] === 'SELL' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'SELL')">Sell</button>
+                  <select class="ml-1" data-testid="cell-lots" :value="lotsOf(row[side].instrument_id)" @change="setLots(row[side], $event.target.value)">
+                    <option v-for="o in choicesFor(row[side])" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                </template>
+              </template>
+              <span v-else data-testid="cell-none">-</span>
+            </div>
+          </div>
+        </template>
+        <!-- The selection is its own list, whatever the strike list shows (the refresh re-centres the rows): Done adds
+             exactly these. -->
+        <ul v-if="pickedCount" class="mt-2" data-testid="selection-list">
+          <li v-for="item in selection" :key="item.id" class="flex items-center gap-2" data-testid="selection-row" :data-instrument-id="item.id" :data-action="item.action" :data-lots="item.lots">
+            <span data-testid="selection-name">{{ item.name }}</span>
+            <span data-testid="selection-side">{{ item.action }}</span>
+            <span data-testid="selection-lots">{{ item.lots }} lot</span>
+            <button type="button" class="underline" data-testid="selection-remove" :aria-label="`Remove ${item.name}`" @click="unpick(item.id)">Remove</button>
+          </li>
+        </ul>
+        <div v-if="expiry" class="mt-2 flex items-center gap-3" data-testid="picker-footer">
+          <span data-testid="picker-count">{{ pickedCount }} selected</span>
+          <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
+          <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done</button>
+          <span v-if="doneError" data-testid="done-error">{{ doneError }}</span>
+        </div>
+      </div>
+
+      <div v-else data-testid="futures-panel">
+        <p v-if="futuresFailed" data-testid="futures-error">The futures could not be read right now.</p>
+        <p v-else-if="!futuresData" data-testid="futures-loading">Reading futures...</p>
+        <template v-else>
+          <p v-if="futuresReason" data-testid="futures-reason">{{ futuresReason }}</p>
+          <ul data-testid="futures-list">
+            <li v-for="f in futuresData.futures" :key="f.instrument_id" data-testid="future-row" :data-expiry="f.expiry">
+              {{ f.expiry }} future: LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span>
+              <span v-if="f.ltp_reason" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
+              <button type="button" class="ml-2" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">Buy</button>
+              <button type="button" class="ml-1" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">Sell</button>
+            </li>
+          </ul>
+          <p v-if="doneError" data-testid="future-add-error">{{ doneError }}</p>
+          <ul class="mt-2" data-testid="forwards-list">
+            <li v-for="f in futuresData.forwards" :key="f.expiry" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
+              {{ f.expiry }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
+              <span v-if="f.source === 'parity'" data-testid="forward-source">(from put-call parity)</span>
+              <span v-else-if="f.source === 'spot_fallback'" data-testid="forward-source">({{ f.label ?? 'estimated from spot' }})</span>
+              <span v-if="f.reason" data-testid="forward-reason">({{ forwardReasonText(f.reason) }})</span>
+            </li>
+          </ul>
+        </template>
+      </div>
+    </div>
+
+    <ul v-if="showLegList && legs.length" class="mt-3 text-sm" data-testid="leg-list">
       <li
 v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-testid="leg-row"
           :data-instrument-id="l.instrument_id" :data-action="l.action" :data-lots="l.lots" :data-entry="l.planned_entry ?? ''"
@@ -242,8 +530,10 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
           <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
           <button type="button" data-testid="reprice-leg" class="underline" @click="startEdit(l)">Reprice</button>
         </template>
+        <button v-if="!l.not_live" type="button" data-testid="depth-icon" :aria-label="`Market depth for ${legName(l)}`" title="Market depth" class="underline" @click="depthFor = depthFor === l.id ? null : l.id">Depth</button>
         <button type="button" data-testid="edit-leg" class="underline" @click="startEdit(l)">Edit</button>
         <button type="button" data-testid="remove-leg" class="underline" @click="remove(l)">Remove</button>
+        <DepthPopup v-if="depthFor === l.id" class="w-full" :instrument-id="l.instrument_id" :title="legName(l)" @close="depthFor = null" />
       </li>
     </ul>
   </section>

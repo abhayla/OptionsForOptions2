@@ -62,6 +62,14 @@ const REFUSAL = { what_happened: 'The market is closed. Orders can be placed onc
   impact: 'No order can be placed while the market is closed.', what_is_blocked: 'Execution of this strategy.',
   next_action: 'Return during market hours and execute again.' }
 
+// W-151 (REQ-119 AC-5): the saved revision the review was loaded at (GET /strategies/1), sent with every Execute
+const REVISION = 3
+// the server's execute_plan_changed parts (backend/ofo/errors/templates.py), shown as given
+const PLAN_CHANGED = { what_happened: 'Your plan changed - review it again.',
+  impact: 'No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.',
+  what_is_blocked: 'Preparing orders from an older version of this strategy.',
+  next_action: 'Review the current plan, then prepare the orders again.' }
+
 const ok = (data) => () => Promise.resolve({ data })
 const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
@@ -79,7 +87,7 @@ beforeEach(() => {
   calls.length = 0
   live.follow.mockReset()
   answers = {
-    'GET /strategies/1': ok({ definition: DEF }),
+    'GET /strategies/1': ok({ definition: DEF, revision: REVISION }),
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-19': ok({ contracts: [CONTRACT] }),
     'POST /strategies/1/execute': ok(REPLY),
     'POST /strategies/1/execution/return': ok(RETURN),
@@ -91,7 +99,37 @@ afterEach(() => submitSpy.mockRestore())
 
 const posts = () => calls.filter(([m]) => m === 'POST').map(([, u, b]) => [u, b])
 
+describe('REQ-077 AC-8: the review shows the planned price and the order limit, per leg', () => {
+  const withPlanned = (planned) => ({ ...REPLY, orders: [{ ...REPLY.orders[0], price: '79.40', planned_price: planned }] })
+
+  async function review(reply) {
+    answers['POST /strategies/1/execute'] = ok(reply)
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-8: a typed planned price is shown next to the order limit, both as given', async () => {
+    const w = await review(withPlanned('81.30'))
+    expect(text(w, 'execute-planned-line')).toBe('NIFTY26O1923650CE: Your planned price 81.30 - order limit 79.40')
+  })
+
+  it('AC-8: a leg with no planned price shows only the order limit, never a made-up planned price', async () => {
+    const w = await review(withPlanned(null))
+    expect(text(w, 'execute-planned-line')).toBe('NIFTY26O1923650CE: Order limit 79.40')
+  })
+})
+
 describe('AC-1: live first, then the exact orders and cost, then Kite only on the owner click', () => {
+  it('ADR-168: the strategy the Execute page follows live carries no level key', async () => {
+    await openExecute('1', 10000)
+    expect(live.follow).toHaveBeenCalledTimes(1)
+    expect(live.follow.mock.calls[0][0]).not.toHaveProperty(['ux', 'level'].join('_'))
+  })
+
   it('AC-1: follows the strategy legs live and calls Execute only after a live push and the owner click', async () => {
     const w = await openExecute('1', 10000)
     expect(live.follow).toHaveBeenCalledTimes(1)
@@ -102,7 +140,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     expect(posts()).toEqual([]) // live alone calls nothing
     await w.get('[data-testid="prepare-entry"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY' }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1 }]])
     const row = w.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())
     expect(row).toEqual(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
     expect(text(w, 'cost-net-premium')).toBe('-217.75')
@@ -140,10 +178,82 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     await w.get('[data-testid="prepare-exit"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT' }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT', revision: REVISION, seq: 1 }]])
     expect(text(w, 'execute-error-what')).toBe(REFUSAL.what_happened)
     expect(text(w, 'execute-error-next')).toBe(REFUSAL.next_action)
     expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+  })
+
+  it('W-151 (REQ-119 AC-5): a 409 plan-changed refusal shows its four parts and no plan', async () => {
+    answers['POST /strategies/1/execute'] = () => Promise.reject({ status: 409, parts: PLAN_CHANGED })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1 }]])
+    expect(calls.filter(([m, u]) => m === 'GET' && u === '/strategies/1')).toHaveLength(2) // the one re-read after the 409
+    expect(text(w, 'execute-error-what')).toBe(PLAN_CHANGED.what_happened)
+    expect(text(w, 'execute-error-impact')).toBe(PLAN_CHANGED.impact)
+    expect(text(w, 'execute-error-blocked')).toBe(PLAN_CHANGED.what_is_blocked)
+    expect(text(w, 'execute-error-next')).toBe(PLAN_CHANGED.next_action)
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+  })
+
+  it('W-151 (REQ-119 AC-5, 23a MINOR 2): after the 409 the saved strategy is re-read once and the next prepare carries the NEW revision', async () => {
+    let n = 0
+    answers['POST /strategies/1/execute'] = () => (n++ === 0 ? Promise.reject({ status: 409, parts: PLAN_CHANGED }) : Promise.resolve({ data: { ...REPLY, seq: 2 } }))
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    answers['GET /strategies/1'] = ok({ definition: DEF, revision: REVISION + 1 }) // the plan was saved again meanwhile
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter(([m, u]) => m === 'GET' && u === '/strategies/1')).toHaveLength(2) // loaded once, re-read once
+    expect(text(w, 'execute-error-what')).toBe(PLAN_CHANGED.what_happened) // the server's four parts stay shown
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts().map(([, b]) => b)).toEqual([{ action: 'ENTRY', revision: REVISION, seq: 1 }, { action: 'ENTRY', revision: REVISION + 1, seq: 2 }])
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(true)
+  })
+
+  it('W-151 (REQ-119 AC-5): a 409 that finds other legs follows them live again before Execute is offered', async () => {
+    answers['POST /strategies/1/execute'] = () => Promise.reject({ status: 409, parts: PLAN_CHANGED })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    const other = { ...DEF, legs: [{ ...DEF.legs[0], quantity: 130 }] }
+    answers['GET /strategies/1'] = ok({ definition: other, revision: REVISION + 1 })
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(live.follow).toHaveBeenCalledTimes(2) // the new legs are followed
+    expect(w.get('[data-testid="execute-screen"]').attributes('data-phase')).toBe('waiting-live')
+    expect(w.find('[data-testid="prepare-entry"]').exists()).toBe(false) // not offered until the new legs are live
+  })
+
+  it('W-151 (REQ-119 AC-2): a prepare reply that does not answer the newest request is never drawn as a plan', async () => {
+    answers['POST /strategies/1/execute'] = ok({ ...REPLY, seq: 99 })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()[0][1].seq).toBe(1)
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+  })
+
+  it('W-151 (REQ-119 AC-3): a cancelled prepare shows no error and changes nothing', async () => {
+    answers['POST /strategies/1/execute'] = () => Promise.reject({ superseded: true })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="execute-error-what"]').exists()).toBe(false)
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
   })
 
   it('AC-1: the form carries api_key and data verbatim and is submitted only by the click, once', async () => {
@@ -336,13 +446,13 @@ describe('AC-1: the live matcher on the server\'s own recorded outcome answers (
   const draftOf = (body) => ({ underlying: body.underlying, legs: body.legs.map((l) => ({ instrument_id: l.instrument_id,
     action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })) })
   it('AC-1: a recorded COMPUTED answer matches the draft it was asked for and reads as live', () => {
-    const body = load('outcome-condor-advanced.json')
+    const body = load('outcome-condor.json')
     expect(body.state).toBe('COMPUTED')
     expect(matchesLegs(body, draftOf(body))).toBe(true)
     expect(isLiveOutcome(body)).toBe(true)
   })
   it('AC-1: a recorded answer without a quote never reads as live', () => {
-    const body = load('outcome-condor-guided-no-quote.json')
+    const body = load('outcome-condor-no-quote.json')
     expect(matchesLegs(body, draftOf(body))).toBe(true)
     expect(isLiveOutcome(body)).toBe(false)
   })

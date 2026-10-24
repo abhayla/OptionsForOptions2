@@ -7,7 +7,6 @@ from ofo.errors.explanations import render_explanation
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata import feed_health
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, not_live, read_snapshot
-from ofo.table import UXLevel
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from outcome.test_same_engine import RATE, VALUATION, definition
@@ -30,7 +29,7 @@ def test_adr077_unsubscribed_inputs_show_ac5_with_the_newest_price_time_17_minut
     clock.now = last + datetime.timedelta(minutes=17)
     after = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
     assert after.spot is None and all(lm.quote is None for lm in after.legs.values())  # no price outlives it
-    out = not_live(d, after, UXLevel.STANDARD)
+    out = not_live(d, after)
     expected = render_explanation("outcome_feed_disconnected", time=newest)
     assert out.state is OutcomeState.NOT_CONNECTED
     assert out.status_label == expected and "Last updated" in str(expected)

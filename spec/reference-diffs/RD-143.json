@@ -1,0 +1,16 @@
+{
+  "id": "RD-143",
+  "kind": "NO-SCREEN",
+  "title": "Entry price of a leg after a strike step (study gap)",
+  "reference_behaviour": "Not recorded: whether a stepped leg's price is re-captured from the new contract or kept (searched stepper, price after step).",
+  "reference_screens": [],
+  "ours": "REQ-076 AC-2 re-captures the planned entry from the new contract's LTP with a new time. Owner to capture a step on a priced leg.",
+  "req": "REQ-076",
+  "ac": "AC-2",
+  "row": 20,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

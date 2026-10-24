@@ -1,0 +1,17 @@
+{
+  "id": "RD-139",
+  "kind": "COPY",
+  "title": "Strategy multiplier scales every leg's lots (G-20-1)",
+  "reference_behaviour": "A Multiplier list (1 to N) multiplies all lots; with 2, every leg doubles and max profit, max loss, premium and margin double.",
+  "reference_screens": [
+    "screen 103"
+  ],
+  "ours": "Built in row 20, commit b6ae07a4 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-4: the multiplier is a choice from the list: choosing 3 and 50 emits those numbers'.",
+  "req": "REQ-076",
+  "ac": "AC-4",
+  "row": 20,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

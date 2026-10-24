@@ -5,6 +5,7 @@ No database: the strategy load is stubbed, so the first thing under test is the 
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 
 import pytest
 from ofo.errors import render
@@ -27,7 +28,7 @@ class _Db:
 
 
 async def _no_load(*_a, **_k):
-    return object()
+    return SimpleNamespace(revision=1)  # W-151: Execute reads the stored revision before the session check
 
 
 def _what(exc: StrategyRefused) -> str:
@@ -37,7 +38,7 @@ def _what(exc: StrategyRefused) -> str:
 async def test_execute_without_a_stored_session_asks_with_the_ac2_sentence(monkeypatch):
     monkeypatch.setattr(execute_route.store, "load", _no_load)
     with pytest.raises(StrategyRefused) as err:
-        await execute_route.execute_strategy(1, execute_route.ExecuteIn(action="ENTRY"), None, None,
+        await execute_route.execute_strategy(1, execute_route.ExecuteIn(action="ENTRY", revision=1), None, None,
                                              lambda: NOW, _Db(), "owner", None)
     assert _what(err.value) == AC2_SENTENCE
 

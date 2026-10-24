@@ -1,0 +1,18 @@
+{
+  "id": "RD-158",
+  "kind": "MATCH",
+  "title": "The current level is highlighted among the levels",
+  "reference_behaviour": "The Payoff Table highlights the current price row.",
+  "reference_screens": [
+    "screen 017",
+    "screen 212"
+  ],
+  "ours": "The current underlying level column is marked CURRENT in the scenario columns.",
+  "req": "REQ-034",
+  "ac": "AC-2",
+  "row": 22,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "RD-129",
+  "kind": "COPY",
+  "title": "Pick several strikes, see the count, Clear All and Done (G-19-1)",
+  "reference_behaviour": "The leg picker keeps a running selection: a footer reads how many legs are selected, with Clear All and Done; Done adds every selected contract to the builder at once.",
+  "reference_screens": [
+    "screen 032",
+    "screen 035"
+  ],
+  "ours": "Built in row 19 commit 1637ed25 (Done adds all selected) and chunk 2 (count footer, Clear All): the picker shows N selected with Clear All and Done; pinned by frontend/tests/leg-picker.test.js: AC-3 (RD-129) core: three picked strikes show.",
+  "req": "REQ-080",
+  "ac": "AC-3",
+  "row": 19,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

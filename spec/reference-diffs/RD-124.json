@@ -1,0 +1,19 @@
+{
+  "id": "RD-124",
+  "kind": "COPY",
+  "title": "Separate P&L Table, Greeks and Payoff Table views instead of one table (G-18-1)",
+  "reference_behaviour": "P&L Table lists per-leg target P&L, target price, entry price and LTP with a Total row; the Greeks tab lists per-leg Delta, Theta, Decay, Gamma, Vega with a Total; the Payoff Table lists underlying targets against P&L on target date and expiry.",
+  "reference_screens": [
+    "screen 014",
+    "screen 015",
+    "screen 017"
+  ],
+  "ours": "SPEC CHANGE: REQ-035 AC-1 'There is exactly one table (not two) per strategy' (ADR-008). Copying splits the single table into three tabbed views. For the owner's batch.",
+  "req": "REQ-035",
+  "ac": "AC-1",
+  "row": 18,
+  "status": "open",
+  "spec_change": true,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

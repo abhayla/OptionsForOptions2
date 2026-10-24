@@ -3,6 +3,7 @@
 // no real waits. Expected delays come from the requirement (attempts 1 s apart for the first 30 s, then 2, 4, 8 ... 30 s),
 // never from running the helper.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -32,11 +33,11 @@ class FakeSocket {
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 
-const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }], ux_level: 'standard' }
+const BODY = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: 1 }] }
 const T1 = '2026-10-19T05:32:10+00:00' // 11:02:10 IST
 const T1_TEXT = 'Reconnecting - prices as of 11:02:10'
 const OUTCOME = (ltp, at = T1) => ({ state: 'COMPUTED', answered_at: at, last_price_at: at, legs: [{ instrument_id: 'NSE_FO:44626', ltp, label: null }] })

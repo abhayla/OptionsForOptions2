@@ -1,0 +1,19 @@
+{
+  "id": "RD-131",
+  "kind": "COPY",
+  "title": "Lots or quantity choice for every user in the picker (G-19-3)",
+  "reference_behaviour": "Settings offer Lots or Qty to everyone; quantity mode lists multiples of the lot size (65, 130, 195 for the index lot of 65).",
+  "reference_screens": [
+    "screen 035",
+    "screen 244",
+    "screen 245"
+  ],
+  "ours": "Built in row 19, commit 1637ed25 (W-147); pinned by frontend/tests/leg-picker.test.js 'AC-4 attack 3: quantity mode on SENSEX lists multiples of the SENSEX lot size from the server data, not NIFTY's'.",
+  "req": "REQ-080",
+  "ac": "AC-4",
+  "row": 19,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

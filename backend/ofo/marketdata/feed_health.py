@@ -25,6 +25,13 @@ from decimal import Decimal
 
 from ofo.engine.executable_price import Depth
 from ofo.market_calendar import is_market_open
+from ofo.marketdata.provider import (
+    FEED_NOT_HEALTHY,
+    NOT_HELD,
+    PACKET_WITHOUT_DAY_FIELDS,
+    DayStats,
+    DayStatsAnswer,
+)
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
@@ -68,10 +75,12 @@ class FeedState:
         self._last_tick_frame: datetime.datetime | None = None  # a PRICE frame only; heartbeats never move it (``phase``)
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
+        self._connected_at: datetime.datetime | None = None  # when the current connection opened (REQ-133 AC-3)
 
     def on_connected(self, now: datetime.datetime) -> None:
         self.connected = True
         self._disconnected_at = None
+        self._connected_at = now
         self._last_activity = now  # a fresh connection starts the 'something must arrive' clock
         self._awaiting_data = True
 
@@ -127,6 +136,17 @@ class FeedState:
         fresh = self._last_tick_frame is not None and now - self._last_tick_frame <= self.feed_stale
         return FEED_HEALTHY if fresh and not self._awaiting_data else FEED_WAITING
 
+    def awaiting_first_price(self, now: datetime.datetime) -> bool:
+        """REQ-133 AC-3: connected (or reconnected) and no price frame yet, still inside ``feed_stale`` (the one
+        staleness limit) of the connection opening. Then the screen waits for its first price; past the limit with no
+        frame, the quotes read STALE as before (the alarm). A closed market, an ended session or a capped feed never
+        waits: they say so."""
+        if self.session_ended or self.capped or not self.connected or not self._awaiting_data:
+            return False
+        if self._connected_at is None or self.market_closed(now):
+            return False
+        return now - self._connected_at <= self.feed_stale
+
     def health(self, now: datetime.datetime) -> DataHealth:
         if self.session_ended:
             return DataHealth.UNAVAILABLE
@@ -151,6 +171,13 @@ def market_closed_for(source: object, now: datetime.datetime) -> bool:
     return (not is_market_open(now)) if closed is None else bool(closed(now))
 
 
+def awaiting_first_price_for(source: object, now: datetime.datetime) -> bool:
+    """REQ-133 AC-3 for ANY provider shape: a provider with a ``FeedState`` answers through
+    ``FeedState.awaiting_first_price``; one without (a relay, a test fake, no provider) never waits."""
+    waiting = getattr(getattr(source, "feed", None), "awaiting_first_price", None)
+    return False if waiting is None else waiting(now) is True
+
+
 def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuote:
     """The quote with its health from the feed's state; its own validation and declared delay still count."""
     if feed is not DataHealth.AVAILABLE:
@@ -171,6 +198,7 @@ class BookEntry:
     # the 5+5 levels of the SAME full frame as ``quote`` (its exchange time is ``quote.timestamp``); None when the last
     # packet carried no depth (quote / ltp mode) - never an empty Depth, which would read as "no liquidity"
     depth: Depth | None = None
+    day_stats: DayStats | None = None  # the day values of the SAME packet; None when it carried none
 
 
 class QuoteBook:
@@ -223,18 +251,19 @@ class QuoteBook:
         """The time of the last quote held for an instrument whose subscription ended; None if none was kept."""
         return self._ended_times.get(instrument_id)
 
-    def update_parked(self, quote: NormalizedQuote, depth: Depth | None = None) -> bool:
+    def update_parked(self, quote: NormalizedQuote, depth: Depth | None = None,
+                      day_stats: DayStats | None = None) -> bool:
         """A tick for a released instrument whose unsubscribe is not out yet: kept for ``restore``, never readable.
         False when the instrument is not parked."""
         if quote.instrument_id not in self._parked:
             return False
-        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp, depth)
+        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
         return True
 
-    def update(self, quote: NormalizedQuote, depth: Depth | None = None) -> None:
+    def update(self, quote: NormalizedQuote, depth: Depth | None = None, day_stats: DayStats | None = None) -> None:
         self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
-        self._entries[instrument_id] = BookEntry(quote, quote.timestamp, depth)
+        self._entries[instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -257,6 +286,19 @@ class QuoteBook:
             return None
         quote = with_feed_health(e.quote, self.feed.health(now))
         return e.depth if quote.health is DataHealth.AVAILABLE else None
+
+    def latest_day_stats(self, instrument_id: str, now: datetime.datetime) -> DayStatsAnswer:
+        """The day values of the instrument's latest packet, or the reason there are none: not held (never seen,
+        removed or parked), the quote is not AVAILABLE (the feed's health, as for depth), or the latest packet was an
+        ltp / index packet that carries no day fields."""
+        e = self._entries.get(instrument_id)
+        if e is None:
+            return DayStatsAnswer.unavailable(NOT_HELD)
+        if with_feed_health(e.quote, self.feed.health(now)).health is not DataHealth.AVAILABLE:
+            return DayStatsAnswer.unavailable(FEED_NOT_HEALTHY)
+        if e.day_stats is None:
+            return DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
+        return DayStatsAnswer(e.day_stats)
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
         health = self.feed.health(now)

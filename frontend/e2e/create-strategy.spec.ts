@@ -43,7 +43,7 @@ async function seed(page: Page) {
 
     const legs = JSON.parse((await card.getAttribute('data-legs')) || '[]')
     expect(legs.map((l: { instrument_id: string; action: string }) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44604', 'SELL']])
-    const answer = await (await request.post(`${REPLAY_URL}/api/strategies/outcome`, { data: { underlying: 'NIFTY', ux_level: 'guided',
+    const answer = await (await request.post(`${REPLAY_URL}/api/strategies/outcome`, { data: { underlying: 'NIFTY',
       legs: legs.map((l: Record<string, unknown>) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
         planned_entry: l.planned_entry, captured_at: l.captured_at })) } })).json()
     const s = answer.summary

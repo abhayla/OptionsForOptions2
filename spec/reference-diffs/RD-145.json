@@ -1,0 +1,18 @@
+{
+  "id": "RD-145",
+  "kind": "COPY",
+  "title": "Typed entry price with an edited marker (G-21-1)",
+  "reference_behaviour": "The price box on each leg is editable; an edited price gets a small corner marker and that leg's figures use it.",
+  "reference_screens": [
+    "screen 112",
+    "screen 210"
+  ],
+  "ours": "Built in row 21, commit 7029b484 (W-149); pinned by frontend/tests/leg-edit.test.js 'AC-1: the request carries price \"81.30\" as a string, and the reply's typed leg renders Your price with its time'.",
+  "req": "REQ-077",
+  "ac": "AC-1",
+  "row": 21,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

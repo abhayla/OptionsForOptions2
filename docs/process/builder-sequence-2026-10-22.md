@@ -41,20 +41,20 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 8 | W-136 | REQ-050 | Shared computation (market-wide figures computed once) | Prerequisite | 1 | A | PARKED (#519) - AC-2 passes, AC-4 deferred (ADR-053); AC-1/AC-3 correct in code, 30 of 40 key parts unguarded |
 | 9 | W-137 | REQ-113 | Price feed in its own process (price socket part) | Prerequisite | 1 | A | Done (AC-4 and the order-event parts deferred: order path; AC-5 two-user browser test deferred: one-user API; live restart check pending, row 63; MINORs #520) |
 | 10 | W-138 | REQ-118 | Zerodha rate limits for read calls | Prerequisite | 1 | A | Done (AC-6 alert sender deferred: #521; trigger writes deferred: order path; MINORs #522) |
-| 11 | W-139 | REQ-114 | Price feed health check and reconnect (price socket part) | Prerequisite | 1 | A | Not started (not built) |
-| 12 | W-140 | REQ-072 | Index spot price | Prerequisite | 1 | A | Not started (verified) |
-| 13 | W-141 | REQ-032 | Calculation engine | Prerequisite | 1 | A | Not started (verified) |
-| 14 | W-142 | REQ-033 | Expiry and live P&L formulas | Prerequisite | 1 | A | Not started (verified) |
-| 15 | W-143 | REQ-028 | Shape templates and shape matching | Prerequisite | 1 | B | Not started (built) |
-| 16 | W-144 | REQ-038 | Save a strategy and load it back exactly | Prerequisite | 1 | A | Not started (verified) |
-| 17 | W-145 | REQ-006 + REQ-007 | Remove UX levels: one full screen for everyone; spec rewrite first (ADR-168 (4)(5)) | P1 core | 2 | B | Not started |
-| 18 | W-146 | REQ-035 | Strategy table: every leg's P&L at each level | P1 core | 2 | A | Not started (verified) |
-| 19 | W-147 | REQ-080 | Leg picker: strikes with live prices, futures, depth popup | P1 core | 2 | A | Not started (basic picker only) |
-| 20 | W-148 | REQ-076 | Leg rows: strike -/+, lots, multiplier, leave a leg out, shape name | P1 core | 2 | A | Not started (built on branch W-126) |
-| 21 | W-149 | REQ-077 | Entry prices: typed price, Reset Prices, "price has moved" mark | P1 core | 2 | A | Not started (not built) |
-| 22 | W-150 | REQ-034 | Outcome view and scenario levels | P1 core | 2 | A | Not started (mostly built) |
-| 23 | W-151 | REQ-119 | An old reply never draws over a newer edit | P1 core | 2 | A | Not started (not built) |
-| 24 | W-152 | REQ-133 | Old live frames dropped; a new screen waits for its first price | P1 core | 2 | A | Not started (not built) |
+| 11 | W-139 | REQ-114 | Price feed health check and reconnect (price socket part) | Prerequisite | 1 | A | Done (AC-7 re-verdicted and fixed by the chunk Tier A review F1 + redesign, pass on 1006ca32; MINORs #526) |
+| 12 | W-140 | REQ-072 | Index spot price | Prerequisite | 1 | A | Done (MINORs #526) |
+| 13 | W-141 | REQ-032 | Calculation engine | Prerequisite | 1 | A | Done (MINORs #526) |
+| 14 | W-142 | REQ-033 | Expiry and live P&L formulas | Prerequisite | 1 | A | Done (MINORs #526) |
+| 15 | W-143 | REQ-028 | Shape templates and shape matching | Prerequisite | 1 | B | Done (AC-2 deferred: #528 - no route calls the modification/adjustment/exit domain types until the adjustments and exit rows) |
+| 16 | W-144 | REQ-038 | Save a strategy and load it back exactly | Prerequisite | 1 | A | Done (AC-3/AC-4 deferred: #527 - no live plan can activate a proposal until the adjustments row; fix #527 BEFORE that row) |
+| 17 | W-145 | REQ-006 + REQ-007 | Remove UX levels: one full screen for everyone; spec rewrite first (ADR-168 (4)(5)) | P1 core | 2 | B | Done (W-145 in_review until chunk PR #531; REQ-006/007 superseded, checked against ADR-168 (4)(5): Opus check + fix round 1 + findings-only round 2 PASS, results-row-17.md; MINORs #532) |
+| 18 | W-146 | REQ-035 | Strategy table: every leg's P&L at each level | P1 core | 2 | A | Done (W-146 in_review until chunk PR #531; full-AC Opus check, AC-7 heading pair built 94077a89, findings-only round 2 PASS; evidence W-146 AC-1..8; MINORs #532) |
+| 19 | W-147 | REQ-080 | Leg picker: strikes with live prices, futures, depth popup | P1 core | 2 | A | Done (live check pending: AC-6 futures price, row 63; W-147 in_review until chunk PR #531; Opus backend + Sonnet frontend checks, fix round 1, round 2 PASS; evidence W-147 AC-1..8; MINORs #532) |
+| 20 | W-148 | REQ-076 | Leg rows: strike -/+, lots, multiplier, leave a leg out, shape name | P1 core | 2 | A | Done (re-closed 2026-10-24 after CI: the leg-edit route no longer reaches order code - freeze lookup moved to ofo.instruments, leg_edit import-closure guard; e2e leg-row ids; CI green 1b5348bd; W-148 in_review until chunk PR #531; evidence W-148 AC-1..10; MINORs #532) |
+| 21 | W-149 | REQ-077 | Entry prices: typed price, Reset Prices, "price has moved" mark | P1 core | 2 | A | Done (2026-10-24: five parts 21m/21b/21a/21d/21c + CI fix (FROM_ENTRIES readers, buildDraft fail-closed); Opus closing check PASS on 9730cda2, CI green; W-149 in_review until chunk PR #531; evidence W-149 AC-1..9; tolerance wiring waits owner Q1; MINORs #532) |
+| 22 | W-150 | REQ-034 | Outcome view and scenario levels | P1 core | 2 | A | Done (2026-10-24: expected move from ATM IV into the default range, AC-6/AC-8 tests on build_outcome, dead ofo.scenario.outcome removed, Bid/Ask details expandable; W-150 in_review until chunk PR #531; evidence W-150 AC-1..8, AC-6 fail = what-if part built by row 37; MINORs #532) |
+| 23 | W-151 | REQ-119 | An old reply never draws over a newer edit | P1 core | 2 | A | Done (2026-10-24: 23a seq echoed through one helper + Execute refuses a stale revision first (independent redesign after round 2); 23b newest-wins per request kind, aborts, Execute waits, numbers drawn only when they match legs and choice; W-151 in_review until chunk PR #531; evidence W-151 AC-1..5; MINORs #532) |
+| 24 | W-152 | REQ-133 | Old live frames dropped; a new screen waits for its first price | P1 core | 2 | A | Done (2026-10-24: measured first - the false alarm came from the server's Kite feed reconnect, F-61; "Waiting for the first live price" inside the staleness setting; versioned live frames; W-152 in_review until chunk PR #531; evidence W-152 AC-1..4; MINORs #532) |
 | 25 | W-153 | REQ-055 | Margin check, read part (Zerodha's margin for the plan) | P1 core | 3 | A | Not started (partly built) |
 | 26 | W-154 | REQ-081 | Money summary: net premium, charges, margin, reward/risk | P1 core | 3 | A | Not started (partly built on branch W-127) |
 | 27 | W-155 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Not started (not built) |

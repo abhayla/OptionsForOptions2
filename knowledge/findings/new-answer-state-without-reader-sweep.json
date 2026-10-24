@@ -1,0 +1,28 @@
+{
+ "id": "new-answer-state-without-reader-sweep",
+ "scope": "generic",
+ "class": "A change that adds a new value to a state field the server sends (a new answer state, kind or status) is checked on the server only; every client reader written for the old set of values silently drops or mis-draws the new one, and nothing fails until an end-to-end test of a screen happens to reach that state.",
+ "mechanism": "Row 21d added outcome state FROM_ENTRIES (status_label = REQ-049 AC-5's message). Three frontend readers knew only COMPUTED / NOT_CONNECTED / REFUSED: StrategyBuilderPage.vue rendered status-label only in not-connected/refused, LiveStrategyCard.vue rendered no label, useStrategyLive.js isOutcome dropped FROM_ENTRIES pushes. The 21d check ran backend tests and one frontend unit file, no e2e and no grep of the readers.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "CI App tests run 40055277230 on build/seq-chunk-2 4a08ce01 (21d merged)",
+  "evidence": "6 Playwright failures: e2e/strategy-live.spec.ts:64 and :136, e2e/live-strategies.spec.ts:85 on both viewports - 'Expected: \"not-connected\" Received: \"from-entries\"' and the not-live REST answer never arriving. Fixed on build/seq-ci-21 6bac88cf (4 single-line mutants killed)."
+ },
+ "fix": "Instance: the three readers handle FROM_ENTRIES (labels shown, never live). Class: a brief that adds a value to a sent state field lists every reader (grep the client for the field and each old value) and gives each one a test for the new value.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by the Playwright specs in CI, after merge into the chunk branch. No automated check lists the client readers of a server enum when a value is added; until one exists the brief's standing item (d) must name every reader. Candidate check: a repo test that reads the OutcomeResponse state Literal and fails when a value is missing from frontend/src/composables/useStrategyLive.js isOutcome."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-077.md",
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "row 21d, chunk 2",
+   "evidence": "as first_seen"
+  }
+ ]
+}

@@ -9,7 +9,6 @@ import datetime
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, build_outcome, not_live, read_snapshot
 from ofo.rules.inputs import DataHealth
-from ofo.table import UXLevel
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from outcome.test_same_engine import RATE, VALUATION, definition
@@ -38,8 +37,8 @@ def test_ac4_not_live_after_quotes_were_held_shows_ac5_with_the_newest_held_time
     assert render_explanation("outcome_feed_disconnected", time=snap.valuation) != render_explanation(
         "outcome_feed_disconnected", time=newest)  # so a request-time stamp would fail the assertion below
     expected = render_explanation("outcome_feed_disconnected", time=newest)
-    out = not_live(d, snap, UXLevel.ADVANCED)
-    assert out.state is OutcomeState.NOT_CONNECTED and out.ux_level is UXLevel.ADVANCED
+    out = not_live(d, snap)
+    assert out.state is OutcomeState.NOT_CONNECTED
     assert out.status_label == expected and out.reason is None
     assert all(leg.label == expected and leg.ltp is None and leg.iv is None and leg.health is None for leg in out.legs)
     assert [leg.planned_entry for leg in out.legs] == [p.planned_entry for p in d.legs]

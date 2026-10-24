@@ -159,6 +159,175 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 24 - REQ-133 Old live frames dropped; first-price wait (closed 2026-10-24, session f1b75d11, Done; W-152 in_review until PR #531)
+- A user sees: after the server's market-data connection comes back, "Waiting for the first live price" (no numbers)
+  for up to the staleness setting instead of a false "data disconnected" alarm with stale prices; a live frame for an
+  older version of the strategy on screen is never drawn.
+- Expected vs actual: unmeasured per row (session-end script). Build (Opus, 85 calls - stopped before its gates),
+  finisher (ratchet red fixed, gates run), mutation gate run by the orchestrator (4 killed), Opus check PASS (reproduced
+  the false alarm on the base). The orchestrator then found the new text unpinned (tests/errors/test_template_pins.py
+  red - none of the three agents ran tests/errors).
+- Right: measuring first moved the fix to where the defect was (the server feed, F-61), one place instead of three
+  screens. Wrong: the guard line in every brief skips most of tests/errors, so a new catalogue text passes every local
+  gate and fails CI.
+
+### Meta review after row 24 (2026-10-24, session f1b75d11 - no separate meta agent ran; stated, not hidden)
+- Measured misses, for the conformance check: (1) every builder of rows 22-24 and the copy overran its call limit
+  (85-103 calls vs 48-80; builder-budget-is-prose 12th-14th) - the dispatch prompt's hard stop is not enforced; (2) the
+  guard line skips most of tests/errors, so a new catalogue text (row 24) passed every local gate - the orchestrator's
+  push chain now adds `pytest tests/errors`; (3) a checker's MAJOR was partly a misread (the register page prints
+  status, not `ours`, for COPY rows) - checked against the renderer before acting; (4) a checker writing scratch files
+  while the orchestrator edited records triggered the write guard's quarantine (copied, not reverted).
+- Followed: measure-first on row 24 changed where the fix went; overlap gate before every parallel dispatch; checkers
+  dispatched only when no builder had to commit (after the 23a lesson).
+
+### Chunk 2 reference copy (2026-10-24, session f1b75d11)
+- 16 open COPY records of rows 19-21: 10 already built, 3 built now (Clear All with a count footer, Buy/Sell on each
+  real future under new REQ-080 AC-9, a reopen test), 3 left open (Q211, REQ-138, RD-149 owner); 11 verified, 2 built.
+  The check's MAJOR (records' `ours` read "not built") was fixed by rewriting `ours`; the builder's register allow-list
+  change was reverted, so chunk 2 makes no process-tool change.
+
+### Row 23 - REQ-119 Stale replies dropped (closed 2026-10-24, session f1b75d11, Done; W-151 in_review until PR #531)
+- A user sees: after fast edits the screen keeps the newest numbers (an older reply is dropped, the older request
+  cancelled with no error), the numbers marked updating and Execute off until the latest reply lands, never numbers
+  for another view or range, and an Execute built on an older saved version refused "Your plan changed - review it
+  again." before any order work, with the page re-reading the strategy.
+- Expected vs actual: unmeasured per row (session-end script). 23a: build (103 calls vs 80), Opus check FAIL (3 MAJOR
+  in the select_app_tests files the builder never ran), fix (92 calls vs a 48 stop), round 2 FAIL (model_copy on an
+  ApiModel raises - a stand-in test of the wrong base class hid it), independent Opus redesign, check PASS. 23b: build,
+  Opus check FAIL (a leg-edit reply cancelled a newer outcome request; the leg-edit request never sent the view), fix,
+  round 2 PASS.
+- Wrong: a test stand-in that does not share the real class's base proves nothing about the real class; the browser
+  copied Sensibull's request-id rule only after the owner asked whether Sensibull was being consulted.
+
+### Row 22 - REQ-034 Outcome view and scenario levels (closed 2026-10-24, session f1b75d11, Done with AC-6 what-if part -> row 37; W-150 in_review until PR #531)
+- A user sees: the default level range now widens by the expected move (spot x ATM IV x sqrt(days/365); NIFTY on the
+  recorded frames: 330 points), the per-leg Bid/Ask detail collapsed under "Details: bid and ask per leg", and the
+  margin line proven on the Builder page. Nothing else on the screen changed.
+- Expected vs actual: unmeasured per row (session-end script). Agents: build (Opus), Opus check PASS (on the wrong
+  formula), rework (Opus) to the spec's ATM IV, Opus round 2 PASS, two Sonnet AC-1/5/7 checks (the first could not run
+  the frontend - no node_modules in its tree: an orchestrator setup miss), 22b build + Sonnet check PASS.
+- Wrong: the orchestrator wrote the expected-move formula from memory (nearest-leg IV) while the spec had decided ATM
+  IV (Q254, REQ-106) - brief-rule-from-memory 17th; its Reference line claimed a Sensibull search that never ran (the
+  study has screens 013/020) - the owner asked the same hour. The first check passed it because it checked the brief,
+  not the spec.
+
+### Meta review after row 21 (2026-10-24, session f1b75d11 - no separate meta agent ran; stated, not hidden)
+- Process misses measured by the orchestrator, for the chunk-2 conformance check to verify: (1) builders kept skipping
+  the files select_app_tests.py selects (23a: 3 MAJORs sat in them - repo-wide-scan-outside-targeted-tests 10th);
+  (2) builder budgets overrun again (103, 92 vs 80/48 - builder-budget-is-prose 12th-13th); (3) a running checker's
+  commit gate blocked builders' commits three times (sequencing: dispatch checkers when no builder needs to commit);
+  (4) a 21d check without e2e or a reader grep let a new answer state through (new-answer-state-without-reader-sweep);
+  (5) a twin e2e case written with every leg unpriced hid a real partial-strategy defect - review twins for the
+  smallest realistic shape.
+- Followed: check -> fix -> findings-only round 2 on every part; one independent redesign after a round-2 MAJOR (23a)
+  instead of a third guess; evidence from checkers only.
+
+### Row 21 - REQ-077 Builder entry prices (closed 2026-10-24, sessions 06fe7549 + f1b75d11, Done; W-149 in_review until PR #531)
+- A user sees: a "Your price" field per leg (typed text, tick-checked, four-part error under that leg), Reset Prices
+  and a per-leg reset, "Price has moved since <time>: planned 44.90, now 47.15", typed prices saved and reopened
+  marked typed, the Execute review showing "Your planned price 81.30 - order limit 79.40" (limit from depth only), and
+  with no live data the At Expiry numbers labelled "From your prices - no live data" with the disconnected message.
+- Expected vs actual: unmeasured per row (session-end script). Five part builds, each with a check and round 2; CI red
+  once (6 e2e: the screens did not know FROM_ENTRIES) -> CI fix + 2 rounds; Opus closing check PASS on 9730cda2.
+- Wrong: the browser priced a partly priced strategy as if the unpriced leg did not exist (old defect found by the
+  orchestrator in a twin case; finding browser-drops-unpriced-leg-from-strategy).
+
+### Row 20 - REQ-076 Leg rows (closed 2026-10-24, session 06fe7549, Done; W-148 in_review until PR #531)
+- A user sees: one leg list on the builder with -/+ strike steps (listed strikes only), a 1-50 multiplier, an include
+  tick ("Left out of the numbers"), the matched template name with Hedge marks from the server, a Lots/Quantity switch,
+  Edit, Reprice and a depth icon per leg; Execute is refused while any leg is unticked.
+- Expected vs actual: unmeasured per row (session-end script). Agents: backend build (142 calls - hit the 100-turn
+  cap), backend finisher, backend check, frontend build, fix round 1 (17 frontend tests left red), finisher (classified
+  every red: a test mock, no hidden regression), frontend check (AC-5 partial), fix, round 2 PASS.
+- Wrong: REQ-076 AC-6's own example was mathematically false (a naked short put is bounded by its strike) - corrected
+  in the spec; my brief copied it from the spec; one fix round removed Edit/Reprice (caught by the orchestrator).
+
+### Row 19 - REQ-080 Leg picker (closed 2026-10-24, session 06fe7549, Done; W-147 in_review until PR #531; live check pending AC-6 futures price)
+- A user sees: a leg picker with Strikes and Futures tabs (prices, OI, engine IV and delta per strike, ATM highlighted,
+  10/20/30/40 strikes), several contracts picked at once with a visible selection list, Lots/Quantity, the forward used
+  for pricing per expiry, and a depth popup per leg (5 levels, day values, refreshed once a second).
+- Expected vs actual: unmeasured per row (session-end script). Agents: build (stopped at budget, gates red), finish round
+  (119 calls vs 80 - overrun), backend Opus check, MINOR fix, frontend build, frontend Sonnet check (2 MAJOR), fix round
+  1, findings-only round 2 PASS. CI red once (pinned selector test outside the guard line).
+- Wrong: my first backend brief listed too few files (provider and feed health left out -> values null in production);
+  the one-lease-per-process design would have starved a second viewer (caught by the frontend check).
+
+### Meta review after row 18 (2026-10-24, session 06fe7549 - no separate meta agent ran; stated, not hidden)
+- Rows 17-18 were reviewed per chunk (ADR-178 (3)); the chunk-2 conformance check runs at the chunk end. This entry
+  lists the process misses the orchestrator measured itself, for that check to verify:
+  (1) row 18 dispatched without overlap_gate.py (new finding row-ahead-dispatched-without-overlap-gate);
+  (2) row 19's backend brief listed too few files (the Kite provider and feed health were left out, so day stats and
+  futures prices came back null in production; the builder stopped at budget with 5 guards red) - a brief defect;
+  (3) a checker brief stated Q264 open from memory (brief-rule-from-memory, 16th);
+  (4) builder B1b renamed a response block beyond its brief (caught before merge);
+  (5) the reach check reads only python tests, so frontend-only evidence is UNRESOLVED by design (#532).
+- Followed: draft PR #531 from the first commit; every row brief rendered by make_brief.py (fix/verify-r2 kinds
+  included); one process item; one deferred issue (#532); findings-only round 2s (15/20 budget).
+
+### Row 18 - REQ-035 Strategy table (closed 2026-10-24, session 06fe7549, Done; W-146 in_review until PR #531)
+- A user sees: the scenario columns of the builder table now carry the heading pair "NIFTY at expiry | You make/lose"
+  (or SENSEX); every column for everyone in the locked order, one highlighted current column, Bid/Ask in Details.
+- Expected vs actual: unmeasured per row (session-end script). Rounds: Opus full-AC check (AC-7 FAIL: heading built
+  but never sent - 5th occurrence of verified-on-a-module-the-product-does-not-call, invisible to the reach check
+  because model.py is imported), one build, Opus findings-only round 2 PASS. MINORs in #532.
+- Wrong: dispatched without the overlap gate (finding row-ahead-dispatched-without-overlap-gate); the merge with row
+  17's fix was clean.
+
+### Row 17 - REQ-006 + REQ-007 UX levels removed (closed 2026-10-24, session 06fe7549, Done; W-145 in_review until PR #531)
+- A user sees: one full builder for everyone - every column (IV, Greeks, % return, breakevens), the Bid/Ask details
+  block, no Guided/Standard/Advanced switch; old `?ux=` links open the same screen; after a Kite session ends no stale
+  Bid/Ask rides in a "not connected" answer (fix round 1).
+- Expected vs actual: unmeasured per row (measure_process.py runs at session end). Rounds: 1 Opus check (check 4
+  partial, 1 MAJOR) + findings-only round 2 PASS. Spec text: 15 ADR/support files, 13 requirements, 89 re-pins + 134
+  amends citations (scripted, none refused).
+- Wrong: builder B1b renamed `advanced_details` beyond its brief (the frontend would have lost the block - caught before
+  merge); my row-17 checker brief stated Q264 open from memory (brief-rule-from-memory, 16th); row 18 was dispatched
+  without the overlap gate (new finding row-ahead-dispatched-without-overlap-gate).
+
+Rows 11-16 use the short form of ADR-178 (3) (what a user sees, open issues); their per-row expected-vs-actual numbers
+were not generated in sessions 4-5 and are written `unmeasured` here, never typed. The chunk-level numbers are the
+chunk-1 conformance check below (measure_process.py, 2026-10-24).
+
+### Meta review after row 15 (2026-10-24, the chunk-1 conformance check, fresh Sonnet agent, 1.3 min / 111k / 11 calls)
+- The chunk-end conformance check (`builder-sequence-briefs/conformance-check-chunk.md`) is the meta review for rows
+  13-15 and the chunk: `measure_process.py --sessions 5 --chunk-start 3ccc8439` = 13 MISS / 16 OK / 2 UNMEASURED.
+- Found: orchestrator context over 250k/turn in 3 of 4 measured sessions; 2 + 3 Opus dispatches without `Why Opus:`;
+  11 / 3 / 5 local database runs; 27 process-tool commits; the draft PR opened ~29 h after row 1; 3 of 16 briefs from
+  the generator; 17 deferred issues against 1.
+- Changed (applied in chunk 2): the draft PR #531 opened at chunk 2's first commit; row briefs rendered by
+  `make_brief.py`; one process-tool item (the reach check); one batched deferred issue at the chunk end. Tracker
+  `docs/process/adr-178-tracker.md` Status column updated from the check's table.
+
+### Row 16 - REQ-038 Save a strategy and load it back exactly (closed 2026-10-23, session 5db71e90, Done with AC-3/AC-4 deferred #527)
+- A user sees: saved versions after execution on the app path (migration 0022, confirm route). AC-3/AC-4 fail end to
+  end: no live plan can activate a proposal until the adjustments row (#527, fix before that row). Expected vs actual:
+  unmeasured.
+
+### Row 15 - REQ-028 Shape templates and shape matching (closed 2026-10-23, session 5db71e90, Done with AC-2 deferred #528)
+- A user sees: shape names matched on the builder. AC-2 fails on the app path: modification, adjustment proposal and
+  exit domain types have no route caller (#528). Expected vs actual: unmeasured.
+
+### Row 14 - REQ-033 Expiry and live P&L formulas (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: expiry and live P&L from the one engine. Shared verifier with rows 12-13; all ACs pass. Expected vs
+  actual: unmeasured.
+
+### Row 13 - REQ-032 Calculation engine (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: every figure from one engine. All ACs pass (shared verifier rows 12-14). Expected vs actual: unmeasured.
+
+### Meta review after row 12 (2026-10-24, covered by the chunk-1 conformance check above)
+- Rows 10-12 were reviewed in the chunk-1 Tier A review (three areas, round 2 PASS on 1006ca32) and the conformance
+  check; no separate meta agent ran for row 12 - stated, not hidden.
+
+### Row 12 - REQ-072 Index spot price (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: the index spot price on the builder. Round 2 PASS with one MINOR (the `except SpotRefused` net).
+  Expected vs actual: unmeasured.
+
+### Row 11 - REQ-114 Price feed health check and reconnect (closed 2026-10-23, session 5db71e90, Done, MINORs #526)
+- A user sees: a stale banner and last values labelled stale on every price screen when the feed or the market is
+  closed. AC-7 was re-verdicted FAIL by the chunk Tier A review (closed market shown live), fixed by F1 + an independent
+  redesign, re-recorded pass on 1006ca32. Expected vs actual: unmeasured.
+
 ### Row 10 - REQ-118 Zerodha rate limits for read calls (closed 2026-10-23 ~12:10 IST, Done, #521 deferred, MINORs #522)
 - Expected ~90 min / ~420k (in the brief). Actual: ~180 min wall-clock (build dispatched ~09:07 after 83707b70 at 09:06;
   last code commit 962ab74c at 11:42; close ~12:10) = +100%. Agents (minutes / tokens / calls): build 33.7 / 272k / 78;

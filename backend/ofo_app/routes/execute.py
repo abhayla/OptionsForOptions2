@@ -33,7 +33,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
@@ -62,11 +62,12 @@ from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.limits import INTEGER_MAX
 from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
 from ofo.timeutil import IST
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import entitlement_store, live_market, order_audit, tracked_contracts
@@ -74,7 +75,7 @@ from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money, echo_seq
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_picker import loaded_before
 from ofo_app.catalogue_store import load_catalogue
@@ -89,7 +90,7 @@ from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, l
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import load_charge_rates
+from ofo_app.routes.outcome import RequestSeq, load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
@@ -104,6 +105,10 @@ class ExecuteIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     action: Literal["ENTRY", "EXIT"]
+    #: W-151 (REQ-119 AC-5): the saved strategy revision the user's review was built from; any other stored revision
+    #: is refused (``execute_plan_changed``) before any Zerodha read, plan number or plan row
+    revision: int = Field(gt=0, le=INTEGER_MAX, description="the saved revision the review was built from")
+    seq: Optional[RequestSeq] = None  # noqa: UP045 - REQ-119 AC-1: echoed unchanged as the reply's seq
 
 
 class BasketOrderOut(ApiModel):
@@ -115,6 +120,8 @@ class BasketOrderOut(ApiModel):
     variety: Literal["regular"]
     quantity: int
     price: Money  # 2-decimal string ("3.35"), display only
+    # REQ-077 AC-8: the leg's planned entry (typed or captured), display only; None = none stored
+    planned_price: Optional[Money]  # noqa: UP045
     readonly: bool
     tag: Identifier
 
@@ -137,6 +144,7 @@ class ExecuteOut(ApiModel):
     basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
     orders: list[BasketOrderOut]  # display only
     cost: CostOut
+    seq: Optional[int] = None  # noqa: UP045 - REQ-119 AC-1: the request's seq, unchanged; absent when none was sent
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -281,7 +289,7 @@ class _Request:
     rates: ChargeRates | None
 
 
-@router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
+@router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
 async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     strategy_id: int, body: ExecuteIn,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
@@ -292,10 +300,13 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
 ) -> ExecuteOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
+        if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
+            raise _refuse("execute_plan_changed")
         if session is None:
             raise _refuse("gate_broker_not_connected")
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
+        out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -401,7 +412,8 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
-    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures))
+    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
+                   priced.planned_prices)
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
@@ -482,12 +494,21 @@ def cost_out(orders: Any, rates: ChargeRates | None, figures: Figures) -> CostOu
         "figures_read_at": figures.read_at})
 
 
-def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut) -> ExecuteOut:
+def _planned_price(planned: Sequence[Decimal | None], tag: str) -> Decimal | None:
+    """The planned entry of the leg an order's tag names (leg_index = the leg's place in the plan), 2 decimals."""
+    index = parse_tag(tag).leg_index
+    value = planned[index] if index < len(planned) else None
+    return _paise(value)
+
+
+def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut,
+            planned: Sequence[Decimal | None]) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
-                    "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
+                    "price": o.price.quantize(PAISE), "planned_price": _planned_price(planned, o.tag),
+                    "readonly": o.readonly, "tag": o.tag}
                    for o in basket.orders],
         "cost": cost})
 

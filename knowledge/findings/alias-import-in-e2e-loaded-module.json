@@ -1,0 +1,27 @@
+{
+ "id": "alias-import-in-e2e-loaded-module",
+ "scope": "generic",
+ "class": "A frontend module that Playwright specs import in plain Node (directly or through its static import chain) gains an import through the bundler's path alias ('@/...'); the bundler and the unit runner resolve the alias, Node does not, so every e2e spec in the run fails at load while lint, unit tests and the build stay green.",
+ "mechanism": "Row 23b added `import { isSuperseded } from '@/lib/newestWins'` to frontend/src/services/api.js. e2e/responsive.spec.ts imports src/router/routes.js, whose chain reaches src/lib/orderPath.js -> src/services/api.js; Playwright's loader has no '@' alias, so the run stopped with \"Cannot find package '@/lib' imported from .../frontend/src/services/api.js\". Every other module on that chain already used relative imports.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "CI App tests run 40077253832 on build/seq-chunk-2 49fe0462 (row 23b merged), job frontend",
+  "evidence": "Playwright: Error: Cannot find package '@/lib' imported from /home/runner/work/OptionsForOptions2/OptionsForOptions2/frontend/src/services/api.js; api, execute-screen-e2e and the kit CI green. The 23b builder and both checkers ran lint + targeted vitest + the DB-free pytest set; none runs Playwright locally (CI only)."
+ },
+ "fix": "Instance: the import in api.js made relative. Class-level (at a second occurrence, Learn-or-block): a repo test that walks the static import closure of every src module an e2e spec imports and fails on any '@/' specifier.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by the CI Playwright job (the whole e2e suite fails at load, so it is loud but costs a CI run). No local check: lint, Vitest and the build all resolve the alias."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-119.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "row 23b, chunk 2",
+   "evidence": "as first_seen"
+  }
+ ]
+}

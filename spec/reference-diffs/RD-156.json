@@ -1,0 +1,18 @@
+{
+  "id": "RD-156",
+  "kind": "MATCH",
+  "title": "Max profit, max loss, breakevens and reward/risk before any order",
+  "reference_behaviour": "The summary strip shows Max Profit, Max Loss, Breakeven, Reward/Risk and POP before any order step.",
+  "reference_screens": [
+    "screen 012",
+    "screen 021"
+  ],
+  "ours": "The outcome view shows max profit, max loss, breakevens and risk before Execute.",
+  "req": "REQ-034",
+  "ac": "AC-1",
+  "row": 22,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

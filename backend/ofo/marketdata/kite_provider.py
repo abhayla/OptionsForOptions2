@@ -19,8 +19,14 @@ from ofo.engine.executable_price import Depth, depth_from_levels
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX, ZERODHA, ListedContract
 from ofo.marketdata.feed_health import FeedState, QuoteBook
-from ofo.marketdata.kite_frames import RawTick, parse_frame
-from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus, QuoteListener
+from ofo.marketdata.kite_frames import RawTick, day_stats_of, parse_frame
+from ofo.marketdata.provider import (
+    DayStatsAnswer,
+    MarketDataProvider,
+    NotSupported,
+    ProviderStatus,
+    QuoteListener,
+)
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST_UNNAMED as IST
@@ -54,6 +60,10 @@ class KiteProvider(MarketDataProvider):
             if key in INDEX_ROWS:
                 name, underlying = INDEX_ROWS[key]
                 self._index_id[name] = self._index_id[underlying] = self._contract_id(lc)
+        # (underlying name, expiry) -> the listed future's contract id, from the catalogue rows only (REQ-080 AC-6)
+        self._future_id: dict[tuple[str, datetime.date], str] = {
+            (lc.contract.name, lc.contract.expiry): self._contract_id(lc)
+            for lc in self._master if lc.contract.instrument_type == "FUT"}
         self.feed = feed or FeedState()
         self.book = QuoteBook(self.feed)
         self._listener: QuoteListener | None = None
@@ -98,12 +108,13 @@ class KiteProvider(MarketDataProvider):
                 self.counters["unmapped_token"] += 1
                 continue
             depth = self._depth_of(tick)  # never raises: a bad depth is counted and the quote still lands
+            day = day_stats_of(tick)
             if tick.token not in self._wanted:  # fail closed: a token nobody holds never reaches the book or a listener
-                if not self.book.update_parked(quote, depth):  # parked: kept only for a re-take before the send
+                if not self.book.update_parked(quote, depth, day):  # parked: kept only for a re-take before the send
                     self.counters["unwanted_tick"] += 1
                 continue
             self.counters["ticks"] += 1
-            self.book.update(quote, depth)
+            self.book.update(quote, depth, day)
             out.append(quote)
             if self._listener is not None:
                 self._listener(self._with_health(quote, received_at))
@@ -126,6 +137,10 @@ class KiteProvider(MarketDataProvider):
     def latest_depth(self, instrument_id: str, now: datetime.datetime | None = None) -> Depth | None:
         """ADR-080 (3): the 5-level depth the Execute price walks, or None (see ``QuoteBook.latest_depth``)."""
         return self.book.latest_depth(instrument_id, self._now() if now is None else now)
+
+    def latest_day_stats(self, instrument_id: str, now: datetime.datetime | None = None) -> DayStatsAnswer:
+        """REQ-080 AC-7: open / high / low / previous close / last trade time of the latest packet, or the reason."""
+        return self.book.latest_day_stats(instrument_id, self._now() if now is None else now)
 
     def on_text(self, message: str) -> None:
         """A text message (order update or error): counted by type only, nothing stored."""
@@ -233,8 +248,10 @@ class KiteProvider(MarketDataProvider):
         return self._index_id.get(underlying)
 
     def futures_quote(self, underlying: str, expiry: datetime.date) -> NormalizedQuote | None:
-        raise NotSupported("Kite futures quotes are not offered in V1")
-
+        """The listed future's quote from the platform's own feed (a held subscription, like an option leg); None when
+        the catalogue lists no such future or nobody holds it, so no tick has reached the book."""
+        instrument_id = self._future_id.get((underlying, expiry))
+        return None if instrument_id is None else self.book.get(instrument_id, self._now())
     def historical(self, instrument_id: str, start: datetime.datetime, end: datetime.datetime) -> list[NormalizedQuote]:
         raise NotSupported("historical data is not offered in V1")
 

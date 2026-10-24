@@ -1,0 +1,16 @@
+{
+  "id": "RD-150",
+  "kind": "NO-SCREEN",
+  "title": "A typed price off the tick size, zero or negative (study gap)",
+  "reference_behaviour": "Not recorded: what the price box does with 0, a negative number or a price off the tick (searched invalid price, tick).",
+  "reference_screens": [],
+  "ours": "REQ-077 AC-2 refuses it with the four-part error and keeps the old price. Owner to capture typing 81.32 and 0.",
+  "req": "REQ-077",
+  "ac": "AC-2",
+  "row": 21,
+  "status": "deferred",
+  "issue": 529,
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

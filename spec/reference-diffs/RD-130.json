@@ -1,0 +1,18 @@
+{
+  "id": "RD-130",
+  "kind": "COPY",
+  "title": "Strike IV and delta shown to every user (G-19-2)",
+  "reference_behaviour": "The picker offers LTP, OI and Greeks column sets to every user; none is limited to an advanced level.",
+  "reference_screens": [
+    "screen 032",
+    "screen 033"
+  ],
+  "ours": "Built in row 19, commit 1637ed25 (W-147): the picker shows IV and delta to every user, no level gate; pinned by frontend/tests/leg-picker.test.js: AC-1/AC-2/AC-3 core: ATM row highlighted (cell-iv, cell-delta).",
+  "req": "REQ-080",
+  "ac": "AC-2",
+  "row": 19,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

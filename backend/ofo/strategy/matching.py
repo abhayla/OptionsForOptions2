@@ -151,3 +151,11 @@ def match(
     if shape is None:
         return Custom(nearest=())
     return match_shape(shape, templates)
+
+
+def protective_keys(result: MatchResult) -> frozenset[tuple[Action, Instrument, int | None, int]]:
+    """The Hedge legs of a matched shape as (action, instrument, ATM offset, expiry rank) keys (REQ-076 AC-8): the
+    template legs marked ``protective`` in the catalogue, resolved at the matched parameters. Data only."""
+    offsets = result.template.offsets(result.params)
+    return frozenset((leg.action, leg.instrument, offsets[leg.name], EXPIRY_SLOTS.index(leg.expiry_slot))
+                     for leg in result.template.legs if leg.protective)

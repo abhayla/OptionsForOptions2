@@ -23,7 +23,7 @@ def test_ac3_execute_entry_then_return_closes_plan_1_filled_with_no_mismatch():
     """AC-3: POST Execute ENTRY -> exactly BUY 65 NIFTY26O1923650CE LIMIT "3.35" tag OFS1V1L0 (plan 1); POST the return
     -> plan 1 filled, 0 mismatches, platform 65 = Zerodha 65."""
     with httpx.Client(base_url=URL, timeout=30) as client:
-        entry = client.post("/strategies/1/execute", json={"action": "ENTRY"})
+        entry = client.post("/strategies/1/execute", json={"action": "ENTRY", "revision": 1})  # W-151: as stored
         assert entry.status_code == HTTPStatus.OK, entry.text
         body = entry.json()
         assert body["plan_number"] == 1 and body["tags"] == ["Q0001010"]

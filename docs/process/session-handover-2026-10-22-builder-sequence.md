@@ -1,6 +1,133 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 5 END (5db71e90), 2026-10-23 - START HERE (newest)
+## UPDATE session 7 END (f1b75d11), 2026-10-24 ~14:00 IST - START HERE (newest)
+Three rows closed this session, so a fresh session takes row 24 (goal: "fresh session about every 3 rows").
+Chunk 2 = branch `build/seq-chunk-2`, draft PR #531, sequence worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`
+(it now carries `.run-active.lock` + `.worktree-meta.json`, both git-ignored: DELETE the lock when chunk 2 merges, then
+wt-rm the tree). "Session-7 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\f1b75d11-b824-4940-9f49-1ea2148dae97\scratchpad`
+(briefs `brief-*.md`, measure JSONs, evidence block JSONs `w149/w150/w151-blocks.json`, helpers `fixbrief.py` (finish a
+hand-written brief: map rows + open records + both checks), `acfp.py` (kit AC fingerprints), `findcheck.py` (findings
+index --check), `simrun.py` (spec_similar), `wtrm-agent.ps1` / `wtsweep.ps1` (harness worktrees / sweep report)).
+Chunk notes and the deferred list stay in the session-6 scratchpad (`chunk2-notes.md`, `chunk2-deferred.md`).
+- **DONE:** CI red on 4a08ce01 fixed (screens did not know the FROM_ENTRIES answer; buildDraft priced a partly priced
+  strategy - two new findings). Row 21 closed (evidence W-149 AC-1..9), row 22 closed (W-150 AC-1..8; AC-6 recorded
+  fail = its what-if part is row 37 by decision; expected move now spot x ATM IV x sqrt(days/365) per Q254/REQ-106),
+  row 23 closed (W-151 AC-1..5; 23a needed an independent redesign after round 2). CI green on 39285ade. App tests then
+  FAILED on 49fe0462 (23b merged): every Playwright file died at load - `services/api.js` imported `@/lib/newestWins`,
+  which Playwright's plain-Node loader cannot resolve (router -> orderPath -> api). Fixed in 3e340275 (relative import;
+  finding alias-import-in-e2e-loaded-module) and pushed with the handover; its App-tests run is the first thing to read.
+  Not market-related: CI replays recorded 2026-10-08 frames.
+- **NEXT, in order:** (1) `gh run list --branch build/seq-chunk-2` - red -> `gh run view <id> --log-failed`, tail only.
+  (2) Row 24 (REQ-133, W-152): versioned socket frames (a frame for an older strategy version is dropped - reuse the
+  23b `drawable` rule + the server's seq: the follow message carries a version and every push echoes it; choke point
+  `useStrategyLive.js` createLiveSocket + `backend/ofo_app/live_push.py` / `routes/live.py`) and "Waiting for the first
+  live price" after a (re)connect until the first tick or the REQ-049 health window (today only the chain page has a
+  waiting state). Grep the Sensibull study folder (not only INDEX.md) for reconnect / first tick / waiting before the
+  brief, and put the hit count on the Reference line. (3) Chunk reference-copy builder for rows 17-24's open COPY
+  records. (4) Chunk Tier A review (read `chunk2-deferred.md` first - the user-visible MINOR there: a typed custom range
+  '22000' vs the server's '22000.00' stops live pushes). (5) Conformance check. (6) ONE #532 body update from
+  `chunk2-deferred.md`. (7) Land chunk 2: it is ALREADY OVER the limit - 334 files vs origin/main at 49fe0462 (293 at
+  12:10) against merge.py's 300-file gate (kit #163). Plan the split into PRs under 300 files (e.g. rows 17-20, then
+  21-24, each a merge of row branches onto main) BEFORE row 24 adds more; do not ask for a second manual merge.
+- **Rules learned this session (keep):** run the FULL push chain (repo_scan included) before EVERY push - a push without
+  repo_scan went red on the reach baseline; frontend-only evidence needs a reach-baseline entry (#532) the same commit;
+  never dispatch a checker while a builder must commit (the commit gate blocks it - cost three rounds of retries);
+  `npm ci` in every new worktree before a frontend check (one check was wasted); a test stand-in must share the real
+  class's base (ApiModel); a twin e2e case uses the smallest realistic shape (one priced + one unpriced leg); a
+  decision labelled "technical" still needs the spec grep and a Sensibull grep with the hit count.
+- **Open for the owner:** Q1 in `docs/process/owner-questions-2026-10-25.md` (unchanged). New user-facing texts
+  pending owner read in tests/errors/template_pins.json: `execute_plan_changed` ("Your plan changed - review it again.").
+- **Worktrees** (remove after chunk 2 merges, wt-rm with `-Discard -MergedSha <sha>` where it refuses): -row17a2,
+  -row17b2, -row18, -OptionsForOptions2-chunk2-process, -row19, -row20, -row21, -row21d, -ci21, -row22, -row22b,
+  -row23, -row23b. Harness trees agent-a71cec/aec312/afc010 removed this session (W-127's 4 local-only commits pushed
+  first).
+
+## UPDATE session 6 END (06fe7549), 2026-10-24 ~08:45 IST - START HERE (newest)
+Handed over at ~95% context. Chunk 2 branch `build/seq-chunk-2` (draft PR #531); sequence worktree
+`D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
+- **Closed:** rows 17, 18, 19 (live check pending: AC-6 futures price), 20 (re-closed after CI green 1b5348bd).
+- **Row 21 (REQ-077) - 4 of 5 parts merged + checked:** 21m migration 0024, 21b order-limit rule (a typed price cannot
+  move the limit), 21a typed price/save/reset (round 2 PASS; a JSON number price = malformed request, decided), 21d
+  numbers from the user's prices with no live data incl. an ended session (round 2 PASS). **21c (the screen) is BUILT but
+  NOT CHECKED and NOT MERGED:** branch `build/seq-row-21` head f1a5e938 in worktree `-row21` (brief
+  `row21/brief-21c.md` in the session-6 scratchpad). NEXT: run its check (Sonnet - frontend only; ask "which screen,
+  exercised there", run ALL select_app_tests DB-free files), fix, round 2 if needed, merge, then close row 21 (evidence
+  W-149 AC-1..9 from the 21m/21b/21a/21d/21c checks; AC-8's price-protection wiring waits for owner Q1).
+- **CI RED on 4a08ce01 (21a+21d merged) - fix FIRST:** App tests 6 failed, all Playwright e2e (DB suite green):
+  `e2e/strategy-live.spec.ts:64` and `:136`, `e2e/live-strategies.spec.ts:85` (both viewports). Likely cause: 21d's
+  AC-9 - with the socket dropped and every leg priced, the page now shows FROM_ENTRIES numbers labelled "From your prices
+  - no live data" + REQ-049 AC-5's message, where these older specs assert the not-live state with no numbers. Read the
+  failed log (`gh run view <id> --log-failed`), update the specs to AC-9 (assert both labels, no LTP, no live columns,
+  no Bid/Ask - never weaken to "anything goes"), keep a twin case with a leg WITHOUT an entry asserting the old
+  not-live answer. Row 21 does not close until CI is green.
+- **Owner, this morning:** approved ADR-181 (chunk 3 may build TWO process-tool items: the local gate command and the
+  dispatch command - build them at chunk 3's start). Speed review + independent safety review:
+  session-6 scratchpad `speed-recommendations.md` and the reviewer's ranked list (M1 checkers run the gate before PASS,
+  M2 enforce the two-round limit, R1 gate before push, R4 smaller units, M3 scripted dispatch, M4 builder-brief lines
+  110-113 contradict ADR-178 on local DB runs - fix the brief).
+- **Open for the owner:** Q1 in `docs/process/owner-questions-2026-10-25.md`; 6 new user-facing texts marked "pending
+  owner read" in tests/errors/template_pins.json (outcome_from_entries*).
+- **NEXT after row 21:** rows 22 (REQ-034), 23 (REQ-119), 24 (REQ-133) per `chunk2-notes.md`; chunk COPY builder;
+  chunk Tier A review; chunk-2 conformance check; ONE #532 body update from `chunk2-deferred.md` (19 items); split the
+  chunk into PRs under 300 files and land each through merge.py.
+- **Push rule:** never push while an App-tests run of the branch is in progress; chain every gate with && before a push.
+
+## UPDATE session 6 (06fe7549), 2026-10-24 (older, in-session notes)
+"Session-6 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\06fe7549-4596-4e85-8261-0804902d0768\scratchpad`
+(`chunk2-notes.md` = per-row Measure results and decisions; `chunk2-deferred.md` = items for #532; helpers
+`render_brief.py` (make_brief render + open records of every named REQ + map-row append + both checks),
+`kitrun.py` (kit checkers from a worktree root), `wtrm-batch.ps1` / `wtnew.ps1` (user-level worktree tools by wrapper)).
+Chunk 1 merged before this session (PR #525). Chunk 2 = branch `build/seq-chunk-2`, draft PR #531, sequence worktree
+`D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
+- **DONE (rows close in order):**
+  - Row 17 (REQ-006+007 UX levels removed, W-145 in_review until #531): spec A1-A3 (ADRs, vision, invariants,
+    registers, 13 REQs, 89 re-pins + 134 amends citations, REQ-035 back to Approved), backend (one column set; outcome
+    route ignores a stray `ux_level`, `advanced_details` renamed `leg_quotes`, sent only for a COMPUTED answer), frontend
+    (no switch, no `?ux=`, no level in any request). Opus check + fix round 1 + round 2 PASS (`results-row-17.md`).
+  - Row 18 (REQ-035 strategy table, W-146 in_review): full-AC Opus check found AC-7's heading pair never reached the
+    screen; built (94077a89); round 2 PASS; evidence W-146 AC-1..8.
+  - Chunk 2 process item: `scripts/orchestrator/reach_check.py` + baseline (every entry cites #532/#528) + repo test;
+    checked twice. It reads only python tests (frontend-only evidence = UNRESOLVED by design) and "reached" = imported,
+    not called (row 18's AC-7 is exactly that gap).
+  - Chunk-1 conformance check (late): 13 MISS; tracker updated. Reference study for rows 17-24: RD-122..RD-163.
+  - Issue #532 = chunk 2's ONE deferred issue (reach-check hits + tooling); add items to its body, never a new issue.
+- **Row 19 CLOSED later this session** (W-147 in_review; live check pending: AC-6 futures price at row 63): backend
+  Opus check + MINOR fixes, frontend Sonnet check, fix round 1 (one lease per viewer; visible selection list), round 2
+  PASS; evidence W-147 AC-1..8.
+- **Row 20** was closed (evidence W-148 AC-1..10), then REOPENED by CI: (1) the leg-edit route reached order code
+  (ofo.execution.freeze) - fixed by moving the freeze lookup to `ofo/instruments/freeze_limits.py` + `ofo_app/freeze_read.py`,
+  a leg_edit-scoped import-closure guard in `tests_app/test_order_path_switch.py` (four allow-listed shared paths), two
+  Opus checks PASS; (2) 22 e2e failures from the one-leg-list change - `leg-row` ids restored, then the leg-rows spec's
+  stand-in applied the include edit; (3) the freeze_read SQL needed its reviewed-identity entry. Last push carries all;
+  if its App tests are green, re-close row 20 (table status back to Done, no new evidence needed).
+- **Row 21 IN FLIGHT** (worktree `-row21`, branch `build/seq-row-21`): 21m migration 0024 DONE (Opus PASS; pin test now
+  walks the migrations, module marked repo_scan); 21b order path DONE (a typed price cannot move the limit - proven by an
+  Opus trace + 6/7 mutants, route test added, round 2 PASS). Owner question Q1 parked in
+  `docs/process/owner-questions-2026-10-25.md` (ADR-095 tolerance base vs AC-8, before price protection is wired).
+  NEXT for row 21: 21a backend (brief `row21/brief-21a.md` ready; waits for row 20's re-close - shares routes/leg_edit.py),
+  then 21c frontend (typed price, Reset/per-leg reset, moved marker = string equality, no arithmetic), then 21d AC-9
+  (outcome with typed entries and no live data - safety set, Opus).
+- **NEXT after row 21:** row 22 (REQ-034: the product never calls ofo/scenario/outcome.py; what-if inputs missing) -> 23
+  (REQ-119: server-echoed seq, abort, Execute version check) -> 24 (REQ-133: versioned socket frames) -> chunk COPY
+  builder for rows 17-24's open records -> chunk Tier A review -> chunk-2 conformance check -> one batched #532 body.
+- **Lessons added tonight:** every builder AND checker brief runs ALL DB-free files `select_app_tests.py` selects (9
+  occurrences of repo-wide-scan-outside-targeted-tests now); never push twice inside one App-tests run (four runs were
+  cancelled by back-to-back pushes); chain gates with `&&` before a push (one push went out with the ratchet red).
+- **Budget overruns are now 11 occurrences** of `builder-budget-is-prose` (two tonight: 119 and 142 calls vs 80);
+  the dispatch prompt itself now carries "HARD STOP at <80%> of your calls" - keep doing that.
+- **Worktrees to remove when #531 merges** (wt-rm refuses before: merged into the chunk branch, not main; use
+  `-Discard -MergedSha <merge sha>`): `-row17a2`, `-row17b2`, `-row18`, `-OptionsForOptions2-chunk2-process` (odd name:
+  wt-new prefixes the repo name), later `-row19`. An empty locked harness worktree `agent-a59c99e84c09acee8` sits under
+  the project's hidden worktrees folder (9d885bda).
+- **Process lessons this session:** (1) always run overlap_gate.py before ANY row-ahead dispatch (missed once, new
+  finding); (2) a data-feature brief lists the plumbing between decoder and route (provider, feed health), not only the
+  endpoints - row 19's narrow list shipped values always null in production; (3) a merge in progress makes the overlap
+  gate count the whole chunk diff - resolve and commit first; (4) `test_row_review_log.py` still needs `### Row N` per
+  closed row and `### Meta review after row N` every 3rd row (short form is fine); (5) Tier A items stay `in_review`
+  until the chunk PR merges (trace_check wants review_status naming the PR); (6) a builder may rename a response field
+  beyond its brief - read its report for "beyond the brief" and grep the other side before merging.
+
+## UPDATE session 5 END (5db71e90), 2026-10-23 (older)
 "Session-5 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\5db71e90-61e3-4f1b-8a6c-a0ee38c54e11\scratchpad`
 (attack scripts of every review are there: `review-a1..a3`, `review2-*`, `verify-*`).
 Chunk 1 = PR #525. The kit merge gate cannot read a PR of 300+ files (687 here; kit #163), so the owner approved ONE

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.outcome import read_snapshot  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -35,21 +36,21 @@ def replayed():
     return provider
 
 
-def _body(provider, ux_level=None):
+def _body(provider):
     legs = [{"instrument_id": iid, "action": action, "lots": 1,
              "planned_entry": f"{provider.book.get(iid, VALUATION).ltp:f}", "captured_at": VALUATION.isoformat()}
             for iid, action in CONDOR]
-    body = {"underlying": "NIFTY", "legs": legs}
-    if ux_level:
-        body["ux_level"] = ux_level
-    return body
+    return {"underlying": "NIFTY", "legs": legs}
 
 
-async def _post(body, provider=None):
+async def _post(body, provider=None, stored_lookup=None):
     from ofo_app.main import create_app
-    from ofo_app.routes.outcome import MarketContext, get_market_context
+    from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_contract_lookup, get_market_context
 
     app = create_app()
+    if stored_lookup is not None:  # the stored catalogue answers for the legs, at the replay's clock
+        app.dependency_overrides[get_contract_lookup] = lambda: stored_lookup
+        app.dependency_overrides[get_answer_clock] = lambda: (lambda: VALUATION)
     if provider is not None:
         app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -74,10 +75,10 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     resp = await _post(_body(replayed), replayed)
     assert resp.status_code == 200, resp.text
     out = resp.json()
-    assert set(out) == {"state", "underlying", "ux_level", "status_label", "reason", "output_label", "valuation",
+    assert set(out) == {"state", "underlying", "status_label", "reason", "output_label", "valuation",
                         "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
-                        "table", "scenario", "payoff", "summary"}
-    assert (out["state"], out["underlying"], out["ux_level"]) == ("COMPUTED", "NIFTY", "standard")
+                        "table", "scenario", "payoff", "summary", "leg_quotes"}
+    assert (out["state"], out["underlying"]) == ("COMPUTED", "NIFTY")
     assert out["spot_level"] == "22533.25"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET" and isinstance(out["margin"]["reason"], str)
     s = out["summary"]
@@ -100,13 +101,18 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     _no_floats(out)
 
 
-async def test_ux_level_changes_only_what_is_shown(replayed):
-    std = (await _post(_body(replayed), replayed)).json()
-    guided = (await _post(_body(replayed, "guided"), replayed)).json()
-    assert guided["ux_level"] == "guided"
-    assert guided["table"]["rows"] == std["table"]["rows"] and guided["payoff"] == std["payoff"]
-    vis = lambda o: [c["id"] for c in o["table"]["columns"] if c["visible"]]  # noqa: E731
-    assert len(vis(guided)) < len(vis(std))
+async def test_a_request_carrying_the_retired_level_is_ignored(replayed):
+    """REQ-006 / ADR-168 (4): `ux_level` is ignored: the same outcome, Bid/Ask present, no level key in the answer."""
+    plain = (await _post(_body(replayed), replayed)).json()
+    for level in ("guided", "advanced"):
+        resp = await _post({**_body(replayed), "ux_level": level}, replayed)
+        assert resp.is_success, resp.text
+        out = resp.json()
+        assert "ux_level" not in out
+        assert out["table"] == plain["table"] and out["payoff"] == plain["payoff"]
+        assert out["leg_quotes"] == plain["leg_quotes"] and len(out["leg_quotes"]) == len(CONDOR)
+    resp = await _post({**_body(replayed), "nonsense": 1}, replayed)
+    assert resp.is_client_error  # only the retired key is dropped; any other unknown key is still refused
 
 
 async def test_no_provider_returns_not_connected_state(replayed):
@@ -139,18 +145,13 @@ def test_committed_openapi_schema_matches_the_route():
     assert committed == json.loads(json.dumps(app.openapi()))
 
 
-async def test_advanced_details_only_at_advanced(replayed):
-    """REQ-035 AC-5: bid/ask come only in the advanced_details block, absent (not empty) at guided and standard, taken
-    from the same snapshot as the table; the table's locked columns do not change."""
-    for ux in (None, "guided", "standard"):
-        out = (await _post(_body(replayed, ux), replayed)).json()
-        assert "advanced_details" not in out, ux
-        assert not any(c["id"] in ("bid", "ask") for c in out["table"]["columns"])
-    adv = (await _post(_body(replayed, "advanced"), replayed)).json()
-    std = (await _post(_body(replayed), replayed)).json()
-    assert [c["id"] for c in adv["table"]["columns"]] == [c["id"] for c in std["table"]["columns"]]  # AC-2 order
-    assert not any(c["id"] in ("bid", "ask") for c in adv["table"]["columns"])
-    rows = adv["advanced_details"]
+async def test_leg_quotes_carry_bid_ask_for_everyone(replayed):
+    """REQ-035 AC-5 / ADR-168 (5): bid/ask come in the leg_quotes block for every request, taken from the same
+    snapshot as the table; the table's locked columns do not change."""
+    out = (await _post(_body(replayed), replayed)).json()
+    assert not any(c["id"] in ("bid", "ask") for c in out["table"]["columns"])
+    assert all(c["visible"] for c in out["table"]["columns"])  # one column set: nothing hidden
+    rows = out["leg_quotes"]
     assert [r["instrument_id"] for r in rows] == [iid for iid, _ in CONDOR]
     for r in rows:
         q = replayed.book.get(r["instrument_id"], VALUATION)
@@ -158,9 +159,114 @@ async def test_advanced_details_only_at_advanced(replayed):
         assert r["ask"] == (None if q.ask is None else f"{q.ask:f}")
         assert isinstance(r["health"], str) and r["symbol"]
     assert any(r["bid"] is not None and r["ask"] is not None for r in rows)  # the recording carries depth
-    _no_floats(adv)
+    _no_floats(out)
 
 
-async def test_no_provider_has_no_advanced_details(replayed):
-    out = (await _post(_body(replayed, "advanced"))).json()
-    assert out["state"] == "NOT_CONNECTED" and "advanced_details" not in out
+async def test_a_session_that_ended_is_from_your_prices_and_carries_no_leg_quotes():
+    """REQ-049 AC-4/AC-5 / ADR-168 (5): leg_quotes only for a live computed answer. After the Kite session ends every
+    leg is priced, so the answer is FROM_ENTRIES (REQ-077 AC-9) and the held bid/ask is not shown."""
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    live = (await _post(_body(provider), provider)).json()
+    assert live["state"] == "COMPUTED" and len(live["leg_quotes"]) == len(CONDOR)
+    provider.on_session_ended(VALUATION)
+    out = (await _post(_body(provider), provider)).json()
+    assert out["state"] == "FROM_ENTRIES" and out["output_label"] == LABEL_FROM_ENTRIES
+    assert "leg_quotes" not in out
+
+
+async def test_no_provider_has_no_leg_quotes(replayed):
+    out = (await _post(_body(replayed))).json()
+    assert out["state"] == "NOT_CONNECTED" and "leg_quotes" not in out
+
+
+async def test_route_returns_the_scenario_heading_pair(replayed):
+    """REQ-035 AC-7: the route's table carries the heading pair as two parts (no database needed)."""
+    resp = await _post(_body(replayed), replayed)
+    assert resp.is_success, resp.text
+    assert resp.json()["table"]["scenario_heading"] == ["NIFTY at expiry", "You make/lose"]
+
+
+# ---- REQ-077 AC-9 (row 21d): no live data, every leg priced -> At Expiry from the user's prices --------------------
+
+LABEL_FROM_ENTRIES = "From your prices - no live data"
+SPREAD = (("NSE_FO:44624", "BUY", "81.30"), ("NSE_FO:44632", "SELL", "30.00"))
+
+
+def _spread_body(view="at_expiry", fallback=False):
+    legs = [{"instrument_id": iid, "action": action, "lots": 1, "planned_entry": entry,
+             "captured_at": VALUATION.isoformat()} for iid, action, entry in SPREAD]
+    return {"underlying": "NIFTY", "legs": legs, "view": view, "fallback": fallback}
+
+
+def provider_for_catalogue():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider
+
+
+async def _post_stored(body, provider=None):
+    """Like _post, with the stored catalogue answering for the legs (the database read replaced by the replay's)."""
+    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE)
+    found = {iid: snap.legs[iid].contract for iid, *_ in SPREAD}
+
+    async def lookup(ids):
+        return {i: found[i] for i in ids if i in found}
+
+    return await _post(body, provider, stored_lookup=lookup)
+
+
+async def test_no_provider_every_leg_priced_shows_at_expiry_from_the_users_prices():
+    resp = await _post_stored(_spread_body())
+    assert resp.is_success, resp.text
+    out = resp.json()
+    assert out["state"] == "FROM_ENTRIES" and out["status_label"] == LABEL_FROM_ENTRIES
+    assert out["output_label"] == LABEL_FROM_ENTRIES and "22,800" in out["centre_label"]
+    assert out["spot_level"] is None and out["spot_at"] is None
+    assert out["summary"]["max_loss"] == "3334.50" and out["summary"]["max_profit"] == "9665.50"
+    assert "leg_quotes" not in out  # no Bid/Ask: nothing here is a live quote
+    assert all(leg["ltp"] is None and leg["iv"] is None and leg["health"] is None for leg in out["legs"])
+    assert out["table"]["spot_level"] is None and out["scenario"]["available"] is True
+    assert not any(lv["current"] for lv in out["scenario"]["levels"])
+    assert out["margin"]["state"] == "NOT_AVAILABLE_YET"
+    _no_floats(out)
+
+
+async def test_no_provider_estimated_now_is_unavailable_with_its_reason():
+    out = (await _post_stored(_spread_body("estimated_now"))).json()
+    assert out["state"] == "FROM_ENTRIES"
+    assert out["scenario"]["available"] is False and out["scenario"]["totals"] is None
+    assert "needs live prices" in out["scenario"]["unavailable_reason"]
+    assert out["payoff"]["points"] == []
+
+
+async def test_no_provider_and_no_stored_contract_keeps_the_not_connected_answer():
+    out = (await _post(_spread_body())).json()  # no database in this process: the catalogue answers nothing
+    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == "Draft — Live data not connected"
+    assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
+
+
+async def test_a_dropped_socket_fallback_is_from_entries_with_no_leg_quotes(replayed):
+    out = (await _post_stored(_spread_body(fallback=True), replayed)).json()
+    assert out["state"] == "FROM_ENTRIES" and out["output_label"] == LABEL_FROM_ENTRIES  # REQ-077 AC-9 label
+    assert out["status_label"].startswith("Live market data disconnected. Last updated: ")  # REQ-049 AC-5 message
+    assert "leg_quotes" not in out and out["spot_level"] is None
+    assert all(leg["ltp"] is None for leg in out["legs"])
+    assert out["summary"]["max_loss"] == "3334.50"
+
+
+async def test_an_ended_kite_session_every_leg_priced_is_from_entries_not_the_old_not_connected():
+    """REQ-077 AC-9 "with no live data" includes a session that ended while the provider is up (the fallback flag is
+    not even needed): At Expiry from the user's prices, no leg_quotes, no live value."""
+    provider = provider_for_catalogue()
+    provider.on_session_ended(VALUATION)
+    assert provider.status().session_ended is True
+    out = (await _post_stored(_spread_body(), provider)).json()
+    assert out["state"] == "FROM_ENTRIES", out
+    assert out["output_label"] == LABEL_FROM_ENTRIES and out["table"]["output_label"] == LABEL_FROM_ENTRIES
+    assert out["status_label"].startswith("Live market data disconnected. Last updated: ")
+    assert "leg_quotes" not in out and out["spot_level"] is None
+    assert all(leg["ltp"] is None for leg in out["legs"])
+    assert out["summary"]["max_loss"] == "3334.50" and out["summary"]["max_profit"] == "9665.50"

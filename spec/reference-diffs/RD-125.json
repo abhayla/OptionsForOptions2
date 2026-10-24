@@ -1,0 +1,19 @@
+{
+  "id": "RD-125",
+  "kind": "COPY",
+  "title": "Table columns do not depend on a UX level (G-18-2)",
+  "reference_behaviour": "The Greeks tab and the strikewise IV panel are available to every user; no column is hidden by a level and no beginner caption replaces the headings.",
+  "reference_screens": [
+    "screen 014",
+    "screen 015",
+    "screen 013"
+  ],
+  "ours": "Rows 17-18 (2026-10-24): REQ-035 AC-7 rewritten to one level; the table returns every column for every user in the locked order (backend/ofo/table/columns.py, tests/table/test_one_column_set.py), verified by the row 18 checks (evidence/W-146/AC-7.md).",
+  "req": "REQ-035",
+  "ac": "AC-7",
+  "row": 18,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

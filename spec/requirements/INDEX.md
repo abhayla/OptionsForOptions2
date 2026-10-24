@@ -54,7 +54,7 @@ Requirements: 131; sections: 19
 | REQ-032 | Calculation engine | core | Verified |
 | REQ-033 | Expiry scenario and live P&L formulas | core | Verified |
 | REQ-034 | Outcome view and scenario levels | foundation | Approved |
-| REQ-035 | Single strategy table | foundation | Verified |
+| REQ-035 | Single strategy table | foundation | Approved |
 | REQ-081 | Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted | feature | Approved |
 | REQ-082 | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) | feature | Approved |
 | REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | Approved |

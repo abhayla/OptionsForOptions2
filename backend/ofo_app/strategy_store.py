@@ -31,6 +31,7 @@ from sqlalchemy import text
 
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import FUTURE_TYPE
+from ofo.limits import INTEGER_MAX
 from ofo.strategy import stored_form as sf
 from ofo_app.catalogue_store import load_contract
 
@@ -76,7 +77,6 @@ class StrategySummary:
 
 _COLUMNS = "id, user_ref, status, created_at, updated_at, revision, definition::text AS definition_text"
 BIGINT_MAX = 2**63 - 1  # strategies.id (BIGSERIAL)
-INTEGER_MAX = 2**31 - 1  # strategy_history.seq and strategies.revision (INTEGER)
 _INSERT = text(
     "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
     f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version) RETURNING {_COLUMNS}")

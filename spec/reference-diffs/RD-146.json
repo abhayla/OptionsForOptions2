@@ -1,0 +1,19 @@
+{
+  "id": "RD-146",
+  "kind": "COPY",
+  "title": "Reset Prices re-bases every leg to the live price (G-21-2)",
+  "reference_behaviour": "Reset Prices sets each leg's entry to its current LTP (188.05 became 189.80 in the study), the markers vanish and every number recomputes. The Refresh prices button does not change entries.",
+  "reference_screens": [
+    "screen 011",
+    "screen 209",
+    "screen 211"
+  ],
+  "ours": "Built in row 21, commit 7029b484 (W-149); pinned by frontend/tests/leg-edit.test.js 'AC-5: Reset Prices sends reset_prices and clears every Your price from the reply'.",
+  "req": "REQ-077",
+  "ac": "AC-5",
+  "row": 21,
+  "status": "verified",
+  "spec_change": false,
+  "bug": false,
+  "recorded": "2026-10-24"
+}

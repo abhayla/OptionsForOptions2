@@ -95,6 +95,9 @@ class PricedPlan:
     plan: ExecutionPlan
     price_bands: Mapping[tuple, tuple[Decimal, Decimal]]
     quote_times: tuple[datetime.datetime, ...]
+    #: per leg, in plan order: the leg's stored planned entry (typed or captured), None when it has none. Display only
+    #: (REQ-077 AC-8 "a typed price is a planning number only"): no order price is ever read from it.
+    planned_prices: tuple[Decimal | None, ...] = ()
 
 
 def _money(value: object) -> Decimal | None:
@@ -141,6 +144,8 @@ def _price_one(number: int, want: LegToPrice, underlying: str, catalogue: Catalo
     quote = quote_of(want.instrument_id, ref.broker_token)
     if not isinstance(quote, LegQuote):
         raise LegRefused(render("gate_price_not_known", leg=shown))
+    # ``base`` is the slippage reference ONLY: ``executable_limit`` takes its limit from the walked depth levels, so
+    # neither a typed nor a captured planned entry can move the order's limit (REQ-077 AC-8).
     base = want.planned_entry if want.planned_entry is not None else quote.last_price
     if base is None or base <= 0:
         raise LegRefused(render("gate_price_not_known", leg=shown))
@@ -171,7 +176,7 @@ def price_legs(strategy_id: str, underlying: str, legs: Sequence[LegToPrice], ca
             bands[(leg.expiry, leg.instrument.value, leg.strike)] = quote.band
         times.append(quote.at)
     return PricedPlan(Strategy(tuple(p.leg for p in planned)), ExecutionPlan(strategy_id, tuple(planned)), bands,
-                      tuple(times))
+                      tuple(times), tuple(want.planned_entry for want in legs))
 
 
 class _StoredOrder(Protocol):

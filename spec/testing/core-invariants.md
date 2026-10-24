@@ -25,7 +25,7 @@ Decisions: ADR-030 and the ADRs cited per row. Sources: comprehensive handoff §
 | 16 | Rule triggers record their exact triggering values. | 019 |
 | 17 | The strategy timeline is append-only. | 019 |
 | 18 | Important exception states explain what happened and the next action. | 019 |
-| 19 | Advanced UX cannot bypass safety controls. | 004 |
+| 19 | No user setting or screen can bypass safety controls. | 004 |
 | 20 | Production deployment requires explicit owner authorization. | 030 |
 
 Added at import from the 15 Sep handoff: 21 — if a protective leg fails, its dependent sell leg is not submitted

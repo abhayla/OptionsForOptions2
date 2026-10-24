@@ -12,7 +12,7 @@ vi.mock('@/services/api', async (importActual) => {
     post: (url, body) => { apiCalls.push({ url, body }); return Promise.resolve({ data: apiAnswer }) } } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import real from './fixtures/outcome-condor-advanced.json'
+import real from './fixtures/outcome-condor.json'
 import { DEFAULT_CHOICE, choiceFields, isPoints, matchesChoice, rangeIsComplete } from '@/lib/scenarioChoice'
 
 describe('AC-4: the request fields of a pick', () => {
