@@ -72,6 +72,11 @@
    "date": "2026-10-24",
    "where": "builder sequence row 20 backend build (session 06fe7549)",
    "evidence": "Brief Budget: 60 min / 80 calls with the 80% hard-stop line; the builder used 142 tool calls, hit the agent's 100-turn limit and stopped with work uncommitted and the ruff ratchet red; a finisher round followed. Orchestrator mitigation since: the dispatch prompt itself says 'HARD STOP at 64 of your 80 calls'."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 23a builder (103 calls vs 80) and its fix round (92 calls vs a 48-call hard stop in the dispatch prompt), session f1b75d11",
+   "evidence": "Twelfth and thirteenth occurrences: the dispatch prompt's HARD STOP line was ignored by both Sonnet and Opus builders; the agent definition's maxTurns is the only enforced cap."
   }
  ]
 }

@@ -66,6 +66,11 @@
    "date": "2026-10-24",
    "where": "row 20 CI fix round 2 on chunk-2 43edf26c (session 06fe7549)",
    "evidence": "The finisher ran four named app guard files but not tests_app/test_strategy_tracking_imports.py; CI flagged the identity SQL that moved into backend/ofo_app/freeze_read.py. The orchestrator then ran ALL 64 DB-free files select_app_tests.py selects (1324 passed) before the next push, which went green (1b5348bd)."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 23a builder (session f1b75d11, branch build/seq-row-23)",
+   "evidence": "The builder stopped without running the DB-free files select_app_tests.py selects; the Opus check found 3 MAJORs in exactly those files: tests_app/test_order_path_switch.py ac6 (routes/outcome.py imported INTEGER_MAX from strategy_store, pulling execute_plan into the leg-edit route), tests/test_door_names_private.py (getattr at routes/execute.py:310), tests_app/test_connect_gate_routes.py:36 (ExecuteIn without revision). Plus outcome.openapi.json not regenerated (found by the orchestrator). Tenth occurrence although the brief listed the command - prose in a brief is not enforcement."
   }
  ]
 }
