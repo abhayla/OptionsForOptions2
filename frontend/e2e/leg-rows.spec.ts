@@ -30,7 +30,12 @@ test('a + sends one edit and the row shows the reply; the tick labels a leg; the
   await page.route('**/api/strategies/leg-edit', async (route) => {
     const body = route.request().postDataJSON()
     if (body.edit.control !== 'read') sent.push(body)
-    await route.fulfill({ json: replyFrom(body, (i) => (body.edit.control === 'step' && i === 0 ? { strike: '22850.00' } : {})) })
+    // the real route applies the edit; this stand-in applies the two this spec sends (a step on leg 0, an include toggle)
+    await route.fulfill({ json: replyFrom(body, (i) => {
+      if (body.edit.control === 'step' && i === 0) return { strike: '22850.00' }
+      if (body.edit.control === 'include' && i === body.edit.index) return { included: body.edit.included }
+      return {}
+    }) })
   })
   await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
   await expect(page.getByTestId('leg-row').nth(0)).toBeVisible()
