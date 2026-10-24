@@ -107,19 +107,23 @@ test('AC-4: LTP and Unrealized P&L change with the pushes; a socket kill shows t
     if (r.url().endsWith('/api/strategies/outcome') && r.request().method() === 'POST') restAnswers.push(await r.json())
   })
   await sock.kill()
-  await expect.poll(() => restAnswers.some((a) => a.state === 'NOT_CONNECTED'), { timeout: 10000 }).toBe(true)
-  const rest = restAnswers.find((a) => a.state === 'NOT_CONNECTED')
+  // Every leg of this draft carries a planned entry, so (REQ-077 AC-9) the answer is FROM_ENTRIES: AC-5's message as the
+  // status label, the from-your-prices label as the output label, and no live number.
+  await expect.poll(() => restAnswers.some((a) => a.state === 'FROM_ENTRIES'), { timeout: 10000 }).toBe(true)
+  const rest = restAnswers.find((a) => a.state === 'FROM_ENTRIES')
   expect(rest.status_label).toMatch(AC5)
-  await expect(builder).toHaveAttribute('data-state', 'not-connected')
+  expect(rest.output_label).toBeTruthy()
+  expect(rest).not.toHaveProperty('leg_quotes')
+  expect(rest.legs.every((l: any) => l.ltp == null)).toBe(true)
+  await expect(builder).toHaveAttribute('data-state', 'from-entries')
   await expect(page.getByTestId('status-label')).toHaveText(rest.status_label)
+  await expect(page.getByTestId('output-label')).toHaveText(rest.output_label)
   await expect(builder).toHaveAttribute('data-live', 'down')
-  await expect(page.getByTestId('strategy-table')).toHaveCount(0) // no number shown as live (REQ-049 AC-4)
-  // ADR-086 item 1 (W-073): the not-live answer names each known contract, so a `draft` query leg shows its name, never
-  // the fixed "unavailable" wording and never its instrument id
-  await expect(page.getByTestId('draft-legs')).toContainText('NIFTY')
-  await expect(page.getByTestId('draft-legs')).not.toContainText('Contract details not available')
-  await expect(page.getByTestId('draft-legs')).not.toContainText(draft.legs[0].instrument_id)
-  expect(await findClippedElements(page), describeClipped('/strategy/builder not-live', page.viewportSize()!.width, await findClippedElements(page))).toEqual([])
+  await expect(page.getByTestId('advanced-details')).toHaveCount(0) // no Bid/Ask block
+  // no live number (REQ-049 AC-4): the LTP column is absent, or its cell carries no digit
+  await expect.poll(async () => (await cell(page, '1', 'ltp').count()) === 0 || !/\d/.test((await cell(page, '1', 'ltp').textContent()) ?? '')).toBe(true)
+  await expect(page.getByTestId('state-not-connected')).toHaveCount(0)
+  expect(await findClippedElements(page), describeClipped('/strategy/builder from-entries', page.viewportSize()!.width, await findClippedElements(page))).toEqual([])
 
   // 3. allow the socket back: the next backoff attempt reconnects, the strategy is sent again, pushes resume
   const before = sock.ctl.pushes.length
@@ -173,14 +177,57 @@ test('AC-4 two holders (ADR-077): another socket holds the same legs, this page\
   })
   await sock.kill()
   await expect.poll(() => restAnswers.length, { timeout: 10000 }).toBeGreaterThan(0)
-  await expect(builder).toHaveAttribute('data-state', 'not-connected')
+  await expect(builder).toHaveAttribute('data-state', 'from-entries')
   await expect(builder).toHaveAttribute('data-live', 'down')
   await expect(page.getByTestId('status-label')).toHaveText(AC5)
-  await expect(page.getByTestId('strategy-table')).toHaveCount(0) // no number shown as live (REQ-049 AC-4)
-  // every refresh after the drop said so, and every answer was the not-live one, though the other socket still holds the legs
+  await expect(page.getByTestId('output-label')).toHaveText(restAnswers[0].output_label)
+  await expect(page.getByTestId('advanced-details')).toHaveCount(0) // no Bid/Ask block, no live number (REQ-049 AC-4)
+  // every refresh after the drop said so, and every answer was the from-your-prices one (every leg has an entry), though
+  // the other socket still holds the legs: no live quote of any leg
   expect(restBodies.length).toBeGreaterThan(0)
   expect(restBodies.every((b) => b.fallback === true), JSON.stringify(restBodies.map((b) => b.fallback))).toBe(true)
-  expect(restAnswers.every((a) => a.state === 'NOT_CONNECTED' && a.table == null), JSON.stringify(restAnswers.map((a) => a.state))).toBe(true)
+  expect(restAnswers.every((a) => a.state === 'FROM_ENTRIES' && !('leg_quotes' in a) && a.legs.every((l: any) => l.ltp == null)),
+    JSON.stringify(restAnswers.map((a) => a.state))).toBe(true)
   expect(await findClippedElements(page), describeClipped('/strategy/builder two holders', page.viewportSize()!.width, await findClippedElements(page))).toEqual([])
   await other.evaluate(() => (window as any).__otherSocket.close())
+})
+
+test('REQ-049 AC-5 twin: a draft whose legs have no planned entry is never followed live: unpriced, no socket, no outcome request', async ({ page }, testInfo) => {
+  // The page sends only legs that carry a planned entry (buildDraft), so the server's NOT_CONNECTED answer for "a leg
+  // without an entry" cannot be reached from this page; what the page really shows for such a draft is the unpriced state.
+  const legs = LEGS[testInfo.project.name]
+  const sock = socketControl(page)
+  await sock.install()
+  const outcomeRequests: string[] = []
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/strategies/outcome') && r.method() === 'POST') outcomeRequests.push(r.url())
+  })
+  const draft = { underlying: 'NIFTY', legs: legs.map(([instrument_id, action]) => ({ instrument_id, action, lots: 1, planned_entry: null, captured_at: null })) }
+  await page.goto(`${REPLAY_URL}/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(draft) })}`)
+  await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'unpriced')
+  await expect(page.getByTestId('state-unpriced')).toBeVisible()
+  await expect(page.getByTestId('strategy-table')).toHaveCount(0)
+  await expect(page.getByTestId('output-label')).toHaveCount(0)
+  expect(sock.ctl.opened).toBe(0)
+  expect(outcomeRequests).toEqual([])
+})
+
+test('REQ-077 AC-9 twin: a draft with one priced leg and one unpriced leg is never followed or priced: unpriced, no socket, no outcome request, no number', async ({ page, request }, testInfo) => {
+  // buildDraft sends nothing when any included leg has no entry, so the priced leg's own P&L is never shown as the strategy's.
+  const legs = LEGS[testInfo.project.name]
+  const full = await draftFor(request, legs)
+  const draft = { underlying: 'NIFTY', legs: [full.legs[0], { ...full.legs[1], planned_entry: null, captured_at: null }] }
+  const sock = socketControl(page)
+  await sock.install()
+  const outcomeRequests: string[] = []
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/strategies/outcome') && r.method() === 'POST') outcomeRequests.push(r.url())
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(draft) })}`)
+  await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'unpriced')
+  await expect(page.getByTestId('state-unpriced')).toBeVisible()
+  await expect(page.getByTestId('strategy-table')).toHaveCount(0)
+  await expect(page.getByTestId('output-label')).toHaveCount(0)
+  expect(sock.ctl.opened).toBe(0)
+  expect(outcomeRequests).toEqual([])
 })
