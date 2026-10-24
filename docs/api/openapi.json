@@ -1741,6 +1741,24 @@
             ],
             "title": "Source"
           },
+          "spot_health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Health"
+          },
           "strikes_used": {
             "title": "Strikes Used",
             "type": "integer"

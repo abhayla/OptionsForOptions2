@@ -550,6 +550,22 @@ def test_ac_6_every_option_expiry_names_its_forward_and_which_one_was_used_and_f
     assert abs(float(near.forward) - expected) <= TOLERANCE and near.label is not None  # "estimated from spot"
 
 
+@pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.DELAYED])
+def test_ac_6_a_forward_from_a_stale_or_delayed_spot_carries_that_health(health):
+    """ADR-015 (area C core): parity_forward accepts a STALE/DELAYED spot by design; the forward row must say so."""
+    _, feed = priced_provider(spot_health=health)
+    out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
+    assert out.forwards and all(f.forward is not None and f.spot_health == health.value for f in out.forwards)
+
+
+def test_ac_6_a_forward_from_an_available_spot_says_available_and_a_refused_one_says_nothing():
+    _, feed = priced_provider()
+    out = futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0)
+    assert {f.spot_health for f in out.forwards} == {"available"}
+    none = futures_answer(None, "NIFTY", futures_catalogue(), lambda: T0)
+    assert all(f.forward is None and f.spot_health is None for f in none.forwards)
+
+
 def test_ac_6_with_three_usable_strikes_the_forward_is_the_parity_one_and_says_parity():
     """AC-6 (attack 5 red case): >= 3 strikes with a bid and an ask on both sides -> parity. Each strike's call-put
     mid difference is (F - K) e^(-r T) for F = 22,600, so the median forward is 22,600."""
