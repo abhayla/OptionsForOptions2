@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import math
 import os
+import platform
 import sys
 from collections.abc import AsyncIterator, Iterator
 
@@ -29,6 +31,13 @@ from sqlalchemy.pool import NullPool
 # W-080 round 7 (REQ-073 AC-4): the egress gate's TEST mode (this suite only): the doors accept their test seams (a
 # mock transport, an injected websocket connect) and this Python may run as a child process. Production never enters it.
 # The gate itself is installed here with the call the API's create_app makes (importing ofo does not install it).
+# finding local-pytest-plugin-not-in-ci: on Windows the first platform.uname()/win32_ver() call starts a process
+# (platform._syscmd_ver), which the no-process hook below refuses if the first call comes later; prime the caches now.
+for _name in ("uname", "win32_ver", "platform", "system", "release", "version", "machine", "python_implementation"):
+    getattr(platform, _name)()
+# uname() caches its answer, win32_ver() does not, and its fallback (_syscmd_ver, taken when the WMI query fails
+# under load) starts a process; keep the primed answer for every later call in this test process.
+platform.win32_ver = functools.cache(platform.win32_ver)
 _egress.install()
 _egress._enter_test_mode([sys.executable])
 # The app runs only on the selector loop (ofo_app.event_loop); on Windows the default is the Proactor loop.

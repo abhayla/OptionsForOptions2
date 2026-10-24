@@ -1,0 +1,41 @@
+{
+ "id": "local-pytest-plugin-not-in-ci",
+ "scope": "generic",
+ "class": "A pytest plugin installed on a developer PC but not in CI is auto-loaded by every local pytest run; when it does work at a moment a repo guard forbids (here: a lazy import that starts a process after a test installed the no-process audit hook), local runs fail or pass by test order while CI never sees it, so the local gate is flaky for a reason no CI run can show.",
+ "mechanism": "This PC's user site-packages carries hypothesis (pytest11 entry point `hypothesispytest`, with allure, django, xdist and others); no repo test imports hypothesis and CI installs only pyyaml jsonschema pytest. Its pytest_terminal_summary imports hypothesis after the last test; hypothesis imports platform, which calls subprocess (platform._syscmd_ver); backend/ofo/broker/egress.py's audit hook, installed earlier in the same session by a test, raises EgressRefused, and pytest exits 1 although every test passed.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 3: dispatch builder (test_dispatch.py crashed twice at session end) and the PR 2 round-2 checker's gate run on build/c3-c2-order-closure bf3565d0",
+  "evidence": "ofo-gate/guard-tests.log: every test dot printed to [100%], then Traceback ... _hypothesis_pytestplugin.py line 400 pytest_terminal_summary -> hypothesis/__init__.py -> ... -> egress.py line 278 EgressRefused: subprocess.Popen refused; GATE FAIL guard-tests: exit 1. The same branch printed GATE PASS bf3565d0 in the builder's earlier run (order-dependent)."
+ },
+ "fix": "Two mechanisms. (1) The local gate runs every pytest step with `-p no:hypothesispytest` (no repo test uses hypothesis), so a local run loads only what CI loads for that purpose. (2) tests/conftest.py and tests_app/conftest.py prime platform (uname, win32_ver, platform, system, release, version, machine, python_implementation) before the no-process audit hook goes in, and cache platform.win32_ver with functools.cache (it keeps no cache, and its fallback starts a process under load). Do not uninstall the owner's packages.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/test_egress_platform_primed.py",
+   "tests_app/test_egress_platform_primed_app.py",
+   "tests/orchestrator/test_gate.py"
+  ],
+  "note": "Mechanism due at the second occurrence (a third followed, see occurrences; the platform priming is mechanism 2): gate.py adds `-p no:hypothesispytest` to every pytest argv, with a test asserting it (chunk 3 PR 1). Other user-site plugins (allure_pytest, django, xdist) are not disabled; a recurrence from one of them is a new occurrence of this class."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-181.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-24",
+   "where": "dispatch builder, test_dispatch.py run alone",
+   "evidence": "crashed twice at session end (hypothesis plugin import under the egress gate), passed on reruns"
+  },
+  {
+   "date": "2026-10-24",
+   "where": "PR 2 round-2 checker gate run",
+   "evidence": "GATE FAIL guard-tests after 100% passed (log above)"
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 27b checker gate run",
+   "evidence": "repo-scan collection error in tests/orchestrator/test_db_run_fresh.py: platform.win32_ver refused (EgressRefused), the first platform call after the egress hook was installed"
+  }
+ ]
+}
