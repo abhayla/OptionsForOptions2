@@ -225,6 +225,10 @@ const openSaved = (next, id, revision, name) => {
   savedRevision.value = savedId.value === null ? null : revision ?? null
   takeStrategy(id, revision, name)
 }
+// REQ-134 AC-3: a rename from the bar changes only the shown name (the revision stays the one the page loaded).
+const onRenamed = (id, name) => {
+  if (openStrategy.value?.id === id) openStrategy.value = { ...openStrategy.value, name }
+}
 const onSaved = (id, revision, name) => {
   savedId.value = id
   savedRevision.value = revision ?? null
@@ -420,7 +424,7 @@ const pricesStamp = computed(() => {
 
     <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" />
     <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"

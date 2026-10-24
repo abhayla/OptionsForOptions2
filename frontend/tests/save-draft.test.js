@@ -17,7 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
-  return { ...actual, default: { get: (u) => respond('GET', u), post: (u, b) => respond('POST', u, b), put: (u, b) => respond('PUT', u, b) } }
+  return { ...actual, default: { get: (u) => respond('GET', u), post: (u, b) => respond('POST', u, b), put: (u, b) => respond('PUT', u, b), patch: (u, b) => respond('PATCH', u, b) } }
 })
 beforeEach(() => {
   calls.length = 0
@@ -322,6 +322,53 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(w.emitted('saved')).toBeUndefined()
+    expect(t(w, 'save-error').exists()).toBe(true)
+  })
+})
+
+describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
+  const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
+  // the reply of part 29b's rename route (tests_app/test_strategy_name_app.py): id, quoted name, revision unchanged, updated_at
+  const RENAMED = { id: 7, name: quoted('Condor wider'), revision: 3, updated_at: '2026-10-13T05:10:00Z' }
+  it('attack 1+3: Rename PATCHes the loaded revision (no extra GET); the shown name comes from the reply, quotes stripped', async () => {
+    answers['PATCH /strategies/7/name'] = RENAMED
+    const w = await bar({ current })
+    expect(t(w, 'current-name').text()).toBe('NIFTY Oct condor')
+    await t(w, 'rename-open').trigger('click')
+    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor')
+    await t(w, 'name-input').setValue(' Condor wider ')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    const sent = calls.filter((c) => c.method !== 'GET')
+    expect(sent).toEqual([{ method: 'PATCH', url: '/strategies/7/name', body: { name: ' Condor wider ', expected_revision: 3 } }])
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/strategies/7')).toEqual([])
+    expect(w.emitted('renamed')).toEqual([[7, quoted('Condor wider')]])
+    await w.setProps({ current: { ...current, name: w.emitted('renamed')[0][1] } }) // what the page does with the event
+    expect(t(w, 'current-name').text()).toBe('Condor wider')
+    expect(t(w, 'name-form').exists()).toBe(false)
+  })
+  it('attack 2: a never-saved strategy shows no Rename (Save asks the name instead)', async () => {
+    const w = await bar({ current: null })
+    expect(t(w, 'rename-open').exists()).toBe(false)
+  })
+  it('attack 4: an empty name shows the API refusal text and emits nothing', async () => {
+    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 40 characters, then save again.' }
+    answers['PATCH /strategies/7/name'] = () => Promise.reject({ status: 422, parts: EMPTY })
+    const w = await bar({ current })
+    await t(w, 'rename-open').trigger('click')
+    await t(w, 'name-input').setValue('')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(t(w, 'save-error-what').text()).toBe(EMPTY.what_happened)
+    expect(w.emitted('renamed')).toBeUndefined()
+  })
+  it('a reply without a name is refused (fail closed)', async () => {
+    answers['PATCH /strategies/7/name'] = { id: 7, revision: 3 }
+    const w = await bar({ current })
+    await t(w, 'rename-open').trigger('click')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('renamed')).toBeUndefined()
     expect(t(w, 'save-error').exists()).toBe(true)
   })
 })

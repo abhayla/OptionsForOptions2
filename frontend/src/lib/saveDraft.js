@@ -45,6 +45,15 @@ export function plainName(shown) {
   return shown
 }
 
+/** REQ-134 AC-3: rename a saved strategy (PATCH /strategies/{id}/name) with the revision the caller holds. The one rename call for
+ *  the list and the builder. Returns the reply (id, quoted name, revision unchanged); throws the mapped error on a refusal and
+ *  an Error when the reply carries no name (fail closed: nothing is shown as renamed). `name` is sent as typed; the server owns the rule. */
+export async function renameStrategy(client, id, revision, name) {
+  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: revision })).data
+  if (typeof done?.name !== 'string') throw new Error('unreadable answer')
+  return done
+}
+
 /** The label of a saved strategy row: its name, or `fallback` when the server (an older one) sent none. */
 export function strategyLabel(row, fallback) {
   return plainName(row?.name) ?? fallback

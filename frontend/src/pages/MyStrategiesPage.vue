@@ -11,7 +11,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
-import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
+import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
 import { useOrderPath } from '@/lib/orderPath'
 
 const COMPLETED_STATUSES = []
@@ -73,8 +73,7 @@ async function confirmRename(row) {
   try {
     const revision = (await api.get(`/strategies/${id}`)).data?.revision
     if (!Number.isInteger(revision)) throw new Error('unreadable answer') // fail closed: no rename is sent
-    const done = (await api.patch(`/strategies/${id}/name`, { name: text, expected_revision: revision })).data
-    if (typeof done?.name !== 'string') throw new Error('unreadable answer')
+    const done = await renameStrategy(api, id, revision, text)
     rows.value = rows.value.map((r) => (r.id === id ? { ...r, name: done.name } : r)) // only the name changes in the row
     renaming.value = null
   } catch (e) {

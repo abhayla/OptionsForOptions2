@@ -12,7 +12,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import {
-  SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, strategyLabel,
+  SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -21,7 +21,7 @@ const props = defineProps({
   // the saved strategy this screen is editing ({ id, revision, name } as the page loaded or saved it), or null for a never-saved one
   current: { type: Object, default: null },
 })
-const emit = defineEmits(['open', 'saved'])
+const emit = defineEmits(['open', 'saved', 'renamed'])
 
 const drafts = ref([])
 const busy = ref(false)
@@ -78,6 +78,12 @@ function saveAs() {
   nameText.value = `${plainName(props.current.name) ?? STRATEGY_NAME_DEFAULT}${SAVE_AS_SUFFIX}`
 }
 
+function renameOpen() {
+  if (busy.value || !props.current) return
+  asking.value = 'rename'
+  nameText.value = plainName(props.current.name) ?? ''
+}
+
 function cancelName() {
   asking.value = null
   errorParts.value = null
@@ -85,7 +91,26 @@ function cancelName() {
 
 // The name field's Save: POST a NEW strategy with the typed name (the server refuses an empty or over-long one). Save As then
 // opens the copy; the original strategy is never sent.
+// REQ-134 AC-3: Rename of the open saved strategy: PATCH with the revision THIS PAGE loaded (read BEFORE the await); the shown
+// name comes from the reply. Legs, revision and status are untouched.
+async function confirmRename() {
+  const { id, revision } = props.current
+  busy.value = true
+  errorParts.value = null
+  try {
+    const res = await renameStrategy(api, id, revision, nameText.value)
+    asking.value = null
+    emit('renamed', id, res.name)
+    await refresh()
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS
+  } finally {
+    busy.value = false
+  }
+}
+
 async function confirmName() {
+  if (asking.value === 'rename' && props.current && !busy.value) return confirmRename()
   if (busy.value || !asking.value || !canSaveLegs(props.legs)) return
   const mode = asking.value
   const legs = props.legs
@@ -133,11 +158,15 @@ type="button" data-testid="save-draft" class="rounded border border-line px-3 py
       <button
 v-if="current" type="button" data-testid="save-as" class="rounded border border-line px-3 py-1"
               :disabled="!canSave" @click="saveAs">Save As</button>
+      <button
+v-if="current" type="button" data-testid="rename-open" class="rounded border border-line px-3 py-1"
+              :disabled="busy" @click="renameOpen">Rename</button>
+      <span v-if="current" data-testid="current-name">{{ strategyLabel(current, `Draft ${current.id}`) }}</span>
       <span v-if="savedId" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>
     <form v-if="asking" class="mt-2 text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
-      <label class="block font-medium" for="strategy-name">{{ asking === 'save-as' ? 'Save As' : 'Save New Strategy' }}: Strategy Name</label>
+      <label class="block font-medium" for="strategy-name">{{ asking === 'save-as' ? 'Save As' : asking === 'rename' ? 'Rename' : 'Save New Strategy' }}: Strategy Name</label>
       <input
 id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class="mt-1 rounded border border-line px-2 py-1"
              :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />

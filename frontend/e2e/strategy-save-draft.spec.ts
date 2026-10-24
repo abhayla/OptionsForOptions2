@@ -164,9 +164,21 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   await page.reload()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
 
+  // AC-3: Rename from the builder changes only the name, with the revision the page loaded (2), and shows the reply's name
+  await page.getByTestId('rename-open').click()
+  await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof')
+  await page.getByTestId('name-input').fill('E2E renamed')
+  await page.getByTestId('name-confirm').click()
+  await expect(page.getByTestId('current-name')).toHaveText('E2E renamed')
+  const renamedRow = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
+  expect(renamedRow.name).toBe('"E2E renamed"')
+  expect(renamedRow.revision).toBe(2)
+  expect(renamedRow.definition).toEqual(second.definition)
+  const renamedOriginal = '"E2E renamed"'
+
   // AC-2: Save As asks for a name prefilled "<name> copy", creates a second strategy, opens it and leaves the original as saved
   await page.getByTestId('save-as').click()
-  await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof copy')
+  await expect(page.getByTestId('name-input')).toHaveValue('E2E renamed copy')
   await page.getByTestId('name-input').fill('E2E update copy')
   await page.getByTestId('name-confirm').click()
   await expect(page.getByTestId('save-status')).toHaveAttribute('data-saved-id', /^\d+$/)
@@ -178,5 +190,5 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   const original = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
   expect(original.revision).toBe(2)
   expect(original.definition).toEqual(second.definition)
-  expect(original.name).toBe('"E2E update proof"')
+  expect(original.name).toBe(renamedOriginal)
 })
