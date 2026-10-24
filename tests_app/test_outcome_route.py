@@ -162,9 +162,9 @@ async def test_leg_quotes_carry_bid_ask_for_everyone(replayed):
     _no_floats(out)
 
 
-async def test_a_session_that_ended_is_not_connected_and_carries_no_leg_quotes():
-    """REQ-049 AC-4/AC-5 / ADR-168 (5): leg_quotes only for a live computed answer. After the Kite session ends the
-    answer is NOT_CONNECTED and the held bid/ask is not shown (class: every state other than COMPUTED)."""
+async def test_a_session_that_ended_is_from_your_prices_and_carries_no_leg_quotes():
+    """REQ-049 AC-4/AC-5 / ADR-168 (5): leg_quotes only for a live computed answer. After the Kite session ends every
+    leg is priced, so the answer is FROM_ENTRIES (REQ-077 AC-9) and the held bid/ask is not shown."""
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
@@ -172,7 +172,7 @@ async def test_a_session_that_ended_is_not_connected_and_carries_no_leg_quotes()
     assert live["state"] == "COMPUTED" and len(live["leg_quotes"]) == len(CONDOR)
     provider.on_session_ended(VALUATION)
     out = (await _post(_body(provider), provider)).json()
-    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == "Draft — Live data not connected"
+    assert out["state"] == "FROM_ENTRIES" and out["output_label"] == LABEL_FROM_ENTRIES
     assert "leg_quotes" not in out
 
 
@@ -255,3 +255,18 @@ async def test_a_dropped_socket_fallback_is_from_entries_with_no_leg_quotes(repl
     assert "leg_quotes" not in out and out["spot_level"] is None
     assert all(leg["ltp"] is None for leg in out["legs"])
     assert out["summary"]["max_loss"] == "3334.50"
+
+
+async def test_an_ended_kite_session_every_leg_priced_is_from_entries_not_the_old_not_connected():
+    """REQ-077 AC-9 "with no live data" includes a session that ended while the provider is up (the fallback flag is
+    not even needed): At Expiry from the user's prices, no leg_quotes, no live value."""
+    provider = provider_for_catalogue()
+    provider.on_session_ended(VALUATION)
+    assert provider.status().session_ended is True
+    out = (await _post_stored(_spread_body(), provider)).json()
+    assert out["state"] == "FROM_ENTRIES", out
+    assert out["output_label"] == LABEL_FROM_ENTRIES and out["table"]["output_label"] == LABEL_FROM_ENTRIES
+    assert out["status_label"].startswith("Live market data disconnected. Last updated: ")
+    assert "leg_quotes" not in out and out["spot_level"] is None
+    assert all(leg["ltp"] is None for leg in out["legs"])
+    assert out["summary"]["max_loss"] == "3334.50" and out["summary"]["max_profit"] == "9665.50"

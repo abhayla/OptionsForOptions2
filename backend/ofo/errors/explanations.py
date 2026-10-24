@@ -944,8 +944,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # REQ-077 AC-9: no live data, At Expiry numbers from the user's own prices (never a live price)
     ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices - no live data"),
     ExplanationTemplate("outcome_from_entries_centre", "values_seen",
-                        "There is no live index price, so the levels are centred on the middle of your strikes, "
-                        "{level}.",
+                        "There is no live index price, so the levels are centred on your strike {level}.",
                         {"level": Points}),
     ExplanationTemplate("outcome_from_entries_no_estimate", "values_seen",
                         "Estimated Now needs live prices, which are not available. At Expiry is shown from your "

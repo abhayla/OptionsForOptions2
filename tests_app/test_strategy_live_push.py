@@ -866,3 +866,22 @@ def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers()
     flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None,
                                now=fixed).model_dump(mode="json", exclude_unset=True)
     assert flagged == plain and flagged["state"] != "COMPUTED"
+
+
+async def test_an_ended_session_answers_from_entries_on_the_rest_route_and_the_push_computation(live_rig):
+    """REQ-077 AC-9: the live market's session ended (provider up, ended flag set): every leg priced -> FROM_ENTRIES
+    with the from-your-prices label, never the old NOT_CONNECTED; the REST route and the push's one computation
+    (outcome_response) agree."""
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    provider, feed = live_rig
+    provider.on_session_ended(VALUATION)
+    assert provider.status().session_ended is True
+    body = request(provider)
+    out = await _post(body)
+    _assert_from_entries_after_drop(out)
+    pushed = outcome_response(OutcomeRequest.model_validate(body), feed.ctx).model_dump(
+        mode="json", exclude_unset=True)
+    assert pushed["state"] == "FROM_ENTRIES" and pushed["output_label"] == FROM_YOUR_PRICES
+    assert pushed["summary"] == out["summary"] and pushed["status_label"] == out["status_label"]
+    assert "leg_quotes" not in pushed

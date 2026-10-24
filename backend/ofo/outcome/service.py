@@ -469,8 +469,12 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     boundaries and the zero-P&L columns are the locked ADR-008 values and never move with charges."""
     if not isinstance(definition, StrategyDefinition):
         raise ValueError(f"definition must be a StrategyDefinition, got {definition!r}")
-    if snapshot is None or snapshot.status.session_ended:
+    if snapshot is None:
         return not_connected(definition, snapshot)
+    if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
+        return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
+                             override=override)
+                or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
     valuation = snapshot.valuation if valuation is None else valuation
