@@ -366,16 +366,37 @@ async def test_update_path_validates_too(app_engine):
             await trans.rollback()
 
 
+MD5_HEX_LENGTH = 32  # a pin is the hex md5 of the function source
+
+
+def _newest_validator_pins() -> dict:
+    """Each validator's md5 pin from the NEWEST migration that re-created it (walks the migrations in order).
+
+    A migration publishes `NEW_PINS` (signature -> pin, all validators it re-created) or, for a single validator,
+    `LEG_SIGNATURE` + `NEW_PIN` (0024). Fails closed: a validator with no pin, or a migration that names a validator
+    without a pin, raises instead of falling back to an older pin."""
+    import importlib.util
+    import re
+    from pathlib import Path
+    versions = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
+    pins: dict = {}
+    for path in sorted(versions.glob("[0-9][0-9][0-9][0-9]_*.py")):
+        spec = importlib.util.spec_from_file_location("m" + re.sub(r"\W", "_", path.stem) + "_for_validator_pins", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if isinstance(getattr(module, "NEW_PINS", None), dict):
+            pins.update(module.NEW_PINS)
+        if hasattr(module, "NEW_PIN"):
+            assert getattr(module, "LEG_SIGNATURE", None), f"{path.name} has NEW_PIN but no LEG_SIGNATURE"
+            pins[module.LEG_SIGNATURE] = module.NEW_PIN
+    assert pins and all(isinstance(pin, str) and len(pin) == MD5_HEX_LENGTH for pin in pins.values()), pins
+    return pins
+
+
 async def test_validators_are_pinned_and_the_app_role_has_no_execute(app_engine, admin_engine):
     """Both validators (and the shared leg helper) match their md5 pins, are owned by the table owner and are not
     executable by ofo_app (the SECURITY DEFINER guards call them)."""
-    import importlib.util
-    from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / "0011_strategy_planned_entry.py"
-    spec = importlib.util.spec_from_file_location("m0011_for_validator_pins", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    pins = module.NEW_PINS  # 0011 re-created the validators last (0010 before it)
+    pins = _newest_validator_pins()
     assert len(pins) == 3, pins
     async with admin_engine.connect() as conn:
         for signature, pinned in pins.items():
