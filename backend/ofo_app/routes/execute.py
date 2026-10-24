@@ -33,7 +33,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
@@ -115,6 +115,8 @@ class BasketOrderOut(ApiModel):
     variety: Literal["regular"]
     quantity: int
     price: Money  # 2-decimal string ("3.35"), display only
+    # REQ-077 AC-8: the leg's planned entry (typed or captured), display only; None = none stored
+    planned_price: Optional[Money]  # noqa: UP045
     readonly: bool
     tag: Identifier
 
@@ -401,7 +403,8 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
-    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures))
+    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
+                   priced.planned_prices)
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
@@ -482,12 +485,21 @@ def cost_out(orders: Any, rates: ChargeRates | None, figures: Figures) -> CostOu
         "figures_read_at": figures.read_at})
 
 
-def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut) -> ExecuteOut:
+def _planned_price(planned: Sequence[Decimal | None], tag: str) -> Decimal | None:
+    """The planned entry of the leg an order's tag names (leg_index = the leg's place in the plan), 2 decimals."""
+    index = parse_tag(tag).leg_index
+    value = planned[index] if index < len(planned) else None
+    return _paise(value)
+
+
+def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut,
+            planned: Sequence[Decimal | None] = ()) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
-                    "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
+                    "price": o.price.quantize(PAISE), "planned_price": _planned_price(planned, o.tag),
+                    "readonly": o.readonly, "tag": o.tag}
                    for o in basket.orders],
         "cost": cost})
 
