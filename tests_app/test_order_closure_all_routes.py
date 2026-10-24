@@ -32,6 +32,7 @@ from test_order_path_switch import (
     _tree,
     no_dotenv,  # noqa: F401 - fixture
     order_closure_problems,
+    order_entry_problems,
 )
 
 #: The routes that carry the order-path switch dependency: the order path itself (not walked; terminal for the rest).
@@ -126,6 +127,24 @@ def test_ac6_the_recorded_edges_are_pinned_in_count_and_each_has_a_reason():
                for reason in edges.values())
     assert all(importer.startswith(("ofo_app.", "ofo.")) for edges in ROUTE_ORDER_EDGES.values()
                for importer, _ in edges)
+
+
+@pytest.mark.repo_scan
+def test_ac6_every_recorded_edge_names_a_real_importer_and_one_real_order_module():
+    """Checker k2: an edge naming ``ofo.orders.model.no_such_module`` passed the prefix match; now it must resolve."""
+    entries = {edge for edges in ROUTE_ORDER_EDGES.values() for edge in edges}
+    assert order_entry_problems(BACKEND, entries, ORDER_ROUTE_MODULES) == []
+
+
+@pytest.mark.repo_scan
+def test_ac6_the_walked_routes_are_the_modules_under_routes_that_the_app_serves(no_dotenv, monkeypatch):  # noqa: F811
+    """Checker k3: leaving a route file out of the walk passed. The walked set must equal the endpoint modules that
+    ``create_app()`` serves from ``ofo_app.routes`` (an app route in a file the walk does not list is red)."""
+    monkeypatch.setenv("APP_ENV", "test")
+    # a door socket route wraps its endpoint (``ofo_endpoint``); every other route's endpoint is the function itself
+    served = {inspect.unwrap(getattr(route.endpoint, "ofo_endpoint", route.endpoint)).__module__
+              for route in create_app().routes if getattr(route, "endpoint", None) is not None}
+    assert {m for m in served if m.startswith(ROUTES_PACKAGE + ".")} == set(route_modules(BACKEND))
 
 
 @pytest.mark.repo_scan

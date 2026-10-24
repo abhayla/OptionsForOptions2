@@ -26,7 +26,7 @@ import shutil
 import sys
 import tempfile
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from http import HTTPStatus
 
 import pytest
@@ -484,6 +484,43 @@ def order_closure_problems(starts: list[str], root: pathlib.Path, allowed: dict[
             if refused:  # one problem per import, naming the deepest module (its package parents came with it)
                 problems.append(f"order module reached outside the allow-list: {chain(module)} -> {refused[-1]}")
     return problems, used
+
+
+def order_entry_problems(root: pathlib.Path, entries: Iterable[tuple[str, str]],
+                         terminal: frozenset[str] = frozenset()) -> list[str]:
+    """A problem for every (importer, order module) entry that can allow more than one real import. ``_reach`` matches
+    an entry by prefix, so an entry naming a module with no source file, a package, or a non-order module would let any
+    import under that name through. Each entry must name an importer with a source file and a real order MODULE file."""
+    problems: list[str] = []
+    for importer, target in sorted(entries):
+        target_file = _module_file(root, target)
+        if _module_file(root, importer) is None:
+            problems.append(f"{importer}: entry ({importer}, {target}) names an importer with no source file")
+        if target_file is None:
+            problems.append(f"{target}: entry ({importer}, {target}) names no source file")
+        elif target_file.name == "__init__.py":
+            problems.append(f"{target}: entry ({importer}, {target}) names a package, not one module")
+        if not _is_order_module(target, terminal):
+            problems.append(f"{target}: entry ({importer}, {target}) does not name an order module")
+    return problems
+
+
+@pytest.mark.repo_scan
+def test_ac6_every_shared_path_names_a_real_importer_and_one_real_order_module():
+    """The five shared entries each resolve to source files and name a module (not a package, not a missing file)."""
+    assert order_entry_problems(BACKEND, ALLOWED_ORDER_PATHS) == []
+
+
+@pytest.mark.parametrize(("entry", "expected"), [
+    (("ofo_app.kite_margin", "ofo.execution.margin_gate.no_such_module"), "names no source file"),
+    (("ofo_app.kite_margin", "ofo.execution"), "names a package, not one module"),
+    (("ofo_app.kite_margin", "ofo_app.main"), "does not name an order module"),
+    (("ofo_app.no_such_importer", "ofo.execution.margin_gate"), "names an importer with no source file"),
+])
+def test_ac6_mutation_an_entry_naming_a_prefix_a_package_or_a_missing_file_is_refused(entry, expected):
+    """Mutations (checker k2): the entry shapes the prefix match in ``_reach`` would let through are refused."""
+    problems = order_entry_problems(BACKEND, [entry])
+    assert len(problems) == 1 and expected in problems[0], problems
 
 
 @pytest.mark.repo_scan
