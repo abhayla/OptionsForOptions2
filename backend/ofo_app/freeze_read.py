@@ -1,8 +1,9 @@
 """The stored exchange freeze limit in force, read side (W-076, REQ-054 AC-4, ADR-081, REQ-076 AC-5).
 
 Split out of ``freeze_store`` so the leg-edit route can read the limits without its import closure reaching any
-``ofo.execution`` module (the order path's plan-side join stays in ``freeze_store``). Imports nothing from the order
-path: ``tests_app/test_order_path_switch.py`` walks the closure and fails if that ever changes.
+``ofo.execution`` module (the order path's plan-side join stays in ``freeze_store``). The import walk of
+``tests_app/test_order_path_switch.py`` run on this module finds no order module in its closure (no allow-list entry
+needed); the leg-edit route's walk fails if that changes. An import is not a call: this says nothing about runtime.
 """
 
 from __future__ import annotations
