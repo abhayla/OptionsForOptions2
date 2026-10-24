@@ -165,25 +165,40 @@ def gh_pr_number(branch: str) -> int | None:
     return number
 
 
-def check_close_keywords(root: Path, branch: str, pr_reader: PrReader, runner: Runner, log_dir: Path,
-                         out: Callable[[str], None]) -> int:
+class Io(NamedTuple):
+    """The injected side effects of a run: child runner, App tests reader, PR reader, output line."""
+
+    runner: Runner
+    reader: GhReader
+    pr_reader: PrReader
+    out: Callable[[str], None]
+
+
+def check_close_keywords(root: Path, branch: str, log_dir: Path, io: Io) -> int:
     """--pre-push: run pr_close_check.py for the branch's open PR. No PR = skipped (printed); a gh error refuses."""
     try:
-        number = pr_reader(branch)
+        number = io.pr_reader(branch)
     except RuntimeError as exc:
-        out(f"GATE REFUSED push: cannot read the PR of {branch} ({exc})")
+        io.out(f"GATE REFUSED push: cannot read the PR of {branch} ({exc})")
         return GATE_REFUSED
     if number is None:
-        out(f"pr-close-check: skipped, {branch} has no open PR")
+        io.out(f"pr-close-check: skipped, {branch} has no open PR")
         return 0
     log = log_dir / "pr-close-check.log"
-    code = runner([PYTHON, "scripts/orchestrator/pr_close_check.py", "--pr", str(number)], root, dict(os.environ), log)
+    argv = [PYTHON, "scripts/orchestrator/pr_close_check.py", "--pr", str(number)]
+    code = io.runner(argv, root, dict(os.environ), log)
     if code != 0:
         for line in tail(log):
-            out(line)
-        out(f"GATE FAIL pr-close-check: exit {code}")
+            io.out(line)
+        io.out(f"GATE FAIL pr-close-check: exit {code}")
         return GATE_FAILED
     return 0
+
+
+def pre_push(root: Path, log_dir: Path, fixes_red: bool, io: Io) -> int:
+    code, branch = git_text(io.runner, root, log_dir, "branch", ["rev-parse", "--abbrev-ref", "HEAD"])
+    refused = check_push(branch if code == 0 else "", io.reader, fixes_red, io.out)
+    return refused or check_close_keywords(root, branch, log_dir, io)
 
 
 def push_verdict(runs: list, fixes_red: bool) -> str:
@@ -273,9 +288,8 @@ def run_format(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict)
     return runner([*step.argv, *files], root / step.cwd, env, log), None
 
 
-def changed_names(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict, folder: str) -> tuple:
+def changed_names(runner: Runner, root: Path, env: dict, list_log: Path, folder: str) -> tuple:
     """(exit code, names) of the files under `folder` that differ from origin/main; a git failure is the code."""
-    list_log = log_dir / f"{step.name}-files.log"
     code = runner(["git", "diff", "--name-only", "origin/main...HEAD", "--", folder], root, env, list_log)
     return code, tail(list_log, 100000)
 
@@ -283,7 +297,7 @@ def changed_names(step: Step, root: Path, runner: Runner, log_dir: Path, env: di
 def run_domain(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
     """pytest on tests/<pkg> for each backend/ofo/<pkg>/ with a changed file; none changed = pass, `0 packages`."""
     log = log_dir / f"{step.name}.log"
-    code, names = changed_names(step, root, runner, log_dir, env, f"{DOMAIN_SRC}/")
+    code, names = changed_names(runner, root, env, log_dir / f"{step.name}-files.log", f"{DOMAIN_SRC}/")
     if code != 0:
         return code, f"{step.name}-files.log"
     prefix = f"{DOMAIN_SRC}/"
@@ -298,7 +312,7 @@ def run_domain(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict)
 def run_build(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
     """npm run build only when a file under frontend/ changed (deletions count); none = pass, `0 files`."""
     log = log_dir / f"{step.name}.log"
-    code, names = changed_names(step, root, runner, log_dir, env, f"{FRONTEND}/")
+    code, names = changed_names(runner, root, env, log_dir / f"{step.name}-files.log", f"{FRONTEND}/")
     if code != 0:
         return code, f"{step.name}-files.log"
     if not [n for n in names if n.startswith(f"{FRONTEND}/")]:
@@ -308,6 +322,9 @@ def run_build(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) 
         log.write_text("frontend/node_modules is missing: run npm ci in frontend/\n", encoding="utf-8")
         return GATE_FAILED, None
     return runner(expand(step, root), root / step.cwd, env, log), None
+
+
+SPECIAL_KINDS = {"format": run_format, "domain": run_domain, "build": run_build}  # steps that pick their own files
 
 
 def run_step(step: Step, root: Path, runner: Runner, log_dir: Path) -> tuple:
@@ -321,12 +338,9 @@ def run_step(step: Step, root: Path, runner: Runner, log_dir: Path) -> tuple:
         return GATE_FAILED, None
     if step.kind == "app":
         env = app_env(env)
-    if step.kind == "format":
-        return run_format(step, root, runner, log_dir, env)
-    if step.kind == "domain":
-        return run_domain(step, root, runner, log_dir, env)
-    if step.kind == "build":
-        return run_build(step, root, runner, log_dir, env)
+    special = SPECIAL_KINDS.get(step.kind)
+    if special is not None:
+        return special(step, root, runner, log_dir, env)
     code = runner(expand(step, root), cwd, env, log)
     if step.kind != "select" or code != 0:
         return code, None
@@ -415,11 +429,7 @@ def main(argv: list | None = None, runner: Runner = default_runner, reader: GhRe
     log_dir = git_dir / "ofo-gate"
     log_dir.mkdir(parents=True, exist_ok=True)
     if args.pre_push:
-        code, branch = git_text(runner, root, log_dir, "branch", ["rev-parse", "--abbrev-ref", "HEAD"])
-        refused = check_push(branch if code == 0 else "", reader, args.fixes_red, out)
-        if refused:
-            return refused
-        refused = check_close_keywords(root, branch, pr_reader, runner, log_dir, out)
+        refused = pre_push(root, log_dir, args.fixes_red, Io(runner, reader, pr_reader, out))
         if refused:
             return refused
     return run_gate(root, log_dir, runner, out)

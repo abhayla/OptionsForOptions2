@@ -9,9 +9,10 @@ Runs STEPS in order and stops at the first refusal. Exit 0 accepted (one line ap
 skips the overlap check), 4 the builder worktree is not ready (the setup steps are printed). Every child runs as an argv
 list without a shell and its exit code is read directly: only 0 passes; any other code, or a child that cannot be
 started, refuses. The ledger (default `<git common dir>/ofo-dispatch-ledger.jsonl`, shared by every worktree) holds
-accepted dispatches only; after two `fix` dispatches of one row every further `build` or `fix` of it is refused (ADR-106:
-park or redesign after round 2) unless `--redesign "<reason>"` (at least four words, naming the independent reviewer or
-the redesign) is given, and the reason is recorded in the ledger line; `verify-r2` is never counted or blocked. A
+accepted dispatches only; after two `fix` dispatches of one row every further `build` or `fix` of it is refused
+(ADR-106: park or redesign after round 2) unless `--redesign "<reason>"` (at least four words, naming the independent
+reviewer or the redesign) is given, and the reason is recorded in the ledger line; `verify-r2` is never counted or
+blocked. A
 `--ledger` other than the default is refused without `--test-ledger` (tests only), and an unreadable ledger line
 refuses instead of counting as empty. CI and the merge gate stay the authority (ADR-181).
 """

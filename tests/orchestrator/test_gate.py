@@ -535,7 +535,7 @@ def test_pre_push_runs_pr_close_check_for_the_open_pr_before_any_step(tree, monk
     runner = FakeRunner()
     code, lines = run(tree, runner, ["--pre-push"], pr_reader=lambda b: 7)
     assert (code, lines[-1]) == (0, f"GATE PASS {SHA}")
-    assert [c[0] for c in runner.ran()][0] == CLOSE_CMD
+    assert runner.ran()[0][0] == CLOSE_CMD
 
 
 def test_pr_close_check_failure_fails_the_gate_and_no_step_runs(tree, monkeypatch):
@@ -595,7 +595,8 @@ class Proc:
         (OSError("no gh"), RuntimeError),
         (subprocess.TimeoutExpired("gh", 60), RuntimeError),
     ],
-    ids=["open", "no-pr", "gh-error", "bad-json", "no-number", "list", "str-number", "zero", "bool", "no-gh", "timeout"],
+    ids=["open", "no-pr", "gh-error", "bad-json", "no-number", "list", "str-number", "zero", "bool", "no-gh",
+         "timeout"],
 )
 def test_gh_pr_number_every_answer_state(monkeypatch, proc, expected):
     """Standing item (d): PR open, no PR, gh error, bad JSON and the odd shapes each have one outcome."""

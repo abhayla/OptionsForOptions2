@@ -83,7 +83,8 @@ class Fake:
         return [pathlib.Path(c[1]).name for c in self.calls]
 
 
-def run(env, row="21c", kind="build", fake=None, in_flight=("--no-in-flight",), redesign=None, **over):
+def run(env, row="21c", kind="build", fake=None, in_flight=("--no-in-flight",), **over):
+    redesign = over.get("redesign")
     argv = [row, str(over.get("measure") or env["measure"]), "--kind", kind, "--out", str(env["out"]),
             "--worktree", str(over.get("wt") or env["wt"]), "--ledger", str(env["ledger"]), "--test-ledger",
             "--root", str(env["root"]), *in_flight, *(["--redesign", redesign] if redesign else [])]
