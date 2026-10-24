@@ -620,3 +620,52 @@ describe('REQ-077 AC-6 / AC-7 the price-has-moved marker', () => {
     expect(all(w, 'price-moved')).toHaveLength(0)
   })
 })
+
+describe('REQ-077 AC-7 (RD-113): a reopened SAVED strategy marks the legs whose live price moved and captures nothing', () => {
+  // The saved definition (LegOut shape) of the recorded condor: leg 0 was saved at 100.00 and trades at 39.15 now; leg 1 was saved
+  // AT its live price 12.95 -> no marker. The save/open path is SaveDraftBar -> fetchSavedDraft -> legsFromSaved.
+  const tokenOf = (l) => Number(l.instrument_id.split(':')[1])
+  const savedLeg = (l, entry) => ({
+    contract_id: tokenOf(l), contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: tokenOf(l), instrument: l.instrument,
+    strike: l.strike, expiry: l.expiry, action: l.action, quantity: l.quantity, planned_entry: entry, captured_at: l.captured_at,
+    entry_source: 'captured',
+  })
+  const entries = [real.legs[0].planned_entry, real.legs[1].ltp, real.legs[2].planned_entry, real.legs[3].planned_entry]
+  const SAVED = { revision: 3, definition: { underlying: 'NIFTY', legs: real.legs.map((l, i) => savedLeg(l, entries[i])) } }
+  const CATALOGUE = {
+    underlying: 'NIFTY',
+    contracts: real.legs.map((l) => ({
+      contract_id: tokenOf(l), exchange_segment: 'NSE_FO', exchange_token: tokenOf(l), instrument_type: l.instrument,
+      expiry: l.expiry, strike: l.strike, lot_size: l.lot_size, symbol: l.symbol,
+    })),
+  }
+
+  async function reopenSaved() {
+    answers['GET /strategies'] = { strategies: [{ id: 7, underlying: 'NIFTY', updated_at: '2026-10-24T10:35:12+05:30' }] }
+    answers['GET /strategies/7'] = SAVED
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CATALOGUE
+    const w = await openPage()
+    calls.length = 0
+    answers['POST /strategies/leg-edit'] = { ...READ, legs: real.legs.map((l, i) => replyLeg(l, { planned_entry: entries[i], hedge: false })) }
+    await t(w, 'open-draft-7').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-7: leg 0 (saved 100.00, live 39.15) shows the marker with both prices; leg 1 (saved at live) none; the saved entries stay', async () => {
+    const w = await reopenSaved()
+    expect(all(w, 'leg-row')).toHaveLength(4)
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain('GET /strategies/7')
+    expect(row(w, 0).find('[data-testid="price-moved"]').text()).toContain(`planned ${real.legs[0].planned_entry}, now ${real.legs[0].ltp}`)
+    expect(row(w, 1).find('[data-testid="price-moved"]').exists()).toBe(false)
+    expect(row(w, 0).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[0].planned_entry}`)
+    expect(row(w, 1).find('[data-testid="leg-entry"]').text()).toBe(`Planned entry ${real.legs[1].ltp}`)
+  })
+
+  it('AC-7: reopening captures nothing - no planned-entry request, no leg-edit step, and the legs sent carry the SAVED entries', async () => {
+    await reopenSaved()
+    expect(calls.filter((c) => c.url === '/strategies/planned-entry')).toHaveLength(0)
+    expect(edits()).toHaveLength(0)
+    expect(calls.filter((c) => c.url === '/strategies/outcome').flatMap((c) => c.body.legs.map((l) => l.planned_entry))).toEqual(entries)
+  })
+})

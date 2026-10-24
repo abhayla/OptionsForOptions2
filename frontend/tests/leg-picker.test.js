@@ -784,6 +784,39 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
   })
 
+  it('AC-3 (RD-129) core: three picked strikes show "3 selected" in a footer with Clear All and Done; Clear All empties it; Done adds all three', async () => {
+    const pickThree = async (w) => {
+      await sideOf(w, '22450.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+      await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+      await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    }
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-clear-all').attributes('disabled')).toBeDefined()
+    await pickThree(w)
+    const footer = t(w, 'picker-footer')
+    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    expect(footer.find('[data-testid="picker-clear-all"]').text()).toBe('Clear All')
+    expect(footer.find('[data-testid="picker-done"]').text()).toBe('Done')
+    // Clear All: no selection row, no pressed Buy/Sell, Done disabled, nothing sent
+    await t(w, 'picker-clear-all').trigger('click')
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(w.findAll('[data-testid="selection-row"]')).toHaveLength(0)
+    expect(w.findAll('[aria-pressed="true"]')).toHaveLength(0)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+    // a cleared cell forgets its lots, and Done adds all three at once
+    await pickThree(w)
+    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44000', 'BUY'], ['NSE_FO:44002', 'SELL'], ['NSE_FO:44005', 'BUY']])
+    expect(w.emitted('update:legs')).toHaveLength(1)
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+  })
+
   it('AC-3 attack 6: Done with nothing selected adds nothing and sends no request', async () => {
     const w = mountPicker()
     await flushPromises()
@@ -867,6 +900,56 @@ describe('REQ-080 futures tab (W-147)', () => {
     expect(fw[1].find('[data-testid="forward-source"]').text()).toBe('(estimated from spot)')
     expect(fw[2].find('[data-testid="forward-reason"]').text()).toBe('(The engine cannot price this expiry right now.)')
     expect(t(w, 'futures-reason').exists()).toBe(false)
+  })
+
+  const openFutures = async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = futuresAnswer
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-24'] = { underlying: 'NIFTY', contracts: [c(48705, 'FUT', null, 'NIFTY26NOVFUT', '2026-11-24')] }
+    answers['POST /strategies/planned-entry'] = entryFor({ 48704: '22610.40' })
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('AC-9 (RD-134): Buy and Sell on a real future add a BUY / SELL futures leg, priced, through the normal capture path', async () => {
+    const w = await openFutures()
+    const row = (n) => w.findAll('[data-testid="future-row"]')[n]
+    await row(0).find('[data-testid="future-buy"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.instrument_type, l.strike, l.expiry, l.action, l.lots, l.planned_entry, l.captured_at]))
+      .toEqual([['NSE_FO:48704', 'FUT', null, '2026-10-27', 'BUY', 1, '22610.40', AT]])
+    expect(calls.filter((x) => x.method === 'POST').map((x) => x.body)).toEqual([{ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] }])
+    await row(0).find('[data-testid="future-sell"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => l.action)).toEqual(['BUY', 'SELL'])
+  })
+
+  it('AC-9: an unpriced real future is still added, with no entry and the reprice prompt (existing unpriced rules)', async () => {
+    const w = await openFutures()
+    await w.findAll('[data-testid="future-row"]')[1].find('[data-testid="future-sell"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toMatchObject([{ instrument_id: 'NSE_FO:48705', action: 'SELL', planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }])
+  })
+
+  it('AC-9: a future the catalogue cannot confirm adds nothing and says so', async () => {
+    const w = await openFutures()
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-24'] = new Error('down')
+    await w.findAll('[data-testid="future-row"]')[1].find('[data-testid="future-buy"]').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(t(w, 'future-add-error').exists()).toBe(true)
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+  })
+
+  it('AC-9: the forward (calculated price) rows have no Buy or Sell; only real futures do', async () => {
+    const w = await openFutures()
+    expect(w.findAll('[data-testid="future-buy"]')).toHaveLength(2)
+    expect(w.findAll('[data-testid="future-sell"]')).toHaveLength(2)
+    const fw = w.findAll('[data-testid="forward-row"]')
+    expect(fw).toHaveLength(3)
+    expect(fw.every((r) => r.findAll('button').length === 0)).toBe(true)
   })
 
   it('AC-5: a list-level reason shows above the futures, and a failed read shows no old list', async () => {
