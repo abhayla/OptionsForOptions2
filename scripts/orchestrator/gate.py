@@ -25,8 +25,9 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 
 PYTHON = sys.executable
 PYTEST = [PYTHON, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
@@ -40,9 +41,9 @@ GATE_FAILED = 1
 TAIL_LINES = 30
 WORKFLOW = "App tests"
 GH_RUN_LIMIT = 10
-# The database variables the app-selected child must not see (database tests then skip themselves, tests_app/conftest.py).
+# The database variables the app-selected child must not see (database tests then skip, tests_app/conftest.py).
 DB_ENV = ("DATABASE_URL", "TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "OFO_REQUIRE_DB_TESTS")
-# app-tests.yml "Throwaway broker settings": placeholders, set only when absent; BROKER_TOKEN_KEY is fresh per run.
+# app-tests.yml "Throwaway broker settings": placeholders set only when absent; BROKER_TOKEN_KEY is fresh per run.
 BROKER_ENV = {
     "KITE_API_KEY": "ci_placeholder_key",
     "KITE_API_SECRET": "ci_placeholder_secret",
@@ -94,7 +95,8 @@ def default_runner(argv: list, cwd: Path, env: dict, log: Path) -> int:
             out.write(f"cannot find `{argv[0]}` on PATH\n".encode())
             return 127
         try:
-            return subprocess.run([exe, *argv[1:]], cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT).returncode
+            return subprocess.run([exe, *argv[1:]], cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT,  # noqa: S603
+                                  check=False).returncode
         except OSError as exc:
             out.write(f"cannot start `{argv[0]}`: {exc}\n".encode())
             return 127
@@ -105,7 +107,8 @@ def gh_runs(branch: str) -> list:
     cmd = ["gh", "run", "list", "--branch", branch, "--workflow", WORKFLOW, "--limit", str(GH_RUN_LIMIT),
            "--json", "databaseId,status,conclusion,headSha"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=60)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=60,  # noqa: S603
+                              check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(f"gh did not run: {exc}") from exc
     if proc.returncode != 0:
@@ -222,6 +225,7 @@ def run_gate(root: Path, log_dir: Path, runner: Runner, out: Callable[[str], Non
         out("GATE REFUSED: cannot read the HEAD sha")
         return GATE_REFUSED
     timings: list = []
+    gate_began = time.monotonic()
     for step in STEPS[1:]:  # step 0 (clean-tree) ran above, before anything else
         began = time.monotonic()
         code, extra = run_step(step, root, runner, log_dir)
@@ -239,14 +243,13 @@ def run_gate(root: Path, log_dir: Path, runner: Runner, out: Callable[[str], Non
         return GATE_REFUSED
     for line in timings:
         out(line)
+    out(f"  total: {time.monotonic() - gate_began:.1f}s")
     out(f"GATE PASS {head}")
     return 0
 
 
-def check_push(root: Path, log_dir: Path, runner: Runner, reader: GhReader, fixes_red: bool,
-               out: Callable[[str], None]) -> int:
-    code, branch = git_text(runner, root, log_dir, "branch", ["rev-parse", "--abbrev-ref", "HEAD"])
-    if code != 0 or not branch or branch == "HEAD":
+def check_push(branch: str, reader: GhReader, fixes_red: bool, out: Callable[[str], None]) -> int:
+    if not branch or branch == "HEAD":
         out("GATE REFUSED push: cannot name the current branch")
         return GATE_REFUSED
     try:
@@ -257,6 +260,11 @@ def check_push(root: Path, log_dir: Path, runner: Runner, reader: GhReader, fixe
         out(f"GATE REFUSED push: {why}")
         return GATE_REFUSED
     return 0
+
+
+def git_out(cwd: Path, *args: str) -> str:
+    cmd = ["git", *args]
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()  # noqa: S603
 
 
 def main(argv: list | None = None, runner: Runner = default_runner, reader: GhReader = gh_runs,
@@ -270,18 +278,16 @@ def main(argv: list | None = None, runner: Runner = default_runner, reader: GhRe
         out("GATE REFUSED: --fixes-red only goes with --pre-push")
         return GATE_REFUSED
     try:
-        top = args.root or Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
-                                               check=True).stdout.strip())
-        root = top.resolve()
-        git_dir = Path(subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=root, capture_output=True,
-                                      text=True, check=True).stdout.strip())
+        root = (args.root or Path(git_out(Path.cwd(), "rev-parse", "--show-toplevel"))).resolve()
+        git_dir = Path(git_out(root, "rev-parse", "--absolute-git-dir"))
     except (OSError, subprocess.CalledProcessError):
         out("GATE REFUSED: not a git checkout")
         return GATE_REFUSED
     log_dir = git_dir / "ofo-gate"
     log_dir.mkdir(parents=True, exist_ok=True)
     if args.pre_push:
-        refused = check_push(root, log_dir, runner, reader, args.fixes_red, out)
+        code, branch = git_text(runner, root, log_dir, "branch", ["rev-parse", "--abbrev-ref", "HEAD"])
+        refused = check_push(branch if code == 0 else "", reader, args.fixes_red, out)
         if refused:
             return refused
     return run_gate(root, log_dir, runner, out)
