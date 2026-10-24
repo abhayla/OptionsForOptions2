@@ -1,6 +1,39 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 7 END (f1b75d11), 2026-10-24 ~14:00 IST - START HERE (newest)
+## UPDATE chunk 2 LANDED (session f1b75d11), 2026-10-24 evening - START HERE (newest)
+Chunk 2 (rows 17-24) is on main: part A #533 (rows 17-20 + row 21 parts 21m/21b, with migration 0024 at its reviewed
+version) and part B #531 (row 21 complete, rows 22-24, reference copy, chunk Tier A review fixes). Session f1b75d11 ran
+past its three rows (rows 21-24 + the chunk close) because the goal's stop hook kept it going.
+- **Rows:** W-145..W-152 in_review; evidence W-149 AC-1..9, W-150 AC-1..8 (AC-6 fail = its what-if part is row 37),
+  W-151 AC-1..5, W-152 AC-1..4. Finding F-61 (the false "disconnected" alarm came from the server's Kite feed
+  reconnecting) is in the findings list and REQ-133.
+- **Chunk close:** reference copy (11 COPY records verified, 2 built, 6 open with owners in #532 E); chunk Tier A review
+  round 1 one MAJOR per area (engine IV price, migration 0024 downgrade, forward health), round 2 PASS in all three;
+  conformance check recorded in docs/process/adr-178-tracker.md (rows 7, 9, 11 missed; 8, 12 followed; 1-6 and 10
+  unmeasured - measure_process.py reads the wrong transcript folder, #532 F). One deferred issue: #532 (final body).
+- **Owner, this session:** asked for speed; offered pulling the local gate command forward - answered "Keep the plan"
+  (recorded in ADR-181): build the gate command and the dispatch command at chunk 3's START, before any row.
+- **NEXT (chunk 3, a FRESH session):** (1) the two ADR-181 tools first: one local gate command that runs exactly what CI
+  runs (select_app_tests DB-free files, guard line, tests/errors, repo_scan, ruff ratchet, frontend lint + changed
+  Vitest files, coverage, reach check, register check, findings index) - about 5 of 8 rework events on 2026-10-24 were
+  gates an agent skipped; and the dispatch command. (2) Then rows 25+ per docs/process/builder-sequence-2026-10-22.md.
+  Read #532 C (two mechanisms due: Playwright strategy-socket fakes must use frontend/e2e/support/echoSeq.ts; the
+  all-routes order-closure guard).
+- **Rules learned (keep):** run the full push chain before EVERY push (repo_scan AND tests/errors - the guard line skips
+  most of tests/errors); frontend-only evidence needs a reach-baseline entry the same commit; a new catalogue text needs
+  its pin in tests/errors/template_pins.json; never dispatch a checker while a builder must commit or while you must
+  push (the gate blocks add, commit AND push in every worktree); `npm ci` in every new worktree; a test double must be
+  built from or checked against the real class/server; a decision labelled "technical" still needs a spec grep and a
+  Sensibull study FOLDER grep with the hit count; DB tests skip themselves with DATABASE_URL unset, so the whole
+  select_app_tests list can be run at once.
+- **Open for the owner:** Q1 (docs/process/owner-questions-2026-10-25.md); texts pending owner read in
+  tests/errors/template_pins.json (execute_plan_changed, outcome_waiting_first_price, outcome_from_entries*); SPEC
+  CHANGE records RD-124/133/147/149/154 (the owner's batch).
+- **Worktrees to remove now (wt-rm; merged):** -builder-reqs (delete its .run-active.lock first), -row17a2, -row17b2,
+  -row18, -OptionsForOptions2-chunk2-process, -row19, -row20, -row21, -row21d, -ci21, -row22, -row22b, -row23, -row23b,
+  -row24, -copy2, -ci24, -reva, -revb, -revc, -chunk2a.
+
+## UPDATE session 7 mid-run (f1b75d11), 2026-10-24 ~14:00 IST (older)
 Three rows closed this session, so a fresh session takes row 24 (goal: "fresh session about every 3 rows").
 Chunk 2 = branch `build/seq-chunk-2`, draft PR #531, sequence worktree `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`
 (it now carries `.run-active.lock` + `.worktree-meta.json`, both git-ignored: DELETE the lock when chunk 2 merges, then
@@ -42,7 +75,7 @@ Chunk notes and the deferred list stay in the session-6 scratchpad (`chunk2-note
   -row23, -row23b. Harness trees agent-a71cec/aec312/afc010 removed this session (W-127's 4 local-only commits pushed
   first).
 
-## UPDATE session 6 END (06fe7549), 2026-10-24 ~08:45 IST - START HERE (newest)
+## UPDATE session 6 END (06fe7549), 2026-10-24 ~08:45 IST (older)
 Handed over at ~95% context. Chunk 2 branch `build/seq-chunk-2` (draft PR #531); sequence worktree
 `D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
 - **Closed:** rows 17, 18, 19 (live check pending: AC-6 futures price), 20 (re-closed after CI green 1b5348bd).
