@@ -188,6 +188,26 @@ def test_ac_6_a_stepped_leg_is_re_captured_and_a_typed_price_is_a_tick_multiple(
         assert err.value.template == "leg_edit_price_not_tick"
 
 
+@pytest.mark.parametrize("whole_digits", [27, 30])
+@pytest.mark.parametrize("as_decimal", [False, True])
+def test_an_oversized_typed_price_is_the_price_refusal_never_a_crash(cat, whole_digits, as_decimal):
+    """Chunk-2 Tier A review, area A: 27+ whole digits made quantize raise InvalidOperation; any typed price above the
+    absurd-price cap is the one price refusal (USER_INPUT_013), the legs unchanged."""
+    text = "9" * whole_digits + ".05"
+    legs = condor()
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.set_typed_price(cat, NIFTY, legs, 1, D(text) if as_decimal else text)
+    assert err.value.template == "leg_edit_price_not_tick"
+    assert [x.leg.entry_price for x in legs] == [x.leg.entry_price for x in condor()]
+
+
+def test_a_61_digit_typed_price_is_refused_never_raised(cat):
+    """30 whole + 30 fractional digits (61 characters with the point): the longest text the shape check passes."""
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.set_typed_price(cat, NIFTY, condor(), 1, "9" * 30 + "." + "5" * 30)
+    assert err.value.template == "leg_edit_price_not_tick"
+
+
 def test_refusals_are_user_facing_catalogue_text(cat):
     """Every refusal renders from the error catalogue (no ad-hoc string) and names the leg."""
     with pytest.raises(LegEditRefused) as err:

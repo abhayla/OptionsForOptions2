@@ -32,7 +32,8 @@ from ofo.engine import estimate as _estimate
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Instrument
-from ofo.marketdata.forward import FALLBACK_LABEL, ExpiryForward, ForwardUnavailable
+from ofo.marketdata.forward import FALLBACK_LABEL, ExpiryForward, ForwardUnavailable, mid_price
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST as IST  # re-exported: ofo.scenario.spot imports IST from here
 
@@ -241,6 +242,13 @@ def greeks(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal, lev
     g = _bs.bs_greeks(kind, s, strike, f.years, f.rate, vol, days_in_year=f.days_in_year,
                       dividend_yield=e.dividend_yield)
     return ModelGreeks(g, s, e.dividend_yield, e.level, e.spot_at, e.label)
+
+
+def iv_price(q: NormalizedQuote) -> Decimal | None:
+    """ADR-172: THE price an implied volatility is solved from, for every caller (the outcome leg, the ATM pair, the
+    leg picker's chain): the bid-ask mid when both sides are live and the ask is at or above the bid, else the LTP
+    (None when there is no LTP either: no IV). A bid or ask of 0 is no live side."""
+    return mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
 
 
 def implied_vol(em: ExpiryModel, kind: Instrument, price: Decimal, strike: Decimal) -> ModelIV:

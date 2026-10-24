@@ -36,11 +36,11 @@ from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, ro
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, join_labels,
+from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, iv_price, join_labels,
                              leg_greeks_unrounded, model_inputs)
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
-from ofo.marketdata.forward import ForwardUnavailable, mid_price, spot_fallback_forward
+from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
@@ -379,12 +379,6 @@ def _shared_leg_greeks(model, snapshot, shared):
     return out
 
 
-def _iv_price(q: NormalizedQuote) -> Decimal | None:
-    """The price an IV is solved from, for a leg and for the ATM pair alike: the bid-ask mid when both sides are there
-    and not crossed, else the LTP."""
-    return mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
-
-
 def _usable(q: NormalizedQuote | None) -> bool:
     """A quote an IV may be solved from: present, a live last price (never 0) and a health that is not unusable - the
     same refusals a leg's quote gets in build_outcome."""
@@ -414,7 +408,7 @@ def atm_iv(snapshot: MarketSnapshot, expiry: datetime.date, shared: FeedScope | 
         if not _usable(q):
             return None
         where = (snapshot.underlying, expiry, snapshot.valuation, "leg_iv", q.instrument_id)
-        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, _iv_price(q), strike, fwd), shared, where)
+        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, iv_price(q), strike, fwd), shared, where)
         if iv is None:
             return None
         ivs.append(iv)
@@ -588,7 +582,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             ltp, label = q.ltp, _quote_label(q)
             fwd = snapshot.forwards.get(c.expiry)
             if kind is not Instrument.FUT and fwd is not None and snapshot.spot is not None:
-                price = _iv_price(q)
+                price = iv_price(q)
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
                     where = (snapshot.underlying, c.expiry, snapshot.valuation, "leg_iv", p.instrument_id)
