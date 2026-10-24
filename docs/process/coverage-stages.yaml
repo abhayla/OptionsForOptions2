@@ -612,6 +612,7 @@ findings:
   F-58: S6.7      # fakeredis TCP server: no pub/sub delivery, Streams work (row 9 bus design)
   F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
   F-60: S6.7      # Kite REST limits per group (quote 1/s, historical 3/s, other 10/s); 429 = 10 s sliding cooldown
+  F-61: S6.1      # false disconnected alarm comes from the server Kite feed reconnect, not the browser socket (REQ-133)
 
 hypotheses:
   H1: done
