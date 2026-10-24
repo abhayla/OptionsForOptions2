@@ -120,8 +120,8 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/eligibility_from_zerodha.py": "by id -> that row's own eligibility status (no key out); the "
                                                    "registry reads LIVE rows only (not retired, not delisted)",
     "backend/ofo_app/freeze_store.py": "exchange_freeze_limits keyed by the exchange file's token; no stored id",
-    "backend/ofo_app/freeze_read.py": "the freeze_store read moved here (row 20): exchange_freeze_limits by the exchange "
-                                      "file's token; no stored id",
+    "backend/ofo_app/freeze_read.py": "the freeze_store read moved here (row 20): exchange_freeze_limits by the "
+                                      "exchange file's token; no stored id",
     "backend/ofo_app/audit_allowlist.py": "docstring only (exchange_token is not in the order reply); no query",
     "backend/ofo_app/routes/catalogue.py": "docstring names the fields; lists live contracts via catalogue_picker",
 }
