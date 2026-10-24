@@ -6,6 +6,7 @@ route /api/strategies/live on the replay, and the REST route's not-live answer (
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import json
 import logging
@@ -27,7 +28,10 @@ from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo_app import live_market  # noqa: E402
 from ofo_app.config import Settings  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
+from ofo_app.routes import live as live_route  # noqa: E402
+from ofo_app.routes import outcome as outcome_route  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: E402
+from starlette.testclient import TestClient as StarletteClient  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -566,6 +570,49 @@ def test_ac4_the_door_socket_mints_only_its_models_or_a_catalogue_message():
         ClosedWebSocketRoute("/x", lambda s: None, message_models=(dict,))
 
 
+FROM_YOUR_PRICES = "From your prices - no live data"  # REQ-077 AC-9's label (catalogue outcome_from_entries)
+
+
+def _assert_from_entries_after_drop(out: dict, status: str | None = None) -> None:
+    """REQ-049 AC-5 and REQ-077 AC-9 both hold when live data dropped and every leg has an entry: FROM_ENTRIES whose
+    status_label is AC-5's message (when a quote was held and lost) and whose output_label is the from-your-prices
+    label; At Expiry numbers present; never an LTP, a live column, leg_quotes or a stale price (ADR-015)."""
+    assert out["state"] == "FROM_ENTRIES", out
+    label = out["status_label"]
+    if status is None:
+        assert label.startswith("Live market data disconnected. Last updated: ") and label.endswith(
+            ". Live strategy monitoring is paused."), label
+    else:
+        assert label == status
+    assert out["output_label"] == FROM_YOUR_PRICES
+    assert out["summary"] is not None and out["table"] is not None
+    assert out["table"]["output_label"] == FROM_YOUR_PRICES
+    assert all(leg["ltp"] is None for leg in out["legs"]) and "leg_quotes" not in out
+
+
+@pytest.fixture
+def leg_without_entry(monkeypatch):
+    """The request model requires a price on every leg; a leg saved without one (ADR-085) reaches the route only as a
+    stored definition, so the definition builder is wrapped to blank the first leg's planned entry."""
+    real = outcome_route._definition
+
+    def blank_first(req):
+        d = real(req)
+        return dataclasses.replace(d, legs=(dataclasses.replace(d.legs[0], planned_entry=None), *d.legs[1:]))
+
+    monkeypatch.setattr(outcome_route, "_definition", blank_first)
+
+
+def _assert_old_not_connected(out: dict, label: str | None = None) -> None:
+    """A leg WITHOUT an entry: today's not-live answer exactly (REQ-049 AC-5's message, no numbers)."""
+    assert out["state"] == "NOT_CONNECTED", out
+    if label is not None:
+        assert out["status_label"] == label
+    assert [leg["ltp"] for leg in out["legs"]] == [None] * len(out["legs"])
+    assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
+    assert not out.get("output_label")
+
+
 @pytest.fixture
 def live_rig():
     """A running-app live market whose feed is the replay provider (no Kite, no database)."""
@@ -589,9 +636,10 @@ async def _post(body: dict) -> dict:
 
 async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live_rig):
     """AC-4 / issue #206: with live market data on, the REST outcome for a strategy nobody streams (the socket is down)
-    is the not-live state: NOT_CONNECTED with REQ-049 AC-5's message (ADR-068 (2) "labelled as not live"), no LTP, no
-    table, no frozen bid/ask - never the old missing-index-spot refusal. While a subscriber streams the legs and the
-    index the same call is COMPUTED and equals outcome_response; dropping one leg, or the index, makes it not live."""
+    is the not-live state (ADR-068 (2) "labelled as not live"), never the old missing-index-spot refusal: with every leg
+    priced it is FROM_ENTRIES (REQ-077 AC-9) carrying REQ-049 AC-5's message and the from-your-prices label, no LTP, no
+    leg_quotes; a leg without an entry keeps NOT_CONNECTED with AC-5's message and no numbers.
+    While a subscriber streams the legs and the index the same call is COMPUTED and equals outcome_response; dropping one leg, or the index, makes it not live."""
     from ofo_app.routes.outcome import OutcomeRequest, outcome_response
 
     provider, feed = live_rig
@@ -600,12 +648,7 @@ async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live
     index_id = provider.index_id("NIFTY")
     for extra in ({}, {"ux_level": "advanced"}):  # a retired level key is ignored, never read
         out = await _post({**body, **extra})
-        label = out["status_label"]
-        assert out["state"] == "NOT_CONNECTED", out
-        assert label.startswith("Live market data disconnected. Last updated: ") and label.endswith(
-            ". Live strategy monitoring is paused."), label
-        assert [leg["ltp"] for leg in out["legs"]] == [None] * 4 and [leg["label"] for leg in out["legs"]] == [label] * 4
-        assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
+        _assert_from_entries_after_drop(out)
     handle = feed.fanout.subscribe(lambda _q: None, ids + [index_id])
     try:
         streamed = await _post(body)
@@ -617,9 +660,22 @@ async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live
     for subset in (ids[:3] + [index_id], ids):  # one leg not streaming; the index not streaming
         partial = feed.fanout.subscribe(lambda _q: None, subset)
         try:
-            assert (await _post(body))["state"] == "NOT_CONNECTED"
+            _assert_from_entries_after_drop(await _post(body))
         finally:
             feed.fanout.unsubscribe(partial)
+
+
+async def test_206_a_leg_without_an_entry_keeps_the_not_connected_answer(live_rig, leg_without_entry):
+    """REQ-049 AC-5 / #206 negative (REQ-077 AC-9 does not apply): with one leg lacking a planned entry, a strategy
+    nobody streams is today's NOT_CONNECTED answer exactly: AC-5's message on the state and on every leg, no table,
+    no summary."""
+    provider, _feed = live_rig
+    out = await _post(request(provider))
+    _assert_old_not_connected(out)
+    label = out["status_label"]
+    assert label.startswith("Live market data disconnected. Last updated: ") and label.endswith(
+        ". Live strategy monitoring is paused."), label
+    assert [leg["label"] for leg in out["legs"]] == [label] * 4
 
 
 async def test_206_without_a_live_market_the_rest_route_is_unchanged(rig):
@@ -701,8 +757,9 @@ def test_ac4_the_replay_serves_every_connection_and_its_pushes_change(monkeypatc
 
 def test_ac4_replay_rest_is_not_live_after_the_socket_drops_and_live_again_while_held(monkeypatch):
     """AC-4 / ADR-077 / REQ-049 AC-5 on the replay: before any socket the REST answer has numbers (REST-only screens keep
-    working); after the socket that held the legs closes, REST answers NOT_CONNECTED with AC-5's message and the newest
-    price time the replay held (the last recorded frame, 09:20:09), and no numbers; while a socket holds the legs again,
+    working); after the socket that held the legs closes, REST answers FROM_ENTRIES (every leg has an entry, REQ-077
+    AC-9) with AC-5's message and the newest price time the replay held (the last recorded frame, 09:20:09), no live
+    numbers; while a socket holds the legs again,
     REST computes. A strategy whose legs no socket ever held is unaffected by another strategy's drop."""
     from starlette.testclient import TestClient
 
@@ -716,10 +773,7 @@ def test_ac4_replay_rest_is_not_live_after_the_socket_drops_and_live_again_while
         ws.send_json(body)
         ws.receive_text()
     after = client.post("/api/strategies/outcome", json=body).json()
-    assert after["state"] == "NOT_CONNECTED"
-    assert after["status_label"] == AC5_AFTER_DROP
-    assert after.get("table") is None and after.get("summary") is None
-    assert all(leg["ltp"] is None for leg in after["legs"])
+    _assert_from_entries_after_drop(after, AC5_AFTER_DROP)  # every leg priced: REQ-077 AC-9 and AC-5 both hold
     other = client.post("/api/strategies/outcome", json=_replay_request()).json()  # the condor: never held
     assert other["state"] == "COMPUTED"
     with client.websocket_connect(live.PATH) as ws:
@@ -727,6 +781,19 @@ def test_ac4_replay_rest_is_not_live_after_the_socket_drops_and_live_again_while
         ws.receive_text()
         held = client.post("/api/strategies/outcome", json=body).json()
     assert held["state"] == "COMPUTED"
+
+
+def test_ac4_replay_a_leg_without_an_entry_is_not_connected_after_the_socket_drops(monkeypatch, leg_without_entry):
+    """AC-4 / REQ-049 AC-5 negative: one leg lacks an entry -> after the drop the REST answer is today's NOT_CONNECTED
+    with AC-5's exact text and the last recorded frame time, no table, no summary, no numbers."""
+    client = StarletteClient(_replay_app(monkeypatch))
+    body = _spread_request()
+    with client.websocket_connect(live_route.PATH) as ws:
+        ws.send_json(body)
+        ws.receive_text()
+    after = client.post("/api/strategies/outcome", json=body).json()
+    _assert_old_not_connected(after, AC5_AFTER_DROP)
+    assert all(leg["label"] == AC5_AFTER_DROP for leg in after["legs"])
 
 
 def test_ac4_replay_streaming_counts_holders_and_never_drops_the_index():
@@ -749,9 +816,9 @@ def test_ac4_replay_streaming_counts_holders_and_never_drops_the_index():
 
 def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monkeypatch):
     """REQ-049 AC-5 / ADR-077 (W-065 p3 r2): a second socket (another tab, another user) holds the same legs while THIS
-    page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer: AC-5's
-    exact text with the newest price time kept (09:20:09), no table, no summary, no leg numbers. The same request without
-    the flag (or false) is unchanged (COMPUTED)."""
+    page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer:
+    every leg has an entry, so FROM_ENTRIES (REQ-077 AC-9) with AC-5's exact text and the newest price time kept (09:20:09), no LTP, no
+    leg_quotes. The same request without the flag (or false) is unchanged (COMPUTED)."""
     from starlette.testclient import TestClient
 
     from ofo_app.routes import live
@@ -765,15 +832,27 @@ def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monk
             mine.send_json(body)
             mine.receive_text()
         fallback = client.post("/api/strategies/outcome", json={**body, "fallback": True}).json()
-        assert fallback["state"] == "NOT_CONNECTED"
-        assert fallback["status_label"] == AC5_AFTER_DROP
-        assert fallback.get("table") is None and fallback.get("summary") is None
-        assert all(leg["ltp"] is None and leg["label"] == AC5_AFTER_DROP for leg in fallback["legs"])
+        _assert_from_entries_after_drop(fallback, AC5_AFTER_DROP)
         plain = client.post("/api/strategies/outcome", json=body).json()
         assert plain["state"] == "COMPUTED" and plain["table"] is not None
         assert client.post("/api/strategies/outcome", json={**body, "fallback": False}).json()["state"] == "COMPUTED"
     refused = client.post("/api/strategies/outcome", json={**body, "fallback": "maybe"}).json()
     assert refused.get("state") != "COMPUTED"  # a non-boolean flag never yields numbers (fail closed)
+
+
+def test_ac5_a_leg_without_an_entry_the_fallback_is_not_connected(monkeypatch, leg_without_entry):
+    """REQ-049 AC-5 negative: with a leg lacking an entry the fallback keeps today's NOT_CONNECTED answer exactly."""
+    client = StarletteClient(_replay_app(monkeypatch))
+    body = _spread_request()
+    with client.websocket_connect(live_route.PATH) as other:
+        other.send_json(body)
+        other.receive_text()
+        with client.websocket_connect(live_route.PATH) as mine:
+            mine.send_json(body)
+            mine.receive_text()
+        fallback = client.post("/api/strategies/outcome", json={**body, "fallback": True}).json()
+        _assert_old_not_connected(fallback, AC5_AFTER_DROP)
+        assert all(leg["label"] == AC5_AFTER_DROP for leg in fallback["legs"])
 
 
 def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers():
@@ -787,3 +866,22 @@ def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers()
     flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None,
                                now=fixed).model_dump(mode="json", exclude_unset=True)
     assert flagged == plain and flagged["state"] != "COMPUTED"
+
+
+async def test_an_ended_session_answers_from_entries_on_the_rest_route_and_the_push_computation(live_rig):
+    """REQ-077 AC-9: the live market's session ended (provider up, ended flag set): every leg priced -> FROM_ENTRIES
+    with the from-your-prices label, never the old NOT_CONNECTED; the REST route and the push's one computation
+    (outcome_response) agree."""
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    provider, feed = live_rig
+    provider.on_session_ended(VALUATION)
+    assert provider.status().session_ended is True
+    body = request(provider)
+    out = await _post(body)
+    _assert_from_entries_after_drop(out)
+    pushed = outcome_response(OutcomeRequest.model_validate(body), feed.ctx).model_dump(
+        mode="json", exclude_unset=True)
+    assert pushed["state"] == "FROM_ENTRIES" and pushed["output_label"] == FROM_YOUR_PRICES
+    assert pushed["summary"] == out["summary"] and pushed["status_label"] == out["status_label"]
+    assert "leg_quotes" not in pushed
