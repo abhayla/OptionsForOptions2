@@ -207,7 +207,7 @@ describe('Learn tabs, content home, strategy page (GC-6 LEARN)', () => {
   })
 
   it('REQ-011: the module is marked draft-for-owner-review', () => {
-    const head = SOURCE.split('\n')[0]
+    const head = SOURCE.split(/\r?\n/)[0]
     expect(head).toBe('// status: draft-for-owner-review')
   })
 

@@ -16,8 +16,9 @@ import gate
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 PY = sys.executable
-PYTEST = [PY, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-PYTEST_APP = [PY, "-m", "pytest", "-c", "pytest-app.ini", "-q", "-p", "no:cacheprovider"]
+NO_HYPOTHESIS = ["-p", "no:hypothesispytest"]  # finding local-pytest-plugin-not-in-ci, written out by hand
+PYTEST = [PY, "-m", "pytest", "-q", "-p", "no:cacheprovider", *NO_HYPOTHESIS]
+PYTEST_APP = [PY, "-m", "pytest", "-c", "pytest-app.ini", "-q", "-p", "no:cacheprovider", *NO_HYPOTHESIS]
 SELECTED = "tests_app/test_a.py"
 REFUSED = 2
 KEY_LEN = 44  # urlsafe base64 of 32 bytes
@@ -612,3 +613,139 @@ def test_gh_pr_number_every_answer_state(monkeypatch, proc, expected):
             gate.gh_pr_number("b")
     else:
         assert gate.gh_pr_number("b") == expected
+
+
+def test_every_pytest_step_turns_the_local_only_hypothesis_plugin_off():
+    """Attack 2: a pytest step without `-p no:hypothesispytest` fails here, so the local gate loads what CI loads."""
+    pytest_steps = [s for s in gate.STEPS if "pytest" in s.argv]
+    assert [s.name for s in pytest_steps] == [n for n, argv in EXPECTED if "pytest" in argv]
+    assert len(pytest_steps) == 7  # guard, money, repo-scan, errors, orchestrator, openapi-drift, domain
+    for step in pytest_steps:
+        argv = list(step.argv)
+        assert any(argv[i : i + 2] == NO_HYPOTHESIS for i in range(len(argv))), step.name
+
+
+def test_the_app_selected_run_also_turns_the_plugin_off():
+    assert gate.APP_SELECTED_RUN == [*PYTEST_APP, "-rs"]
+    assert NO_HYPOTHESIS == gate.APP_SELECTED_RUN[-3:-1]
+
+
+BAD, GOOD = "BAD <div></div>", "good"
+
+
+class FormatRunner(FakeRunner):
+    """git answers for the format ratchet and a fake prettier: exit 1 when a file starts with BAD, else `prettier_code`."""
+
+    def __init__(self, names, added=(), base=None, prettier_code=None, show_code=0, merge_base_code=0):
+        super().__init__()
+        self.names, self.added, self.base = names, set(added), base or {}
+        self.prettier_code, self.show_code, self.merge_base_code = prettier_code, show_code, merge_base_code
+        self.prettier_calls = []
+
+    def __call__(self, argv, cwd, env, log):
+        if argv[:2] == ["git", "show"]:
+            self.calls.append((list(argv), cwd, dict(env), log))
+            rel = argv[2].split(":frontend/", 1)[1]
+            log.write_text(self.base.get(rel, ""), encoding="utf-8")
+            return self.show_code
+        if argv[:2] == ["git", "merge-base"] and self.merge_base_code:
+            self.calls.append((list(argv), cwd, dict(env), log))
+            log.write_text("fatal\n", encoding="utf-8")
+            return self.merge_base_code
+        if argv[:2] == ["git", "diff"] and any(a.startswith("--diff-filter") for a in argv):
+            self.calls.append((list(argv), cwd, dict(env), log))
+            listed = self.added if "--diff-filter=A" in argv else self.names
+            log.write_text("".join(f"frontend/src/{n}\n" for n in sorted(listed)), encoding="utf-8")
+            return 0
+        if argv[:3] == ["npx", "prettier", "--check"]:
+            self.calls.append((list(argv), cwd, dict(env), log))
+            files = argv[3:]
+            self.prettier_calls.append(files)
+            log.write_text("prettier\n", encoding="utf-8")
+            if self.prettier_code is not None:
+                return self.prettier_code
+            return 1 if any((cwd / f).read_text(encoding="utf-8").startswith("BAD") for f in files) else 0
+        return super().__call__(argv, cwd, env, log)
+
+
+def format_run(tree, monkeypatch, runner, files=None):
+    for name, text in (files or {}).items():
+        (tree / "frontend" / "src" / name).write_text(text, encoding="utf-8")
+    fake_git_dir(monkeypatch, tree)
+    return run(tree, runner)
+
+
+def test_format_new_unformatted_file_fails(tree, monkeypatch):
+    """Attack 4, branch 1: a file added by this branch must be formatted."""
+    runner = FormatRunner(["a.vue"], added=["a.vue"])
+    code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
+    assert "src/a.vue: new file, not formatted" in lines
+
+
+def test_format_file_formatted_at_base_now_unformatted_fails(tree, monkeypatch):
+    """Attack 4, branch 2: the branch made a formatted file unformatted."""
+    runner = FormatRunner(["a.vue"], base={"src/a.vue": GOOD})
+    code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
+    assert "src/a.vue: formatted at the merge base, unformatted now" in lines
+    assert not list((tree / "frontend" / "src").glob("gate-base-copy*"))  # the base copy is removed
+
+
+def test_format_old_debt_still_unformatted_passes_and_is_counted(tree, monkeypatch):
+    """Attack 4, branch 3: a file already unformatted at base and still so is counted, not failed."""
+    runner = FormatRunner(["a.vue", "b.vue"], base={"src/a.vue": BAD})
+    code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD, "b.vue": GOOD})
+    assert code == 0
+    assert "frontend-format: 2 checked, 1 already unformatted at base (not failed)" in lines
+    assert lines[-1].startswith("GATE PASS")
+    assert gate_log(tree, "frontend-format").endswith("1 already unformatted at base (not failed)")
+
+
+def test_format_all_formatted_passes_with_one_prettier_run(tree, monkeypatch):
+    runner = FormatRunner(["a.vue", "b.vue"], added=["b.vue"])
+    code, lines = format_run(tree, monkeypatch, runner, {"a.vue": GOOD, "b.vue": GOOD})
+    assert code == 0 and runner.prettier_calls == [["src/a.vue", "src/b.vue"]]
+    assert "frontend-format: 2 checked, 0 already unformatted at base (not failed)" in lines
+
+
+def test_format_zero_files_passes(tree, monkeypatch):
+    """Attack 4, branch 4: nothing changed under src/ - no prettier run, no summary line."""
+    runner = FormatRunner([])
+    code, lines = format_run(tree, monkeypatch, runner)
+    assert code == 0 and runner.prettier_calls == []
+    assert not [ln for ln in lines if ln.startswith("frontend-format:")]
+
+
+def test_format_unreadable_base_fails_closed(tree, monkeypatch):
+    """Standing item (c): `git show` of the base version fails -> fail, never 'no base, so pass'."""
+    code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], show_code=128), {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 128")
+    assert any("cannot read or check the base version of src/a.vue" in ln for ln in lines)
+
+
+def test_format_unreadable_merge_base_fails_closed(tree, monkeypatch):
+    code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], merge_base_code=128), {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 128")
+
+
+@pytest.mark.parametrize("code_in", [2, 7, 127])
+def test_format_prettier_error_exit_fails_closed(tree, monkeypatch, code_in):
+    """Standing item (d): prettier answers 0 formatted, 1 unformatted; anything else (2 = error) is a failure."""
+    code, lines = format_run(tree, monkeypatch, FormatRunner(["a.vue"], prettier_code=code_in), {"a.vue": GOOD})
+    assert (code, lines[-1]) == (1, f"GATE FAIL frontend-format: exit {code_in}")
+
+
+def test_format_prettier_error_on_one_file_during_the_ratchet_fails_closed(tree, monkeypatch):
+    """The batch said 1 (unformatted); the per-file answer 2 (error) is not 'formatted at base': it fails."""
+
+    class Flaky(FormatRunner):
+        def __call__(self, argv, cwd, env, log):
+            if argv[:3] == ["npx", "prettier", "--check"] and self.prettier_calls:
+                self.prettier_calls.append(argv[3:])
+                log.write_text("boom\n", encoding="utf-8")
+                return 2
+            return super().__call__(argv, cwd, env, log)
+
+    code, lines = format_run(tree, monkeypatch, Flaky(["a.vue"]), {"a.vue": BAD})
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 2")

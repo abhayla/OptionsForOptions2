@@ -1,0 +1,23 @@
+{
+ "id": "measure-file-list-misses-shared-registries",
+ "scope": "generic",
+ "class": "A row's planned file list, built from a grep of its own call chain, leaves out the shared registry files that every change of its kind must also edit (the user-text catalogue, the committed OpenAPI document, the response-door model sweep, the template pins), so two rows measured as disjoint both edit the same registries and the overlap is found only after both are built.",
+ "mechanism": "Chunk 3 rows 27b (REQ-135) and 29b (REQ-134) were measured with disjoint backend file lists and dispatched in parallel; each added a response field and a catalogue text, so each also changed backend/ofo/errors/explanations.py, docs/api/openapi.json and tests_app/test_response_door.py. overlap_gate.py compared the planned list of the younger row with the older row's real changes, which were empty before the older builder started, so it passed at dispatch.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "dispatch.py of 27f and the 29b finish, chunk 3 session A",
+  "evidence": "OVERLAP GATE: REFUSED - both rows touch: backend/ofo/errors/explanations.py, docs/api/openapi.json, tests_app/test_response_door.py (both directions)"
+ },
+ "fix": "A Measure adds, for every new response field or user-visible text, the registries that kind of change always edits (catalogue, OpenAPI document, response-door sweep, template pins) to its file list; two rows that both add API fields or texts are run one after the other unless their registry edits are split out first.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "overlap_gate.py caught the real overlap once both builders had changed the files (after the work, before the next dispatch). It does not compare two PLANNED lists at dispatch, so it cannot catch this before building (chunk-3 deferred list)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-171.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-24", "where": "rows 27b and 29b, chunk 3", "evidence": "overlap gate refusal above"}
+ ]
+}
