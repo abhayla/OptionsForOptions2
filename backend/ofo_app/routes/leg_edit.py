@@ -1,7 +1,8 @@
 """POST /api/strategies/leg-edit (W-148; REQ-076; ADR-008, ADR-068, ADR-092, ADR-150).
 
 Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo_app/routes/leg_edit.py), REQ-076 controls only:
-``step``, ``multiplier``, ``include``, ``price``, ``reset_prices`` and ``read`` (changes no leg: it answers the current
+``step``, ``multiplier``, ``include``, ``price``, ``reset_prices``, ``reset_leg`` (REQ-077 AC-5: the same re-capture
+for ONE leg) and ``read`` (changes no leg: it answers the current
 numbers, shape name and Hedge marks of the legs as sent, REQ-076 AC-8). Shift / Width / Hedge and the controls read are
 REQ-078 (row 30) and are not here.
 
@@ -145,7 +146,7 @@ class EditLegIn(LegIn):
 
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    control: Literal["step", "multiplier", "include", "price", "reset_prices", "read"]
+    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read"]
     direction: Literal[1, -1] | None = None
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
@@ -156,7 +157,7 @@ class EditIn(BaseModel):
     def _control_has_its_fields(self) -> EditIn:
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
-                 "multiplier": ("multiplier",), "reset_prices": (), "read": ()}[self.control]
+                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": ()}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
                  "multiplier": self.multiplier}
         missing = [name for name in needs if given[name] is None]
@@ -314,6 +315,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
     if e.control == "reset_prices":
         return legs, frozenset(range(len(legs)))
+    if e.control == "reset_leg":  # REQ-077 AC-5: one leg is re-captured; every other leg is left exactly as sent
+        return legs, frozenset({_need_index(e, legs)})
     if e.control == "read":
         return legs, frozenset()
     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
@@ -355,6 +358,9 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
     recapture = sorted(moved | unpriced) if req.edit.control == "reset_prices" else sorted(moved)
+    if req.edit.control == "price" and req.edit.index is not None:  # REQ-077 AC-4: a typed price carries its own time
+        stamps[req.edit.index] = now()
+        unpriced.discard(req.edit.index)
     if recapture:
         valuation, got = await capture(ctx, feed, req.underlying, [ids[i] for i in recapture])
         entries = {}
@@ -363,6 +369,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
             if price is None:  # AC-2: no live price -> the stepped leg is unpriced, never the old price
                 unpriced.add(i)
                 stamps[i] = None
+                new_legs = edit.clear_typed(new_legs, {i})  # a reset also ends the "Your price" mark
             else:
                 entries[i] = price.price
                 unpriced.discard(i)

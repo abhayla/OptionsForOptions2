@@ -73,6 +73,9 @@ class LegIn(BaseModel):
                                          description="ADR-075: the leg's planned entry price, decimal text in rupees")
     captured_at: Optional[str] = Field(default=None, examples=["2026-10-15T11:02:17+05:30"],
                                        description="ADR-075: when the planned entry was captured, ISO 8601 with offset")
+    entry_source: Optional[Literal["typed", "captured"]] = Field(
+        default=None, description="REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is "
+                                  "captured_at); absent or 'captured' otherwise. Only with planned_entry + captured_at")
 
     _no_live = model_validator(mode="before")(_refuse_live_state)
 
@@ -110,6 +113,7 @@ class LegOut(ApiModel):
     quantity: int
     planned_entry: Optional[Money] = None  # ADR-075; absent (unset) for a leg saved without one
     captured_at: Optional[datetime.datetime] = None
+    entry_source: Optional[Literal["typed", "captured"]] = None  # REQ-077 AC-4; set with the pair, a pre-0024 leg: captured
 
 
 class RiskLimitsOut(ApiModel):
@@ -244,6 +248,7 @@ def _definition_out(saved: sf.SavedDefinition) -> dict:
     for leg, entry in zip(doc["legs"], entries):
         if entry is not None:
             leg["planned_entry"], leg["captured_at"] = entry.price, entry.captured_at
+            leg["entry_source"] = entry.source
     return doc
 
 
@@ -283,8 +288,12 @@ async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
     limits = {name: sf.limit_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
     now = datetime.datetime.now(datetime.timezone.utc)
     entries = [None if leg.planned_entry is None and leg.captured_at is None
-               else sf.entry_from_input(leg.planned_entry, leg.captured_at, now, f"leg_{i + 1}")
+               else sf.entry_from_input(leg.planned_entry, leg.captured_at, now, f"leg_{i + 1}",
+                                        leg.entry_source or sf.SOURCE_CAPTURED)
                for i, leg in enumerate(body.legs)]  # ADR-075, before any query
+    for i, leg in enumerate(body.legs):  # REQ-077 AC-4: a mark without the pair is refused, never dropped
+        if leg.entry_source is not None and entries[i] is None:
+            raise sf.StoredFormError(sf.INVALID_PLANNED_ENTRY, f"leg_{i + 1}.entry_source needs the planned entry pair")
     return await store.build_definition(
         db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity, entry)
                               for leg, entry in zip(body.legs, entries)],

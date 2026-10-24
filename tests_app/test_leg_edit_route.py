@@ -21,7 +21,12 @@ from ofo.strategy import stored_form
 from ofo_app.main import create_app
 from ofo_app.routes import execute, leg_edit, strategies
 from ofo_app.routes.leg_edit import get_capture, get_contract_ids, get_edit_catalogue, get_edit_today, get_freeze_limits
-from ofo_app.routes.outcome import get_margin_source, get_market_context, load_charge_rates
+from ofo_app.routes.outcome import (
+    get_answer_clock,
+    get_margin_source,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.routes.planned_entry import get_live_feed
 from pydantic import ValidationError
 
@@ -33,6 +38,7 @@ LOT, INCLUDED_AFTER_UNTICK = 65, 3
 STAMP = datetime.datetime(2026, 10, 1, 9, 20, tzinfo=datetime.UTC)
 STEPPED_DOWN_STRIKE = 23350
 NEW_STAMP = datetime.datetime(2026, 10, 1, 9, 21, 28, tzinfo=datetime.UTC)
+TYPED_STAMP = datetime.datetime(2026, 10, 1, 9, 30, 5, tzinfo=datetime.UTC)  # the answer clock of every route test
 CAT = Catalogue()
 CAT.load(parse_instruments_csv(ROOT / "tests" / "fixtures" / "instruments" / "instruments_slice.csv"))
 BY_ID = {f"{e.contract.exchange_segment}:{e.contract.exchange_token}": e.contract for e in CAT.all_entries()}
@@ -66,7 +72,7 @@ async def fake_contract_ids(instrument_ids):
     return {i: STORED[i] for i in instrument_ids if i in STORED and i != BY_KEY[("CE", 23350)]}
 
 
-def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
+def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture) -> tuple[int, dict]:
     app = create_app()
     app.dependency_overrides[get_edit_catalogue] = lambda: cat
     app.dependency_overrides[get_edit_today] = lambda: today
@@ -74,9 +80,10 @@ def post(body: dict, cat=CAT, limits=None, today=TODAY) -> tuple[int, dict]:
     app.dependency_overrides[get_market_context] = lambda: None
     app.dependency_overrides[get_margin_source] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
-    app.dependency_overrides[get_capture] = lambda: fake_capture
+    app.dependency_overrides[get_capture] = lambda: capture
     app.dependency_overrides[get_contract_ids] = lambda: fake_contract_ids
     app.dependency_overrides[load_charge_rates] = lambda: None
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: TYPED_STAMP
 
     async def go():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -314,3 +321,104 @@ def test_ac_1_a_negative_index_is_a_validation_error_never_a_leg():
                  {"control": "include", "index": -1, "included": False},
                  {"control": "price", "index": -1, "price": "81.32"}):
         assert post({"legs": legs(), "edit": edit})[0] == HTTP_UNPROCESSABLE, edit
+
+
+# ---- REQ-077 part 21a: typed price time, Reset Prices, per-leg reset ---------------------------------------------------
+RESET = {("PE", 22800): "40.00", ("PE", 23000): "88.15", ("CE", 23400): "93.20", ("CE", 23600): "45.05"}
+
+
+def reset_capture(prices=None, seen=None):
+    """A fake capture that prices every leg of the condor from RESET (hand-typed), or None where ``prices`` says so;
+    ``seen`` collects the ids it was asked about."""
+    table = RESET if prices is None else prices
+
+    async def capture(ctx, feed, underlying, ids):
+        if seen is not None:
+            seen.append(sorted(ids))
+        got = {}
+        for i in ids:
+            c = BY_ID[i]
+            price = table.get((c.instrument_type, int(c.strike)))
+            got[i] = None if price is None else PlannedEntry(Decimal(price), "ltp")
+        return NEW_STAMP, got
+    return capture
+
+
+def marks(reply):
+    return [(leg["planned_entry"], leg["price_source"], leg["captured_at"][:19] if leg["captured_at"] else None)
+            for leg in reply["legs"]]
+
+
+def test_ac_1_ac_4_a_typed_price_comes_back_typed_with_its_own_time_and_the_others_keep_theirs():
+    """REQ-077 AC-1/AC-4: typing 81.35 on leg 2 returns that leg 'typed' at the moment it was typed (the answer clock),
+    never the old capture time; the other legs keep price, mark and capture time."""
+    status, reply = post({"legs": legs(), "edit": {"control": "price", "index": 1, "price": "81.35"}})
+    assert status == HTTP_OK
+    assert marks(reply) == [("42.50", "captured", "2026-10-01T09:20:00"), ("81.35", "typed", "2026-10-01T09:30:05"),
+                            ("91.50", "captured", "2026-10-01T09:20:00"), ("44.00", "captured", "2026-10-01T09:20:00")]
+    assert reply["outcome"] is not None
+
+
+def test_ac_2_a_refused_typed_price_changes_nothing_and_answers_in_catalogue_text():
+    """REQ-077 AC-2 (attack 1): 0, -5, abc, 81.32 and 81.305 are refused (422) and no leg comes back."""
+    for bad in ("0", "-5", "abc", "81.32", "81.305"):
+        status, reply = post({"legs": legs(), "edit": {"control": "price", "index": 1, "price": bad}})
+        assert status == HTTP_UNPROCESSABLE and "legs" not in reply, bad
+
+
+def test_ac_1_a_typed_price_on_an_unpriced_leg_prices_it():
+    """REQ-077 AC-1: a leg that had no live price (planned_entry null) takes the typed price and is no longer unpriced."""
+    sent = legs()
+    sent[1].pop("planned_entry")
+    sent[1].pop("captured_at")
+    status, reply = post({"legs": sent, "edit": {"control": "price", "index": 1, "price": "81.35"}})
+    assert status == HTTP_OK and marks(reply)[1] == ("81.35", "typed", "2026-10-01T09:30:05")
+
+
+def test_ac_5_reset_prices_recaptures_every_leg_with_one_new_time_and_clears_every_typed_mark():
+    """REQ-077 AC-5 (attack 4): two typed legs and two captured; Reset Prices gives all four the hand-typed current
+    prices, ONE capture time, and no 'typed' mark."""
+    sent = legs()
+    sent[0] |= {"typed": True, "planned_entry": "99.95"}
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    seen: list = []
+    status, reply = post({"legs": sent, "edit": {"control": "reset_prices"}}, capture=reset_capture(seen=seen))
+    assert status == HTTP_OK
+    assert marks(reply) == [(p, "captured", "2026-10-01T09:21:28") for p in RESET.values()]
+    assert [leg["planned_entry"] for leg in reply["outcome"]["legs"]] == list(RESET.values())
+    assert len(seen) == 1 and len(seen[0]) == len(sent)  # one capture call for every leg: one capture time
+
+
+def test_ac_5_reset_leg_changes_one_leg_only():
+    """REQ-077 AC-5 (attack 4): reset of leg 3 re-captures that leg alone (its typed mark ends); the typed leg 1 and the
+    captured legs 2 and 4 keep price, mark and time; the capture was asked about that leg only."""
+    sent = legs()
+    sent[0] |= {"typed": True, "planned_entry": "99.95"}
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    seen: list = []
+    status, reply = post({"legs": sent, "edit": {"control": "reset_leg", "index": 2}}, capture=reset_capture(seen=seen))
+    assert status == HTTP_OK
+    assert marks(reply) == [("99.95", "typed", "2026-10-01T09:20:00"), ("86.00", "captured", "2026-10-01T09:20:00"),
+                            ("93.20", "captured", "2026-10-01T09:21:28"), ("44.00", "captured", "2026-10-01T09:20:00")]
+    assert seen == [[BY_KEY[("CE", 23400)]]]
+
+
+def test_ac_5_a_reset_with_no_live_price_leaves_that_leg_unpriced_never_the_old_price():
+    """REQ-077 AC-5 / ADR-020 Q185 (attack 5): the typed leg has no live price on reset: it comes back unpriced, not typed
+    and without a time (never 81.30 as current); the others are re-captured; no number is computed."""
+    sent = legs()
+    sent[2] |= {"typed": True, "planned_entry": "81.30"}
+    table = {k: v for k, v in RESET.items() if k != ("CE", 23400)}
+    status, reply = post({"legs": sent, "edit": {"control": "reset_prices"}}, capture=reset_capture(table))
+    assert status == HTTP_OK
+    assert marks(reply)[2] == (None, "none", None) and reply["outcome"] is None
+    assert [m[0] for m in marks(reply)] == ["40.00", "88.15", None, "45.05"]
+    status, reply = post({"legs": sent, "edit": {"control": "reset_leg", "index": 2}}, capture=reset_capture(table))
+    assert status == HTTP_OK and marks(reply)[2] == (None, "none", None)
+    assert [m[0] for m in marks(reply)] == ["42.50", "86.00", None, "44.00"] and reply["outcome"] is None
+
+
+def test_ac_5_reset_leg_needs_its_index_and_a_forged_one_is_a_validation_error():
+    """REQ-077 AC-5: reset_leg with no index, or with an index outside the legs, is a plain 422."""
+    assert post({"legs": legs(), "edit": {"control": "reset_leg"}})[0] == HTTP_UNPROCESSABLE
+    assert post({"legs": legs(), "edit": {"control": "reset_leg", "index": 9}})[0] == HTTP_UNPROCESSABLE

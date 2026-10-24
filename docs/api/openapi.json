@@ -1165,6 +1165,7 @@
               "include",
               "price",
               "reset_prices",
+              "reset_leg",
               "read"
             ],
             "title": "Control",
@@ -5079,6 +5080,22 @@
             "title": "Contract Id",
             "type": "integer"
           },
+          "entry_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "typed",
+                  "captured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is captured_at); absent or 'captured' otherwise. Only with planned_entry + captured_at",
+            "title": "Entry Source"
+          },
           "planned_entry": {
             "anyOf": [
               {
@@ -5153,6 +5170,21 @@
               }
             ],
             "title": "Contract State"
+          },
+          "entry_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "typed",
+                  "captured"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Source"
           },
           "exchange_segment": {
             "anyOf": [

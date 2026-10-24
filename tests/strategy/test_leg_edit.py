@@ -194,3 +194,29 @@ def test_refusals_are_user_facing_catalogue_text(cat):
         leg_edit.step_strike(LISTING, NIFTY, [one(Instrument.CE, str(LAST_LISTED))], 0, 1)
     assert "no further listed strike" in err.value.message.what_happened
     assert "Leg 1" in err.value.message.what_happened
+
+
+def test_ac_2_typed_zero_negative_text_off_tick_and_three_decimals_are_refused_with_four_parts_and_keep_the_price(cat):
+    """REQ-077 AC-2 (attack 1): 0, -5, 'abc', 81.32, 81.305 and NaN are refused with the four-part catalogue error naming
+    leg 1 and the 0.05 tick; the legs as sent keep their previous price and mark."""
+    legs = condor()
+    before = [(x.leg.entry_price, x.typed) for x in legs]
+    for bad in (D("0"), -5, "abc", D("81.32"), D("81.305"), D("NaN"), D("-5"), 81.3):
+        with pytest.raises(LegEditRefused) as err:
+            leg_edit.set_typed_price(cat, NIFTY, legs, 0, bad)
+        parts = err.value.message
+        assert err.value.template == "leg_edit_price_not_tick"
+        assert "Leg 1" in parts.what_happened and "0.05" in parts.what_happened
+        assert all(getattr(parts, name) for name in ("what_happened", "impact", "what_is_blocked", "next_action"))
+    assert [(x.leg.entry_price, x.typed) for x in legs] == before
+    ok = leg_edit.set_typed_price(cat, NIFTY, legs, 0, D("81.30"))
+    assert ok[0].leg.entry_price == D("81.30") and ok[0].typed and [x.typed for x in ok[1:]] == [False] * 3
+
+
+def test_ac_5_clear_typed_ends_the_mark_of_the_named_legs_only(cat):
+    """REQ-077 AC-5: a reset that found no live price still ends the mark of that leg and no other."""
+    typed = leg_edit.set_typed_price(cat, NIFTY, leg_edit.set_typed_price(cat, NIFTY, condor(), 0, D("81.30")),
+                                     2, D("90.00"))
+    assert [x.typed for x in typed] == [True, False, True, False]
+    assert [x.typed for x in leg_edit.clear_typed(typed, {2})] == [True, False, False, False]
+    assert [x.typed for x in typed] == [True, False, True, False]  # the input is unchanged

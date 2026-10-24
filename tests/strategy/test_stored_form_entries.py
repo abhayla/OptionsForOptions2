@@ -145,3 +145,72 @@ def test_the_migration_patterns_equal_the_domain_patterns():
     for sample in ("44.90", "45", "0.05", "044.90", "44.901", "1" * 13):
         assert (re.search(const["ENTRY_PRICE_REGEX"], sample) is None) == (
             re.fullmatch(sf.ENTRY_PRICE_PATTERN, sample) is None), sample
+
+
+def _typed_entries() -> sf.SavedDefinition:
+    plain = _iron_condor()
+    return sf.SavedDefinition(plain.definition, plain.contract_ids, (
+        sf.LegEntry(Decimal("81.30"), AT, sf.SOURCE_TYPED), sf.LegEntry(Decimal("11.75"), AT),
+        None, sf.LegEntry(Decimal("37.15"), AT, sf.SOURCE_CAPTURED)))
+
+
+def test_ac4_core_a_typed_81_30_round_trips_with_its_mark_and_time_and_an_old_8_key_leg_reads_as_captured():
+    """AC-4 (core proof): a leg with entry_source 'typed' reads back exactly 81.30, typed, at its time; a leg saved
+    before migration 0024 (the 8 keys, no mark) reads as captured; nothing is captured on the way."""
+    saved = _typed_entries()
+    text = sf.dumps(saved)
+    legs = json.loads(text)["legs"]
+    assert (legs[0]["planned_entry"], legs[0]["captured_at"], legs[0]["entry_source"]) == (
+        "81.30", "2026-10-15T11:02:17+05:30", "typed")
+    assert set(legs[0]) == sf.LEG_KEYS | sf.ENTRY_LEG_KEYS | {sf.ENTRY_SOURCE_KEY}
+    assert set(legs[1]) == sf.LEG_KEYS | sf.ENTRY_LEG_KEYS  # a captured price keeps the pre-0024 8-key text
+    assert set(legs[2]) == sf.LEG_KEYS
+    loaded = sf.loads(text, _resolver(saved))
+    assert loaded == saved and sf.dumps(loaded) == text
+    assert (loaded.entries[0].price, loaded.entries[0].source, loaded.entries[0].captured_at) == (
+        Decimal("81.30"), "typed", AT)
+    assert [e.source if e else None for e in loaded.entries] == ["typed", "captured", None, "captured"]
+    old = json.loads(sf.dumps(_with_entries()))  # eight keys, as every row saved before 0024
+    assert all(sf.ENTRY_SOURCE_KEY not in leg for leg in old["legs"])
+    assert {e.source for e in sf.from_document(old, _resolver(_with_entries())).entries} == {"captured"}
+
+
+def test_ac4_a_nine_key_captured_leg_reads_back_and_every_other_mark_is_refused():
+    """AC-4: the migration's allow-list: the mark is exactly 'typed' or 'captured', and only with the pair."""
+    saved = _with_entries()
+    doc = json.loads(sf.dumps(saved))
+    doc["legs"][0][sf.ENTRY_SOURCE_KEY] = "captured"
+    assert sf.from_document(doc, _resolver(saved)).entries[0].source == "captured"
+    for bad in ("TYPED", "manual", "", 1, None, True, ["typed"]):
+        doc["legs"][0][sf.ENTRY_SOURCE_KEY] = bad
+        with pytest.raises(sf.StoredFormError) as err:
+            sf.from_document(doc, _resolver(saved))
+        assert err.value.code == sf.INVALID_PLANNED_ENTRY
+    bare = json.loads(sf.dumps(_iron_condor()))
+    bare["legs"][0][sf.ENTRY_SOURCE_KEY] = "typed"  # the mark without the pair
+    with pytest.raises(sf.StoredFormError) as err:
+        sf.from_document(bare, _resolver(_iron_condor()))
+    assert err.value.code == sf.UNKNOWN_KEY
+    with pytest.raises(sf.StoredFormError):
+        sf.LegEntry(Decimal("81.30"), AT, "manual")
+
+
+def test_ac4_the_source_names_equal_the_migrations():
+    """AC-4: the domain's key and values are the migration's (a migration never imports application code)."""
+    path = MIGRATION.with_name("0024_typed_entry_mark.py")
+    const = {}
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                const[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                pass
+    assert const["ENTRY_SOURCE_KEY"] == sf.ENTRY_SOURCE_KEY and tuple(const["ENTRY_SOURCES"]) == sf.ENTRY_SOURCES
+
+
+def test_ac4_a_typed_reprice_is_a_change_and_a_typed_leg_never_loses_its_mark_in_history():
+    """AC-4/AC-5: replacing a typed price with a captured one at the same price and time is still a change."""
+    typed = _typed_entries()
+    plain = sf.SavedDefinition(typed.definition, typed.contract_ids,
+                               (sf.LegEntry(Decimal("81.30"), AT),) + typed.entries[1:])
+    assert json.loads(sf.change_summary(typed, plain)) == [{"kind": "entries_repriced"}]
