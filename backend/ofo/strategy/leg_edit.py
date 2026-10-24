@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
+from ofo.charges.calculator import MAX_PRICE
 from ofo.engine.executable_price import round_to_tick
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacing, UserFacingError, render
@@ -162,7 +163,9 @@ def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index:
     kind = ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
     tick = cat.tick_size(underlying, leg.expiry, kind)
     value = typed_price_of(price)
-    if (value is None or value <= 0 or value != value.quantize(PAISE)
+    # bounded BEFORE quantize: 27+ whole digits make quantize raise InvalidOperation; above the charges module's
+    # absurd-price cap is no option or future price, so it is the same one price refusal, never a crash
+    if (value is None or value <= 0 or value > MAX_PRICE or value != value.quantize(PAISE)
             or round_to_tick(value, tick, Action.BUY) != value):
         raise LegEditRefused("leg_edit_price_not_tick", leg=leg_ref(underlying, legs, index), tick=tick)
     return [replace(x, leg=replace(x.leg, entry_price=value.quantize(PAISE)), typed=True) if i == index else x
