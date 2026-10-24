@@ -40,3 +40,13 @@ SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading 
 
 # The market-hours check is NOT here: it needs the holiday calendar (ADR-119, REQ-114 AC-7), which this
 # standard-library-only constants module cannot read. The one check is `ofo.market_calendar.is_market_open`.
+
+
+def days_to_expiry(expiry: datetime.date | None, today: datetime.date) -> int | None:
+    """REQ-135 AC-2: the calendar days from ``today`` (the IST date, from the one clock the caller already holds) to
+    ``expiry``: 0 on expiry day. None when the expiry is absent or already past (fails closed: a past expiry is not
+    listed, so a negative count is never shown)."""
+    if expiry is None:
+        return None
+    days = (expiry - today).days
+    return days if days >= 0 else None

@@ -988,3 +988,39 @@ describe('REQ-080 futures tab (W-147)', () => {
     expect(w2.findAll('[data-testid="future-row"]')).toHaveLength(0)
   })
 })
+
+describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s count; the value stays the ISO date)', () => {
+  const DAYS = [{ expiry: '2026-10-13', days: 0 }, { expiry: '2026-10-27', days: 14 }]
+  it('the expiry select shows "Today (0 days)" and "27 Oct (14 days)" and keeps ISO values', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['Today (0 days)', '27 Oct (14 days)'])
+    expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
+    await t(w, 'pick-expiry').setValue('2026-10-27')
+    await flushPromises()
+    expect(calls.filter((c) => c.url.includes('expiry=')).every((c) => c.url.includes('expiry=2026-10-27'))).toBe(true) // the ISO date, never the label
+  })
+
+  it('a reply with no day count shows the date as sent', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['2026-10-13', '2026-10-27'])
+  })
+
+  it('the Futures tab rows and forward rows take their label from the expiries reply', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = {
+      underlying: 'NIFTY',
+      futures: [{ expiry: '2026-10-27', instrument_id: 'NSE_FO:48704', ltp: '22610.40', reason: null }],
+      forwards: [{ expiry: '2026-10-27', forward: '22548.00', source: 'parity', label: null, strikes_used: 3, reason: null }],
+    }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="future-row"]').text()).toContain('27 Oct (14 days) future')
+    expect(w.find('[data-testid="future-row"]').attributes('data-expiry')).toBe('2026-10-27')
+    expect(w.find('[data-testid="forward-row"]').text()).toContain('27 Oct (14 days)')
+  })
+})

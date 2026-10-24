@@ -64,3 +64,18 @@ describe('istTime', () => {
     }
   })
 })
+
+import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
+describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts nothing', () => {
+  it('prints the day count as sent, "Today (0 days)" for 0, the date as sent for a missing or unreadable count', () => {
+    expect(expiryWithDays('2026-10-27', 6)).toBe('27 Oct (6 days)')
+    expect(expiryWithDays('2026-10-21', 0)).toBe('Today (0 days)')
+    expect(expiryWithDays('2026-10-27', null)).toBe('2026-10-27')
+    expect(expiryWithDays('2026-10-27', undefined)).toBe('2026-10-27')
+    expect(expiryWithDays('2026-10-27', '6')).toBe('2026-10-27') // a string is not a count
+    expect(expiryWithDays('2026-10-27', -1)).toBe('2026-10-27')
+    expect(expiryWithDays(null, 3)).toBe('')
+    expect(daysByExpiry([{ expiry: '2026-10-27', days: 6 }, { days: 1 }])).toEqual({ '2026-10-27': 6 })
+    expect(daysByExpiry(undefined)).toEqual({})
+  })
+})

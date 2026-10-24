@@ -1,4 +1,5 @@
-<!-- Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/components/strategy/SummaryCards.vue (ADR-047).
+<!-- REQ-135: the old 'last updated' clock is gone (one 'Prices as of' stamp on the page); the extras row is new.
+     Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/components/strategy/SummaryCards.vue (ADR-047).
      Changed: every prop is the outcome API's string or sentence, shown as given (the legacy formatNum rounding is
      removed); the plain-language sentence comes first in each card (REQ-034 AC-7); the Risk/Reward card is dropped (a
      ratio would be client maths and the API sends none); four cards, responsive columns. -->
@@ -55,14 +56,20 @@
         <span class="text-xs font-medium text-yellow-700 uppercase">{{ underlying }} level</span>
       </div>
       <div class="text-2xl font-bold text-yellow-700" data-testid="spot-level">{{ currentSpot }}</div>
-      <div class="text-xs text-yellow-600 mt-1">{{ istTime(lastUpdated) }}</div>
     </div>
+    <!-- REQ-135 AC-4: Reward/Risk with its reason, Time value, Intrinsic value: the server's strings, each hidden when absent -->
+    <dl v-if="showRatio || timeValue != null || intrinsicValue != null" class="sm:col-span-2 lg:col-span-4 flex flex-wrap gap-6 text-sm" data-testid="summary-extras">
+      <div v-if="showRatio"><dt class="inline text-gray-500">Reward/Risk: </dt><dd class="inline font-medium" data-testid="reward-risk">{{ rewardRisk ?? '-' }}</dd>
+        <span v-if="rewardRiskReason" class="text-gray-500" data-testid="reward-risk-reason"> ({{ rewardRiskReason }})</span></div>
+      <div v-if="timeValue != null"><dt class="inline text-gray-500">Time value: </dt><dd class="inline font-medium" data-testid="time-value">{{ timeValue }}</dd></div>
+      <div v-if="intrinsicValue != null"><dt class="inline text-gray-500">Intrinsic value: </dt><dd class="inline font-medium" data-testid="intrinsic-value">{{ intrinsicValue }}</dd></div>
+    </dl>
   </div>
 </template>
 
 <script setup>
-import { istTime } from '@/lib/displayFormat'
-defineProps({
+import { computed } from 'vue'
+const props = defineProps({
   maxProfit: { type: String, default: '-' },
   maxLoss: { type: String, default: '-' },
   breakevens: { type: Array, default: () => [] },
@@ -71,6 +78,10 @@ defineProps({
   whereIStartLosing: { type: String, default: '' },
   currentSpot: { type: String, default: '' },
   underlying: { type: String, default: 'NIFTY' },
-  lastUpdated: { type: String, default: '' },
+  rewardRisk: { type: String, default: null },
+  rewardRiskReason: { type: String, default: null },
+  timeValue: { type: String, default: null },
+  intrinsicValue: { type: String, default: null },
 })
+const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)
 </script>

@@ -43,6 +43,7 @@ from ofo.outcome.service import Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
+from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app import charge_rates_store, db
@@ -356,6 +357,11 @@ class SummaryOut(ApiModel):
     risk_boundaries: list[Money]
     charges: Money | None = None  # W-075: the round-trip charges inside max_profit / max_loss
     charges_unavailable: bool = False
+    # REQ-135 AC-4: present for a strategy of one futures leg (and the reason for any unlimited side); else null
+    reward_risk: Money | None = None
+    reward_risk_reason: CatalogueText | None = None
+    time_value: Money | None = None
+    intrinsic_value: Money | None = None
 
 
 class MarginOut(ApiModel):
@@ -375,6 +381,7 @@ class LegOut(ApiModel):
     instrument: Literal["CE", "PE", "FUT"] | None
     strike: Money | None
     expiry: datetime.date | None
+    days_to_expiry: int | None = None  # REQ-135 AC-2: days left from the answer's IST date (0 on expiry day)
     lots: int
     lot_size: int | None
     quantity: int | None
@@ -522,7 +529,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
                                 config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
-    body = outcome_to_dict(out)
+    body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     state = market_state(ctx, answered_at)
     body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at

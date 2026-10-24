@@ -336,6 +336,7 @@ APP_MODELS = (
     "ofo_app.routes.catalogue.ContractOut",
     "ofo_app.routes.catalogue.ContractsOut",
     "ofo_app.routes.catalogue.ExpiriesOut",
+    "ofo_app.routes.catalogue.ExpiryDaysOut",
     "ofo_app.routes.execute.BasketOrderOut",
     "ofo_app.routes.execute.CostOut",
     "ofo_app.routes.execute.ExecuteOut",

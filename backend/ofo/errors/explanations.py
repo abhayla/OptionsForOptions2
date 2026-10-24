@@ -1021,6 +1021,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
+    ExplanationTemplate("summary_reward_risk_none", "values_seen", "No fixed maximum"),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
     ExplanationTemplate("summary_make_at_most_with_charges", "values_seen",
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",

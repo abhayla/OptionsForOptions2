@@ -7,11 +7,11 @@
 import { computed, ref } from 'vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
-import { contractName, istTime } from '@/lib/displayFormat'
+import { contractName, expiryWithDays, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
-  CUSTOM_STRATEGY, LEFT_OUT_LABEL, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
-  canStep, movedMarker, priceReasonText,
+  CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  canStep, movedMarker, priceReasonText, removeAllPrompt,
 } from '@/lib/legEdit'
 
 const props = defineProps({
@@ -22,10 +22,12 @@ const props = defineProps({
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that field (REQ-077 AC-2)
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
+  undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
 })
-const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg'])
+const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear'])
 
 const multiplier = ref(1)
+const confirmingClear = ref(false) // REQ-135 AC-1: the 'Remove all N legs?' question is open
 const legUnit = ref('lots') // REQ-076 AC-5: lots by default; Quantity draws the reply's own quantity (no multiplication here)
 const typedText = ref({}) // the text in each row's price field, by index: sent as typed, never parsed here
 const depthFor = ref(null) // the leg whose depth popup is open
@@ -36,6 +38,10 @@ const legName = (l) => contractName(l)
 // ADR-085: a leg saved without a planned entry says so and offers Reprice (REQ-077 AC-7); Edit and Reprice both open the picker's own edit form
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 
+function confirmClear() {
+  confirmingClear.value = false
+  emit('clear-all')
+}
 function setPrice(index) {
   const text = typedText.value[index]
   if (typeof text === 'string' && text.trim() !== '') emit('edit', { control: 'price', index, price: text.trim() })
@@ -58,6 +64,9 @@ function setMultiplier(index) {
 
 <template>
   <div class="mt-3 text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
+    <p v-if="undoOffered" class="mb-1" data-testid="clear-undo-bar">
+      {{ LEGS_CLEARED }} <button type="button" class="underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
+    </p>
     <div v-if="!legs.length" data-testid="no-legs">
       <p class="text-ink-muted" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
       <button type="button" class="mr-2 rounded border border-line px-2 py-1" data-testid="no-legs-add" @click="emit('add-leg')">Add leg</button>
@@ -80,6 +89,12 @@ function setMultiplier(index) {
         </select>
       </label>
       <button type="button" class="mt-1 rounded border border-line px-2 py-1" data-testid="reset-prices" @click="resetPrices">Reset Prices</button>
+      <button type="button" class="mt-1 ml-2 rounded border border-line px-2 py-1" data-testid="clear-all-legs" @click="confirmingClear = true">Clear all legs</button>
+      <span v-if="confirmingClear" class="ml-2" data-testid="clear-confirm">
+        <span data-testid="clear-confirm-text">{{ removeAllPrompt(legs.length) }}</span>
+        <button type="button" class="ml-1 rounded border border-line px-2" data-testid="clear-confirm-yes" @click="confirmClear">Confirm</button>
+        <button type="button" class="ml-1 rounded border border-line px-2" data-testid="clear-confirm-no" @click="confirmingClear = false">Cancel</button>
+      </span>
       <ErrorMessage v-if="errorParts && errorIndex === null" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
       <ul>
         <li
@@ -89,7 +104,7 @@ function setMultiplier(index) {
           :data-captured="leg.captured_at ?? ''" :data-strike="leg.strike ?? ''" :data-type="leg.instrument_type" :data-expiry="leg.expiry">
           <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
           <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'">{{ leg.action }}</span>
-          <span data-testid="leg-expiry">{{ leg.expiry ?? '' }}</span>
+          <span data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
           <span v-if="canStep(leg)" class="flex items-center gap-1">
             <button type="button" class="rounded border border-line px-1" aria-label="Previous strike" data-testid="strike-minus" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
             <span data-testid="leg-strike">{{ leg.strike }}</span>

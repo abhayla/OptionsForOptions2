@@ -44,6 +44,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
+from ofo.timeutil import days_to_expiry
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -212,6 +213,7 @@ class EditLegOut(ApiModel):
     instrument: Literal["CE", "PE", "FUT"]
     strike: Money | None
     expiry: datetime.date
+    days_to_expiry: int | None  # REQ-135 AC-2: calendar days left from today (IST, the database clock); 0 on expiry day
     lots: int
     base_lots: int
     quantity: int
@@ -407,7 +409,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
     out_legs = [{
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
-        "strike": x.leg.strike, "expiry": x.leg.expiry, "lots": x.lots, "base_lots": x.base_lots,
+        "strike": x.leg.strike, "expiry": x.leg.expiry,
+        "days_to_expiry": days_to_expiry(x.leg.expiry, today), "lots": x.lots, "base_lots": x.base_lots,
         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
         "captured_at": None if i in unpriced else stamps[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),

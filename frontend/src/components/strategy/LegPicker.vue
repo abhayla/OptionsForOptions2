@@ -10,7 +10,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
-import { contractName, istTime } from '@/lib/displayFormat'
+import { contractName, daysByExpiry, expiryWithDays, istTime } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
 import {
   DEFAULT_STRIKE_WIDTH,
@@ -46,6 +46,8 @@ const emit = defineEmits(['update:legs'])
 const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
 const expiries = ref([])
 const expiry = ref('')
+const expiryDays = ref({}) // REQ-135 AC-2: the server's day count by expiry (the same reply as the expiries)
+const expiryLabel = (e) => expiryWithDays(e, expiryDays.value[e])
 const contracts = ref([])
 const type = ref('')
 const strike = ref('')
@@ -77,6 +79,7 @@ async function loadExpiries() {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== seq) return false
     expiries.value = res.data.expiries
+    expiryDays.value = daysByExpiry(res.data.expiry_days)
     errorParts.value = null
     return true
   } catch (e) {
@@ -396,7 +399,7 @@ defineExpose({ startEdit })
       <label class="flex flex-col">Expiry
         <select data-testid="pick-expiry" :value="expiry" @change="onExpiry($event.target.value)">
           <option value="">Choose</option>
-          <option v-for="e in expiries" :key="e" :value="e">{{ e }}</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryLabel(e) }}</option>
         </select>
       </label>
       <label class="flex flex-col">Type
@@ -498,7 +501,7 @@ defineExpose({ startEdit })
           <p v-if="futuresReason" data-testid="futures-reason">{{ futuresReason }}</p>
           <ul data-testid="futures-list">
             <li v-for="f in futuresData.futures" :key="f.instrument_id" data-testid="future-row" :data-expiry="f.expiry">
-              {{ f.expiry }} future: LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span>
+              {{ expiryLabel(f.expiry) }} future: LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span>
               <span v-if="f.ltp_reason" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
               <button type="button" class="ml-2" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">Buy</button>
               <button type="button" class="ml-1" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">Sell</button>
@@ -507,7 +510,7 @@ defineExpose({ startEdit })
           <p v-if="doneError" data-testid="future-add-error">{{ doneError }}</p>
           <ul class="mt-2" data-testid="forwards-list">
             <li v-for="f in futuresData.forwards" :key="f.expiry" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
-              {{ f.expiry }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
+              {{ expiryLabel(f.expiry) }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
               <span v-if="f.source === 'parity'" data-testid="forward-source">(from put-call parity)</span>
               <span v-else-if="f.source === 'spot_fallback'" data-testid="forward-source">({{ f.label ?? 'estimated from spot' }})</span>
               <span v-if="f.forward != null && f.spot_health !== 'available'" data-testid="forward-health">({{ healthSentence(f.spot_health) }})</span>

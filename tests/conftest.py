@@ -7,6 +7,8 @@ runs, by resolved full path). Every other program stays refused, and connects ar
 never enters test mode.
 """
 import contextlib
+import functools
+import platform
 import shutil
 import sys
 
@@ -23,5 +25,12 @@ def _resolved_programs() -> list[str]:
     return [p for p in found if p]
 
 
+# finding local-pytest-plugin-not-in-ci: on Windows the first platform.uname()/win32_ver() call starts a process
+# (platform._syscmd_ver), which the no-process hook below refuses if the first call comes later; prime the caches now.
+for _name in ("uname", "win32_ver", "platform", "system", "release", "version", "machine", "python_implementation"):
+    getattr(platform, _name)()
+# uname() caches its answer, win32_ver() does not, and its fallback (_syscmd_ver, taken when the WMI query fails
+# under load) starts a process; keep the primed answer for every later call in this test process.
+platform.win32_ver = functools.cache(platform.win32_ver)
 _egress.install()
 _egress._enter_test_mode([sys.executable, "git", "git.exe", *_resolved_programs()])
