@@ -84,6 +84,7 @@ test('a saved draft reopens from the saved list with identical legs, planned ent
   expect(before.every((l) => l.entry && l.captured)).toBe(true)
 
   await page.getByTestId('save-draft').click()
+  await page.getByTestId('name-confirm').click() // REQ-134 AC-1: the first Save asks for a name (prefilled "New Strategy")
   await expect(page.getByTestId('save-status')).toHaveAttribute('data-saved-id', /^\d+$/)
   const id = await page.getByTestId('save-status').getAttribute('data-saved-id')
 
@@ -106,4 +107,76 @@ test('a saved draft reopens from the saved list with identical legs, planned ent
   expect(after.map((l) => ({ ...l, captured: Date.parse(l.captured as string) })))
     .toEqual(before.map((l) => ({ ...l, captured: Date.parse(l.captured as string) })))
   expect(captures).toBe(0)
+})
+
+// ---- W-157 / REQ-134 (core proof, row 29f): Save on a saved strategy UPDATES it through PUT /strategies/{id} (RD-106: before this, every
+// Save created a new row). Real API, real stored rows; only the planned-entry capture is stubbed, as above. The two list reads are
+// attached to the test so the before/after counts are quoted in the report.
+const listIds = async (page: Page): Promise<number[]> =>
+  ((await (await page.request.get(`${URL}/api/strategies`)).json()).strategies as { id: number }[]).map((s) => s.id)
+
+async function startCondor(page: Page, tag: string) {
+  await stubCapture(page)
+  await page.goto(`${URL}/strategy/builder?rules_ref=${tag}`)
+  await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1)
+  const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
+    (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)
+  await page.getByTestId('pick-expiry').selectOption(expiry)
+  await addLeg(page, 'CE', 'SELL')
+  await addLeg(page, 'PE', 'BUY')
+}
+async function saveNamed(page: Page, name: string) {
+  await page.getByTestId('save-draft').click()
+  await page.getByTestId('name-input').fill(name)
+  await page.getByTestId('name-confirm').click()
+  await expect(page.getByTestId('save-status')).toHaveAttribute('data-saved-id', /^\d+$/)
+  return Number(await page.getByTestId('save-status').getAttribute('data-saved-id'))
+}
+
+test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As leaves two and opens the copy', async ({ page }, info) => {
+  await startCondor(page, `${TAG}_update`)
+  const id = await saveNamed(page, 'E2E update proof')
+  const afterFirst = await listIds(page)
+  expect(afterFirst.filter((n) => n === id)).toHaveLength(1)
+  const first = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
+  expect(first.revision).toBe(1)
+  expect(first.name).toBe('"E2E update proof"') // the API sends the name as quoted user text
+  await expect(page).toHaveURL(new RegExp(`strategy=${id}$`)) // AC-5: the URL names the strategy
+
+  await page.getByTestId('remove-leg').first().click() // an edit of the saved strategy's legs
+  await expect(page.getByTestId('leg-row')).toHaveCount(1)
+  await page.getByTestId('save-draft').click()
+  await expect(page.getByTestId('name-form')).toHaveCount(0) // no second name prompt
+  await expect(page.getByTestId('save-status')).toHaveText('E2E update proof saved.')
+
+  const afterSecond = await listIds(page)
+  const second = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
+  info.annotations.push({ type: 'list-after-first-save', description: JSON.stringify(afterFirst) },
+    { type: 'list-after-second-save', description: JSON.stringify(afterSecond) }, { type: 'strategy-after-second-save',
+      description: JSON.stringify({ id: second.id, revision: second.revision, legs: second.definition.legs.length }) })
+  expect(afterSecond).toEqual(afterFirst) // ONE strategy: the second Save created nothing
+  expect(second.revision).toBe(2)
+  expect(second.definition.legs).toHaveLength(1)
+
+  // AC-5: a reload on the named URL opens the saved copy with its saved legs (no capture on the way)
+  await page.unroute('**/api/strategies/planned-entry')
+  await page.route('**/api/strategies/planned-entry', (r) => r.abort())
+  await page.reload()
+  await expect(page.getByTestId('leg-row')).toHaveCount(1)
+
+  // AC-2: Save As asks for a name prefilled "<name> copy", creates a second strategy, opens it and leaves the original as saved
+  await page.getByTestId('save-as').click()
+  await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof copy')
+  await page.getByTestId('name-input').fill('E2E update copy')
+  await page.getByTestId('name-confirm').click()
+  await expect(page.getByTestId('save-status')).toHaveAttribute('data-saved-id', /^\d+$/)
+  const copyId = Number(await page.getByTestId('save-status').getAttribute('data-saved-id'))
+  expect(copyId).not.toBe(id)
+  await expect(page).toHaveURL(new RegExp(`strategy=${copyId}$`))
+  const afterCopy = await listIds(page)
+  expect(afterCopy.length).toBe(afterSecond.length + 1)
+  const original = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
+  expect(original.revision).toBe(2)
+  expect(original.definition).toEqual(second.definition)
+  expect(original.name).toBe('"E2E update proof"')
 })

@@ -13,6 +13,8 @@ useQuietLiveSocket()
 const URL = process.env.SAVE_DRAFT_URL || process.env.PREVIEW_URL || 'http://127.0.0.1:4173'
 const MIN_EXPIRY = process.env.E2E_MIN_EXPIRY || '2026-10-19'
 const TAG = 'e2e_w109_my_strategies'
+const NAME = 'E2E My Condor'
+const RENAMED = 'E2E Renamed'
 
 async function stubCapture(page: Page) {
   await page.route('**/api/strategies/planned-entry', async (route) => {
@@ -41,6 +43,8 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   await page.getByTestId('add-leg').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
   await page.getByTestId('save-draft').click()
+  await page.getByTestId('name-input').fill(NAME) // REQ-134 AC-1: the first Save asks for a name
+  await page.getByTestId('name-confirm').click()
   await expect(page.getByTestId('save-status')).toHaveAttribute('data-saved-id', /^\d+$/)
   const id = await page.getByTestId('save-status').getAttribute('data-saved-id')
 
@@ -50,9 +54,34 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   await expect(row).toBeVisible()
   await expect(row.getByTestId('row-underlying')).toHaveText(/NIFTY|SENSEX/)
   await expect(row.getByTestId('row-status')).toHaveText('draft')
+  // REQ-134 AC-4: name, first leg (one leg: no "and N more"), last saved and the tracked state, from the real list read
+  await expect(row.getByTestId('row-name')).toHaveText(NAME)
+  await expect(row.getByTestId('row-legs')).toHaveText(/^(NIFTY|SENSEX) \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE)$/)
+  await expect(row.getByTestId('row-saved')).toContainText('last saved')
+  await expect(row.getByTestId('row-tracked')).toHaveText(/^(Not tracked|Tracked|Tracking not known)$/)
 
+  // REQ-134 AC-4: the search is case-insensitive as typed; an unmatched text shows the no-match line
+  await page.getByTestId('strategy-search').fill(NAME.toUpperCase())
+  await expect(row).toBeVisible()
+  await page.getByTestId('strategy-search').fill('zzzzzz')
+  await expect(page.getByTestId('search-no-match')).toHaveText('No saved strategy matches zzzzzz')
+  await page.getByTestId('strategy-search').fill('')
+
+  // REQ-134 AC-3: rename in the list changes only the name, and the server keeps it across a reload
+  const legsBefore = await row.getByTestId('row-legs').innerText()
+  await page.getByTestId(`rename-${id}`).click()
+  await page.getByTestId('rename-input').fill(RENAMED)
+  await page.getByTestId('rename-save').click()
+  await expect(row.getByTestId('row-name')).toHaveText(RENAMED)
+  await page.reload()
+  await expect(row.getByTestId('row-name')).toHaveText(RENAMED)
+  await expect(row.getByTestId('row-legs')).toHaveText(legsBefore)
+
+  // REQ-134 AC-5: Open in Builder names the strategy in the URL; a reload opens it again
   await page.getByTestId(`open-builder-${id}`).click()
-  await expect(page).toHaveURL(/\/strategy\/builder\?draft=/)
+  await expect(page).toHaveURL(new RegExp(`/strategy/builder\\?strategy=${id}$`))
+  await expect(page.getByTestId('leg-row')).toHaveCount(1)
+  await page.reload()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
 
   // W-121 (REQ-073 AC-6): this job's API has no OFO_ORDER_PATH, so the order path is off and the page offers no Execute.

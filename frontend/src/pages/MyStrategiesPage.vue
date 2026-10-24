@@ -1,6 +1,8 @@
-<!-- My Strategies and Completed Strategies (W-109; REQ-009 AC-2, REQ-038 AC-5, OQ-13). Display only: the user's saved
-     strategies from GET /api/strategies (underlying, status, last saved), each with a link to the Strategy Builder and
-     to Execute Strategy for that id. No money figure is computed or shown. A status the page does not know is shown
+<!-- My Strategies and Completed Strategies (W-109, W-157; REQ-009 AC-2, REQ-038 AC-5, REQ-134 AC-3/AC-4/AC-5, OQ-13). The
+     user's saved strategies from GET /api/strategies: name (quoted user words, shown without the API quotes, as text), underlying,
+     first leg + "and N more", status, last saved and the tracked state (copies Sensibull screen 117's list line); a search box
+     filters by name as typed; Rename calls PATCH /api/strategies/{id}/name; each row links to the Strategy Builder
+     (`?strategy=<id>`) and to Execute Strategy for that id. No money figure is computed or shown. A status the page does not know is shown
      as the API sent it. The Completed page lists only statuses in COMPLETED_STATUSES; the store holds only 'draft'
      today (alembic 0008 CHECK), so that list is empty and the page says so instead of offering a filter it cannot back. -->
 <script setup>
