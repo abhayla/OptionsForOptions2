@@ -23,6 +23,8 @@ INSERT = ("INSERT INTO public.strategies (user_ref, underlying, definition, defi
           "VALUES (:u, 'NIFTY', CAST(:d AS JSONB), 1)")
 INSERT_HISTORY = ("INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
                   "definition_schema_version) VALUES (:id, CAST(:s AS JSONB), CAST(:d AS JSONB), 1)")
+INSERT_VERSION = ("INSERT INTO public.strategy_versions (strategy_id, number, state, definition, "
+                  "definition_schema_version) VALUES (:id, 1, 'proposed', CAST(:d AS JSONB), 1)")
 REORDERED = json.dumps([{"kind": "legs_reordered"}])
 TYPED_AT = "2026-10-24T09:20:05+05:30"
 SIX_KEY_LEG = {"contract_id": 1001, "action": "SELL", "instrument": "CE", "strike": "23000", "expiry": "2026-10-29",
@@ -144,23 +146,31 @@ async def _grants(conn) -> list:
     return [tuple(r) for r in rows]
 
 
-async def test_ac4_downgrade_is_refused_naming_the_table_while_a_typed_leg_is_stored(admin_engine):
-    """AC-4 (attack item 4): with a typed leg in strategies, 0024's own downgrade raises naming the tables; the same
-    for a typed leg only in strategy_history (append-only)."""
+@pytest.mark.parametrize("marked_leg", [LEG_9, LEG_9_CAPTURED], ids=["typed", "captured"])
+async def test_ac4_downgrade_is_refused_naming_the_table_while_a_marked_leg_is_stored(admin_engine, marked_leg):
+    """AC-4 (attack items 4 and 6): with a 9-key leg ('typed' or 'captured') in strategies, 0024's own downgrade raises
+    naming the table; the same for such a leg only in strategy_history (append-only) and only in strategy_versions
+    (0022: never deleted, definition frozen): the 0011 validator would refuse to load any of them, so the refusal does
+    not depend on the value."""
     own_down, _, _, _ = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            for where in ("strategies", "history"):
+            for where in ("strategies", "history", "versions"):
                 inner = await conn.begin_nested()
+                stored_leg = SIX_KEY_LEG if where == "versions" else marked_leg
                 strategy_id = (await conn.execute(text(INSERT + " RETURNING id"),
-                                                  {"u": f"test-0024-{where}", "d": _definition(LEG_9)})).scalar_one()
+                                                  {"u": f"test-0024-{where}", "d": _definition(stored_leg)})
+                                  ).scalar_one()
+                if where == "versions":  # chunk 2 review area B: the mark ONLY in a version row (0022, no DELETE)
+                    await conn.execute(text(INSERT_VERSION), {"id": strategy_id, "d": _definition(marked_leg)})
                 if where == "history":  # a history entry holds the current definition at its write; then it moves on
                     await conn.execute(text(INSERT_HISTORY), {"id": strategy_id, "s": REORDERED,
-                                                              "d": _definition(LEG_9)})
+                                                              "d": _definition(marked_leg)})
                     await conn.execute(text("UPDATE public.strategies SET definition = CAST(:d AS JSONB) "
                                             "WHERE id = :id"), {"d": _definition(SIX_KEY_LEG), "id": strategy_id})
-                with pytest.raises(DBAPIError, match="holds an entry source mark"):
+                table = {"strategies": "strategies", "history": "strategy_history", "versions": "strategy_versions"}
+                with pytest.raises(DBAPIError, match=rf"in public\.{table[where]} holds an entry source mark"):
                     async with conn.begin_nested():
                         await conn.execute(text(own_down[0]))
                 await inner.rollback()
