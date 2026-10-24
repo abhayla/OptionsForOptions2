@@ -6,11 +6,11 @@
   "reference_screens": [
     "screen 024"
   ],
-  "ours": "REQ-080 AC-7 depth popup per leg is not built; leg rows have no depth icon.",
+  "ours": "Built in row 19, commit 1637ed25 (W-147) and row 20: a depth icon on each leg row; pinned by frontend/tests/leg-edit.test.js 'REQ-080 AC-7 (attack 6): every row has a depth icon that opens the popup for its own contract'.",
   "req": "REQ-080",
   "ac": "AC-7",
   "row": 19,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

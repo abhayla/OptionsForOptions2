@@ -7,11 +7,11 @@
     "screen 032",
     "screen 033"
   ],
-  "ours": "REQ-080 AC-2 adds IV and delta only at the Advanced level (ADR-056). ADR-168 (4)(5) removes levels; with the picker not built, build it without the gate.",
+  "ours": "Built in row 19, commit 1637ed25 (W-147): the picker shows IV and delta to every user, no level gate; pinned by frontend/tests/leg-picker.test.js: AC-1/AC-2/AC-3 core: ATM row highlighted (cell-iv, cell-delta).",
   "req": "REQ-080",
   "ac": "AC-2",
   "row": 19,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

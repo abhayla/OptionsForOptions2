@@ -8,11 +8,11 @@
     "screen 244",
     "screen 245"
   ],
-  "ours": "REQ-080 AC-4 offers quantity mode only at Advanced; the picker has a lots box only.",
+  "ours": "Built in row 19, commit 1637ed25 (W-147); pinned by frontend/tests/leg-picker.test.js 'AC-4 attack 3: quantity mode on SENSEX lists multiples of the SENSEX lot size from the server data, not NIFTY's'.",
   "req": "REQ-080",
   "ac": "AC-4",
   "row": 19,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

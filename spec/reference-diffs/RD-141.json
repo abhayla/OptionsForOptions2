@@ -7,7 +7,7 @@
     "screen 025",
     "screen 244"
   ],
-  "ours": "REQ-076 AC-5 shows quantity only at Advanced (REQ-030 AC-7). ADR-168 removes levels.",
+  "ours": "Open: Not built here: a saved per-user Lots/Quantity setting is REQ-138, a later row. The picker's local Lots/Quantity choice exists (RD-131).",
   "req": "REQ-076",
   "ac": "AC-5",
   "row": 20,

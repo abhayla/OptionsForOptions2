@@ -4,11 +4,11 @@
   "title": "The matched shape name shown in the builder (G-15-2)",
   "reference_behaviour": "The leg list shows how many legs are selected and the detected shape name, or Custom when the shape is not recognised.",
   "reference_screens": ["screen 011", "screen 012"],
-  "ours": "REQ-076 AC-8 not built: the matcher exists but only labels broker positions; no route returns the name and no screen shows it.",
+  "ours": "Built in row 20, commit 463dca78 (W-148): the builder shows the matched shape name from the server reply and updates it on every edit; pinned by frontend/tests/leg-edit.test.js: AC-8: on the page the name and the marks are the reply's and update on every edit.",
   "req": "REQ-076",
   "ac": "AC-8",
   "row": 20,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

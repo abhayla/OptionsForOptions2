@@ -7,11 +7,11 @@
     "screen 031",
     "screen 034"
   ],
-  "ours": "REQ-080 AC-6 (every futures LTP and the forward used for each option expiry) is not built; the picker only offers FUT as a contract type.",
+  "ours": "Built in chunk 2: Buy and Sell on each real future (new REQ-080 AC-9); pinned by frontend/tests/leg-picker.test.js 'AC-9 (RD-134)' tests; the forward row stays display-only (a calculated price, not a contract).",
   "req": "REQ-080",
   "ac": "AC-6",
   "row": 19,
-  "status": "open",
+  "status": "built",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

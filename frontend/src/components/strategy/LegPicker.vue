@@ -210,6 +210,12 @@ function unpick(id) {
   picked.value = rest
   cellLots.value = restLots
 }
+/** Clear All (REQ-080 AC-3): the whole selection and its lots go; nothing is added or sent. */
+function clearAll() {
+  picked.value = {}
+  cellLots.value = {}
+  doneError.value = ''
+}
 /** Every leg Done will add, as the user reads it: contract, side, lots. */
 const selection = computed(() => Object.keys(picked.value).map((id) => {
   const c = contractByInstrumentId(contracts.value, id)
@@ -316,9 +322,14 @@ async function done() {
   }
   doneError.value = ''
   busy.value = true
-  const und = underlying.value
   picked.value = {} // picks made while the entries are captured belong to the next batch
   cellLots.value = {}
+  await addChosen(chosen, underlying.value)
+}
+
+/** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
+ *  a leg with no price is still added and carries the reprice prompt. Caller has set busy. */
+async function addChosen(chosen, und) {
   try {
     const pricing = await Promise.all(chosen.map((x) => capture(x.id, und)))
     const added = chosen.map((x, i) => ({
@@ -340,6 +351,29 @@ async function done() {
   } finally {
     busy.value = false
   }
+}
+
+/** Buy or Sell on a REAL future (REQ-080 AC-9): its contract details come from the catalogue for that future's own expiry
+ *  (the Futures tab lists every expiry, the form holds one), then the leg is added through addChosen. No contract found
+ *  or a failed read adds nothing. The forward row is a calculated price and has no such button. */
+async function addFuture(f, side) {
+  if (busy.value) return
+  doneError.value = ''
+  busy.value = true
+  const und = underlying.value
+  let c = null
+  try {
+    const res = await api.get(`/catalogue/${und}/contracts?expiry=${f.expiry}`)
+    c = contractByInstrumentId(res.data.contracts, f.instrument_id)
+  } catch {
+    c = null
+  }
+  if (!c || c.instrument_type !== 'FUT') {
+    busy.value = false
+    doneError.value = 'Contract details are not available for this future, so nothing was added.'
+    return
+  }
+  await addChosen([{ id: f.instrument_id, c, action: side, lots: 1 }], und)
 }
 
 const legName = (l) => contractName(l)
@@ -448,8 +482,10 @@ defineExpose({ startEdit })
             <button type="button" class="underline" data-testid="selection-remove" :aria-label="`Remove ${item.name}`" @click="unpick(item.id)">Remove</button>
           </li>
         </ul>
-        <div v-if="expiry" class="mt-2 flex items-center gap-3">
-          <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done{{ pickedCount ? ` (${pickedCount})` : '' }}</button>
+        <div v-if="expiry" class="mt-2 flex items-center gap-3" data-testid="picker-footer">
+          <span data-testid="picker-count">{{ pickedCount }} selected</span>
+          <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
+          <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done</button>
           <span v-if="doneError" data-testid="done-error">{{ doneError }}</span>
         </div>
       </div>
@@ -463,8 +499,11 @@ defineExpose({ startEdit })
             <li v-for="f in futuresData.futures" :key="f.instrument_id" data-testid="future-row" :data-expiry="f.expiry">
               {{ f.expiry }} future: LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span>
               <span v-if="f.ltp_reason" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
+              <button type="button" class="ml-2" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">Buy</button>
+              <button type="button" class="ml-1" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">Sell</button>
             </li>
           </ul>
+          <p v-if="doneError" data-testid="future-add-error">{{ doneError }}</p>
           <ul class="mt-2" data-testid="forwards-list">
             <li v-for="f in futuresData.forwards" :key="f.expiry" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
               {{ f.expiry }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
