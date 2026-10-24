@@ -1,6 +1,36 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE session 6 (06fe7549), 2026-10-24 - START HERE (newest)
+## UPDATE session 6 END (06fe7549), 2026-10-24 ~08:45 IST - START HERE (newest)
+Handed over at ~95% context. Chunk 2 branch `build/seq-chunk-2` (draft PR #531); sequence worktree
+`D:\Abhay\Ventures\OptionsForOptions2-builder-reqs`.
+- **Closed:** rows 17, 18, 19 (live check pending: AC-6 futures price), 20 (re-closed after CI green 1b5348bd).
+- **Row 21 (REQ-077) - 4 of 5 parts merged + checked:** 21m migration 0024, 21b order-limit rule (a typed price cannot
+  move the limit), 21a typed price/save/reset (round 2 PASS; a JSON number price = malformed request, decided), 21d
+  numbers from the user's prices with no live data incl. an ended session (round 2 PASS). **21c (the screen) is BUILT but
+  NOT CHECKED and NOT MERGED:** branch `build/seq-row-21` head f1a5e938 in worktree `-row21` (brief
+  `row21/brief-21c.md` in the session-6 scratchpad). NEXT: run its check (Sonnet - frontend only; ask "which screen,
+  exercised there", run ALL select_app_tests DB-free files), fix, round 2 if needed, merge, then close row 21 (evidence
+  W-149 AC-1..9 from the 21m/21b/21a/21d/21c checks; AC-8's price-protection wiring waits for owner Q1).
+- **CI RED on 4a08ce01 (21a+21d merged) - fix FIRST:** App tests 6 failed, all Playwright e2e (DB suite green):
+  `e2e/strategy-live.spec.ts:64` and `:136`, `e2e/live-strategies.spec.ts:85` (both viewports). Likely cause: 21d's
+  AC-9 - with the socket dropped and every leg priced, the page now shows FROM_ENTRIES numbers labelled "From your prices
+  - no live data" + REQ-049 AC-5's message, where these older specs assert the not-live state with no numbers. Read the
+  failed log (`gh run view <id> --log-failed`), update the specs to AC-9 (assert both labels, no LTP, no live columns,
+  no Bid/Ask - never weaken to "anything goes"), keep a twin case with a leg WITHOUT an entry asserting the old
+  not-live answer. Row 21 does not close until CI is green.
+- **Owner, this morning:** approved ADR-181 (chunk 3 may build TWO process-tool items: the local gate command and the
+  dispatch command - build them at chunk 3's start). Speed review + independent safety review:
+  session-6 scratchpad `speed-recommendations.md` and the reviewer's ranked list (M1 checkers run the gate before PASS,
+  M2 enforce the two-round limit, R1 gate before push, R4 smaller units, M3 scripted dispatch, M4 builder-brief lines
+  110-113 contradict ADR-178 on local DB runs - fix the brief).
+- **Open for the owner:** Q1 in `docs/process/owner-questions-2026-10-25.md`; 6 new user-facing texts marked "pending
+  owner read" in tests/errors/template_pins.json (outcome_from_entries*).
+- **NEXT after row 21:** rows 22 (REQ-034), 23 (REQ-119), 24 (REQ-133) per `chunk2-notes.md`; chunk COPY builder;
+  chunk Tier A review; chunk-2 conformance check; ONE #532 body update from `chunk2-deferred.md` (19 items); split the
+  chunk into PRs under 300 files and land each through merge.py.
+- **Push rule:** never push while an App-tests run of the branch is in progress; chain every gate with && before a push.
+
+## UPDATE session 6 (06fe7549), 2026-10-24 (older, in-session notes)
 "Session-6 scratchpad" = `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\06fe7549-4596-4e85-8261-0804902d0768\scratchpad`
 (`chunk2-notes.md` = per-row Measure results and decisions; `chunk2-deferred.md` = items for #532; helpers
 `render_brief.py` (make_brief render + open records of every named REQ + map-row append + both checks),
