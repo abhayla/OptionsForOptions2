@@ -1514,5 +1514,9 @@
   "explanation:outcome_from_entries_no_estimate": {
     "sha256": "79a23806968bcb8de08bfc236e44fe8b917728920087b39fb8f1c59aa942098f",
     "reviewed": "pending owner read"
+  },
+  "explanation:outcome_waiting_first_price": {
+    "sha256": "c71a7f5be7447cf1c01bed4a127464652f6bdb52613496623391242622a1f364",
+    "reviewed": "pending owner read"
   }
 }

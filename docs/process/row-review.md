@@ -159,6 +159,34 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 24 - REQ-133 Old live frames dropped; first-price wait (closed 2026-10-24, session f1b75d11, Done; W-152 in_review until PR #531)
+- A user sees: after the server's market-data connection comes back, "Waiting for the first live price" (no numbers)
+  for up to the staleness setting instead of a false "data disconnected" alarm with stale prices; a live frame for an
+  older version of the strategy on screen is never drawn.
+- Expected vs actual: unmeasured per row (session-end script). Build (Opus, 85 calls - stopped before its gates),
+  finisher (ratchet red fixed, gates run), mutation gate run by the orchestrator (4 killed), Opus check PASS (reproduced
+  the false alarm on the base). The orchestrator then found the new text unpinned (tests/errors/test_template_pins.py
+  red - none of the three agents ran tests/errors).
+- Right: measuring first moved the fix to where the defect was (the server feed, F-61), one place instead of three
+  screens. Wrong: the guard line in every brief skips most of tests/errors, so a new catalogue text passes every local
+  gate and fails CI.
+
+### Meta review after row 24 (2026-10-24, session f1b75d11 - no separate meta agent ran; stated, not hidden)
+- Measured misses, for the conformance check: (1) every builder of rows 22-24 and the copy overran its call limit
+  (85-103 calls vs 48-80; builder-budget-is-prose 12th-14th) - the dispatch prompt's hard stop is not enforced; (2) the
+  guard line skips most of tests/errors, so a new catalogue text (row 24) passed every local gate - the orchestrator's
+  push chain now adds `pytest tests/errors`; (3) a checker's MAJOR was partly a misread (the register page prints
+  status, not `ours`, for COPY rows) - checked against the renderer before acting; (4) a checker writing scratch files
+  while the orchestrator edited records triggered the write guard's quarantine (copied, not reverted).
+- Followed: measure-first on row 24 changed where the fix went; overlap gate before every parallel dispatch; checkers
+  dispatched only when no builder had to commit (after the 23a lesson).
+
+### Chunk 2 reference copy (2026-10-24, session f1b75d11)
+- 16 open COPY records of rows 19-21: 10 already built, 3 built now (Clear All with a count footer, Buy/Sell on each
+  real future under new REQ-080 AC-9, a reopen test), 3 left open (Q211, REQ-138, RD-149 owner); 11 verified, 2 built.
+  The check's MAJOR (records' `ours` read "not built") was fixed by rewriting `ours`; the builder's register allow-list
+  change was reverted, so chunk 2 makes no process-tool change.
+
 ### Row 23 - REQ-119 Stale replies dropped (closed 2026-10-24, session f1b75d11, Done; W-151 in_review until PR #531)
 - A user sees: after fast edits the screen keeps the newest numbers (an older reply is dropped, the older request
   cancelled with no error), the numbers marked updating and Execute off until the latest reply lands, never numbers
