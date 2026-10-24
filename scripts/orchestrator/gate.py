@@ -11,7 +11,9 @@ STEPS is the allow-list: one ordered tuple, each step an argv list run without a
 select_app_tests output that does not parse, a missing tool) fails closed. Standard library only.
 
 --pre-push (run as `gate.py --pre-push && git push`): refuses while an `App tests` run of this branch is not completed;
---fixes-red lifts that only when the newest completed run failed. A gh error or unreadable answer refuses.
+--fixes-red lifts that only when the newest completed run failed and no newer run is queued or in progress (the push
+would cancel it). A gh error or unreadable answer refuses. --pre-push also runs pr_close_check.py for the branch's open
+PR (no PR: skipped with a printed line; a gh error refuses).
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ GUARD_GLOB = "tests/test_*.py"
 MONEY_GUARD = "tests/test_money_outside_engine.py"
 ROOT_ARG = "<root>"
 FRONTEND = "frontend"
+DOMAIN_SRC = "backend/ofo"
 GATE_REFUSED = 2
 GATE_FAILED = 1
 TAIL_LINES = 30
@@ -61,13 +64,15 @@ SHA = re.compile(r"[0-9a-f]{40}")
 
 Runner = Callable[[list, Path, dict, Path], int]
 GhReader = Callable[[str], list]
+PrReader = Callable[[str], int | None]
+NO_PR_TEXT = "no pull requests found"
 
 
 class Step(NamedTuple):
     name: str
     argv: tuple
     cwd: str  # "." (the root) or a folder under it
-    kind: str  # plain | clean | select | app | node
+    kind: str  # plain | clean | select | app | node | format | domain | build
 
 
 STEPS: tuple = (
@@ -87,6 +92,19 @@ STEPS: tuple = (
     Step("reach-check", (PYTHON, "scripts/orchestrator/reach_check.py", "--root", "."), ".", "plain"),
     Step("reference-register", (PYTHON, "scripts/orchestrator/reference_register.py", "--check"), ".", "plain"),
     Step("findings-index", (PYTHON, "tools/build_findings_index.py", ".", "--check"), ".", "plain"),
+    # The kit spec checks `.github/workflows/ci.yml` runs, with the same argv (read from that file).
+    Step("kit-settings", (PYTHON, "tools/kit_settings.py", ".", "--check"), ".", "plain"),
+    Step("factory-lint", (PYTHON, "tools/factory_lint.py", "."), ".", "plain"),
+    Step("trace-check", (PYTHON, "tools/trace_check.py", "."), ".", "plain"),
+    Step("build-order", (PYTHON, "tools/build_order.py", ".", "--check"), ".", "plain"),
+    Step("spec-index", (PYTHON, "tools/build_spec_index.py", ".", "--check"), ".", "plain"),
+    Step("spec-digest", (PYTHON, "tools/build_spec_digest.py", ".", "--check"), ".", "plain"),
+    Step("spec-dupes", (PYTHON, "tools/spec_dupes.py", "."), ".", "plain"),
+    Step("spec-refs", (PYTHON, "tools/check_spec_refs.py", "."), ".", "plain"),
+    # CI's domain job runs the whole tests/ tree; here only the packages whose backend/ofo/<pkg>/ changed.
+    Step("domain-tests", (*PYTEST,), ".", "domain"),
+    # app-tests.yml `npm run build`, only when something under frontend/ changed.
+    Step("frontend-build", ("npm", "run", "build"), FRONTEND, "build"),
 )
 APP_SELECTED_RUN = [*PYTEST_APP, "-rs"]  # + the selected files, run by the `app-selected` step after its selection
 
@@ -126,6 +144,48 @@ def gh_runs(branch: str) -> list:
     return runs
 
 
+def gh_pr_number(branch: str) -> int | None:
+    """The open PR number of `branch`; None when gh says there is no PR; RuntimeError on any other gh failure."""
+    cmd = ["gh", "pr", "view", branch, "--json", "number"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=60,  # noqa: S603
+                              check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"gh did not run: {exc}") from exc
+    if proc.returncode != 0:
+        if NO_PR_TEXT in proc.stderr.lower():
+            return None
+        raise RuntimeError(f"gh exited {proc.returncode}: {proc.stderr.strip()[:300]}")
+    try:
+        number = json.loads(proc.stdout)["number"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RuntimeError(f"gh answer has no PR number: {exc!r}") from exc
+    if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+        raise RuntimeError(f"gh answer has an odd PR number: {number!r}")
+    return number
+
+
+def check_close_keywords(root: Path, branch: str, pr_reader: PrReader, runner: Runner, log_dir: Path,
+                         out: Callable[[str], None]) -> int:
+    """--pre-push: run pr_close_check.py for the branch's open PR. No PR = skipped (printed); a gh error refuses."""
+    try:
+        number = pr_reader(branch)
+    except RuntimeError as exc:
+        out(f"GATE REFUSED push: cannot read the PR of {branch} ({exc})")
+        return GATE_REFUSED
+    if number is None:
+        out(f"pr-close-check: skipped, {branch} has no open PR")
+        return 0
+    log = log_dir / "pr-close-check.log"
+    code = runner([PYTHON, "scripts/orchestrator/pr_close_check.py", "--pr", str(number)], root, dict(os.environ), log)
+    if code != 0:
+        for line in tail(log):
+            out(line)
+        out(f"GATE FAIL pr-close-check: exit {code}")
+        return GATE_FAILED
+    return 0
+
+
 def push_verdict(runs: list, fixes_red: bool) -> str:
     """'' when a push may go ahead, else the reason it is refused. Every run state has an outcome (see the tests)."""
     try:
@@ -140,6 +200,11 @@ def push_verdict(runs: list, fixes_red: bool) -> str:
         return f"gh answer has an unexpected shape ({exc!r})"
     if fixes_red and newest_conclusion != "failure":
         return f"--fixes-red but the newest completed App tests run {newest_id} is {newest_conclusion}, not failure"
+    if fixes_red:  # a run newer than the red is a push that is still being tested: this push would cancel it
+        newer = [r for r in pending if int(r["databaseId"]) > int(newest_id)]
+        if newer:
+            return (f"--fixes-red but App tests run {newer[0]['databaseId']} is {newer[0]['status']}, newer than the "
+                    f"red run {newest_id}: this push would cancel it")
     if pending and not fixes_red:
         return pending_text[0]
     return ""
@@ -208,6 +273,43 @@ def run_format(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict)
     return runner([*step.argv, *files], root / step.cwd, env, log), None
 
 
+def changed_names(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict, folder: str) -> tuple:
+    """(exit code, names) of the files under `folder` that differ from origin/main; a git failure is the code."""
+    list_log = log_dir / f"{step.name}-files.log"
+    code = runner(["git", "diff", "--name-only", "origin/main...HEAD", "--", folder], root, env, list_log)
+    return code, tail(list_log, 100000)
+
+
+def run_domain(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
+    """pytest on tests/<pkg> for each backend/ofo/<pkg>/ with a changed file; none changed = pass, `0 packages`."""
+    log = log_dir / f"{step.name}.log"
+    code, names = changed_names(step, root, runner, log_dir, env, f"{DOMAIN_SRC}/")
+    if code != 0:
+        return code, f"{step.name}-files.log"
+    prefix = f"{DOMAIN_SRC}/"
+    pkgs = sorted({n[len(prefix):].split("/")[0] for n in names if n.startswith(prefix) and "/" in n[len(prefix):]})
+    folders = [f"tests/{p}" for p in pkgs if (root / "tests" / p).is_dir()]
+    if not folders:
+        log.write_text("0 packages\n", encoding="utf-8")
+        return 0, None
+    return runner([*step.argv, *folders], root, env, log), None
+
+
+def run_build(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
+    """npm run build only when a file under frontend/ changed (deletions count); none = pass, `0 files`."""
+    log = log_dir / f"{step.name}.log"
+    code, names = changed_names(step, root, runner, log_dir, env, f"{FRONTEND}/")
+    if code != 0:
+        return code, f"{step.name}-files.log"
+    if not [n for n in names if n.startswith(f"{FRONTEND}/")]:
+        log.write_text("0 files\n", encoding="utf-8")
+        return 0, None
+    if not (root / step.cwd / "node_modules").is_dir():
+        log.write_text("frontend/node_modules is missing: run npm ci in frontend/\n", encoding="utf-8")
+        return GATE_FAILED, None
+    return runner(expand(step, root), root / step.cwd, env, log), None
+
+
 def run_step(step: Step, root: Path, runner: Runner, log_dir: Path) -> tuple:
     """Return (exit code, extra log name or None). A step that cannot be understood returns non-zero."""
     log = log_dir / f"{step.name}.log"
@@ -221,6 +323,10 @@ def run_step(step: Step, root: Path, runner: Runner, log_dir: Path) -> tuple:
         env = app_env(env)
     if step.kind == "format":
         return run_format(step, root, runner, log_dir, env)
+    if step.kind == "domain":
+        return run_domain(step, root, runner, log_dir, env)
+    if step.kind == "build":
+        return run_build(step, root, runner, log_dir, env)
     code = runner(expand(step, root), cwd, env, log)
     if step.kind != "select" or code != 0:
         return code, None
@@ -291,7 +397,7 @@ def git_out(cwd: Path, *args: str) -> str:
 
 
 def main(argv: list | None = None, runner: Runner = default_runner, reader: GhReader = gh_runs,
-         out: Callable[[str], None] = print) -> int:
+         out: Callable[[str], None] = print, pr_reader: PrReader = gh_pr_number) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", type=Path, default=None)
     ap.add_argument("--pre-push", action="store_true")
@@ -311,6 +417,9 @@ def main(argv: list | None = None, runner: Runner = default_runner, reader: GhRe
     if args.pre_push:
         code, branch = git_text(runner, root, log_dir, "branch", ["rev-parse", "--abbrev-ref", "HEAD"])
         refused = check_push(branch if code == 0 else "", reader, args.fixes_red, out)
+        if refused:
+            return refused
+        refused = check_close_keywords(root, branch, pr_reader, runner, log_dir, out)
         if refused:
             return refused
     return run_gate(root, log_dir, runner, out)

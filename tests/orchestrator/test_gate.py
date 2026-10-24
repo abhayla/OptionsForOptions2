@@ -5,6 +5,7 @@ runner and the gh reader are injected fakes."""
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,7 +42,21 @@ EXPECTED = [
     ("reach-check", (PY, "scripts/orchestrator/reach_check.py", "--root", ".")),
     ("reference-register", (PY, "scripts/orchestrator/reference_register.py", "--check")),
     ("findings-index", (PY, "tools/build_findings_index.py", ".", "--check")),
+    # argv copied from .github/workflows/ci.yml (kit spec checks) and app-tests.yml (frontend build)
+    ("kit-settings", (PY, "tools/kit_settings.py", ".", "--check")),
+    ("factory-lint", (PY, "tools/factory_lint.py", ".")),
+    ("trace-check", (PY, "tools/trace_check.py", ".")),
+    ("build-order", (PY, "tools/build_order.py", ".", "--check")),
+    ("spec-index", (PY, "tools/build_spec_index.py", ".", "--check")),
+    ("spec-digest", (PY, "tools/build_spec_digest.py", ".", "--check")),
+    ("spec-dupes", (PY, "tools/spec_dupes.py", ".")),
+    ("spec-refs", (PY, "tools/check_spec_refs.py", ".")),
+    ("domain-tests", tuple(PYTEST)),
+    ("frontend-build", ("npm", "run", "build")),
 ]
+NEW_STEPS = [n for n, _ in EXPECTED[16:]]
+# One changed file each: a frontend source (format + build), a domain package with tests, one without, a loose file.
+CHANGED_ALL = "frontend/src/a.vue\nbackend/ofo/engine/x.py\nbackend/ofo/nopkg/y.py\nbackend/ofo/loose.py\n"
 
 
 class FakeRunner:
@@ -75,7 +90,7 @@ class FakeRunner:
 @pytest.fixture
 def tree(tmp_path):
     (tmp_path / "frontend" / "node_modules").mkdir(parents=True)
-    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "engine").mkdir(parents=True)
     (tmp_path / "frontend" / "src").mkdir()
     (tmp_path / "frontend" / "src" / "a.vue").write_text("", encoding="utf-8")
     for name in ("test_b.py", "test_a.py", "test_money_outside_engine.py", "conftest.py"):
@@ -83,10 +98,11 @@ def tree(tmp_path):
     return tmp_path
 
 
-def run(tree, runner, argv=(), reader=None):
+def run(tree, runner, argv=(), reader=None, pr_reader=None):
     lines = []
     root = tree
-    code = gate.main(["--root", str(root), *argv], runner=runner, reader=reader or (lambda b: []), out=lines.append)
+    code = gate.main(["--root", str(root), *argv], runner=runner, reader=reader or (lambda b: []), out=lines.append,
+                     pr_reader=pr_reader or (lambda b: None))
     return code, lines
 
 
@@ -116,7 +132,8 @@ def test_full_pass_prints_gate_pass_last_and_runs_every_step_in_order(tree, monk
     assert re.fullmatch(r"GATE PASS [0-9a-f]{40}", lines[-1])
     assert sum(1 for ln in lines if ln.startswith("GATE")) == 1
     names = [c[3].stem for c in runner.ran()]
-    skipped = ("clean-tree", "frontend-format")  # no changed frontend file: no prettier run
+    # nothing changed: no prettier run, no domain package, no frontend build
+    skipped = ("clean-tree", "frontend-format", "domain-tests", "frontend-build")
     expected = [n for n, _ in EXPECTED if n not in skipped]
     assert names == expected  # app-selected selected 0 files, so no second app-selected run
     assert any("app-selected:" in ln for ln in lines)
@@ -127,7 +144,7 @@ def test_first_failure_stops_and_names_the_step(tree, monkeypatch, step):
     """Attack 3: a non-zero exit reaches the gate unmasked; nothing after the failing step runs."""
     fake_git_dir(monkeypatch, tree)
     picked = "1 files\n" + SELECTED + "\n"
-    runner = FakeRunner(fail_at=step, select_out=picked, fail_code=7, changed="frontend/src/a.vue\n")
+    runner = FakeRunner(fail_at=step, select_out=picked, fail_code=7, changed=CHANGED_ALL)
     code, lines = run(tree, runner)
     assert code == 1
     assert lines[-1] == f"GATE FAIL {step}: exit 7"
@@ -260,8 +277,11 @@ PUSH_CASES = [
     ("fixes-red, red but a newer success", runs(OK, RED), True, False),
     ("fixes-red, cancelled newest", runs(("completed", "cancelled"), RED), True, False),
     ("fixes-red, no run", [], True, False),
-    ("fixes-red, run in progress over a red", runs(("in_progress", None), RED), True, True),
+    ("fixes-red, run in progress newer than the red", runs(("in_progress", None), RED), True, False),
+    ("fixes-red, run queued newer than the red", runs(("queued", None), RED), True, False),
+    ("fixes-red, run waiting newer than the red", runs(("waiting", None), RED), True, False),
     ("fixes-red, run in progress over a success", runs(("in_progress", None), OK), True, False),
+    ("fixes-red, run in progress OLDER than the red", [*runs(RED), *runs(("in_progress", None), start=50)], True, True),
     ("odd shape", [{"status": "completed"}], False, False),
     ("not a dict", ["x"], False, False),
 ]
@@ -376,3 +396,218 @@ def test_format_failure_fails_the_gate(tree, monkeypatch):
     fake_git_dir(monkeypatch, tree)
     code, lines = run(tree, FakeRunner(changed="frontend/src/a.vue\n", fail_at="frontend-format"))
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
+
+
+class Committing(FakeRunner):
+    """A step that commits: HEAD read after the steps differs from HEAD read before them."""
+
+    def __call__(self, argv, cwd, env, log):
+        if argv[0] == "git" and argv[1] == "rev-parse" and self.ran():
+            self.sha = "f" * 40
+        return super().__call__(argv, cwd, env, log)
+
+
+def test_a_step_that_moves_head_is_not_certified(tree, monkeypatch):
+    """Attack 3 (mutant G2, the HEAD compare removed): a PASS line names the sha the steps ran on, never another."""
+    fake_git_dir(monkeypatch, tree)
+    code, lines = run(tree, Committing())
+    assert code == REFUSED
+    assert lines == ["GATE REFUSED: the steps changed the tree or HEAD, so no sha is certified"]
+    assert not any(ln.startswith("GATE PASS") for ln in lines)
+
+
+def test_unreadable_head_after_the_steps_is_not_certified(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+
+    class Broken(FakeRunner):
+        def __call__(self, argv, cwd, env, log):
+            if argv[0] == "git" and argv[1] == "rev-parse" and self.ran():
+                self.sha = "garbage"
+            return super().__call__(argv, cwd, env, log)
+
+    code, lines = run(tree, Broken())
+    assert code == REFUSED and not any(ln.startswith("GATE PASS") for ln in lines)
+
+
+def test_fixes_red_message_names_the_newer_run_and_the_red_one(tree, monkeypatch):
+    """Attack 4: the push would cancel the newer run, and the refusal says which."""
+    fake_git_dir(monkeypatch, tree)
+    rows = [*runs(("in_progress", None), start=120), *runs(RED, start=100)]
+    runner = FakeRunner()
+    code, lines = run(tree, runner, ["--pre-push", "--fixes-red"], reader=lambda b: rows)
+    assert code == REFUSED and runner.ran() == []
+    assert lines == ["GATE REFUSED push: --fixes-red but App tests run 120 is in_progress, newer than the red run "
+                     "100: this push would cancel it"]
+
+
+@pytest.mark.parametrize("step", NEW_STEPS)
+def test_dropping_a_new_ci_step_from_the_tuple_is_caught(tree, monkeypatch, step):
+    """Attack 5: with the step gone from STEPS the gate neither runs it nor matches the pinned list."""
+    fake_git_dir(monkeypatch, tree)
+    monkeypatch.setattr(gate, "STEPS", tuple(s for s in gate.STEPS if s.name != step))
+    assert [(s.name, s.argv) for s in gate.STEPS] != EXPECTED
+    runner = FakeRunner(changed=CHANGED_ALL)
+    code, _ = run(tree, runner)
+    assert code == 0
+    assert step not in [c[3].stem for c in runner.ran()]
+
+
+@pytest.mark.parametrize("step", NEW_STEPS)
+def test_each_new_ci_step_runs_in_a_full_pass_with_its_ci_argv(tree, monkeypatch, step):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed=CHANGED_ALL)
+    code, _ = run(tree, runner)
+    assert code == 0
+    by_name = {c[3].stem: c for c in runner.ran()}
+    want = dict(EXPECTED)[step]
+    if step == "domain-tests":
+        want = (*PYTEST, "tests/engine")
+    assert tuple(by_name[step][0]) == tuple(want)
+
+
+def test_domain_tests_pick_only_packages_with_a_changed_file_and_a_tests_folder(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    (tree / "tests" / "orders").mkdir()
+    runner = FakeRunner(changed="backend/ofo/orders/a.py\nbackend/ofo/engine/b.py\nbackend/ofo/engine/c/d.py\n"
+                                "backend/ofo/nopkg/y.py\nbackend/ofo/loose.py\nbackend/ofo_app/z.py\n")
+    code, _ = run(tree, runner)
+    assert code == 0
+    [call] = [c for c in runner.ran() if c[3].stem == "domain-tests"]
+    assert call[0] == [*PYTEST, "tests/engine", "tests/orders"]
+
+
+def test_domain_tests_with_no_changed_package_pass_with_zero_packages(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed="docs/x.md\nbackend/ofo/loose.py\n")
+    code, _ = run(tree, runner)
+    assert code == 0
+    assert not [c for c in runner.ran() if c[3].stem == "domain-tests"]
+    assert gate_log(tree, "domain-tests") == "0 packages"
+
+
+def test_frontend_build_runs_in_frontend_when_any_file_there_changed(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed="frontend/package.json\n")
+    code, _ = run(tree, runner)
+    assert code == 0
+    [call] = [c for c in runner.ran() if c[3].stem == "frontend-build"]
+    assert (call[0], call[1]) == (["npm", "run", "build"], tree / "frontend")
+
+
+def test_frontend_build_is_skipped_with_zero_files_when_nothing_there_changed(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed="backend/ofo/engine/b.py\n")
+    code, _ = run(tree, runner)
+    assert code == 0
+    assert "frontend-build" not in [c[3].stem for c in runner.ran()]
+    assert gate_log(tree, "frontend-build") == "0 files"
+
+
+@pytest.mark.parametrize("name", ["domain-tests", "frontend-build"])
+def test_a_failing_git_diff_fails_the_conditional_step_closed(tree, name):
+    """Standing item (c): when the changed-file list cannot be read, the step fails; it never counts as 'no change'."""
+
+    def broken(argv, cwd, env, log):
+        log.write_text("fatal: bad revision 'origin/main...HEAD'\n", encoding="utf-8")
+        return 128
+
+    step = next(s for s in gate.STEPS if s.name == name)
+    log_dir = tree / "logs"
+    log_dir.mkdir()
+    assert gate.run_step(step, tree, broken, log_dir) == (128, f"{name}-files.log")
+
+
+def test_frontend_build_without_node_modules_fails_when_a_frontend_file_changed(tree):
+    (tree / "frontend" / "node_modules").rmdir()
+    runner = FakeRunner(changed="frontend/src/a.vue\n")
+    step = next(s for s in gate.STEPS if s.name == "frontend-build")
+    log_dir = tree / "logs"
+    log_dir.mkdir()
+    assert gate.run_step(step, tree, runner, log_dir) == (1, None)
+    assert "run npm ci" in (log_dir / "frontend-build.log").read_text(encoding="utf-8")
+
+
+CLOSE_CMD = [PY, "scripts/orchestrator/pr_close_check.py", "--pr", "7"]
+
+
+def test_pre_push_runs_pr_close_check_for_the_open_pr_before_any_step(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner()
+    code, lines = run(tree, runner, ["--pre-push"], pr_reader=lambda b: 7)
+    assert (code, lines[-1]) == (0, f"GATE PASS {SHA}")
+    assert [c[0] for c in runner.ran()][0] == CLOSE_CMD
+
+
+def test_pr_close_check_failure_fails_the_gate_and_no_step_runs(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(fail_at="pr-close-check")
+    code, lines = run(tree, runner, ["--pre-push"], pr_reader=lambda b: 7)
+    assert (code, lines[-1]) == (1, "GATE FAIL pr-close-check: exit 1")
+    assert [c[0] for c in runner.ran()] == [CLOSE_CMD]
+
+
+def test_no_open_pr_skips_pr_close_check_with_a_printed_line(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner()
+    code, lines = run(tree, runner, ["--pre-push"], pr_reader=lambda b: None)
+    assert code == 0 and f"pr-close-check: skipped, {SHA} has no open PR" in lines
+    assert CLOSE_CMD not in [c[0] for c in runner.ran()]
+
+
+def test_gh_error_reading_the_pr_refuses_and_no_step_runs(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+
+    def broken(branch):
+        raise RuntimeError("gh exited 4: no auth")
+
+    runner = FakeRunner()
+    code, lines = run(tree, runner, ["--pre-push"], pr_reader=broken)
+    assert code == REFUSED and runner.ran() == []
+    assert lines == [f"GATE REFUSED push: cannot read the PR of {SHA} (gh exited 4: no auth)"]
+
+
+def test_without_pre_push_the_pr_is_never_read(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+
+    def boom(branch):
+        raise AssertionError("pr_reader called without --pre-push")
+
+    assert run(tree, FakeRunner(), pr_reader=boom)[0] == 0
+
+
+class Proc:
+    def __init__(self, code, out="", err=""):
+        self.returncode, self.stdout, self.stderr = code, out, err
+
+
+@pytest.mark.parametrize(
+    ("proc", "expected"),
+    [
+        (Proc(0, '{"number": 12}'), 12),
+        (Proc(1, "", 'no pull requests found for branch "x"'), None),
+        (Proc(1, "", "HTTP 401: bad credentials"), RuntimeError),
+        (Proc(0, "not json"), RuntimeError),
+        (Proc(0, "{}"), RuntimeError),
+        (Proc(0, "[1]"), RuntimeError),
+        (Proc(0, '{"number": "12"}'), RuntimeError),
+        (Proc(0, '{"number": 0}'), RuntimeError),
+        (Proc(0, '{"number": true}'), RuntimeError),
+        (OSError("no gh"), RuntimeError),
+        (subprocess.TimeoutExpired("gh", 60), RuntimeError),
+    ],
+    ids=["open", "no-pr", "gh-error", "bad-json", "no-number", "list", "str-number", "zero", "bool", "no-gh", "timeout"],
+)
+def test_gh_pr_number_every_answer_state(monkeypatch, proc, expected):
+    """Standing item (d): PR open, no PR, gh error, bad JSON and the odd shapes each have one outcome."""
+
+    def fake(*a, **k):
+        if isinstance(proc, BaseException):
+            raise proc
+        return proc
+
+    monkeypatch.setattr(gate.subprocess, "run", fake)
+    if expected is RuntimeError:
+        with pytest.raises(RuntimeError):
+            gate.gh_pr_number("b")
+    else:
+        assert gate.gh_pr_number("b") == expected
