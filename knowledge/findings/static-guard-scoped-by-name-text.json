@@ -10,11 +10,11 @@
  },
  "fix": "Evaluate what the code would match, not what it names: translate each pattern with the framework's own glob rules and test it against the real target URL; check every call site (each send), not each file; follow helpers and aliases by import source; fail closed on a pattern or call the scan cannot evaluate. Prefer a structural guarantee (one shared helper every fake must go through) when the language allows too many shapes.",
  "detection": {
-  "status": "guarded",
+  "status": "unguarded",
   "checks": [
    "tests/test_e2e_live_socket_fakes.py"
   ],
-  "note": "Guarded for the instance (the Playwright live-socket fakes) only: tests/test_e2e_live_socket_fakes.py translates every routeWebSocket pattern with Playwright's glob rules and tests it against the live URL, checks every send (not every file), follows echoSeq by import source and the support files a live file imports, and fails closed on a pattern or send it cannot attribute. Mutation gate on the guard: 8 mutants killed. Out of reach: a send through a computed property built at run time, a socket whose URL cannot match the live one. Other static repo guards are not re-audited for this class; the builder-brief standing item (c) is the mechanism if it recurs."
+  "note": "PARTLY guarded, so status stays unguarded: tests/test_e2e_live_socket_fakes.py (after fix round 1) translates every routeWebSocket pattern with Playwright's glob rules, checks every send, follows echoSeq by import source and the support files inside frontend/e2e a live file imports, and fails closed on a pattern or send it cannot attribute (8 mutants killed). Round-2 Opus check (2026-10-24) still passed two bypasses: a live-route handler imported from OUTSIDE frontend/e2e (`import { go } from '../src/fakeLive'`: _resolve returns None and nothing fails closed), and a forwarded message variable reassigned before the send (`m = JSON.stringify({...}); ws.send(m)` counts as a forward). Owned by the chunk-3 deferred issue; its fix is structural (run-discipline C8): one shared support helper is the only caller of routeWebSocket on any pattern that can match the live URL, and it stamps every push itself."
  },
  "spec_ref": [
   "spec/requirements/REQ-133.md"
