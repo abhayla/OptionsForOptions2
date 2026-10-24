@@ -78,19 +78,6 @@ def test_an_unknown_field_fails(root):
     assert any("unknown field `Status`" in e for e in errors(root))
 
 
-@pytest.mark.parametrize("field", ["built_in", "note"])
-def test_built_in_and_note_are_optional_text_fields(root, field):
-    put(root, good(**{field: "frontend/tests/leg-picker.test.js: the pinning test"}))
-    assert errors(root) == []
-    for bad in ("", "   ", 7):
-        put(root, good(**{field: bad}))
-        assert any(f"`{field}` must be non-empty text" in e for e in errors(root)), bad
-    put(root, good(**{field: "x" * 401}))
-    assert any(f"`{field}` is 401 characters, at most 400" in e for e in errors(root))
-    put(root, good(**{field: f"as in {BANNED}"}))
-    assert errors(root)  # ADR-176 (4): the banned name fails in the new fields too
-
-
 @pytest.mark.parametrize("kind", rr.KINDS)
 def test_every_allowed_kind_passes(root, kind):
     extra = {"adr": "ADR-176"} if kind == "DIFFERENT-BY-DECISION" else {}

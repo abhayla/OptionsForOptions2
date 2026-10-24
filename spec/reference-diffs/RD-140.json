@@ -6,12 +6,11 @@
   "reference_screens": [
     "screen 111"
   ],
-  "ours": "REQ-076 AC-6 include-in-the-numbers tick box is not built on main (branch W-126 only).",
+  "ours": "Built in row 20, commit 463dca78 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-6: the tick emits an include edit; an unticked leg is greyed and labelled'.",
   "req": "REQ-076",
   "ac": "AC-6",
   "row": 20,
   "status": "built",
-  "built_in": "row 20, commit 463dca78 (W-148); pinned by frontend/tests/leg-edit.test.js 'AC-6: the tick emits an include edit; an unticked leg is greyed and labelled'.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

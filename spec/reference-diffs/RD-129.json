@@ -7,12 +7,11 @@
     "screen 032",
     "screen 035"
   ],
-  "ours": "Today's picker adds one leg per Add press through selects. REQ-080 AC-3 (several contracts, Done adds all) is not built.",
+  "ours": "Built in row 19 commit 1637ed25 (Done adds all selected) and chunk 2 (count footer, Clear All): the picker shows N selected with Clear All and Done; pinned by frontend/tests/leg-picker.test.js: AC-3 (RD-129) core: three picked strikes show.",
   "req": "REQ-080",
   "ac": "AC-3",
   "row": 19,
   "status": "built",
-  "built_in": "chunk 2: Clear All and the count footer in LegPicker.vue; pinned by frontend/tests/leg-picker.test.js 'AC-3 (RD-129) core: three picked strikes show 3 selected in a footer with Clear All and Done'. Done adding all at once: row 19, commit 1637ed25.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

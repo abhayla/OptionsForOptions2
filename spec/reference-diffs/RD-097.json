@@ -4,12 +4,11 @@
   "title": "Hedge legs marked when a shape is loaded or detected (G-15-8)",
   "reference_behaviour": "The server marks which legs of a loaded shape are hedge legs, and the hedge control moves only those.",
   "reference_screens": ["screen 012"],
-  "ours": "REQ-076 AC-8 asks for a Hedge mark on legs the template marks as protective, but templates carry no per-leg protective field yet.",
+  "ours": "Built in row 20, commit 463dca78 (W-148): the Hedge MARK on a leg comes only from the server reply; pinned by frontend/tests/leg-edit.test.js: AC-8/AC-9 (attack 4): name and Hedge marks come only from the reply. The Hedge CONTROL that moves those legs is not built: it is REQ-078, a later row.",
   "req": "REQ-076",
   "ac": "AC-8",
   "row": 20,
   "status": "built",
-  "built_in": "row 20, commit 463dca78 (W-148): the Hedge MARK is shown from the server reply; pinned by frontend/tests/leg-edit.test.js 'AC-8/AC-9 (attack 4): name and Hedge marks come only from the reply'. The Hedge CONTROL that moves those legs is REQ-078, a later row.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

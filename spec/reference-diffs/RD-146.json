@@ -8,12 +8,11 @@
     "screen 209",
     "screen 211"
   ],
-  "ours": "REQ-077 AC-5 Reset Prices with one new capture time is not built.",
+  "ours": "Built in row 21, commit 7029b484 (W-149); pinned by frontend/tests/leg-edit.test.js 'AC-5: Reset Prices sends reset_prices and clears every Your price from the reply'.",
   "req": "REQ-077",
   "ac": "AC-5",
   "row": 21,
   "status": "built",
-  "built_in": "row 21, commit 7029b484 (W-149); pinned by frontend/tests/leg-edit.test.js 'AC-5: Reset Prices sends reset_prices and clears every Your price from the reply'.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-24"

@@ -4,12 +4,11 @@
   "title": "A reopened strategy marks legs whose price moved since it was saved (G-16-8)",
   "reference_behaviour": "A reopened strategy keeps its saved prices, marks legs whose live price has changed, and Reset Prices re-bases them to live.",
   "reference_screens": ["catalogue 254", "catalogue 257", "catalogue 272"],
-  "ours": "REQ-077 AC-7 not built: saved entries are restored exactly but no moved-price marker shows on reopening; old legs keep the Reprice message.",
+  "ours": "Built in row 21, commit 7029b484 (W-149), reopen proven in chunk 2: a reopened saved strategy keeps its saved prices and marks the legs whose live price moved, capturing nothing; pinned by frontend/tests/leg-edit.test.js: AC-7: reopening captures nothing.",
   "req": "REQ-077",
   "ac": "AC-7",
   "row": 21,
   "status": "built",
-  "built_in": "row 21, commit 7029b484 (W-149) built the marker; chunk 2 adds the reopen test frontend/tests/leg-edit.test.js 'REQ-077 AC-7 (RD-113)': a saved strategy reopened through the saved-drafts Open path shows the moved marker and captures nothing.",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"
