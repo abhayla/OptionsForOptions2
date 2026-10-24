@@ -77,7 +77,7 @@ async def _load_rates_once() -> ChargeRates | None:
     return value
 
 
-async def load_charge_rates() -> Optional[ChargeRates]:
+async def load_charge_rates() -> ChargeRates | None:
     """The charge rates in force (ADR-082: the database clock picks the set), or None when none can be read. None is
     never an error here: the outcome then keeps ADR-071's "before charges and taxes" sentence (W-075 decision (b)).
     Works with or without a Zerodha session: the rates do not depend on one.
@@ -180,7 +180,7 @@ def feed_scope(ctx: MarketContext) -> FeedScope | None:
     return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
-def get_market_context() -> Optional[MarketContext]:
+def get_market_context() -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
     answers "not connected". Tests and the replay mode override this dependency."""
     from ofo_app import live_market  # late: live_market imports MarketContext from this module
@@ -230,7 +230,7 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
-    seq: Optional[RequestSeq] = None  # REQ-119 AC-1: echoed by the REST route only, never by the live push
+    seq: RequestSeq | None = None  # REQ-119 AC-1: echoed by the REST route only, never by the live push
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -247,8 +247,8 @@ class OutcomeRequest(BaseModel):
         return base, resolve_range(base, *pick)
 
 
-async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
-                          lookup: ContractLookup) -> Optional[Mapping[str, ListedContract]]:
+async def stored_legs_for(req: OutcomeRequest, ctx: MarketContext | None,
+                          lookup: ContractLookup) -> Mapping[str, ListedContract] | None:
     """The stored catalogue entries for the legs, read ONLY when there is no provider (the no-provider answer, #249).
     The ONE helper behind both delivery paths (REST and the live socket, #259), so a field filled on one is filled on the
     other. The read is bounded by CATALOGUE_READ_TIMEOUT_SECONDS; a timeout gives no names (unnamed legs), never a hang."""
@@ -261,8 +261,8 @@ async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
         return {}
 
 
-async def get_stored_legs(req: OutcomeRequest, ctx: Optional[MarketContext] = Depends(get_market_context),
-                          lookup: ContractLookup = Depends(get_contract_lookup)) -> Optional[Mapping[str, ListedContract]]:
+async def get_stored_legs(req: OutcomeRequest, ctx: MarketContext | None = Depends(get_market_context),
+                          lookup: ContractLookup = Depends(get_contract_lookup)) -> Mapping[str, ListedContract] | None:
     return await stored_legs_for(req, ctx, lookup)
 
 
@@ -278,13 +278,13 @@ MARKER_CODES = {"CURRENT": "CURRENT", "0-P&L": "ZERO_PNL"}
 
 
 class CellOut(ApiModel):
-    value: Optional[Union[Money, CatalogueText]]
+    value: Union[Money, CatalogueText] | None
     display: CatalogueText
     kind: CellKindCode
-    reason: Optional[CatalogueText]
-    side: Optional[Literal["Cr", "Dr"]]
-    per_unit: Optional[Money]
-    vendor: Optional[Money]
+    reason: CatalogueText | None
+    side: Literal["Cr", "Dr"] | None
+    per_unit: Money | None
+    vendor: Money | None
 
 
 class ColumnOut(ApiModel):
@@ -303,9 +303,9 @@ class RowOut(ApiModel):
 
 class TableOut(ApiModel):
     underlying: Underlying
-    spot_level: Optional[Money]
-    spot_at: Optional[datetime.datetime]
-    output_label: Optional[CatalogueText]
+    spot_level: Money | None
+    spot_at: datetime.datetime | None
+    output_label: CatalogueText | None
     scenario_heading: list[CatalogueText]  # AC-7: [left, right]
     columns: list[ColumnOut]
     rows: list[RowOut]
@@ -322,10 +322,10 @@ class ScenarioOut(ApiModel):
     label: CatalogueText
     kind: Literal["exact", "estimate"]
     available: bool
-    unavailable_reason: Optional[CatalogueText]
-    output_label: Optional[CatalogueText]
+    unavailable_reason: CatalogueText | None
+    output_label: CatalogueText | None
     levels: list[LevelOut]
-    totals: Optional[list[Money]]
+    totals: list[Money] | None
     step: Money
     start: Money
     end: Money
@@ -346,15 +346,15 @@ class SummaryOut(ApiModel):
     what_can_i_lose: CatalogueText
     what_can_i_make: CatalogueText
     where_do_i_start_losing: CatalogueText
-    max_profit: Optional[Money]
-    max_loss: Optional[Money]
+    max_profit: Money | None
+    max_loss: Money | None
     max_profit_unlimited: bool
     max_loss_unlimited: bool
     breakevens: list[Money]
-    lower_be: Optional[Money]
-    upper_be: Optional[Money]
+    lower_be: Money | None
+    upper_be: Money | None
     risk_boundaries: list[Money]
-    charges: Optional[Money] = None  # W-075: the round-trip charges inside max_profit / max_loss
+    charges: Money | None = None  # W-075: the round-trip charges inside max_profit / max_loss
     charges_unavailable: bool = False
 
 
@@ -370,61 +370,61 @@ class MarginOut(ApiModel):
 
 class LegOut(ApiModel):
     instrument_id: InstrumentId
-    symbol: Optional[Identifier]
+    symbol: Identifier | None
     action: Literal["BUY", "SELL"]
-    instrument: Optional[Literal["CE", "PE", "FUT"]]
-    strike: Optional[Money]
-    expiry: Optional[datetime.date]
+    instrument: Literal["CE", "PE", "FUT"] | None
+    strike: Money | None
+    expiry: datetime.date | None
     lots: int
-    lot_size: Optional[int]
-    quantity: Optional[int]
+    lot_size: int | None
+    quantity: int | None
     planned_entry: Money | None  # None only for a leg saved without a price (ADR-085)
     captured_at: datetime.datetime
-    ltp: Optional[Money]
-    iv: Optional[Money]
-    health: Optional[HealthCode]
-    label: Optional[CatalogueText]
+    ltp: Money | None
+    iv: Money | None
+    health: HealthCode | None
+    label: CatalogueText | None
 
 
 class LegQuoteOut(ApiModel):
     """REQ-035 AC-5 / ADR-168 (5): Bid/Ask for everyone, in the leg quotes. Taken from the same snapshot as the table (one read)."""
     instrument_id: InstrumentId
-    symbol: Optional[Identifier]
-    bid: Optional[Money]
-    ask: Optional[Money]
-    health: Optional[HealthCode]
+    symbol: Identifier | None
+    bid: Money | None
+    ask: Money | None
+    health: HealthCode | None
 
 
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "FROM_ENTRIES", "NOT_CONNECTED", "REFUSED"]
     underlying: Underlying
-    status_label: Optional[CatalogueText]
-    reason: Optional[CatalogueText]
-    output_label: Optional[CatalogueText]
-    valuation: Optional[datetime.datetime]
+    status_label: CatalogueText | None
+    reason: CatalogueText | None
+    output_label: CatalogueText | None
+    valuation: datetime.datetime | None
     #: ADR-088: when the server produced THIS answer (aware, UTC) in every state; the page shows it as "Checked at"
     answered_at: datetime.datetime
     #: REQ-114 AC-7 / ADR-177: the market is closed at ``answered_at`` (the page shows the one market-closed banner)
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
-    spot_level: Optional[Money]
-    spot_at: Optional[datetime.datetime]
+    spot_level: Money | None
+    spot_at: datetime.datetime | None
     legs: list[LegOut]
     margin: MarginOut
-    table: Optional[TableOut]
-    scenario: Optional[ScenarioOut]
-    payoff: Optional[PayoffOut]
-    summary: Optional[SummaryOut]
+    table: TableOut | None
+    scenario: ScenarioOut | None
+    payoff: PayoffOut | None
+    summary: SummaryOut | None
     #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
-    leg_quotes: Optional[list[LegQuoteOut]] = None
+    leg_quotes: list[LegQuoteOut] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
     #: REQ-119 AC-1: the request's ``seq``, unchanged; absent (unset) when the request sent none, and on the live push
-    seq: Optional[int] = None
+    seq: int | None = None
 
 
-def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
+def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str | None]) -> list[dict]:
     rows = []
     for leg in definition.legs:
         lm = snapshot.legs.get(leg.instrument_id)
@@ -445,7 +445,7 @@ def _definition(req: OutcomeRequest) -> StrategyDefinition:
     return StrategyDefinition(req.underlying, tuple(legs))
 
 
-def get_streaming() -> Optional[Callable[[str], bool]]:
+def get_streaming() -> Callable[[str], bool] | None:
     """Issue #206: in the running app with live market data, "is this instrument streaming?" = it has a subscriber on
     the ONE shared fan-out (only a strategy socket subscribes). None when there is no live feed (not connected, the test
     replay, a test's own context): then every input the provider holds is used as it is."""
@@ -468,7 +468,7 @@ def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None
     return all(streaming(i) for i in ids)
 
 
-def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
+def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Callable[[str], bool] | None) -> bool:
     index_id = getattr(ctx.provider, "index_id", lambda _u: None)(req.underlying)
     ids = [leg.instrument_id for leg in req.legs] + ([index_id] if index_id else [])
     return not inputs_streaming(ctx, streaming, ids)
@@ -480,15 +480,15 @@ def _live_market():
     return live_market
 
 
-def live_context() -> Optional[MarketContext]:
+def live_context() -> MarketContext | None:
     return _live_market().current_context()
 
 
-def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
-                     streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
-                     stored: Optional[Mapping[str, ListedContract]] = None,
-                     rates: Optional[ChargeRates] = None, margin: Margin | None = None,
-                     seq: Optional[int] = None) -> OutcomeResponse:
+def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
+                     streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
+                     stored: Mapping[str, ListedContract] | None = None,
+                     rates: ChargeRates | None = None, margin: Margin | None = None,
+                     seq: int | None = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -557,11 +557,11 @@ async def get_outcome_margin(req: OutcomeRequest,
 
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
 def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencies, one per input
-                     ctx: Optional[MarketContext] = Depends(get_market_context),
-                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
+                     ctx: MarketContext | None = Depends(get_market_context),
+                     streaming: Callable[[str], bool] | None = Depends(get_streaming),
                      now: AnswerClock = Depends(get_answer_clock),
-                     stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs),
-                     rates: Optional[ChargeRates] = Depends(load_charge_rates), *,
+                     stored: Mapping[str, ListedContract] | None = Depends(get_stored_legs),
+                     rates: ChargeRates | None = Depends(load_charge_rates), *,
                      margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,

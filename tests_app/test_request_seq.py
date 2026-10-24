@@ -77,7 +77,9 @@ def test_leg_edit_refuses_a_malformed_seq(seq):
 @pytest.mark.usefixtures("order_path_on")
 @pytest.mark.parametrize("seq", BAD)
 async def test_execute_refuses_a_malformed_seq(seq, monkeypatch):
-    from test_execute_revision import test_a_missing_or_malformed_revision_is_a_malformed_request as refused  # noqa: PLC0415
+    from test_execute_revision import (  # noqa: PLC0415 - the shared refusal test, read only here
+        test_a_missing_or_malformed_revision_is_a_malformed_request as refused,
+    )
 
     await refused({"action": "ENTRY", "revision": 1, "seq": seq}, monkeypatch)
 
