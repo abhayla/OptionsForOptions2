@@ -88,6 +88,35 @@ def test_ac8_review_orders_carry_both_numbers_per_leg():
     assert route._planned_price((D("1"), D("2.005")), make_tag(1, 1, 1)) == D("2.01")
 
 
+def test_ac8_the_answer_puts_the_planned_price_into_each_review_order_by_tag():
+    """AC-8: ``_answer`` (the route's one reply builder) carries the planned entry on the order whose tag names that
+    leg, next to the depth limit, and None where the leg had no planned entry. Database-free: a real sealed basket."""
+    from ofo.execution.basket import build_basket  # noqa: PLC0415
+    from ofo.execution.freeze import FreezeCheck  # noqa: PLC0415
+    from ofo_app.execute_replay import AT  # noqa: PLC0415
+
+    class _Funds:
+        def available_funds(self):
+            return D("1003")
+
+        def zerodha_required(self, orders):
+            return D("354.25")
+
+    def answer(entry: D | None):
+        priced = _price(entry)
+        basket = build_basket(priced.plan, _catalogue(), 1, freeze_check=lambda p: FreezeCheck((), ()),
+                              margin_source=_Funds())
+        cost = route.cost_out(basket.orders, None, route.Figures(D("1003"), D("354.25"), AT))
+        return basket, route._answer(1, basket, "kitekey", cost, priced.planned_prices)
+
+    basket, planned = answer(D("81.3"))
+    assert [o.tag for o in planned.orders] == [o.tag for o in basket.orders] == [make_tag(1, 1, 0)]
+    assert planned.orders[0].planned_price == D("81.30")
+    assert planned.orders[0].price == basket.orders[0].price  # the depth limit stays beside it, untouched
+    _, unplanned = answer(None)
+    assert unplanned.orders[0].planned_price is None
+
+
 def test_ac8_no_depth_refuses_the_leg_and_never_prices_from_the_typed_price():
     """AC-8 / standing (d): thin depth, a missing quote and an absent depth refuse with gate_price_not_known."""
     quote = _quote()

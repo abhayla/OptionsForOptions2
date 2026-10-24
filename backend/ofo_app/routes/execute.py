@@ -493,7 +493,7 @@ def _planned_price(planned: Sequence[Decimal | None], tag: str) -> Decimal | Non
 
 
 def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut,
-            planned: Sequence[Decimal | None] = ()) -> ExecuteOut:
+            planned: Sequence[Decimal | None]) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
