@@ -22,7 +22,8 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -30,6 +31,8 @@ KINDS = ("build", "fix", "verify-r2")
 STEPS = ("round-limit", "worktree-ready", "make-brief", "check-brief", "copy-from", "overlap", "ledger")
 MAX_FIX_ROUNDS = 2
 EXIT_REFUSED, EXIT_USAGE, EXIT_NOT_READY = 1, 2, 4
+ROUND_REFUSAL = ("third fix round - park it (run-discipline B1) or get an independent redesign "
+                 "(ADR-106)")
 LEDGER_NAME = "ofo-dispatch-ledger.jsonl"
 LEDGER_KEYS = ("row", "kind", "round", "brief", "brief_sha256", "at", "session")
 MAIN_BRANCH = "main"
@@ -158,8 +161,25 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
-def main(argv: Sequence[str] | None = None, runner: Runner = _real_runner,
-         now: Callable[[], datetime] | None = None) -> int:
+class NotReady(Exception):
+    """The builder worktree is missing or incomplete (exit 4)."""
+
+
+@dataclass(frozen=True)
+class Job:
+    row: str
+    kind: str
+    root: Path
+    worktree: Path
+    out: Path
+    measure: Path
+    ledger_arg: str | None
+    in_flight: tuple[tuple[str, str], ...]
+    runner: Runner
+    now: Callable[[], datetime] | None
+
+
+def _parse(argv: Sequence[str] | None, runner: Runner, now: Callable[[], datetime] | None) -> Job:
     ap = _parser()
     args = ap.parse_args(list(argv) if argv is not None else None)
     if bool(args.in_flight) == args.no_in_flight:
@@ -170,64 +190,82 @@ def main(argv: Sequence[str] | None = None, runner: Runner = _real_runner,
         if not sep or not where or not ref:
             ap.error(f"--in-flight needs <worktree>=<start-ref>, got {spec!r}")
         pairs.append((where, ref))
-    root, worktree = Path(args.root).resolve(), Path(args.worktree).resolve()
-    out, measure = Path(args.out), Path(args.measure)
-    row, kind = args.row, args.kind
+    return Job(args.row, args.kind, Path(args.root).resolve(), Path(args.worktree).resolve(), Path(args.out),
+               Path(args.measure), args.ledger, tuple(pairs), runner, now)
 
-    try:
-        ledger = _ledger_path(root, args.ledger)  # step round-limit
-        done = read_ledger(ledger)
-        if kind == "fix" and count_rounds(done, row, "fix") >= MAX_FIX_ROUNDS:
-            return _refuse(f"row {norm(row)}: third fix round - park it (run-discipline B1) or get an independent "
-                           "redesign (ADR-106)")
-    except Refused as exc:
-        return _refuse(f"row {norm(row)}: {exc}")
 
-    steps = setup_steps(root, worktree, row, kind)  # step worktree-ready
-    problem = worktree_problem(worktree)
+def _step_round_limit(job: Job) -> Path:
+    ledger = _ledger_path(job.root, job.ledger_arg)
+    entries = read_ledger(ledger)  # always: a corrupt ledger refuses every kind, before any child runs
+    if job.kind == "fix" and count_rounds(entries, job.row, "fix") >= MAX_FIX_ROUNDS:
+        raise Refused(ROUND_REFUSAL)
+    return ledger
+
+
+def _step_worktree_ready(job: Job) -> None:
+    problem = worktree_problem(job.worktree)
     if problem:
-        sys.stdout.write(f"DISPATCH NOT READY row {norm(row)}: {problem}\n")
+        sys.stdout.write(f"DISPATCH NOT READY row {norm(job.row)}: {problem}\n")
+    steps = setup_steps(job.root, job.worktree, job.row, job.kind)
     sys.stdout.write("Setup steps:\n" + "".join(f"  {i}. {s}\n" for i, s in enumerate(steps, 1)))
     if problem:
-        return EXIT_NOT_READY
+        raise NotReady(problem)
 
+
+def _step_children(job: Job) -> None:
     py = sys.executable
-    children = (  # (step, argv) for the three checks that need only the brief
-        ("make-brief", [py, _script("make_brief.py"), row, str(measure), "--kind", kind, "--out", str(out),
-                        "--root", str(root)]),
-        ("check-brief", [py, _script("check_brief.py"), str(out), "--root", str(root)]),
-        ("copy-from", [py, _script("copy_from_check.py"), str(root), str(out)]),
+    root, out = str(job.root), str(job.out)
+    children = (
+        ("make-brief", [py, _script("make_brief.py"), job.row, str(job.measure), "--kind", job.kind, "--out", out,
+                        "--root", root]),
+        ("check-brief", [py, _script("check_brief.py"), out, "--root", root]),
+        ("copy-from", [py, _script("copy_from_check.py"), root, out]),
     )
-    for step, argv_ in children:
-        code = _child(runner, argv_)
+    for step, argv in children:
+        code = _child(job.runner, argv)
         if code != 0:
-            return _refuse(f"row {norm(row)}: step {step} exited {code}")
-
-    try:  # step overlap
-        files = _planned_files(measure, kind)
-        with tempfile.TemporaryDirectory() as tmp:
-            listing = Path(tmp) / "planned-files.txt"
-            listing.write_text("\n".join(files) + "\n", encoding="utf-8")
-            for other, ref in pairs:
-                code = _child(runner, [py, _script("overlap_gate.py"), other, ref, str(worktree), str(listing)])
-                if code != 0:
-                    return _refuse(f"row {norm(row)}: step overlap exited {code} against {other}")
-        return _record(ledger, row, kind, out, now)  # step ledger
-    except Refused as exc:
-        return _refuse(f"row {norm(row)}: {exc}")
+            raise Refused(f"step {step} exited {code}")
 
 
-def _record(ledger: Path, row: str, kind: str, out: Path, now: Callable[[], datetime] | None) -> int:
-    entries = read_ledger(ledger)  # read again: another session may have dispatched since the first look
-    if kind == "fix" and count_rounds(entries, row, "fix") >= MAX_FIX_ROUNDS:
-        raise Refused("third fix round - park it (run-discipline B1) or get an independent redesign (ADR-106)")
+def _step_overlap(job: Job) -> None:
+    files = _planned_files(job.measure, job.kind)
+    with tempfile.TemporaryDirectory() as tmp:
+        listing = Path(tmp) / "planned-files.txt"
+        listing.write_text("\n".join(files) + "\n", encoding="utf-8")
+        for other, ref in job.in_flight:
+            code = _child(job.runner, [sys.executable, _script("overlap_gate.py"), other, ref, str(job.worktree),
+                                       str(listing)])
+            if code != 0:
+                raise Refused(f"step overlap exited {code} against {other}")
+
+
+def main(argv: Sequence[str] | None = None, runner: Runner = _real_runner,
+         now: Callable[[], datetime] | None = None) -> int:
+    job = _parse(argv, runner, now)
     try:
-        digest = hashlib.sha256(out.read_bytes()).hexdigest()
+        ledger = _step_round_limit(job)
+        _step_worktree_ready(job)
+        _step_children(job)
+        _step_overlap(job)
+        _record(job, ledger)
+    except NotReady:
+        return EXIT_NOT_READY
+    except Refused as exc:
+        return _refuse(f"row {norm(job.row)}: {exc}")
+    return 0
+
+
+def _record(job: Job, ledger: Path) -> None:
+    entries = read_ledger(ledger)  # read again: another session may have dispatched since the first look
+    if job.kind == "fix" and count_rounds(entries, job.row, "fix") >= MAX_FIX_ROUNDS:
+        raise Refused(ROUND_REFUSAL)
+    try:
+        digest = hashlib.sha256(job.out.read_bytes()).hexdigest()
     except OSError as exc:
-        raise Refused(f"brief {out} unreadable after the checks ({type(exc).__name__})") from exc
-    number = count_rounds(entries, row, kind) + 1
-    stamp = (now or (lambda: datetime.now(timezone.utc)))().isoformat()
-    entry = dict(zip(LEDGER_KEYS, (norm(row), kind, number, str(out), digest, stamp,
+        raise Refused(f"brief {job.out} unreadable after the checks ({type(exc).__name__})") from exc
+    number = count_rounds(entries, job.row, job.kind) + 1
+    stamp = (job.now or (lambda: datetime.now(UTC)))().isoformat()
+    entry = dict(zip(LEDGER_KEYS, (norm(job.row), job.kind, number, str(job.out), digest, stamp,
                                    os.environ.get("CLAUDE_SESSION_ID") or "unknown"), strict=True))
     try:
         ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -235,8 +273,7 @@ def _record(ledger: Path, row: str, kind: str, out: Path, now: Callable[[], date
             f.write(json.dumps(entry) + "\n")
     except OSError as exc:
         raise Refused(f"cannot write ledger {ledger} ({type(exc).__name__})") from exc
-    sys.stdout.write(f"DISPATCH OK row {norm(row)} {kind} round {number} brief {out}\n")
-    return 0
+    sys.stdout.write(f"DISPATCH OK row {norm(job.row)} {job.kind} round {number} brief {job.out}\n")
 
 
 if __name__ == "__main__":

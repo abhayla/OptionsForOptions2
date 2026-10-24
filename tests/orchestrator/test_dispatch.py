@@ -27,7 +27,7 @@ CHANGED = ["backend/b.py"]
 
 
 def _git(cwd: pathlib.Path, *args: str) -> None:
-    subprocess.run([*GIT, "-C", str(cwd), *args], check=True, capture_output=True)
+    subprocess.run([*GIT, "-C", str(cwd), *args], check=True, capture_output=True)  # noqa: S603 - fixed git argv
 
 
 @pytest.fixture(scope="module")
@@ -81,10 +81,10 @@ class Fake:
         return [pathlib.Path(c[1]).name for c in self.calls]
 
 
-def run(env, row="21c", kind="build", fake=None, extra=None, in_flight=("--no-in-flight",), wt=None, measure=None):
-    argv = [row, str(measure or env["measure"]), "--kind", kind, "--out", str(env["out"]),
-            "--worktree", str(wt or env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]),
-            *in_flight, *(extra or [])]
+def run(env, row="21c", kind="build", fake=None, in_flight=("--no-in-flight",), **over):
+    argv = [row, str(over.get("measure") or env["measure"]), "--kind", kind, "--out", str(env["out"]),
+            "--worktree", str(over.get("wt") or env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]),
+            *in_flight]
     fake = fake or Fake()
     return dispatch.main(argv, runner=fake), fake
 
@@ -183,7 +183,7 @@ def test_round_limit_is_re_checked_when_recording(env):
                           str(env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]),
                           "--no-in-flight"], runner=racing)
     assert code == 1
-    assert len(ledger_lines(env)) == 2
+    assert len(ledger_lines(env)) == dispatch.MAX_FIX_ROUNDS
 
 
 FAILURES = [1, 2, 3, 127, -9, FileNotFoundError("no python"), PermissionError("denied")]
@@ -246,26 +246,26 @@ def test_in_flight_flags_must_be_explicit_and_well_formed(env, flags):
         dispatch.main(["21c", str(env["measure"]), "--kind", "build", "--out", str(env["out"]), "--worktree",
                        str(env["wt"]), "--ledger", str(env["ledger"]), "--root", str(env["root"]), *flags],
                       runner=fake)
-    assert exc.value.code == 2
+    assert exc.value.code == dispatch.EXIT_USAGE
     assert fake.calls == [] and ledger_lines(env) == []
 
 
 def test_unknown_kind_is_a_usage_error(env):
     with pytest.raises(SystemExit) as exc:
         run(env, kind="deploy")
-    assert exc.value.code == 2
+    assert exc.value.code == dispatch.EXIT_USAGE
 
 
 def test_missing_worktree_is_exit_4_with_setup_steps(env, capsys):
     code, fake = run(env, wt=env["tmp"] / "nowhere")
     out = capsys.readouterr().out
-    assert code == 4 and fake.calls == [] and ledger_lines(env) == []
+    assert code == dispatch.EXIT_NOT_READY and fake.calls == [] and ledger_lines(env) == []
     assert "wt-new.ps1" in out and "npm ci" in out and "scripts/orchestrator/gate.py" in out
 
 
 def test_worktree_on_main_is_exit_4(env, capsys):
     code, fake = run(env, wt=env["root"])
-    assert code == 4 and fake.calls == []
+    assert code == dispatch.EXIT_NOT_READY and fake.calls == []
     assert "not a builder branch" in capsys.readouterr().out
 
 
@@ -273,14 +273,14 @@ def test_worktree_without_node_modules_is_exit_4(env, capsys):
     (env["wt"] / "frontend" / "node_modules").rmdir()
     code, fake = run(env)
     out = capsys.readouterr().out
-    assert code == 4 and fake.calls == []
+    assert code == dispatch.EXIT_NOT_READY and fake.calls == []
     assert "no frontend/node_modules" in out and "frontend && npm ci" in out
 
 
 def test_plain_folder_is_not_a_worktree(env):
     plain = env["tmp"] / "plain"
     (plain / "frontend" / "node_modules").mkdir(parents=True)
-    assert run(env, wt=plain)[0] == 4
+    assert run(env, wt=plain)[0] == dispatch.EXIT_NOT_READY
 
 
 def test_setup_steps_are_printed_on_success_too(env, capsys):
