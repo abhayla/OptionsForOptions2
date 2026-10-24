@@ -442,6 +442,7 @@ issues:
   "#529": 4a  # Owner capture list: 12 NO-SCREEN reference records for builder rows 1-16 (ADR-176)
   "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
   "#532": 4a  # Chunk 2 deferred: reach-check hits (23 unreached, 31 unresolved), register spec_change blocking, worktree helpers
+  "#537": 4a  # Chunk 3 deferred: C1 guard bypasses (structural fix), process-tool gaps, row 27b MINORs, local pytest flake
 
 # Work items whose status is not done.
 work_items:
