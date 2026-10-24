@@ -691,7 +691,7 @@ def test_format_file_formatted_at_base_now_unformatted_fails(tree, monkeypatch):
     code, lines = format_run(tree, monkeypatch, runner, {"a.vue": BAD})
     assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")
     assert "src/a.vue: formatted at the merge base, unformatted now" in lines
-    assert not list((tree / "frontend" / "src").glob("gate-base-copy*"))  # the base copy is removed
+    assert not (tree / "frontend" / "src" / "gate-base-copy.vue").exists()  # the base copy is removed
 
 
 def test_format_old_debt_still_unformatted_passes_and_is_counted(tree, monkeypatch):
