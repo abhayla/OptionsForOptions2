@@ -14,7 +14,7 @@
   "checks": [
    "tests/test_e2e_live_socket_fakes.py"
   ],
-  "note": "Guarded for the Playwright half only: tests/test_e2e_live_socket_fakes.py refuses a spec that answers the strategy live socket without the shared echoSeq helper. The stand-in-class half (row 23a: a double built from an assumed base class) is covered by the builder-brief standing item, a brief line and not a test, so it is not machine-checked. Two occurrences on 2026-10-24; CI e2e caught the second one; the first was caught by an independent check only."
+  "note": "Guarded for the Playwright half only: tests/test_e2e_live_socket_fakes.py refuses any send on the strategy live socket (in a file whose routeWebSocket pattern can match /api/strategies/live, or a support file it imports) that is not stamped by the shared echoSeq helper, a pure forward or a client socket. Out of reach: a send through a computed property built at run time, a socket whose URL cannot match the live one, a non-relative or re-exported import. The stand-in-class half (row 23a: a double built from an assumed base class) is covered by the builder-brief standing item, a brief line and not a test, so it is not machine-checked. Two occurrences on 2026-10-24; CI e2e caught the second one; the first was caught by an independent check only."
  },
  "spec_ref": [
   "spec/requirements/REQ-119.md",
