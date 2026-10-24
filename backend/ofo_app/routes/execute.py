@@ -62,6 +62,7 @@ from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.limits import INTEGER_MAX
 from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
@@ -91,7 +92,6 @@ from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import RequestSeq, load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
-from ofo_app.strategy_store import INTEGER_MAX
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 _LOG = logging.getLogger(__name__)
@@ -307,7 +307,7 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
         if body.seq is not None:  # REQ-119 AC-1: echoed unchanged; no seq sent -> no seq key
-            out = ExecuteOut.model_validate({**{k: getattr(out, k) for k in out.model_fields_set}, "seq": body.seq})
+            out = out.model_copy(update={"seq": body.seq})  # marks seq as set, the other keys as they were
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()

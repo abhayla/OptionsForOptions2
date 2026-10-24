@@ -13,6 +13,7 @@ echo needs the stored strategy, so it runs on the database in CI (as ``test_exec
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 from test_execute_revision import _run
 from test_leg_edit_route import legs
 from test_leg_edit_route import post as leg_edit_post
@@ -82,6 +83,50 @@ async def test_execute_refuses_a_malformed_seq(seq, monkeypatch):
     )
 
     await refused({"action": "ENTRY", "revision": 1, "seq": seq}, monkeypatch)
+
+
+class _Built(BaseModel):
+    plan_number: int
+    tags: list[str]
+    seq: int | None = None
+
+
+async def _execute_db_free(monkeypatch, seq):
+    """The real route function with the store and the plan builder stubbed (no database, no broker)."""
+    import datetime  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_execute_revision import _FakeDb  # noqa: PLC0415
+
+    async def load(_db, _user, sid):
+        return SimpleNamespace(id=sid, revision=3, saved=None)
+
+    async def built(_req, _stored):
+        # ExecuteOut's basket is built only from a real basket (BasketPost.of), so this stand-in has ExecuteOut's
+        # shape for the keys under test: unset ``seq`` by default, the same pydantic model_fields_set rules
+        return _Built(plan_number=9, tags=["T1"])
+
+    monkeypatch.setattr(route.store, "load", load)
+    monkeypatch.setattr(route, "_execute", built)
+    body = route.ExecuteIn(action="ENTRY", revision=3, **({} if seq is None else {"seq": seq}))
+    now = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=datetime.UTC)
+    return await route.execute_strategy(7, body, object(), None, lambda: now, _FakeDb(), "u", None)
+
+
+@pytest.mark.parametrize("seq", GOOD)
+async def test_execute_echoes_seq_unchanged_without_a_database(monkeypatch, seq):
+    """AC-1: the reply carries the request's seq exactly, and every other key stays as built."""
+    out = await _execute_db_free(monkeypatch, seq)
+    dumped = out.model_dump(exclude_unset=True)
+    assert dumped["seq"] == seq
+    assert dumped == {"plan_number": 9, "tags": ["T1"], "seq": seq}
+
+
+async def test_execute_without_seq_has_no_seq_key_without_a_database(monkeypatch):
+    """AC-1: no seq sent -> no seq key (exclude_unset still omits it after the rebuild)."""
+    out = await _execute_db_free(monkeypatch, None)
+    assert "seq" not in out.model_dump(exclude_unset=True)
 
 
 @pytest.mark.usefixtures("order_path_on", "app_engine")

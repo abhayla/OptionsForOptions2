@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.models import FUTURE_TYPE
+from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
 from ofo.tracking import paper
@@ -55,7 +56,8 @@ def get_near_level_threshold() -> Decimal:
 
 class TrackingStartIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    revision: int = Field(gt=0, le=2**31 - 1, description="the saved strategy revision the user started tracking from")
+    revision: int = Field(gt=0, le=INTEGER_MAX,
+                          description="the saved strategy revision the user started tracking from")
 
 
 class TrackingLegOut(ApiModel):

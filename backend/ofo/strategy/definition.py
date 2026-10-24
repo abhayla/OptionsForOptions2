@@ -25,6 +25,7 @@ from typing import Mapping, Union
 from ofo.engine.legs import Action, Instrument, require_decimal, require_price
 from ofo.engine.strategy import Strategy
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.limits import INTEGER_MAX
 from ofo.strategy import settings_value
 
 MAX_LEGS = 20
@@ -323,7 +324,7 @@ def _field_text(item: dict):
 #: The database's own predicates for a leg slot (migration 0008's ofo_strategy_leg_valid): the domain refuses exactly
 #: what the database refuses, so a summary that renders here is one the database stores.
 _DATE_TEXT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-MAX_SEQ = 2**31 - 1  # strategy_history.seq (INTEGER)
+MAX_SEQ = INTEGER_MAX  # strategy_history.seq (INTEGER)
 
 
 def _closed_member(enum: type, value: object):

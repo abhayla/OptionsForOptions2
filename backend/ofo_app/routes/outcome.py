@@ -24,6 +24,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
+from ofo.limits import INTEGER_MAX
 from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
@@ -48,7 +49,6 @@ from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
-from ofo_app.strategy_store import INTEGER_MAX
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
