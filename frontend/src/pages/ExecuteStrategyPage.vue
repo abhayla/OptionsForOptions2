@@ -17,7 +17,7 @@ import ReturnCheck from '@/components/execution/ReturnCheck.vue'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
-import { fetchSavedDraft } from '@/lib/saveDraft'
+import { fetchSavedDraft, plainName } from '@/lib/saveDraft'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 
@@ -25,6 +25,7 @@ const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
 const route = useRoute()
 const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? String(route.params.id) : null)) // an id string, never parsed
+const strategyName = ref(null) // REQ-134: the saved read's name (shown without its quotes); null keeps the id text
 const phase = ref('loading') // loading | waiting-live | live | not-live | executing | prepared | error
 const liveNow = ref(false)
 const reply = ref(null)
@@ -69,6 +70,7 @@ onMounted(async () => {
   try {
     const saved = await fetchSavedDraft(api, strategyId.value) // the one saved-strategy read: legs and revision
     revision = saved.revision
+    strategyName.value = plainName(saved.name)
     draft = buildDraft(saved.legs)
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -134,7 +136,7 @@ async function prepare(action) {
 
 <template>
   <section class="p-4" data-testid="execute-screen" :data-phase="phase">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Execute Strategy {{ strategyId ?? '' }}</h1>
+    <h1 class="text-xl font-semibold" data-testid="page-title">Execute Strategy {{ strategyName ?? strategyId ?? '' }}</h1>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />

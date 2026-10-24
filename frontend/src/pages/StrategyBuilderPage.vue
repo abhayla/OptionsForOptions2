@@ -10,7 +10,7 @@
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
@@ -20,6 +20,7 @@ import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
+import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -42,6 +43,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
 const route = useRoute()
+const router = useRouter()
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
@@ -203,14 +205,44 @@ function syncLive() {
 const savedId = ref(null)
 // W-122: the revision the page loaded or saved (Start tracking is based on it, never on a fresh read)
 const savedRevision = ref(null)
-const openSaved = (next, id, revision) => {
+// REQ-134 AC-2: the saved strategy this screen is editing ({ id, revision, name }: the revision and name the page loaded or saved).
+// Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
+// second row (RD-106). It is replaced on open/save, and dropped by Clear all (held for Undo).
+const openStrategy = ref(null)
+const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
+// REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
+function nameInUrl(id) {
+  const { draft: _link, ...rest } = route.query
+  router.replace({ path: route.path, query: { ...rest, strategy: String(id) } })
+}
+const takeStrategy = (id, revision, name) => {
+  openStrategy.value = Number.isInteger(id) ? { id, revision: revision ?? null, name: name ?? null } : null
+  if (openStrategy.value) nameInUrl(id)
+}
+const openSaved = (next, id, revision, name) => {
   setLegs(next)
   savedId.value = Number.isInteger(id) ? id : null
   savedRevision.value = savedId.value === null ? null : revision ?? null
+  takeStrategy(id, revision, name)
 }
-const onSaved = (id, revision) => {
+const onSaved = (id, revision, name) => {
   savedId.value = id
   savedRevision.value = revision ?? null
+  takeStrategy(id, revision, name)
+}
+// AC-5: a reload of /strategy/builder?strategy=<id> reads the saved copy (legs and planned entries as saved, never today's prices).
+const STRATEGY_ID = /^[1-9]\d{0,17}$/
+async function openFromUrl() {
+  const id = String(route.query.strategy ?? '')
+  if (!STRATEGY_ID.test(id)) return
+  const before = legs.value
+  try {
+    const saved = await fetchSavedDraft(api, id)
+    if (legs.value !== before) return // the user changed the legs while the read was out: never overwrite them
+    openSaved(saved.legs, Number(id), saved.revision, saved.name)
+  } catch (e) {
+    openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
+  }
 }
 const setLegs = (next) => {
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
@@ -233,7 +265,7 @@ const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
 // REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for CLEAR_UNDO_MS; the clear is
 // an ordinary edit (the saved copy changes only on Save), exactly as removing the last leg is. One timer, not a recurring one.
-const undoHeld = ref(null) // { legs, savedId, savedRevision } of the last clear, or null (expired, used, superseded, left)
+const undoHeld = ref(null) // { legs, savedId, savedRevision, openStrategy } of the last clear, or null (expired, used, superseded, left)
 let undoTimer = null
 function dropUndo() {
   clearTimeout(undoTimer)
@@ -241,8 +273,9 @@ function dropUndo() {
 }
 function clearAll() {
   if (!legs.value.length) return
-  const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value } // taken BEFORE setLegs([]) nulls them
+  const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value, openStrategy: openStrategy.value } // taken BEFORE setLegs([]) nulls them
   setLegs([])
+  openStrategy.value = null // a cleared screen is a new strategy: the next Save asks a name
   undoHeld.value = held
   undoTimer = setTimeout(dropUndo, CLEAR_UNDO_MS)
 }
@@ -252,6 +285,7 @@ function undoClear() {
   setLegs(held.legs) // drops the Undo, reloads the numbers and the live follow
   savedId.value = held.savedId
   savedRevision.value = held.savedRevision
+  openStrategy.value = held.openStrategy
 }
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
@@ -260,6 +294,7 @@ onMounted(() => {
   load()
   syncLive()
   readShape()
+  openFromUrl()
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
 // Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.
@@ -385,7 +420,8 @@ const pricesStamp = computed(() => {
 
     <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" />
+    <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
       :undo-offered="undoHeld !== null"

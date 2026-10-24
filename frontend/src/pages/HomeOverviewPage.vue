@@ -8,6 +8,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
 import { istTime } from '@/lib/displayFormat'
+import { plainName } from '@/lib/saveDraft'
 import { SECTIONS } from '@/router/nav'
 
 const RECENT_COUNT = 3
@@ -70,6 +71,7 @@ onMounted(async () => {
       <h2 class="mt-5 text-sm font-medium">Recent strategies</h2>
       <ul class="mt-1 text-sm" data-testid="recent-strategies">
         <li v-for="s in recent" :key="s.id" class="flex flex-wrap items-center gap-2" data-testid="recent-row">
+          <span v-if="plainName(s.name)" class="font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
           <span>{{ s.underlying }}, {{ s.status }}, last saved {{ istTime(s.updated_at) }}</span>
           <router-link to="/strategy/builder" class="underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
         </li>
