@@ -36,6 +36,7 @@ from ofo.errors.explanations import render_explanation
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused
@@ -62,7 +63,7 @@ from ofo_app.routes.outcome import (
     margin_for_request,
     outcome_response,
 )
-from ofo_app.routes.planned_entry import capture_entries, get_live_feed
+from ofo_app.routes.planned_entry import Reason, capture_entries, get_live_feed
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -151,7 +152,7 @@ class EditIn(BaseModel):
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
-    price: str | None = Field(default=None, pattern=r"^\d{1,7}(\.\d{1,2})?$")
+    price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
 
     @model_validator(mode="after")
     def _control_has_its_fields(self) -> EditIn:
@@ -199,6 +200,7 @@ class EditLegOut(ApiModel):
     price_source: Literal["captured", "typed", "none"]
     included: bool
     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
+    price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
     block: CatalogueText | None  # the ADR-092 reason when the quantity is not below the freeze limit (never split)
 
 
@@ -311,8 +313,7 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     if e.control == "multiplier":
         return edit.apply_multiplier(cat, name, legs, e.multiplier or 1), frozenset()
     if e.control == "price":
-        price = Decimal(e.price) if e.price is not None else Decimal(0)
-        return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
+        return edit.set_typed_price(cat, name, legs, _need_index(e, legs), e.price), frozenset()
     if e.control in ("reset_prices", "reset_leg"):  # REQ-077 AC-5: every leg, or ONE leg; the others stay as sent
         return legs, frozenset(range(len(legs)) if e.control == "reset_prices" else {_need_index(e, legs)})
     if e.control == "read":
@@ -355,6 +356,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
+    reasons: dict[int, Reason] = {}
     recapture = sorted(moved | unpriced) if req.edit.control == "reset_prices" else sorted(moved)
     if req.edit.control == "price" and req.edit.index is not None:  # REQ-077 AC-4: a typed price carries its own time
         stamps[req.edit.index] = now()
@@ -366,6 +368,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
             price = got.get(ids[i])
             if price is None:  # AC-2: no live price -> the stepped leg is unpriced, never the old price
                 unpriced.add(i)
+                reasons[i] = "not_connected" if valuation is None else "no_live_price"  # AC-5: the screen says why
                 stamps[i] = None
             else:
                 entries[i] = price.price
@@ -379,10 +382,11 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
         "strike": x.leg.strike, "expiry": x.leg.expiry, "lots": x.lots, "base_lots": x.base_lots,
-        "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price,
+        "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
         "captured_at": None if i in unpriced else stamps[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
-        "included": x.included, "hedge": i in hedged, "block": blocks.get(i)} for i, x in enumerate(new_legs)]
+        "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
+        "block": blocks.get(i)} for i, x in enumerate(new_legs)]
     outcome = None
     shown = [i for i, x in enumerate(new_legs) if x.included]
     if shown and not any(i in unpriced for i in shown):

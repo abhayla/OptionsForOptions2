@@ -1226,7 +1226,7 @@
           "price": {
             "anyOf": [
               {
-                "pattern": "^\\d{1,7}(\\.\\d{1,2})?$",
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -1411,6 +1411,24 @@
             ],
             "title": "Planned Entry"
           },
+          "price_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_connected",
+                  "no_live_price",
+                  "unknown_instrument",
+                  "wrong_underlying",
+                  "expired"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Reason"
+          },
           "price_source": {
             "enum": [
               "captured",
@@ -1452,6 +1470,7 @@
           "price_source",
           "included",
           "hedge",
+          "price_reason",
           "block"
         ],
         "title": "EditLegOut",

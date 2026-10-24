@@ -36,6 +36,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPIRY = datetime.date(2026, 10, 6)
 TODAY = datetime.date(2026, 10, 1)
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
+PRICE_REFUSED = "USER_INPUT_013"  # the catalogue code of leg_edit_price_not_tick
 LOT, INCLUDED_AFTER_UNTICK = 65, 3
 STAMP = datetime.datetime(2026, 10, 1, 9, 20, tzinfo=datetime.UTC)
 STEPPED_DOWN_STRIKE = 23350
@@ -363,9 +364,22 @@ def test_ac_1_ac_4_a_typed_price_comes_back_typed_with_its_own_time_and_the_othe
 
 def test_ac_2_a_refused_typed_price_changes_nothing_and_answers_in_catalogue_text():
     """REQ-077 AC-2 (attack 1): 0, -5, abc, 81.32 and 81.305 are refused (422) and no leg comes back."""
-    for bad in ("0", "-5", "abc", "81.32", "81.305"):
+    for bad in ("0", "0.00", "-5", "abc", "81.32", "81.305", "1e2", " 5", "NaN", ""):
         status, reply = post({"legs": legs(), "edit": {"control": "price", "index": 1, "price": bad}})
         assert status == HTTP_UNPROCESSABLE and "legs" not in reply, bad
+        assert reply["code"] == PRICE_REFUSED and "positive multiple of" in reply["what_happened"], bad
+        assert all(reply[k] for k in ("what_happened", "impact", "what_is_blocked", "next_action")), bad
+
+
+def test_ac_2_a_typed_price_is_echoed_as_the_two_decimal_string():
+    """REQ-077 AC-2 / money rule: 81.3 is accepted and comes back as "81.30" (leg and outcome); a leg sent with
+    planned_entry "42.5" is echoed "42.50"."""
+    sent = legs()
+    sent[0]["planned_entry"] = "42.5"
+    status, reply = post({"legs": sent, "edit": {"control": "price", "index": 1, "price": "81.3"}})
+    assert status == HTTP_OK
+    assert [leg["planned_entry"] for leg in reply["legs"]][:2] == ["42.50", "81.30"]
+    assert reply["outcome"]["legs"][1]["planned_entry"] == "81.30"
 
 
 def test_ac_1_a_typed_price_on_an_unpriced_leg_prices_it():
@@ -419,6 +433,22 @@ def test_ac_5_a_reset_with_no_live_price_leaves_that_leg_unpriced_never_the_old_
     status, reply = post({"legs": sent, "edit": {"control": "reset_leg", "index": 2}}, capture=reset_capture(table))
     assert status == HTTP_OK and marks(reply)[2] == (None, "none", None)
     assert [m[0] for m in marks(reply)] == ["42.50", "86.00", None, "44.00"] and reply["outcome"] is None
+    assert [leg["price_reason"] for leg in reply["legs"]] == [None, None, "no_live_price", None]
+
+
+def test_ac_5_a_reset_with_no_live_price_carries_the_reason_on_every_unpriced_leg():
+    """REQ-077 AC-5: Reset Prices with a capture that prices nothing: every leg unpriced, each with the reason code the
+    planned-entry route uses ("no_live_price"); with no valuation time at all (not connected): "not_connected"; a
+    priced leg carries none."""
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=reset_capture({}))
+    assert status == HTTP_OK and [leg["price_reason"] for leg in reply["legs"]] == ["no_live_price"] * 4
+
+    async def offline(ctx, feed, underlying, ids):
+        return None, dict.fromkeys(ids)
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=offline)
+    assert [leg["price_reason"] for leg in reply["legs"]] == ["not_connected"] * 4
+    status, reply = post({"legs": legs(), "edit": {"control": "reset_prices"}}, capture=reset_capture())
+    assert [leg["price_reason"] for leg in reply["legs"]] == [None] * 4
 
 
 def test_ac_5_reset_leg_needs_its_index_and_a_forged_one_is_a_validation_error():

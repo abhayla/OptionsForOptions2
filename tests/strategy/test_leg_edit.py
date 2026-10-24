@@ -201,7 +201,8 @@ def test_ac_2_typed_zero_negative_text_off_tick_and_three_decimals_are_refused_w
     naming leg 1 and the 0.05 tick; the legs as sent keep their previous price and mark."""
     legs = condor()
     before = [(x.leg.entry_price, x.typed) for x in legs]
-    for bad in (D("0"), -5, "abc", D("81.32"), D("81.305"), D("NaN"), D("-5"), 81.3):
+    for bad in (D("0"), -5, "abc", D("81.32"), D("81.305"), D("NaN"), D("-5"), 81.3, "-5", "0", "0.00", "81.32",
+                "81.305", "1e2", " 5", "NaN", "", "٨١", None):
         with pytest.raises(LegEditRefused) as err:
             leg_edit.set_typed_price(cat, NIFTY, legs, 0, bad)
         parts = err.value.message
@@ -211,3 +212,10 @@ def test_ac_2_typed_zero_negative_text_off_tick_and_three_decimals_are_refused_w
     assert [(x.leg.entry_price, x.typed) for x in legs] == before
     ok = leg_edit.set_typed_price(cat, NIFTY, legs, 0, D("81.30"))
     assert ok[0].leg.entry_price == D("81.30") and ok[0].typed and [x.typed for x in ok[1:]] == [False] * 3
+
+
+def test_ac_2_a_typed_price_is_stored_and_echoed_with_two_decimals(cat):
+    """REQ-077 AC-2: the text "81.3" (and the Decimal 81.3) is stored as the 2-decimal 81.30, never "81.3"."""
+    for typed in ("81.3", D("81.3"), "81.30"):
+        out = leg_edit.set_typed_price(cat, NIFTY, condor(), 0, typed)
+        assert str(out[0].leg.entry_price) == "81.30"
