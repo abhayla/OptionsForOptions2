@@ -35,6 +35,7 @@ EXPECTED = [
     ("app-selected", (PY, "scripts/orchestrator/select_app_tests.py", "<root>")),
     ("openapi-drift", (*PYTEST_APP, "tests_app/test_openapi_drift.py")),
     ("frontend-lint", ("npm", "run", "lint")),
+    ("frontend-format", ("npx", "prettier", "--check")),
     ("frontend-vitest-changed", ("npx", "vitest", "run", "--changed", "origin/main")),
     ("coverage", (PY, "scripts/orchestrator/coverage.py", ".", "--check")),
     ("reach-check", (PY, "scripts/orchestrator/reach_check.py", "--root", ".")),
@@ -46,19 +47,21 @@ EXPECTED = [
 class FakeRunner:
     """Answers by the first word of what runs; records every call (argv, cwd, env)."""
 
-    def __init__(self, dirty="", select_out="0 files\n", fail_at=None, fail_code=1, sha=SHA):
+    def __init__(self, dirty="", select_out="0 files\n", fail_at=None, fail_code=1, changed=""):
         self.calls = []
         self.dirty = dirty
         self.select_out = select_out
         self.fail_at = fail_at
         self.fail_code = fail_code
-        self.sha = sha
+        self.sha = SHA
+        self.changed = changed
 
     def __call__(self, argv, cwd, env, log):
         self.calls.append((list(argv), cwd, dict(env), log))
         text = " ".join(argv)
         if argv[0] == "git":
-            log.write_text(self.dirty if argv[1] == "status" else self.sha + "\n", encoding="utf-8")
+            texts = {"status": self.dirty, "diff": self.changed}
+            log.write_text(texts.get(argv[1], self.sha + "\n"), encoding="utf-8")
             return 0
         log.write_text(self.select_out if "select_app_tests" in text else f"output of {log.stem}\n", encoding="utf-8")
         if self.fail_at and log.stem.startswith(self.fail_at):
@@ -73,6 +76,8 @@ class FakeRunner:
 def tree(tmp_path):
     (tmp_path / "frontend" / "node_modules").mkdir(parents=True)
     (tmp_path / "tests").mkdir()
+    (tmp_path / "frontend" / "src").mkdir()
+    (tmp_path / "frontend" / "src" / "a.vue").write_text("", encoding="utf-8")
     for name in ("test_b.py", "test_a.py", "test_money_outside_engine.py", "conftest.py"):
         (tmp_path / "tests" / name).write_text("", encoding="utf-8")
     return tmp_path
@@ -111,7 +116,8 @@ def test_full_pass_prints_gate_pass_last_and_runs_every_step_in_order(tree, monk
     assert re.fullmatch(r"GATE PASS [0-9a-f]{40}", lines[-1])
     assert sum(1 for ln in lines if ln.startswith("GATE")) == 1
     names = [c[3].stem for c in runner.ran()]
-    expected = [n for n, _ in EXPECTED if n != "clean-tree"]
+    skipped = ("clean-tree", "frontend-format")  # no changed frontend file: no prettier run
+    expected = [n for n, _ in EXPECTED if n not in skipped]
     assert names == expected  # app-selected selected 0 files, so no second app-selected run
     assert any("app-selected:" in ln for ln in lines)
 
@@ -120,7 +126,8 @@ def test_full_pass_prints_gate_pass_last_and_runs_every_step_in_order(tree, monk
 def test_first_failure_stops_and_names_the_step(tree, monkeypatch, step):
     """Attack 3: a non-zero exit reaches the gate unmasked; nothing after the failing step runs."""
     fake_git_dir(monkeypatch, tree)
-    runner = FakeRunner(fail_at=step, select_out="1 files\n" + SELECTED + "\n", fail_code=7)
+    picked = "1 files\n" + SELECTED + "\n"
+    runner = FakeRunner(fail_at=step, select_out=picked, fail_code=7, changed="frontend/src/a.vue\n")
     code, lines = run(tree, runner)
     assert code == 1
     assert lines[-1] == f"GATE FAIL {step}: exit 7"
@@ -211,7 +218,9 @@ def test_tree_changed_by_the_steps_is_not_certified(tree, monkeypatch):
 
 def test_unreadable_head_is_refused(tree, monkeypatch):
     fake_git_dir(monkeypatch, tree)
-    code, lines = run(tree, FakeRunner(sha="not-a-sha"))
+    bad = FakeRunner()
+    bad.sha = "not-a-sha"
+    code, lines = run(tree, bad)
     assert (code, lines) == (REFUSED, ["GATE REFUSED: cannot read the HEAD sha"])
 
 
@@ -334,3 +343,36 @@ def test_default_runner_missing_tool_fails_closed(tmp_path):
     log = tmp_path / "x.log"
     assert gate.default_runner(["no-such-tool-xyz"], tmp_path, {"PATH": ""}, log) == NOT_FOUND
     assert "cannot find" in log.read_text(encoding="utf-8")
+
+
+def test_format_checks_only_changed_files_under_src(tree, monkeypatch):
+    """The format step runs prettier on the changed src files of the right extensions, from frontend/."""
+    for name in ("b.js", "c.txt"):
+        (tree / "frontend" / "src" / name).write_text("", encoding="utf-8")
+    changed = "frontend/src/a.vue\nfrontend/src/b.js\nfrontend/src/c.txt\nfrontend/src/gone.js\nfrontend/e2e/x.js\n"
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed=changed)
+    code, _ = run(tree, runner)
+    assert code == 0
+    calls = [c for c in runner.ran() if c[3].stem == "frontend-format"]
+    want = ["npx", "prettier", "--check", "src/a.vue", "src/b.js"]
+    assert [(c[0], c[1]) for c in calls] == [(want, tree / "frontend")]
+
+
+def test_format_with_no_changed_files_passes_with_zero_files(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    runner = FakeRunner(changed="docs/x.md\n")
+    code, _ = run(tree, runner)
+    assert code == 0
+    assert not [c for c in runner.ran() if c[3].stem == "frontend-format"]
+    assert gate_log(tree, "frontend-format") == "0 files"
+
+
+def gate_log(tree, name):
+    return (tree / ".gitdir" / "ofo-gate" / f"{name}.log").read_text(encoding="utf-8").strip()
+
+
+def test_format_failure_fails_the_gate(tree, monkeypatch):
+    fake_git_dir(monkeypatch, tree)
+    code, lines = run(tree, FakeRunner(changed="frontend/src/a.vue\n", fail_at="frontend-format"))
+    assert (code, lines[-1]) == (1, "GATE FAIL frontend-format: exit 1")

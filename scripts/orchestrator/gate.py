@@ -41,6 +41,10 @@ GATE_FAILED = 1
 TAIL_LINES = 30
 WORKFLOW = "App tests"
 GH_RUN_LIMIT = 10
+# `npm run format:check` is `prettier --check src/` and is red on 93 files of main, so the gate checks only the
+# files this branch changed under frontend/src/, with the extensions prettier handles there.
+FORMAT_DIR = "src/"
+FORMAT_EXT = (".js", ".mjs", ".cjs", ".ts", ".vue", ".css", ".json", ".html", ".md")
 # The database variables the app-selected child must not see (database tests then skip, tests_app/conftest.py).
 DB_ENV = ("DATABASE_URL", "TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "OFO_REQUIRE_DB_TESTS")
 # app-tests.yml "Throwaway broker settings": placeholders set only when absent; BROKER_TOKEN_KEY is fresh per run.
@@ -76,8 +80,8 @@ STEPS: tuple = (
     Step("tests-orchestrator", (*PYTEST, "tests/orchestrator"), ".", "plain"),
     Step("app-selected", (PYTHON, "scripts/orchestrator/select_app_tests.py", ROOT_ARG), ".", "select"),
     Step("openapi-drift", (*PYTEST_APP, "tests_app/test_openapi_drift.py"), ".", "app"),
-    # No format:check step: CI never runs it and it fails on 93 files of main, so it would always be red.
     Step("frontend-lint", ("npm", "run", "lint"), FRONTEND, "node"),
+    Step("frontend-format", ("npx", "prettier", "--check"), FRONTEND, "format"),
     Step("frontend-vitest-changed", ("npx", "vitest", "run", "--changed", "origin/main"), FRONTEND, "node"),
     Step("coverage", (PYTHON, "scripts/orchestrator/coverage.py", ".", "--check"), ".", "plain"),
     Step("reach-check", (PYTHON, "scripts/orchestrator/reach_check.py", "--root", "."), ".", "plain"),
@@ -187,17 +191,36 @@ def parse_selection(lines: list) -> list | None:
     return files
 
 
+def run_format(step: Step, root: Path, runner: Runner, log_dir: Path, env: dict) -> tuple:
+    """prettier --check on the frontend files changed against origin/main; none changed = pass, `0 files`."""
+    log = log_dir / f"{step.name}.log"
+    list_log = log_dir / f"{step.name}-files.log"
+    diff = ["git", "diff", "--name-only", "--diff-filter=ACMR", "origin/main...HEAD", "--", f"{FRONTEND}/"]
+    code = runner(diff, root, env, list_log)
+    if code != 0:
+        return code, list_log.name
+    prefix = f"{FRONTEND}/"
+    files = [n[len(prefix):] for n in tail(list_log, 100000)
+             if n.startswith(prefix + FORMAT_DIR) and n.endswith(FORMAT_EXT) and (root / n).is_file()]
+    if not files:
+        log.write_text("0 files\n", encoding="utf-8")
+        return 0, None
+    return runner([*step.argv, *files], root / step.cwd, env, log), None
+
+
 def run_step(step: Step, root: Path, runner: Runner, log_dir: Path) -> tuple:
     """Return (exit code, extra log name or None). A step that cannot be understood returns non-zero."""
     log = log_dir / f"{step.name}.log"
     cwd = root / step.cwd
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
-    if step.kind == "node" and not (cwd / "node_modules").is_dir():
+    if step.kind in ("node", "format") and not (cwd / "node_modules").is_dir():
         log.write_text("frontend/node_modules is missing: run npm ci in frontend/\n", encoding="utf-8")
         return GATE_FAILED, None
     if step.kind == "app":
         env = app_env(env)
+    if step.kind == "format":
+        return run_format(step, root, runner, log_dir, env)
     code = runner(expand(step, root), cwd, env, log)
     if step.kind != "select" or code != 0:
         return code, None
