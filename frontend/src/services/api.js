@@ -2,6 +2,7 @@
 // Changed: same-origin base '/api' (ADR-012), httpOnly-cookie credentials, NO localStorage token, and an error mapper
 // that shows a neutral message (the REQ-065 error mapping waits for W-024).
 import axios from 'axios'
+import { isSuperseded } from '@/lib/newestWins'
 
 export const NEUTRAL_ERROR = 'Something went wrong. Please try again.'
 
@@ -49,7 +50,8 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(mapError(error))
+  // REQ-119 AC-3: a request the page itself cancelled (newer request of its kind) is 'superseded' - no message, no status.
+  (error) => Promise.reject(isSuperseded(error) ? { superseded: true } : mapError(error))
 )
 
 export default api
