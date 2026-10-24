@@ -6,6 +6,7 @@
 // index view, "Last updated <time>"; the "unavailable" label is not. An open-market LIVE answer is unchanged. Expected texts are hand-computed:
 // 04:31:00 UTC + 5:30 = 10:01:00 IST in the istTime format; the banner wording comes from its one home (sharedStateText).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
@@ -27,7 +28,7 @@ class FakeSocket {
   send() {}
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
 }
 
 const LAST = '2026-10-24T04:31:00+00:00' // Saturday 10:01:00 IST

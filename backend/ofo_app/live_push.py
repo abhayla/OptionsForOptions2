@@ -125,12 +125,14 @@ class StrategyPush:
 
     async def _push(self) -> None:
         self._dirty = False
+        req = self._req  # the one follow message this push is computed for, read once
         try:
             rates = await load_charge_rates()
             ctx = None if self._feed is None else self._feed.ctx
-            stored = await stored_legs_for(self._req, ctx, self._lookup)  # same helper as the REST route
-            margin = await margin_for_request(self._req, ctx, self._margin_source)  # same step as the REST route
-            body = outcome_response(self._req, ctx, stored=stored, rates=rates, margin=margin)
+            stored = await stored_legs_for(req, ctx, self._lookup)  # same helper as the REST route
+            margin = await margin_for_request(req, ctx, self._margin_source)  # same step as the REST route
+            # REQ-133 AC-2: the push echoes the version (seq) of the follow message it was computed for (echo_seq)
+            body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return

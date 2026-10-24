@@ -3,6 +3,7 @@
 // no real waits. Expected delays come from the requirement (attempts 1 s apart for the first 30 s, then 2, 4, 8 ... 30 s),
 // never from running the helper.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -32,7 +33,7 @@ class FakeSocket {
   send(text) { this.sent.push(text) }
   close() { this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: typeof obj === 'string' ? obj : JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 

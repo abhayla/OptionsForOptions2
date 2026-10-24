@@ -885,3 +885,103 @@ async def test_an_ended_session_answers_from_entries_on_the_rest_route_and_the_p
     assert pushed["state"] == "FROM_ENTRIES" and pushed["output_label"] == FROM_YOUR_PRICES
     assert pushed["summary"] == out["summary"] and pushed["status_label"] == out["status_label"]
     assert "leg_quotes" not in pushed
+
+
+
+# ---- REQ-133 AC-3 / AC-4: a just-(re)connected screen waits for its first price; the alarm only after the limit ---------
+
+WAITING = "Waiting for the first live price"  # REQ-133 AC-3's words (catalogue outcome_waiting_first_price)
+
+
+def test_req133_browser_socket_reconnect_before_a_tick_first_push_is_live_not_an_alarm(monkeypatch):
+    """REQ-133 AC-3 step 1 (measured, row 24): the BROWSER socket drops and reconnects before the next tick on the real
+    app's replay feed. The server's feed never dropped, so the first push after the reconnect is the live answer exactly
+    as before the drop: COMPUTED, every leg AVAILABLE with no label, no status label (no false alarm to fix here)."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    body = _replay_request()
+    with client.websocket_connect(live.PATH) as ws:
+        ws.send_json(body)
+        before = ws.receive_json()
+    with client.websocket_connect(live.PATH) as ws:  # the reconnect, no tick in between
+        ws.send_json(body)
+        first = ws.receive_json()
+    for p in (before, first):
+        assert p["state"] == "COMPUTED" and p["status_label"] is None and p["output_label"] is None
+        assert [(leg["health"], leg["label"]) for leg in p["legs"]] == [("available", None)] * 4
+        assert [q["health"] for q in p["leg_quotes"]] == ["available"] * 4
+    assert [leg["ltp"] for leg in first["legs"]] == ["39.15", "12.95", "82.75", "35.8"]  # the 2026-10-08 frames
+    assert first["legs"] == before["legs"]
+
+
+def _feed_rig():
+    """The replay provider with a controllable answer clock (``now[0]``): no wall clock, no sleep."""
+    provider, clock, items = new_provider()
+    held_replay(provider, clock, items)
+    now = [VALUATION]
+    return provider, now, MarketContext(provider, lambda: now[0], RATE)
+
+
+def _answer(provider, ctx) -> dict:
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    return outcome_response(OutcomeRequest.model_validate(request(provider)), ctx).model_dump(
+        mode="json", exclude_unset=True)
+
+
+def _assert_waiting(out: dict) -> None:
+    assert out["state"] == "NOT_CONNECTED" and out["status_label"] == WAITING, out
+    assert [(leg["ltp"], leg["health"], leg["label"]) for leg in out["legs"]] == [(None, None, WAITING)] * 4
+    assert out["table"] is None and out["summary"] is None and "leg_quotes" not in out
+    assert not out.get("output_label")
+
+
+def test_req133_feed_reconnect_before_a_tick_waits_inside_the_limit_then_alarms():
+    """REQ-133 AC-3 / AC-4 (measured, row 24: before the fix the first answer after the FEED reconnected said 'Live market
+    data disconnected ... paused' with every leg 'stale since 09:20' while the feed was connected). Now: inside the feed's
+    one staleness limit (FEED_STALE) with no price frame -> the waiting answer, no number; past it with no frame -> the
+    stale alarm as before; the same clock in both, moved by hand."""
+    from ofo.marketdata.feed_health import FEED_STALE
+
+    provider, now, ctx = _feed_rig()
+    assert _answer(provider, ctx)["state"] == "COMPUTED"
+    provider.on_disconnected(now[0])
+    provider.on_connected(now[0])
+    _assert_waiting(_answer(provider, ctx))  # the first frame after the reconnect: no alarm
+    now[0] = VALUATION + FEED_STALE  # still inside the limit (inclusive)
+    _assert_waiting(_answer(provider, ctx))
+    now[0] = VALUATION + FEED_STALE + datetime.timedelta(milliseconds=1)  # the limit passed with no tick
+    late = _answer(provider, ctx)
+    assert late["state"] == "COMPUTED"
+    assert [leg["health"] for leg in late["legs"]] == ["stale"] * 4 and all(leg["label"] for leg in late["legs"])
+    assert late["status_label"] != WAITING
+
+
+def test_req133_feed_reconnect_then_a_tick_inside_the_limit_is_live():
+    """REQ-133 AC-3 / REQ-114 AC-5: the first price frame after the reconnect ends the wait: the live answer at once."""
+    provider, now, ctx = _feed_rig()
+    provider.on_disconnected(now[0])
+    provider.on_connected(now[0])
+    _assert_waiting(_answer(provider, ctx))
+    now[0] = VALUATION + datetime.timedelta(seconds=1)
+    tick(provider, SELL_CE, "40.05")
+    out = _answer(provider, ctx)
+    assert out["state"] == "COMPUTED" and out["status_label"] is None
+    assert [leg["health"] for leg in out["legs"]] == ["available"] * 4 and out["legs"][0]["ltp"] == "40.05"
+
+
+def test_req133_a_first_connect_closed_market_or_ended_session_never_waits():
+    """REQ-133 AC-3 does not hide a closed market (REQ-114 AC-7) or an ended session (REQ-077 AC-9): they say so."""
+    provider, now, ctx = _feed_rig()
+    provider.on_disconnected(now[0])
+    provider.on_connected(now[0])
+    provider.on_session_ended(now[0])
+    assert _answer(provider, ctx)["state"] == "FROM_ENTRIES"
+    provider, now, ctx = _feed_rig()
+    provider.on_disconnected(now[0])
+    provider.on_connected(now[0])
+    provider.feed._market_open = lambda _now: False  # the calendar says closed, still inside the limit
+    assert _answer(provider, ctx)["status_label"] != WAITING

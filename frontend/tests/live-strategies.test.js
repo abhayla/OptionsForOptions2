@@ -1,6 +1,7 @@
 // W-113 (REQ-049 AC-4, AC-5, AC-6; ADR-008, ADR-077): the Live Strategies page, with a fake socket per card and a mocked
 // API. Expected texts come from the pushes and answers the test hands in; the page must show them untouched.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -53,7 +54,7 @@ class FakeSocket {
   send(t) { this.sent.push(t) }
   close() { this.closed = true; this.readyState = 3 }
   serverOpen() { this.readyState = 1; this.onopen?.() }
-  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(obj) }) }
+  serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
   serverClose() { this.readyState = 3; this.onclose?.() }
 }
 
@@ -145,6 +146,23 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     expect(cards(w)[0].find('[data-testid="live-spot"]').text()).toBe('25123.45')
     expect(cards(w)[0].find('[data-testid="live-leg-ltp"]').text()).toBe('39.15')
     expect(cards(w)[0].find('[data-testid="live-spot-at"]').text()).toBe('19 Oct 2026, 10:15:00 IST')
+  })
+
+  it('REQ-133 AC-2: the card drops a push for an older strategy version and draws the current one', async () => {
+    const w = await mountPage()
+    openAll()
+    const ws = FakeSocket.all[0]
+    const current = JSON.parse(ws.sent.at(-1)).seq
+    expect(Number.isInteger(current) && current >= 1).toBe(true)
+    ws.serverPush(computed({ spot_level: '11111.11', seq: current - 1 })) // a late frame of the previous version
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').exists()).toBe(false)
+    ws.serverPush(computed({ spot_level: '25123.45', seq: current }))
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').text()).toBe('25123.45')
+    ws.serverPush(computed({ spot_level: '11111.11', seq: current - 1 }))
+    await flushPromises()
+    expect(cards(w)[0].find('[data-testid="live-spot"]').text()).toBe('25123.45') // never drawn over the current one
   })
 
   it('AC-4: spot_at null is shown as a dash, never the request time', async () => {
