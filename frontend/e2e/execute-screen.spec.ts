@@ -8,6 +8,7 @@
 // Expected values come from the W-101/W-102 briefs (the recorded ENTRY: BUY 65 NIFTY26O1923650CE LIMIT 3.35, tag
 // OFS1V1L0; net premium -217.75 = 65 x 3.35 paid) and the recorded return (plan 1 filled, 0 mismatches).
 import { test, expect, type Request } from '@playwright/test'
+import { echoSeq } from './support/echoSeq'
 
 const EXECUTE_REPLAY_URL = process.env.EXECUTE_REPLAY_URL || ''
 
@@ -20,17 +21,19 @@ test.describe('Execute screen on the Execute replay API', () => {
 
     // the live socket: answer each follow body with a live outcome for its own legs
     await page.routeWebSocket('**/api/strategies/live', (ws) => {
+      const echo = echoSeq()
       ws.onMessage((message) => {
         const body = JSON.parse(String(message))
+        echo.remember(message)
         // the server's outcome push shape (routes/outcome.py LegOut): every leg key, echoed values, no label = live
-        ws.send(JSON.stringify({
+        ws.send(JSON.stringify(echo.stamp({
           state: 'COMPUTED',
           legs: body.legs.map((l: { instrument_id: string, action: string, lots: number, planned_entry: string, captured_at: string }) => ({
             instrument_id: l.instrument_id, symbol: 'NIFTY26O1923650CE', action: l.action, instrument: 'CE', strike: '23650.00',
             expiry: '2026-10-19', lots: l.lots, lot_size: 65, quantity: 65, planned_entry: l.planned_entry,
             captured_at: l.captured_at, ltp: '3.35', iv: null, health: null, label: null,
           })),
-        }))
+        })))
       })
     })
     const kite: Request[] = []
