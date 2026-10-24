@@ -88,6 +88,11 @@
    "date": "2026-10-24",
    "where": "row 17 checker brief verify-row-17.md (orchestrator-written, session 06fe7549)",
    "evidence": "The brief told the checker 'No open question was answered (Q264 still open)'. Q264 was already DECIDED (ADR-080) before chunk 2 (open-questions.md line 413 at cf30134e); the Opus checker caught it. Sixteenth occurrence: a claim about spec state written without grepping the spec first."
+  },
+  {
+   "date": "2026-10-24",
+   "where": "row 22 builder brief brief-22.md (orchestrator-written, session f1b75d11)",
+   "evidence": "The brief defined the expected move from the IV of the strategy leg nearest the spot as an 'orchestrator, technical' decision; the spec had already decided it: spot x ATM IV x sqrt(calendar days to expiry / 365) (REQ-027, Q254) with ATM IV = mean of the CE and PE IVs at the strike nearest the parity forward (REQ-106 AC-1). The builder built it and the Opus check PASSED it (the checker checked the brief's decision, not the spec). Found by the orchestrator only when spec_similar ran before writing the decision into the spec. Same brief: 'Reference: none - searched expected move, default range' although the Sensibull study was never searched (it has screens 013/020: SD bands, SD table); the owner asked the same hour whether Sensibull is referred to for every new thing. Seventeenth occurrence; a decision labelled 'technical' is the new shape - the label let it skip the spec grep."
   }
  ],
  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
