@@ -73,9 +73,9 @@ class LegIn(BaseModel):
                                          description="ADR-075: the leg's planned entry price, decimal text in rupees")
     captured_at: Optional[str] = Field(default=None, examples=["2026-10-15T11:02:17+05:30"],
                                        description="ADR-075: when the planned entry was captured, ISO 8601 with offset")
-    entry_source: Optional[Literal["typed", "captured"]] = Field(
-        default=None, description="REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is "
-                                  "captured_at); absent or 'captured' otherwise. Only with planned_entry + captured_at")
+    entry_source: Literal["typed", "captured"] | None = Field(
+        default=None, description="REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time "
+                                  "is captured_at); absent or 'captured' otherwise. Only with the pair")
 
     _no_live = model_validator(mode="before")(_refuse_live_state)
 
@@ -113,7 +113,7 @@ class LegOut(ApiModel):
     quantity: int
     planned_entry: Optional[Money] = None  # ADR-075; absent (unset) for a leg saved without one
     captured_at: Optional[datetime.datetime] = None
-    entry_source: Optional[Literal["typed", "captured"]] = None  # REQ-077 AC-4; set with the pair, a pre-0024 leg: captured
+    entry_source: Literal["typed", "captured"] | None = None  # REQ-077 AC-4; set with the pair (pre-0024: captured)
 
 
 class RiskLimitsOut(ApiModel):
@@ -293,7 +293,7 @@ async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
                for i, leg in enumerate(body.legs)]  # ADR-075, before any query
     for i, leg in enumerate(body.legs):  # REQ-077 AC-4: a mark without the pair is refused, never dropped
         if leg.entry_source is not None and entries[i] is None:
-            raise sf.StoredFormError(sf.INVALID_PLANNED_ENTRY, f"leg_{i + 1}.entry_source needs the planned entry pair")
+            raise sf.StoredFormError(sf.INVALID_PLANNED_ENTRY, f"leg_{i + 1}.entry_source needs the entry pair")
     return await store.build_definition(
         db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity, entry)
                               for leg, entry in zip(body.legs, entries)],

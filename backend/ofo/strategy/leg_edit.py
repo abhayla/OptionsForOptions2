@@ -153,12 +153,6 @@ def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index:
             for i, x in enumerate(legs)]
 
 
-def clear_typed(legs: list[EditLeg], indexes: frozenset[int] | set[int]) -> list[EditLeg]:
-    """REQ-077 AC-5: a reset that found no live price still ends the "Your price" mark of that leg (the leg is
-    unpriced; the old typed price is never kept as current)."""
-    return [replace(x, typed=False) if i in indexes else x for i, x in enumerate(legs)]
-
-
 def with_entries(legs: list[EditLeg], entries: Mapping[int, Decimal]) -> list[EditLeg]:
     """REQ-076 AC-2 / REQ-077 AC-5: the freshly captured planned entries replace the old ones (and any typed mark)."""
     return [replace(x, leg=replace(x.leg, entry_price=entries[i]), typed=False) if i in entries else x

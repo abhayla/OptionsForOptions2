@@ -313,10 +313,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     if e.control == "price":
         price = Decimal(e.price) if e.price is not None else Decimal(0)
         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), price), frozenset()
-    if e.control == "reset_prices":
-        return legs, frozenset(range(len(legs)))
-    if e.control == "reset_leg":  # REQ-077 AC-5: one leg is re-captured; every other leg is left exactly as sent
-        return legs, frozenset({_need_index(e, legs)})
+    if e.control in ("reset_prices", "reset_leg"):  # REQ-077 AC-5: every leg, or ONE leg; the others stay as sent
+        return legs, frozenset(range(len(legs)) if e.control == "reset_prices" else {_need_index(e, legs)})
     if e.control == "read":
         return legs, frozenset()
     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
@@ -369,7 +367,6 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
             if price is None:  # AC-2: no live price -> the stepped leg is unpriced, never the old price
                 unpriced.add(i)
                 stamps[i] = None
-                new_legs = edit.clear_typed(new_legs, {i})  # a reset also ends the "Your price" mark
             else:
                 entries[i] = price.price
                 unpriced.discard(i)

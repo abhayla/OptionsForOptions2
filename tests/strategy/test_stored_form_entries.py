@@ -126,9 +126,9 @@ def test_ac5_entry_keys_are_not_live_state_names():
     assert {"ltp", "bid", "ask", "iv"} <= sf.LIVE_STATE_NAMES
 
 
-def _migration_constants() -> dict:
+def _migration_constants(path: Path = MIGRATION) -> dict:
     out = {}
-    for node in ast.parse(MIGRATION.read_text(encoding="utf-8")).body:
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             try:
                 out[node.targets[0].id] = ast.literal_eval(node.value)
@@ -197,14 +197,7 @@ def test_ac4_a_nine_key_captured_leg_reads_back_and_every_other_mark_is_refused(
 
 def test_ac4_the_source_names_equal_the_migrations():
     """AC-4: the domain's key and values are the migration's (a migration never imports application code)."""
-    path = MIGRATION.with_name("0024_typed_entry_mark.py")
-    const = {}
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            try:
-                const[node.targets[0].id] = ast.literal_eval(node.value)
-            except ValueError:
-                pass
+    const = _migration_constants(MIGRATION.with_name("0024_typed_entry_mark.py"))
     assert const["ENTRY_SOURCE_KEY"] == sf.ENTRY_SOURCE_KEY and tuple(const["ENTRY_SOURCES"]) == sf.ENTRY_SOURCES
 
 
@@ -212,5 +205,5 @@ def test_ac4_a_typed_reprice_is_a_change_and_a_typed_leg_never_loses_its_mark_in
     """AC-4/AC-5: replacing a typed price with a captured one at the same price and time is still a change."""
     typed = _typed_entries()
     plain = sf.SavedDefinition(typed.definition, typed.contract_ids,
-                               (sf.LegEntry(Decimal("81.30"), AT),) + typed.entries[1:])
+                               (sf.LegEntry(Decimal("81.30"), AT), *typed.entries[1:]))
     assert json.loads(sf.change_summary(typed, plain)) == [{"kind": "entries_repriced"}]

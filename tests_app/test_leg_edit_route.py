@@ -14,10 +14,12 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.engine.legs import Action, Instrument
 from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
 from ofo.strategy import stored_form
+from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo_app.main import create_app
 from ofo_app.routes import execute, leg_edit, strategies
 from ofo_app.routes.leg_edit import get_capture, get_contract_ids, get_edit_catalogue, get_edit_today, get_freeze_limits
@@ -323,7 +325,7 @@ def test_ac_1_a_negative_index_is_a_validation_error_never_a_leg():
         assert post({"legs": legs(), "edit": edit})[0] == HTTP_UNPROCESSABLE, edit
 
 
-# ---- REQ-077 part 21a: typed price time, Reset Prices, per-leg reset ---------------------------------------------------
+# ---- REQ-077 part 21a: typed price time, Reset Prices, per-leg reset ----------------------------------------------
 RESET = {("PE", 22800): "40.00", ("PE", 23000): "88.15", ("CE", 23400): "93.20", ("CE", 23600): "45.05"}
 
 
@@ -367,7 +369,7 @@ def test_ac_2_a_refused_typed_price_changes_nothing_and_answers_in_catalogue_tex
 
 
 def test_ac_1_a_typed_price_on_an_unpriced_leg_prices_it():
-    """REQ-077 AC-1: a leg that had no live price (planned_entry null) takes the typed price and is no longer unpriced."""
+    """REQ-077 AC-1: a leg with no live price (planned_entry null) takes the typed price and is no longer unpriced."""
     sent = legs()
     sent[1].pop("planned_entry")
     sent[1].pop("captured_at")
@@ -390,13 +392,14 @@ def test_ac_5_reset_prices_recaptures_every_leg_with_one_new_time_and_clears_eve
 
 
 def test_ac_5_reset_leg_changes_one_leg_only():
-    """REQ-077 AC-5 (attack 4): reset of leg 3 re-captures that leg alone (its typed mark ends); the typed leg 1 and the
-    captured legs 2 and 4 keep price, mark and time; the capture was asked about that leg only."""
+    """REQ-077 AC-5 (attack 4): reset of leg 3 re-captures that leg alone (its typed mark ends); the typed leg 1 and
+    the captured legs 2 and 4 keep price, mark and time; the capture was asked about that leg only."""
     sent = legs()
     sent[0] |= {"typed": True, "planned_entry": "99.95"}
     sent[2] |= {"typed": True, "planned_entry": "81.30"}
     seen: list = []
-    status, reply = post({"legs": sent, "edit": {"control": "reset_leg", "index": 2}}, capture=reset_capture(seen=seen))
+    edit_leg_3 = {"control": "reset_leg", "index": 2}
+    status, reply = post({"legs": sent, "edit": edit_leg_3}, capture=reset_capture(seen=seen))
     assert status == HTTP_OK
     assert marks(reply) == [("99.95", "typed", "2026-10-01T09:20:00"), ("86.00", "captured", "2026-10-01T09:20:00"),
                             ("93.20", "captured", "2026-10-01T09:21:28"), ("44.00", "captured", "2026-10-01T09:20:00")]
@@ -404,8 +407,8 @@ def test_ac_5_reset_leg_changes_one_leg_only():
 
 
 def test_ac_5_a_reset_with_no_live_price_leaves_that_leg_unpriced_never_the_old_price():
-    """REQ-077 AC-5 / ADR-020 Q185 (attack 5): the typed leg has no live price on reset: it comes back unpriced, not typed
-    and without a time (never 81.30 as current); the others are re-captured; no number is computed."""
+    """REQ-077 AC-5 / ADR-020 Q185 (attack 5): the typed leg has no live price on reset: it comes back unpriced, not
+    typed and without a time (never 81.30 as current); the others are re-captured; no number is computed."""
     sent = legs()
     sent[2] |= {"typed": True, "planned_entry": "81.30"}
     table = {k: v for k, v in RESET.items() if k != ("CE", 23400)}
@@ -422,3 +425,24 @@ def test_ac_5_reset_leg_needs_its_index_and_a_forged_one_is_a_validation_error()
     """REQ-077 AC-5: reset_leg with no index, or with an index outside the legs, is a plain 422."""
     assert post({"legs": legs(), "edit": {"control": "reset_leg"}})[0] == HTTP_UNPROCESSABLE
     assert post({"legs": legs(), "edit": {"control": "reset_leg", "index": 9}})[0] == HTTP_UNPROCESSABLE
+
+
+def test_ac_4_ac_7_reopening_returns_exactly_the_saved_entries_marks_and_times_and_invents_none():
+    """REQ-077 AC-4/AC-7 (attack 2, the response half): the answer built from a saved definition holds 81.30 typed at
+    its time, a captured leg captured at its own time, and NO price, time or mark for a leg saved without an entry; it
+    reads no market and calls no capture (the function takes only the saved definition)."""
+    day = datetime.date(2026, 10, 27)
+    at = datetime.datetime(2026, 10, 21, 10, 35, 12, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+    later = at + datetime.timedelta(minutes=7)
+    definition = StrategyDefinition("NIFTY", (
+        DefinitionLeg(Action.BUY, Instrument.CE, Decimal("23000"), day, LOT),
+        DefinitionLeg(Action.SELL, Instrument.CE, Decimal("23200"), day, LOT),
+        DefinitionLeg(Action.BUY, Instrument.PE, Decimal("22800"), day, LOT)))
+    saved = stored_form.SavedDefinition(definition, (101, 102, 103), (
+        stored_form.LegEntry(Decimal("81.30"), later, stored_form.SOURCE_TYPED),
+        stored_form.LegEntry(Decimal("30.00"), at), None))
+    legs_out = strategies._definition_out(saved)["legs"]
+    assert [(x.get("planned_entry"), x.get("captured_at"), x.get("entry_source")) for x in legs_out] == [
+        (Decimal("81.30"), later, "typed"), (Decimal("30.00"), at, "captured"), (None, None, None)]
+    assert "planned_entry" not in legs_out[2] and "entry_source" not in legs_out[2]
+    assert "entry_source" in strategies.LegOut.model_fields

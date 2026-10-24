@@ -5093,7 +5093,7 @@
                 "type": "null"
               }
             ],
-            "description": "REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is captured_at); absent or 'captured' otherwise. Only with planned_entry + captured_at",
+            "description": "REQ-077 AC-4: 'typed' when the planned entry is the user's own price (its time is captured_at); absent or 'captured' otherwise. Only with the pair",
             "title": "Entry Source"
           },
           "planned_entry": {

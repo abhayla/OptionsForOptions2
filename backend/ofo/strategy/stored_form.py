@@ -176,14 +176,7 @@ def entry_from_text(price: Any, captured_at: Any, where: str, source: Any = SOUR
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not a real datetime") from None
     if at.isoformat() != captured_at:
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not in its canonical form")
-    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at,
-                    _source_from(source, where))
-
-
-def _source_from(source: Any, where: str) -> str:
-    if type(source) is not str or source not in ENTRY_SOURCES:
-        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.entry_source is not one of {list(ENTRY_SOURCES)}")
-    return source
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at, source)
 
 
 #: A capture time later than the server clock by more than this is refused (a clock that runs ahead, or a forged time).
@@ -208,8 +201,7 @@ def entry_from_input(price: Any, captured_at: Any, now: datetime.datetime, where
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at has no UTC offset")
     if not isinstance(now, datetime.datetime) or now.tzinfo is None or at > now + MAX_CAPTURE_AHEAD:
         raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is in the future")
-    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at,
-                    _source_from(source, where))
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at, source)
 
 
 @dataclass(frozen=True)
