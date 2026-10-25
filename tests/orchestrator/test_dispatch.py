@@ -344,7 +344,7 @@ def test_missing_worktree_is_exit_4_with_setup_steps(env, capsys):
     code, fake = run(env, wt=env["tmp"] / "nowhere")
     out = capsys.readouterr().out
     assert code == dispatch.EXIT_NOT_READY and fake.calls == [] and ledger_lines(env) == []
-    assert "wt-new.ps1" in out and "npm ci" in out and "scripts/orchestrator/gate.py" in out
+    assert "wt-new.ps1" in out and "npm ci" in out and "tools/ci_local.py" in out
 
 
 def test_worktree_on_main_is_exit_4(env, capsys):
@@ -371,7 +371,7 @@ def test_setup_steps_are_printed_on_success_too(env, capsys):
     run(env)
     out = capsys.readouterr().out
     assert "wt-new.ps1" in out and "-Name wt -Branch build/wt -Base origin/main -Purpose row-21c-build" in out
-    assert "frontend && npm ci" in out and "python scripts/orchestrator/gate.py" in out
+    assert "frontend && npm ci" in out and "python tools/ci_local.py" in out
 
 
 CORRUPT = ["not json\n", "[1, 2]\n", '{"row": "21c"}\n', '{"row": 21, "kind": "fix"}\n',

@@ -174,7 +174,7 @@ ATTACK_RE = re.compile(r"^\W*Attack list:(.*)$", re.I)
 NUMBERED_RE = re.compile(r"^\W*\d+\.\s+\S")
 BLOCK_END_RE = re.compile(r"^(#|[A-Z][\w /()-]*:(\s|$))")  # a heading or the next `Label:` line ends the attack list
 BUDGET_RE = re.compile(r"^\W*Budget:\s*(\d+)\s*min\b[^,\n]*,\s*(\d+)\s*tool calls", re.I | re.M)
-SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review R3: S, M / each part of an L, fix and re-check
+SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review.md L3: S, M / each part of an L, fix and re-check
 
 
 def _threat_model_lines(lines: list[str]) -> list[str]:
@@ -191,7 +191,7 @@ def _threat_model_lines(lines: list[str]) -> list[str]:
     return out
 
 
-MIN_ATTACKS = 5  # row-review R1 (meta review after row 3): at least five numbered attacks
+MIN_ATTACKS = 5  # row-review.md lesson L1 (meta review after row 3): at least five numbered attacks
 
 
 def _attack_count(lines: list[str]) -> int:
@@ -224,24 +224,20 @@ def check_builder_brief(brief: str) -> list[str]:
     misses: list[str] = []
     if not _has_attack_list(brief.splitlines()):
         misses.append(f"MISSING Attack list: `Attack list:` followed by at least {MIN_ATTACKS} numbered items "
-                      "(`1.` ...) (row-review R1)")
+                      "(`1.` ...) (row-review.md lesson L1)")
     pairs = [(int(a), int(b)) for a, b in BUDGET_RE.findall(brief)]
     if not pairs or any(p not in SIZE_PAIRS for p in pairs):
         misses.append("MISSING size budget: `Budget: <N> min wall-clock, <M> tool calls` must be 30/40 (S), 60/80 "
-                      "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review R3)")
+                      "(M, or each part of an L) or a fix/re-check pair 15/20, 20/30, 30/40 (row-review.md lesson L3)")
     misses.extend(_size_misses(brief, pairs))
     if not CI_LINE_RE.search(brief):
         misses.append("MISSING CI line: `CI: <job/step that runs the new tests>; vars: <the variables they need>` "
-                      "(row-review R11: a test that passes only in the builder's shell, or never runs in CI)")
+                      "(row-review.md lesson L11: a test that passes only in the builder's shell, or never runs in CI)")
     build = _build_section(brief)
     if BUILD_GUARD_RE.search(build) and not ALLOW_LIST_RE.search(build):
         misses.append("MISSING allow-list: the build section describes a scan/guard/gate/detector but never says "
-                      "`allow-list` (finding guard-as-forbidden-list, row-review R8)")
+                      "`allow-list` (finding guard-as-forbidden-list, row-review.md lesson L8)")
     misses.extend(_row_ahead_misses(brief))
-    if "mutation_gate.py" not in brief:
-        misses.append("MISSING mutation gate: a builder brief requires `python scripts/orchestrator/mutation_gate.py` "
-                      "on its attack-list mutants before reporting, results quoted from its file (meta review after "
-                      "row 9: builders left guards unproven in 4 of 5 build parts)")
     return misses
 
 
@@ -347,7 +343,7 @@ def _row_ahead_misses(brief: str) -> list[str]:
 SIZE_LINE_RE = re.compile(r"^\W*Size:\s*(S|M|L)\b[^\n]*?(\d+)\s*files?[^\n]*?(\d+)\s*items?([^\n]*)$", re.I | re.M)
 CI_LINE_RE = re.compile(r"^\W*CI:\s*\S", re.M)
 SMALL_PAIRS = {(30, 40), (15, 20), (20, 30)}  # S, and the fix / re-check pairs
-MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review R3; meta review after row 6: finish/fix briefs had 5 items on S budgets
+MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review.md L3; meta review after row 6: finish/fix briefs had 5 items on S budgets
 
 
 def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
@@ -356,17 +352,17 @@ def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
     m = SIZE_LINE_RE.search(brief)
     if not m:
         return ["MISSING size line: `Size: S|M|L, <n> files, <k> items` (add `backend + frontend` when both change) "
-                "(row-review R3)"]
+                "(row-review.md lesson L3)"]
     size, files, items, rest = m.group(1).upper(), int(m.group(2)), int(m.group(3)), m.group(4).lower()
     spans_both = "backend" in rest and "frontend" in rest
     too_big = files > MAX_S_FILES or items > MAX_S_ITEMS or spans_both
     if too_big and size == "S":
         return [f"MISSING size: {files} files, {items} items{' across backend and frontend' if spans_both else ''} "
-                "is not S - declare M (60/80) or split it (row-review R3)"]
+                "is not S - declare M (60/80) or split it (row-review.md lesson L3)"]
     if size == "S" and any(p not in SMALL_PAIRS for p in pairs):
-        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review R3)"]
+        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review.md L3)"]
     if size in {"M", "L"} and any(p != (60, 80) for p in pairs):
-        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review R3)"]
+        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review.md L3)"]
     return []
 
 

@@ -22,7 +22,7 @@ step whose subcommand cannot be read (`xargs git ...`, `$g ...`, `eval`, ...) - 
 flight nothing is judged. A verifier's own calls (agent_type ends in `verifier`) pass: the kit guard judges them.
 Fails open on any error of its own.
 
-The orchestrator's writer scripts (record_evidence.py, record_evidence_fp.py, ev_agent.py, gh_issue.py --stage) call
+The orchestrator's writer scripts (ev_agent.py, gh_issue.py --stage) call
 `inflight_block_reason` below, so they refuse to write while in flight. NOT covered: arbitrary shell writes
 (`echo >`, `cp`, `sed -i`, `Set-Content`) and other scripts that run git (land.py, aregen.py).
 """

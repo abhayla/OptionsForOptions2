@@ -110,7 +110,7 @@ def setup_steps(root: Path, worktree: Path, row: str, kind: str) -> list[str]:
         "powershell -NoProfile -File %USERPROFILE%\\.claude\\tools\\wt-new.ps1 "
         f"-Repo {root} -Name {suffix} -Branch build/{suffix} -Base origin/main -Purpose row-{norm(row)}-{kind}",
         f"cd {worktree}\\frontend && npm ci",
-        "python scripts/orchestrator/gate.py",
+        "python tools/ci_local.py",
     ]
 
 
