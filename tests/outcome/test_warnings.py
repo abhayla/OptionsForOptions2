@@ -1,3 +1,4 @@
+# ruff: noqa: C408, PLR0913, RUF001, PLC0415
 """REQ-085 (ADR-185): Builder warnings as engine codes on measured conditions.
 
 AC-2 strategy-level unhedged_short per direction; AC-3 weekend/holiday decay; AC-4 liquidity (spread, no trade, no
@@ -174,6 +175,10 @@ def test_no_trade_for_six_minutes_is_flagged_and_four_is_not():
     assert liquidity(dict(depth=book("10", "10.05"), trade_seconds_ago=240)) == []
 
 
+def test_exactly_five_minutes_since_the_last_trade_is_not_flagged():
+    assert liquidity(dict(depth=book("10", "10.05"), trade_seconds_ago=300)) == []
+
+
 def test_settings_change_the_thresholds():
     assert liquidity(dict(depth=book("9.5", "10.5")), LiquiditySettings(5, Decimal(9))) != []
     assert liquidity(dict(depth=book("10", "10.05"), trade_seconds_ago=240), LiquiditySettings(3, Decimal(10))) != []
@@ -203,6 +208,7 @@ def test_market_event_is_never_emitted():
 
 def test_the_not_live_paths_never_call_the_warnings():
     import inspect
+
     from ofo.outcome import service
     for fn in (service.not_connected, service.not_live, service.waiting_first_price, service.from_entries,
                service._refused):

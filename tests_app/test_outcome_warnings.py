@@ -1,3 +1,4 @@
+# ruff: noqa: PLR2004, E501
 """REQ-085 (W-159, ADR-185): the outcome reply carries strategy and per-leg warning codes with catalogue text.
 
 CORE PROOF (step 1): the low_liquidity inputs - the 5-level depth and the last trade time of each leg - are on the real

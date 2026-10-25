@@ -49,7 +49,7 @@ class LegMarket:
 
 @dataclass(frozen=True)
 class LegLiquidity:
-    """REQ-085 AC-4: what the feed holds for one leg's liquidity, read at the snapshot's clock. ``depth`` None = the feed
+    """REQ-085 AC-4: what the feed holds for one leg's liquidity, read at the clock. ``depth`` None = the feed
     holds no depth for it (a quote or ltp packet, or the feed not healthy): the warning is then "liquidity unknown",
     never a verdict. ``last_trade_ts`` is epoch seconds; None = none yet (or no day values)."""
 

@@ -11,9 +11,9 @@ low_liquidity and liquidity_unknown (per leg), expiry_day (per leg, W-086's own 
 
 Answer states (run-discipline B4 (d)):
 - a leg with no lot size / quantity: the whole list is refused (``None``, logged), never a silent partial list.
-- liquidity: depth stated -> spread / no-bid / no-offer tests; depth absent (quote or ltp packet, feed not healthy) or the
-  leg's quote not AVAILABLE -> ``liquidity_unknown``, never a verdict from stale data (ADR-015); depth empty on both
-  sides -> low_liquidity (no bid or offer); last trade absent -> treated as "no trade" -> low_liquidity only when the
+- liquidity: depth stated -> spread / no-bid / no-offer tests; depth absent (quote or ltp packet, feed not healthy)
+  or the leg's quote not AVAILABLE -> ``liquidity_unknown``, never a verdict from stale data (ADR-015); depth empty on
+  both sides -> low_liquidity (no bid or offer); no trade time -> "no trade" (only when the
   depth is live.
 - calendar: next open stated -> days; a year missing (CalendarError / None) -> no decay code; theta total absent
   (no Greeks) or zero -> no decay code.
@@ -46,6 +46,7 @@ log = logging.getLogger(__name__)
 DEFAULT_NO_TRADE_MINUTES = 5
 DEFAULT_MAX_SPREAD_PERCENT = Decimal(10)
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+MIN_DECAY_DAYS = 2  # AC-3: the next trading day is two or more calendar days away
 _HALF = Decimal(200)  # spread % of mid = (ask - bid) * 200 / (ask + bid)
 
 
@@ -72,11 +73,11 @@ class Warning_:
     text: ExplanationText
 
 
-def _signed(leg: "OutcomeLeg") -> int:
+def _signed(leg: OutcomeLeg) -> int:
     return leg.quantity if leg.action is Action.BUY else -leg.quantity  # type: ignore[operator]
 
 
-def unhedged_directions(legs: Sequence["OutcomeLeg"]) -> tuple[bool, bool]:
+def unhedged_directions(legs: Sequence[OutcomeLeg]) -> tuple[bool, bool]:
     """ADR-185: (rising, falling) - whether the loss has no fixed limit when the index rises / falls. Integer
     quantities only (lots x lot size). A bought option of the same type covers a sold one whatever its expiry or strike
     (ADR-143 (2), the same answer as ``execution.sequence.protects``): the expiry payoff slope above the highest strike
@@ -87,7 +88,7 @@ def unhedged_directions(legs: Sequence["OutcomeLeg"]) -> tuple[bool, bool]:
     return calls + futures < 0, futures - puts > 0
 
 
-def _unhedged(legs: Sequence["OutcomeLeg"], underlying: str) -> list[Warning_]:
+def _unhedged(legs: Sequence[OutcomeLeg], underlying: str) -> list[Warning_]:
     rising, falling = unhedged_directions(legs)
     out = []
     if rising:
@@ -112,14 +113,14 @@ def _decay(valuation: datetime.datetime, theta_total: Decimal | None,
         return []
     nxt_day = nxt.astimezone(IST).date()
     days = (nxt_day - valuation.astimezone(IST).date()).days
-    if days < 2:
+    if days < MIN_DECAY_DAYS:
         return []
     return [Warning_(WarningCode.WEEKEND_HOLIDAY_DECAY, render_explanation(
         "warn_weekend_holiday_decay", days=days, day=_WEEKDAYS[nxt_day.weekday()],
         amount=decay_estimate(theta_total, days)))]
 
 
-def _liquidity(leg: "OutcomeLeg", snapshot: "MarketSnapshot", valuation: datetime.datetime,
+def _liquidity(leg: OutcomeLeg, snapshot: MarketSnapshot, valuation: datetime.datetime,
                settings: LiquiditySettings) -> list[Warning_]:
     unknown = [Warning_(WarningCode.LIQUIDITY_UNKNOWN, render_explanation("warn_liquidity_unknown"))]
     lm = snapshot.legs.get(leg.instrument_id)
@@ -144,7 +145,7 @@ def _liquidity(leg: "OutcomeLeg", snapshot: "MarketSnapshot", valuation: datetim
     return out
 
 
-def _expiry_day(leg: "OutcomeLeg", valuation: datetime.datetime) -> list[Warning_]:
+def _expiry_day(leg: OutcomeLeg, valuation: datetime.datetime) -> list[Warning_]:
     """W-086's rule and wording, unchanged: the same predicate and the same templates as the Execute flags."""
     if leg.symbol is None or not expires_today(leg.expiry, valuation):
         return []
@@ -155,7 +156,7 @@ def _expiry_day(leg: "OutcomeLeg", valuation: datetime.datetime) -> list[Warning
     return [Warning_(WarningCode.EXPIRY_DAY, render_explanation(key, symbol=leg.symbol))]
 
 
-def strategy_warnings(definition, legs: Sequence["OutcomeLeg"], snapshot: "MarketSnapshot",  # noqa: PLR0913
+def strategy_warnings(definition, legs: Sequence[OutcomeLeg], snapshot: MarketSnapshot,  # noqa: PLR0913
                       valuation: datetime.datetime, *, totals_theta: Decimal | None,
                       calendar: Callable[[datetime.datetime], datetime.datetime | None],
                       liquidity_settings: LiquiditySettings) -> tuple[list[Warning_], dict[str, list[Warning_]]] | None:

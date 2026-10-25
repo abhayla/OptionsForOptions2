@@ -539,14 +539,15 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         centre_label=render_explanation("outcome_from_entries_centre", level=centre))
 
 
-def _with_warnings(definition: StrategyDefinition, legs: tuple[OutcomeLeg, ...], snapshot: MarketSnapshot,
+def _with_warnings(definition: StrategyDefinition, legs: tuple[OutcomeLeg, ...], snapshot: MarketSnapshot,  # noqa: PLR0913
                    valuation: datetime.datetime, table: Table, liquidity: LiquiditySettings):
     """REQ-085: the ONE call of ``strategy_warnings`` (a computed answer only). Returns (legs carrying their warnings,
-    the strategy's warnings, the empty-state label). A refused list (a leg without a lot size) leaves all three absent."""
+    the strategy's warnings, the empty-state label). A refused list leaves all three absent."""
     total = next((r for r in table.rows if r.row_id == TOTAL_ROW_ID), None)  # position level, per calendar day
     theta = None if total is None else total.cells.get(ColumnId.THETA)
     got = strategy_warnings(definition, legs, snapshot, valuation,
-                            totals_theta=theta.value if theta is not None and isinstance(theta.value, Decimal) else None,
+                            totals_theta=theta.value if theta is not None and isinstance(theta.value, Decimal)
+                            else None,
                             calendar=next_open, liquidity_settings=liquidity)
     if got is None:
         return legs, None, None
