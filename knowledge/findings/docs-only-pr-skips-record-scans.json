@@ -1,0 +1,23 @@
+{
+ "id": "docs-only-pr-skips-record-scans",
+ "scope": "generic",
+ "class": "A pull request that changes only records (evidence, work items, findings, decisions) is classed docs-only and runs no test suite, but some repo tests read exactly those records (reach check over evidence, tests_required over work items, spec integrity); such a PR merges green and the first full run - the push to main - goes red, blocking every open pull request.",
+ "mechanism": "PR #559 (chunk 4 session A handover) added evidence/W-160/AC-2..4.md with result pass; tools/change_scope.py answered docs-only, so ci.yml's PR test step ran no suite. The push to main ran the full suite: tests/test_reach_check_real.py failed 'reach_check: UNREACHED 21, UNRESOLVED 50, new 3' (UNRESOLVED REQ-136 W-160 AC-2/3/4: frontend-only ACs the check cannot read). Main stayed red for #559, #562, #563 (ci.yml runs 40232012730, 40232512860, 40232919164) and the kit 1.15.0 PR #564 inherited the red.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "main at 7e2153f2 (PR #559), seen on kit-upgrade PR #564",
+  "evidence": "ci.yml on main: 7bd8807a success (run 40226732147), 7e2153f2 failure (run 40232012730); log '1 failed, 7135 passed', FAILED tests/test_reach_check_real.py ... new 3. Local on fix/main-red-reach-w160: the three record tests 11 passed in 13.29s."
+ },
+ "fix": "Instance: three baseline entries (W-160 AC-2/3/4, frontend-only, #532) in scripts/orchestrator/reach_check_baseline.json. Class: .claude/project/ci-docs-only-tests.txt (the kit's own hook for docs-only PRs) lists tests/test_reach_check_real.py, tests/test_tests_required_exist.py and tests/test_spec_integrity.py, so a records-only PR runs the tests that read records (~13 s).",
+ "detection": {
+  "status": "guarded",
+  "checks": ["ci.yml 'Run tests on pull request' docs-only branch running .claude/project/ci-docs-only-tests.txt"],
+  "note": "A new repo test that reads records must be added to the list by hand; a harvest issue to the Factory can propose deriving the list from the repo_scan marker."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-26", "where": "PR #559 -> main", "evidence": "3 new reach hits, main red for 3 merges"}
+ ]
+}
