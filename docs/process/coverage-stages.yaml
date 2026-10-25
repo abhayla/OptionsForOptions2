@@ -452,6 +452,7 @@ issues:
   "#537": 4a  # Chunk 3 deferred: C1 guard bypasses (structural fix), process-tool gaps, row 27b MINORs, local pytest flake
   "#548": 4a  # Kit 1.12.0 follow-up: role-review the builder-brief Attack list line and four standing items
   "#550": 4a  # test_gate_env plants a weaker graft shape than the dangerous one (Tier A round 2 MINOR, PR #546)
+  "#558": 4a  # Row 31 (REQ-085 warnings) PARKED: Builder vs Execute disagree on futures expiry (Tier A round 2 MAJOR)
 
 # Work items whose status is not done.
 work_items:

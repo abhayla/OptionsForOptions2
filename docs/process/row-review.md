@@ -44,6 +44,12 @@ Format: `### <row/W-id> - <title> (<date>)` then one line each: `minutes: <wall-
 `extra rounds: <cause, one sentence each, or none>`, `fix applied: <what changed in a brief, rule, test or tool, and
 where; or none>`.
 
+### W-159 row 31 - REQ-085 Builder warnings and "How this trade works" (2026-10-25/26) - PARKED #558
+- minutes: ~330 working (measure 14:00-14:40; owner question ADR-185 ~14:20-14:50; blocked by the overlap gate until #552 merged ~15:10Z; 31b build x2 - the first lost to a session restart - fix round, two Opus rounds; 31f build + Sonnet check); parked 2026-10-26 ~02:30 IST unmerged (PR #557 draft, branch build/c4-row-31f pushed)
+- rounds: 2 Opus rounds (backend), 1 Sonnet round (frontend, PASS)
+- extra rounds: round 1 - reverse calendar not covered the way Execute sees it, liquidity settings untested, unsigned decay text; round 2 - the same Builder/Execute class for FUTURES (expiry ignored for futures in warnings.py) -> ADR-189 park; one brief error (the orchestrator wrote "covered call -> none", contradicting ADR-185's lone-future case)
+- fix applied: shared `expiry_covers` in execution/sequence.py used by both screens; the parked issue names the futures fix and the three tests that kill the surviving mutants; checker briefs now ask "does Builder == Execute for every leg kind (options AND futures)"
+
 ### W-158 row 30 - REQ-078 Shift / Width / Hedge (2026-10-25)
 - minutes: ~454 (13:33-21:07 IST, merge of #554 at 15:37Z); code merged (#552 backend, #554 frontend); PARTIAL until AC-1's live half (50 edits, p95 <= 1,000 ms on the dev server, owner's live session)
 - rounds: 2 Opus rounds + an independent redesign (backend), 1 Sonnet round (frontend)
