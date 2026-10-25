@@ -1487,6 +1487,50 @@
     "sha256": "6f66686722d95876bc85977232872fb72771236decea29c6dc35e1ae59aaced0",
     "reviewed": "pending owner read"
   },
+  "leg_edit_landing_not_listed": {
+    "sha256": "18a45fa4cc58b8b82f08c4eb1463f225d8689e523211959338fc87080d921ca6",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_landing_not_tradable": {
+    "sha256": "e08b7b617b2976b15baf79a1bf21b0f836fbd3c977b020ff7ace70750a3fc9a4",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_shift_needs_option_leg": {
+    "sha256": "04d6cc0efb779eb1b50e0460764c6eb9b4cfe0379e94bbf6e3cf93a7c546c105",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_not_applicable": {
+    "sha256": "3ebb87b0dd52904848e42ae0bc3951790904e1057edcb050d849f5b361aa1455",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_not_applicable": {
+    "sha256": "74f2eca1688e6022dc5ac315663fe705f6f9265a0377cc782241c0f709935830",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_below_zero": {
+    "sha256": "2499f803810fa82dc012d97222e1a75ef7461a842899ef877e6adca4206a892b",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_below_minimum": {
+    "sha256": "8f7706bb57544fd5ff21c28d3972f80893c9dd4bdbcddec630222928b15a9ec2",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_list_not_loaded_today": {
+    "sha256": "33f067935058022eb65362cab27ca119656157efa260137de4fb02fb57eb4a26",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_needs_two_legs": {
+    "sha256": "ad839321b17231dfde79a599c52441c4ab0e4c0b155dbbede58489a1b48d3b50",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_needs_two_legs": {
+    "sha256": "8f4c3c4ef810c5bcad0cf62f147eb7cf7cfa502aa0a93aa3e75bc40594ca5573",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_no_hedge_legs": {
+    "sha256": "c37978f91ce42eee782618644a1fed12acea81675b4f153f2249ffb4f75d5ce9",
+    "reviewed": "pending owner read"
+  },
   "explanation:ready_made_fixed_rule_label": {
     "sha256": "fd98968c08bd3b7eff12e3471002c112d6064cbf0596c55cdb11361337dd7a27",
     "reviewed": "pending owner read"

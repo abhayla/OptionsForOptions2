@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import DayStatsReason, NotSupported
-from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
@@ -278,9 +278,7 @@ FUTURES_LEASE = WindowLease()  # the listed futures: the same fan-out and socket
 
 # ---- the strikes read -----------------------------------------------------------------------------------------------
 
-def _priced(quote: NormalizedQuote | None) -> bool:
-    """A quote's price counts only when the quote is AVAILABLE (the feed's own health) and the price is above 0."""
-    return quote is not None and quote.health is DataHealth.AVAILABLE and is_live_price(quote.ltp)
+_priced = priced  # the one rule lives beside is_live_price (ofo.marketdata.quote)
 
 
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None) -> PickerCellOut:
