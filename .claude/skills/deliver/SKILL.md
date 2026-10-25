@@ -100,6 +100,10 @@ is not an alarm.
 Batch similar changes: build together, check once. Run `python tools/ci_local.py` once, in the foreground, before
 the first push of a batch (once per batch). The core proof comes first and alone.
 
+When `python tools/measure_tokens.py` shows the main session reading more than 300,000 context tokens per call
+(its context tokens divided by its calls; that report is the counter and 300,000 a starting value to re-tune), write the handover and continue
+in a fresh session.
+
 ## Builder is never the checker
 
 `trace_check` refuses evidence whose `verified_by` is `builder`. CI runs the trace check in default mode, never `--strict`, which would fail every pull request that adds a new, not-yet-delivered requirement.

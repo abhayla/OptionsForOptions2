@@ -35,6 +35,7 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 | `tools/run_lock.py` | `tools/run_lock.py` | `1c8a44782cd47dbc6ccc2fefb6b0032899b3f1dc6248a6d5d1653fab2efc1bbd` |
 | `tools/delivery_metrics.py` | `tools/delivery_metrics.py` | `d1a4084e11a682bdc82ccb93fa5ef8d442a973001a5134d24fa76f6b5cee668c` |
 | `tools/change_scope.py` | `tools/change_scope.py` | `43a6741ac6bb8caf8447bc88c905f1ce4545df0f7f60c2ffd3b84d86c53fbbcf` |
-| `tools/measure_tokens.py` | `tools/measure_tokens.py` | `f3c458a5344b10c9e4d264d9676ef10fb6b219b3b8ffe240ac50595897e63b35` |
+| `tools/measure_tokens.py` | `tools/measure_tokens.py` | `8aa0a6ebb7143e9694c73927cbc63ab74cbd8476eae6a8f168cbdad6a92e5132` |
+| `tools/ci_reds.py` | `tools/ci_reds.py` | `d43949d35f2f9c33acb78d05e3d7e5268bd60dd4e46a7efb8126040995229f0f` |
 | `tools/record_evidence.py` | `tools/record_evidence.py` | `b10b8ae6a11ebfddd7b49e332fed6b9b3ed2ef88e60bf0c2073759ff3b09cf75` |
 | `.claude/kit/model-routing.yaml` | `capabilities/routing/model-routing.yaml` | `35b23b8be6a9544c2513f127f4b8ee9bd4969683dff7e6dd839580db05361d05` |
