@@ -159,6 +159,50 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 28 - REQ-070 Builder history, restore and delete (closed 2026-10-25, session a43256ae, Done; PRs #542 backend, #543 frontend)
+- A user sees: the strategy's activity history on the Builder, closed by default; Restore and an Undo right after a
+  save, offered only where the server says the entry can be restored (never on a rename line, never once the strategy
+  sent a basket); Delete with confirm and Undo in the saved list, only for a strategy that never sent a basket, else
+  "Can't delete: orders were sent".
+- Expected vs actual: ~2 parts x 60 calls planned; actual 28b builder 112-118 calls (budget ~64) over 2 h 12 min incl.
+  a 1 h 49 min local DB run that caught a red before the push (a test column set lacked `deleted_at`); 28f build 88
+  calls, fix 1 (ADR-066 guard flagged the word "history") 45, fix 2 (`restorable` flag) 70, redesign 37. Wall clock
+  06:58-11:24 (~4.4 h).
+- Right: the Opus checks caught both real defects - the screen guessing a server permission, and Restore allowed after a
+  basket that filled nothing (finding browser-infers-a-server-permission); the fix moved the rule into one server
+  helper shared by delete, restore and the history flag. Wrong: the orchestrator accepted the fixer's "closed plan stays
+  restorable" deviation without reading AC-5/AC-6 - that cost round 2 and a redesign (~45 min); the 28b builder skipped
+  the Tier A mutants (the checker ran them); the 28f builder migrated the shared ofo_dev to the unmerged 0026.
+
+### Row 29 - REQ-134 Name, Save As, rename, saved list (closed 2026-10-25, session a43256ae, Done; PRs #541, #544)
+- A user sees: a name asked on first save (1 to 20 characters since ADR-183 - owner Q2 chose Sensibull's 20 over the
+  approved 40; older names up to 40 stay readable), Save As as a copy, rename from the list and the builder, and a
+  searchable saved list with the first leg and "and N more".
+- Expected vs actual: 29b build + finish + fix round + round 2; 29f build; CI red once on two DB migration tests the
+  builder never ran (0025 did not publish NEW_PINS; a round-trip test compared grants across the whole down-chain).
+  Wall clock 03:20-06:58 (~3.6 h); part c (20 characters) built, checked and landed in ~2 h.
+- Right: the name is quoted user text end to end (UserWords minted only in the request layer). Wrong: DB tests outside
+  the row were not run before the push (second occurrence of db-tests-outside-the-row-red-only-in-ci, mechanism due).
+
+### Meta review after row 27 (2026-10-25, session a43256ae - no separate meta agent ran; stated, not hidden)
+- Measured misses: (1) estimates from build time only - owner asked twice why "a few hours" became ~13 h; measured
+  ~3.5 h per row (memory estimate-from-measured-row-time); (2) DB tests outside the row reddened CI on rows 27 and 29;
+  the brief line now makes builders run them, but a local run over the tunnel takes ~1 h 49 min, so the next session
+  runs them in CI through an early draft PR; (3) timed tests (eslint 10 s, vitest 5 s) went red three times under
+  parallel load or a memory-starved PC (finding gate-timed-test-flakes-under-load; one gate at a time is now the rule,
+  a gate lock is due); (4) builders still overrun call budgets (28b 112 vs ~64).
+- Followed: the dispatch command on every brief (it refused a third fix round until a redesign was recorded); checkers
+  only when no builder had to commit; overlap gate before parallel rows (it refused 27/29, so they ran in sequence).
+
+### Row 27 - REQ-135 Clear all legs, days to expiry, prices-as-of stamp, lone futures leg (closed 2026-10-25, session a43256ae, Done; PR #540)
+- A user sees: Clear all with Undo, days to expiry beside each expiry, one "Prices as of" stamp, and reward/risk plus
+  time and intrinsic value for a lone futures leg (bounded strategies stay empty - row 26 owns them).
+- Expected vs actual: 27b Opus PASS, 27f Sonnet PASS (12 mutants killed); CI red once (tests_app/test_pinned_clock.py
+  compared the whole catalogue reply, which gained expiry_days). Wall clock 00:48-03:20 (~2.5 h), overlapping the
+  gate fix #539.
+- Right: scope held to the lone futures case; bounded Reward/Risk left to its owning row. Wrong: the gate shipped in PR
+  1 failed on this PC (#539, ~1 h) and the first CI red was a DB test outside the row.
+
 ### Row 24 - REQ-133 Old live frames dropped; first-price wait (closed 2026-10-24, session f1b75d11, Done; W-152 in_review until PR #531)
 - A user sees: after the server's market-data connection comes back, "Waiting for the first live price" (no numbers)
   for up to the staleness setting instead of a false "data disconnected" alarm with stale prices; a live frame for an
