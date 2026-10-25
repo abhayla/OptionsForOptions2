@@ -446,6 +446,7 @@ issues:
   "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
   "#532": 4a  # Chunk 2 deferred: reach-check hits (23 unreached, 31 unresolved), register spec_change blocking, worktree helpers
   "#537": 4a  # Chunk 3 deferred: C1 guard bypasses (structural fix), process-tool gaps, row 27b MINORs, local pytest flake
+  "#548": 4a  # Kit 1.12.0 follow-up: role-review the builder-brief Attack list line and four standing items
 
 # Work items whose status is not done.
 work_items:
