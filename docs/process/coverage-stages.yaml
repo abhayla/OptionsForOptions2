@@ -321,6 +321,9 @@ decisions:
   ADR-179: 4a           # a user read after a Kite 429 is refused busy unless Kite states a wait that fits (REQ-118)
   ADR-180: S6.7         # one-time manual merge of PR #525: the merge gate cannot read a PR of 300+ files (kit #163)
   ADR-181: S6.7         # chunk 3 may build two process-tool items: the local gate command and the dispatch command
+  ADR-182: 4b           # price protection measured from the market price at Execute, never a typed price (owner Q1, 2026-10-25)
+  ADR-183: S6.1         # typed strategy name 1-20 characters, as in Sensibull; stored names up to 40 readable (owner Q2, 2026-10-25)
+  ADR-184: S6.1         # history/delete readings as in Sensibull; #539 counts as gate item 1 (owner Q3-Q6, 2026-10-25)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
