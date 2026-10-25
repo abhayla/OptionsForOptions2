@@ -1,6 +1,6 @@
-"""PreToolUse hook (AskUserQuestion): refuse the question tool between 22:00 and 08:00 IST (row-review.md lesson L17 by machine).
+"""PreToolUse hook (AskUserQuestion): refuse the question tool between 22:00 and 08:00 IST (row-review.md L17 by machine).
 
-The owner may be away at night; a question box then freezes the run until morning. Refused with the R17 text: write the
+The owner may be away at night; a question box then freezes the run until morning. Refused with the L17 text: write the
 question to docs/process/owner-questions-<date>.md and keep building. Override: env `OFO_QUESTION_NIGHT_OK=1` AND a
 stated reason in the question text, a line `Night reason: <why this cannot wait>`.
 The clock is the IST helper in backend/ofo/timeutil.py (never a typed offset). Exit 0 = allow, 2 = block. Any crash,

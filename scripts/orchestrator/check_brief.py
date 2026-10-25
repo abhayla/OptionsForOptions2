@@ -174,7 +174,7 @@ ATTACK_RE = re.compile(r"^\W*Attack list:(.*)$", re.I)
 NUMBERED_RE = re.compile(r"^\W*\d+\.\s+\S")
 BLOCK_END_RE = re.compile(r"^(#|[A-Z][\w /()-]*:(\s|$))")  # a heading or the next `Label:` line ends the attack list
 BUDGET_RE = re.compile(r"^\W*Budget:\s*(\d+)\s*min\b[^,\n]*,\s*(\d+)\s*tool calls", re.I | re.M)
-SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review.md lesson L3: S, M / each part of an L, fix and re-check
+SIZE_PAIRS = {(30, 40), (60, 80), (15, 20), (20, 30)}  # row-review.md L3: S, M / each part of an L, fix and re-check
 
 
 def _threat_model_lines(lines: list[str]) -> list[str]:
@@ -343,7 +343,7 @@ def _row_ahead_misses(brief: str) -> list[str]:
 SIZE_LINE_RE = re.compile(r"^\W*Size:\s*(S|M|L)\b[^\n]*?(\d+)\s*files?[^\n]*?(\d+)\s*items?([^\n]*)$", re.I | re.M)
 CI_LINE_RE = re.compile(r"^\W*CI:\s*\S", re.M)
 SMALL_PAIRS = {(30, 40), (15, 20), (20, 30)}  # S, and the fix / re-check pairs
-MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review.md lesson L3; meta review after row 6: finish/fix briefs had 5 items on S budgets
+MAX_S_FILES, MAX_S_ITEMS = 5, 4  # row-review.md L3; meta review after row 6: finish/fix briefs had 5 items on S budgets
 
 
 def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
@@ -360,9 +360,9 @@ def _size_misses(brief: str, pairs: list[tuple[int, int]]) -> list[str]:
         return [f"MISSING size: {files} files, {items} items{' across backend and frontend' if spans_both else ''} "
                 "is not S - declare M (60/80) or split it (row-review.md lesson L3)"]
     if size == "S" and any(p not in SMALL_PAIRS for p in pairs):
-        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review.md lesson L3)"]
+        return ["MISSING size budget: a Size S brief takes 30/40 (or a fix pair 15/20, 20/30) (row-review.md L3)"]
     if size in {"M", "L"} and any(p != (60, 80) for p in pairs):
-        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review.md lesson L3)"]
+        return [f"MISSING size budget: a Size {size} brief (or each part of an L) takes 60/80 (row-review.md L3)"]
     return []
 
 

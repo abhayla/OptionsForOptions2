@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 
+MIN_ARGS = 2
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -33,7 +34,7 @@ def resolve_worktree(who: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2:
+    if len(argv) < MIN_ARGS:
         sys.stderr.write(__doc__ + "\n")
         return 2
     wt = resolve_worktree(argv[0])

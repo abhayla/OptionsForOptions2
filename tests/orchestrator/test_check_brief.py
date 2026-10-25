@@ -334,7 +334,7 @@ def test_non_builder_brief_is_unaffected(tmp_path):
 def test_real_row_7_brief_passes_and_row_1_predates_the_rules(capsys):
     d = ROOT / "docs" / "process" / "builder-sequence-briefs"
     assert check_brief.main([str(d / "row-07-REQ-049-data-health.md"), "--root", str(ROOT)]) == 1
-    assert "MISSING mutation gate" in capsys.readouterr().out  # row 7 predates the gate (meta review after row 9)
+    assert "MISSING Reference line" in capsys.readouterr().out  # row 7 predates the Reference rule (ADR-173)
     assert check_brief.main([str(d / "row-01-REQ-001-underlyings.md"), "--root", str(ROOT)]) == 1
     assert "MISSING Attack list" in capsys.readouterr().out
 
@@ -444,7 +444,7 @@ def test_a_builder_brief_without_the_mutation_gate_is_no_longer_refused(tmp_path
     """ADR-189: mutation is a Tier A builder task, not a gate; a brief without `mutation_gate.py` gets no such miss."""
     text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET).replace(
         "Run `python scripts/orchestrator/mutation_gate.py` before reporting.\n", "")
-    code, out = _out(tmp_path, text, capsys)
+    _, out = _out(tmp_path, text, capsys)
     assert "mutation_gate.py" not in text and "MISSING mutation gate" not in out
 
 

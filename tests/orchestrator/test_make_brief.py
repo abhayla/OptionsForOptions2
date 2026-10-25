@@ -17,6 +17,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "orchestrator"))
 import make_brief as mb  # noqa: E402
+import safety_set  # noqa: E402
 
 CHECK = REPO / "scripts" / "orchestrator" / "check_brief.py"
 MAKE = REPO / "scripts" / "orchestrator" / "make_brief.py"
@@ -213,7 +214,6 @@ def test_mutation_line_only_for_tier_a_safety_files(measure):
 
 def test_safety_set_is_imported_not_copied():
     """The brief's SAFETY_SET is the safety_set object itself (one home)."""
-    import safety_set
     assert mb.safety_set.SAFETY_SET is safety_set.SAFETY_SET
     assert mb.SAFETY_SOURCE == "SAFETY_SET in scripts/orchestrator/safety_set.py"
     assert "SAFETY_SET = (" not in (REPO / "scripts" / "orchestrator" / "make_brief.py").read_text(encoding="utf-8")

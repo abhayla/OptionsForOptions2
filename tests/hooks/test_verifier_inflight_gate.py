@@ -381,8 +381,10 @@ def test_ev_agent_refuses_in_flight(snap, evidence_args):
     assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
 
 
+KIT_FAIL = 3
+
+
 def _load_ev_agent():
-    import importlib.util
     spec = importlib.util.spec_from_file_location("ev_agent", SCRIPTS / "ev_agent.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -396,11 +398,11 @@ def test_ev_agent_passes_root_and_reply_to_the_kit_tool_and_its_exit_code(eviden
 
     def fake_run(cmd, **kw):
         calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 3 if cmd[1].endswith("record_evidence.py") else 0, stdout="")
+        return subprocess.CompletedProcess(cmd, KIT_FAIL if cmd[1].endswith("record_evidence.py") else 0, stdout="")
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
     monkeypatch.setattr(mod, "_refuse_if_verifier_in_flight", lambda target: None)
-    assert mod.main([str(wt), args[-1], "--replace", "--dry-run"]) == 3  # a kit failure is never hidden
+    assert mod.main([str(wt), args[-1], "--replace", "--dry-run"]) == KIT_FAIL  # a kit failure is never hidden
     tool_call = calls[-1]
     assert tool_call[1] == str(pathlib.Path(mod.REPO) / "tools" / "record_evidence.py")
     assert tool_call[2:] == [args[-1], "--root", str(wt), "--replace", "--dry-run"]
@@ -411,7 +413,7 @@ def test_ev_agent_fails_closed_when_the_kit_tool_is_missing(evidence_args, monke
     mod = _load_ev_agent()
     monkeypatch.setattr(mod, "REPO", str(wt))
     monkeypatch.setattr(mod, "_refuse_if_verifier_in_flight", lambda target: None)
-    assert mod.main([str(wt), args[-1]]) == 2
+    assert mod.main([str(wt), args[-1]]) == REFUSED
     assert "kit tool missing" in capsys.readouterr().err
 
 
