@@ -185,8 +185,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
 - ADR-181 2026-10-24: Owner-approved amendment of ADR-178's process-tool freeze ("at most one item per chunk on Sonnet"):… [extends ADR-178]
 - ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
-- ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134 AC-1 (SPEC CHANGE: "1 to 40 charac…]
-- ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; clarifies REQ-070 AC-2, AC-5, AC…]
+- ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
+- ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
 
 ## Requirements (131)
 
