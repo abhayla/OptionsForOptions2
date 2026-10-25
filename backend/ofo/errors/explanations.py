@@ -502,7 +502,8 @@ class SignedRupees(SlotType):
 
     @staticmethod
     def format(value: Decimal) -> str:
-        return ("+" if value > 0 else "") + Rupees.format(value)
+        text = Rupees.format(value)
+        return f"+{text}" if value > 0 else text
 
 
 class HourMinute(SlotType):

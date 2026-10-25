@@ -96,9 +96,9 @@ def test_a_second_computation_of_the_same_snapshot_carries_identical_warning_cod
 def _leg_codes(replayed, legs, monkeypatch, minutes, spread):
     """The per-leg warning texts of one computation with the two admin settings overridden (the route reads them
     through ``get_settings``)."""
-    from types import SimpleNamespace
+    from types import SimpleNamespace  # noqa: PLC0415
 
-    from ofo_app.routes import outcome as route
+    from ofo_app.routes import outcome as route  # noqa: PLC0415
     monkeypatch.setattr(route, "get_settings", lambda: SimpleNamespace(
         LIQUIDITY_NO_TRADE_MINUTES=minutes, LIQUIDITY_MAX_SPREAD_PERCENT=Decimal(spread)))
     body = _answer(replayed, legs)

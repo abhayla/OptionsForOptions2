@@ -81,7 +81,7 @@ def _signed(leg: OutcomeLeg) -> int:
 def _uncovered(legs: Sequence[OutcomeLeg], kind: Instrument) -> tuple[int, int]:
     """(sold quantity with no cover, bought quantity left over) for one option type. A bought option covers a sold
     one of the same type whatever its strike, but only if it expires on or after it (``expiry_covers``, the rule
-    Execute's ``protects`` uses). Greedy from the latest sold expiry, using the earliest eligible buy first; integers."""
+    Execute's ``protects`` uses). Greedy from the latest sold expiry, earliest eligible buy first; integers."""
     sold: dict[datetime.date, int] = {}
     bought: dict[datetime.date, int] = {}
     for x in legs:
@@ -97,7 +97,7 @@ def _uncovered(legs: Sequence[OutcomeLeg], kind: Instrument) -> tuple[int, int]:
                 bought[bought_expiry] -= take
                 need -= take
         uncovered += need
-    return uncovered, sum(bought.values())
+    return uncovered, sum(bought[e] for e in bought)
 
 
 def unhedged_directions(legs: Sequence[OutcomeLeg]) -> tuple[bool, bool]:
