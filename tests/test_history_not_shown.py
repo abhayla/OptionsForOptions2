@@ -299,10 +299,10 @@ def frontend_hits(text: str) -> list[str]:
 
 def _frontend_allowed(rel: str, hit: str) -> bool:
     """True when a hit is an exact exempt (file, literal): a word hit in the words list, or a word/path hit whose whole
-    literal (path hits carry their quotes) is in the paths list."""
+    literal (a path hit is the quoted literal: one quote char each side) is in the paths list."""
     if hit.startswith("word "):
         return (rel, hit[5:]) in ALLOWED_FRONTEND_WORDS | ALLOWED_FRONTEND_PATHS
-    return hit.startswith("path ") and len(hit) > 7 and hit[5] in "'\"`" and (rel, hit[6:-1]) in ALLOWED_FRONTEND_PATHS
+    return hit.startswith("path ") and (rel, hit[6:-1]) in ALLOWED_FRONTEND_PATHS
 
 
 def scan_frontend(src: Path) -> dict[str, list[str]]:
@@ -517,6 +517,6 @@ def test_a_concatenated_or_imported_history_in_the_activity_file_is_still_flagge
 
 def test_removing_the_exemption_makes_the_repo_scan_fail_on_the_activity_file(monkeypatch):
     """The exemption is load-bearing and is the only one: with it gone the real activity file is flagged."""
-    assert ALLOWED_FRONTEND_PATHS == {(_ACTIVITY_FILE, _ACTIVITY_LITERAL)}
+    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL)} == ALLOWED_FRONTEND_PATHS
     monkeypatch.setattr(sys.modules[__name__], "ALLOWED_FRONTEND_PATHS", frozenset())
     assert _ACTIVITY_FILE in scan_frontend(FRONTEND_SRC)
