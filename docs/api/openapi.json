@@ -2884,6 +2884,29 @@
               }
             ],
             "title": "Valuation"
+          },
+          "warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WarningOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warnings"
+          },
+          "warnings_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warnings Label"
           }
         },
         "required": [
@@ -5055,6 +5078,33 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "WarningOut": {
+        "additionalProperties": false,
+        "description": "REQ-085 AC-1: one warning code with its reviewed catalogue text (never text built in the browser).",
+        "properties": {
+          "code": {
+            "enum": [
+              "unhedged_short",
+              "weekend_holiday_decay",
+              "low_liquidity",
+              "liquidity_unknown",
+              "expiry_day",
+              "market_event"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "WarningOut",
+        "type": "object"
+      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -5274,6 +5324,20 @@
               }
             ],
             "title": "Symbol"
+          },
+          "warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WarningOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warnings"
           }
         },
         "required": [

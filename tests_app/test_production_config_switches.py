@@ -101,3 +101,16 @@ def test_ac11_the_scan_rejects_an_unlisted_name_an_unresolved_argument_and_a_for
     assert _problems("backend/x.py", base + "import os\nos.environ.get('OFO_HELD_X')\n")
     assert _problems("backend/x.py", base + "held_switches.held_on(held_switches.PLATFORM_STRIKES)\n") == []
     assert _problems(SWITCH_FILE, "import os\nos.environ.get('OFO_HELD_X')\n") == []
+
+
+def test_req085_ac9_production_cannot_turn_on_the_market_event_warning_without_a_recorded_clearance():
+    """REQ-085 AC-9 (ADR-156 (3)): the market_event warning code is emitted only when its held switch is on, and the
+    switch is on in production only with a recorded reference to the cleared events source, licence and cost."""
+    env = {**_example_environment(), "OFO_HELD_MARKET_EVENT_WARNING": "1"}
+    with pytest.raises(hs.HeldSwitchError):
+        hs.require_valid_configuration(env)
+    assert hs.held_on(hs.MARKET_EVENT_WARNING, env) is False  # on without a reference is not on
+    cleared = {**env, "OFO_HELD_MARKET_EVENT_WARNING_REF": "events-source-clearance-2026"}
+    hs.require_valid_configuration(cleared)
+    assert hs.held_on(hs.MARKET_EVENT_WARNING, cleared) is True
+    assert hs.held_on(hs.MARKET_EVENT_WARNING, _example_environment()) is False

@@ -371,6 +371,7 @@ APP_MODELS = (
     "ofo_app.routes.outcome.ScenarioOut",
     "ofo_app.routes.outcome.SummaryOut",
     "ofo_app.routes.outcome.TableOut",
+    "ofo_app.routes.outcome.WarningOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
     "ofo_app.routes.positions.PositionsOut",
