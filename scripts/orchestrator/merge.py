@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from gate_env import no_graft_env
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 UP_TO_DATE = re.compile(r"\balready up[ -]to[ -]date\b", re.IGNORECASE)
@@ -28,8 +30,9 @@ USAGE = "usage: python scripts/orchestrator/merge.py <pr-number> --reviewed-sha 
 def run(cmd: list[str]) -> tuple[int, str]:
     # No UTF-8 environment override: kit 1.11.0/1.12.0 decode subprocess output as UTF-8 and make the kit tools'
     # prints safe on a cp1252 console (kit #154, #159), the cause of PR 473's "staleness unreadable" (2026-10-20).
+    # Grafts are switched off for every child, the kit gate included (gate_env.py).
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",  # noqa: S603
-                       errors="replace", check=False)
+                       errors="replace", check=False, env=no_graft_env())
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
