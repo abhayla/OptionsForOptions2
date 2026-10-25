@@ -328,6 +328,7 @@ decisions:
   ADR-187: S6.7         # kit 1.12.0 taken; merge path ignores git grafts; no UTF-8 prefix; 300-file chunk limit ends
   ADR-188: S6.7         # chunk 4 second process item (overlap gate skips generated files) + audit speed-ups (owner, 2026-10-25)
   ADR-189: S6.7         # kit 1.14.0 lean delivery: small CLAUDE.md, tracker retired, ci_local, one checker per tier
+  ADR-190: S6.7         # kit 1.15.0 taken (ci_reds, measure_tokens --budgets); no saving quoted before 3 measured rows
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
