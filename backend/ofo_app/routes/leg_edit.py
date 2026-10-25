@@ -120,7 +120,8 @@ async def get_edit_today() -> datetime.date:
 
 async def get_list_current() -> bool:
     """AC-10 (ADR-104): whether today's instrument list is loaded (the latest load is at or after this session's publish
-    time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests override it."""
+    time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests
+    override it."""
     from ofo_app import catalogue_picker  # noqa: PLC0415
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
@@ -193,7 +194,8 @@ class EditLegIn(LegIn):
 
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read", "shift", "width", "hedge"]
+    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read",
+                     "shift", "width", "hedge"]
     direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
@@ -283,7 +285,7 @@ class LegEditOut(ApiModel):
     legs: list[EditLegOut]
     controls: ControlsOut
     control_reasons: ControlReasonsOut
-    shift_total: int | None  # index points moved by Shift clicks since the last reset; None = shown as '-' (AC-3, AC-9)
+    shift_total: int | None  # index points moved by Shift clicks since the last reset; None = '-' (AC-3, AC-9)
     shape: Identifier | None  # the matched template id, None = Custom Strategy; a label only (REQ-076 AC-9)
     shape_name: CatalogueText | None  # the matched template's name from the reviewed catalogue; None = Custom Strategy
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry, or no leg is included
@@ -390,8 +392,8 @@ def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
 
 
 def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bool):
-    """REQ-078 AC-2/AC-10: ``{control: the catalogue template id of the reason it is off, or None}`` for shift, width and
-    hedge. Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
+    """REQ-078 AC-2/AC-10: ``{control: template id of the reason it is off, or None}`` for shift, width and hedge.
+    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
     shape does not allow the control (Custom Strategy: Shift only). The same answer gates the moves in
     :func:`apply_edit`, so the browser's word is never trusted."""
     off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
@@ -407,37 +409,79 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     return off
 
 
-def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, *,
-               off: dict[str, str | None] | None = None, hedged: frozenset[int] = frozenset()):
+Gate = tuple[dict[str, str | None], frozenset[int]]  # (the reason each control is off, the Hedge-marked indexes)
+
+
+def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
+    """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
+    e = req.edit
+    if gate is None:  # unreachable: the route always passes it for a move
+        raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
+    off, hedged = gate
+    if off[e.control] is not None:
+        raise LegEditRefused(off[e.control])
+    listing, direction = edit.Listing(cat, today), e.direction or 1
+    if e.control == "shift":
+        moved = edit.shift(listing, req.underlying, legs, direction)
+    elif e.control == "width":
+        moved = edit.width(listing, req.underlying, legs, direction)
+    else:
+        moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
+    return moved.legs, moved.moved
+
+
+def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
-    hedge) needs ``off`` (:func:`_controls`, computed by the server from the legs as sent) and is refused with the
-    reason when its control is off."""
+    hedge) needs ``gate`` (:func:`_controls` and the Hedge marks, computed by the server from the legs as sent)."""
     e, name = req.edit, req.underlying
     if e.control in MOVES:
-        if off is None:  # unreachable: the route always passes it for a move
-            raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
-        if off[e.control] is not None:
-            raise LegEditRefused(off[e.control])
-        listing, direction = edit.Listing(cat, today), e.direction or 1
-        if e.control == "shift":
-            moved = edit.shift(listing, name, legs, direction)
-        elif e.control == "width":
-            moved = edit.width(listing, name, legs, direction)
-        else:
-            moved = edit.hedge(listing, name, legs, hedged, direction)
-        return moved.legs, moved.moved
+        return _apply_move(cat, req, legs, today, gate)
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":
         return edit.apply_multiplier(cat, name, legs, e.multiplier or 1), frozenset()
     if e.control == "price":
         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), e.price), frozenset()
-    if e.control in ("reset_prices", "reset_leg"):  # REQ-077 AC-5: every leg, or ONE leg; the others stay as sent
-        return legs, frozenset(range(len(legs)) if e.control == "reset_prices" else {_need_index(e, legs)})
-    if e.control == "read":
-        return legs, frozenset()
+    if e.control in ("reset_prices", "reset_leg", "read"):  # REQ-077 AC-5: every leg, or ONE leg; read: none
+        return legs, _recaptured(e, legs)
     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
     return moved.legs, moved.moved
+
+
+def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: list[EditLeg],
+               list_current: bool) -> Gate | None:
+    """AC-2/AC-10: for a move, the server decides from the legs as sent whether the control applies; else None."""
+    if req.edit.control not in MOVES:
+        return None
+    template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
+    return _controls(template, hedged, legs, list_current), hedged
+
+
+async def _check_landing(tradable: Tradable, underlying: str, new_legs: list[EditLeg], moved: frozenset[int],
+                         stored_of: dict[int, int]) -> None:
+    """AC-6 'not eligible': the whole move is refused if any landing contract is not tradable from the stored data. A
+    contract with no stored row has no eligibility either: refused (fail closed)."""
+    order = [i for i in sorted(moved) if i in stored_of]
+    verdicts = dict(zip(order, await tradable([stored_of[i] for i in order]), strict=True))
+    for i in sorted(moved):
+        if not verdicts.get(i, False):
+            raise LegEditRefused("leg_edit_landing_not_tradable", leg=edit.leg_ref(underlying, new_legs, i))
+
+
+def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs: list[EditLeg]) -> int | None:
+    """AC-3/AC-9 (ADR-186 (2)): only Shift adds to the total; a manual step, Width or Hedge resets it ('-')."""
+    control = req.edit.control
+    if control == "shift":
+        step = int(edit.strike_step(edit.Listing(cat, today), req.underlying, legs))
+        return (req.shift_total or 0) + (req.edit.direction or 1) * step
+    return None if control in ("step", "width", "hedge") else req.shift_total
+
+
+def _recaptured(e: EditIn, legs: list[EditLeg]) -> frozenset[int]:
+    """The legs whose planned entry is captured again without a move: all (reset_prices), one (reset_leg), none."""
+    if e.control == "reset_prices":
+        return frozenset(range(len(legs)))
+    return frozenset({_need_index(e, legs)}) if e.control == "reset_leg" else frozenset()
 
 
 def _freeze_blocks(cat: Catalogue, underlying: str, legs: list[EditLeg],
@@ -471,28 +515,14 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
     legs = _legs_of(cat, req, today)
-    is_move = req.edit.control in MOVES
-    off, hedged_in = None, frozenset[int]()
-    if is_move:  # AC-2/AC-10: the server decides whether the control applies, from the legs as sent
-        template_in, hedged_in = shape_and_marks(cat, ctx, req.underlying, legs)
-        off = _controls(template_in, hedged_in, legs, list_current)
-    new_legs, moved = apply_edit(cat, req, legs, today, off=off, hedged=hedged_in)
+    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stored_ids = await contract_ids(ids)
-    if is_move:  # AC-6 'not eligible': the whole move is refused if any landing contract is not tradable
-        order = sorted(moved)
-        ok = await tradable([stored_ids[ids[i]] for i in order if ids[i] in stored_ids])
-        eligible = dict(zip([i for i in order if ids[i] in stored_ids], ok, strict=True))
-        for i in order:  # a contract with no stored row has no eligibility either: refused (fail closed)
-            if not eligible.get(i, False):
-                raise LegEditRefused("leg_edit_landing_not_tradable", leg=edit.leg_ref(req.underlying, new_legs, i))
-    shift_total = req.shift_total  # AC-3/AC-9 (ADR-186 (2)): only Shift adds; a manual step, Width or Hedge resets
-    if req.edit.control == "shift":
-        shift_total = (shift_total or 0) + (req.edit.direction or 1) * int(
-            edit.strike_step(edit.Listing(cat, today), req.underlying, legs))
-    elif req.edit.control in ("step", "width", "hedge"):
-        shift_total = None
+    if req.edit.control in MOVES:
+        stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
+        await _check_landing(tradable, req.underlying, new_legs, moved, stored_of)
+    shift_total = _next_shift_total(req, cat, today, legs)
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
     reasons: dict[int, Reason] = {}

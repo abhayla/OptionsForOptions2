@@ -241,7 +241,7 @@ def test_ac_2_a_typed_price_is_stored_and_echoed_with_two_decimals(cat):
         assert str(out[0].leg.entry_price) == "81.30"
 
 
-# ---- REQ-078 (W-158; ADR-186): Shift / Width / Hedge on the real instrument file ----------------------------------------
+# ---- REQ-078 (W-158; ADR-186): Shift / Width / Hedge on the real instrument file ---------------------------------
 
 def max_loss_of(legs) -> D:
     """The engine's max loss of the legs (a positive amount)."""
