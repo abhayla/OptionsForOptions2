@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (185)
+## Decisions (186)
 
-- Older decisions: 145 rows, ADR-1..ADR-146 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073; refines ADR-109]
+- Older decisions: 146 rows, ADR-1..ADR-149 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-150 2026-10-21: ADR-055 (1) is read as follows. [refines ADR-055]
 - ADR-151 2026-10-21: SPEC CHANGE to ADR-120 (1). [supersedes ADR-120; refines REQ-034]
 - ADR-152 2026-10-21: For every user-facing feature triaged in the 2026-10-21 master register, the default is to behave t… [refines ADR-033]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
 - ADR-188 2026-10-25: (1) Owner-approved exception to ADR-178's "at most one item per chunk": chunk 4 carries a second pr… [extends ADR-178; extends ADR-181]
 - ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
+- ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
 
 ## Requirements (131)
 

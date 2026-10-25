@@ -2,7 +2,7 @@
 
 # Findings index
 
-119 finding(s), generated from `knowledge/findings/*.json`.
+120 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -36,6 +36,7 @@
 | domain-test-imports-app-package | A test in the domain suite (`tests/`, standard library + domain package only) that imports the application package runs the application's import-time side effects - here the W-024 root log redaction - inside the shared test process, so later, unrelated tests in the same run see altered global state (log records without exc_info) and fail only in the combined order CI uses, never when run alone. | unguarded | occurrences, scope, spec_ref |
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | scope, spec_ref |
 | duplicate-test-basename-collision | Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time. | guarded | scope, spec_ref |
+| e2e-stand-in-drifts-from-server | A Playwright spec that replaces a server route or socket with a hand-written stand-in keeps the server's OLD behaviour when the server changes (a new protocol field, an edit the route now applies); the page, written against the new server, then never reaches the state the spec waits for, and the only catch is the Playwright CI job after the push. | unguarded | occurrences, scope, spec_ref |
 | engine-input-chosen-per-caller | When each caller of an engine function chooses the input it passes (which price an IV is solved from, which time, which spot), two screens show two different engine numbers for the same thing at the same instant; each caller's own tests pass because none compares the callers with each other. | unguarded | occurrences, scope, spec_ref |
 | fallback-time-claims-missing-data | A 'last updated <time>' label that falls back to the current time when no data was ever received tells the user data arrived when none did; the honest label for never-received data is a different message, not a time. | unguarded | occurrences, scope, spec_ref |
 | fill-not-exactly-once | Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills. | unguarded | occurrences, scope, spec_ref |

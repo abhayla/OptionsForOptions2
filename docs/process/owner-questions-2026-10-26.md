@@ -55,4 +55,57 @@ Options:
 - **row-review.md is the record (Recommended).** ADR-189 wins; nothing to rebuild; the goal counts as met.
 - Restore docs/process/adr-178-tracker.md with these values (~15 min docs PR), against ADR-189.
 
+Answer: decided by the spec, not asked (kit 1.15.0 session, 2026-10-26 ~03:00 IST). ADR-189 (merged 7bd8807a at ~01:05)
+is the owner's later decision and retires the tracker; row-review.md is the record. The owner's 10-26 prompt says "Ask
+me only what the spec cannot answer". Overturn by answering "restore the tracker".
+
+## Q3: may the project opt in to the kit's docs-only CI test list (three record tests, ~13 s per docs PR)?
+
+Business call: ADR-187 (5) records your instruction "do NOT opt in to the docs-only CI test list (1.11.0 item 6) unless
+the owner says so"; only you lift it.
+Spec basis: ADR-187 (5); ADR-189 (lean CI); finding docs-only-pr-skips-record-scans.
+
+Facts: PR #559 (records only) added passing evidence for W-160 AC-2..4; a docs-only PR runs no test suite, so
+tests/test_reach_check_real.py first ran on the push to main and failed ("new 3"). Main stayed red through #559, #562
+and #563, and the kit 1.15.0 PR #564 inherited it. PR #565 fixes the instance (three baseline entries). The class fix is
+one project file, `.claude/project/ci-docs-only-tests.txt`, listing tests/test_reach_check_real.py,
+tests/test_tests_required_exist.py and tests/test_spec_integrity.py: measured 11 passed in 13.29 s locally.
+
+Options:
+- **Opt in with those three tests (Recommended).** +13 s per docs PR; a records PR can no longer turn main red this way.
+- Stay out (ADR-187 (5) as is). The next records PR that trips a record test turns main red again and blocks every PR
+  until someone notices.
+
+Answer: (pending)
+
+## Q4: the step 3 RCA shows classes local app checks would catch; reverse ADR-189 for those triggers only?
+
+Business call: you said "Reversing ADR-189 is my call: if the RCA says so, ask me."
+Spec basis: ADR-189 ("the ruff ratchet, app tests and OpenAPI compare now run in CI"); docs/process/ci-reds-2026-10-26.md;
+findings db-tests-outside-the-row-red-only-in-ci, e2e-stand-in-drifts-from-server, new-answer-state-without-reader-sweep.
+
+Facts (11 red App-tests PR runs since 10-24, ci-reds-2026-10-26.md):
+- 7 database-test reds. 3 named cases were tests the change broke in OTHER files (gate_slots -> test_identifier_and_slots,
+  catalogue reply -> test_pinned_clock, migration 0025 -> migration round-trip + shape pins). The selector missed 2 of
+  the 3 (domain module, migration) and is fixed on fix/app-test-selector-misses; it already named test_pinned_clock.
+  The bigger cause: the real selections were 17, 55 and 81 files, over atool.py's 12-file cap (it refuses and defers to
+  CI), and under ADR-189 nobody runs them before the push anyway. So a selector fix alone prevents none of the 3.
+- 5 Playwright reds: 1 alias import (now fixed by a static check, no app test needed), 2 new answer state (a repo test,
+  no app test needed), 2 e2e stand-ins left on the server's old behaviour: only running those specs catches them.
+- No red since 10-24 was lint, format, OpenAPI or build, so ADR-189's general choice still holds.
+- Cost of a red: median 9.0 min CI plus a fix round. Cost of the targeted local run: unmeasured (DB tests go through the
+  tunnel to the VPS that also serves IPODhan production, so targeted files only).
+
+Options:
+- **Targeted only, in a CI job not on this PC (Recommended).** Keep ADR-189 for every other change. When a diff touches
+  a migration, a route reply or a socket message, the builder pushes a draft PR first; CI's app tests (database + the
+  Playwright specs) are the check before review, and the row's checker waits for that run. No database tests over the
+  tunnel to the VPS that serves IPODhan production (55-81 files is too heavy there). Cost: one CI run (~9 min) moved
+  before review instead of after; measured over the next 3 rows (step 5).
+- Targeted, locally: the builder runs the selected database files through db_run_fresh.py (17-81 files on the
+  production host's database) and the stand-in Playwright specs. Not recommended: it loads the production host.
+- Keep ADR-189 as is: CI stays the only catch; rows 27, 29, 30 and 31b each paid at least one red database-test run.
+- Full reversal: every push runs the local app gate (the ~8-minute ADR-188 gate). Not recommended: it was removed for
+  its cost, and the RCA shows no red it would catch beyond the targeted set.
+
 Answer: (pending)
