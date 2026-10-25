@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
-from _migration_replay import VERSIONS, round_trip_sql
+from _migration_replay import VERSIONS, later_than, recorded, round_trip_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -214,11 +214,16 @@ async def _grants(conn) -> list:
 async def test_the_app_role_gains_exactly_insert_and_update_on_name(admin_engine):
     """ADR-048: against the state before 0025, the only new grants are INSERT and UPDATE on strategies.name (plus the
     table-level SELECT every column inherits); the allow-list 'post' check inside each step passes."""
-    own_down, own_up, down, up = round_trip_sql(MIGRATION)
+    own_down, own_up, _, _ = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]
+    later_down = [sql for n in reversed(later_than(MIGRATION)) for sql in recorded(n, "downgrade")]
+    later_up = [sql for n in later_than(MIGRATION) for sql in recorded(n, "upgrade")]
+    down, up = own_down, own_up + later_up
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
+            for sql in later_down:  # the snapshot is taken AT 0025: a later migration's grants are not this one's
+                await conn.execute(text(sql))
             now = await _grants(conn)
             for sql in down:
                 await conn.execute(text(sql))
@@ -227,7 +232,7 @@ async def test_the_app_role_gains_exactly_insert_and_update_on_name(admin_engine
             assert set(now) - set(before) == {("table", "strategies", "SELECT", "name"),
                                               ("table", "strategies", "INSERT", "name"),
                                               ("table", "strategies", "UPDATE", "name")}
-            for sql in up:
+            for sql in own_up:
                 await conn.execute(text(sql))
             assert await _grants(conn) == now
         finally:
