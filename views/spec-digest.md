@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (181)
+## Decisions (182)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -147,7 +147,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: N… [refines REQ-056]
 - ADR-141 2026-10-20: (1) The recorded action "Use Zerodha's numbers fo… [refines ADR-137]
 - ADR-142 2026-10-20: (1) The recovery actions of ADR-136/137 refuse wi… [refines ADR-136]
-- ADR-143 2026-10-20: (1) When the engine returns no worst-case loss for a basket (for example legs on different expiries… [extends ADR-140]
+- ADR-143 2026-10-20: (1) When the engine returns no worst-case loss fo… [extends ADR-140]
 - ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
@@ -187,6 +187,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
 - ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
 - ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
+- ADR-185 2026-10-25: The builder's unhedged_short warning (REQ-085) is decided per STRATEGY, not per leg: it fires once… [amends REQ-085]
 
 ## Requirements (131)
 
