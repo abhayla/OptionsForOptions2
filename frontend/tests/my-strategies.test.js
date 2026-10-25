@@ -122,6 +122,22 @@ const list = (...rows) => {
 }
 const names = (w) => w.findAll('[data-testid="row-name"]').map((n) => n.text())
 
+describe('ADR-183: a name stored with more than 20 characters opens in full and shows the over-limit hint', () => {
+  it('rename opens a 26-character name whole, the hint reads 26/20 in the warning colour, and a short name reads in the muted colour', async () => {
+    const longName = 'y'.repeat(26)
+    list(named(7, longName))
+    const w = await open()
+    await w.get('[data-testid="rename-7"]').trigger('click')
+    expect(w.get('[data-testid="rename-input"]').element.value).toBe(longName)
+    expect(w.get('[data-testid="rename-input"]').attributes('maxlength')).toBe('20')
+    expect(w.get('[data-testid="rename-count"]').text()).toBe('26/20')
+    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-warn')
+    await w.get('[data-testid="rename-input"]').setValue('y'.repeat(20))
+    expect(w.get('[data-testid="rename-count"]').text()).toBe('20/20')
+    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-ink-muted')
+  })
+})
+
 describe('REQ-134 AC-4: each row shows its name, underlying, first leg and "and N more", last saved and the tracked state', () => {
   it('shows every field from the list row; the name has no API quotes', async () => {
     list(named(7, 'NIFTY Oct condor'))
@@ -191,7 +207,7 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
     const before = w.get('[data-testid="strategy-row"]').text().replace('NIFTY Oct condor', '')
     await w.get('[data-testid="rename-7"]').trigger('click')
     expect(w.get('[data-testid="rename-input"]').element.value).toBe('NIFTY Oct condor')
-    expect(w.get('[data-testid="rename-input"]').attributes('maxlength')).toBe('40')
+    expect(w.get('[data-testid="rename-input"]').attributes('maxlength')).toBe('20')
     await w.get('[data-testid="rename-input"]').setValue('Condor wider')
     await w.get('[data-testid="rename-form"]').trigger('submit')
     await flushPromises()
@@ -205,7 +221,7 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   })
   it('an empty name is refused by the API; its message is shown and the row keeps its old name', async () => {
     serve()
-    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 40 characters, then save again.' }
+    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     patchAnswer = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await open()
     await w.get('[data-testid="rename-7"]').trigger('click')

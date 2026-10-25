@@ -3945,7 +3945,7 @@
           },
           "name": {
             "default": "New Strategy",
-            "description": "1 to 40 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)",
+            "description": "1 to 20 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)",
             "title": "Name",
             "type": "string"
           },

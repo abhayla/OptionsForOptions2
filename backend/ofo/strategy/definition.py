@@ -423,10 +423,12 @@ def _render_items(items: object) -> tuple:
     return tuple(out)
 
 
-#: REQ-134 AC-1: a saved strategy's name is 1..40 characters after trimming, on one line. The one home of the rule: the
-#: request door (stored_form.check_strategy_name), the history item below and migration 0025's CHECKs (pinned equal by
-#: tests_app/test_migration_0025_strategy_name.py) all read these.
+#: REQ-134 AC-1 / ADR-183: a name a user TYPES is 1..20 characters after trimming, on one line (STRATEGY_NAME_TYPED_MAX,
+#: read only by the request door stored_form.check_strategy_name). A name already STORED may be up to 40
+#: (STRATEGY_NAME_MAX: the read path shown_name, the history item below and migration 0025's CHECKs, pinned equal by
+#: tests_app/test_migration_0025_strategy_name.py), so a strategy saved before ADR-183 still lists and opens.
 STRATEGY_NAME_MAX = 40
+STRATEGY_NAME_TYPED_MAX = 20
 NAME_EMPTY = "empty"
 NAME_INVALID = "invalid"
 #: One line of text: no control character and no line or paragraph separator (U+2028, U+2029).

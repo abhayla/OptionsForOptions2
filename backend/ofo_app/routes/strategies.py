@@ -98,7 +98,7 @@ class StrategyCreateIn(StrategyIn):
     only so an older client keeps working; it then holds the default (``sf.DEFAULT_STRATEGY_NAME``)."""
 
     name: str = Field(default=sf.DEFAULT_STRATEGY_NAME,
-                      description="1 to 40 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)")
+                      description="1 to 20 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)")
 
 
 class StrategyNameIn(BaseModel):

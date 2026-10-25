@@ -892,9 +892,9 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_name_empty", _SV, 430,
           "Give the strategy a name",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
-          "Type a name of 1 to 40 characters, then save again."),
+          "Type a name of 1 to 20 characters, then save again."),
     _gate("strategy_name_invalid", _SV, 431,
-          "A strategy name is 1 to 40 characters on one line.",
+          "A strategy name is 1 to 20 characters on one line.",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
           "Shorten the name or remove line breaks and control characters, then save again."),
     # W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket is never deleted.

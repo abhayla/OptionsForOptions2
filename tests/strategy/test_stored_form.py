@@ -293,11 +293,12 @@ from ofo.errors import explanations  # noqa: E402
 from ofo.errors.explanations import UserWords  # noqa: E402
 
 
-@pytest.mark.parametrize("typed,stored", [("a", "a"), ("x" * 40, "x" * 40),
+@pytest.mark.parametrize("typed,stored", [("a", "a"), ("x" * 20, "x" * 20),
+                                          (" " + "x" * 20 + " ", "x" * 20),
                                           ("  NIFTY Oct condor  ", "NIFTY Oct condor"),
                                           ("You should buy now", "You should buy now"),
                                           ("<b>bold</b>", "<b>bold</b>"), ("New Strategy", "New Strategy")])
-def test_req134_ac1_a_name_of_1_to_40_characters_after_trimming_is_accepted_as_the_users_words(typed, stored):
+def test_req134_ac1_a_name_of_1_to_20_characters_after_trimming_is_accepted_as_the_users_words(typed, stored):
     name = sf.check_strategy_name(typed)
     assert type(name) is UserWords and str.__str__(name) == stored
 
@@ -309,8 +310,8 @@ def test_req134_ac1_an_empty_name_is_refused_with_the_empty_code(typed):
     assert refused.value.code == sf.STRATEGY_NAME_EMPTY
 
 
-@pytest.mark.parametrize("typed", ["x" * 41, "x" * 5000, "a\nb", "a\x00b", "a\x7fb", "a\x85b", None, 5, ["a"], b"a"])
-def test_req134_ac1_a_name_over_40_characters_with_a_control_character_or_not_text_is_refused(typed):
+@pytest.mark.parametrize("typed", ["x" * 21, "x" * 40, "x" * 5000, "a\nb", "a\x00b", "a\x7fb", "a\x85b", None, 5, ["a"], b"a"])
+def test_req134_ac1_a_name_over_20_characters_with_a_control_character_or_not_text_is_refused(typed):
     with pytest.raises(sf.StoredFormError) as refused:
         sf.check_strategy_name(typed)
     assert refused.value.code == sf.STRATEGY_NAME_INVALID
@@ -387,3 +388,15 @@ def test_req134_the_stored_name_is_shown_back_only_as_quoted_user_text():
     for bad in ("", " x", "x" * 41, None):
         with pytest.raises(sf.StoredFormError):
             sf.shown_name(bad)
+    # ADR-183: a name stored before the typed limit of 20 (up to 40) is still shown; only the request door is stricter
+    assert str(sf.shown_name("x" * 26)) == '"' + "x" * 26 + '"'
+    assert str(sf.shown_name("x" * 40)) == '"' + "x" * 40 + '"'
+
+
+def test_adr183_the_typed_limit_is_20_and_the_stored_limit_stays_40():
+    from ofo.strategy import definition
+    assert (definition.STRATEGY_NAME_TYPED_MAX, definition.STRATEGY_NAME_MAX) == (20, 40)
+    assert str.__str__(sf.check_strategy_name("x" * 20)) == "x" * 20
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name("x" * 21)
+    assert refused.value.code == sf.STRATEGY_NAME_INVALID and "20" in str(refused.value)

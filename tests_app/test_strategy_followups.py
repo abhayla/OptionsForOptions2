@@ -215,7 +215,7 @@ STRIKES = (_ok("22800", "22800.50", "22800.500", "0.01", "999999999999999999", "
            + _past("0", "0.00", "22800.005", "22800.001", "1000000000000000000", "0.001")
            + _shape("-1", "1E+2", "022800", "22 800", None, 22800))
 _NO_STRIKE = {k: v for k, v in GOOD_LEG.items() if k != "strike"}
-_NAME_MAX = definition_module.STRATEGY_NAME_MAX  # REQ-134 AC-1: a name is 1..40 trimmed characters, one line
+_NAME_MAX = definition_module.STRATEGY_NAME_MAX  # REQ-134 AC-1: a STORED name is 1..40 trimmed characters, one line (typed: 20, ADR-183)
 _NAME_OK = _ok("a", "x" * _NAME_MAX, "You should buy now")
 _NAME_PAST = _past("", "x" * (_NAME_MAX + 1), " padded", "padded ", "two\nlines")
 #: slot -> (target, how the value lands, cases). target "doc" = a definition (strategies AND strategy_history);
