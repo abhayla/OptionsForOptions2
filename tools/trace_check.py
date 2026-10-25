@@ -13,6 +13,10 @@ For each requirement under ROOT/spec/requirements/REQ-###.md, checks:
   - each acceptance criterion is named in the `tests_required` of at least one work
     item that links this requirement (an entry counts as naming AC-<n> when it is
     exactly "AC-<n>" or starts with "AC-<n>:");
+  - REQ-057 AC-3: a current-fingerprint evidence file with `result: fail` makes the criterion incomplete (`<AC>
+    FAILED (evidence/<W>/<AC>.md, <date>)`) unless a valid pinned pass for the current fingerprint, in any owning
+    item, has a strictly newer `date` (same date: the fail wins; a fail with no date is newest, a pass with none
+    oldest); a done work item whose tests_required names a path that does not exist FAILS (a not-done one warns);
   - that acceptance criterion has an evidence file at
     ROOT/evidence/<W-id>/<AC-id>.md (the work item that named it), with
     `result: pass` and a `verified_by` that is present and differs from `builder`
@@ -255,6 +259,56 @@ def _ev_rel(work_id: str, ac_id: str) -> str:
     return f"evidence/{work_id}/{ac_id}.md"
 
 
+def _evidence_date(value: Any) -> datetime.date | None:
+    """The evidence `date` as a date, or None when absent or unparseable (YAML loads 2026-10-08 as a date object)."""
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _fail_note(data: dict[str, Any], req: Requirement, ac_id: str) -> str | None:
+    """REQ-057 AC-3 (round 2): None when this evidence file is not a current fail; else '' for a well-formed
+    `result: fail` or a note naming what is malformed. Fail closed: anything but exactly `pass` is a fail (FAIL,
+    failed, 'fail ', empty, missing); a fail with no ac_fp counts as current; a fail whose ac_fp is present and
+    differs from the current one is stale and ignored; the requirement compares case-insensitively and a fail bound
+    to another requirement is reported as a failure by the caller's pass path, never as this criterion's fail."""
+    result = data.get("result")
+    if result == "pass":
+        return None
+    bound = data.get("requirement")
+    if bound is not None and str(bound).strip().upper() != req.id.upper():
+        return None
+    notes: list[str] = []
+    if "ac_fp" in data and data.get("ac_fp") is not None:
+        fp = str(data.get("ac_fp")).strip().lower()
+        if fp != req.ac_fps[ac_id].lower():
+            return None
+        if data.get("ac_fp") != req.ac_fps[ac_id]:
+            notes.append("ac_fp spelled differently")
+    else:
+        notes.append("no ac_fp")
+    if result != "fail":
+        notes.append(f"malformed result {result!r}")
+    if bound is None:
+        notes.append("no requirement")
+    return ", ".join(notes)
+
+
+def _fail_is_superseded(fail_date: datetime.date | None, pass_dates: list[datetime.date | None]) -> bool:
+    """REQ-057 AC-3: a current-fingerprint fail stands unless a current-fingerprint pass is STRICTLY newer. Same date:
+    the fail wins. A fail with no parseable date is the newest (nothing supersedes it); a pass with none is the oldest."""
+    if fail_date is None:
+        return False
+    return any(pd is not None and pd > fail_date for pd in pass_dates)
+
+
 def _renumber_hint(req: Requirement, ac_id: str, fp: str) -> str:
     """AC-3: a stale fingerprint that equals ANOTHER current criterion's is a hint, never a re-attachment."""
     others = [a for a, f in req.ac_fps.items() if f == fp and a != ac_id]
@@ -286,12 +340,24 @@ def check_requirement(root: Path, req: Requirement, work_items: list[WorkItem],
         state = None          # None | "unpinned" | "fresh"
         ac_reason = None
         stale_lines: list[str] = []
+        fails: list[tuple[datetime.date | None, str, str]] = []  # current fail evidence (date, rel, note)
+        pass_dates: list[datetime.date | None] = []             # dates of valid, pinned, current-fingerprint passes
         for wi in owning_items:
             rel = _ev_rel(wi.id, ac_id)
             data, err = load_evidence(root, wi.id, ac_id)
             if err is not None:
+                if err != "no evidence file":            # a file that exists but cannot be read may hold a fail
+                    fails.append((None, rel, f"{ac_id} {err}"))
                 ac_reason = f"{ac_id} {err} (work item {wi.id}, {rel})"
                 continue
+            fail_note = _fail_note(data, req, ac_id)     # the file in the owner's folder decides, not its own fields
+            if fail_note is not None:
+                fails.append((_evidence_date(data.get("date")), rel, fail_note))
+            elif data.get("result") != "pass" and data.get("requirement") is not None \
+                    and str(data.get("requirement")).strip().upper() != req.id.upper():
+                res.failures.append(f"{req.id} {ac_id}: {rel} records a non-pass result for requirement "
+                                    f"{data.get('requirement')!r}, not {req.id} — evidence proves only the "
+                                    f"requirement it names")
             if data.get("ac") != ac_id:
                 ac_reason = f"{ac_id} evidence file's ac field does not match ({wi.id})"
                 continue
@@ -351,9 +417,15 @@ def check_requirement(root: Path, req: Requirement, work_items: list[WorkItem],
                 res.stale.append((ac_id, rel, hint))
                 continue
             state = "fresh"
+            pass_dates.append(_evidence_date(data.get("date")))
 
-        if stale_lines:
-            res.reasons.extend(stale_lines)
+        failed_lines = [
+            f"{ac_id} FAILED ({rel}, {fd.isoformat() if fd else 'no date'}{('; ' + note) if note else ''})"
+            for fd, rel, note in sorted(fails, key=lambda f: (f[0] is not None, f[0] or datetime.date.min, f[1]))
+            if not _fail_is_superseded(fd, pass_dates)
+        ]
+        if stale_lines or failed_lines:
+            res.reasons.extend(stale_lines + failed_lines)
         elif state == "fresh":
             res.fresh.append(ac_id)
         elif state == "unpinned":
@@ -682,6 +754,68 @@ def check_review_link(wi: WorkItem) -> list[str]:
     return []
 
 
+_NAME_WITH_EXT_RE = re.compile(r"^\w[\w.\-]*\.[A-Za-z][A-Za-z0-9]*$")
+
+
+def _is_path_token(tok: str) -> bool:
+    """A path when it holds `/` or `\\`, ends in `/`, or is a name with an extension; never a glob or a URL."""
+    if not tok or any(c in tok for c in "*?[") or "://" in tok:
+        return False
+    return "/" in tok or "\\" in tok or bool(_NAME_WITH_EXT_RE.match(tok))
+
+
+def tests_required_refs(entry: str) -> list[tuple[str, str | None]]:
+    """(path, root fallback) for each path of one tests_required entry (`AC-n: path[, path...]`). Text after `;`,
+    anything inside `( )` and any `::name` suffix are dropped; entries split on commas. A bare file name after a
+    listed path is read in that path's folder, with the same name at the repo root as the fallback."""
+    body = entry.split(":", 1)[1] if entry.strip().startswith("AC-") and ":" in entry else entry
+    prev = None
+    while prev != body:                                  # notes first, so a `;` inside ( ) cannot cut the entry
+        prev = body
+        body = re.sub(r"\([^()]*\)", " ", body)
+    body = body.split(";", 1)[0]
+    out: list[tuple[str, str | None]] = []
+    folder = ""
+    for piece in body.split(","):
+        for tok in piece.split():
+            tok = tok.split("::", 1)[0].strip().rstrip(".").replace("\\", "/")
+            if not _is_path_token(tok):
+                continue
+            ref: tuple[str, str | None] = (tok, None)
+            if "/" in tok:
+                folder = tok if tok.endswith("/") else tok.rsplit("/", 1)[0] + "/"
+            elif folder:
+                ref = (folder + tok, tok)
+            if ref not in out:
+                out.append(ref)
+    return out
+
+
+def tests_required_paths(entry: str) -> list[str]:
+    return [path for path, _fallback in tests_required_refs(entry)]
+
+
+def check_tests_required_paths(root: Path, wi: WorkItem) -> tuple[list[str], list[str]]:
+    """REQ-057 AC-3: (failures, warnings) for tests_required paths that do not exist. A done item fails; any other
+    status only warns."""
+    done = str(wi.data.get("status")).strip().lower() == "done"
+    fails: list[str] = []
+    warns: list[str] = []
+    seen: set[str] = set()
+    for entry in wi.tests_required:
+        for path, fallback in tests_required_refs(entry):
+            if path in seen:
+                continue
+            seen.add(path)
+            if not (root / path).exists() and not (fallback and (root / fallback).exists()):
+                msg = f"{wi.id}: tests_required names {path}, which does not exist"
+                if done:
+                    fails.append(msg + " (status done)")
+                else:
+                    warns.append(f"WARN {msg} (status {wi.data.get('status')}; fails once done)")
+    return fails, warns
+
+
 def find_orphan_work_items(work_items: list[WorkItem], req_ids: set[str]) -> list[str]:
     orphans = []
     for wi in work_items:
@@ -732,11 +866,17 @@ def render_view(root: Path, req_lines: list[str], orphan_lines: list[str],
     return "\n".join(body)
 
 
+def _safe_stdio() -> None:
+    """Print UTF-8 with replacement, so a cp1252 console never raises UnicodeEncodeError (issue 159)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:  # pragma: no cover - not all stdout wrappers support this
-        pass
+    _safe_stdio()
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("root", help="Project OS root directory")
@@ -776,6 +916,9 @@ def main(argv: list[str] | None = None) -> int:
         fail_lines += [f"FAIL {x}" for x in shared_ac_ids(wi, by_id)]
         warn_lines += orphan_evidence(root, wi, by_id)
         fail_lines += [f"FAIL {x}" for x in check_review_link(wi)]
+        path_fails, path_warns = check_tests_required_paths(root, wi)
+        fail_lines += [f"FAIL {x}" for x in path_fails]
+        warn_lines += path_warns
     releases, release_fails = load_releases(root)
     fail_lines += [f"FAIL {x}" for x in release_fails]
     fail_lines += [f"FAIL {x}" for x in check_releases(reqs, releases, {w.id for w in work_items})]

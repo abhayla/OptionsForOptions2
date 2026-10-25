@@ -1,5 +1,18 @@
 # Handover
 
+**2026-10-25 — kit 1.12.0 MERGED (PR #546, merge 74230ef6, ADR-187).** From 1.10.1. Merged by merge.py at reviewed
+sha e8c2af3b; all 7 checks passed. Tier A round 1 (fresh Opus): FAIL, one MAJOR reproduced: the new gate's local-git
+fallback for 300+ file PRs honours `.git/info/grafts`, so one graft line emptied the file list and RE-REVIEW NEEDED
+became a pass. Stop-gap merged: `scripts/orchestrator/gate_env.py` switches grafts off for every child of `merge.py`
+and `land.py`; kit fix filed as Startup-Factory #165 (with 2 kit MINORs). Round 2: PASS. What changes for sessions:
+(1) no `PYTHONUTF8=1` prefix on merge.py/land.py any more; (2) chunk PRs of 300+ files go through merge.py (ADR-180's
+limit ended); (3) the kit guard now allows `cd <folder> && <kit tool>`; (4) the trace check ranks a pinned fail above
+an older pass, so REQ-038 (#527) and REQ-065 (parked #200) read INCOMPLETE, both already tracked. Not adopted: the kit
+brief's Attack list + four standing items (role review, #548); the docs-only CI list (owner has not asked). Open:
+#550 (graft test shape, deferred MINOR). Friction seen: kit generators rewrite unchanged files with LF, so with
+`core.autocrlf=true` git shows them modified and `gate.py --pre-push` refuses "uncommitted changes" (restore them with
+`git status --porcelain | cut -c4- | xargs git checkout HEAD --`; kit #166).
+
 **2026-10-19 evening — kit 1.10.1 MERGED (PR #426, merge 9b08940, ADR-115), after GC-3L closed.** CI 6/6 green (api,
 lint-and-test, coverage, close-keywords, frontend, execute-screen-e2e); merged with the new form itself. Live guard
 check after the merge: `sed -n 1,5p <kit rule>` runs (1.7.0 refused it); writes still refused. Tier A Opus review of

@@ -392,7 +392,7 @@ def _save(state_path, sid, s, credited):
 def main():
     try:
         try:
-            payload = json.loads(sys.stdin.read() or "{}")
+            payload = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace") or "{}")
         except ValueError:
             return
         if not isinstance(payload, dict):

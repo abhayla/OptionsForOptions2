@@ -325,6 +325,7 @@ decisions:
   ADR-183: S6.1         # typed strategy name 1-20 characters, as in Sensibull; stored names up to 40 readable (owner Q2, 2026-10-25)
   ADR-184: S6.1         # history/delete readings as in Sensibull; #539 counts as gate item 1 (owner Q3-Q6, 2026-10-25)
   ADR-186: S6.1         # Shift / Width / Hedge readings as in Sensibull (owner, 2026-10-25)
+  ADR-187: S6.7         # kit 1.12.0 taken; merge path ignores git grafts; no UTF-8 prefix; 300-file chunk limit ends
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -447,6 +448,8 @@ issues:
   "#530": 4a  # Market calendar has no special sessions (muhurat): since F1 the calendar alone decides live vs closed
   "#532": 4a  # Chunk 2 deferred: reach-check hits (23 unreached, 31 unresolved), register spec_change blocking, worktree helpers
   "#537": 4a  # Chunk 3 deferred: C1 guard bypasses (structural fix), process-tool gaps, row 27b MINORs, local pytest flake
+  "#548": 4a  # Kit 1.12.0 follow-up: role-review the builder-brief Attack list line and four standing items
+  "#550": 4a  # test_gate_env plants a weaker graft shape than the dangerous one (Tier A round 2 MINOR, PR #546)
 
 # Work items whose status is not done.
 work_items:

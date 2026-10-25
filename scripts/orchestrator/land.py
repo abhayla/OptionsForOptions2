@@ -28,6 +28,8 @@ import tempfile
 import time
 from datetime import datetime
 
+from gate_env import no_graft_env
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 MAX_RETRIES = 3
@@ -41,7 +43,8 @@ FINAL_REFUSALS = ("RE-REVIEW NEEDED", "updates exhausted", "REFUSED: reviewed sh
 
 
 def real_runner(cmd, cwd=None):
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)  # noqa: S603
+    # grafts off for every child, the kit merge gate included (gate_env.py)
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False, env=no_graft_env())  # noqa: S603
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
