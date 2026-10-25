@@ -1,0 +1,30 @@
+{
+ "id": "merge-gate-local-git-honours-grafts",
+ "scope": "generic",
+ "class": "A gate that rebuilds a review-coverage file list from LOCAL git history trusts repository-local history rewrites (grafts, replace refs, shallow boundaries) that any process with write access to the shared .git folder can plant; a planted rewrite can make the changed-file list come back empty, and a gate that reads an empty list as 'nothing changed' passes instead of refusing.",
+ "mechanism": "Kit 1.12.0 tools/merge_when_green.py replaces a truncated compare list (300+ files) with `git --no-replace-objects diff --name-only base...head`. Replace refs are off, grafts are not. One line '<reviewed sha> <head sha>' in .git/info/grafts (shared by every worktree, so a builder agent can write it) made the local list [] and check_coverage returned (True, '') where it had returned 'RE-REVIEW NEEDED: src/app.py'; check_coverage treats an empty changed set as covered.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "Tier A review round 1 of PR #546 (kit 1.10.1 -> 1.12.0)",
+  "evidence": "reviewer run: graft planted -> local_files=[] and check_coverage=(True,''); GIT_GRAFT_FILE set to a missing path -> RE-REVIEW NEEDED. Orchestrator re-check on a throwaway repo: diff before graft 'b.txt', with graft '', graft + env 'b.txt'. Round 2 on e8c2af3b: with the project helper the real gate code answers RE-REVIEW NEEDED."
+ },
+ "fix": "Project stop-gap: scripts/orchestrator/gate_env.py sets GIT_GRAFT_FILE to a fresh never-created path for every child of merge.py and land.py, the only two callers of the gate (ADR-187). Kit fix filed: abhayla/Startup-Factory #165 (ignore grafts in the gate's git helper, and treat an empty local list as unreadable when the head is ahead).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/orchestrator/test_gate_env.py",
+   "tests/hooks/test_orchestrator_route_hooks.py::test_merge_children_run_without_grafts_or_utf8_override"
+  ],
+  "note": "The tests prove the merge path's children ignore a planted graft (removing the helper fails 4 tests, reviewer mutation). The fixture plants a head-without-parents graft, a weaker shape than the dangerous '<R> <H>' one (#550). The kit gate itself stays unguarded until #165 ships."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-187.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "PR #546 review",
+   "evidence": "as first_seen"
+  }
+ ]
+}

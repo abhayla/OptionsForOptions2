@@ -8,14 +8,15 @@
   "where": "PR #525 (builder sequence chunk 1), merge.py run twice in session 5db71e90",
   "evidence": "REFUSED: PR 525 not green within 20 min (all 7 checks pass; unfinished: staleness unreadable: compare main...9d5e79a8 lists 300 files, which may be truncated); split_points.py over 170 first-parent commits: 0 split points with both halves under 300 files"
  },
- "fix": "One-time owner-approved manual merge with the gate's rules checked by hand (ADR-180). Kit fix filed: abhayla/Startup-Factory #163 (read the PR files endpoint, paginated to 3000, and the post-review set from local git). Until it lands, a chunk is landed as several PRs of under 300 files each.",
+ "fix": "One-time owner-approved manual merge with the gate's rules checked by hand (ADR-180). Kit fix filed: abhayla/Startup-Factory #163 (read the PR files endpoint, paginated to 3000, and the post-review set from local git). Until it lands, a chunk is landed as several PRs of under 300 files each. Kit fix landed in kit 1.12.0 (PR #546, ADR-187): a truncated compare list is replaced by local git, so the 300-file limit is gone; the new path's graft weakness is its own finding, merge-gate-local-git-honours-grafts.",
  "detection": {
   "status": "unguarded",
   "checks": [],
   "note": "Seen only at the merge attempt. Detection to build with chunk 2: the chunk PR's file count is read at every push (gh pr view --json changedFiles) and the orchestrator splits the chunk before it reaches 250."
  },
  "spec_ref": [
-  "spec/decisions/ADR-115.md"
+  "spec/decisions/ADR-115.md",
+  "spec/decisions/ADR-187.md"
  ],
  "occurrences": [
   {
