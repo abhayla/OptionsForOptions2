@@ -204,7 +204,7 @@ def test_session_prefix_picks_the_named_file_even_when_a_newer_one_exists(tmp_pa
     s, t = _dirs(tmp_path)
     _session(s, SID_A)
     _session(s, SID_B)  # newer by mtime
-    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    code, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--session", "a43256ae"])
     assert code == 0 and "session a43256ae avg context" in out and "b99999ff" not in out
     assert "(1 files chosen: a43256ae)" in out
 
@@ -213,7 +213,7 @@ def test_session_without_a_match_or_with_two_matches_is_unmeasured_by_name(tmp_p
     s, t = _dirs(tmp_path)
     _session(s, SID_A)
     _session(s, "a43256ae-ffff-4000-8000-000000000000")
-    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "zzz", "--session", "a43256ae"])
+    code, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--session", "zzz", "--session", "a43256ae"])
     assert code == 0
     assert "UNMEASURED rows 1-6, 10: session zzz: no transcript" in out
     assert "UNMEASURED rows 1-6, 10: session a43256ae: ambiguous" in out
@@ -227,7 +227,7 @@ def test_session_subagents_and_tasks_are_read_and_deduped(tmp_path):
     _r2_agent(t / SID_A / "tasks", "a1.output", 2)  # same agent id: the subagents copy wins
     _r2_agent(t / SID_A / "tasks", "a2.output", 3)
     _r2_agent(s / SID_B / "subagents", "agent-other.jsonl", 40)  # another session's agent: never read
-    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    code, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--session", "a43256ae"])
     assert code == 1
     assert "MISS row 5: round-2 checker agent-a1 ran 20 min" in out
     assert "OK   row 5: round-2 checker a2 ran 3 min" in out
@@ -245,7 +245,7 @@ def test_default_run_also_reads_the_chosen_sessions_subagents(tmp_path):
 def test_session_without_assistant_turns_is_unmeasured(tmp_path):
     s, t = _dirs(tmp_path)
     _write(s, f"{SID_A}.jsonl", [_task_line(_ts(9), "user", "hi")])
-    _, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    _, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--session", "a43256ae"])
     assert "UNMEASURED rows 1-4, 6: session a43256ae has no assistant turns" in out
     assert "row 1:" not in out
 

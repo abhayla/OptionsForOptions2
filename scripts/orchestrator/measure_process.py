@@ -260,7 +260,7 @@ def _default_dirs(repo: Path, resolver=_git_common_dir) -> tuple[Path, Path]:
 
 
 def _choose_sessions(sessions_dir: Path, n: int, ids: list[str]) -> tuple[list[Path], list[str]]:
-    """Session files: the N newest, or exactly those whose name starts with each id. Returns (paths, UNMEASURED lines)."""
+    """Session files: the N newest, or exactly those named by prefix. Returns (paths, UNMEASURED lines)."""
     files = sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if sessions_dir.is_dir() else []
     if not ids:
         return files[-n:], []
@@ -339,13 +339,14 @@ def _session_rows(s: dict, dated: list[dict], rep: Report) -> None:
                 f"over {len(gaps)} fixes (limit <= 15)")
 
 
-def measure(dirs: tuple[Path, Path], commits: list[dict], n_sessions: int, chunk_start: str | None,
-            repo: Path | None = None, session_ids: list[str] | None = None, project_note: str = "") -> Report:
-    """`dirs` = (orchestrator sessions folder, agent tasks folder)."""
+def measure(dirs: tuple[Path, Path], commits: list[dict], n_sessions: int | list[str], chunk_start: str | None,
+            repo: Path | None = None) -> Report:
+    """`dirs` = (orchestrator sessions folder, agent tasks folder). `n_sessions` = the N newest sessions, or a list of
+    session file-name prefixes."""
     sessions_dir, tasks_dir = dirs
     rep = Report()
-    ids = session_ids or []
-    paths, errors = _choose_sessions(sessions_dir, n_sessions, ids)
+    ids = n_sessions if isinstance(n_sessions, list) else []
+    paths, errors = _choose_sessions(sessions_dir, n_sessions if isinstance(n_sessions, int) else 0, ids)
     rep.unm.extend(errors)
     sessions = [read_session(p, repo) for p in paths]
     if not sessions and not ids:
@@ -357,7 +358,7 @@ def measure(dirs: tuple[Path, Path], commits: list[dict], n_sessions: int, chunk
     agent_files = _agent_files(sessions_dir, tasks_dir, paths, bool(ids))
     rep.read = (f"read: sessions {sessions_dir} ({len(paths)} files chosen: "
                 f"{', '.join(p.stem[:8] for p in paths) or 'none'}), agent transcripts {len(agent_files)}"
-                + (f"; {project_note}" if project_note else ""))
+                )
     tasks = [read_task(f) for f in agent_files]
     r2 = [t for t in tasks if t and ROUND2_RE.search(t["head"]) and CHECKER_RE.search(t["head"])]
     if sessions and sessions[0]["first"] and not ids:
@@ -406,8 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         commits = json.loads(Path(args.commits_json).read_text(encoding="utf-8"))
     else:
         commits = git_commits(repo, args.since)
-    rep = measure((sessions_dir, tasks_dir), commits, args.sessions, args.chunk_start, repo, args.session,
-                  f"project root {root} ({how})")
+    rep = measure((sessions_dir, tasks_dir), commits, args.session or args.sessions, args.chunk_start, repo)
+    rep.read += f"; project root {root} ({how})"
     out = rep.miss + rep.ok + rep.unm + [rep.read]
     out.append(f"{len(rep.miss)} MISS, {len(rep.ok)} OK, {len(rep.unm)} UNMEASURED (ADR-178 tracker rows 1-7, 10)")
     sys.stdout.write("\n".join(out) + "\n")
