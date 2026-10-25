@@ -135,42 +135,65 @@ def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: i
     return _land(listing, underlying, legs, {index: grid[at]})
 
 
-def strike_step(listing: Listing, underlying: str, legs: list[EditLeg]) -> Decimal:
-    """REQ-078 AC-3: one strike step = the strike gap the instrument file gives for the legs' expiry (the smallest gap
-    across their expiries). An option leg on an expired expiry, or an expiry the file has no strikes for, is refused
-    naming that leg: a step is never read from a list that does not hold the leg."""
-    gaps = []
+def leg_steps(listing: Listing, underlying: str, legs: list[EditLeg]) -> dict[int, Decimal]:
+    """REQ-078 AC-3: one strike step of each option leg (by index) = the strike gap the instrument file gives for THAT
+    leg's own expiry (a calendar's two expiries may list different gaps). An option leg on an expired expiry, or an
+    expiry the file has no strikes for, is refused naming that leg: a step is never read from a list that does not
+    hold the leg."""
+    steps: dict[int, Decimal] = {}
     for index, x in enumerate(legs):
         if x.leg.instrument not in OPTIONS:
             continue
         if not listing.strikes(underlying, x.leg.expiry, x.leg.instrument):
             raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index))
-        gaps.append(listing.cat.strike_gap(underlying, x.leg.expiry))
-    return min(gaps)
+        steps[index] = listing.cat.strike_gap(underlying, x.leg.expiry)
+    return steps
+
+
+def reference_step(legs: list[EditLeg], steps: Mapping[int, Decimal]) -> Decimal:
+    """The one step a whole-strategy number is counted in (the Shift total, Width's last-step test): the step of the
+    option leg with the nearest expiry (the first such leg), never a minimum across expiries."""
+    return steps[min(steps, key=lambda i: (legs[i].leg.expiry, i))]
+
+
+def shift_step(listing: Listing, underlying: str, legs: list[EditLeg]) -> Decimal:
+    return reference_step(legs, leg_steps(listing, underlying, legs))
 
 
 def shift(listing: Listing, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
-    """REQ-078 AC-3: every option leg by one strike step; futures legs stay where they are."""
+    """REQ-078 AC-3: every option leg by one strike step of its own expiry; futures legs stay where they are."""
     options = [i for i, x in enumerate(legs) if x.leg.instrument in OPTIONS]
     if not options:
         raise LegEditRefused("leg_edit_shift_needs_option_leg")
-    step = direction * strike_step(listing, underlying, legs)
-    return _land(listing, underlying, legs, {i: legs[i].leg.strike + step for i in options})
+    steps = leg_steps(listing, underlying, legs)
+    return _land(listing, underlying, legs, {i: legs[i].leg.strike + direction * steps[i] for i in options})
 
 
-def width(listing: Listing, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
-    """REQ-078 AC-4 / ADR-186: every call leg one step up and every put leg one step down (reversed for -1), so the
-    width (the lowest call strike minus the highest put strike) changes by two steps and the hedge distances stay. A
-    click always moves both sides, so no live spot is needed. The width never goes below 0."""
-    puts = [x.leg.strike for x in legs if x.leg.instrument is Instrument.PE]
-    calls = [x.leg.strike for x in legs if x.leg.instrument is Instrument.CE]
+def width(listing: Listing, underlying: str, legs: list[EditLeg], direction: int,
+          spot: Decimal | None = None) -> Moved:
+    """REQ-078 AC-4 / ADR-186 (5): every call leg one step up and every put leg one step down (reversed for -1), so the
+    width (the lowest call strike minus the highest put strike) changes by two steps and the hedge distances stay.
+    The width never goes below 0: the change is cut to what is left (a width of 0 refuses -1). When half the cut change
+    is less than one step, ONLY the side nearer the live index price moves, by the whole change; with no live price
+    (``spot`` None) or equal distances the CALL side moves (a missing price counts as below both sides)."""
+    puts = {i: x.leg.strike for i, x in enumerate(legs) if x.leg.instrument is Instrument.PE}
+    calls = {i: x.leg.strike for i, x in enumerate(legs) if x.leg.instrument is Instrument.CE}
     if not puts or not calls:
         raise LegEditRefused("leg_edit_width_not_applicable")
-    step = strike_step(listing, underlying, legs)
-    if min(calls) - max(puts) + direction * 2 * step < 0:
+    steps = leg_steps(listing, underlying, legs)
+    ref = reference_step(legs, steps)
+    now = min(calls.values()) - max(puts.values())
+    change = min(2 * ref, now) if direction < 0 else 2 * ref  # how far the width may move (never below 0)
+    if change <= 0:
         raise LegEditRefused("leg_edit_width_below_zero")
-    targets = {i: x.leg.strike + (direction * step if x.leg.instrument is Instrument.CE else -direction * step)
-               for i, x in enumerate(legs) if x.leg.instrument in OPTIONS}
+    if change / 2 >= ref:
+        targets = {i: x.leg.strike + (direction * steps[i] if i in calls else -direction * steps[i])
+                   for i, x in enumerate(legs) if x.leg.instrument in OPTIONS}
+    else:
+        put_nearer = spot is not None and abs(spot - max(puts.values())) < abs(spot - min(calls.values()))
+        side = puts if put_nearer else calls
+        targets = {i: strike - direction * change if put_nearer else strike + direction * change
+                   for i, strike in side.items()}
     return _land(listing, underlying, legs, targets)
 
 
@@ -202,7 +225,7 @@ def hedge(listing: Listing, underlying: str, legs: list[EditLeg], protective: fr
     the nearer one. A vertical spread (one hedge) moves its one hedge one step."""
     if not protective or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
         raise LegEditRefused("leg_edit_hedge_not_applicable")
-    step = strike_step(listing, underlying, legs)
+    steps = leg_steps(listing, underlying, legs)
     found = _hedge_distances(legs, protective)
     distances = {i: d for i, (_, d) in found.items()}
     if len(set(distances.values())) > 1:  # unequal: only the side that evens them out
@@ -210,11 +233,11 @@ def hedge(listing: Listing, underlying: str, legs: list[EditLeg], protective: fr
         wanted = {i: max(distances.values()) if direction > 0 else min(distances.values())
                   for i, d in distances.items() if d == pick}
     else:
-        wanted = {i: d + direction * step for i, d in distances.items()}
+        wanted = {i: d + direction * steps[i] for i, d in distances.items()}
     targets: dict[int, Decimal] = {}
     for i, new_distance in wanted.items():
         short = legs[found[i][0]].leg.strike
-        if new_distance < step:
+        if new_distance < steps[i]:
             raise LegEditRefused("leg_edit_hedge_below_minimum", leg=leg_ref(underlying, legs, i))
         targets[i] = short + new_distance if legs[i].leg.instrument is Instrument.CE else short - new_distance
     return _land(listing, underlying, legs, targets)

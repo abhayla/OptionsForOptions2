@@ -43,7 +43,7 @@ from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
-from ofo.strategy import stored_form
+from ofo.strategy import shape_families, stored_form
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, render_reason
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
@@ -399,20 +399,29 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
     if not current:
         off = dict.fromkeys(off, "leg_edit_list_not_loaded_today")
-    elif len(legs) < MIN_SHAPE_LEGS or all(x.leg.instrument is Instrument.FUT for x in legs):
+    elif all(x.leg.instrument is Instrument.FUT for x in legs):
         off = dict.fromkeys(off, "leg_edit_shift_needs_option_leg")
+    elif len(legs) < MIN_SHAPE_LEGS:  # each control says its own reason (REQ-078 AC-2)
+        off = {"shift": "leg_edit_shift_needs_option_leg", "width": "leg_edit_width_needs_two_legs",
+               "hedge": "leg_edit_hedge_needs_two_legs"}
     else:
         if template is None or not template.width_adjustable:
             off["width"] = "leg_edit_width_not_applicable"
-        if template is None or not hedged or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
+        if template is None or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
             off["hedge"] = "leg_edit_hedge_not_applicable"
+        elif not hedged:
+            # a shape of a Hedge family that has no Hedge-marked leg (Long Iron Condor / Butterfly): the shapes sentence
+            # would name its own family as unsupported, so the reason states the condition only (ADR-003)
+            in_family = template.family_plural in shape_families.control_families(shape_families.HEDGE)
+            off["hedge"] = "leg_edit_hedge_no_hedge_legs" if in_family else "leg_edit_hedge_not_applicable"
     return off
 
 
 Gate = tuple[dict[str, str | None], frozenset[int]]  # (the reason each control is off, the Hedge-marked indexes)
 
 
-def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
+def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None,
+                spot: Decimal | None):
     """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
     e = req.edit
     if gate is None:  # unreachable: the route always passes it for a move
@@ -424,18 +433,20 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     if e.control == "shift":
         moved = edit.shift(listing, req.underlying, legs, direction)
     elif e.control == "width":
-        moved = edit.width(listing, req.underlying, legs, direction)
+        moved = edit.width(listing, req.underlying, legs, direction, spot)
     else:
         moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
     return moved.legs, moved.moved
 
 
-def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
+def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None,
+               spot: Decimal | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
-    hedge) needs ``gate`` (:func:`_controls` and the Hedge marks, computed by the server from the legs as sent)."""
+    hedge) needs ``gate`` (:func:`_controls` and the Hedge marks, computed by the server from the legs as sent);
+    ``spot`` is the live index level for Width's last-step case (None: no price, ADR-186 (5))."""
     e, name = req.edit, req.underlying
     if e.control in MOVES:
-        return _apply_move(cat, req, legs, today, gate)
+        return _apply_move(cat, req, legs, today, gate, spot)
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":
@@ -472,7 +483,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     """AC-3/AC-9 (ADR-186 (2)): only Shift adds to the total; a manual step, Width or Hedge resets it ('-')."""
     control = req.edit.control
     if control == "shift":
-        step = int(edit.strike_step(edit.Listing(cat, today), req.underlying, legs))
+        step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
         return (req.shift_total or 0) + (req.edit.direction or 1) * step
     return None if control in ("step", "width", "hedge") else req.shift_total
 
@@ -515,7 +526,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
     legs = _legs_of(cat, req, today)
-    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
+    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current),
+                                 _live_spot(ctx, req.underlying))
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stored_ids = await contract_ids(ids)

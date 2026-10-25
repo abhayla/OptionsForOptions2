@@ -671,8 +671,42 @@ def test_ac_2_the_read_control_answers_which_controls_apply_with_the_reasons():
     assert WIDTH_OFF in str(reply["control_reasons"]["width"]) and HEDGE_OFF in str(reply["control_reasons"]["hedge"])
     status, reply = post({"legs": rows(START[:1]), "edit": {"control": "read"}})  # one leg: AC-2 needs at least two
     assert reply["controls"] == {"shift": False, "width": False, "hedge": False}
+    reasons = reply["control_reasons"]  # MINOR 2: each control says its own reason, not the Shift sentence
+    assert "Shift needs at least two legs" in str(reasons["shift"])
+    assert "Width needs at least two legs." in str(reasons["width"])
+    assert "Hedge needs at least two legs." in str(reasons["hedge"])
     status, reply = move("shift", 1, START[:1])
     assert status == HTTP_UNPROCESSABLE and "at least two legs" in str(reply)
+    for control, own in (("width", "Width needs at least two legs."), ("hedge", "Hedge needs at least two legs.")):
+        status, reply = move(control, 1, START[:1])
+        assert status == HTTP_UNPROCESSABLE and own in str(reply) and "Shift" not in str(reply), control
+
+
+def test_minor_3_a_long_iron_condor_hedge_reason_says_it_has_no_hedge_legs_as_a_condition_only():
+    """A Long Iron Condor has no Hedge-marked leg: the reason states that condition (ADR-003), and it is not the
+    shapes sentence 'Hedge applies to ... iron condors'. Width still applies to it."""
+    long_condor = [("SELL", "PE", 22800, "40.00"), ("BUY", "PE", 23000, "86.00"), ("BUY", "CE", 23400, "91.50"),
+                   ("SELL", "CE", 23600, "44.00")]
+    status, reply = post({"legs": rows(long_condor), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] == "reverse_iron_condor", reply["shape"]
+    assert reply["controls"] == {"shift": True, "width": True, "hedge": False}
+    assert "This strategy has no Hedge legs, so Hedge has nothing to move." in str(reply["control_reasons"]["hedge"])
+    assert "iron condors" not in str(reply["control_reasons"]["hedge"])
+    status, reply = move("hedge", 1, long_condor)
+    assert status == HTTP_UNPROCESSABLE and "no Hedge legs" in str(reply) and "legs" not in reply
+
+
+def test_adr_186_5_width_last_step_through_the_route_moves_the_call_with_no_live_price():
+    """ADR-186 (5), route half. A shape that is recognised can be one step wide only as an iron condor whose short put
+    sits at the money and short call one step above (a strangle needs a strike each side of the money, so it is two
+    steps at least). SELL 23,000 PE / SELL 23,050 CE with 200-point wings, Width -1, no live index price (the market
+    context is None here): the CALL side moves down 50 (both call legs), the put side stays, nothing is refused."""
+    condor = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 23000, "86.00"), ("SELL", "CE", 23050, "80.00"),
+              ("BUY", "CE", 23250, "40.00")]
+    status, reply = move("width", -1, condor)
+    assert status == HTTP_OK and strikes(reply) == [22800, 23000, 23000, 23200], reply
+    stamped = [leg["captured_at"][:19] for leg in reply["legs"]]
+    assert stamped == [STAMP.isoformat()[:19]] * 2 + ["2026-10-01T09:21:28"] * 2  # only the call side is re-captured
 
 
 def test_attack_4_without_todays_list_the_three_controls_are_refused_and_off_but_step_still_works():

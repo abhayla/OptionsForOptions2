@@ -1023,6 +1023,13 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Today's instrument list is not loaded, so Shift, Width and Hedge are off.",
           "The move was refused and no leg changed.", "Shift, Width and Hedge.",
           "Wait for today's list to load, or change the strikes with the stepper.", {}),
+    _gate("leg_edit_width_needs_two_legs", _UI, 22, "Width needs at least two legs.",
+          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
+    _gate("leg_edit_hedge_needs_two_legs", _UI, 23, "Hedge needs at least two legs.",
+          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
+    _gate("leg_edit_hedge_no_hedge_legs", _UI, 24, "This strategy has no Hedge legs, so Hedge has nothing to move.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or change the strikes yourself.", {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES

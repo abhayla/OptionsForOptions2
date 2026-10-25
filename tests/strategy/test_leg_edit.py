@@ -314,14 +314,66 @@ def test_ac_4_width_moves_both_sides_with_no_spot_and_never_goes_below_zero(cat)
     assert strikes(leg_edit.width(LISTING, NIFTY, strangle, -1).legs) == [D("22950"), D("23050")]
     straddle = [one(Instrument.PE, "23000", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
     assert strikes(leg_edit.width(LISTING, NIFTY, straddle, 1).legs) == [D("22950"), D("23050")]
-    narrow = [one(Instrument.PE, "23000", action=Action.SELL), one(Instrument.CE, "23050", action=Action.SELL)]
-    for refused in (straddle, narrow):
-        with pytest.raises(LegEditRefused) as err:
-            leg_edit.width(LISTING, NIFTY, refused, -1)
-        assert err.value.template == "leg_edit_width_below_zero"
+    with pytest.raises(LegEditRefused) as err:  # width 0: nothing left to take away
+        leg_edit.width(LISTING, NIFTY, straddle, -1)
+    assert err.value.template == "leg_edit_width_below_zero"
     with pytest.raises(LegEditRefused) as err:
         leg_edit.width(LISTING, NIFTY, [one(Instrument.CE, "23000")], 1)
     assert err.value.template == "leg_edit_width_not_applicable"
+
+
+def one_step_strangle() -> list[EditLeg]:
+    return [one(Instrument.PE, "22950", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+
+
+def test_adr_186_5_width_last_step_no_spot_moves_the_call_side():
+    """PROOF (core): strangle 22,950 PE / 23,000 CE (width 50 = one step), Width -1: half the change is under a step, so
+    ONE side moves by the whole change; with no live price the CALL moves -> 22,950 PE / 22,950 CE (ADR-186 example)."""
+    legs = one_step_strangle()
+    moved = leg_edit.width(LISTING, NIFTY, legs, -1)
+    assert strikes(moved.legs) == [D("22950"), D("22950")] and moved.moved == frozenset({1})
+    assert strikes(legs) == [D("22950"), D("23000")]  # the input is never changed
+    assert strikes(leg_edit.width(LISTING, NIFTY, legs, -1, None).legs) == [D("22950"), D("22950")]
+
+
+def test_adr_186_5_width_last_step_moves_the_side_nearer_spot_and_ties_go_to_the_call():
+    legs = one_step_strangle()
+    near_call = leg_edit.width(LISTING, NIFTY, legs, -1, D("22990"))
+    assert strikes(near_call.legs) == [D("22950"), D("22950")] and near_call.moved == frozenset({1})
+    near_put = leg_edit.width(LISTING, NIFTY, legs, -1, D("22955"))
+    assert strikes(near_put.legs) == [D("23000"), D("23000")] and near_put.moved == frozenset({0})
+    tie = leg_edit.width(LISTING, NIFTY, legs, -1, D("22975"))  # 25 from both sides: the call side, as with no price
+    assert strikes(tie.legs) == [D("22950"), D("22950")]
+    two = [one(Instrument.PE, "22900", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+    # width 100 = two steps: half the change is a whole step, so both sides move whatever the price says
+    assert strikes(leg_edit.width(LISTING, NIFTY, two, -1, D("22905")).legs) == [D("22950"), D("22950")]
+
+
+def test_adr_186_5_width_last_step_clamps_at_zero_and_a_zero_width_refuses_minus_one():
+    """Width never goes below 0: 75 wide (a typed gap, 1.5 steps) is not a case here; the clamp is for one step. A
+    straddle (width 0) refuses -1 whatever the price; +1 on one step works both sides."""
+    straddle = [one(Instrument.PE, "23000", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+    for spot in (None, D("23000"), D("22000")):
+        with pytest.raises(LegEditRefused) as err:
+            leg_edit.width(LISTING, NIFTY, straddle, -1, spot)
+        assert err.value.template == "leg_edit_width_below_zero"
+    assert strikes(leg_edit.width(LISTING, NIFTY, one_step_strangle(), 1, D("22990")).legs) == [D("22900"), D("23050")]
+
+
+def test_minor_1_a_calendar_moves_each_leg_by_its_own_expiry_gap():
+    """REQ-078 AC-3: 'the strike gap read from the instrument file for that expiry'. A listing where 2026-09-29 lists
+    only every 100 (the real rows with the odd 50s removed) and 2026-10-06 every 50: Shift +1 moves the near leg 100 and
+    the far leg 50, and the Shift total's step is the nearest expiry's."""
+    thinned = Catalogue()
+    thinned.load([r for r in parse_instruments_csv(FIXTURE)
+                  if not (r.contract.name == NIFTY and r.contract.expiry == EARLY_EXPIRY and r.contract.strike % 100)])
+    listing = Listing(thinned, TODAY)
+    assert (thinned.strike_gap(NIFTY, EARLY_EXPIRY), thinned.strike_gap(NIFTY, EXPIRY)) == (D("100"), D("50"))
+    legs = [one(Instrument.CE, "23000", EARLY_EXPIRY, Action.SELL), one(Instrument.CE, "23000", EXPIRY)]
+    assert strikes(leg_edit.shift(listing, NIFTY, legs, 1).legs) == [D("23100"), D("23050")]
+    assert strikes(leg_edit.shift(listing, NIFTY, legs, -1).legs) == [D("22900"), D("22950")]
+    assert leg_edit.shift_step(listing, NIFTY, legs) == D("100")
+    assert leg_edit.shift_step(listing, NIFTY, legs[::-1]) == D("100")  # the nearest expiry, whatever the leg order
 
 
 def test_attack_3_hedge_moves_only_the_marked_legs_refuses_one_step_and_a_six_leg_set(cat):
