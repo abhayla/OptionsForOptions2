@@ -7,6 +7,10 @@ test constants and helpers live in a uniquely named module instead (e.g. tests/e
 import pathlib
 import re
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 TESTS = pathlib.Path(__file__).resolve().parent
 BARE = re.compile(r"^(from conftest import|import conftest)\b", re.MULTILINE)
 
