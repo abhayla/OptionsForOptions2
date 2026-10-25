@@ -324,6 +324,7 @@ decisions:
   ADR-182: 4b           # price protection measured from the market price at Execute, never a typed price (owner Q1, 2026-10-25)
   ADR-183: S6.1         # typed strategy name 1-20 characters, as in Sensibull; stored names up to 40 readable (owner Q2, 2026-10-25)
   ADR-184: S6.1         # history/delete readings as in Sensibull; #539 counts as gate item 1 (owner Q3-Q6, 2026-10-25)
+  ADR-186: S6.1         # Shift / Width / Hedge readings as in Sensibull (owner, 2026-10-25)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
