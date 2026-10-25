@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (184)
+## Decisions (185)
 
-- Older decisions: 144 rows, ADR-1..ADR-145 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
+- Older decisions: 145 rows, ADR-1..ADR-146 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073; refines ADR-109]
 - ADR-150 2026-10-21: ADR-055 (1) is read as follows. [refines ADR-055]
 - ADR-151 2026-10-21: SPEC CHANGE to ADR-120 (1). [supersedes ADR-120; refines REQ-034]
