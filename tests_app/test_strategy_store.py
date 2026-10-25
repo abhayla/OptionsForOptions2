@@ -60,7 +60,7 @@ CHECK_VIOLATION = "23514"
 LIVE_COLUMN_WORDS = {"ltp", "bid", "ask", "volume", "oi", "iv", "delta", "gamma", "theta", "vega", "pnl", "margin",
                      "spot", "price"}  # the brief's list; LIVE_STATE_NAMES (from the LiveState classes) is checked too
 STRATEGY_COLUMNS = {"id", "user_ref", "underlying", "status", "created_at", "updated_at", "definition", "revision",
-                    "definition_schema_version", "name"}
+                    "definition_schema_version", "name", "deleted_at"}
 HISTORY_COLUMNS = {"id", "strategy_id", "seq", "at", "change_summary", "definition", "definition_schema_version"}
 
 
