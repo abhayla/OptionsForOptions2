@@ -453,6 +453,8 @@ issues:
   "#548": 4a  # Kit 1.12.0 follow-up: role-review the builder-brief Attack list line and four standing items
   "#550": 4a  # test_gate_env plants a weaker graft shape than the dangerous one (Tier A round 2 MINOR, PR #546)
   "#558": 4a  # Row 31 (REQ-085 warnings) PARKED: Builder vs Execute disagree on futures expiry (Tier A round 2 MAJOR)
+  "#560": 4a  # Row 30 (REQ-078) PARKED remainder: AC-1 live half (owner's live session, 50 edits p95 <= 1,000 ms)
+  "#561": 4a  # Row 32 (REQ-136) PARKED remainder: AC-1 info marks for 5 figures (rows 26, 37, 38)
 
 # Work items whose status is not done.
 work_items:
