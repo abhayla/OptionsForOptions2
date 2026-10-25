@@ -326,6 +326,7 @@ decisions:
   ADR-184: S6.1         # history/delete readings as in Sensibull; #539 counts as gate item 1 (owner Q3-Q6, 2026-10-25)
   ADR-186: S6.1         # Shift / Width / Hedge readings as in Sensibull (owner, 2026-10-25)
   ADR-187: S6.7         # kit 1.12.0 taken; merge path ignores git grafts; no UTF-8 prefix; 300-file chunk limit ends
+  ADR-189: S6.7         # kit 1.14.0 lean delivery: small CLAUDE.md, tracker retired, ci_local, one checker per tier
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
