@@ -379,6 +379,7 @@ APP_MODELS = (
     "ofo_app.routes.ready_made.QuickPickIn",
     "ofo_app.routes.ready_made.ReadyMadeOut",
     "ofo_app.routes.strategies.DefinitionOut",
+    "ofo_app.routes.strategies.DeletedOut",
     "ofo_app.routes.strategies.EntryOut",
     "ofo_app.routes.strategies.FirstLegOut",
     "ofo_app.routes.strategies.HistoryOut",

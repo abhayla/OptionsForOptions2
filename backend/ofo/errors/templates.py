@@ -897,6 +897,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A strategy name is 1 to 40 characters on one line.",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
           "Shorten the name or remove line breaks and control characters, then save again."),
+    # W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket is never deleted.
+    _gate("strategy_delete_after_basket", _SV, 432,
+          "Can't delete: orders were sent",
+          "The strategy and its history were not changed.", "Deleting this strategy.",
+          "Keep the strategy; its history stays readable."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

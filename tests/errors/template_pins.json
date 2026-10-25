@@ -1538,5 +1538,9 @@
   "explanation:change_renamed": {
     "sha256": "3fe9ee4a130c6fe38e4adc1fb5895210f0027f3ef00dafb7e564d0bbfb434cfb",
     "reviewed": "pending owner read"
+  },
+  "strategy_delete_after_basket": {
+    "sha256": "abf645a78fb7af6b73038aae355c38b7a00df76aedcc39021aeb19bb48c02197",
+    "reviewed": "pending owner read"
   }
 }

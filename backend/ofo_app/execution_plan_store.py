@@ -149,7 +149,7 @@ class StoredPlan:
     strategy_version: Optional[int] = None  # noqa: UP045 - W-144: the version it was built from; None never activates
 
 
-_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u")
+_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _HIGHEST = text("SELECT coalesce(max(plan_number), 0) FROM public.execution_plans WHERE strategy_id = :s")
 _OPEN = text("SELECT plan_number FROM public.execution_plans WHERE strategy_id = :s AND status = 'open'")
 _INSERT_PLAN = text("INSERT INTO public.execution_plans (strategy_id, plan_number, action, strategy_version) "
