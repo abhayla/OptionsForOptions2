@@ -1,6 +1,7 @@
 """REQ-134 (W-157, part 29b): a saved strategy's name, Save As, rename and the enriched own-user list, through the API.
 
-Spec basis (quoted): REQ-134 AC-1 "1 to 20 characters after trimming spaces (ADR-183; a name stored with up to 40 stays readable); an empty name is refused with \"Give the
+Spec basis (quoted): REQ-134 AC-1 "1 to 20 characters after trimming spaces (ADR-183; a name stored with up to
+40 stays readable); an empty name is refused with \"Give the
 strategy a name\". Two strategies of one user may share a name; each keeps its own id."; AC-2 "Save As ... creates a new
 strategy with the current legs and planned entries ... and leaves the original exactly as it was saved"; AC-3 "Renaming
 changes only the name; it adds a history entry (\"Renamed from X to Y\") and never changes legs, prices, tracking state
@@ -95,10 +96,11 @@ async def test_ac1_an_empty_name_is_refused_with_the_catalogue_message_and_store
             await trans.rollback()
 
 
-@pytest.mark.parametrize("name,ok", [("a", True), ("x" * 20, True), ("x" * 21, False), ("x" * 41, False), ("two\nlines", False),
+@pytest.mark.parametrize("name,ok", [("a", True), ("x" * 20, True), ("x" * 21, False), ("x" * 41, False),
+                                     ("two\nlines", False),
                                      ("<script>" + "alert(1);" * 60 + "</script>", False)])
 async def test_ac1_name_length_boundaries_through_the_api(app_engine, name, ok):
-    """Attack 1/4/6: 1 and 20 characters are stored; 21, 41, a line break and a very long script text are refused (422)."""
+    """Attack 1/4/6: 1 and 20 characters are stored; 21, 41, a line break and a very long script are refused (422)."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -195,9 +197,10 @@ async def test_adr183_save_as_refuses_a_21_character_name_and_stores_nothing(app
 LONG_STORED = "y" * 26  # saved before ADR-183 (the stored limit stays 40)
 
 
-async def test_adr183_a_strategy_stored_with_a_26_character_name_lists_opens_and_keeps_it_after_a_leg_edit(admin_engine):
+async def test_adr183_a_strategy_stored_with_a_26_character_name_lists_opens_and_keeps_it_after_edit(admin_engine):
     """Attacks 3 and 4: the owner role stores a 26-character name (the database CHECK still allows 40); the list and
-    the open answer it, a leg edit keeps it, and renaming it to another 26-character name is refused (nothing written)."""
+    the open answer it, a leg edit keeps it, and renaming it to another 26-character name is refused (nothing
+    written)."""
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -287,7 +290,8 @@ async def test_ac3_a_stale_revision_is_refused_409_and_writes_nothing(app_engine
             await trans.rollback()
 
 
-@pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE), ("x" * 21, INVALID_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
+@pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE),
+                                       ("x" * 21, INVALID_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
 async def test_ac3_a_rename_follows_the_same_name_rules(app_engine, name, code):
     async with app_engine.connect() as conn:
         trans = await conn.begin()

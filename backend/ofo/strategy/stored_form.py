@@ -591,8 +591,8 @@ def check_summary_text(text: str) -> str:
 
 
 def check_strategy_name(text: object) -> UserWords:
-    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_TYPED_MAX characters, one line (ADR-183;
-    a name stored before it may be up to STRATEGY_NAME_MAX and is still read by shown_name). Returns
+    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_TYPED_MAX characters, one
+    line (ADR-183; a name stored before it may be up to STRATEGY_NAME_MAX and is still read by shown_name). Returns
     the user's words (the request door, ofo.errors.explanations.REQUEST_LAYER); StoredFormError otherwise.
     Duplicates are allowed, so nothing here looks at other names."""
     trimmed = text.strip() if type(text) is str else text
@@ -601,7 +601,8 @@ def check_strategy_name(text: object) -> UserWords:
         return user_words(trimmed)  # not "problem is None": a name valid as STORED (up to 40) may be too long to TYPE
     if problem == NAME_EMPTY:
         raise StoredFormError(STRATEGY_NAME_EMPTY, "the strategy name is empty")
-    raise StoredFormError(STRATEGY_NAME_INVALID, f"a strategy name is 1..{STRATEGY_NAME_TYPED_MAX} characters on one line")
+    raise StoredFormError(STRATEGY_NAME_INVALID,
+                          f"a strategy name is 1..{STRATEGY_NAME_TYPED_MAX} characters on one line")
 
 
 def shown_name(stored: object):
