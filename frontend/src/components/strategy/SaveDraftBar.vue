@@ -14,7 +14,7 @@ import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
-import { newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyHistory'
+import { newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
   SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, strategyLabel,
 } from '@/lib/saveDraft'

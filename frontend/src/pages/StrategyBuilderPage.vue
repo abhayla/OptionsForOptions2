@@ -27,7 +27,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
-import HistoryPanel from '@/components/strategy/HistoryPanel.vue'
+import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
@@ -436,7 +436,7 @@ const pricesStamp = computed(() => {
     <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted" />
-    <HistoryPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
+    <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
     <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"

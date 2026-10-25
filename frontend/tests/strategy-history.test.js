@@ -5,10 +5,10 @@
 // updated_at, versions; a list row has can_delete, created_at, first_leg, id, leg_count, name, status, tracked, underlying, updated_at.
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import HistoryPanel from '@/components/strategy/HistoryPanel.vue'
+import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
-import { DELETE_REFUSED_TEXT, NO_CHANGE_TEXT, NO_EARLIER_TEXT } from '@/lib/strategyHistory'
+import { DELETE_REFUSED_TEXT, NO_CHANGE_TEXT, NO_EARLIER_TEXT } from '@/lib/strategyActivity'
 
 const calls = []
 let answers = {}
@@ -55,17 +55,17 @@ const AFTER_EXECUTION = { what_happened: 'This strategy has been executed.', imp
 const current = { id: 5, revision: 2, name: '"e2e 28f"' }
 
 async function openPanel(props = { current }) {
-  const w = mount(HistoryPanel, { props })
-  await w.get('[data-testid="history-toggle"]').trigger('click')
+  const w = mount(ActivityPanel, { props })
+  await w.get('[data-testid="activity-toggle"]').trigger('click')
   await flushPromises()
   return w
 }
 
 describe('the history panel (REQ-070 AC-3, AC-5)', () => {
   it('is closed on first render and reads nothing until opened', async () => {
-    const w = mount(HistoryPanel, { props: { current } })
+    const w = mount(ActivityPanel, { props: { current } })
     await flushPromises()
-    expect(w.find('[data-testid="history-body"]').exists()).toBe(false)
+    expect(w.find('[data-testid="activity-body"]').exists()).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
@@ -73,10 +73,10 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
     answers['GET /strategies/5/history'] = { entries: [entry(1, SUMMARY_1), entry(2, SUMMARY_2, { contract_id: 2381961 })] }
     answers['GET /strategies/5'] = strategyOut(3)
     const w = await openPanel()
-    const rows = w.findAll('[data-testid="history-entry"]')
+    const rows = w.findAll('[data-testid="activity-entry"]')
     expect(rows.map((r) => r.attributes('data-seq'))).toEqual(['2', '1'])
-    expect(rows[1].get('[data-testid="history-summary"]').text()).toBe(SUMMARY_1)
-    expect(rows[0].get('[data-testid="history-summary"]').text()).toBe(SUMMARY_2)
+    expect(rows[1].get('[data-testid="activity-summary"]').text()).toBe(SUMMARY_1)
+    expect(rows[0].get('[data-testid="activity-summary"]').text()).toBe(SUMMARY_2)
   })
 
   it('Restore sends the page revision, then hands the reply legs and revision to the Builder', async () => {
@@ -99,7 +99,7 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
     answers['GET /strategies/5'] = strategyOut(2)
     const w = await openPanel()
     expect(w.find('[data-testid="restore-1"]').exists()).toBe(false)
-    expect(w.get('[data-testid="history-no-change"]').text()).toBe(NO_CHANGE_TEXT)
+    expect(w.get('[data-testid="activity-no-change"]').text()).toBe(NO_CHANGE_TEXT)
   })
 
   it('after execution the server refuses: its message is shown, nothing is replaced and the list stays', async () => {
@@ -110,15 +110,15 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
     await w.get('[data-testid="restore-1"]').trigger('click')
     await flushPromises()
     expect(w.emitted('open')).toBeUndefined()
-    expect(w.get('[data-testid="history-error"]').text()).toContain(AFTER_EXECUTION.what_happened)
-    expect(w.findAll('[data-testid="history-entry"]')).toHaveLength(1)
+    expect(w.get('[data-testid="activity-error"]').text()).toContain(AFTER_EXECUTION.what_happened)
+    expect(w.findAll('[data-testid="activity-entry"]')).toHaveLength(1)
   })
 
   it('no entries gives the plain "no earlier versions" line', async () => {
     answers['GET /strategies/5/history'] = { entries: [] }
     answers['GET /strategies/5'] = strategyOut(1)
     const w = await openPanel()
-    expect(w.get('[data-testid="history-empty"]').text()).toBe(NO_EARLIER_TEXT)
+    expect(w.get('[data-testid="activity-empty"]').text()).toBe(NO_EARLIER_TEXT)
   })
 })
 

@@ -15,7 +15,7 @@ import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
 import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
 import { useOrderPath } from '@/lib/orderPath'
-import { useDeleteFlow } from '@/lib/strategyHistory'
+import { useDeleteFlow } from '@/lib/strategyActivity'
 
 const COMPLETED_STATUSES = []
 

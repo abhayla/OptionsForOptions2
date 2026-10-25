@@ -63,9 +63,9 @@ test('save, add a leg, save, open the history, Restore: the two legs come back',
   await expect(page.getByTestId('leg-row')).toHaveCount(3)
   await page.getByTestId('save-draft').click()
   await expect(page.getByTestId('save-undo')).toBeVisible({ timeout: 20000 }) // REQ-070 AC-4: the save changed the strategy
-  await expect(page.getByTestId('history-body')).toHaveCount(0) // AC-5: closed until opened
-  await page.getByTestId('history-toggle').click()
-  const entries = page.getByTestId('history-entry')
+  await expect(page.getByTestId('activity-body')).toHaveCount(0) // AC-5: closed until opened
+  await page.getByTestId('activity-toggle').click()
+  const entries = page.getByTestId('activity-entry')
   await expect(entries.first()).toBeVisible()
   await entries.first().getByRole('button', { name: 'Restore' }).click()
   await expect(page.getByTestId('leg-row')).toHaveCount(2)

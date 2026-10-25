@@ -8,7 +8,7 @@ import { ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
-import { NO_CHANGE_TEXT, NO_EARLIER_TEXT, fetchHistory, restoreEntry } from '@/lib/strategyHistory'
+import { NO_CHANGE_TEXT, NO_EARLIER_TEXT, fetchHistory, restoreEntry } from '@/lib/strategyActivity'
 
 const props = defineProps({
   current: { type: Object, required: true }, // { id, revision, name } of the saved strategy on screen
@@ -58,16 +58,16 @@ async function restore(entry) {
 </script>
 
 <template>
-  <section class="mt-4 rounded border border-line bg-surface p-4" data-testid="history-panel">
-    <button type="button" class="text-sm font-medium underline" data-testid="history-toggle" :aria-expanded="open" @click="toggle">Activity history</button>
-    <div v-if="open" class="mt-2 text-sm" data-testid="history-body">
-      <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="history-error" data-testid="history-error" />
-      <p v-if="entries && !entries.length" data-testid="history-empty">{{ NO_EARLIER_TEXT }}</p>
-      <ul v-else-if="entries" class="divide-y divide-line" data-testid="history-list">
-        <li v-for="e in entries" :key="e.seq" class="flex flex-wrap items-center gap-2 py-1" data-testid="history-entry" :data-seq="e.seq">
-          <span class="text-ink-muted" data-testid="history-at">{{ istTime(e.at) }}</span>
-          <span data-testid="history-summary">{{ e.change_summary }}</span>
-          <span v-if="e.isCurrent" class="text-ink-muted" data-testid="history-no-change">{{ NO_CHANGE_TEXT }}</span>
+  <section class="mt-4 rounded border border-line bg-surface p-4" data-testid="activity-panel">
+    <button type="button" class="text-sm font-medium underline" data-testid="activity-toggle" :aria-expanded="open" @click="toggle">Activity history</button>
+    <div v-if="open" class="mt-2 text-sm" data-testid="activity-body">
+      <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="activity-error" data-testid="activity-error" />
+      <p v-if="entries && !entries.length" data-testid="activity-empty">{{ NO_EARLIER_TEXT }}</p>
+      <ul v-else-if="entries" class="divide-y divide-line" data-testid="activity-list">
+        <li v-for="e in entries" :key="e.seq" class="flex flex-wrap items-center gap-2 py-1" data-testid="activity-entry" :data-seq="e.seq">
+          <span class="text-ink-muted" data-testid="activity-at">{{ istTime(e.at) }}</span>
+          <span data-testid="activity-summary">{{ e.change_summary }}</span>
+          <span v-if="e.isCurrent" class="text-ink-muted" data-testid="activity-no-change">{{ NO_CHANGE_TEXT }}</span>
           <button v-else type="button" class="underline" :disabled="busy" :data-testid="`restore-${e.seq}`" @click="restore(e)">Restore</button>
         </li>
       </ul>

@@ -22,11 +22,11 @@ export async function historyEntries(client, id) {
   return entries
 }
 
-/** The newest entry's seq, or null when there is none or it cannot be read (no Undo is offered on null). */
+/** The newest entry's seq (the last: the API sends seq ascending), or null when there is none or it cannot be read (no Undo is offered on null). */
 export async function newestSeq(client, id) {
   try {
     const entries = await historyEntries(client, id)
-    return entries.length ? Math.max(...entries.map((e) => e.seq)) : 0
+    return entries.length ? entries[entries.length - 1].seq : 0
   } catch {
     return null
   }

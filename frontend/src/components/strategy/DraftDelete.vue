@@ -1,8 +1,8 @@
 <!-- Delete control of ONE saved-strategy row, shared by My Strategies and the Builder's saved list (REQ-070 AC-6, ADR-118).
      Delete appears only when the server said can_delete is true; otherwise the refusal text takes its place (a missing field is
-     false). The flow (confirm, Undo, errors) is one object made by useDeleteFlow in lib/strategyHistory.js. -->
+     false). The flow (confirm, Undo, errors) is one object made by useDeleteFlow in lib/strategyActivity.js. -->
 <script setup>
-import { DELETE_CONFIRM_TEXT, DELETE_REFUSED_TEXT, canDelete } from '@/lib/strategyHistory'
+import { DELETE_CONFIRM_TEXT, DELETE_REFUSED_TEXT, canDelete } from '@/lib/strategyActivity'
 
 defineProps({
   row: { type: Object, required: true },
