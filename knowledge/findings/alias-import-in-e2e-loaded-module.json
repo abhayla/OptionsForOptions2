@@ -8,11 +8,13 @@
   "where": "CI App tests run 40077253832 on build/seq-chunk-2 49fe0462 (row 23b merged), job frontend",
   "evidence": "Playwright: Error: Cannot find package '@/lib' imported from /home/runner/work/OptionsForOptions2/OptionsForOptions2/frontend/src/services/api.js; api, execute-screen-e2e and the kit CI green. The 23b builder and both checkers ran lint + targeted vitest + the DB-free pytest set; none runs Playwright locally (CI only)."
  },
- "fix": "Instance: the import in api.js made relative. Class-level (at a second occurrence, Learn-or-block): a repo test that walks the static import closure of every src module an e2e spec imports and fails on any '@/' specifier.",
+ "fix": "Instance: the import in api.js made relative (commit 3e340275). Class-level (2026-10-26): frontend/tests/e2e-node-import-closure.test.js walks the static import closure from every e2e file and playwright.config.js into src and fails on any '@/' specifier, failing closed on an unresolvable relative import, a static non-js/ts import or a computed import()/require(). Measured on origin/main 0e3bd2a1: 7 src files reached (execute, routes, nav, orderPath, api, newestWins, dataHealthText), 0 with an '@/' import; `playwright test --list` loads all 290 tests in 25 files.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Caught only by the CI Playwright job (the whole e2e suite fails at load, so it is loud but costs a CI run). No local check: lint, Vitest and the build all resolve the alias."
+  "status": "guarded",
+  "checks": [
+   "frontend/tests/e2e-node-import-closure.test.js"
+  ],
+  "note": "Vitest check in the normal frontend test job. Red proof: '@/lib/x' appended to src/lib/execute.js made the real-tree test fail naming the file; green on the clean tree. Blind spots: runtime-built imports, a package.json imports map or tsconfig paths that would make Node resolve '@/'. A lazy import('./X.vue') is not followed."
  },
  "spec_ref": [
   "spec/requirements/REQ-119.md"

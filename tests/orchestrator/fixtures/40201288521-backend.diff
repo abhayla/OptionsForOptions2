@@ -1,0 +1,983 @@
+diff --git a/backend/ofo/errors/gate_slots.py b/backend/ofo/errors/gate_slots.py
+index db6cb6d4..a4e0ff7e 100644
+--- a/backend/ofo/errors/gate_slots.py
++++ b/backend/ofo/errors/gate_slots.py
+@@ -10,6 +10,7 @@ import re
+ from dataclasses import dataclass
+ from datetime import date, datetime
+ from decimal import Decimal
++from typing import cast
+ 
+ from ofo.engine.legs import Action as _Action
+ from ofo.engine.legs import Instrument as _EngineInstrument
+@@ -118,6 +119,27 @@ class Strikes(SlotType):
+         return " or ".join(_format_strike(s) for s in value)
+ 
+ 
++class ShapeFamilies(SlotType):
++    """Plural shape-family labels, each one the reviewed catalogue holds as a template's ``family_plural``
++    (REQ-078 AC-2): "straddles, strangles, iron butterflies and iron condors". No route can pass a label of its own."""
++
++    @staticmethod
++    def validate(value: object) -> None:
++        from ofo.strategy.shape_families import reviewed_family_labels
++
++        _require_exact(value, tuple, "ShapeFamilies")
++        labels = tuple(cast("tuple[object, ...]", value))
++        if not labels or len(set(labels)) != len(labels) or any(type(x) is not str for x in labels):
++            raise ValueError("ShapeFamilies slot holds one or more distinct family labels")
++        unknown = [x for x in labels if x not in reviewed_family_labels()]
++        if unknown:
++            raise ValueError(f"ShapeFamilies slot takes catalogue family labels only, got {unknown}")
++
++    @staticmethod
++    def format(value: tuple[str, ...]) -> str:
++        return value[0] if len(value) == 1 else f"{', '.join(value[:-1])} and {value[-1]}"
++
++
+ class Rupees(SlotType):
+     """A rupee amount printed as given, paise included if present ("₹50,000.00"): the gate's margin figures."""
+ 
+diff --git a/backend/ofo/errors/templates.py b/backend/ofo/errors/templates.py
+index 293ac6d8..7b566c49 100644
+--- a/backend/ofo/errors/templates.py
++++ b/backend/ofo/errors/templates.py
+@@ -24,7 +24,7 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+ 
+ from ofo.errors.gate_slots import (
+     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
+-    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
++    RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+ )
+ from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+ 
+@@ -995,6 +995,41 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
+     _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
+           "The typed price was refused and the previous price stays.", "This price.",
+           "Type a price that is a multiple of the tick size.", {"leg": LegRef, "tick": Money}),
++    # W-158 (REQ-078 AC-3..AC-6, AC-10; ADR-186): Shift / Width / Hedge. Each refusal changes nothing.
++    _gate("leg_edit_landing_not_listed", _UI, 14,
++          "No {strikes} {kind} is listed for {expiry}, so leg {number} cannot move there.",
++          "The move was refused and no leg changed.", "This move.",
++          "Use the stepper or the leg picker to choose a listed strike.",
++          {"strikes": Strikes, "kind": Instrument, "expiry": Date, "number": Count}),
++    _gate("leg_edit_landing_not_tradable", _UI, 15, "{leg} cannot be traded from Zerodha's current data.",
++          "The move was refused and no leg changed.", "This move.",
++          "Use the stepper or the leg picker to choose another strike.", {"leg": LegRef}),
++    _gate("leg_edit_shift_needs_option_leg", _UI, 16, "Shift needs at least two legs, at least one of them an option.",
++          "The move was refused and no leg changed.", "This move.", "Add an option leg first.", {}),
++    _gate("leg_edit_width_not_applicable", _UI, 17,
++          "Width applies to {shapes}.",
++          "The move was refused and no leg changed.", "This move.",
++          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
++    _gate("leg_edit_hedge_not_applicable", _UI, 18,
++          "Hedge applies to {shapes}.",
++          "The move was refused and no leg changed.", "This move.",
++          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
++    _gate("leg_edit_width_below_zero", _UI, 19, "The width cannot go below 0.",
++          "The move was refused and no leg changed.", "This move.", "Use Width + to widen, or Shift to move.", {}),
++    _gate("leg_edit_hedge_below_minimum", _UI, 20, "{leg} cannot come closer than one strike step to its short leg.",
++          "The move was refused and no leg changed.", "This move.", "Use Hedge + to move the hedge out.",
++          {"leg": LegRef}),
++    _gate("leg_edit_list_not_loaded_today", _UI, 21,
++          "Today's instrument list is not loaded, so Shift, Width and Hedge are off.",
++          "The move was refused and no leg changed.", "Shift, Width and Hedge.",
++          "Wait for today's list to load, or change the strikes with the stepper.", {}),
++    _gate("leg_edit_width_needs_two_legs", _UI, 22, "Width needs at least two legs.",
++          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
++    _gate("leg_edit_hedge_needs_two_legs", _UI, 23, "Hedge needs at least two legs.",
++          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
++    _gate("leg_edit_hedge_no_hedge_legs", _UI, 24, "This strategy has no Hedge legs, so Hedge has nothing to move.",
++          "The move was refused and no leg changed.", "This move.",
++          "Use Shift, or change the strikes yourself.", {}),
+ )
+ 
+ _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+diff --git a/backend/ofo/marketdata/quote.py b/backend/ofo/marketdata/quote.py
+index c5887f90..06030aeb 100644
+--- a/backend/ofo/marketdata/quote.py
++++ b/backend/ofo/marketdata/quote.py
+@@ -28,6 +28,12 @@ def is_live_price(ltp: Decimal | None) -> bool:
+     return ltp is not None and ltp > 0
+ 
+ 
++def priced(quote: NormalizedQuote | None) -> bool:
++    """The one 'a quote's price counts' rule (ADR-015 never a verdict from stale data): the quote exists, its feed
++    health is AVAILABLE (a STALE quote keeps its ltp, which is then an old price) and the price is above 0."""
++    return quote is not None and quote.health is DataHealth.AVAILABLE and is_live_price(quote.ltp)
++
++
+ def _require_nonempty(value: object, name: str) -> str:
+     if not isinstance(value, str) or not value.strip():
+         raise ValueError(f"{name} must be a non-empty string, got {value!r}")
+diff --git a/backend/ofo/strategy/catalogue.yaml b/backend/ofo/strategy/catalogue.yaml
+index 92561c88..f359094f 100644
+--- a/backend/ofo/strategy/catalogue.yaml
++++ b/backend/ofo/strategy/catalogue.yaml
+@@ -18,6 +18,7 @@
+ #   only where a constraint makes them true for every allowed parameter value (enforced at load).
+ templates:
+   - id: bull_call_spread
++    family_plural: "vertical spreads"
+     name: "Bull Call Spread"
+     description: Buy a call and sell a call at a higher strike, both the same expiry.
+     level: Beginner
+@@ -32,6 +33,7 @@ templates:
+       - {name: short_call, action: SELL, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1, protective: true}
+ 
+   - id: bull_put_spread
++    family_plural: "vertical spreads"
+     name: "Bull Put Spread"
+     description: Sell a put and buy a put at a lower strike, both the same expiry.
+     level: Beginner
+@@ -61,6 +63,7 @@ templates:
+       - {name: short_put, action: SELL, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: bear_put_spread
++    family_plural: "vertical spreads"
+     name: "Bear Put Spread"
+     description: Buy a put and sell a put at a lower strike, both the same expiry.
+     level: Beginner
+@@ -75,6 +78,7 @@ templates:
+       - {name: short_put, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1, protective: true}
+ 
+   - id: bear_call_spread
++    family_plural: "vertical spreads"
+     name: "Bear Call Spread"
+     description: Sell a call and buy a call at a higher strike, both the same expiry.
+     level: Beginner
+@@ -104,12 +108,14 @@ templates:
+       - {name: short_call, action: SELL, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: iron_condor
++    family_plural: "iron condors"
+     name: "Short Iron Condor"
+     description: >-
+       Sell a put and a call at two different strikes, the put below the call, and buy a put and a call the
+       same number of steps further out on each side, all the same expiry: a bull put spread plus a bear
+       call spread.
+     level: Intermediate
++    width_adjustable: true
+     views: [range-bound]
+     objectives: [income]
+     params:
+@@ -118,7 +124,7 @@ templates:
+       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+     constraints:
+-      - {equal: [w_put, w_call]}
++      - {equal: [w_put, w_call], build_only: true}
+       - {order: [short_put, short_call]}
+     legs:
+       - {name: long_put, action: BUY, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
+@@ -127,18 +133,20 @@ templates:
+       - {name: long_call, action: BUY, instrument: CE, strike: "q + w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
+ 
+   - id: iron_butterfly
++    family_plural: "iron butterflies"
+     name: "Iron Fly"
+     description: >-
+       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
+       away on each side, all the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [range-bound]
+     objectives: [income]
+     params:
+       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+     constraints:
+-      - {equal: [w_put, w_call]}
++      - {equal: [w_put, w_call], build_only: true}
+     legs:
+       - {name: long_put, action: BUY, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
+       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
+@@ -146,9 +154,11 @@ templates:
+       - {name: long_call, action: BUY, instrument: CE, strike: "w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
+ 
+   - id: short_straddle
++    family_plural: "straddles"
+     name: "Short Straddle"
+     description: Sell a call and a put at the at-the-money strike, the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [range-bound]
+     objectives: [income]
+     params: []
+@@ -158,9 +168,11 @@ templates:
+       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: short_strangle
++    family_plural: "strangles"
+     name: "Short Strangle"
+     description: Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [range-bound]
+     objectives: [income]
+     params:
+@@ -194,9 +206,11 @@ templates:
+       - {name: long_call, action: BUY, instrument: CE, strike: "c + w", expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: long_straddle
++    family_plural: "straddles"
+     name: "Long Straddle"
+     description: Buy a call and a put at the at-the-money strike, the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [volatile]
+     objectives: [volatility]
+     params: []
+@@ -206,9 +220,11 @@ templates:
+       - {name: long_put, action: BUY, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: long_strangle
++    family_plural: "strangles"
+     name: "Long Strangle"
+     description: Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [volatile]
+     objectives: [volatility]
+     params:
+@@ -222,11 +238,13 @@ templates:
+       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
+ 
+   - id: reverse_iron_condor
++    family_plural: "iron condors"
+     name: "Long Iron Condor"
+     description: >-
+       Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the
+       same number of steps further out on each side, all the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [volatile]
+     objectives: [volatility]
+     params:
+@@ -235,7 +253,7 @@ templates:
+       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
+     constraints:
+-      - {equal: [w_put, w_call]}
++      - {equal: [w_put, w_call], build_only: true}
+       - {order: [long_put, long_call]}
+     legs:
+       - {name: short_put, action: SELL, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1}
+@@ -613,18 +631,20 @@ templates:
+       - {name: short_puts, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 2}
+ 
+   - id: long_iron_butterfly
++    family_plural: "iron butterflies"
+     name: "Long Iron Butterfly"
+     description: >-
+       Buy a call and a put at the at-the-money strike, and sell a put and a call the same number of steps away
+       on each side, all the same expiry.
+     level: Intermediate
++    width_adjustable: true
+     views: [volatile]
+     objectives: [volatility]
+     params:
+       - {name: w_put, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
+       - {name: w_call, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
+     constraints:
+-      - {equal: [w_put, w_call]}
++      - {equal: [w_put, w_call], build_only: true}
+     legs:
+       - {name: long_put, action: BUY, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
+       - {name: short_put, action: SELL, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1}
+diff --git a/backend/ofo/strategy/leg_edit.py b/backend/ofo/strategy/leg_edit.py
+index f8923708..604c9b8d 100644
+--- a/backend/ofo/strategy/leg_edit.py
++++ b/backend/ofo/strategy/leg_edit.py
+@@ -1,7 +1,7 @@
+ """Leg edits of the Strategy Builder: strike step, multiplier, include tick, typed price (REQ-076, W-148).
+ 
+-Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo/strategy/leg_edit.py), REQ-076 parts only: the
+-Shift / Width / Hedge moves are REQ-078 (row 30) and are not here.
++Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo/strategy/leg_edit.py): REQ-076 parts, and the
++REQ-078 Shift / Width / Hedge moves (W-158; ADR-186), all landing through the one rule :func:`_land`.
+ 
+ Spec: REQ-076 AC-1 (strikes come from the instrument file, listed and not expired), AC-2 (a stepped leg is a new
+ contract, so only its planned entry is captured again), AC-4/AC-5 (multiplier; quantity = lots x the file's lot size;
+@@ -32,17 +32,34 @@ from ofo.errors import LegValue, UserFacing, UserFacingError, render
+ from ofo.instruments.catalogue import Catalogue, ContractKind
+ from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
+ from ofo.money import PAISE
++from ofo.strategy import shape_families
+ 
+ MULTIPLIER_MIN, MULTIPLIER_MAX = 1, 50  # REQ-076 AC-4: whole numbers 1 to 50
++OPTIONS = (Instrument.CE, Instrument.PE)
++MAX_HEDGE_LEGS = 4  # REQ-078 AC-5: Hedge needs an even number of legs, at most 4
+ _TYPED_PRICE = re.compile(r"-?[0-9]{1,30}(\.[0-9]{1,30})?")  # ASCII digits only; the shape check, the rules come after
+ 
+ 
++#: the not-applicable texts of the controls that name the shapes they apply to (REQ-078 AC-2), by catalogue template
++_SHAPE_TEXT_CONTROL = {"leg_edit_width_not_applicable": shape_families.WIDTH,
++                       "leg_edit_hedge_not_applicable": shape_families.HEDGE}
++
++
++def render_reason(template: str, **slots: object) -> str:
++    """The catalogue text of a refusal; the Width / Hedge not-applicable texts get the shape families from the
++    strategy catalogue's data (never typed in code)."""
++    control = _SHAPE_TEXT_CONTROL.get(template)
++    if control is not None:
++        slots.setdefault("shapes", shape_families.control_families(control))
++    return render(template, **slots)
++
++
+ class LegEditRefused(UserFacing, ValueError):
+     """An edit the rules refuse; nothing changed. Carries the catalogue template, its slots and the rendered message."""
+ 
+     def __init__(self, template: str, **slots: object) -> None:
+         self.template = template
+-        self.message = render(template, **slots)
++        self.message = render_reason(template, **slots)
+         super().__init__(template)
+ 
+ 
+@@ -87,6 +104,22 @@ class Listing:
+                              and e.contract.instrument_type == instrument.value}))
+ 
+ 
++def _land(listing: Listing, underlying: str, legs: list[EditLeg], targets: Mapping[int, Decimal]) -> Moved:
++    """The one landing rule (REQ-078 AC-6, REQ-076 AC-1): move each leg in ``targets`` to its new strike. If ANY target
++    is not a listed, unexpired strike of that leg's expiry and type the whole move is refused (nothing changes) and the
++    text names that leg. A moved leg is a new contract, so its typed mark goes."""
++    out = list(legs)
++    for index, strike in sorted(targets.items()):
++        leg = legs[index].leg
++        if strike <= 0:  # no strike exists below zero: the text cannot show it, so it is the "no further strike" answer
++            raise LegEditRefused("leg_edit_no_further_strike", leg=leg_ref(underlying, legs, index))
++        if strike not in listing.strikes(underlying, leg.expiry, leg.instrument):
++            raise LegEditRefused("leg_edit_landing_not_listed", strikes=(strike,), kind=leg.instrument,
++                                 expiry=leg.expiry, number=index + 1)
++        out[index] = replace(legs[index], leg=replace(leg, strike=strike), typed=False)
++    return Moved(out, frozenset(targets))
++
++
+ def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: int, direction: int) -> Moved:
+     """REQ-076 AC-1: the next LISTED strike above / below (never strike + a typed constant). A strike that is not
+     listed is refused, never rounded; the first / last listed strike has no further step."""
+@@ -99,9 +132,115 @@ def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: i
+     at = grid.index(leg.strike) + direction
+     if not 0 <= at < len(grid):
+         raise LegEditRefused("leg_edit_no_further_strike", leg=leg_ref(underlying, legs, index))
+-    out = list(legs)
+-    out[index] = replace(legs[index], leg=replace(leg, strike=grid[at]), typed=False)
+-    return Moved(out, frozenset({index}))
++    return _land(listing, underlying, legs, {index: grid[at]})
++
++
++def leg_steps(listing: Listing, underlying: str, legs: list[EditLeg]) -> dict[int, Decimal]:
++    """REQ-078 AC-3: one strike step of each option leg (by index) = the strike gap the instrument file gives for THAT
++    leg's own expiry (a calendar's two expiries may list different gaps). An option leg on an expired expiry, or an
++    expiry the file has no strikes for, is refused naming that leg: a step is never read from a list that does not
++    hold the leg."""
++    steps: dict[int, Decimal] = {}
++    for index, x in enumerate(legs):
++        if x.leg.instrument not in OPTIONS:
++            continue
++        if not listing.strikes(underlying, x.leg.expiry, x.leg.instrument):
++            raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index))
++        steps[index] = listing.cat.strike_gap(underlying, x.leg.expiry)
++    return steps
++
++
++def reference_step(legs: list[EditLeg], steps: Mapping[int, Decimal]) -> Decimal:
++    """The one step a whole-strategy number is counted in (the Shift total, Width's last-step test): the step of the
++    option leg with the nearest expiry (the first such leg), never a minimum across expiries."""
++    return steps[min(steps, key=lambda i: (legs[i].leg.expiry, i))]
++
++
++def shift_step(listing: Listing, underlying: str, legs: list[EditLeg]) -> Decimal:
++    return reference_step(legs, leg_steps(listing, underlying, legs))
++
++
++def shift(listing: Listing, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
++    """REQ-078 AC-3: every option leg by one strike step of its own expiry; futures legs stay where they are."""
++    options = [i for i, x in enumerate(legs) if x.leg.instrument in OPTIONS]
++    if not options:
++        raise LegEditRefused("leg_edit_shift_needs_option_leg")
++    steps = leg_steps(listing, underlying, legs)
++    return _land(listing, underlying, legs, {i: legs[i].leg.strike + direction * steps[i] for i in options})
++
++
++def width(listing: Listing, underlying: str, legs: list[EditLeg], direction: int,
++          spot: Decimal | None = None) -> Moved:
++    """REQ-078 AC-4 / ADR-186 (5): every call leg one step up and every put leg one step down (reversed for -1), so the
++    width (the lowest call strike minus the highest put strike) changes by two steps and the hedge distances stay.
++    The width never goes below 0: the change is cut to what is left (a width of 0 refuses -1). When half the cut change
++    is less than one step, ONLY the side nearer the live index price moves, by the whole change; with no live price
++    (``spot`` None) or equal distances the CALL side moves (a missing price counts as below both sides)."""
++    puts = {i: x.leg.strike for i, x in enumerate(legs) if x.leg.instrument is Instrument.PE}
++    calls = {i: x.leg.strike for i, x in enumerate(legs) if x.leg.instrument is Instrument.CE}
++    if not puts or not calls:
++        raise LegEditRefused("leg_edit_width_not_applicable")
++    steps = leg_steps(listing, underlying, legs)
++    ref = reference_step(legs, steps)
++    now = min(calls.values()) - max(puts.values())
++    change = min(2 * ref, now) if direction < 0 else 2 * ref  # how far the width may move (never below 0)
++    if change <= 0:
++        raise LegEditRefused("leg_edit_width_below_zero")
++    if change / 2 >= ref:
++        targets = {i: x.leg.strike + (direction * steps[i] if i in calls else -direction * steps[i])
++                   for i, x in enumerate(legs) if x.leg.instrument in OPTIONS}
++    else:
++        put_nearer = spot is not None and abs(spot - max(puts.values())) < abs(spot - min(calls.values()))
++        side = puts if put_nearer else calls
++        targets = {i: strike - direction * change if put_nearer else strike + direction * change
++                   for i, strike in side.items()}
++    return _land(listing, underlying, legs, targets)
++
++
++def _hedge_distances(legs: list[EditLeg], protective: frozenset[int]) -> dict[int, tuple[int, Decimal]]:
++    """For each Hedge leg (by index): (the index of its short leg, its distance from it, outwards). A Hedge leg must be
++    an option, be the only Hedge of its type, and sit beyond a non-Hedge leg of the same type; anything else is not a
++    shape this control handles (fail closed)."""
++    out: dict[int, tuple[int, Decimal]] = {}
++    for i in sorted(protective):
++        leg = legs[i].leg
++        if leg.instrument not in OPTIONS or any(legs[j].leg.instrument is leg.instrument for j in out):
++            raise LegEditRefused("leg_edit_hedge_not_applicable")
++        sign = 1 if leg.instrument is Instrument.CE else -1  # a call hedge sits above its short, a put hedge below
++        shorts = [j for j, x in enumerate(legs) if j not in protective and x.leg.instrument is leg.instrument
++                  and sign * (leg.strike - x.leg.strike) > 0]
++        if not shorts:
++            raise LegEditRefused("leg_edit_hedge_not_applicable")
++        near = min(shorts, key=lambda j: abs(leg.strike - legs[j].leg.strike))
++        out[i] = (near, sign * (leg.strike - legs[near].leg.strike))
++    return out
++
++
++def hedge(listing: Listing, underlying: str, legs: list[EditLeg], protective: frozenset[int], direction: int) -> Moved:
++    """REQ-078 AC-5 / ADR-186: only the legs marked Hedge move, away from (+1) or towards (-1) their short leg; the
++    distance never goes below one step; an even number of legs, at most 4.
++
++    Equal put-side and call-side distances: both move one step. Unequal (as in Sensibull): +1 moves ONLY the nearer
++    hedge out until its distance equals the farther one; -1 moves ONLY the farther hedge in until its distance equals
++    the nearer one. A vertical spread (one hedge) moves its one hedge one step."""
++    if not protective or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
++        raise LegEditRefused("leg_edit_hedge_not_applicable")
++    steps = leg_steps(listing, underlying, legs)
++    found = _hedge_distances(legs, protective)
++    distances = {i: d for i, (_, d) in found.items()}
++    if len(set(distances.values())) > 1:  # unequal: only the side that evens them out
++        pick = min(distances.values()) if direction > 0 else max(distances.values())
++        wanted = {i: max(distances.values()) if direction > 0 else min(distances.values())
++                  for i, d in distances.items() if d == pick}
++    else:
++        wanted = {i: d + direction * steps[i] for i, d in distances.items()}
++    targets: dict[int, Decimal] = {}
++    for i, new_distance in wanted.items():
++        short = legs[found[i][0]].leg.strike
++        if new_distance < steps[i]:
++            raise LegEditRefused("leg_edit_hedge_below_minimum", leg=leg_ref(underlying, legs, i))
++        targets[i] = short + new_distance if legs[i].leg.instrument is Instrument.CE else short - new_distance
++    return _land(listing, underlying, legs, targets)
+ 
+ 
+ def apply_multiplier(cat: Catalogue, underlying: str, legs: list[EditLeg], multiplier: int) -> list[EditLeg]:
+diff --git a/backend/ofo/strategy/loader.py b/backend/ofo/strategy/loader.py
+index c1afbb75..23f188d9 100644
+--- a/backend/ofo/strategy/loader.py
++++ b/backend/ofo/strategy/loader.py
+@@ -95,7 +95,7 @@ def _build(raw: dict[str, Any]) -> Template:
+     constraints: list[Constraint] = []
+     for c in raw["constraints"]:
+         if "equal" in c:
+-            constraints.append(EqualConstraint(params=tuple(c["equal"])))
++            constraints.append(EqualConstraint(params=tuple(c["equal"]), build_only=c.get("build_only", False)))
+         elif "sign" in c:
+             constraints.append(SignConstraint(leg=c["sign"]["leg"], sign=c["sign"]["is"]))
+         else:
+@@ -105,6 +105,8 @@ def _build(raw: dict[str, Any]) -> Template:
+             id=tid, name=raw["name"], description=raw["description"],
+             level=raw["level"], views=tuple(raw["views"]), objectives=tuple(raw["objectives"]),
+             params=params, constraints=tuple(constraints), legs=tuple(legs),
++            width_adjustable=raw.get("width_adjustable", False),
++            family_plural=raw.get("family_plural"),
+         )
+     except TemplateError as exc:
+         raise TemplateError(f"template {tid!r}: {exc}") from exc
+diff --git a/backend/ofo/strategy/matching.py b/backend/ofo/strategy/matching.py
+index 21794d8d..6950f7c0 100644
+--- a/backend/ofo/strategy/matching.py
++++ b/backend/ofo/strategy/matching.py
+@@ -113,7 +113,7 @@ def _fit(template: Template, shape: Shape) -> tuple[dict[str, int], int] | str |
+         values = solve_integer(equations, [p.name for p in template.params])
+         if values is None:
+             continue
+-        problems = template.violations(values)
++        problems = template.violations(values, matching=True)  # ADR-186 (4): build-only rules skipped
+         if problems:
+             reason = problems[0]
+             continue
+diff --git a/backend/ofo/strategy/model.py b/backend/ofo/strategy/model.py
+index 9bd23569..de1fe305 100644
+--- a/backend/ofo/strategy/model.py
++++ b/backend/ofo/strategy/model.py
+@@ -128,9 +128,13 @@ class TemplateLeg:
+ 
+ @dataclass(frozen=True)
+ class EqualConstraint:
+-    """Two parameters must take the same value."""
++    """Two parameters must take the same value.
++
++    ``build_only`` (ADR-186 (4)): the rule shapes what a NEW strategy starts as (resolve refuses unequal values) but
++    does not decide a leg set's NAME, so the shape matcher skips it (``Template.violations(matching=True)``)."""
+ 
+     params: tuple[str, str]
++    build_only: bool = False
+ 
+ 
+ @dataclass(frozen=True)
+@@ -165,6 +169,11 @@ class Template:
+     params: tuple[Param, ...]
+     constraints: tuple[Constraint, ...]
+     legs: tuple[TemplateLeg, ...]
++    #: REQ-078 AC-2: the Width control applies (data, never per-strategy code; REQ-028 AC-5)
++    width_adjustable: bool = False
++    #: REQ-078 AC-2: plural display label of this template's family ("iron condors"), read by the Width / Hedge
++    #: not-applicable texts; data, so no backend code types a template or shape name
++    family_plural: str | None = None
+     _params_by_name: dict = field(init=False, repr=False, compare=False)
+     _legs_by_name: dict = field(init=False, repr=False, compare=False)
+ 
+@@ -256,8 +265,10 @@ class Template:
+         """Each leg's strike offset from ATM, in steps (``None`` for a futures leg)."""
+         return {leg.name: None if leg.strike is None else leg.strike.evaluate(values) for leg in self.legs}
+ 
+-    def violations(self, values: Mapping[str, int]) -> list[str]:
+-        """Every bound or constraint ``values`` breaks; empty when the parameter set is allowed."""
++    def violations(self, values: Mapping[str, int], *, matching: bool = False) -> list[str]:
++        """Every bound or constraint ``values`` breaks; empty when the parameter set is allowed.
++
++        ``matching=True`` is the shape matcher's question (ADR-186 (4)): a build-only equal constraint is skipped."""
+         problems: list[str] = []
+         if set(values) != self._params_by_name.keys():
+             return [f"params must be exactly {sorted(self._params_by_name)}, got {sorted(values)}"]
+@@ -271,7 +282,7 @@ class Template:
+         for constraint in self.constraints:
+             if isinstance(constraint, EqualConstraint):
+                 a, b = constraint.params
+-                if values[a] != values[b]:
++                if not (matching and constraint.build_only) and values[a] != values[b]:
+                     problems.append(f"equal constraint {a}={values[a]} vs {b}={values[b]}")
+             elif isinstance(constraint, SignConstraint):
+                 if not sign_holds(constraint.sign, offsets[constraint.leg]):
+diff --git a/backend/ofo/strategy/shape_families.py b/backend/ofo/strategy/shape_families.py
+new file mode 100644
+index 00000000..7354bf93
+--- /dev/null
++++ b/backend/ofo/strategy/shape_families.py
+@@ -0,0 +1,39 @@
++"""REQ-078 AC-2: the shape families a Width or Hedge control applies to, read from the catalogue's data.
++
++The not-applicable texts name the shapes ("Width applies to straddles, strangles, iron butterflies and iron condors.").
++No template id or name is typed in code: a family is a template's ``family_plural`` label, picked by the same data the
++controls use (``width_adjustable`` for Width, a ``protective`` leg for Hedge). Order: fewest legs first, then
++alphabetical, so the list reads the same on every run and is the AC's own order.
++"""
++from __future__ import annotations
++
++import functools
++
++from ofo.strategy.loader import load_templates
++from ofo.strategy.model import Template
++
++WIDTH, HEDGE = "width", "hedge"
++
++
++def _applies(template: Template, control: str) -> bool:
++    if control == WIDTH:
++        return template.width_adjustable
++    if control == HEDGE:
++        return any(leg.protective for leg in template.legs)
++    raise ValueError(f"no shape families for control {control!r}")
++
++
++@functools.lru_cache(maxsize=1)
++def reviewed_family_labels() -> frozenset[str]:
++    return frozenset(t.family_plural for t in load_templates() if t.family_plural)
++
++
++def control_families(control: str) -> tuple[str, ...]:
++    """The family labels of every template the ``control`` applies to, deduplicated, fewest legs first."""
++    found: dict[str, int] = {}
++    for template in load_templates():
++        if _applies(template, control):
++            if not template.family_plural:
++                raise ValueError(f"template {template.id!r} takes {control} but has no family_plural label")
++            found[template.family_plural] = min(found.get(template.family_plural, 99), len(template.legs))
++    return tuple(sorted(found, key=lambda label: (found[label], label)))
+diff --git a/backend/ofo/strategy/template.schema.json b/backend/ofo/strategy/template.schema.json
+index 7f188d2a..046ca139 100644
+--- a/backend/ofo/strategy/template.schema.json
++++ b/backend/ofo/strategy/template.schema.json
+@@ -28,6 +28,8 @@
+         "name": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[A-Za-z][A-Za-z0-9 ()'-]*$"},
+         "description": {"type": "string", "minLength": 1, "maxLength": 400},
+         "level": {"enum": ["Beginner", "Intermediate", "Advanced"]},
++        "width_adjustable": {"type": "boolean"},
++        "family_plural": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[a-z][a-z ]*$"},
+         "views": {"$ref": "#/$defs/views"},
+         "objectives": {"$ref": "#/$defs/objectives"},
+         "params": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/param"}},
+@@ -77,7 +79,8 @@
+           "additionalProperties": false,
+           "required": ["equal"],
+           "properties": {
+-            "equal": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}}
++            "equal": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}},
++            "build_only": {"type": "boolean"}
+           }
+         },
+         {
+diff --git a/backend/ofo_app/routes/leg_edit.py b/backend/ofo_app/routes/leg_edit.py
+index b21c9678..24bf3317 100644
+--- a/backend/ofo_app/routes/leg_edit.py
++++ b/backend/ofo_app/routes/leg_edit.py
+@@ -2,9 +2,13 @@
+ 
+ Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo_app/routes/leg_edit.py), REQ-076 controls only:
+ ``step``, ``multiplier``, ``include``, ``price``, ``reset_prices``, ``reset_leg`` (REQ-077 AC-5: the same re-capture
+-for ONE leg) and ``read`` (changes no leg: it answers the current
+-numbers, shape name and Hedge marks of the legs as sent, REQ-076 AC-8). Shift / Width / Hedge and the controls read are
+-REQ-078 (row 30) and are not here.
++for ONE leg) and ``read`` (changes no leg: it answers the current numbers, shape name, Hedge marks and which of
++Shift / Width / Hedge apply, REQ-076 AC-8, REQ-078 AC-2), plus the REQ-078 moves ``shift``, ``width`` and ``hedge``
++(W-158; ADR-186): the browser sends the control and its direction only, the server computes the strikes from the listed
++strikes. Answer states of a move: today's instrument list loaded / not loaded (refused, controls all off, ADR-104);
++shape allows the control / does not (refused by the server, whatever the browser sends); landing contract listed and
++tradable from the stored eligibility / not listed, expired, not tradable, or no stored status (the whole move is
++refused naming the leg, nothing changes).
+ 
+ The browser sends the builder's legs plus ONE edit; the server applies it with :mod:`ofo.strategy.leg_edit` against the
+ instrument file, re-captures the planned entry of every leg whose contract changed through the one capture path
+@@ -36,11 +40,12 @@ from ofo.errors.explanations import render_explanation
+ from ofo.instruments.catalogue import Catalogue, ContractKind
+ from ofo.instruments.freeze_limits import StoredFreeze
+ from ofo.instruments.models import InstrumentId as ContractKey
++from ofo.marketdata.quote import priced
+ from ofo.money import PAISE
+ from ofo.outcome.service import Margin
+ from ofo.strategy import leg_edit as edit
+-from ofo.strategy import stored_form
+-from ofo.strategy.leg_edit import EditLeg, LegEditRefused
++from ofo.strategy import shape_families, stored_form
++from ofo.strategy.leg_edit import EditLeg, LegEditRefused, render_reason
+ from ofo.strategy.loader import load_templates
+ from ofo.strategy.matching import Custom, match, protective_keys
+ from ofo.strategy.model import atm_strike
+@@ -81,11 +86,15 @@ from ofo_app.underlying import Underlying
+ router = APIRouter(route_class=ClosedRoute)
+ 
+ MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs
++MAX_HEDGE_LEGS = edit.MAX_HEDGE_LEGS
++MOVES = ("shift", "width", "hedge")  # REQ-078: the controls that move strikes by one strike step per click
++SHIFT_TOTAL_BOUND = 1_000_000  # index points; far beyond any strike
+ CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
+ _catalogue_cache: dict = {"until": 0.0, "value": None}
+ 
+ Capture = Callable[[MarketContext | None, LiveFeed | None, str, list[str]], Awaitable[tuple]]
+ ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
++Tradable = Callable[[list[int]], Awaitable[list[bool]]]
+ 
+ 
+ async def get_edit_catalogue() -> Catalogue:
+@@ -110,6 +119,33 @@ async def get_edit_today() -> datetime.date:
+         return await catalogue_picker.database_today(await session.connection())
+ 
+ 
++async def get_list_current() -> bool:
++    """AC-10 (ADR-104): whether today's instrument list is loaded (the latest load is at or after this session's publish
++    time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests
++    override it."""
++    from ofo_app import catalogue_picker  # noqa: PLC0415
++    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
++
++    async with get_sessionmaker()() as session:
++        conn = await session.connection()
++        return await catalogue_picker.list_is_current(conn, await catalogue_picker.database_today(conn))
++
++
++def get_move_eligibility() -> Tradable:
++    """AC-6 'not eligible': for each stored contract id, whether Zerodha's stored data lets it be traded today (the
++    add-time check the save uses, ADR-104). No stored status is False: fail closed. Tests override it."""
++    async def tradable(contract_ids: list[int]) -> list[bool]:
++        from ofo_app import catalogue_picker  # noqa: PLC0415
++        from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
++        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
++
++        async with get_sessionmaker()() as session:
++            conn = await session.connection()
++            statuses = await elig.leg_statuses(conn, contract_ids, await catalogue_picker.database_today(conn))
++        return [status is not None and status.tradable for status in statuses]
++    return tradable
++
++
+ async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
+     """The stored exchange freeze limit in force for every stored contract, as (limit, file date). Tests override it."""
+     from ofo_app import freeze_read  # noqa: PLC0415
+@@ -159,7 +195,8 @@ class EditLegIn(LegIn):
+ 
+ class EditIn(BaseModel):
+     model_config = ConfigDict(extra="forbid")
+-    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read"]
++    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read",
++                     "shift", "width", "hedge"]
+     direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
+     index: StrictInt | None = Field(default=None, ge=0, lt=20)
+     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
+@@ -178,7 +215,8 @@ class EditIn(BaseModel):
+     def _control_has_its_fields(self) -> EditIn:
+         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
+         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
+-                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": ()}[self.control]
++                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": (),
++                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",)}[self.control]
+         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
+                  "multiplier": self.multiplier}
+         missing = [name for name in needs if given[name] is None]
+@@ -192,6 +230,7 @@ class LegEditIn(BaseModel):
+     underlying: Underlying
+     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
+     edit: EditIn
++    shift_total: StrictInt | None = Field(default=None, ge=-SHIFT_TOTAL_BOUND, le=SHIFT_TOTAL_BOUND)  # AC-3/AC-9
+     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
+     seq: RequestSeq | None = None  # REQ-119 AC-1: echoed unchanged as the reply's seq
+ 
+@@ -220,14 +259,34 @@ class EditLegOut(ApiModel):
+     planned_entry: Money | None
+     captured_at: datetime.datetime | None
+     price_source: Literal["captured", "typed", "none"]
++    replaced_typed: bool  # AC-8: the leg had a typed price and moved, so the captured price replaced it
+     included: bool
+     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
+     price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
+     block: CatalogueText | None  # the ADR-092 reason when the quantity is not below the freeze limit (never split)
+ 
+ 
++class ControlsOut(ApiModel):
++    """REQ-078 AC-2/AC-10: which of the three move controls work on these legs right now."""
++
++    shift: bool
++    width: bool
++    hedge: bool
++
++
++class ControlReasonsOut(ApiModel):
++    """Why a control is off (the catalogue text), else None."""
++
++    shift: CatalogueText | None
++    width: CatalogueText | None
++    hedge: CatalogueText | None
++
++
+ class LegEditOut(ApiModel):
+     legs: list[EditLegOut]
++    controls: ControlsOut
++    control_reasons: ControlReasonsOut
++    shift_total: int | None  # index points moved by Shift clicks since the last reset; None = '-' (AC-3, AC-9)
+     shape: Identifier | None  # the matched template id, None = Custom Strategy; a label only (REQ-076 AC-9)
+     shape_name: CatalogueText | None  # the matched template's name from the reviewed catalogue; None = Custom Strategy
+     outcome: OutcomeResponse | None  # None while any included leg has no planned entry, or no leg is included
+@@ -286,7 +345,7 @@ def _entry_of(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int):
+ def _live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
+     """The live index level, or None (no feed, no price): the shape is read from the strikes, no spot invented."""
+     quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
+-    return quote.ltp if quote is not None and quote.ltp is not None and quote.ltp > 0 else None
++    return quote.ltp if priced(quote) else None
+ 
+ 
+ def _reference_spot(ctx: MarketContext | None, underlying: str, legs: list[EditLeg], gap: Decimal) -> Decimal:
+@@ -333,23 +392,109 @@ def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
+     return e.index
+ 
+ 
+-def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date):
+-    """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused."""
++def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bool):
++    """REQ-078 AC-2/AC-10: ``{control: template id of the reason it is off, or None}`` for shift, width and hedge.
++    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
++    shape does not allow the control (Custom Strategy: Shift only). The same answer gates the moves in
++    :func:`apply_edit`, so the browser's word is never trusted."""
++    off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
++    if not current:
++        off = dict.fromkeys(off, "leg_edit_list_not_loaded_today")
++    elif all(x.leg.instrument is Instrument.FUT for x in legs):
++        off = dict.fromkeys(off, "leg_edit_shift_needs_option_leg")
++    elif len(legs) < MIN_SHAPE_LEGS:  # each control says its own reason (REQ-078 AC-2)
++        off = {"shift": "leg_edit_shift_needs_option_leg", "width": "leg_edit_width_needs_two_legs",
++               "hedge": "leg_edit_hedge_needs_two_legs"}
++    else:
++        if template is None or not template.width_adjustable:
++            off["width"] = "leg_edit_width_not_applicable"
++        if template is None or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
++            off["hedge"] = "leg_edit_hedge_not_applicable"
++        elif not hedged:
++            # a shape of a Hedge family that has no Hedge-marked leg (Long Iron Condor / Butterfly): the shapes sentence
++            # would name its own family as unsupported, so the reason states the condition only (ADR-003)
++            in_family = template.family_plural in shape_families.control_families(shape_families.HEDGE)
++            off["hedge"] = "leg_edit_hedge_no_hedge_legs" if in_family else "leg_edit_hedge_not_applicable"
++    return off
++
++
++# (the reason each control is off, the Hedge-marked indexes, the live index level for Width's last-step case or None)
++Gate = tuple[dict[str, str | None], frozenset[int], Decimal | None]
++
++
++def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
++    """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
++    e = req.edit
++    if gate is None:  # unreachable: the route always passes it for a move
++        raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
++    off, hedged, spot = gate
++    if off[e.control] is not None:
++        raise LegEditRefused(off[e.control])
++    listing, direction = edit.Listing(cat, today), e.direction or 1
++    if e.control == "shift":
++        moved = edit.shift(listing, req.underlying, legs, direction)
++    elif e.control == "width":
++        moved = edit.width(listing, req.underlying, legs, direction, spot)
++    else:
++        moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
++    return moved.legs, moved.moved
++
++
++def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
++    """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
++    hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
++    None: no price, ADR-186 (5); all computed by the server from the legs as sent)."""
+     e, name = req.edit, req.underlying
++    if e.control in MOVES:
++        return _apply_move(cat, req, legs, today, gate)
+     if e.control == "include":
+         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
+     if e.control == "multiplier":
+         return edit.apply_multiplier(cat, name, legs, e.multiplier or 1), frozenset()
+     if e.control == "price":
+         return edit.set_typed_price(cat, name, legs, _need_index(e, legs), e.price), frozenset()
+-    if e.control in ("reset_prices", "reset_leg"):  # REQ-077 AC-5: every leg, or ONE leg; the others stay as sent
+-        return legs, frozenset(range(len(legs)) if e.control == "reset_prices" else {_need_index(e, legs)})
+-    if e.control == "read":
+-        return legs, frozenset()
++    if e.control in ("reset_prices", "reset_leg", "read"):  # REQ-077 AC-5: every leg, or ONE leg; read: none
++        return legs, _recaptured(e, legs)
+     moved = edit.step_strike(edit.Listing(cat, today), name, legs, _need_index(e, legs), e.direction or 1)
+     return moved.legs, moved.moved
+ 
+ 
++def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: list[EditLeg],
++               list_current: bool) -> Gate | None:
++    """AC-2/AC-10: for a move, the server decides from the legs as sent whether the control applies; else None."""
++    if req.edit.control not in MOVES:
++        return None
++    template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
++    return _controls(template, hedged, legs, list_current), hedged, _live_spot(ctx, req.underlying)
++
++
++async def _check_landing(tradable: Tradable, underlying: str, new_legs: list[EditLeg], moved: frozenset[int],
++                         stored_of: dict[int, int]) -> None:
++    """AC-6 'not eligible': the whole move is refused if any landing contract is not tradable from the stored data. A
++    contract with no stored row has no eligibility either: refused (fail closed)."""
++    order = [i for i in sorted(moved) if i in stored_of]
++    verdicts = dict(zip(order, await tradable([stored_of[i] for i in order]), strict=True))
++    for i in sorted(moved):
++        if not verdicts.get(i, False):
++            raise LegEditRefused("leg_edit_landing_not_tradable", leg=edit.leg_ref(underlying, new_legs, i))
++
++
++def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs: list[EditLeg]) -> int | None:
++    """AC-3/AC-9 (ADR-186 (2)): only Shift adds to the total; a manual step, Width or Hedge resets it ('-')."""
++    control = req.edit.control
++    if control == "shift":
++        step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
++        return (req.shift_total or 0) + (req.edit.direction or 1) * step
++    return None if control in ("step", "width", "hedge") else req.shift_total
++
++
++def _recaptured(e: EditIn, legs: list[EditLeg]) -> frozenset[int]:
++    """The legs whose planned entry is captured again without a move: all (reset_prices), one (reset_leg), none."""
++    if e.control == "reset_prices":
++        return frozenset(range(len(legs)))
++    return frozenset({_need_index(e, legs)}) if e.control == "reset_leg" else frozenset()
++
++
+ def _freeze_blocks(cat: Catalogue, underlying: str, legs: list[EditLeg],
+                    stored: dict[ContractKey, tuple[int, datetime.date]]):
+     """The ADR-092 block reason per leg index: the stored limit in force for the leg's contract, the lot size from the
+@@ -374,14 +519,21 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one
+                    feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                    capture: Annotated[Capture, Depends(get_capture)],
+                    contract_ids: Annotated[ContractIds, Depends(get_contract_ids)],
++                   list_current: Annotated[bool, Depends(get_list_current)],
++                   tradable: Annotated[Tradable, Depends(get_move_eligibility)],
+                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
+                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
+     legs = _legs_of(cat, req, today)
+-    new_legs, moved = apply_edit(cat, req, legs, today)
++    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
+     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
+     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
++    stored_ids = await contract_ids(ids)
++    if req.edit.control in MOVES:
++        stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
++        await _check_landing(tradable, req.underlying, new_legs, moved, stored_of)
++    shift_total = _next_shift_total(req, cat, today, legs)
+     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
+     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
+     reasons: dict[int, Reason] = {}
+@@ -405,7 +557,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one
+         new_legs = edit.with_entries(new_legs, entries)
+     template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
+     blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
+-    stored_ids = await contract_ids(ids)
++    off_now = _controls(template, hedged, new_legs, list_current)
+     out_legs = [{
+         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
+         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
+@@ -414,6 +566,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one
+         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
+         "captured_at": None if i in unpriced else stamps[i],
+         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
++        "replaced_typed": legs[i].typed and i in moved,
+         "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
+         "block": blocks.get(i)} for i, x in enumerate(new_legs)]
+     outcome = None
+@@ -427,6 +580,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one
+         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
+         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
+     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
+-    reply = {"legs": out_legs, "shape": None if template is None else template.id, "shape_name": name,
++    reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
++             "control_reasons": {name: None if why is None else render_reason(why) for name, why in off_now.items()},
++             "shift_total": shift_total, "shape": None if template is None else template.id, "shape_name": name,
+              "outcome": outcome}
+     return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1
+diff --git a/backend/ofo_app/routes/leg_picker.py b/backend/ofo_app/routes/leg_picker.py
+index 734e09e8..9277cabf 100644
+--- a/backend/ofo_app/routes/leg_picker.py
++++ b/backend/ofo_app/routes/leg_picker.py
+@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, Query
+ from ofo.engine.chain_values import ChainGreeks, chain_greeks
+ from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
+ from ofo.marketdata.provider import DayStatsReason, NotSupported
+-from ofo.marketdata.quote import NormalizedQuote, is_live_price
++from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
+ from ofo.money import PAISE
+ from ofo.rules.inputs import DataHealth
+ from ofo.timeutil import IST
+@@ -278,9 +278,7 @@ FUTURES_LEASE = WindowLease()  # the listed futures: the same fan-out and socket
+ 
+ # ---- the strikes read -----------------------------------------------------------------------------------------------
+ 
+-def _priced(quote: NormalizedQuote | None) -> bool:
+-    """A quote's price counts only when the quote is AVAILABLE (the feed's own health) and the price is above 0."""
+-    return quote is not None and quote.health is DataHealth.AVAILABLE and is_live_price(quote.ltp)
++_priced = priced  # the one rule lives beside is_live_price (ofo.marketdata.quote)
+ 
+ 
+ def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None) -> PickerCellOut:

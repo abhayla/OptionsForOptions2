@@ -2,23 +2,36 @@
  "id": "db-tests-outside-the-row-red-only-in-ci",
  "scope": "generic",
  "class": "A change to a migration, a database function or a route's reply breaks database-backed tests in OTHER files (round-trip, pin and exact-reply tests written when an older state was newest), and nothing local runs them: the gate runs only the database-free app tests, and the builder runs only its own files, so the red appears only in CI after the push.",
- "mechanism": "Occurrence 1 (row 27, PR #540): GET /api/catalogue/{u}/expiries gained expiry_days; tests_app/test_pinned_clock.py:140 compared the whole reply and failed only in CI (run 40132982617). Occurrence 2 (row 29, PR #541): migration 0025 re-created ofo_strategy_change_items_valid without publishing NEW_PINS, so tests_app/test_strategy_shape_matrix.py:409 kept the 0011 pin; and tests_app/test_migration_0024_typed_entry.py:194 compared grants after the whole down-chain with the head grants, which 0025's downgrade legitimately changes (run 40146949616). select_app_tests.py selects by route/module keys and does not select migration round-trip or pin tests for a new migration; the gate's app-selected step runs only DB-free files.",
+ "mechanism": "Occurrence 1 (row 27, PR #540): GET /api/catalogue/{u}/expiries gained expiry_days; tests_app/test_pinned_clock.py:140 compared the whole reply and failed only in CI (run 40132982617). Occurrence 2 (row 29, PR #541): migration 0025 re-created ofo_strategy_change_items_valid without publishing NEW_PINS, so tests_app/test_strategy_shape_matrix.py:409 kept the 0011 pin; and tests_app/test_migration_0024_typed_entry.py:194 compared grants after the whole down-chain with the head grants, which 0025's downgrade legitimately changes (run 40146949616). select_app_tests.py selects by route/module keys and does not select migration round-trip or pin tests for a new migration; the gate's app-selected step runs only DB-free files. Occurrence 3 (row 30b, run 40201288521): backend/ofo/errors/gate_slots.py changed; tests_app/test_identifier_and_slots.py imports it and builds f\"ofo.errors.gate_slots.{n}\"; the selector skipped every file outside backend/ofo_app/ (fixed 01931b0f). Selector replay of the three real diffs (2026-10-26): case 3 (migration) and case 1 (backend/ofo module) were real selector misses, now fixed; case 2 was NOT a selector miss - test_pinned_clock.py was already selected through the route key /api/catalogue/{underlying}/expiries, but the selection (31 files in the replay) is over MAX_FILES=12, so atool.py refuses it and defers to CI.",
  "first_seen": {
   "date": "2026-10-25",
   "where": "chunk 3 session A, PR #540 and PR #541",
   "evidence": "CI api job: #540 '1 failed, 3963 passed' (test_pinned_clock.py:140); #541 '2 failed, 4061 passed' (test_migration_0024_typed_entry.py:194 grants; test_strategy_shape_matrix.py:409 md5 e6970479... != 13f59a46...)."
  },
- "fix": "Mechanism due at this second occurrence: before reporting, a builder whose diff touches backend/ofo_app/alembic/, a *_store.py or a route reply runs EVERY database test that select_app_tests.py selects plus every tests_app/test_migration_*.py and tests_app/test_strategy_shape_matrix.py through scripts/orchestrator/db_run_fresh.py (a throwaway database per run). Now: a standing line in docs/process/builder-brief.md. Next: the gate runs that set itself when such a file changed (a gate change - the next chunk's process item, owner to count it). Instances fixed: test_pinned_clock.py assertion; 0025 publishes NEW_PINS; the 0024 round-trip test takes its grant snapshot at 0024 (after the later migrations' downgrades).",
+ "fix": "Mechanism due at this second occurrence: before reporting, a builder whose diff touches backend/ofo_app/alembic/, a *_store.py or a route reply runs EVERY database test that select_app_tests.py selects plus every tests_app/test_migration_*.py and tests_app/test_strategy_shape_matrix.py through scripts/orchestrator/db_run_fresh.py (a throwaway database per run). Now: a standing line in docs/process/builder-brief.md. Next: the gate runs that set itself when such a file changed (a gate change - the next chunk's process item, owner to count it). Instances fixed: test_pinned_clock.py assertion; 0025 publishes NEW_PINS; the 0024 round-trip test takes its grant snapshot at 0024 (after the later migrations' downgrades). Selector fix (fix/app-test-selector-misses): backend/ofo/ modules key on `ofo.x.y` with one level of route reachability; a changed migration selects a fixed set (every tests_app file named *migration* or mentioning alembic / NEW_PINS / the replay helper). Replay of the 3 real diffs now picks 17 / 55 / 81 files, each containing the expected file; tests: tests/orchestrator/test_select_app_tests.py (test_run_40201288521_*, _40132982617_*, _40146949616_*).",
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "CI catches it after the push (each occurrence cost one red CI run, ~15 min, and a re-review). No local check yet; the builder-brief line is prose until the gate step exists."
+  "note": "CI catches it after the push (each occurrence cost one red CI run, ~15 min, and a re-review). No local check yet; the builder-brief line is prose until the gate step exists. 2026-10-26: the SELECTION is now pinned for all three runs by tests, but the class stays unguarded: every real selection (17/55/81) is over MAX_FILES=12, so atool.py still refuses to run them against the production-host DB and nothing local runs them. Left: run the selected DB tests off the production host (throwaway DB per db_run_fresh.py, or CI) before push."
  },
  "spec_ref": [
   "spec/decisions/ADR-181.md"
  ],
  "occurrences": [
-  {"date": "2026-10-25", "where": "row 27, PR #540", "evidence": "test_pinned_clock.py:140 exact catalogue reply"},
-  {"date": "2026-10-25", "where": "row 29, PR #541", "evidence": "test_strategy_shape_matrix.py:409 pin; test_migration_0024_typed_entry.py:194 grants"}
+  {
+   "date": "2026-10-25",
+   "where": "row 27, PR #540",
+   "evidence": "test_pinned_clock.py:140 exact catalogue reply"
+  },
+  {
+   "date": "2026-10-25",
+   "where": "row 29, PR #541",
+   "evidence": "test_strategy_shape_matrix.py:409 pin; test_migration_0024_typed_entry.py:194 grants"
+  },
+  {
+   "date": "2026-10-25",
+   "where": "row 30b, PR #552, run 40201288521",
+   "evidence": "test_identifier_and_slots.py: selector skipped backend/ofo/errors/gate_slots.py (fixed 01931b0f)"
+  }
  ]
 }
