@@ -1,4 +1,16 @@
-import os, subprocess, sys
+"""ev_agent.py <agent-id | worktree-path> <reply.json> [--replace] [--dry-run]
+
+Thin wrapper: resolve the agent's worktree, refuse while a verifier is in flight, show `git status --short`, then run
+the kit's `tools/record_evidence.py <reply.json> --root <worktree> [...]` and exit with its code. The reply format is
+the kit's (see the `tools/record_evidence.py` docstring). Fail closed: a missing kit tool exits 2.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _refuse_if_verifier_in_flight(target):
@@ -13,9 +25,26 @@ def _refuse_if_verifier_in_flight(target):
         sys.stderr.write(why + "\n")
         sys.exit(2)
 
-S = os.path.dirname(os.path.abspath(__file__))
-aid, wid, builder, verifier, jf = sys.argv[1:6]
-wt = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "." + "claude", "worktrees", f"agent-{aid}")
-_refuse_if_verifier_in_flight(wt)
-print(subprocess.run(["git", "status", "--short"], cwd=wt, capture_output=True, text=True).stdout)
-subprocess.run([sys.executable, os.path.join(S, "record_evidence.py"), wt, wid, builder, verifier, jf], check=True)
+
+def resolve_worktree(who: str) -> str:
+    if os.path.isdir(who):
+        return who
+    return os.path.join(REPO, "." + "claude", "worktrees", f"agent-{who}")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        sys.stderr.write(__doc__ + "\n")
+        return 2
+    wt = resolve_worktree(argv[0])
+    _refuse_if_verifier_in_flight(wt)
+    tool = os.path.join(REPO, "tools", "record_evidence.py")
+    if not os.path.isfile(tool):
+        sys.stderr.write(f"ev_agent: kit tool missing: {tool}\n")
+        return 2
+    print(subprocess.run(["git", "status", "--short"], cwd=wt, capture_output=True, text=True, check=False).stdout)
+    return subprocess.run([sys.executable, tool, argv[1], "--root", wt, *argv[2:]], check=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

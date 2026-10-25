@@ -440,12 +440,12 @@ def test_the_real_row_12_fix_1_brief_is_refused_for_the_missing_line(capsys):
     assert "MISSING Reference line" in capsys.readouterr().out
 
 
-def test_a_builder_brief_must_require_the_mutation_gate(tmp_path, capsys):
-    """Meta review after row 9: builders left guards unproven; a builder brief without `mutation_gate.py` is refused."""
+def test_a_builder_brief_without_the_mutation_gate_is_no_longer_refused(tmp_path, capsys):
+    """ADR-189: mutation is a Tier A builder task, not a gate; a brief without `mutation_gate.py` gets no such miss."""
     text = _builder("Attack list:\n" + FIVE, GOOD_BUDGET).replace(
         "Run `python scripts/orchestrator/mutation_gate.py` before reporting.\n", "")
     code, out = _out(tmp_path, text, capsys)
-    assert code == 1 and "MISSING mutation gate" in out
+    assert "mutation_gate.py" not in text and "MISSING mutation gate" not in out
 
 
 # ---------------------------------------------------------------- ADR-176: label rename and the open-record rule

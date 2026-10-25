@@ -1,4 +1,4 @@
-"""PreToolUse hook (AskUserQuestion): refuse the question tool between 22:00 and 08:00 IST (row-review R17 by machine).
+"""PreToolUse hook (AskUserQuestion): refuse the question tool between 22:00 and 08:00 IST (row-review.md lesson L17 by machine).
 
 The owner may be away at night; a question box then freezes the run until morning. Refused with the R17 text: write the
 question to docs/process/owner-questions-<date>.md and keep building. Override: env `OFO_QUESTION_NIGHT_OK=1` AND a
@@ -27,7 +27,7 @@ OVERRIDE_ENV = "OFO_QUESTION_NIGHT_OK"
 REASON = re.compile(r"night reason:\s*\S", re.I)
 MESSAGE = (
     "BLOCKED by question_night_guard: owner may be away (22:00-08:00 IST): write the question to "
-    "docs/process/owner-questions-{date}.md and keep building (row-review R17). Override only with "
+    "docs/process/owner-questions-{date}.md and keep building (row-review.md lesson L17). Override only with "
     "OFO_QUESTION_NIGHT_OK=1 and a line 'Night reason: <why this cannot wait>' in the question."
 )
 

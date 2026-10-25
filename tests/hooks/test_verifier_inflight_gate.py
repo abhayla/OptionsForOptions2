@@ -372,24 +372,47 @@ def evidence_args(tmp_path):
     return wt, [str(wt), "W-001", "builder", "verifier", str(jf)]
 
 
-@pytest.mark.parametrize("script", ["record_evidence.py", "record_evidence_fp.py"])
-def test_evidence_writers_refuse_in_flight_and_write_otherwise(snap, evidence_args, script):
-    wt, args = evidence_args
-    f = fresh(snap)
-    r = run_script(script, args, snap)
-    assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
-    assert not (wt / "evidence").exists()
-    f.unlink()
-    r = run_script(script, args, snap)
-    assert r.returncode == OK, r.stderr
-    assert (wt / "evidence" / "W-001" / "AC-1.md").is_file()
-
-
 def test_ev_agent_refuses_in_flight(snap, evidence_args):
     _, args = evidence_args
     fresh(snap)
-    r = run_script("ev_agent.py", ["zzzzzzzz", *args[1:]], snap)
+    r = run_script("ev_agent.py", [args[0], args[-1]], snap)
     assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
+    r = run_script("ev_agent.py", ["zzzzzzzz", args[-1]], snap)
+    assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
+
+
+def _load_ev_agent():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ev_agent", SCRIPTS / "ev_agent.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_ev_agent_passes_root_and_reply_to_the_kit_tool_and_its_exit_code(evidence_args, monkeypatch, capsys):
+    wt, args = evidence_args
+    mod = _load_ev_agent()
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 3 if cmd[1].endswith("record_evidence.py") else 0, stdout="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(mod, "_refuse_if_verifier_in_flight", lambda target: None)
+    assert mod.main([str(wt), args[-1], "--replace", "--dry-run"]) == 3  # a kit failure is never hidden
+    tool_call = calls[-1]
+    assert tool_call[1] == str(pathlib.Path(mod.REPO) / "tools" / "record_evidence.py")
+    assert tool_call[2:] == [args[-1], "--root", str(wt), "--replace", "--dry-run"]
+
+
+def test_ev_agent_fails_closed_when_the_kit_tool_is_missing(evidence_args, monkeypatch, capsys):
+    wt, args = evidence_args
+    mod = _load_ev_agent()
+    monkeypatch.setattr(mod, "REPO", str(wt))
+    monkeypatch.setattr(mod, "_refuse_if_verifier_in_flight", lambda target: None)
+    assert mod.main([str(wt), args[-1]]) == 2
+    assert "kit tool missing" in capsys.readouterr().err
 
 
 def test_gh_issue_stage_refuses_in_flight_before_creating_anything(snap, tmp_path):
@@ -402,7 +425,7 @@ def test_gh_issue_stage_refuses_in_flight_before_creating_anything(snap, tmp_pat
 
 
 def test_writer_scripts_use_the_shared_function_not_a_copy():
-    for name in ("record_evidence.py", "record_evidence_fp.py", "ev_agent.py", "gh_issue.py"):
+    for name in ("ev_agent.py", "gh_issue.py"):
         text = (SCRIPTS / name).read_text(encoding="utf-8")
         assert "inflight_block_reason" in text and "INFLIGHT_SECONDS" not in text, name
 

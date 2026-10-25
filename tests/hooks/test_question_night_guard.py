@@ -32,7 +32,7 @@ def at(hour: int, minute: int = 0) -> datetime.datetime:
 def test_2330_ist_is_refused_with_r17_text():
     msg = qng.decide("AskUserQuestion", Q, now=at(23, 30), env={})
     assert msg and "owner may be away (22:00-08:00 IST)" in msg
-    assert "docs/process/owner-questions-2026-10-23.md" in msg and "row-review R17" in msg
+    assert "docs/process/owner-questions-2026-10-23.md" in msg and "row-review.md lesson L17" in msg
 
 
 def test_1000_ist_is_allowed():
