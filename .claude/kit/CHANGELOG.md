@@ -4,6 +4,109 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.12.0 — merge gate lands big pull requests, no Windows print crash, cheaper delivery (OD-103, OD-107, REQ-058)
+
+1. Delivery cost (W-057; issue 161): `builder-brief.md` gains an `Attack list:` fill-in line (the attacks the final
+   verifier will run, written by the start check or the measure step before the build, never by the builder) and four
+   standing items: run each listed attack and report it before reporting done; run every changed test file in full
+   (no name-filtered subset) before reporting done; a skipped test counts as not run; a mutation check edits a scratch
+   copy, never a checked-out file. The deliver skill sizes a work item by files touched (5 or fewer small, 6 to 15
+   medium, more than 15 or backend plus frontend large and split before the build) and adds step 12, process review:
+   after each item the orchestrator records minutes, tokens, rounds and the cause of each extra round and removes that
+   cause the same turn; a fresh agent reviews those records every third item; adding a check applies at once, removing
+   or loosening one needs an independent read and the owner's yes; the final verifier still checks every acceptance
+   criterion in full, never only the attack list.
+   Migration: none; a project whose own brief or deliver text replaced the kit's copies the new items across by hand.
+2. Merge gate (W-058; issue 163): `tools/merge_when_green.py` no longer refuses a pull request of 300 or more changed
+   files. Staleness is judged by commit counts only; when GitHub's compare answer may be truncated (300 or more files,
+   no `files` key, or an empty list while the head is ahead), the complete list comes from local git over the same
+   three-dot range with renames off. Each ref is fetched into a private, fully qualified ref (a tag named like the
+   base branch cannot shadow it; a sha must resolve to itself), git runs with replace objects off and repository
+   config that could shorten a diff overridden, and an option-like base name is refused. Any failed fetch, missing
+   merge base or failed git call refuses, as before.
+   Migration: none; run the gate from a full clone of the project (a shallow clone without the merge base refuses).
+3. Windows print crash (W-059; issue 159): every kit tool that runs as a script sets standard output and standard
+   error to replace characters the console cannot encode, keeping the stream's encoding (six tools keep their
+   existing UTF-8 choice), before it prints anything; `tools/selftest_deploy.py` gained an entry-point guard. A
+   Factory test keeps the rule.
+   Migration: none; a project-side `PYTHONIOENCODING=utf-8` workaround for kit tools can be removed.
+4. Not in 1.12.0: the kit file guard's outside-project exemption (W-060, issue 162) is parked after its final review
+   round (OD-107); its code is kept in the Factory for a later round. Two of issue 162's three blocked commands already
+   pass since 1.9.0 in the Bash tool; a command naming the user-level Claude folder is still denied.
+   Migration: none.
+5. Mechanical steps for every project that takes 1.12.0 (when the owner names it): `python tools/kit_upgrade.py`,
+   then `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
+## 1.11.1 — spec digest folds older decisions (OD-102, #138)
+
+1. Spec digest: the newest 40 decisions keep one line each, and every older decision folds into one summary line
+   (count, id range, a pointer to the decision log and to `python tools/spec_similar.py`). The decision log no longer
+   grows the digest: 100 more decisions add about 460 bytes. The Factory's digest went from 22563 to 16540 bytes.
+   Migration: regenerate `views/spec-digest.md` with `python tools/build_spec_digest.py .`; a project test that
+   expects one digest line per older decision must stop asserting that.
+2. Mechanical steps for every project that takes 1.11.1 (when the owner names it): `python tools/kit_upgrade.py`,
+   then `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
+## 1.11.0 — harvest queue: UTF-8 everywhere, fewer guard false denies, honest trace, safer verifier guard, cheaper CI (OD-98..OD-100, REQ-057)
+
+1. Text decoding (W-050; issues 153, 154, 44, 135): every text-mode subprocess call in kit tools and hooks passes
+   `encoding="utf-8", errors="replace"`, and every kit hook decodes its JSON input from the raw stdin bytes as UTF-8.
+   On Windows (cp1252) the merge gate no longer refuses a green pull request as "staleness unreadable" when GitHub's
+   reply holds a rupee sign or an en dash. The merge gate prints one flushed `waiting:` line per poll. A Factory test
+   fails on any new text-mode call without an encoding. A command that names a kit path and holds non-ASCII text is
+   still denied by the 1.10.0 printable-text rule, on purpose.
+   Migration: none; a project-side `PYTHONUTF8=1` workaround for the merge gate can be removed.
+2. Kit file guard (W-051; issues 40, 89, 113; OD-99), Bash tool only: allows the four generator regenerates
+   (`python tools/build_spec_digest.py <dir>`, `build_spec_index.py`, `build_order.py`, `build_findings_index.py`) and
+   `python tools/trace_check.py <dir> --write-view`, where `<dir>` is `.` or one absolute folder holding the project
+   lock file; `cd <absolute or ./ path to a folder holding a lock> && <one allowed kit tool run>`; and bare flag words
+   such as `--factory`. A denial for a path outside the project now names the Read and Write tools. A bare relative
+   `cd sub` stays denied (CDPATH). Writer commands naming files outside the project (`cp ~/... docs/`) stay denied;
+   use the Read and Write tools for those.
+   Migration: none.
+3. Trace check (W-052; issues 96, 116, 94): a fail for an acceptance criterion's current fingerprint, in any owning work
+   item, makes the criterion incomplete (`FAILED (evidence/<W>/<AC>.md, <date>)`) unless a pinned pass carries a
+   strictly newer date; same date, the fail wins. Any result other than exactly `pass`, a missing `ac_fp`, or a case
+   difference counts as a fail. A done work item whose `tests_required` names a missing path fails the check; a
+   not-done item gets a warning.
+   Migration: run `python tools/trace_check.py .`; a new FAILED line is a real recorded failure (re-verify or fix it);
+   a done item naming a missing test file needs its `tests_required` corrected.
+4. Verifier write guard (W-053; issues 110, 151): moves a file only inside the worktree the verifier call started in
+   (fixed at PreToolUse); in any other worktree a new or changed file is copied and reported, never moved, so an
+   orchestrator's work is no longer lost. A snapshot recorded without a session id is cleaned at SubagentStop for a
+   matching agent id. `reviewer` is read-only by default.
+   Migration: none; a project stand-in that matched snapshots by agent id only can be deleted.
+5. Kit upgrade seeds (W-053; issue 151): `kit_upgrade.py` creates each project-owned template file that is absent from
+   both the lock and the disk (for example `plans/README.md`), records it in the lock as project-owned and prints
+   `created (project-owned seed): <path>`; it never overwrites or re-creates a file the lock lists.
+   Migration: none; the upgrade creates the file.
+6. CI cost (W-054; issues 152, 154; OD-100): the kit CI workflow runs on opened, synchronize, reopened and
+   ready_for_review only, and its job is skipped for draft pull requests. New `tools/change_scope.py` classes a pull
+   request docs-only or code (code on any doubt). Opt-in: a docs-only pull request runs only the tests listed in
+   `.claude/project/ci-docs-only-tests.txt`; with no list, the full suite runs as before; a push to main always runs
+   the full suite. The merge gate now treats a skipped, neutral or missing kit CI job as not run: it merges only on a
+   passing newest kit CI result on the head, waits otherwise, and refuses a draft pull request. A pull request with
+   only other checks no longer merges through the gate.
+   Migration: to opt in, create `.claude/project/ci-docs-only-tests.txt` with one test path per line, including every
+   test that reads real spec data; do not opt in if your pytest collects `.md` or `.json` files. If your CI job is
+   renamed from `lint-and-test`, the merge gate will wait and refuse: keep the kit job name.
+7. Agents by tier (W-055; issues 98, 107): new `builder-c` (40 turns, Tier C) and `builder-b` (75, Tier B) beside
+   `builder` (100, Tier A), and a `reviewer` agent (80 turns, attacks first, read-only) for hands-on Tier A review; the
+   deliver skill names the agent per tier, and the budget hook holds each to 80% of its own limit.
+   Migration: none.
+8. `ci_local.py --regen` (W-055; issue 109) runs every applicable generator's regenerate form before the checks; the
+   decision guide lists the relation verbs `spec_dupes.py` accepts.
+   Migration: none; run `python tools/ci_local.py --regen` before a push that changes spec or decision files.
+9. Delivery lessons as kit text (W-055; issues 105, 106, 108): two builder-brief standing items, hook lessons in the
+   learning rule, and the park rule's "merge main into a parked branch before any new round". The always-loaded context
+   cap rises by 134 bytes to 23632, on purpose.
+   Migration: none.
+10. Mechanical steps for every project that takes 1.11.0 (when the owner names it): `python tools/kit_upgrade.py`, then
+    `python tools/kit_settings.py .`.
+    Migration: run those two commands.
+
 ## 1.10.1 — spec digest headroom (#138)
 
 1. Spec digest: decisions older than the newest 40 keep 50 characters of lead sentence (was 60), so the digest keeps

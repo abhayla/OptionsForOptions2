@@ -197,7 +197,8 @@ def dirty_paths(paths, cwd):
     if not paths:
         return []
     cmd = ["git", "status", "--porcelain", "--"] + paths
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         return []  # not a repo / bad pathspec -> not our business
     dirty = []
@@ -246,7 +247,7 @@ def find_dirty_hit(text, outer_command, payload_cwd):
 
 def main():
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     except Exception:
         sys.exit(0)
 

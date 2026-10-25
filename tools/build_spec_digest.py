@@ -8,8 +8,9 @@ Usage:
 Read it before asking the owner anything: a lookup by meaning across the whole spec, where tools/spec_similar.py
 only matches shared words. Lines:
 
-- one per decision: id, date, the bold sentence it opens with (else its first sentence; cut at 100 characters for the
-  newest 40 decisions by date then id number, 60 for older ones, so the log can grow under the cap), and its relation cell. Read through
+- one per decision: id, date, the bold sentence it opens with (else its first sentence, cut at 100 characters) and its
+  relation cell, for the newest 40 decisions by date then id number; every older decision is folded into ONE
+  summary line (count, id range, where to read them), so the log can grow without growing the digest (OD-102). Read through
   tools/spec_text.py, the same readers spec_dupes uses: the Factory's docs/spec/decisions.md table rows and a
   project's spec/decisions/*.md records;
 - one per requirement: id, status, title;
@@ -34,7 +35,6 @@ HANDOFF_REL = "docs/spec/00-master-handoff.md"
 SIZE_CAP = 24000
 SENTENCE_MAX = 100          # lead sentence of the newest RECENT_DECISIONS decisions
 RECENT_DECISIONS = 40      # "newest" = latest date, then highest id number (see _recency_key), never file order
-OLDER_SENTENCE_MAX = 50    # lead sentence of every older decision
 RELATION_MAX = 50
 TITLE_MAX = 110
 HEADING_MAX = 70
@@ -76,10 +76,25 @@ def _recency_key(part: tuple, index: int) -> tuple:
 
 
 def decision_lines(src: st.Source) -> list[str]:
+    """The newest RECENT_DECISIONS lines in reader order, preceded by one summary line for all older decisions."""
     parts = _decision_parts(src)
     ranked = sorted(range(len(parts)), key=lambda i: _recency_key(parts[i], i), reverse=True)
     recent = set(ranked[:RECENT_DECISIONS])
-    return [_decision_line(*p, SENTENCE_MAX if i in recent else OLDER_SENTENCE_MAX) for i, p in enumerate(parts)]
+    lines = [_decision_line(*p) for i, p in enumerate(parts) if i in recent]
+    older = [parts[i][0] for i in reversed(ranked[RECENT_DECISIONS:])]  # oldest first
+    return ([_older_line(older)] if older else []) + lines
+
+
+def _older_line(ids: list[str]) -> str:
+    """One line for every folded decision: how many, the id range per prefix, and how to find one."""
+    spans: dict[str, list[int]] = {}
+    for rid in ids:
+        m = re.match(r"^(.*?)(\d+)$", rid)
+        spans.setdefault(m.group(1) if m else rid, []).append(int(m.group(2)) if m else 0)
+    rng = ", ".join(f"{pre}{min(n)}..{pre}{max(n)}" for pre, n in spans.items())
+    where = "docs/spec/decisions.md" if any(i.startswith("OD-") for i in ids) else "spec/decisions/*.md"
+    return (f"- Older decisions: {len(ids)} rows, {rng} (oldest first). Read {where}, or find one by meaning: "
+            f"python tools/spec_similar.py . \"<text>\"")
 
 
 def _decision_parts(src: st.Source) -> list[tuple]:
@@ -100,8 +115,8 @@ def _decision_parts(src: st.Source) -> list[tuple]:
     return out
 
 
-def _decision_line(rid: str, date: str, text: str, changes, sentence_max: int = SENTENCE_MAX) -> str:
-    line = f"- {rid} {one_line(date) or '—'}: {cut(lead_sentence(text), sentence_max)}"
+def _decision_line(rid: str, date: str, text: str, changes) -> str:
+    line = f"- {rid} {one_line(date) or '—'}: {cut(lead_sentence(text), SENTENCE_MAX)}"
     rel = one_line(changes)
     if rel:
         line += f" [{cut(rel, RELATION_MAX)}]"
@@ -157,13 +172,14 @@ def section_lines(root: Path) -> list[str]:
 def render(root: Path) -> str:
     src = st.Source(root)
     dec = decision_lines(src)
+    n_dec = len(_decision_parts(src))
     req = requirement_lines(src)
     sec = section_lines(root)
     n_sec = sum(s.count("\n- ") + (1 if s.startswith("- ") else 0) for s in sec)
     out = [HEADER, "\n# Spec digest\n\n",
            "One line per decision, requirement and spec section. Read it before asking the owner anything; cite "
            "the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.\n",
-           f"\n## Decisions ({len(dec)})\n\n", ("\n".join(dec) + "\n") if dec else "_None._\n",
+           f"\n## Decisions ({n_dec})\n\n", ("\n".join(dec) + "\n") if dec else "_None._\n",
            f"\n## Requirements ({len(req)})\n\n", ("\n".join(req) + "\n") if req else "_None._\n",
            f"\n## Spec sections ({n_sec})\n"]
     out += sec if sec else ["\n_None._\n"]
@@ -194,5 +210,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _stdio_replace() -> None:
+    """Keep the stream's encoding but replace what it cannot hold, so a cp1252 console (Windows) never
+    raises UnicodeEncodeError on text from a child process, GitHub or a spec file (issue 159)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 if __name__ == "__main__":
+    _stdio_replace()
     sys.exit(main())
