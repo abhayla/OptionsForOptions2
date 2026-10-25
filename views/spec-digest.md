@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (183)
+## Decisions (184)
 
-- Older decisions: 143 rows, ADR-1..ADR-144 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
+- Older decisions: 144 rows, ADR-1..ADR-145 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
 - ADR-149 2026-10-21: REQ-073 AC-5 is met by three controls the product can enforce, because the basket form carries no a… [refines REQ-073; refines ADR-109]
 - ADR-150 2026-10-21: ADR-055 (1) is read as follows. [refines ADR-055]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
 - ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078; refines REQ-076]
 - ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
+- ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
 
 ## Requirements (131)
 
