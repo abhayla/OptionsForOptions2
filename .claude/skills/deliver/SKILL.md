@@ -23,7 +23,9 @@ requires it), evidence, trace check, review, PR, merge, status update.
    `order_override: <reason>` (the reason is the record), which --may-start prints.
 2. **Requirement + work item** — read them before anything else. They fix the acceptance
    criteria and the tier; nothing below may silently redefine them. Any plan made or changed is written as `plans/PL-###.md`; a change appends a `changes` entry (was, now, why), never rewrites silently.
-3. **Builder** — dispatch the `builder` agent in its own worktree. It writes code and one
+3. **Builder** — dispatch the builder variant of the work item's tier in its own worktree: `builder-c` (Tier C,
+   40 turns), `builder-b` (Tier B, 75 turns) or `builder` (Tier A, 100 turns). The agent's `maxTurns` is the hard stop of
+   its tier and the budget hook refuses a Budget line above 80% of it. It writes code and one
    test per acceptance criterion in `tests_required`. It never writes `evidence/` files and
    never marks any status field verified or reviewed — doing so would make it its own
    verifier, which is not independent verification.
@@ -53,7 +55,8 @@ requires it), evidence, trace check, review, PR, merge, status update.
    CI), so that a requirement cannot move to `Verified` while its chain to a work item and its
    evidence is broken. Also `python tools/build_findings_index.py --check` and
    `python tools/check_spec_refs.py .` when findings changed.
-7. **Review** — sized by tier (see the tier table below).
+7. **Review** — sized by tier (see the tier table below). A Tier A review dispatches the `reviewer` agent (read-only,
+   80 turns), one narrow area per reviewer, and its brief tells it to run the hands-on attacks FIRST and read the code after.
 8. **PR** — open the pull request from `.github/pull_request_template.md`; its Spec-deviation
    block is required (`tools/check_pr_spec_block.py` fails the PR without it). CI must run and
    pass (see CI below).
@@ -77,8 +80,16 @@ requires it), evidence, trace check, review, PR, merge, status update.
     silent: build with `python tools/build_status_page.py . --fetch --out views/status-page.html`, publish once,
     then create `views/status-page.json` as `{"url": "<the link>"}` and commit it.
 
+12. **Process review** - after each item closes, the orchestrator records its minutes, tokens, rounds and the
+    one-line cause of each extra round, and applies the change that removes that cause the same turn. A fresh agent
+    reviews those records every third item. A change that adds a check applies at once; one that removes or loosens
+    a check needs an independent read and the owner's yes. The final verifier still checks every acceptance
+    criterion in full, never only the attack list.
+
 ## Work-item size
 
+- Size a work item by files touched: 5 or fewer small, 6 to 15 medium, more than 15, or backend plus frontend,
+  large and split before the build.
 - A user-visible step is the planning and end-to-end unit; its end-to-end test runs in CI.
 - A pull request is small enough for one reviewer to read end to end; dependent pull requests are stacked.
 - A migration is its own pull request.
@@ -102,11 +113,11 @@ On `NO TRANSCRIPTS: <path>` the report could not find this project's transcripts
 
 | Dispatch | Model / effort |
 |---|---|
-| builder | builder sonnet/medium, always (the building class, whatever the tier; a fuzzy multi-file spec gets a design pass first on opus/high with a `Why Opus:` line) |
+| builder (`builder-c`, `builder-b` or `builder`, by tier) | builder sonnet/medium, always (the building class, whatever the tier; a fuzzy multi-file spec gets a design pass first on opus/high with a `Why Opus:` line) |
 | verifier, Tier B | verifier sonnet/high |
 | verifier, Tier A | verifier opus/high |
 | review, Tier B | review sonnet/high |
-| review, Tier A | review opus/xhigh |
+| review, Tier A | review opus/xhigh (the `reviewer` agent) |
 | independent review after the same class fails twice | fable/high with a `Why Fable:` line |
 | read-only search across the codebase | the `Explore` agent (haiku/medium) |
 

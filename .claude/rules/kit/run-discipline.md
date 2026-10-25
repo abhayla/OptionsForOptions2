@@ -20,6 +20,8 @@ Why: long runs stalled on status reports, dragged stuck items round after round,
 
 - **B1 Park rule:** PARKED after two failed fix rounds, a 2-working-day-overdue real-world proof, or an outside
   blocker — open a `parked` issue with the evidence and what's left, note the tracker, move on; never retry silently.
+  Before any new round on a parked branch, merge main into it, run the guard tests and record the merge commit in
+  the parked issue.
 - **B2 Owner away: never ask, park the question.** No interactive questions while nobody is watching; decide and
   record a spec-conformant choice like an owner answer; anything else goes to a dated owner-questions file with a
   recommendation, and the run continues.
