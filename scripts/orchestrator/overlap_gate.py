@@ -7,8 +7,8 @@ ADR-171 rule 3 by machine (owner 2026-10-23: "This should be clear cut rule and 
 never touch the same file. Reads the REAL changes of each row - the older row's files changed since its start ref, the
 younger row's since the point its branch split from the older row's branch (git merge-base), each plus every
 uncommitted change (staged, unstaged, untracked) in its worktree - and exits 1 naming each shared file. Exit 0 only when
-the two sets share nothing but GENERATED files (ADR-188). Run before the younger row's builder starts, when it reports, and before its rebase. A
-worktree or ref that cannot be read fails closed (exit 2).
+the two sets share nothing but GENERATED files (ADR-188). Run before the younger row's builder starts, when it
+reports, and before its rebase. A worktree or ref that cannot be read fails closed (exit 2).
 """
 import subprocess
 import sys
