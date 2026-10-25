@@ -478,3 +478,14 @@ describe('wording and money (ADR-003, ADR-008)', () => {
     expect(t).toContain(`_EXEC = "${NOT_LIVE_PARTS.what_is_blocked}"`)
   })
 })
+
+describe('REQ-134 reader sweep: the Execute title is the saved strategy name when the saved read has it', () => {
+  it('a named strategy shows its name (no API quotes, as text); an older server (no name) keeps "Execute Strategy <id>"', async () => {
+    answers['GET /strategies/1'] = ok({ definition: DEF, revision: REVISION, name: '"<i>Condor</i> wider"' })
+    const named = await openExecute()
+    expect(text(named, 'page-title')).toBe('Execute Strategy <i>Condor</i> wider')
+    expect(named.get('[data-testid="page-title"]').find('i').exists()).toBe(false)
+    answers['GET /strategies/1'] = ok({ definition: DEF, revision: REVISION })
+    expect(text(await openExecute(), 'page-title')).toBe('Execute Strategy 1')
+  })
+})

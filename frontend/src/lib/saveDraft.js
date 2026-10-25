@@ -1,10 +1,11 @@
 // Save Draft / reopen helpers (W-071; REQ-038 AC-5, ADR-057, ADR-068 item 1, ADR-075, ADR-008). Pure functions.
 // Adapted from the legacy strategy save/load calls only (legacy-reuse row 146): no client P&L, no price fallback.
+import { CONTRACT_UNAVAILABLE, contractName } from '@/lib/displayFormat'
 // Strings stay strings: a planned entry and a capture time are sent and shown exactly as the API gave them.
 
 /** The Save Draft body. Per leg exactly: contract_id, action, quantity (units = lots x lot size, a count, not money) and,
  *  when the leg has one, planned_entry + captured_at together (+ entry_source 'typed' for a typed price). Never a live price, never an instrument id. */
-export function buildSaveBody(legs, rulesRef) {
+export function buildSaveBody(legs, rulesRef, name) {
   const body = {
     underlying: legs[0].underlying,
     legs: legs.map((l) => {
@@ -18,8 +19,73 @@ export function buildSaveBody(legs, rulesRef) {
     }),
   }
   if (rulesRef) body.rules_ref = rulesRef
+  if (typeof name === 'string') body.name = name // REQ-134 AC-1: sent as typed; the server trims, checks 1 to 40 and refuses
   return body
 }
+
+/** REQ-134 AC-2: the update body (PUT /strategies/{id}): the same legs and the revision the page loaded. It carries no name:
+ *  a Save on a saved strategy never asks for or changes one (a rename is its own route). */
+export function buildUpdateBody(legs, rulesRef, revision) {
+  return { ...buildSaveBody(legs, rulesRef), expected_revision: revision } // no name argument: the body has no name key
+}
+
+// REQ-134 (AC-1, AC-2): the name's default, cap and Save As suffix. The server owns the rule (ofo.strategy.definition
+// STRATEGY_NAME_MAX, explanations DEFAULT_STRATEGY_NAME); these are the field's prefill and its length hint only.
+export const STRATEGY_NAME_DEFAULT = 'New Strategy'
+export const STRATEGY_NAME_MAX = 40
+export const SAVE_AS_SUFFIX = ' copy'
+
+/** The API sends a name as the user's quoted words (ADR-003, template strategy_name_shown): "NIFTY Oct condor" arrives
+ *  wrapped in one pair of double quotes. Strips exactly one outer pair for display and for prefilling a name field; inner
+ *  quote marks stay ('"say "hi""' -> 'say "hi"'). A value not wrapped in a pair, or empty inside it, is returned as
+ *  received (fail closed, never guessed); a non-text value gives null. */
+export function plainName(shown) {
+  if (typeof shown !== 'string' || !shown) return null
+  if (shown.length >= 3 && shown.startsWith('"') && shown.endsWith('"')) return shown.slice(1, -1)
+  return shown
+}
+
+/** REQ-134 AC-3: rename a saved strategy (PATCH /strategies/{id}/name) with the revision the caller holds. The one rename call for
+ *  the list and the builder. Returns the reply (id, quoted name, revision unchanged); throws the mapped error on a refusal and
+ *  an Error when the reply carries no name (fail closed: nothing is shown as renamed). `name` is sent as typed; the server owns the rule. */
+export async function renameStrategy(client, id, revision, name) {
+  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: revision })).data
+  if (typeof done?.name !== 'string') throw new Error('unreadable answer')
+  return done
+}
+
+/** The label of a saved strategy row: its name, or `fallback` when the server (an older one) sent none. */
+export function strategyLabel(row, fallback) {
+  return plainName(row?.name) ?? fallback
+}
+
+/** REQ-134 AC-4: 'NIFTY 27 Oct 22500 PE and 3 more' from the list row's first_leg and leg_count (Sensibull screen 117).
+ *  null when the row carries neither (an older server); the contract-unavailable text when the first leg is unreadable. */
+export function legsLine(row) {
+  const first = row?.first_leg
+  if (!first || !Number.isInteger(row.leg_count) || row.leg_count < 1) return null
+  const name = contractName({ underlying: row.underlying, expiry: first.expiry, strike: first.strike, instrument: first.instrument })
+  if (name === CONTRACT_UNAVAILABLE) return name
+  return row.leg_count > 1 ? `${name} and ${row.leg_count - 1} more` : name
+}
+
+/** REQ-134 AC-4: the tracked state as the server sent it: true, false, null (could not be read: never 'Not tracked'),
+ *  or absent (an older server: nothing shown). */
+export function trackedText(tracked) {
+  if (tracked === true) return 'Tracked'
+  if (tracked === false) return 'Not tracked'
+  return tracked === null ? 'Tracking not known' : null
+}
+
+/** REQ-134 AC-4: the rows whose name contains `text`, case-insensitive, as typed (a row with no name never matches a typed
+ *  text; an empty text keeps every row). */
+export function searchStrategies(rows, text) {
+  const wanted = String(text ?? '').trim().toLowerCase()
+  if (!wanted) return rows
+  return rows.filter((r) => (plainName(r?.name) ?? '').toLowerCase().includes(wanted))
+}
+
+export const noMatchText = (text) => `No saved strategy matches ${String(text).trim()}`
 
 /** True when a draft can be saved: it has legs and every leg names its catalogue contract and a lot size. */
 export function canSaveLegs(legs) {
@@ -105,5 +171,5 @@ export async function fetchSavedDraft(client, id) {
   }
   const legs = legsFromSaved(def, contracts)
   if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
-  return { legs, revision: Number.isInteger(body.revision) ? body.revision : null }
+  return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
 }

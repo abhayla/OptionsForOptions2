@@ -181,3 +181,14 @@ describe('Zerodha only in context', () => {
     expect(String(r.component)).toContain('HomeOverviewPage')
   })
 })
+
+describe('REQ-134 reader sweep: a recent row shows the strategy name (quoted user words, shown without the API quotes)', () => {
+  it('a named row shows its name as text before its underlying; a row without a name (older server) shows no name element', async () => {
+    strategiesAnswer = [{ ...draft(1, 'NIFTY', '2026-10-18T10:00:00+05:30'), name: '"NIFTY Oct condor"' }, draft(2, 'NIFTY', '2026-10-17T10:00:00+05:30')]
+    const w = await mountHome()
+    const rows = w.findAll('[data-testid="recent-row"]')
+    expect(rows[0].get('[data-testid="recent-name"]').text()).toBe('NIFTY Oct condor')
+    expect(rows[1].find('[data-testid="recent-name"]').exists()).toBe(false)
+    expect(rows[1].text()).toContain('NIFTY, draft, last saved 17 Oct 2026')
+  })
+})

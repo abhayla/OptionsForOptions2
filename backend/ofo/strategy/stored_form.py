@@ -44,7 +44,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.models import is_lot_aligned
-from ofo.errors.explanations import join_explanations, render_explanation
+from ofo.errors.explanations import UserWords, join_explanations, render_explanation, user_words
 from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import (
     DefinitionError,
@@ -55,6 +55,10 @@ from ofo.strategy.definition import (
     UnknownNameError,
     ValueRefusedError,
     check_names,
+    DEFAULT_STRATEGY_NAME,
+    NAME_EMPTY,
+    STRATEGY_NAME_MAX,
+    name_problem,
 )
 from ofo.strategy import settings_value
 
@@ -104,6 +108,8 @@ UNDERLYING_MISMATCH = "underlying_mismatch"
 LIVE_STATE_FIELD = "live_state_field"
 UNKNOWN_NAME = "unknown_name"
 VALUE_NOT_ALLOWED = "value_not_allowed"  # ADR-069: a setting value that is not an identifier or a number
+STRATEGY_NAME_EMPTY = "strategy_name_empty"  # REQ-134 AC-1: an empty name ("Give the strategy a name")
+STRATEGY_NAME_INVALID = "strategy_name_invalid"  # REQ-134 AC-1: over 40 characters, a control character, not text
 INVALID_PLANNED_ENTRY = "invalid_planned_entry"  # ADR-075: not a positive paise price with an aware capture time
 
 
@@ -581,6 +587,32 @@ def check_summary_text(text: str) -> str:
     except (TypeError, ValueError):
         raise StoredFormError(MALFORMED, "history summary is not JSON") from None
     return summary_text(items)
+
+
+def check_strategy_name(text: object) -> UserWords:
+    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_MAX characters, one line. Returns
+    the user's words (the request door, ofo.errors.explanations.REQUEST_LAYER); StoredFormError otherwise.
+    Duplicates are allowed, so nothing here looks at other names."""
+    trimmed = text.strip() if type(text) is str else text
+    problem = name_problem(trimmed)
+    if problem is None:
+        return user_words(trimmed)
+    if problem == NAME_EMPTY:
+        raise StoredFormError(STRATEGY_NAME_EMPTY, "the strategy name is empty")
+    raise StoredFormError(STRATEGY_NAME_INVALID, f"a strategy name is 1..{STRATEGY_NAME_MAX} characters on one line")
+
+
+def shown_name(stored: object):
+    """A stored strategy name as the API shows it: the user's own words in the catalogue's quoted slot (ADR-003), so it
+    reaches a response only as quoted user text. A value that is not a valid trimmed name is MALFORMED, never shown."""
+    if type(stored) is not str or stored != stored.strip() or name_problem(stored) is not None:
+        raise StoredFormError(MALFORMED, "the stored strategy name is not a valid name")
+    return render_explanation("strategy_name_shown", name=user_words(stored))
+
+
+def rename_summary(old: str, new: str) -> str:
+    """The history summary of a rename (REQ-134 AC-3): one closed ``renamed`` item holding the two names as typed."""
+    return summary_text([{"kind": "renamed", "from": old, "to": new}])
 
 
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:

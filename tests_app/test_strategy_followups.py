@@ -154,6 +154,7 @@ _BASE_ITEMS = {
     "legs_reordered": {"kind": "legs_reordered"},
     "replaced_unreadable": {"kind": "replaced_unreadable"},
     "restored": {"kind": "restored", "seq": 1},
+    "renamed": {"kind": "renamed", "from": "Old name", "to": "New name"},
 }
 
 
@@ -214,6 +215,9 @@ STRIKES = (_ok("22800", "22800.50", "22800.500", "0.01", "999999999999999999", "
            + _past("0", "0.00", "22800.005", "22800.001", "1000000000000000000", "0.001")
            + _shape("-1", "1E+2", "022800", "22 800", None, 22800))
 _NO_STRIKE = {k: v for k, v in GOOD_LEG.items() if k != "strike"}
+_NAME_MAX = definition_module.STRATEGY_NAME_MAX  # REQ-134 AC-1: a name is 1..40 trimmed characters, one line
+_NAME_OK = _ok("a", "x" * _NAME_MAX, "You should buy now")
+_NAME_PAST = _past("", "x" * (_NAME_MAX + 1), " padded", "padded ", "two\nlines")
 #: slot -> (target, how the value lands, cases). target "doc" = a definition (strategies AND strategy_history);
 #: target "items" = a change summary (strategy_history).
 TABLE = {
@@ -269,6 +273,8 @@ TABLE = {
                        + _past(NINES + "9", "1e5") + _shape(5, ["1"])),
     "item.restored.seq": ("items", _item_slot("restored", "seq"), _ok(1, 2**31 - 1) + _past(2**31, 0, -1)
                           + _shape("1", None)),
+    "item.renamed.from": ("items", _item_slot("renamed", "from"), _NAME_OK + _NAME_PAST + _shape(5, None)),
+    "item.renamed.to": ("items", _item_slot("renamed", "to"), _NAME_OK + _NAME_PAST + _shape(5, None)),
     "itemleg.action": ("items", _item_slot("leg_added", "leg", "action"), _ok("BUY", "SELL") + _past("buy")
                        + _shape(None, 1)),
     "itemleg.instrument": ("items", _item_slot("leg_added", "leg", "instrument"), _ok("CE", "PE")

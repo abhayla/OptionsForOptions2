@@ -36,6 +36,7 @@ describe('Save Draft bar', () => {
     const w = mount(SaveDraftBar, { props: { legs: [LEG] } })
     await flushPromises()
     await t(w, 'save-draft').trigger('click')
+    await t(w, 'name-form').trigger('submit') // REQ-134 AC-1: the first Save asks a name; the POST goes on confirm
     await flushPromises()
     expect(['save-error-what', 'save-error-impact', 'save-error-blocked', 'save-error-next'].map((id) => t(w, id).text()))
       .toEqual(['A', 'B', 'C', 'D'])
