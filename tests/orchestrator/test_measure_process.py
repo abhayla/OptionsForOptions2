@@ -358,16 +358,58 @@ def test_row_10_commit_fallback_counts_fix_rounds_not_a_passing_mention(tmp_path
     assert "source: fix-round commit subjects (dispatch ledger missing" in out
 
 
+def _fixes(row: str, *minutes: tuple[int, int]) -> list[dict]:
+    return [_commit(h, m, f"Row {row} fix 1: part {i}", str(i + 1)) for i, (h, m) in enumerate(minutes)]
+
+
 @pytest.mark.parametrize("rows,expect", [
-    ([("28", "fix", 9, 0), ("28", "verify-r2", 9, 10), ("29", "fix", 10, 0)], "worst 10 min over 1 fixes"),
-    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5), ("28", "verify-r2", 9, 50)], "worst 50 min over 1 fixes"),
-    ([("28", "verify-r2", 9, 0), ("28", "fix", 9, 5), ("28", "verify-r2", 9, 35)], "worst 30 min over 1 fixes"),
-    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5)], "1 fix dispatches and no verify dispatch after"),
-    ([("28", "build", 9, 0)], "has no fix dispatch in its window (source: dispatch ledger)"),
+    ([("28", "fix", 9, 0), ("28", "verify-r2", 9, 40), ("29", "fix", 10, 0)],
+     "worst 35 min over 1 of 2 fixes"),
+    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5), ("28", "verify-r2", 9, 50)], "worst 45 min over 1 of 1 fixes"),
+    ([("28", "verify-r2", 9, 0), ("28", "fix", 9, 2), ("28", "verify-r2", 9, 35)], "worst 30 min over 1 of 1 fixes"),
+    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5)], "UNMEASURED row 10: fix 28 round 1 - no checker after it"),
+    ([("28", "build", 9, 0)], "has no fix commit in its window (source: dispatch ledger)"),
 ])
 def test_row_10_pairs_a_fix_with_its_own_rows_verify_in_the_ledger(tmp_path, rows, expect):
-    out = _out(tmp_path, [_commit(9, 5, "Row 28f fix 1: not used", "1")], "--ledger", str(_ledger(tmp_path, rows)))
-    assert expect in out and "source: dispatch ledger" in out and "fix-round commit" not in out
+    out = _out(tmp_path, [_commit(9, 5, "Row 28 fix 1: x", "1")], "--ledger", str(_ledger(tmp_path, rows)))
+    assert expect in out and "fix-round commit" not in out
+
+
+def test_row_10_times_from_the_last_fix_commit_not_the_dispatch(tmp_path):
+    """The 29b shape: dispatch 09:00, commits 09:38 and 10:09, verify 10:36 -> 27 min (not 96 from the dispatch)."""
+    rows = [("29b", "fix", 9, 0), ("29b", "verify-r2", 10, 36)]
+    out = _out(tmp_path, [*_fixes("29b", (9, 38), (10, 9))], "--ledger", str(_ledger(tmp_path, rows)))
+    assert "worst 27 min over 1 of 1 fixes" in out and "MISS row 10" in out
+
+
+def test_row_10_unpaired_fix_names_its_row_and_round(tmp_path):
+    rows = [("29b", "fix", 9, 0), ("29b", "verify-r2", 10, 36), ("30", "fix", 11, 0)]
+    out = _out(tmp_path, _fixes("29b", (9, 38)), "--ledger", str(_ledger(tmp_path, rows)))
+    assert "UNMEASURED row 10: fix 30 round 1 - no checker after it" in out
+    assert "worst 58 min over 1 of 2 fixes" in out
+
+
+def test_row_10_fix_with_no_named_commit_is_unmeasured_not_dropped(tmp_path):
+    rows = [("29b", "fix", 9, 0), ("29b", "verify-r2", 10, 36)]
+    out = _out(tmp_path, [_commit(10, 0, "Row 31 fix 1: other row", "1")], "--ledger", str(_ledger(tmp_path, rows)))
+    assert 'UNMEASURED row 10: fix 29b round 1 - no fix commit named "Row 29b fix 1"' in out
+
+
+def test_row_10_ignores_other_rows_and_commits_after_the_verify(tmp_path):
+    rows = [("29b", "fix", 9, 0), ("29b", "verify-r2", 10, 36)]
+    commits = [*_fixes("29b", (9, 38)), _commit(10, 20, "Row 30 fix 1: other", "7"),
+               _commit(10, 50, "Row 29b fix 1: after the verify", "8")]
+    out = _out(tmp_path, commits, "--ledger", str(_ledger(tmp_path, rows)))
+    assert "worst 58 min over 1 of 1 fixes" in out
+
+
+def test_row_10_matches_the_round_form_and_the_explicit_round_number(tmp_path):
+    p = tmp_path / "ledger.jsonl"
+    lines = [{"row": "c1", "kind": "fix", "round": "2", "at": _ts(9)}, {"row": "c1", "kind": "checker", "at": _ts(10)}]
+    p.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
+    out = _out(tmp_path, [_commit(9, 30, "C1 FIX ROUND 2: guard", "1"), _commit(9, 40, "c1 fix round 1: old", "2")],
+               "--ledger", str(p))
+    assert "worst 30 min over 1 of 1 fixes" in out
 
 
 @pytest.mark.parametrize("case,note", [

@@ -319,21 +319,41 @@ def read_ledger(path: Path | None) -> tuple[list[dict] | None, str]:
 
 
 def ledger_window(entries: list[dict], s: dict) -> list[tuple]:
-    """The ledger entries inside the session window as (time, row, kind), oldest first."""
-    inside = [(_iso(e["at"]), e["row"].strip().lower(), e["kind"].strip().lower()) for e in entries
-              if _in(s, _iso(e["at"]))]
-    return sorted(inside)
+    """The ledger entries inside the session window as (time, row, kind, round), oldest first. `round` is the entry's
+    own `round` when it is a number, else the ordinal of the fix among that row's fixes in the window."""
+    inside = sorted((_iso(e["at"]), e["row"].strip().lower(), e["kind"].strip().lower(),
+                     str(e.get("round", "")).strip()) for e in entries if _in(s, _iso(e["at"])))
+    seen: dict[str, int] = {}
+    out = []
+    for at, row, kind, rnd in inside:
+        if kind == "fix":
+            seen[row] = seen.get(row, 0) + 1
+            rnd = rnd if rnd.isdigit() else str(seen[row])
+        out.append((at, row, kind, rnd))
+    return out
 
 
-def ledger_gaps(inside: list[tuple]) -> tuple[int, list[float]]:
-    """(fix dispatches, minutes from each fix to the next verify/checker dispatch of the same row)."""
+def ledger_gaps(inside: list[tuple], dated: list[dict]) -> tuple[int, list[float], list[str]]:
+    """(fix dispatches, minutes from each fix's LAST fix commit to the next verify/checker dispatch of the same row,
+    UNMEASURED lines for every fix that could not be paired). The tracker times from the fix commit, not the dispatch.
+    A fix commit is one dated after the fix dispatch and at or before the verify dispatch whose subject starts
+    `Row R fix N` or `R fix round N` (case-insensitive)."""
     fixes = [x for x in inside if x[2] == "fix"]
-    gaps = []
-    for at, row, _ in fixes:
-        later = [t for t, r, k in inside if r == row and k in VERIFY_KINDS and t >= at]
-        if later:
-            gaps.append((later[0] - at).total_seconds() / 60)
-    return len(fixes), gaps
+    gaps, unpaired = [], []
+    for at, row, _, rnd in fixes:
+        later = [t for t, r, k, _ in inside if r == row and k in VERIFY_KINDS and t >= at]
+        if not later:
+            unpaired.append(f"UNMEASURED row 10: fix {row} round {rnd} - no checker after it")
+            continue
+        verify = later[0]
+        r, n = re.escape(row), re.escape(rnd)
+        pat = re.compile(rf"^(?:Row {r} fix {n}|{r} fix round {n})\b", re.I)
+        times = [d for c in dated if pat.search(c["subject"]) and at < (d := _iso(c["time"])) <= verify]
+        if not times:
+            unpaired.append(f'UNMEASURED row 10: fix {row} round {rnd} - no fix commit named "Row {row} fix {rnd}"')
+            continue
+        gaps.append((verify - max(times)).total_seconds() / 60)
+    return len(fixes), gaps, unpaired
 
 
 def _git_common_dir(repo: Path) -> str:
@@ -442,10 +462,11 @@ def _row10(s: dict, name: str, dated: list[dict], rep: Report) -> None:
     the session window, else from fix-round commits to the next checker dispatch in the transcript; says which."""
     entries, note = rep.ledger
     inside = ledger_window(entries, s) if entries is not None else []
+    unpaired: list[str] = []
     if inside:
-        count, gaps = ledger_gaps(inside)
-        src, what = "source: dispatch ledger", "fix dispatch"
-        miss_why = f"{count} fix dispatches and no verify dispatch after"
+        count, gaps, unpaired = ledger_gaps(inside, dated)
+        src, what = "source: dispatch ledger", "fix commit"
+        miss_why = f"{count} fix dispatches and none measurable"
     else:
         why = note or "dispatch ledger has no entries in the session window"
         src, what = f"source: fix-round commit subjects ({why})", "fix commit"
@@ -456,13 +477,14 @@ def _row10(s: dict, name: str, dated: list[dict], rep: Report) -> None:
             if later:
                 gaps.append((min(later) - f).total_seconds() / 60)
         miss_why = f"{count} fix commits and no checker dispatch after"
+    rep.unm.extend(unpaired)
     if not count:
         rep.unm.append(f"UNMEASURED row 10: session {name} has no {what} in its window ({src})")
     elif not gaps:
         rep.unm.append(f"UNMEASURED row 10: session {name} has {miss_why} ({src})")
     else:
         rep.row(10, max(gaps) <= LIMITS[10], f"session {name} {what} -> checker dispatch worst {max(gaps):.0f} min "
-                f"over {len(gaps)} fixes (limit <= 15; {src})")
+                f"over {len(gaps)} of {count} fixes (limit <= 15; {src})")
 
 
 class Sources(NamedTuple):
