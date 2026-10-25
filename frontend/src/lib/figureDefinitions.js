@@ -20,7 +20,7 @@ const NOT_IN_STUDY =
 export const FIGURES = {
   max_profit: {
     label: "Max profit",
-    text: `The most this strategy can gain, from strikes and entry prices. ${EXACT_AT_EXPIRY}.`,
+    text: `The most this strategy can gain if every leg is held to expiry. ${EXACT_AT_EXPIRY}.`,
     source:
       'REQ-136 AC-1 (max profit) and AC-4 (exact at expiry); Sensibull bundle-findings.md 7.1 "Max Profit" tile label',
   },
@@ -55,8 +55,8 @@ export const FIGURES = {
   },
   charges: {
     label: "Charges",
-    text: "The estimated brokerage, exchange fees and taxes for the orders in this strategy. An estimate, not a bill.",
-    source: `REQ-136 AC-1 (charges); ${NOT_IN_STUDY}`,
+    text: "The estimated brokerage, STT, exchange transaction charges, SEBI charges, stamp duty and GST for the orders in this strategy. An estimate, not a bill.",
+    source: `REQ-136 AC-1 (charges); the charge items as ADR-082 lists them; ${NOT_IN_STUDY}`,
   },
   time_value: {
     label: "Time value",
