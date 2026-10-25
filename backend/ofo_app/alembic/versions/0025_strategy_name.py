@@ -165,6 +165,7 @@ OLD_GUARD_PIN = _M8.STRATEGIES_PINNED_BODY
 NEW_GUARD_PIN = _M4._md5_body(_new_guard_sql())
 OLD_ITEMS_PIN = _M11.NEW_PINS[ITEMS_SIGNATURE]
 NEW_ITEMS_PIN = _M4._md5_body(_new_items_sql())
+NEW_PINS = {ITEMS_SIGNATURE: NEW_ITEMS_PIN}  # the validator this migration re-creates (test_strategy_shape_matrix)
 
 
 def _strategies_block(insert_columns, update_columns, pin: str) -> str:
