@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
+import subprocess
 import sys
 from contextlib import redirect_stdout
 
@@ -26,7 +27,7 @@ def _ts(hh: int, mm: int = 0) -> str:
 
 def _turn(ts: str, ctx: int, text: str = "", tools: list[dict] | None = None, role: str = "assistant") -> str:
     content: list[dict] = [{"type": "text", "text": text}] if text else []
-    content.extend({"type": "tool_use", "name": t["name"], "input": t["input"]} for t in tools or [])
+    content.extend({"type": "tool_use", **t} for t in tools or [])
     msg = {"role": role, "content": content, "usage": {"input_tokens": 100, "cache_read_input_tokens": ctx - 100}}
     return json.dumps({"type": role, "timestamp": ts, "message": msg})
 
@@ -66,7 +67,9 @@ def _dirs(tmp: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
 
 
 def _argv(s, t, c, chunk: str | None = None) -> list[str]:
-    argv = ["--sessions-dir", str(s), "--tasks-dir", str(t), "--commits-json", str(c)]
+    # the default ledger is the real shared one: point at a missing file unless a test passes its own after
+    argv = ["--sessions-dir", str(s), "--tasks-dir", str(t), "--commits-json", str(c),
+            "--ledger", str(t / "no-ledger.jsonl")]
     return argv + (["--chunk-start", chunk] if chunk else [])
 
 
@@ -263,3 +266,167 @@ def test_read_line_names_folder_and_counts(tmp_path):
     _, out = _run(_argv(s, t, _commits(tmp_path, [])))
     line = next(ln for ln in out.splitlines() if ln.startswith("read:"))
     assert f"sessions {s} (1 files chosen: a43256ae), agent transcripts 0" in line
+
+
+# ---- chunk 4 fix round 1: tool_use ids, row 2 from the review file, row 6 runs only, row 10 from the ledger ----
+
+def _git(repo: pathlib.Path, *args: str) -> None:
+    cmd = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args]
+    subprocess.run(cmd, check=True)  # noqa: S603
+
+
+def _long_session(folder: pathlib.Path) -> pathlib.Path:
+    return _write(folder, f"{SID_A}.jsonl", [_turn(_ts(9), 100_000, "a"), _turn(_ts(12), 100_000, "b")])
+
+
+def _commit(hour: int, minute: int, subject: str, sha: str, rows: list[int] | None = None) -> dict:
+    return {"sha": sha * 40, "time": _ts(hour, minute), "subject": subject, "files": [], "review_rows": rows or []}
+
+
+def _ledger(tmp: pathlib.Path, entries: list, raw: str | None = None) -> pathlib.Path:
+    p = tmp / "ledger.jsonl"
+    lines = [json.dumps({"row": r, "kind": k, "at": _ts(h, m)}) for r, k, h, m in entries]
+    p.write_text(raw if raw is not None else "\n".join(lines) + "\n", encoding="utf-8")
+    return p
+
+
+def _out(tmp: pathlib.Path, commits: list[dict], *extra: str) -> str:
+    s, t = _dirs(tmp)
+    _long_session(s)
+    return _run([*_argv(s, t, _commits(tmp, commits)), "--session", "a43256ae", *extra])[1]
+
+
+def test_a_tool_use_repeated_on_two_lines_counts_once_for_rows_4_and_6(tmp_path):
+    opus = {"id": "toolu_1", "name": "Agent", "input": {"model": "opus", "prompt": "Review the tooltips"}}
+    db = {"id": "toolu_2", "name": "Bash", "input": {"command": "python scripts/orchestrator/db_run.py . python x.py"}}
+    p = _write(tmp_path, "s.jsonl", [_turn(_ts(9), 1000, "", [opus]), _turn(_ts(9, 1), 1000, "", [opus]),
+                                     _turn(_ts(9, 2), 1000, "", [db]), _turn(_ts(9, 3), 1000, "", [db, db])])
+    s = mp.read_session(p)
+    assert (len(s["bad_opus"]), s["db_runs"]) == (1, 1)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("python scripts/orchestrator/db_run_fresh.py . python -m pytest -c pytest-app.ini tests_app/a.py", True),
+    ("cd D:/x/repo && PYTHONUTF8=1 python D:\\x\\scripts\\orchestrator\\fresh_launch.py . python -m pytest", True),
+    ("cd /d/x && python3 scripts/orchestrator/db_run.py . python -m alembic upgrade head", True),
+    ("grep -n db_run_fresh.py scripts/orchestrator/*.py", False),
+    ("sed -i s/a/b/ scripts/orchestrator/db_run_fresh.py", False),
+    ("cat scripts/orchestrator/fresh_launch.py | head", False),
+    ("python -m pytest -c pytest-app.ini tests_app/a.py", False),
+    ("git add scripts/orchestrator/db_run.py && git commit -m 'db_run.py'", False),
+    ("python scripts/other.py db_run.py", False),
+])
+def test_only_a_command_that_runs_a_database_tool_counts(command, expected):
+    assert mp.is_db_run(command) is expected
+
+
+def test_rows_closed_are_the_distinct_headings_added_inside_the_window(tmp_path):
+    commits = [_commit(9, 10, "Review row 27", "1", [27]), _commit(9, 20, "Reviews 28 and 29", "2", [28, 29]),
+               _commit(9, 30, "Edit row 28 again", "3", [28]), _commit(8, 0, "an earlier session's row", "4", [24])]
+    out = _out(tmp_path, commits)
+    assert "OK   row 2: session a43256ae closed 3 rows [27, 28, 29] (limit <= 3)" in out
+
+
+def test_a_closed_subject_adds_only_rows_the_review_file_did_not_name(tmp_path):
+    commits = [_commit(9, 10, "Row 27 closed Done", "1", [27]), _commit(9, 20, "Row 40 PARKED (#600)", "2")]
+    assert "closed 2 rows [27, 40]" in _out(tmp_path, commits)
+
+
+def test_review_headings_come_from_a_real_git_log(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "docs" / "process").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    review = repo / "docs" / "process" / "row-review.md"
+    review.write_text("### Row 1 - old\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "first")
+    review.write_text("### Row 1 - old\n### Row 2 - new\nbody\n### Rowan - not a row\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "second")
+    commits = mp.git_commits(repo, "2000-01-01")
+    assert mp.attach_review_rows(repo, "2000-01-01", commits) == ""
+    assert [c["subject"] for c in commits if c["review_rows"] == [2]] == ["second"]
+    assert [c["review_rows"] for c in commits if c["subject"] == "first"] == [[1]]
+    assert "failed" in mp.attach_review_rows(tmp_path / "not-a-repo", "2000-01-01", commits)
+
+
+def test_row_10_commit_fallback_counts_fix_rounds_not_a_passing_mention(tmp_path):
+    commits = [_commit(9, 5, "dispatch.py: refuses a third fix round (ADR-181)", "1"),
+               _commit(9, 6, "Row 28f fix 2: a helper", "2"), _commit(9, 7, "Fix the label", "3"),
+               _commit(9, 8, "c1 fix round 1: guard", "4"), _commit(9, 9, "Row 24 CI fix: fakes", "5")]
+    out = _out(tmp_path, commits)
+    assert "3 fix commits and no checker dispatch after" in out
+    assert "source: fix-round commit subjects (dispatch ledger missing" in out
+
+
+@pytest.mark.parametrize("rows,expect", [
+    ([("28", "fix", 9, 0), ("28", "verify-r2", 9, 10), ("29", "fix", 10, 0)], "worst 10 min over 1 fixes"),
+    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5), ("28", "verify-r2", 9, 50)], "worst 50 min over 1 fixes"),
+    ([("28", "verify-r2", 9, 0), ("28", "fix", 9, 5), ("28", "verify-r2", 9, 35)], "worst 30 min over 1 fixes"),
+    ([("28", "fix", 9, 0), ("29", "verify-r2", 9, 5)], "1 fix dispatches and no verify dispatch after"),
+    ([("28", "build", 9, 0)], "has no fix dispatch in its window (source: dispatch ledger)"),
+])
+def test_row_10_pairs_a_fix_with_its_own_rows_verify_in_the_ledger(tmp_path, rows, expect):
+    out = _out(tmp_path, [_commit(9, 5, "Row 28f fix 1: not used", "1")], "--ledger", str(_ledger(tmp_path, rows)))
+    assert expect in out and "source: dispatch ledger" in out and "fix-round commit" not in out
+
+
+@pytest.mark.parametrize("case,note", [
+    ("empty-window", "dispatch ledger has no entries in the session window"),
+    ("missing", "dispatch ledger missing"),
+    ("bad-line", "dispatch ledger line 2 is not JSON"),
+    ("no-keys", "dispatch ledger line 1 has no row/kind/at"),
+])
+def test_row_10_falls_back_to_commits_and_says_why(tmp_path, case, note):
+    bad = json.dumps({"row": "1", "kind": "fix", "at": _ts(9)}) + "\n{oops\n"
+    ledger = {"empty-window": lambda: _ledger(tmp_path, [("28", "fix", 3, 0)]),
+              "missing": lambda: tmp_path / "none.jsonl",
+              "bad-line": lambda: _ledger(tmp_path, [], raw=bad),
+              "no-keys": lambda: _ledger(tmp_path, [], raw='{"row": 1}\n')}[case]()
+    out = _out(tmp_path, [_commit(9, 5, "Row 28f fix 1: x", "1")], "--ledger", str(ledger))
+    assert f"source: fix-round commit subjects ({note}" in out
+
+
+def test_a_linked_worktree_resolves_to_the_main_checkouts_slug(tmp_path):
+    main = tmp_path / "main-repo"
+    main.mkdir()
+    _git(main, "init", "-q")
+    (main / "a.txt").write_text("a", encoding="utf-8")
+    _git(main, "add", "-A")
+    _git(main, "commit", "-qm", "one")
+    wt = tmp_path / "linked-wt"
+    _git(main, "worktree", "add", "-q", str(wt))
+    sessions, _ = mp._default_dirs(wt)
+    assert sessions.name == mp.re.sub(r"[^A-Za-z0-9]", "-", str(main.resolve()))
+    assert mp.main_checkout(wt)[1] == "main checkout via git"
+    # in the main checkout git prints a relative `.git` unless asked for --path-format=absolute
+    assert mp.main_checkout(main)[1] == "main checkout via git"
+
+
+def test_read_line_names_the_project_root(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--repo", str(tmp_path)])
+    line = next(ln for ln in out.splitlines() if ln.startswith("read:"))
+    assert f"; project root {tmp_path} (--repo fallback" in line
+
+
+def test_sessions_zero_is_refused():
+    for bad in ("0", "-1", "x"):
+        with pytest.raises(SystemExit):
+            mp.main(["--sessions", bad])
+
+
+def test_a_session_with_no_turns_still_prints_row_10_unmeasured_by_name(tmp_path):
+    s, t = _dirs(tmp_path)
+    _write(s, f"{SID_A}.jsonl", [_task_line(_ts(9), "user", "hi")])
+    _, out = _run([*_argv(s, t, _commits(tmp_path, [])), "--session", "a43256ae"])
+    assert "UNMEASURED rows 1-4, 6: session a43256ae has no assistant turns" in out
+    assert "UNMEASURED row 10: session a43256ae has no fix commit in its window" in out
+
+
+def test_measure_takes_session_ids_in_their_own_keyword(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _session(s, SID_B)
+    rep = mp.measure(mp.Sources(s, t), [], 2, None, session_ids=["b99999ff"])
+    assert "(1 files chosen: b99999ff)" in rep.read

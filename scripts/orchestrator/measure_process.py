@@ -31,9 +31,11 @@ import datetime as dt
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
 from brief_path import resolve_brief
@@ -51,11 +53,20 @@ WHY_OPUS = re.compile(r"^\W*Why Opus:(.*)$", re.I | re.M)
 PROCESS_DIRS = ("scripts/orchestrator/", "scripts/hooks/")
 PROCESS_EXEMPT = ("scripts/orchestrator/make_brief.py", "scripts/orchestrator/measure_process.py")
 TABLE_MIN_ROWS = 30
-CLOSE_RE = re.compile(r"\bRow \d+\b.*\b(closed|PARKED)\b", re.I)
-FIX_RE = re.compile(r"\bfix\b", re.I)
+CLOSE_RE = re.compile(r"\bRow (\d+)\b.*\b(closed|PARKED)\b", re.I)
+REVIEW_FILE = "docs/process/row-review.md"
+REVIEW_HEADING_RE = re.compile(r"^\+### Row (\d+)\b")
+# a fix-round commit: `fix 1`, `fix1`, `fix round 2`, `round-1 fix`, or a subject that starts with fix; a subject that
+# only mentions the word ("refuses a third fix round") is not one
+FIX_RE = re.compile(r"\bfix(?:es)?[ -]?\d\b|\bfix round[ -]?\d\b|\bround[ -]?\d+ fix\b|^\s*fix\b", re.I)
+DB_SCRIPTS = ("fresh_launch.py", "db_run.py", "db_run_fresh.py")
+LEDGER_NAME = "ofo-dispatch-ledger.jsonl"  # written by dispatch.py (its LEDGER_NAME); one JSON object per line
+VERIFY_KINDS = ("verify-r2", "checker")
+PYTHON_RE = re.compile(r"python(?:3(?:\.\d+)?)?(?:\.exe)?", re.I)
+CD_RE = re.compile(r"(cd|set-location|pushd)\b", re.I)
+ENV_RE = re.compile(r"[A-Za-z_]\w*=")
 ROUND2_RE = re.compile(r"round[ -]?2|\br2\b", re.I)
 CHECKER_RE = re.compile(r"verif|checker|review", re.I)
-DB_RUN_RE = re.compile(r"fresh_launch\.py|db_run(?:_fresh)?\.py|pytest-app\.ini", re.I)
 OPUS_RE = re.compile(r"opus", re.I)
 CTX_KEYS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 GIT_FIELDS = 3
@@ -157,9 +168,33 @@ def _span(first, last, t):
     return first, last
 
 
+def is_db_run(command: str) -> bool:
+    """True when the command RUNS a database tool: its first program (after `cd ... &&` / `;` prefixes and env
+    assignments) is python running fresh_launch.py, db_run.py or db_run_fresh.py. A grep, sed or edit that merely
+    names one of them is not a run."""
+    for raw in re.split(r"&&|;|\n", command.replace("\\", "/")):
+        part = raw.strip()
+        if not part or CD_RE.match(part):
+            continue
+        try:
+            words = [w for w in shlex.split(part) if not ENV_RE.match(w)]
+        except ValueError:
+            return False
+        if not words or not PYTHON_RE.fullmatch(words[0].rsplit("/", 1)[-1]):
+            return False
+        script = next((w for w in words[1:] if w.endswith(".py")), "")
+        return script.rsplit("/", 1)[-1] in DB_SCRIPTS
+    return False
+
+
 def _note_tool(b: dict, t, s: dict) -> None:
+    tool_id = b.get("id")
+    if isinstance(tool_id, str) and tool_id:  # one transcript line per content block: the same tool_use repeats
+        if tool_id in s["tool_ids"]:
+            return
+        s["tool_ids"].add(tool_id)
     name, inp = b.get("name", ""), b.get("input") or {}
-    if name in ("Bash", "PowerShell") and DB_RUN_RE.search(str(inp.get("command", ""))):
+    if name in ("Bash", "PowerShell") and is_db_run(str(inp.get("command", ""))):
         s["db_runs"] += 1
     if name not in ("Agent", "Task"):
         return
@@ -173,7 +208,7 @@ def _note_tool(b: dict, t, s: dict) -> None:
 def read_session(path: Path, repo: Path | None = None) -> dict:
     """Stream one orchestrator session: turns, context, table prints, Opus dispatches, DB runs, checker dispatches."""
     s = {"path": str(path), "repo": repo, "turns": 0, "ctx": 0, "tables": 0, "db_runs": 0, "bad_opus": [],
-         "checkers": [], "first": None, "last": None}
+         "checkers": [], "first": None, "last": None, "tool_ids": set()}
     once = UsageOnce()
     for obj in _jsonl(path):
         t = _iso(obj.get("timestamp", ""))
@@ -227,6 +262,78 @@ def git_commits(repo: Path, since: str) -> list[dict]:
         commits.append({"sha": parts[0], "time": parts[1], "subject": parts[2],
                         "files": [f for f in files.splitlines() if f.strip()]})
     return commits
+
+
+def attach_review_rows(repo: Path, since: str, commits: list[dict]) -> str:
+    """Set `review_rows` (the N of every `### Row N` heading a commit ADDS to the row-review file) on each commit.
+    Returns "" when git answered, else the reason (the caller prints it: row 2 then uses commit subjects only)."""
+    cmd = ["git", "-C", str(repo), "log", "--all", f"--since={since}", "--format=%x1e%H", "-p", "--", REVIEW_FILE]
+    try:
+        run = subprocess.run(cmd, capture_output=True, text=True, check=False,  # noqa: S603
+                             encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"git log of {REVIEW_FILE} failed ({type(exc).__name__})"
+    if run.returncode != 0:
+        return f"git log of {REVIEW_FILE} failed (exit {run.returncode})"
+    rows: dict[str, list[int]] = {}
+    for rec in run.stdout.split("\x1e"):
+        sha, _, body = rec.partition("\n")
+        found = [int(m.group(1)) for ln in body.splitlines() if (m := REVIEW_HEADING_RE.match(ln))]
+        if sha.strip() and found:
+            rows[sha.strip()] = found
+    for c in commits:
+        c["review_rows"] = rows.get(c["sha"], [])
+    return ""
+
+
+def rows_closed(s: dict, dated: list[dict]) -> list[int]:
+    """Distinct rows closed inside the session window: headings added to the row-review file, plus rows that only a
+    `Row N ... closed|PARKED` subject names."""
+    inside = [c for c in dated if _in(s, _iso(c["time"]))]
+    closed = {n for c in inside for n in c.get("review_rows", [])}
+    closed.update(int(m.group(1)) for c in inside if (m := CLOSE_RE.search(c["subject"])))
+    return sorted(closed)
+
+
+def read_ledger(path: Path | None) -> tuple[list[dict] | None, str]:
+    """The dispatch ledger entries and a note: (None, why) when the file is missing or any line is unreadable."""
+    if path is None or not path.is_file():
+        return None, f"dispatch ledger missing ({path})"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        return None, f"dispatch ledger unreadable ({type(exc).__name__})"
+    entries = []
+    for number, raw in enumerate(lines, 1):
+        if not raw.strip():
+            continue
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            return None, f"dispatch ledger line {number} is not JSON"
+        if not isinstance(e, dict) or not all(isinstance(e.get(k), str) for k in ("row", "kind", "at")) \
+                or not _iso(e["at"]):
+            return None, f"dispatch ledger line {number} has no row/kind/at"
+        entries.append(e)
+    return entries, ""
+
+
+def ledger_window(entries: list[dict], s: dict) -> list[tuple]:
+    """The ledger entries inside the session window as (time, row, kind), oldest first."""
+    inside = [(_iso(e["at"]), e["row"].strip().lower(), e["kind"].strip().lower()) for e in entries
+              if _in(s, _iso(e["at"]))]
+    return sorted(inside)
+
+
+def ledger_gaps(inside: list[tuple]) -> tuple[int, list[float]]:
+    """(fix dispatches, minutes from each fix to the next verify/checker dispatch of the same row)."""
+    fixes = [x for x in inside if x[2] == "fix"]
+    gaps = []
+    for at, row, _ in fixes:
+        later = [t for t, r, k in inside if r == row and k in VERIFY_KINDS and t >= at]
+        if later:
+            gaps.append((later[0] - at).total_seconds() / 60)
+    return len(fixes), gaps
 
 
 def _git_common_dir(repo: Path) -> str:
@@ -299,6 +406,8 @@ class Report:
         self.ok: list[str] = []
         self.unm: list[str] = []
         self.read = ""
+        self.ledger: tuple[list[dict] | None, str] = (None, "dispatch ledger not given")
+        self.notes: list[str] = []
 
     def row(self, n: int, good: bool, text: str) -> None:
         (self.ok if good else self.miss).append(f"{'OK  ' if good else 'MISS'} row {n}: {text}")
@@ -312,11 +421,12 @@ def _session_rows(s: dict, dated: list[dict], rep: Report) -> None:
     name = Path(s["path"]).stem[:8]
     if not s["turns"]:
         rep.unm.append(f"UNMEASURED rows 1-4, 6: session {name} has no assistant turns")
+        _row10(s, name, dated, rep)
         return
     rep.row(1, s["avg_ctx"] < LIMITS[1],
             f"session {name} avg context {s['avg_ctx'] // 1000}k/turn over {s['turns']} turns (limit < 250k)")
-    closed = [c for c in dated if _in(s, _iso(c["time"])) and CLOSE_RE.search(c["subject"])]
-    rep.row(2, len(closed) <= LIMITS[2], f"session {name} closed {len(closed)} rows (limit <= 3)")
+    closed = rows_closed(s, dated)
+    rep.row(2, len(closed) <= LIMITS[2], f"session {name} closed {len(closed)} rows {closed} (limit <= 3)")
     rep.row(3, s["tables"] <= LIMITS[3], f"session {name} printed the 63-row table {s['tables']} times (limit 0)")
     bad = s["bad_opus"]
     rep.row(4, not bad, f"session {name} Opus dispatches without a safety-set file or `Why Opus:` reason: {len(bad)}"
@@ -324,29 +434,55 @@ def _session_rows(s: dict, dated: list[dict], rep: Report) -> None:
     limit6 = max(len(closed), 1)
     rep.row(6, s["db_runs"] <= limit6,
             f"session {name} local database runs {s['db_runs']} (limit <= {limit6}: one per row closed)")
-    fixes = [_iso(c["time"]) for c in dated if FIX_RE.search(c["subject"]) and _in(s, _iso(c["time"]))]
-    gaps = []
-    for f in fixes:
-        later = [d for d in s["checkers"] if d >= f]
-        if later:
-            gaps.append((min(later) - f).total_seconds() / 60)
-    if not fixes:
-        rep.unm.append(f"UNMEASURED row 10: session {name} has no fix commit in its window")
-    elif not gaps:
-        rep.unm.append(f"UNMEASURED row 10: session {name} has {len(fixes)} fix commits and no checker dispatch after")
+    _row10(s, name, dated, rep)
+
+
+def _row10(s: dict, name: str, dated: list[dict], rep: Report) -> None:
+    """Row 10: from the dispatch ledger (a fix dispatch to the next verify of the same row) when it has entries inside
+    the session window, else from fix-round commits to the next checker dispatch in the transcript; says which."""
+    entries, note = rep.ledger
+    inside = ledger_window(entries, s) if entries is not None else []
+    if inside:
+        count, gaps = ledger_gaps(inside)
+        src, what = "source: dispatch ledger", "fix dispatch"
+        miss_why = f"{count} fix dispatches and no verify dispatch after"
     else:
-        rep.row(10, max(gaps) <= LIMITS[10], f"session {name} fix commit -> checker dispatch worst {max(gaps):.0f} min "
-                f"over {len(gaps)} fixes (limit <= 15)")
+        why = note or "dispatch ledger has no entries in the session window"
+        src, what = f"source: fix-round commit subjects ({why})", "fix commit"
+        times = [_iso(c["time"]) for c in dated if FIX_RE.search(c["subject"]) and _in(s, _iso(c["time"]))]
+        count, gaps = len(times), []
+        for f in times:
+            later = [d for d in s["checkers"] if d >= f]
+            if later:
+                gaps.append((min(later) - f).total_seconds() / 60)
+        miss_why = f"{count} fix commits and no checker dispatch after"
+    if not count:
+        rep.unm.append(f"UNMEASURED row 10: session {name} has no {what} in its window ({src})")
+    elif not gaps:
+        rep.unm.append(f"UNMEASURED row 10: session {name} has {miss_why} ({src})")
+    else:
+        rep.row(10, max(gaps) <= LIMITS[10], f"session {name} {what} -> checker dispatch worst {max(gaps):.0f} min "
+                f"over {len(gaps)} fixes (limit <= 15; {src})")
 
 
-def measure(dirs: tuple[Path, Path], commits: list[dict], n_sessions: int | list[str], chunk_start: str | None,
-            repo: Path | None = None) -> Report:
-    """`dirs` = (orchestrator sessions folder, agent tasks folder). `n_sessions` = the N newest sessions, or a list of
-    session file-name prefixes."""
-    sessions_dir, tasks_dir = dirs
+class Sources(NamedTuple):
+    """Where the measure reads from: the orchestrator sessions folder, the agent tasks folder, the dispatch ledger
+    file (row 10; None = not given) and the checkout (briefs named by dispatches are resolved against it)."""
+
+    sessions_dir: Path
+    tasks_dir: Path
+    ledger: Path | None = None
+    repo: Path | None = None
+
+
+def measure(src: Sources, commits: list[dict], n_sessions: int, chunk_start: str | None, *,
+            session_ids: list[str] | None = None) -> Report:
+    """`n_sessions` = the N newest sessions, unless `session_ids` (session file-name prefixes) names them."""
+    sessions_dir, tasks_dir, ledger, repo = src
     rep = Report()
-    ids = n_sessions if isinstance(n_sessions, list) else []
-    paths, errors = _choose_sessions(sessions_dir, n_sessions if isinstance(n_sessions, int) else 0, ids)
+    rep.ledger = read_ledger(ledger)
+    ids = list(session_ids or [])
+    paths, errors = _choose_sessions(sessions_dir, n_sessions, ids)
     rep.unm.extend(errors)
     sessions = [read_session(p, repo) for p in paths]
     if not sessions and not ids:
@@ -387,15 +523,29 @@ def _chunk_row(commits: list[dict], chunk_start: str | None, rep: Report) -> Non
             "(limit <= 1)" + (" - " + "; ".join(c["subject"][:60] for c in touching[:3]) if touching else ""))
 
 
+def _positive(text: str) -> int:
+    if not text.isdigit() or int(text) < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive number of sessions")
+    return int(text)
+
+
+def _ledger_path(repo: Path, root: Path, given: str | None) -> Path:
+    if given:
+        return Path(given)
+    common = _git_common_dir(repo)
+    return (Path(common) if common else root / ".git") / LEDGER_NAME
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parents[2]))
-    ap.add_argument("--sessions", type=int, default=2, help="the N newest orchestrator sessions")
+    ap.add_argument("--sessions", type=_positive, default=2, help="the N newest orchestrator sessions")
     ap.add_argument("--session", action="append", default=[], help="session file-name prefix (repeatable)")
     ap.add_argument("--chunk-start", default=None)
     ap.add_argument("--sessions-dir", default=None)
     ap.add_argument("--tasks-dir", default=None)
     ap.add_argument("--commits-json", default=None)
+    ap.add_argument("--ledger", default=None, help=f"dispatch ledger file (default: <git common dir>/{LEDGER_NAME})")
     ap.add_argument("--since", default=(dt.datetime.now(dt.UTC) - dt.timedelta(days=3)).date().isoformat())
     args = ap.parse_args(argv)
     repo = Path(args.repo)
@@ -403,12 +553,17 @@ def main(argv: list[str] | None = None) -> int:
     d_sessions, d_tasks = _default_dirs(repo)
     sessions_dir = Path(args.sessions_dir) if args.sessions_dir else d_sessions
     tasks_dir = Path(args.tasks_dir) if args.tasks_dir else d_tasks
+    review_note = "row-review headings not read (--commits-json)"
     if args.commits_json:
         commits = json.loads(Path(args.commits_json).read_text(encoding="utf-8"))
     else:
         commits = git_commits(repo, args.since)
-    rep = measure((sessions_dir, tasks_dir), commits, args.session or args.sessions, args.chunk_start, repo)
+        review_note = attach_review_rows(repo, args.since, commits)
+    src = Sources(sessions_dir, tasks_dir, _ledger_path(repo, root, args.ledger), repo)
+    rep = measure(src, commits, args.sessions, args.chunk_start, session_ids=args.session)
     rep.read += f"; project root {root} ({how})"
+    rep.read += "; row 2 from " + (f"{REVIEW_FILE} headings + commit subjects" if not review_note else
+                                   f"commit subjects only ({review_note})")
     out = rep.miss + rep.ok + rep.unm + [rep.read]
     out.append(f"{len(rep.miss)} MISS, {len(rep.ok)} OK, {len(rep.unm)} UNMEASURED (ADR-178 tracker rows 1-7, 10)")
     sys.stdout.write("\n".join(out) + "\n")
