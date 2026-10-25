@@ -56,11 +56,11 @@ CLASS_LIST = (
     "lookup = haiku/medium: read-only search and lookup across a codebase (the Explore agent)\n"
     "checking = haiku/low: format, lint and schema checks\n"
     "building = sonnet/medium: implementing a work item with a clear brief and a machine-checkable gate\n"
-    "review_b = sonnet/high: Tier B review (diff-focused, time-boxed, no mutation testing)\n"
+    "review_b = sonnet/high: Tier B checker (the one verifier that reviews the diff; fresh context, read-only, no mutation testing)\n"
     "design = opus/high: fuzzy spec or multi-file design\n"
-    "review_a = opus/xhigh: Tier A review (adversarial, fresh context, mutation tests on every guard)\n"
-    "verify_a = opus/high: Tier A verifier (fresh context, read-only, one evidence block per acceptance criterion)\n"
-    "escalation = fable/high: same failure class red twice after fix rounds (independent review)"
+    "review_a = opus/xhigh: Tier A review only (used for Tier A, never for B or C; mutation tests, at most 5 mutants, on a Tier A guard)\n"
+    "verify_a = opus/high: Tier A checker (the one Opus verifier; fresh context, read-only, one evidence block per acceptance criterion)\n"
+    "escalation = fable/high: a design Opus already failed"
 )
 
 ROUTING_FOOTER = (

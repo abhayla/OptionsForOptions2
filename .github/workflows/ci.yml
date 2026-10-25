@@ -83,30 +83,35 @@ jobs:
             echo "no tests/ folder yet — skipping"
           fi
 
-      # Pull request: a docs-only change runs only the tests the project lists in
-      # .claude/project/ci-docs-only-tests.txt (opt-in; see the kit GUIDE). No list, an empty list, or
-      # any doubt about the diff (tools/change_scope.py answers `code`) runs the full suite as before.
-      - name: Run tests on pull request (full suite unless docs-only with a project test list)
+      # Pull request: a change that is all docs or records (tools/change_scope.py answers `docs-only`) runs the
+      # spec checks above and no test suite; optional extra tests are listed in
+      # .claude/project/ci-docs-only-tests.txt. Any code change, any doubt about the diff, and every push to
+      # main run the full suite.
+      - name: Run tests on pull request (full suite unless docs-only)
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: |
           if [ ! -d tests ]; then
             echo "no tests/ folder yet — skipping"
             exit 0
           fi
-          LIST=.claude/project/ci-docs-only-tests.txt
-          TESTS=""
-          if [ -f "$LIST" ]; then
-            TESTS=$(tr -d '\r' < "$LIST" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' || true)
-          fi
           SCOPE=code
-          # tools/ci_local.py (a local run, no GITHUB_ACTIONS) always runs the full suite
-          if [ -n "$TESTS" ] && [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+          # tools/ci_local.py (a local run, no GITHUB_ACTIONS) runs its own test choice, never this branch
+          if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
             SCOPE=$(python tools/change_scope.py --base "${{ github.event.pull_request.base.sha }}" || echo code)
           fi
           if [ "$SCOPE" = "docs-only" ]; then
-            echo "docs-only pull request: running only the tests listed in $LIST"
-            # shellcheck disable=SC2086
-            python -m pytest -q -p no:cacheprovider $TESTS
+            LIST=.claude/project/ci-docs-only-tests.txt
+            TESTS=""
+            if [ -f "$LIST" ]; then
+              TESTS=$(tr -d '\r' < "$LIST" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' || true)
+            fi
+            if [ -n "$TESTS" ]; then
+              echo "docs-only pull request: running only the tests listed in $LIST"
+              # shellcheck disable=SC2086
+              python -m pytest -q -p no:cacheprovider $TESTS
+            else
+              echo "docs-only pull request: spec checks only, no test suite"
+            fi
           else
             python -m pytest -q -p no:cacheprovider
           fi

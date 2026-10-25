@@ -64,6 +64,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -109,13 +110,12 @@ def read_pr_state(pr):
 
 def is_kit_job(kind, workflow, name):
     """True for the kit CI job: a CheckRun of the kit workflow named KIT_CI_JOB (or `KIT_CI_JOB (matrix...)`),
-    also in the `CI / lint-and-test` display form."""
+    also in the `CI / lint-and-test` display form. The workflow must be the kit workflow in every form: a check run
+    with no workflow, or another one, never counts, whatever its display name says."""
     if kind == "StatusContext":
         return False
     names = (KIT_CI_JOB, f"{KIT_CI_WORKFLOW} / {KIT_CI_JOB}")
     exact = any(name == n or name.startswith(n + " (") for n in names)
-    if name.startswith(f"{KIT_CI_WORKFLOW} / "):
-        return exact
     return workflow == KIT_CI_WORKFLOW and exact
 
 
@@ -183,7 +183,58 @@ def _sort_key(entry, bucket):
     return (started, _SEVERITY[bucket])  # equal times: the worse bucket sorts last, so it wins
 
 
-def newest_checks(rollup):
+_KIT_WORKFLOW_ID = None      # the kit workflow's numeric id, read once per process (a failed read is not cached)
+_POLL_CACHE = {}             # job id -> verified workflow id, for ONE poll (the head can change between polls)
+_JOB_URL = re.compile(r"/actions/runs/([0-9]+)/job/([0-9]+)(?:/|$|\?|#)")
+
+
+def _gh_json(endpoint):
+    """A GitHub API answer as a dict, or None for any failure (fail closed)."""
+    try:
+        out = _gh_api(endpoint)
+        data = json.loads(out.stdout) if out.returncode == 0 else None
+    except (json.JSONDecodeError, OSError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _is_id(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _kit_workflow_id():
+    """The numeric id of the kit workflow file (ci.yml), read once per process; None when unreadable."""
+    global _KIT_WORKFLOW_ID
+    if _KIT_WORKFLOW_ID is None:
+        data = _gh_json("repos/{owner}/{repo}/actions/workflows/ci.yml")
+        if data is None or not _is_id(data.get("id")):
+            return None
+        _KIT_WORKFLOW_ID = data["id"]
+    return _KIT_WORKFLOW_ID
+
+
+def _run_origin(entry, head_sha=None):
+    """The workflow id of the run that produced a CheckRun rollup entry, or None. The check URL must name a job
+    (/actions/runs/<run>/job/<job>); the job read from `actions/jobs/<job>` must belong to that run, to the head
+    sha being judged and to the check's name, and the run's `workflow_id` is the answer. Any other case is None
+    (not the kit job). Cached by job id within one poll."""
+    found = _JOB_URL.search(entry.get("detailsUrl") or "")
+    if not found or not head_sha:
+        return None
+    run_id, job_id = int(found.group(1)), int(found.group(2))
+    if job_id not in _POLL_CACHE:
+        job = _gh_json("repos/{owner}/{repo}/actions/jobs/%d" % job_id)
+        if (job is None or job.get("run_id") != run_id or job.get("head_sha") != head_sha
+                or job.get("name") != (entry.get("name") or "")):
+            return None
+        run = _gh_json("repos/{owner}/{repo}/actions/runs/%d" % run_id)
+        if run is None or not _is_id(run.get("workflow_id")):
+            return None
+        _POLL_CACHE[job_id] = run["workflow_id"]
+    return _POLL_CACHE[job_id]
+
+
+def newest_checks(rollup, head_sha=None):
     """Reduce a statusCheckRollup list to [{"name", "bucket"}], one per distinct check, newest run wins.
 
     finding merge-gate-reads-superseded-run: the rollup lists a check once per CI run, so a failed or
@@ -198,10 +249,18 @@ def newest_checks(rollup):
             ident = ("StatusContext", entry.get("context") or "")
         else:
             ident = (entry.get("__typename") or "CheckRun", entry.get("workflowName") or "", name)
+        kit = is_kit_job(ident[0], ident[1] if ident[0] != "StatusContext" else "", name)
+        if kit:
+            # the name and workflow label are not enough: two workflows can share them. The run's workflow id is
+            # part of the identity, and only the kit workflow's own id makes the check the kit job.
+            origin = _run_origin(entry, head_sha)
+            kit_id = _kit_workflow_id()
+            kit = origin is not None and kit_id is not None and origin == kit_id
+            ident = ident + ("workflow:%s" % origin if origin is not None else "unreadable:" + (entry.get("detailsUrl") or ""),)
         bucket = entry_bucket(entry)
         key = _sort_key(entry, bucket)
         if ident not in newest or key > newest[ident][0]:
-            newest[ident] = (key, bucket, name, ident[0], is_kit_job(ident[0], ident[1] if ident[0] != "StatusContext" else "", name))
+            newest[ident] = (key, bucket, name, ident[0], kit)
     return [{"name": n, "bucket": b, "kind": k, "kit": kit, "ran": b != "not_run",
              "kit_skipped": kit and b == "not_run"} for _, b, n, k, kit in newest.values()]
 
@@ -209,6 +268,7 @@ def newest_checks(rollup):
 def read_pr_snapshot(pr):
     """Read head sha, base branch, merge state and checks in ONE gh call (the merge is pinned to that sha)."""
     empty = {"sha": "", "base": "", "merge_state": "", "checks": []}
+    _POLL_CACHE.clear()          # job answers are valid for this poll only
     out = subprocess.run(["gh", "pr", "view", str(pr), "--json",
                           "headRefOid,baseRefName,mergeStateStatus,statusCheckRollup"],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -218,7 +278,7 @@ def read_pr_snapshot(pr):
         data = json.loads(out.stdout)
         return {"sha": data.get("headRefOid") or "", "base": data.get("baseRefName") or "",
                 "merge_state": data.get("mergeStateStatus") or "",
-                "checks": newest_checks(data.get("statusCheckRollup"))}
+                "checks": newest_checks(data.get("statusCheckRollup"), data.get("headRefOid") or "")}
     except (json.JSONDecodeError, AttributeError):
         return empty
 
@@ -303,10 +363,64 @@ def _gh_api(endpoint, raw=False):
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
+_NO_GRAFTS = None
+
+# Variables of the caller's environment that git needs to reach the remote (credentials, proxy, TLS, ssh) or to find
+# its global/system config (credential helpers live there). Every other GIT_ variable is dropped: GIT_DIR,
+# GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_GRAFT_FILE,
+# GIT_REPLACE_REF_BASE, GIT_CONFIG_COUNT/KEY/VALUE, GIT_EXEC_PATH, GIT_NAMESPACE ... would point git at another
+# repository, object store or config.
+_KEEP_GIT_VARS = {"GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "GIT_SSL_CERT", "GIT_SSL_KEY", "GIT_SSL_VERSION",
+                  "GIT_ASKPASS", "GIT_TERMINAL_PROMPT", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_SSH_VARIANT",
+                  "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}
+_KEEP_GIT_PREFIXES = ("GIT_HTTP_", "GIT_PROXY")
+
+# Config for every local git call: no commit-graph cache is read or written, no auto gc, no relative paths.
+# safe.bareRepository=all: a global "explicit" would make every read in the fresh bare repository fail. Attributes:
+# no attributes file (the global core.attributesFile and the per-user XDG one), no line-ending conversion.
+_GIT_CONFIG_FLAGS = ["-c", "core.commitGraph=false", "-c", "fetch.writeCommitGraph=false", "-c", "gc.auto=0",
+                     "-c", "diff.relative=false", "-c", "safe.bareRepository=all",
+                     "-c", "core.autocrlf=false", "-c", "core.eol=lf", "-c", "tar.umask=0022"]
+# Attribute rules written to the fresh repository's info/attributes (the highest precedence, above the head's own
+# .gitattributes): nothing may change which files an archive holds or their bytes.
+_NEUTRAL_ATTRIBUTES = "* -export-ignore -export-subst -filter -text -eol -ident -working-tree-encoding\n"
+_NO_ATTRIBUTES = None
+
+
+def _git_config_flags():
+    global _NO_ATTRIBUTES
+    if _NO_ATTRIBUTES is None:
+        import secrets
+        _NO_ATTRIBUTES = os.path.join(tempfile.gettempdir(), "merge-gate-no-attrs-" + secrets.token_hex(8), "attributes")
+    return _GIT_CONFIG_FLAGS + ["-c", "core.attributesFile=" + _NO_ATTRIBUTES]
+
+
+def _git_env():
+    """The clean environment of every local git call (built per call from the caller's, the graft path once).
+
+    GIT_GRAFT_FILE names a path that cannot exist (inside a folder under the temp dir that is never created), so
+    no grafts file applies, neither a repository's info/grafts nor one the caller set; GIT_NO_REPLACE_OBJECTS=1
+    switches replace refs off. Global and system config stay (credential helpers live there): that is safe because
+    every read is a fetch by sha into a fresh repository, which verifies the hash of every object it receives, so
+    a redirect or a proxy cannot change content without a sha1 collision."""
+    global _NO_GRAFTS
+    if _NO_GRAFTS is None:
+        import secrets
+        _NO_GRAFTS = os.path.join(tempfile.gettempdir(), "merge-gate-no-grafts-" + secrets.token_hex(8), "grafts")
+    env = {k: v for k, v in os.environ.items()
+           if not k.upper().startswith("GIT_") or k.upper() in _KEEP_GIT_VARS or k.upper().startswith(_KEEP_GIT_PREFIXES)}
+    env["GIT_GRAFT_FILE"] = _NO_GRAFTS
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    env["GIT_ATTR_NOSYSTEM"] = "1"      # the system attributes file is not read
+    return env
+
+
 def _git(args, cwd=None):
-    """Run local git (replace refs off); returns the CompletedProcess (bytes output). A git that cannot run is an ApiError."""
+    """Run local git (clean environment, replace refs, grafts and commit-graph off); returns the CompletedProcess
+    (bytes output). A git that cannot run is an ApiError."""
     try:
-        return subprocess.run(["git", "--no-replace-objects"] + list(args), capture_output=True, cwd=cwd)
+        return subprocess.run(["git", "--no-replace-objects"] + _git_config_flags() + list(args),
+                              capture_output=True, cwd=cwd, env=_git_env())
     except OSError as exc:
         raise ApiError("git could not run: %s" % exc)
 
@@ -318,60 +432,119 @@ def _git_tail(done):
 _HEX_SHA = re.compile(r"[0-9a-fA-F]{40}")
 
 
-def _fetch_private(ref, private, top):
-    """Fetch `ref` (a branch name or a 40-hex commit sha) from origin into the private ref `private` and return the
-    commit sha it holds. FETCH_HEAD is never read, a branch is fetched by its full refs/heads name (a tag of the
-    same name cannot shadow it), and the refspec starts with '+' so no ref name can be read as an option."""
-    want = ""
-    if _HEX_SHA.fullmatch(ref):
-        want = ref.lower()
-        refspec = "+%s:%s" % (want, private)
-    else:
-        if not ref or ref.startswith("-"):
-            raise ApiError("refusing the ref name %r" % ref)
-        checked = _git(["check-ref-format", "--branch", ref], cwd=top)
-        if checked.returncode != 0:
-            raise ApiError("refusing the ref name %r: not a valid branch name" % ref)
-        refspec = "+refs/heads/%s:%s" % (ref, private)
-    got = _git(["fetch", "--no-tags", "--", "origin", refspec], cwd=top)
-    if got.returncode != 0:
-        raise ApiError("git fetch of %s failed: %s" % (ref, _git_tail(got)))
-    parsed = _git(["rev-parse", "--verify", private + "^{commit}"], cwd=top)
-    sha = (parsed.stdout or b"").decode("utf-8", errors="replace").strip()
-    if parsed.returncode != 0 or not sha:
-        raise ApiError("git could not resolve %s after the fetch: %s" % (ref, _git_tail(parsed)))
-    if want and sha != want:
-        raise ApiError("git fetched %s but the private ref holds %s" % (want[:12], sha[:12]))
-    return sha
+class _FreshRepo:
+    """A new empty bare repository for ONE read, deleted afterwards. Nothing in the project checkout (grafts, a
+    commit-graph, alternates, loose objects, replace refs, a redirected origin) is read: the only thing taken from
+    the checkout is the literal origin URL of its config (not rewritten by insteadOf), and every object comes in by
+    a fetch by sha, which verifies the hash of each object received."""
+
+    def __init__(self):
+        self.path = None
+        self.url = ""
+
+    def __enter__(self):
+        got = _git(["config", "--get", "remote.origin.url"])
+        self.url = (got.stdout or b"").decode("utf-8", errors="replace").strip()
+        if got.returncode != 0 or not self.url or self.url.startswith("-"):
+            raise ApiError("the checkout has no usable origin url: %s" % _git_tail(got))
+        self.path = tempfile.mkdtemp(prefix="mwg-fresh-")
+        try:
+            # --template= : no template directory (init.templateDir of the kept global config) may seed the repository
+            made = _git(["init", "--bare", "--template=", "-q", "."], cwd=self.path)
+            if made.returncode != 0:
+                raise ApiError("could not create the temporary repository: %s" % _git_tail(made))
+            self._require_empty_object_store()
+        except BaseException:
+            self._remove()
+            raise
+        return self
+
+    def write_neutral_attributes(self):
+        """Write the neutral attribute rules to info/attributes (after the emptiness check, before any archive)."""
+        try:
+            info = os.path.join(self.path, "info")
+            os.makedirs(info, exist_ok=True)
+            with open(os.path.join(info, "attributes"), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(_NEUTRAL_ATTRIBUTES)
+        except OSError as exc:
+            raise ApiError("could not write the neutral attribute rules: %s" % exc)
+
+    def _require_empty_object_store(self):
+        """Before any fetch, objects/ must hold nothing but empty info/ and pack/ folders: an alternates file, a pack
+        or a loose object would let the fetch find commits 'already present' and read unverified objects."""
+        objects = os.path.join(self.path, "objects")
+        try:
+            for name in os.listdir(objects):
+                full = os.path.join(objects, name)
+                if name not in ("info", "pack") or os.path.islink(full) or not os.path.isdir(full) or os.listdir(full):
+                    raise ApiError("the temporary repository is not empty: objects/%s" % name)
+        except OSError as exc:
+            raise ApiError("the temporary repository cannot be read: %s" % exc)
+
+    def _remove(self):
+        if self.path:
+            def clear_read_only(func, path, _exc):   # Git for Windows marks pack files read-only
+                try:
+                    os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+                    func(path)
+                except OSError:
+                    pass
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(self.path, onexc=clear_read_only)
+            else:
+                shutil.rmtree(self.path, onerror=clear_read_only)
+            self.path = None
+
+    def __exit__(self, *exc):
+        self._remove()
+        return False
+
+    def fetch(self, shas, depth=0, filtered=True):
+        """Fetch 40-hex commit shas (only those) from the origin url; --filter=blob:none first, a plain fetch if the
+        server refuses it. Every sha must resolve to a commit afterwards."""
+        for sha in shas:
+            if not _HEX_SHA.fullmatch(sha or ""):
+                raise ApiError("refusing %r: not a 40-hex commit sha" % (sha,))
+        base = ["fetch", "--no-tags", "--depth=%d" % (depth or 1)]   # no history is ever needed
+        tries = ([["--filter=blob:none"]] if filtered else []) + [[]]
+        got = None
+        for extra in tries:
+            got = _git(base + extra + ["--", self.url] + [s.lower() for s in shas], cwd=self.path)
+            if got.returncode == 0:
+                break
+        else:
+            raise ApiError("git fetch of %s failed: %s" % (", ".join(s[:12] for s in shas), _git_tail(got)))
+        for sha in shas:
+            parsed = _git(["rev-parse", "--verify", sha.lower() + "^{commit}"], cwd=self.path)
+            if parsed.returncode != 0 or (parsed.stdout or b"").decode("utf-8", errors="replace").strip() != sha.lower():
+                raise ApiError("git could not resolve %s after the fetch: %s" % (sha[:12], _git_tail(parsed)))
 
 
-def local_files(a, b):
-    """Complete changed-file set of the three-dot range a...b from local git (renames off, so a renamed file
-    counts under its old and its new name). Used when the compare answer may be truncated. Raises ApiError.
-
-    Each ref is fetched into a private ref unique to this run (deleted afterwards); the diff ignores local
-    configuration that could shorten the list (relative paths, ignored submodules, external diff, replace refs)."""
-    import secrets
-    top_done = _git(["rev-parse", "--show-toplevel"])
-    top = (top_done.stdout or b"").decode("utf-8", errors="replace").strip()
-    if top_done.returncode != 0 or not top:
-        raise ApiError("not inside a git repository: %s" % _git_tail(top_done))
-    stem = "refs/merge-gate/%d-%s" % (os.getpid(), secrets.token_hex(6))
-    private = [stem + "-a", stem + "-b"]
-    try:
-        sha_a = _fetch_private(a, private[0], top)
-        sha_b = _fetch_private(b, private[1], top)
-        listed = _git(["-c", "diff.relative=false", "diff", "--no-relative", "--ignore-submodules=none", "--no-ext-diff",
-                       "--name-only", "--no-renames", "-z", "%s...%s" % (sha_a, sha_b)], cwd=top)
+def local_files(merge_base, b):
+    """Complete changed-file set between the merge-base commit and the commit `b`, both 40-hex shas, read in a fresh
+    temporary repository (renames off, so a renamed file counts under its old and its new name). Used when the
+    compare answer may be truncated. Raises ApiError."""
+    with _FreshRepo() as repo:
+        repo.fetch([merge_base, b], depth=1)
+        listed = _git(["diff", "--no-relative", "--ignore-submodules=none", "--no-ext-diff",
+                       "--name-only", "--no-renames", "-z", merge_base.lower(), b.lower()], cwd=repo.path)
         if listed.returncode != 0:
-            raise ApiError("git diff %s...%s failed (no merge base?): %s" % (a, b, _git_tail(listed)))
+            raise ApiError("git diff %s %s failed: %s" % (merge_base[:12], b[:12], _git_tail(listed)))
         return {n.decode("utf-8", errors="replace") for n in (listed.stdout or b"").split(b"\0") if n}
-    finally:
-        for ref in private:
-            try:
-                _git(["update-ref", "-d", ref], cwd=top)
-            except ApiError:
-                pass
+
+
+def _resolve_sha(ref):
+    """The commit sha of `ref` as GitHub answers it (never the local refs). Raises ApiError."""
+    if _HEX_SHA.fullmatch(ref or ""):
+        return ref
+    out = _gh_api("repos/{owner}/{repo}/commits/%s" % ref)
+    try:
+        sha = json.loads(out.stdout).get("sha") if out.returncode == 0 else None
+    except (json.JSONDecodeError, AttributeError):
+        sha = None
+    if not isinstance(sha, str) or not _HEX_SHA.fullmatch(sha):
+        raise ApiError("GitHub did not name a commit sha for %s" % ref)
+    return sha.lower()
 
 
 def compare(a, b, need_files=True):
@@ -380,6 +553,10 @@ def compare(a, b, need_files=True):
     need_files=False reads only the commit counts and never looks at the file list. With need_files=True the list
     is trusted only when it is a list shorter than _FILES_LIMIT and not empty while the answer says the head is
     ahead; otherwise (truncated, absent, or implausibly empty) the complete list is read from local git."""
+    if need_files:
+        # resolve a branch name to a sha FIRST (one GitHub read each) and compare by sha, so a ref moved between two
+        # reads cannot give a list for another tip than the merge base was computed for
+        a, b = _resolve_sha(a), _resolve_sha(b)
     out = _gh_api("repos/{owner}/{repo}/compare/%s...%s" % (a, b))
     if out.returncode != 0 or not (out.stdout or "").strip():
         raise ApiError("compare %s...%s failed: %s" % (a, b, (out.stderr or out.stdout or "").strip()[:200]))
@@ -389,6 +566,8 @@ def compare(a, b, need_files=True):
         if not need_files:
             return {"behind_by": behind, "files": set()}
         files = data.get("files")
+        mb = data.get("merge_base_commit")
+        merge_base = mb.get("sha") if isinstance(mb, dict) else None
         ahead = data.get("ahead_by")
         ahead = ahead if isinstance(ahead, int) and not isinstance(ahead, bool) else 1  # unknown counts as ahead
         names = set()
@@ -399,7 +578,13 @@ def compare(a, b, need_files=True):
     except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
         raise ApiError("compare %s...%s returned an unreadable answer" % (a, b))
     if not isinstance(files, list) or len(files) >= _FILES_LIMIT or (not files and ahead > 0):
-        names = local_files(a, b)
+        # the merge base comes from the SAME answer; a branch name for b is resolved by GitHub, not by local refs
+        if not isinstance(merge_base, str) or not _HEX_SHA.fullmatch(merge_base):
+            raise ApiError("compare %s...%s named no merge base commit sha" % (a, b))
+        names = local_files(merge_base, b)
+        if not names and ahead > 0:
+            # an empty list while GitHub says the head is ahead is an unreadable list, never "nothing changed"
+            raise ApiError("compare %s...%s: GitHub says the head is ahead but the local file list is empty" % (a, b))
     return {"behind_by": behind, "files": names}
 
 
@@ -523,10 +708,13 @@ def run_trace_check(sha, timeout_s=300):
     """Run the project's trace_check on a `git archive` of `sha` (no worktree). Returns (ok, message); fails closed."""
     tmp = None
     try:
-        fetched = subprocess.run(["git", "fetch", "origin", sha], capture_output=True)
-        if fetched.returncode != 0:
-            return (False, "REFUSED: trace_check not run, git fetch of %s failed" % sha[:12])
-        archive = subprocess.run(["git", "archive", "--format=tar", sha], capture_output=True)
+        try:
+            with _FreshRepo() as repo:   # the head's tree comes from a verified fetch, never from the checkout
+                repo.fetch([sha], depth=1, filtered=False)
+                repo.write_neutral_attributes()
+                archive = _git(["archive", "--format=tar", sha.lower()], cwd=repo.path)
+        except ApiError as exc:
+            return (False, "REFUSED: trace_check not run, git fetch of %s failed: %s" % (sha[:12], exc))
         if archive.returncode != 0:
             return (False, "REFUSED: trace_check not run, git archive of %s failed" % sha[:12])
         tmp = tempfile.mkdtemp(prefix="mwg-trace-")
