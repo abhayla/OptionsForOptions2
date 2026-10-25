@@ -68,12 +68,12 @@ export const FIGURES = {
   },
   margin_needed: {
     label: 'Margin needed',
-    text: "The margin Zerodha quotes for the planned orders, as at the time shown next to it. It comes from Zerodha, not from this app's own calculation.",
+    text: "The margin your broker quotes for the planned orders, as at the time shown next to it. It comes from the broker, not from this app's own calculation.",
     source: `REQ-136 AC-1 (margin needed) and the margin-line requirement (margin labels); ${NOT_IN_STUDY}`,
   },
   margin_available: {
     label: 'Margin available',
-    text: 'The funds Zerodha reports as available in your account, as at the time shown next to it.',
+    text: 'The funds your broker reports as available in your account, as at the time shown next to it.',
     source: `REQ-136 AC-1 (margin available) and the margin-line requirement (margin labels); ${NOT_IN_STUDY}`,
   },
   estimated_now: {
