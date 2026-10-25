@@ -14,6 +14,7 @@
           </svg>
         </div>
         <span class="text-xs font-medium text-gray-500 uppercase">Max Profit</span>
+        <FigureHint id="max_profit" />
       </div>
       <p class="text-sm" data-testid="sum-make">{{ whatCanIMake }}</p>
       <div class="mt-1 text-xl font-bold text-green-600" data-testid="max-profit">{{ maxProfit }}</div>
@@ -28,6 +29,7 @@
           </svg>
         </div>
         <span class="text-xs font-medium text-gray-500 uppercase">Max Loss</span>
+        <FigureHint id="max_loss" />
       </div>
       <p class="text-sm" data-testid="sum-lose">{{ whatCanILose }}</p>
       <div class="mt-1 text-xl font-bold text-red-600" data-testid="max-loss">{{ maxLoss }}</div>
@@ -42,6 +44,7 @@
           </svg>
         </div>
         <span class="text-xs font-medium text-gray-500 uppercase">Breakeven</span>
+        <FigureHint id="breakeven_expiry" />
       </div>
       <p class="text-sm" data-testid="sum-start">{{ whereIStartLosing }}</p>
       <div class="mt-1 text-lg font-bold text-gray-800" data-testid="breakevens">{{ breakevens.length ? breakevens.join(', ') : '-' }}</div>
@@ -59,16 +62,17 @@
     </div>
     <!-- REQ-135 AC-4: Reward/Risk with its reason, Time value, Intrinsic value: the server's strings, each hidden when absent -->
     <dl v-if="showRatio || timeValue != null || intrinsicValue != null" class="sm:col-span-2 lg:col-span-4 flex flex-wrap gap-6 text-sm" data-testid="summary-extras">
-      <div v-if="showRatio"><dt class="inline text-gray-500">Reward/Risk: </dt><dd class="inline font-medium" data-testid="reward-risk">{{ rewardRisk ?? '-' }}</dd>
+      <div v-if="showRatio"><dt class="inline text-gray-500">Reward/Risk: </dt><FigureHint id="reward_risk" /><dd class="inline font-medium" data-testid="reward-risk">{{ rewardRisk ?? '-' }}</dd>
         <span v-if="rewardRiskReason" class="text-gray-500" data-testid="reward-risk-reason"> ({{ rewardRiskReason }})</span></div>
-      <div v-if="timeValue != null"><dt class="inline text-gray-500">Time value: </dt><dd class="inline font-medium" data-testid="time-value">{{ timeValue }}</dd></div>
-      <div v-if="intrinsicValue != null"><dt class="inline text-gray-500">Intrinsic value: </dt><dd class="inline font-medium" data-testid="intrinsic-value">{{ intrinsicValue }}</dd></div>
+      <div v-if="timeValue != null"><dt class="inline text-gray-500">Time value: </dt><FigureHint id="time_value" /><dd class="inline font-medium" data-testid="time-value">{{ timeValue }}</dd></div>
+      <div v-if="intrinsicValue != null"><dt class="inline text-gray-500">Intrinsic value: </dt><FigureHint id="intrinsic_value" /><dd class="inline font-medium" data-testid="intrinsic-value">{{ intrinsicValue }}</dd></div>
     </dl>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import FigureHint from '@/components/common/FigureHint.vue'
 const props = defineProps({
   maxProfit: { type: String, default: '-' },
   maxLoss: { type: String, default: '-' },

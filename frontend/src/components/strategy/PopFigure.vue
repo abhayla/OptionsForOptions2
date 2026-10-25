@@ -5,6 +5,7 @@
 import { computed } from 'vue'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { popText } from '@/lib/readyMade'
+import FigureHint from '@/components/common/FigureHint.vue'
 
 const props = defineProps({ pop: { type: Object, default: null } })
 const on = useHeldFeature('probability_of_profit')
@@ -12,5 +13,8 @@ const text = computed(() => popText(props.pop))
 </script>
 
 <template>
-  <p v-if="on && text" class="mt-2 text-sm" data-testid="pop-figure">{{ text }}</p>
+  <div v-if="on && text" class="mt-2 flex items-center text-sm">
+    <p data-testid="pop-figure">{{ text }}</p>
+    <FigureHint id="probability_of_profit" />
+  </div>
 </template>
