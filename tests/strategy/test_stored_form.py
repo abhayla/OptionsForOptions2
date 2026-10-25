@@ -310,7 +310,8 @@ def test_req134_ac1_an_empty_name_is_refused_with_the_empty_code(typed):
     assert refused.value.code == sf.STRATEGY_NAME_EMPTY
 
 
-@pytest.mark.parametrize("typed", ["x" * 21, "x" * 40, "x" * 5000, "a\nb", "a\x00b", "a\x7fb", "a\x85b", None, 5, ["a"], b"a"])
+@pytest.mark.parametrize("typed", ["x" * 21, "x" * 40, "x" * 5000, "a\nb", "a\x00b", "a\x7fb", "a\x85b",
+                                   None, 5, ["a"], b"a"])
 def test_req134_ac1_a_name_over_20_characters_with_a_control_character_or_not_text_is_refused(typed):
     with pytest.raises(sf.StoredFormError) as refused:
         sf.check_strategy_name(typed)
