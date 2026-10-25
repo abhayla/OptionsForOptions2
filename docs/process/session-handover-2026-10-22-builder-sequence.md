@@ -34,7 +34,9 @@ then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker
   offers a server-refused action only on a server-computed permission field (can_delete, restorable). (4) Checkers run
   as general-purpose agents. (5) Brief quotes may cite only text on main: a decision still on the docs branch is named
   without quote marks (check_brief reads main).
-- **Rules learned:** builders over-run budgets (28b: 112 calls vs ~64) and skip Tier A mutants - the checker runs them;
+- **Rules learned:** a builder's deviation on a Tier A rule is checked against the REQ text BEFORE it is accepted - the
+  orchestrator accepted "closed plan with nothing placed stays restorable" without reading AC-5/AC-6 and it cost the
+  round-2 MAJOR and a redesign (~45 min); builders over-run budgets (28b: 112 calls vs ~64) and skip Tier A mutants - the checker runs them;
   a builder migrated the shared ofo_dev to an unmerged revision (brief gap, #537); a timed lint test goes red under
   parallel load (re-run alone before acting); wt-new's -Name takes the suffix only (passing the full name doubled the
   prefix: `-OptionsForOptions2-c3r28f`).
