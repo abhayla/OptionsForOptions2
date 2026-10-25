@@ -906,6 +906,25 @@
         "title": "DefinitionOut",
         "type": "object"
       },
+      "DeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "title": "DeletedOut",
+        "type": "object"
+      },
       "DepthLevelOut": {
         "additionalProperties": false,
         "properties": {
@@ -1503,6 +1522,10 @@
           "definition": {
             "$ref": "#/components/schemas/DefinitionOut"
           },
+          "restorable": {
+            "title": "Restorable",
+            "type": "boolean"
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"
@@ -1517,7 +1540,8 @@
           "seq",
           "at",
           "change_summary",
-          "definition"
+          "definition",
+          "restorable"
         ],
         "title": "EntryOut",
         "type": "object"
@@ -5598,6 +5622,10 @@
       "ofo_app__routes__strategies__SummaryOut": {
         "additionalProperties": false,
         "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -5656,7 +5684,8 @@
           "name",
           "leg_count",
           "first_leg",
-          "tracked"
+          "tracked",
+          "can_delete"
         ],
         "title": "SummaryOut",
         "type": "object"
@@ -6612,6 +6641,54 @@
       }
     },
     "/strategies/{strategy_id}": {
+      "delete": {
+        "description": "REQ-070 AC-6: hides a strategy that never sent a basket (its rows and history stay). 409 `Can't delete: orders\nwere sent` otherwise; 404 for another user's, a missing or an already hidden strategy.",
+        "operationId": "delete_strategy_strategies__strategy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Expected Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Strategy"
+      },
       "get": {
         "operationId": "get_strategy_strategies__strategy_id__get",
         "parameters": [
@@ -7016,6 +7093,56 @@
           }
         },
         "summary": "Start Tracking"
+      }
+    },
+    "/strategies/{strategy_id}/undelete": {
+      "post": {
+        "description": "Undo of a delete: the same strategy comes back (REQ-070 AC-6).",
+        "operationId": "undelete_strategy_strategies__strategy_id__undelete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Expected Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undelete Strategy"
       }
     },
     "/strategies/{strategy_id}/versions/{number}/confirm": {

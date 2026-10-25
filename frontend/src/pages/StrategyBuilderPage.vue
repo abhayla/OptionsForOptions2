@@ -27,6 +27,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
+import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
@@ -229,6 +230,16 @@ const openSaved = (next, id, revision, name) => {
 const onRenamed = (id, name) => {
   if (openStrategy.value?.id === id) openStrategy.value = { ...openStrategy.value, name }
 }
+// REQ-070 AC-6: the strategy open here was deleted (from the saved list): the screen is a new unsaved strategy again, so a Save asks a
+// name and POSTs instead of PUTting a hidden id. The legs stay on screen; the ?strategy= link is dropped.
+const onDeleted = (id) => {
+  if (openStrategy.value?.id !== id) return
+  openStrategy.value = null
+  savedId.value = null
+  savedRevision.value = null
+  const { strategy: _gone, ...rest } = route.query
+  router.replace({ path: route.path, query: rest })
+}
 const onSaved = (id, revision, name) => {
   savedId.value = id
   savedRevision.value = revision ?? null
@@ -424,7 +435,8 @@ const pricesStamp = computed(() => {
 
     <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
     <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted" />
+    <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
     <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
       :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"

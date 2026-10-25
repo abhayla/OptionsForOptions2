@@ -163,7 +163,11 @@ export async function fetchSavedLegs(client, id) {
 /** W-122: the saved legs AND the revision they were loaded at (the revision a later action, e.g. Start tracking, is
  *  based on: the page's own loaded revision, never a freshly fetched one). */
 export async function fetchSavedDraft(client, id) {
-  const body = (await client.get(`/strategies/${id}`)).data
+  return draftFromReply(client, (await client.get(`/strategies/${id}`)).data)
+}
+
+/** The saved legs, id, revision and name of one StrategyOut reply (a read, or a restore's answer: one leg builder for both). */
+export async function draftFromReply(client, body) {
   const def = body.definition
   const contracts = []
   for (const expiry of expiriesOf(def)) {

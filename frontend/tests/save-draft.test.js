@@ -294,8 +294,9 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
     await flushPromises()
     expect(t(w, 'name-form').exists()).toBe(false)
     expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.url}`)).toEqual(['PUT /strategies/7'])
-    expect(calls[0].body.expected_revision).toBe(3)
-    expect(Object.keys(calls[0].body)).not.toContain('name')
+    const put = calls.find((c) => c.method === 'PUT') // the Undo check reads the history first (row 28f), so the PUT is not calls[0]
+    expect(put.body.expected_revision).toBe(3)
+    expect(Object.keys(put.body)).not.toContain('name')
     expect(w.emitted('saved')).toEqual([[7, 4, quoted('NIFTY Oct condor')]])
   })
   it('a stale revision (409) shows the conflict message, emits nothing and the legs stay as given', async () => {

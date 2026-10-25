@@ -6,6 +6,8 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 let answer = () => Promise.reject(new Error('no answer set'))
 let patchAnswer = () => Promise.reject(new Error('no patch answer set'))
+let deleteAnswer = () => Promise.reject(new Error('no delete answer set'))
+let postAnswer = () => Promise.reject(new Error('no post answer set'))
 const sent = [] // every PATCH: { url, body }
 let features = () => Promise.resolve({ data: { order_path: 'on' } }) // W-121: GET /features, the order-path switch
 vi.mock('@/services/api', async (importActual) => {
@@ -17,6 +19,14 @@ vi.mock('@/services/api', async (importActual) => {
       patch: (url, body) => {
         sent.push({ url, body })
         return patchAnswer(url, body)
+      },
+      delete: (url) => {
+        sent.push({ url, method: 'DELETE' })
+        return deleteAnswer(url)
+      },
+      post: (url) => {
+        sent.push({ url, method: 'POST' })
+        return postAnswer(url)
       },
     },
   }
@@ -222,5 +232,52 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
     await w.get('[data-testid="rename-cancel"]').trigger('click')
     expect(w.find('[data-testid="rename-form"]').exists()).toBe(false)
     expect(sent).toEqual([])
+  })
+})
+
+// Row 28f (REQ-070 AC-6, ADR-118): Delete only when the server said can_delete is true, with a confirm and an Undo.
+describe('Delete with Undo', () => {
+  const withDelete = (id, can_delete) => ({ ...row(id, 'draft'), name: `"S${id}"`, ...(can_delete === undefined ? {} : { can_delete }) })
+  beforeEach(() => {
+    sent.length = 0
+    deleteAnswer = () => Promise.resolve({ data: { id: 7, revision: 2 } })
+    postAnswer = () => Promise.resolve({ data: { id: 7, revision: 2 } })
+  })
+
+  it('Delete only when can_delete is true; the refusal text replaces it otherwise; a missing field counts as false', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [withDelete(7, true), withDelete(8, false), withDelete(9)] } })
+    const w = await open()
+    expect(w.find('[data-testid="delete-7"]').exists()).toBe(true)
+    for (const id of [8, 9]) {
+      const r = w.get(`[data-strategy-id="${id}"]`)
+      expect(r.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
+      expect(r.get('[data-testid="delete-refused"]').text()).toBe("Can't delete: orders were sent")
+    }
+  })
+
+  it('cancelling the confirm sends nothing', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [withDelete(7, true)] } })
+    const w = await open()
+    await w.get('[data-testid="delete-7"]').trigger('click')
+    await w.get('[data-testid="delete-cancel"]').trigger('click')
+    expect(sent.filter((c) => c.method === 'DELETE')).toHaveLength(0)
+    expect(w.find('[data-testid="delete-7"]').exists()).toBe(true)
+  })
+
+  it('confirm removes the row, shows Undo, and Undo puts the row back from a fresh read', async () => {
+    let list = [withDelete(7, true)]
+    answer = (url) => Promise.resolve({ data: url === '/strategies/7' ? { revision: 2 } : { strategies: list } })
+    const w = await open()
+    await w.get('[data-testid="delete-7"]').trigger('click')
+    list = []
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    expect(sent.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/strategies/7?expected_revision=2'])
+    expect(w.find('[data-testid="strategy-row"]').exists()).toBe(false)
+    list = [withDelete(7, true)]
+    await w.get('[data-testid="delete-undo"]').trigger('click')
+    await flushPromises()
+    expect(sent.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual(['/strategies/7/undelete?expected_revision=2'])
+    expect(w.findAll('[data-testid="strategy-row"]')).toHaveLength(1)
   })
 })
