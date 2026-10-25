@@ -28,7 +28,7 @@ gate.py, the ADR-178 tracker and measure_process.py; follow `docs/process/runboo
   stale-price sweep outside leg_edit, 60-s list cache, select_app_tests misses function-level imports, 30f/31f/32f
   MINORs, 31b lot-size note); (5) owner reading list: 24 "How this trade works" bullets (learnContent.js HOW_IT_WORKS,
   row 31f), the figure definitions (row 32), the new warning texts (row 31b) - all drafts.
-- **BLOCKED:** none. **PARKED:** row 31, #558 (above).
+- **BLOCKED:** none. **PARKED:** row 31, #558 (above); remainders parked with issues: row 30 AC-1 live half #560 (owner's live session), row 32 AC-1 marks #561 (rows 26, 37, 38).
 - **Worktrees left:** -c4docs until this PR merges; -c4r31b and -c4r31f kept for the #558 round (branches pushed; TTL
   48 h); four empty agent worktrees under the hidden worktrees folder go at the next sweep.
 - **Rules learned:** fetch before every push (the merge gate updates the remote branch); merge main into a stacked

@@ -60,9 +60,9 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 27 | W-155 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Done (2026-10-25, PR #540: 27b Opus PASS, 27f Sonnet PASS; bounded Reward/Risk and option time/intrinsic value left to row 26 by decision; CI red once on test_pinned_clock, fixed; W-155 in_review; MINORs #537 C) |
 | 28 | W-156 | REQ-070 | Builder history and restore | P1 core | 3 | B | Done (2026-10-25, PR #542 backend: migration 0026 delete/hide, Opus PASS, 3 mutants killed; PR #543 frontend: activity panel, Restore/Undo from the server's restorable flag, Delete with Undo; 2 fix rounds + Opus-proposed redesign, Opus PASS) |
 | 29 | W-157 | REQ-134 | Name a strategy, Save As, rename, saved list with search | P1 core | 3 | B | Done (2026-10-25, PR #541: migration 0025; 29b Opus PASS + fix round + round 2 PASS; 29f PASS incl. builder rename; CI red once on two migration-pin tests, fixed; PR #544 part c: typed names 1-20 per owner Q2 / ADR-183, stored names up to 40 stay readable; W-157 in_review) |
-| 30 | W-158 | REQ-078 | Shift / Width / Hedge | P2 | 4 | A | PARTIAL (#552, #554 merged 2026-10-25): AC-1 live half owed (owner's live session) |
+| 30 | W-158 | REQ-078 | Shift / Width / Hedge | P2 | 4 | A | PARTIAL (#552, #554 merged 2026-10-25): AC-1 live half parked #560 (owner's live session) |
 | 31 | W-159 | REQ-085 | Warnings and "How this trade works" | P2 | 4 | A | PARKED #558 (PR #557 + branch build/c4-row-31f; futures Builder/Execute mismatch) |
-| 32 | W-160 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | PARTIAL (PR #547, 2026-10-25): AC-1 marks for 5 figures come with rows 26, 37, 38 |
+| 32 | W-160 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | PARTIAL (PR #547, 2026-10-25): AC-1 marks for 5 figures parked #561 (rows 26, 37, 38) |
 | 33 | W-161 | REQ-029 | Option chain display and live data | P2 | 4 | A | Not started (partly built) |
 | 34 | W-162 | REQ-030 | Pick legs from the option chain into the builder | P2 | 4 | B | Not started (partly built, PR #509) |
 | 35 | W-163 | REQ-031 | Option chain live strategy preview | P2 | 4 | A | Not started (partly built, PR #509) |
