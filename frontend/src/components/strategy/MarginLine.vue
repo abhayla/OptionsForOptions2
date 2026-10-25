@@ -8,6 +8,7 @@
 import { computed } from 'vue'
 import { istTime } from '@/lib/displayFormat'
 import { MARGIN_LINE_HIDDEN_REASON, capabilityOn } from '@/lib/brokerCapabilities'
+import FigureHint from '@/components/common/FigureHint.vue'
 
 const props = defineProps({
   margin: { type: Object, required: true },
@@ -25,9 +26,13 @@ const short = computed(() => checked.value && props.margin.shortfall === true)
   <div v-if="!pending" class="mt-2 text-sm min-w-0 break-words" data-testid="margin" :data-margin-state="quoteOn ? margin.state : 'HIDDEN'">
     <p v-if="!quoteOn" class="text-ink-muted" data-testid="margin-hidden-reason">{{ MARGIN_LINE_HIDDEN_REASON }}</p>
     <template v-else-if="checked">
-      <p :class="short ? 'text-red-700 font-medium' : 'text-ink-muted'" data-testid="margin-figures">
-        Margin (Zerodha): Rs {{ margin.needed }} needed, Rs {{ margin.available }} available
-      </p>
+      <div class="flex flex-wrap items-center">
+        <p :class="short ? 'text-red-700 font-medium' : 'text-ink-muted'" data-testid="margin-figures">
+          Margin (Zerodha): Rs {{ margin.needed }} needed, Rs {{ margin.available }} available
+        </p>
+        <FigureHint id="margin_needed" />
+        <FigureHint id="margin_available" />
+      </div>
       <p v-if="short" class="text-red-700" data-testid="margin-shortfall">Available funds are below the margin needed.</p>
       <p class="text-ink-muted" data-testid="margin-checked-at">Checked at {{ istTime(margin.checked_at) }}</p>
     </template>

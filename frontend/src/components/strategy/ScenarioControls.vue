@@ -4,6 +4,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { VIEWS, isPoints, rangeIsComplete } from '@/lib/scenarioChoice'
+import FigureHint from '@/components/common/FigureHint.vue'
 
 const props = defineProps({
   choice: { type: Object, required: true },
@@ -62,6 +63,9 @@ const resetRange = () => {
       <button type="button" data-testid="range-reset" class="rounded-lg bg-gray-100 px-3 py-1.5 font-medium" @click="resetRange">Default range</button>
     </div>
     <p v-if="rangeError" class="mt-1 text-ink-muted" data-testid="range-hint">{{ rangeError }}</p>
-    <p v-if="choice.view === 'estimated_now' && scenarioLabel" class="mt-2 text-ink-muted" data-testid="scenario-label">{{ scenarioLabel }}</p>
+    <div v-if="choice.view === 'estimated_now' && scenarioLabel" class="mt-2 flex items-center">
+      <p class="text-ink-muted" data-testid="scenario-label">{{ scenarioLabel }}</p>
+      <FigureHint id="estimated_now" />
+    </div>
   </div>
 </template>
