@@ -2,9 +2,13 @@
 
 Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo_app/routes/leg_edit.py), REQ-076 controls only:
 ``step``, ``multiplier``, ``include``, ``price``, ``reset_prices``, ``reset_leg`` (REQ-077 AC-5: the same re-capture
-for ONE leg) and ``read`` (changes no leg: it answers the current
-numbers, shape name and Hedge marks of the legs as sent, REQ-076 AC-8). Shift / Width / Hedge and the controls read are
-REQ-078 (row 30) and are not here.
+for ONE leg) and ``read`` (changes no leg: it answers the current numbers, shape name, Hedge marks and which of
+Shift / Width / Hedge apply, REQ-076 AC-8, REQ-078 AC-2), plus the REQ-078 moves ``shift``, ``width`` and ``hedge``
+(W-158; ADR-186): the browser sends the control and its direction only, the server computes the strikes from the listed
+strikes. Answer states of a move: today's instrument list loaded / not loaded (refused, controls all off, ADR-104);
+shape allows the control / does not (refused by the server, whatever the browser sends); landing contract listed and
+tradable from the stored eligibility / not listed, expired, not tradable, or no stored status (the whole move is
+refused naming the leg, nothing changes).
 
 The browser sends the builder's legs plus ONE edit; the server applies it with :mod:`ofo.strategy.leg_edit` against the
 instrument file, re-captures the planned entry of every leg whose contract changed through the one capture path
@@ -31,7 +35,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.errors import LegValue
+from ofo.errors import LegValue, render
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
@@ -81,11 +85,15 @@ from ofo_app.underlying import Underlying
 router = APIRouter(route_class=ClosedRoute)
 
 MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs
+MAX_HEDGE_LEGS = edit.MAX_HEDGE_LEGS
+MOVES = ("shift", "width", "hedge")  # REQ-078: the controls that move strikes by one strike step per click
+SHIFT_TOTAL_BOUND = 1_000_000  # index points; far beyond any strike
 CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
 _catalogue_cache: dict = {"until": 0.0, "value": None}
 
 Capture = Callable[[MarketContext | None, LiveFeed | None, str, list[str]], Awaitable[tuple]]
 ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
+Tradable = Callable[[list[int]], Awaitable[list[bool]]]
 
 
 async def get_edit_catalogue() -> Catalogue:
@@ -108,6 +116,32 @@ async def get_edit_today() -> datetime.date:
 
     async with get_sessionmaker()() as session:
         return await catalogue_picker.database_today(await session.connection())
+
+
+async def get_list_current() -> bool:
+    """AC-10 (ADR-104): whether today's instrument list is loaded (the latest load is at or after this session's publish
+    time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests override it."""
+    from ofo_app import catalogue_picker  # noqa: PLC0415
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+
+    async with get_sessionmaker()() as session:
+        conn = await session.connection()
+        return await catalogue_picker.list_is_current(conn, await catalogue_picker.database_today(conn))
+
+
+def get_move_eligibility() -> Tradable:
+    """AC-6 'not eligible': for each stored contract id, whether Zerodha's stored data lets it be traded today (the
+    add-time check the save uses, ADR-104). No stored status is False: fail closed. Tests override it."""
+    async def tradable(contract_ids: list[int]) -> list[bool]:
+        from ofo_app import catalogue_picker  # noqa: PLC0415
+        from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+
+        async with get_sessionmaker()() as session:
+            conn = await session.connection()
+            statuses = await elig.leg_statuses(conn, contract_ids, await catalogue_picker.database_today(conn))
+        return [status is not None and status.tradable for status in statuses]
+    return tradable
 
 
 async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
@@ -159,7 +193,7 @@ class EditLegIn(LegIn):
 
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read"]
+    control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read", "shift", "width", "hedge"]
     direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
@@ -178,7 +212,8 @@ class EditIn(BaseModel):
     def _control_has_its_fields(self) -> EditIn:
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
-                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": ()}[self.control]
+                 "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": (),
+                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",)}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
                  "multiplier": self.multiplier}
         missing = [name for name in needs if given[name] is None]
@@ -192,6 +227,7 @@ class LegEditIn(BaseModel):
     underlying: Underlying
     legs: list[EditLegIn] = Field(min_length=1, max_length=20)
     edit: EditIn
+    shift_total: StrictInt | None = Field(default=None, ge=-SHIFT_TOTAL_BOUND, le=SHIFT_TOTAL_BOUND)  # AC-3/AC-9
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
     seq: RequestSeq | None = None  # REQ-119 AC-1: echoed unchanged as the reply's seq
 
@@ -220,14 +256,34 @@ class EditLegOut(ApiModel):
     planned_entry: Money | None
     captured_at: datetime.datetime | None
     price_source: Literal["captured", "typed", "none"]
+    replaced_typed: bool  # AC-8: the leg had a typed price and moved, so the captured price replaced it
     included: bool
     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
     price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
     block: CatalogueText | None  # the ADR-092 reason when the quantity is not below the freeze limit (never split)
 
 
+class ControlsOut(ApiModel):
+    """REQ-078 AC-2/AC-10: which of the three move controls work on these legs right now."""
+
+    shift: bool
+    width: bool
+    hedge: bool
+
+
+class ControlReasonsOut(ApiModel):
+    """Why a control is off (the catalogue text), else None."""
+
+    shift: CatalogueText | None
+    width: CatalogueText | None
+    hedge: CatalogueText | None
+
+
 class LegEditOut(ApiModel):
     legs: list[EditLegOut]
+    controls: ControlsOut
+    control_reasons: ControlReasonsOut
+    shift_total: int | None  # index points moved by Shift clicks since the last reset; None = shown as '-' (AC-3, AC-9)
     shape: Identifier | None  # the matched template id, None = Custom Strategy; a label only (REQ-076 AC-9)
     shape_name: CatalogueText | None  # the matched template's name from the reviewed catalogue; None = Custom Strategy
     outcome: OutcomeResponse | None  # None while any included leg has no planned entry, or no leg is included
@@ -333,9 +389,43 @@ def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
     return e.index
 
 
-def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date):
-    """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused."""
+def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bool):
+    """REQ-078 AC-2/AC-10: ``{control: the catalogue template id of the reason it is off, or None}`` for shift, width and
+    hedge. Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
+    shape does not allow the control (Custom Strategy: Shift only). The same answer gates the moves in
+    :func:`apply_edit`, so the browser's word is never trusted."""
+    off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
+    if not current:
+        off = dict.fromkeys(off, "leg_edit_list_not_loaded_today")
+    elif len(legs) < MIN_SHAPE_LEGS or all(x.leg.instrument is Instrument.FUT for x in legs):
+        off = dict.fromkeys(off, "leg_edit_shift_needs_option_leg")
+    else:
+        if template is None or not template.width_adjustable:
+            off["width"] = "leg_edit_width_not_applicable"
+        if template is None or not hedged or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
+            off["hedge"] = "leg_edit_hedge_not_applicable"
+    return off
+
+
+def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, *,
+               off: dict[str, str | None] | None = None, hedged: frozenset[int] = frozenset()):
+    """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
+    hedge) needs ``off`` (:func:`_controls`, computed by the server from the legs as sent) and is refused with the
+    reason when its control is off."""
     e, name = req.edit, req.underlying
+    if e.control in MOVES:
+        if off is None:  # unreachable: the route always passes it for a move
+            raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
+        if off[e.control] is not None:
+            raise LegEditRefused(off[e.control])
+        listing, direction = edit.Listing(cat, today), e.direction or 1
+        if e.control == "shift":
+            moved = edit.shift(listing, name, legs, direction)
+        elif e.control == "width":
+            moved = edit.width(listing, name, legs, direction)
+        else:
+            moved = edit.hedge(listing, name, legs, hedged, direction)
+        return moved.legs, moved.moved
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":
@@ -374,14 +464,35 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                    capture: Annotated[Capture, Depends(get_capture)],
                    contract_ids: Annotated[ContractIds, Depends(get_contract_ids)],
+                   list_current: Annotated[bool, Depends(get_list_current)],
+                   tradable: Annotated[Tradable, Depends(get_move_eligibility)],
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
     legs = _legs_of(cat, req, today)
-    new_legs, moved = apply_edit(cat, req, legs, today)
+    is_move = req.edit.control in MOVES
+    off, hedged_in = None, frozenset[int]()
+    if is_move:  # AC-2/AC-10: the server decides whether the control applies, from the legs as sent
+        template_in, hedged_in = shape_and_marks(cat, ctx, req.underlying, legs)
+        off = _controls(template_in, hedged_in, legs, list_current)
+    new_legs, moved = apply_edit(cat, req, legs, today, off=off, hedged=hedged_in)
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
+    stored_ids = await contract_ids(ids)
+    if is_move:  # AC-6 'not eligible': the whole move is refused if any landing contract is not tradable
+        order = sorted(moved)
+        ok = await tradable([stored_ids[ids[i]] for i in order if ids[i] in stored_ids])
+        eligible = dict(zip([i for i in order if ids[i] in stored_ids], ok, strict=True))
+        for i in order:  # a contract with no stored row has no eligibility either: refused (fail closed)
+            if not eligible.get(i, False):
+                raise LegEditRefused("leg_edit_landing_not_tradable", leg=edit.leg_ref(req.underlying, new_legs, i))
+    shift_total = req.shift_total  # AC-3/AC-9 (ADR-186 (2)): only Shift adds; a manual step, Width or Hedge resets
+    if req.edit.control == "shift":
+        shift_total = (shift_total or 0) + (req.edit.direction or 1) * int(
+            edit.strike_step(edit.Listing(cat, today), req.underlying, legs))
+    elif req.edit.control in ("step", "width", "hedge"):
+        shift_total = None
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
     reasons: dict[int, Reason] = {}
@@ -405,7 +516,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         new_legs = edit.with_entries(new_legs, entries)
     template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
     blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
-    stored_ids = await contract_ids(ids)
+    off_now = _controls(template, hedged, new_legs, list_current)
     out_legs = [{
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
@@ -414,6 +525,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
         "captured_at": None if i in unpriced else stamps[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
+        "replaced_typed": legs[i].typed and i in moved,
         "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
         "block": blocks.get(i)} for i, x in enumerate(new_legs)]
     outcome = None
@@ -427,6 +539,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
-    reply = {"legs": out_legs, "shape": None if template is None else template.id, "shape_name": name,
+    reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
+             "control_reasons": {name: None if why is None else render(why) for name, why in off_now.items()},
+             "shift_total": shift_total, "shape": None if template is None else template.id, "shape_name": name,
              "outcome": outcome}
     return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1
