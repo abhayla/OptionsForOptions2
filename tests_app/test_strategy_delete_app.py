@@ -237,6 +237,108 @@ async def test_q4_a_rename_entry_is_shown_but_is_not_a_restore_target(app_engine
             await trans.rollback()
 
 
+RENAME_SUMMARY = '[{"kind": "renamed"}]'
+EDIT_SUMMARY = '[{"kind": "removed"}]'
+
+
+@pytest.mark.parametrize(("summary", "execution", "expected"), [
+    (EDIT_SUMMARY, store.NOT_EXECUTED, True),
+    (RENAME_SUMMARY, store.NOT_EXECUTED, False),
+    (EDIT_SUMMARY, store.EXECUTED, False),
+    (EDIT_SUMMARY, store.IN_FLIGHT, False),
+    (EDIT_SUMMARY, store.UNREADABLE, False),
+    ("not json", store.NOT_EXECUTED, False),
+])
+def test_is_restore_target_is_true_only_for_a_non_rename_entry_of_a_never_executed_strategy(
+        summary, execution, expected):
+    assert store.is_restore_target(summary, execution) is expected
+
+
+async def _flags(ac, strategy_id: int) -> list[tuple[str, bool]]:
+    entries = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
+    return [(e["change_summary"], e["restorable"]) for e in entries]
+
+
+async def test_core_history_flags_rename_false_edit_true_and_every_entry_false_after_a_plan_row(app_engine):
+    """Core: save, rename, add a leg and save: [rename: false, edit: true]; a plan row -> all false. The flag comes from
+    the same helper restore() refuses by, so each flag is also checked against the real restore call."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                renamed = await ac.patch(f"/strategies/{first.id}/name", json={"name": "Wider", "expected_revision": 1})
+                assert renamed.status_code == HTTPStatus.OK, renamed.text
+                revision = renamed.json()["revision"]
+                edited = await ac.put(f"/strategies/{first.id}", json=_body(ids, wing=WING, expected_revision=revision))
+                assert edited.status_code == HTTPStatus.OK, edited.text
+                flags = [flag for _, flag in await _flags(ac, first.id)]
+                assert flags == [False, True]
+                revision = edited.json()["revision"]
+                for seq, flag in enumerate(flags, start=1):  # the flag and the refusal never disagree
+                    answer = await ac.post(f"/strategies/{first.id}/restore/{seq}",
+                                           params={"expected_revision": revision})
+                    assert (answer.status_code == HTTPStatus.OK) is flag, (seq, answer.text)
+                    if flag:
+                        revision = answer.json()["revision"]
+                number = await plans.next_plan_number(conn, user, first.id)
+                await plans.record_plan(conn, user, first.id, number, "ENTRY",
+                                        (_order(first.id, number, "SELL", "7.00"),))
+                after = await _flags(ac, first.id)
+                assert len(after) == EDITS + 1 and [flag for _, flag in after] == [False] * (EDITS + 1)
+                refused = await ac.post(f"/strategies/{first.id}/restore/2", params={"expected_revision": revision})
+                assert refused.status_code == HTTPStatus.CONFLICT, refused.text
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.parametrize(("close", "restorable"), [(None, False), ("nothing_placed", True), ("filled", False)],
+                         ids=["open plan", "closed empty", "closed filled"])
+async def test_a_plan_that_may_have_sent_orders_makes_every_history_entry_not_restorable(app_engine, close, restorable):
+    """Attack 2. The flag is restore()'s own rule (execution_state == NOT_EXECUTED): an open plan (in flight) or a fill
+    blocks; a closed plan that placed nothing sent no basket, so restore still works and the flag says so."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING), expected_revision=1)
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [True]
+            number = await plans.next_plan_number(conn, user, first.id)
+            await plans.record_plan(conn, user, first.id, number, "ENTRY", (_order(first.id, number, "SELL", "7.00"),))
+            if close is not None:
+                await _close(conn, user, first.id, number, close)
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [restorable]
+            try:
+                await store.restore(conn, user, first.id, 1, expected_revision=2)
+                restored = True
+            except store.StrategyStoreError as err:
+                assert err.code == store.RESTORE_AFTER_EXECUTION
+                restored = False
+            assert restored is restorable  # the flag and the refusal never disagree
+        finally:
+            await trans.rollback()
+
+
+async def test_an_unreadable_plan_table_makes_every_history_entry_not_restorable(app_engine, monkeypatch):
+    """Attack 3: the plan store cannot be read -> UNREADABLE -> restorable false (fail closed), and restore refuses."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            edited = await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING),
+                                        expected_revision=1)
+
+            async def broken(*_args):
+                raise RuntimeError("plan table unreadable")
+            monkeypatch.setattr(store, "_plans", broken)
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [False]
+            with pytest.raises(store.StrategyStoreError) as err:
+                await store.restore(conn, user, first.id, 1, expected_revision=edited.revision)
+            assert err.value.code == store.RESTORE_AFTER_EXECUTION
+        finally:
+            await trans.rollback()
+
+
 async def test_q5_history_stays_readable_after_a_basket_and_restore_keeps_its_refusal(app_engine):
     """Q5 (pending owner): REQ-070 AC-5 history readable; ADR-019 restore refused, on the same executed strategy."""
     async with app_engine.connect() as conn:

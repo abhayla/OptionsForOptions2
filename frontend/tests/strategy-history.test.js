@@ -8,7 +8,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
-import { DELETE_REFUSED_TEXT, NO_CHANGE_TEXT, NO_EARLIER_TEXT } from '@/lib/strategyActivity'
+import { DELETE_REFUSED_TEXT, NO_EARLIER_TEXT } from '@/lib/strategyActivity'
 
 const calls = []
 let answers = {}
@@ -40,10 +40,13 @@ afterEach(() => vi.useRealTimers())
 
 const contract = { contract_id: 2381960, exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-27', strike: '23650.00', lot_size: 65, symbol: 'NIFTY26O2723650CE' }
 const savedLeg = (over = {}) => ({ action: 'BUY', contract_id: 2381960, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 44624, expiry: '2026-10-27', instrument: 'CE', quantity: 65, strike: '23650.00', ...over })
-const entry = (seq, summary, legOver = {}) => ({
-  schema_version: 1, seq, at: `2026-10-25T02:3${seq}:58.782625Z`, change_summary: summary,
+// `restorable` is the server's per-entry answer (the rule restore() enforces); a test that omits it gets true, a test of the
+// missing field uses withoutRestorable().
+const entry = (seq, summary, legOver = {}, restorable = true) => ({
+  schema_version: 1, seq, at: `2026-10-25T02:3${seq}:58.782625Z`, change_summary: summary, restorable,
   definition: { underlying: 'NIFTY', legs: [savedLeg(legOver)] },
 })
+const withoutRestorable = (e) => { const { restorable: _r, ...rest } = e; return rest }
 const strategyOut = (revision, legOver = {}) => ({
   created_at: '2026-10-25T02:30:00Z', updated_at: '2026-10-25T02:40:00Z', id: 5, name: '"e2e 28f"', revision, status: 'draft', versions: [],
   definition: { underlying: 'NIFTY', legs: [savedLeg(legOver)] },
@@ -94,12 +97,22 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
     expect(legs[0]).toMatchObject({ contract_id: 2381960, strike: '23650.00', lots: 1 })
   })
 
-  it('an entry equal to the saved definition (a rename lands here) shows no Restore button', async () => {
-    answers['GET /strategies/5/history'] = { entries: [entry(1, 'renamed')] }
+  it('Restore is offered only on restorable === true: false, null and a missing field show none (fail closed)', async () => {
+    answers['GET /strategies/5/history'] = { entries: [
+      entry(1, SUMMARY_1, {}, true), entry(2, 'renamed', {}, false), entry(3, SUMMARY_1, {}, null), withoutRestorable(entry(4, SUMMARY_1)),
+    ] }
     answers['GET /strategies/5'] = strategyOut(2)
     const w = await openPanel()
-    expect(w.find('[data-testid="restore-1"]').exists()).toBe(false)
-    expect(w.get('[data-testid="activity-no-change"]').text()).toBe(NO_CHANGE_TEXT)
+    expect(w.find('[data-testid="restore-1"]').exists()).toBe(true)
+    for (const seq of [2, 3, 4]) expect(w.find(`[data-testid="restore-${seq}"]`).exists()).toBe(false)
+    expect(w.findAll('[data-testid="activity-entry"]')).toHaveLength(4) // the entries stay listed
+  })
+
+  it('a restorable entry is offered even when its legs equal the saved ones (the screen no longer infers from the legs)', async () => {
+    answers['GET /strategies/5/history'] = { entries: [entry(1, SUMMARY_1)] }
+    answers['GET /strategies/5'] = strategyOut(2)
+    const w = await openPanel()
+    expect(w.find('[data-testid="restore-1"]').exists()).toBe(true)
   })
 
   it('after execution the server refuses: its message is shown, nothing is replaced and the list stays', async () => {
@@ -123,10 +136,13 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
 })
 
 const barLeg = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 2381960, lot_size: 65, action: 'BUY', lots: 1, planned_entry: null, captured_at: null }
-function barAnswers({ before, after }) {
+function barAnswers({ before, after, restorable = true }) {
   catalogue()
   let history = 0
-  answers['GET /strategies/5/history'] = () => Promise.resolve({ data: { entries: (history++ === 0 ? before : after).map((s) => entry(s, SUMMARY_1)) } })
+  answers['GET /strategies/5/history'] = () => Promise.resolve({ data: { entries: (history++ === 0 ? before : after).map((s) => {
+    const e = entry(s, SUMMARY_1, {}, restorable === 'missing' ? true : restorable)
+    return restorable === 'missing' ? withoutRestorable(e) : e
+  }) } })
   answers['PUT /strategies/5'] = strategyOut(3)
   answers['GET /strategies'] = { strategies: [] }
   answers['POST /strategies/5/restore/2?expected_revision=3'] = strategyOut(4)
@@ -148,6 +164,17 @@ describe('Undo after a meaningful save (REQ-070 AC-4)', () => {
     const [legs, id, revision] = w.emitted('open')[0]
     expect([id, revision, legs.length]).toEqual([5, 4, 1])
     expect(w.find('[data-testid="save-undo"]').exists()).toBe(false)
+  })
+
+  it('offers no Undo when the newest entry is not restorable (false, or the field missing)', async () => {
+    for (const restorable of [false, 'missing']) {
+      barAnswers({ before: [1], after: [1, 2], restorable })
+      const w = mount(SaveDraftBar, { props: { legs: [barLeg], current } })
+      await flushPromises()
+      await saveOnce(w)
+      expect(w.find('[data-testid="save-undo"]').exists()).toBe(false)
+      expect(w.find('[data-testid="save-error"]').exists()).toBe(false)
+    }
   })
 
   it('a save that wrote no entry offers no Undo', async () => {
@@ -227,5 +254,23 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     await w.get('[data-testid="delete-undo"]').trigger('click')
     await flushPromises()
     expect(w.findAll('[data-testid="saved-draft-row"]')).toHaveLength(1)
+    // Undo of the open strategy's delete re-opens it (same id, its revision): the Builder's next Save updates it, not a second one
+    expect(w.emitted('saved')[0]).toEqual([5, 2, '"e2e 28f"'])
+  })
+
+  it('Undo of a delete of a strategy that was NOT open does not re-open anything', async () => {
+    answers['GET /strategies'] = { strategies: [listRow(6, true)] }
+    answers['GET /strategies/6'] = { ...strategyOut(2), id: 6 }
+    answers['DELETE /strategies/6?expected_revision=2'] = { id: 6, revision: 2 }
+    answers['POST /strategies/6/undelete?expected_revision=2'] = { ...strategyOut(2), id: 6 }
+    const w = mount(SaveDraftBar, { props: { legs: [barLeg], current } })
+    await flushPromises()
+    await w.get('[data-testid="delete-6"]').trigger('click')
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    await w.get('[data-testid="delete-undo"]').trigger('click')
+    await flushPromises()
+    expect(w.emitted('deleted')).toBeUndefined()
+    expect(w.emitted('saved')).toBeUndefined()
   })
 })

@@ -11,7 +11,6 @@ export const DELETE_CONFIRM_TEXT =
   "Delete this draft? Its history is kept, and you can Undo right after.";
 export const NOTHING_TO_UNDO_TEXT = "Nothing to undo";
 export const NO_EARLIER_TEXT = "No earlier versions yet";
-export const NO_CHANGE_TEXT = "No change to restore";
 
 /** Fail closed: only an explicit true from the server offers Delete (a missing field is false). */
 export const canDelete = (row) => row?.can_delete === true;
@@ -23,45 +22,32 @@ export async function historyEntries(client, id) {
   return entries;
 }
 
-/** The newest entry's seq (the last: the API sends seq ascending), or null when there is none or it cannot be read (no Undo is offered on null). */
-export async function newestSeq(client, id) {
+/** Fail closed: only an explicit true from the server offers Restore or Undo (a missing, null or false field is no). The server
+ *  decides by the rule restore() enforces (never a rename-only entry, never after the strategy sent a basket). */
+export const canRestore = (entry) => entry?.restorable === true;
+
+/** The newest entry ({ seq, restorable }; the last: the API sends seq ascending), 0 seq when there is none, or null when it cannot
+ *  be read (no Undo is offered on null). */
+export async function newestEntry(client, id) {
   try {
     const entries = await historyEntries(client, id);
-    return entries.length ? entries[entries.length - 1].seq : 0;
+    if (!entries.length) return { seq: 0, restorable: false };
+    const last = entries[entries.length - 1];
+    return { seq: last.seq, restorable: canRestore(last) };
   } catch {
     return null;
   }
 }
 
-const legSignature = (legs) =>
-  JSON.stringify(
-    (legs ?? []).map((l) => [
-      l.contract_id,
-      l.action,
-      l.quantity,
-      l.planned_entry ?? null,
-      l.captured_at ?? null,
-      l.entry_source ?? null,
-    ]),
-  );
+/** The newest entry's seq, or null when it cannot be read. */
+export async function newestSeq(client, id) {
+  return (await newestEntry(client, id))?.seq ?? null;
+}
 
-/** Entries newest first (the API sends seq ascending: reversed once, here). `isCurrent` marks an entry whose definition already
- *  equals the saved one (a rename lands here): restoring it changes nothing, so no button is offered. A saved copy that cannot be
- *  read marks nothing current (the server still answers any restore). */
+/** Entries newest first (the API sends seq ascending: reversed once, here). No decision is made here: the screen reads
+ *  `canRestore(entry)` only (the server's `restorable`). */
 export async function fetchHistory(client, id) {
-  const entries = await historyEntries(client, id);
-  let current = null;
-  try {
-    current = legSignature(
-      (await client.get(`/strategies/${id}`)).data?.definition?.legs,
-    );
-  } catch {
-    current = null;
-  }
-  return [...entries].reverse().map((e) => ({
-    ...e,
-    isCurrent: current !== null && legSignature(e.definition?.legs) === current,
-  }));
+  return [...(await historyEntries(client, id))].reverse();
 }
 
 /** POST /strategies/{id}/restore/{seq}?expected_revision=N -> the restored strategy read through the one leg builder
@@ -144,8 +130,8 @@ export function useDeleteFlow(client, hooks) {
       state.busy = true;
       dropUndo();
       try {
-        await undeleteDraft(client, held.id, held.revision);
-        await hooks.onBack(held.id);
+        const reply = await undeleteDraft(client, held.id, held.revision);
+        await hooks.onBack(held.id, reply?.data);
       } catch (e) {
         if (e?.status === 404) state.notice = NOTHING_TO_UNDO_TEXT;
         else state.errorParts = e?.parts ?? NEUTRAL_PARTS;

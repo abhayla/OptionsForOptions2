@@ -9,7 +9,7 @@ import api, { NEUTRAL_PARTS } from "@/services/api";
 import ErrorMessage from "@/components/common/ErrorMessage.vue";
 import { istTime } from "@/lib/displayFormat";
 import {
-  NO_CHANGE_TEXT,
+  canRestore,
   NO_EARLIER_TEXT,
   fetchHistory,
   restoreEntry,
@@ -110,14 +110,8 @@ async function restore(entry) {
             istTime(e.at)
           }}</span>
           <span data-testid="activity-summary">{{ e.change_summary }}</span>
-          <span
-            v-if="e.isCurrent"
-            class="text-ink-muted"
-            data-testid="activity-no-change"
-            >{{ NO_CHANGE_TEXT }}</span
-          >
           <button
-            v-else
+            v-if="canRestore(e)"
             type="button"
             class="underline"
             :disabled="busy"

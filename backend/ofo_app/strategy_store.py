@@ -361,6 +361,18 @@ def _is_rename_only(change_summary: str) -> bool:
         isinstance(i, dict) and i.get("kind") == "renamed" for i in items)
 
 
+def is_restore_target(change_summary: str, execution: str) -> bool:
+    """The ONE rule for "may this history entry be restored": the strategy never executed and the entry is not a
+    rename-only one. ``restore`` refuses by it and ``history`` reports it as ``restorable``, so the flag and the refusal
+    cannot disagree. Anything else, including an unreadable plan store or an unreadable summary, is False."""
+    if execution != NOT_EXECUTED:
+        return False
+    try:
+        return not _is_rename_only(change_summary)
+    except Exception:  # noqa: BLE001 - a summary that cannot be read is never a restore target (fail closed)
+        return False
+
+
 async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
                   expected_revision: int) -> StoredStrategy:
     """Makes history entry ``seq`` current; the replaced definition is written as a new entry first (nothing is
@@ -371,10 +383,11 @@ async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
-        if await execution_state(conn, user_ref, row.id) != NOT_EXECUTED:  # ADR-019: restore is pre-execution only
+        execution = await execution_state(conn, user_ref, row.id)
+        if execution != NOT_EXECUTED:  # ADR-019: restore is pre-execution only
             raise StrategyStoreError(RESTORE_AFTER_EXECUTION, f"strategy {strategy_id} has executed")
         entry = (await conn.execute(_HISTORY_ONE, {"id": row.id, "seq": seq})).one_or_none()
-        if entry is None or _is_rename_only(entry.change_summary):  # Q4 (pending owner): a rename is never a target
+        if entry is None or not is_restore_target(entry.change_summary, execution):  # a rename is never a target
             raise StrategyStoreError(HISTORY_NOT_FOUND, f"strategy {strategy_id} has no history entry {seq}")
         entry_text = entry.definition_text
         saved = await _read(conn, entry_text)
@@ -691,7 +704,9 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
     row = (await conn.execute(_SELECT, {"id": _check_id(strategy_id, "strategy"), "user_ref": user_ref})).one_or_none()
     if row is None:
         raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
+    execution = await execution_state(conn, user_ref, row.id)  # once per call, not per entry
     out = []
     for r in (await conn.execute(_HISTORY, {"id": row.id})).all():
-        out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text)))
+        out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text),
+                                   restorable=is_restore_target(r.change_summary, execution)))
     return out

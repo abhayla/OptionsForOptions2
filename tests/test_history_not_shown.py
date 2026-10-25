@@ -506,6 +506,15 @@ def test_a_market_data_history_path_in_the_activity_file_is_still_flagged(tmp_pa
     assert scan_frontend(tmp_path)[_ACTIVITY_FILE] == [f"path `{other}`", f"word {other}"]
 
 
+def test_a_prefix_widened_activity_literal_is_flagged_on_the_path_half_and_the_word_half(tmp_path):
+    """The exemption is the whole literal, not a prefix: a literal that merely STARTS with it still fails."""
+    for widened in (f"{_ACTIVITY_LITERAL}/export", f"{_ACTIVITY_LITERAL}-all", f"{_ACTIVITY_LITERAL}?x=1"):
+        _plant(tmp_path, _ACTIVITY_FILE, f"export const f = (c, id) => c.get(`{widened}`)\n")
+        assert scan_frontend(tmp_path)[_ACTIVITY_FILE] == [f"path `{widened}`", f"word {widened}"], widened
+        assert not _frontend_allowed(_ACTIVITY_FILE, f"path `{widened}`")
+        assert not _frontend_allowed(_ACTIVITY_FILE, f"word {widened}")
+
+
 def test_a_concatenated_or_imported_history_in_the_activity_file_is_still_flagged(tmp_path):
     _plant(tmp_path, _ACTIVITY_FILE, "export const u = '/strategies/' + 'history'\n")
     assert scan_frontend(tmp_path)[_ACTIVITY_FILE]

@@ -657,8 +657,12 @@ class HistoryEntry:
     at: datetime.datetime
     change_summary: str
     saved: SavedDefinition
+    #: Derived by the store on read (never stored): may this entry be restored. False unless proven (fail closed).
+    restorable: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.restorable, bool):
+            raise StoredFormError(MALFORMED, f"history restorable must be a bool, got {self.restorable!r}")
         if not _is_int(self.seq) or self.seq <= 0:
             raise StoredFormError(MALFORMED, f"history seq must be a positive integer, got {self.seq!r}")
         if not isinstance(self.at, datetime.datetime) or self.at.tzinfo is None:

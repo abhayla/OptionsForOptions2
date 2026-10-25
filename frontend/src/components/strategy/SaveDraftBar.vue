@@ -14,7 +14,7 @@ import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
-import { newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
+import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
   SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, strategyLabel,
 } from '@/lib/saveDraft'
@@ -36,10 +36,17 @@ const asking = ref(null) // null | 'save' | 'save-as': the name field is open fo
 const nameText = ref('')
 
 // REQ-070 AC-6: Delete with Undo, one flow shared with My Strategies. When the deleted strategy is the one open, the Builder is told.
+let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
 const deleteFlow = useDeleteFlow(api, {
   onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
-  onDeleted: (id) => { if (props.current?.id === id) emit('deleted', id) },
-  onBack: () => refresh(),
+  onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
+  onBack: async (id, body) => {
+    if (deletedOpenId === id && Number.isInteger(body?.revision)) {
+      deletedOpenId = null
+      emit('saved', id, body.revision, typeof body.name === 'string' ? body.name : null) // the Builder holds it again: the next Save updates it
+    }
+    await refresh()
+  },
   reload: () => refresh(),
 })
 
@@ -106,10 +113,11 @@ async function save() {
 
 async function offerUndo(id, before, revision) {
   if (before === null || !Number.isInteger(revision)) return
-  const after = await newestSeq(api, id)
-  if (after === null || after <= before) return // the save wrote no entry (nothing changed): nothing to undo
+  const after = await newestEntry(api, id)
+  if (after === null || after.seq <= before) return // the save wrote no entry (nothing changed): nothing to undo
+  if (after.restorable !== true) return // the server says this entry is not a restore target: no Undo (fail closed)
   dropSaveUndo()
-  saveUndo.value = { id, seq: after, revision }
+  saveUndo.value = { id, seq: after.seq, revision }
   saveUndoTimer = setTimeout(dropSaveUndo, CLEAR_UNDO_MS)
 }
 
