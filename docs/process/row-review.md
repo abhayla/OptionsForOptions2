@@ -159,6 +159,20 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Row 32 - REQ-136 Figure definitions and the projections note (closed 2026-10-25, session c097bcc4, PARTIAL; PR #547)
+- A user sees: an info mark beside max profit, max loss, breakeven at expiry, reward/risk, time value, intrinsic
+  value, probability of profit, margin needed / available and the estimated-now view, opening a plain definition on
+  hover, tap or keyboard; one standing note under the summary that projected numbers depend on prices, IV and
+  liquidity. PARTIAL: net premium, charges, funds needed, breakeven on the target date and expected-move bands have
+  definitions but no mark yet (no Builder screen shows them) - rows 26 (REQ-081), 37 (REQ-084), 38 (REQ-137) mount them.
+- Expected vs actual: frontend only (no backend part), measured 6 min, build ~19 min / 78 calls (budget 80), one gate
+  red on formatting (orchestrator ran the gate the builder skipped), Sonnet check REVISE 0 MAJOR / 5 MINOR (two
+  wording MINORs fixed by the orchestrator), pre-push gate red once on an untouched test under parallel load (alone:
+  60 passed), CI 7/7 green. Wall clock ~13:25-15:33 (~2.1 h).
+- Right: one catalogue, wording scan on the real catalogue, marks only on figures the server sent. Wrong: the builder
+  skipped the gate (Common rule 1); the measure listed five figures as REQ-136 scope that no screen shows yet, so the
+  row could not fully close - the measure brief should check each AC item against what renders today.
+
 ### Row 28 - REQ-070 Builder history, restore and delete (closed 2026-10-25, session a43256ae, Done; PRs #542 backend, #543 frontend)
 - A user sees: the strategy's activity history on the Builder, closed by default; Restore and an Undo right after a
   save, offered only where the server says the entry can be restored (never on a rename line, never once the strategy

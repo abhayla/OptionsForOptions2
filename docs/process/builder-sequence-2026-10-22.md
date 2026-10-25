@@ -56,19 +56,19 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 23 | W-151 | REQ-119 | An old reply never draws over a newer edit | P1 core | 2 | A | Done (2026-10-24: 23a seq echoed through one helper + Execute refuses a stale revision first (independent redesign after round 2); 23b newest-wins per request kind, aborts, Execute waits, numbers drawn only when they match legs and choice; W-151 in_review until chunk PR #531; evidence W-151 AC-1..5; MINORs #532) |
 | 24 | W-152 | REQ-133 | Old live frames dropped; a new screen waits for its first price | P1 core | 2 | A | Done (2026-10-24: measured first - the false alarm came from the server's Kite feed reconnect, F-61; "Waiting for the first live price" inside the staleness setting; versioned live frames; W-152 in_review until chunk PR #531; evidence W-152 AC-1..4; MINORs #532) |
 | 25 | W-153 | REQ-055 | Margin check, read part (Zerodha's margin for the plan) | P1 core | 3 | A | Not started (partly built) |
-| 26 | W-154 | REQ-081 | Money summary: net premium, charges, margin, reward/risk | P1 core | 3 | A | Not started (partly built on branch W-127) |
+| 26 | W-154 | REQ-081 | Money summary: net premium, charges, margin, reward/risk | P1 core | 3 | A | Not started (partly built on branch W-127); also mounts the REQ-136 info marks for net premium, charges, funds needed from frontend/src/lib/figureDefinitions.js (row 32) |
 | 27 | W-155 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Done (2026-10-25, PR #540: 27b Opus PASS, 27f Sonnet PASS; bounded Reward/Risk and option time/intrinsic value left to row 26 by decision; CI red once on test_pinned_clock, fixed; W-155 in_review; MINORs #537 C) |
 | 28 | W-156 | REQ-070 | Builder history and restore | P1 core | 3 | B | Done (2026-10-25, PR #542 backend: migration 0026 delete/hide, Opus PASS, 3 mutants killed; PR #543 frontend: activity panel, Restore/Undo from the server's restorable flag, Delete with Undo; 2 fix rounds + Opus-proposed redesign, Opus PASS) |
 | 29 | W-157 | REQ-134 | Name a strategy, Save As, rename, saved list with search | P1 core | 3 | B | Done (2026-10-25, PR #541: migration 0025; 29b Opus PASS + fix round + round 2 PASS; 29f PASS incl. builder rename; CI red once on two migration-pin tests, fixed; PR #544 part c: typed names 1-20 per owner Q2 / ADR-183, stored names up to 40 stay readable; W-157 in_review) |
 | 30 | W-158 | REQ-078 | Shift / Width / Hedge | P2 | 4 | A | Not started (built on branch W-126) |
 | 31 | W-159 | REQ-085 | Warnings and "How this trade works" | P2 | 4 | A | Not started (not built) |
-| 32 | W-160 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | Not started (not built) |
+| 32 | W-160 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | PARTIAL (PR #547, 2026-10-25): AC-1 marks for 5 figures come with rows 26, 37, 38 |
 | 33 | W-161 | REQ-029 | Option chain display and live data | P2 | 4 | A | Not started (partly built) |
 | 34 | W-162 | REQ-030 | Pick legs from the option chain into the builder | P2 | 4 | B | Not started (partly built, PR #509) |
 | 35 | W-163 | REQ-031 | Option chain live strategy preview | P2 | 4 | A | Not started (partly built, PR #509) |
 | 36 | W-164 | REQ-083 | Payoff chart extras: "now" curve, hover, SD bands, OI bars | P3 | 5 | A | Not started (partly built on branch W-127) |
-| 37 | W-165 | REQ-084 | What-if (level, date, IV) and the Greeks panel | P3 | 5 | A | Not started (partly built on branch W-127) |
-| 38 | W-166 | REQ-137 | Payoff table and SD table | P3 | 5 | A | Not started (not built) |
+| 37 | W-165 | REQ-084 | What-if (level, date, IV) and the Greeks panel | P3 | 5 | A | Not started (partly built on branch W-127); also mounts the REQ-136 mark for breakeven on the target date (row 32 catalogue) |
+| 38 | W-166 | REQ-137 | Payoff table and SD table | P3 | 5 | A | Not started (not built); also mounts the REQ-136 mark for expected-move bands (row 32 catalogue) |
 | 39 | W-167 | REQ-089 | Manual P&L entries | P3 | 5 | A | Not started (not built) |
 | 40 | W-168 | REQ-138 | Builder settings saved per user | P3 | 5 | A | Not started (not built) |
 | 41 | W-169 | REQ-139 | Header with the day's change and OHLC | P3 | 5 | A | Not started (not built) |
