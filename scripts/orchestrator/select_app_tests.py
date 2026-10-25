@@ -10,12 +10,22 @@ Coarse and safe, file level (no call graph):
      A changed non-route file under backend/ofo_app/ (store, helper, live_market, ...) -> keys = its module name as
      imported (`ofo_app.x`, `from ofo_app import x`) PLUS, for every route file that imports it, that route file's
      keys (one level of import reachability).
+     A changed non-route file under backend/ofo/ (domain modules) is handled the same way (module key `ofo.x.y`; an
+     `__init__.py` keys on its package).
+     A changed migration under backend/ofo_app/alembic/ selects a FIXED set: every tests_app file named *migration*
+     plus every one whose text mentions alembic, NEW_PINS or the migration replay helper (MIGRATION_TEXT).
      Only one filter: a file whose +/- lines are all comments, blank lines or docstrings selects nothing.
   B. a tests_app file is selected when it contains any key: a route path as a string literal / f-string prefix, a
      class name as a word, a module import.
   C. fail closed: a diff that cannot be read (binary, rename only, a changed file missing from the diff, an
      unparseable file, a route path that is not a literal) raises DiffNotParsed; the caller treats it as an error.
      MAX_FILES bounds what the CLI / atool will run against the production-host database.
+
+Known blind spots (not chased): no call graph (a change two imports away from a test is not reached; a route handler's
+helper in another module is reached only through the route file that imports it); module names built as strings
+(f"ofo.x.{n}" is matched by its literal prefix only); non-Python files under backend/ (catalogue.yaml, JSON schemas)
+select nothing; a selection above MAX_FILES is NOT truncated here, atool.py refuses it (the red run 40132982617 had its
+file selected but over the cap).
 
 CLI: python select_app_tests.py <worktree>   (diff = git diff origin/main...HEAD -- backend/; exit 3 if not parsed)
 """
@@ -27,9 +37,13 @@ import re
 import subprocess
 import sys
 
-SCOPE = "backend/ofo_app/"
+SCOPES = ("backend/ofo_app/", "backend/ofo/")
+MIGRATIONS_DIR = "backend/ofo_app/alembic/"
 ROUTES_DIR = "backend/ofo_app/routes/"
 MAX_FILES = 12
+#: a changed migration selects a FIXED set: every tests_app file named *migration* plus every file whose text mentions
+#: alembic, NEW_PINS (the validator pins a migration publishes) or the migration replay helper
+MIGRATION_TEXT = re.compile(r"\balembic\b|NEW_PINS|_migration_replay")
 _METHODS = {"get", "post", "put", "delete", "patch", "websocket"}
 
 
@@ -45,6 +59,10 @@ class Key:
     def regex(self) -> "re.Pattern[str]":
         if self.kind == "name":
             return re.compile(r"\b" + re.escape(self.name) + r"\b")
+        if self.kind == "migration":
+            return MIGRATION_TEXT
+        if self.kind == "module" and "." not in self.name:
+            return re.compile(r"\b" + re.escape(self.name) + r"\b")  # a top-level package: any mention
         if self.kind == "module":
             pkg, mod = self.name.rsplit(".", 1)
             p, m = re.escape(pkg), re.escape(mod)
@@ -122,7 +140,8 @@ def _docstring_lines(tree: ast.Module) -> set:
 
 
 def _module_name(rel: str) -> str:
-    return rel[len("backend/"):-len(".py")].replace("/", ".")
+    name = rel[len("backend/"):-len(".py")].replace("/", ".")
+    return name[:-len(".__init__")] if name.endswith(".__init__") else name
 
 
 def _string_constants(tree: ast.Module) -> dict:
@@ -207,7 +226,7 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
         return route_cache[rel]
 
     for f in changed_files:
-        if not (f.startswith(SCOPE) and f.endswith(".py")) or "/alembic/" in f:
+        if not (f.startswith(SCOPES) and f.endswith(".py")):
             continue
         if f not in parsed:
             raise DiffNotParsed(f"{f} changed but is absent from the diff")
@@ -220,6 +239,9 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
             raise DiffNotParsed(f"{f}: {e}") from e
         if not real:
             continue  # only comments, blank lines, docstrings
+        if f.startswith(MIGRATIONS_DIR):
+            keys.append(Key("migration", "migration"))  # fixed set, see migration_tests()
+            continue
         own = routes_of(f) if f.startswith(ROUTES_DIR) else []
         if own:
             keys += own
@@ -240,7 +262,10 @@ def select_by_key(changed_files, diff_text: str, tests_dir, read_source=None, ro
     for n in sorted(os.listdir(tests_dir)):
         if n.startswith("test_") and n.endswith(".py"):
             texts[f"{base}/{n}"] = open(os.path.join(tests_dir, n), encoding="utf-8").read()
-    return {k.name: [p for p, t in texts.items() if k.regex().search(t)]
+    def hit(k: Key, p: str, t: str) -> bool:
+        return bool(k.regex().search(t)) or (k.kind == "migration" and "migration" in os.path.basename(p))
+
+    return {k.name: [p for p, t in texts.items() if hit(k, p, t)]
             for k in keys_for(changed_files, diff_text, root, read_source, route_files)}
 
 

@@ -10,9 +10,11 @@
  },
  "fix": "Instance: the three readers handle FROM_ENTRIES (labels shown, never live). Class: a brief that adds a value to a sent state field lists every reader (grep the client for the field and each old value) and gives each one a test for the new value.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Caught only by the Playwright specs in CI, after merge into the chunk branch. No automated check lists the client readers of a server enum when a value is added; until one exists the brief's standing item (d) must name every reader. Candidate check: a repo test that reads the OutcomeResponse state Literal and fails when a value is missing from frontend/src/composables/useStrategyLive.js isOutcome."
+  "status": "guarded",
+  "checks": [
+   "tests/test_answer_state_readers.py"
+  ],
+  "note": "Guarded for the OutcomeResponse state ONLY (backend/ofo_app/routes/outcome.py): tests/test_answer_state_readers.py parses the Literal with ast and asserts every value is named in useStrategyLive.isOutcome, LiveStrategyCard.vue and StrategyBuilderPage.applyOutcome (REFUSED is its default else branch). Proven: with FROM_ENTRIES removed from the three readers the test fails 3 of 6; on the real tree 6 pass. NOT covered (same Literal shape, readers not swept): outcome.py kind and the NOT_AVAILABLE_YET state model, leg_picker.py state (3 models), tracking.py state and kind, broker_status.py Level and Fix, execution_return.py strategy_state, strategies.py state, chain_push.py and index_push.py state, ready_made.py kind, health.py status; grep of backend/ofo_app for Literal[ on state/status/kind/Level/Fix finds 19 lines, 1 covered; which of the others a frontend reader actually switches on is unmeasured. Blind spots: runtime lookup tables, presence-not-behaviour. Until the others are swept the brief's standing item (d) must still name every reader."
  },
  "spec_ref": [
   "spec/requirements/REQ-077.md",
@@ -23,6 +25,11 @@
    "date": "2026-10-24",
    "where": "row 21d, chunk 2",
    "evidence": "as first_seen"
+  },
+  {
+   "date": "2026-10-24",
+   "where": "CI App tests run 40057317750, same class again after the first fix (second red; fixed 0a1e2eb1)",
+   "evidence": "Playwright red on the same FROM_ENTRIES readers; check added: tests/test_answer_state_readers.py"
   }
  ]
 }
