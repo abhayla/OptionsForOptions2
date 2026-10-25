@@ -12,7 +12,8 @@ Checks, each printing one line, exit 1 if ANY check fails:
   (c) context budget: total LF-normalized bytes of every rule file with NO `paths:` frontmatter
       (i.e. always loaded, never path-scoped) across both rule folders, printed, and compared
       against the cap in `.claude/kit/budget.json` (`{"always_loaded_max_bytes": N, "why": "..."}`)
-      — over the cap fails this check.
+      — over the cap fails this check. Then one `BUDGET:` line adds the project's CLAUDE.md to that total
+      and compares it to the same cap: a WARN when over, never a failure (OD-117 rec 7).
   (d) for each wired kit guard with a known blocking input (GUARD_PROBES below), the guard script
       is piped that input and must exit non-zero (block); a guard named in the project's opt-outs
       file is skipped, printing its reason instead.
@@ -180,6 +181,14 @@ def check_context_budget(root: Path, failures: list[str]) -> None:
         _fail(f"(c) always-loaded rule bytes {total} exceed cap {cap}", failures)
     else:
         print("ok: (c) within context budget")
+    claude_md = root / "CLAUDE.md"
+    claude_bytes = len(claude_md.read_bytes().replace(b"\r\n", b"\n")) if claude_md.is_file() else 0
+    both = claude_bytes + total
+    where = f"always-loaded text {both} bytes (CLAUDE.md {claude_bytes} + rules {total})"
+    if both > cap:        # a warning only: a project with a long CLAUDE.md stays green on upgrade until it slims it
+        print(f"WARN: BUDGET: {where} over the {cap} cap")
+    else:
+        print(f"ok: BUDGET: {where} within the {cap} cap")
 
 
 def _load_optout_reasons(root: Path) -> dict[str, str]:

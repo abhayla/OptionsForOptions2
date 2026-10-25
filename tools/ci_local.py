@@ -7,14 +7,22 @@ step's output to a log file outside the repo, and prints one line per step plus 
 
 Usage:
     python tools/ci_local.py [--list] [--repo PATH] [--workflow PATH] [--event NAME]
-                             [--base REF] [--pr-body FILE] [--regen]
+                             [--base REF] [--pr-body FILE] [--regen] [--full]
 
 Options:
-    --list         print the plan (PLAN / SKIP lines, pytest collection included); run nothing
+    --list         print the plan (PLAN / SKIP lines, pytest collection included, and which tests the
+                   default mode would run); run nothing
+    --full         run the whole test suite, as the workflow states it. Default (REQ-060 AC-3): every check
+                   step, plus only the test files the change touches and the test files that import a changed
+                   module (changes = diff <merge-base>...HEAD plus uncommitted and untracked files).
+                   A docs-only change selects no tests. Fails closed to the full suite when the diff cannot
+                   be read, the base is unknown, or a conftest, pytest config or requirements file changed.
+                   A non-pull_request --event always runs the full suite.
     --repo         repository root; default: current directory
     --workflow     workflow file; default: <repo>/.github/workflows/ci.yml
     --event        event to mirror (github.event_name); default: pull_request
-    --base         base ref for `git merge-base <base> HEAD` (the PR base sha); default: origin/main
+    --base         base ref for `git merge-base <base> HEAD` (the PR base sha); default: origin/main,
+                   then main when origin/main does not exist
     --pr-body FILE a file holding the PR description; written into a temp event JSON and given to
                    every step as GITHUB_EVENT_PATH (tools/check_pr_spec_block.py reads it)
     --regen        before the checks, run each generator's regenerate form that exists in the project
@@ -67,6 +75,10 @@ NOT_CANCELLED = re.compile(r"!cancelled\(\)(?:\s*&&\s*(.+))?", re.S)
 EXPR = re.compile(r"\$\{\{(.*?)\}\}", re.S)
 # The kit CI job skips a draft pull request; a local run is never a draft, so exactly this condition is true here.
 DRAFT_JOB_COND = "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+# A change to any of these can alter how every test runs: the full suite (fail closed).
+FULL_SUITE_NAMES = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+TEST_FILE = re.compile(r"(^|/)(test_[^/]*|[^/]*_test)\.py$")
+SKIP_DIRS = (".git/", "node_modules/", ".claude/worktrees/")
 BASE_TERMS = {"github.event.pull_request.base.sha", "github.event.before"}
 
 
@@ -262,7 +274,7 @@ def collect_tests(bash: str, cmd: str, repo: Path, env: dict) -> set[str] | None
 def dedupe_pytest(steps: list[Step], bash: str, repo: Path, env: dict) -> None:
     sets: dict[int, set[str]] = {}
     for st in steps:
-        if (st.status == "PLAN" and st.runtime_cond is None
+        if (st.status == "PLAN"
                 and re.match(r"python\d*(\.\d+)?\s+-m\s+pytest\b", str(st.cmd).strip())):
             got = collect_tests(bash, str(st.cmd), repo, env)
             if got is not None:
@@ -271,6 +283,9 @@ def dedupe_pytest(steps: list[Step], bash: str, repo: Path, env: dict) -> None:
     for i in sorted(sets):
         for j in sorted(sets):
             if i == j or by_idx[j].status != "PLAN" or by_idx[i].status != "PLAN":
+                continue
+            # a step gated at run time is covered only by a step with the very same gate
+            if by_idx[i].runtime_cond != by_idx[j].runtime_cond:
                 continue
             if sets[i] <= sets[j] and (sets[i] != sets[j] or j < i):
                 by_idx[i].status = "SKIP"
@@ -370,6 +385,124 @@ def merge_base(repo: Path, base: str) -> str:
     return proc.stdout.strip()
 
 
+def _git_z(repo: Path, *args: str) -> list[str] | None:
+    """NUL-separated command output as a list, or None when the command failed."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "--no-pager", *args],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if r.returncode != 0:
+        return None
+    return [p for p in r.stdout.split("\x00") if p]
+
+
+def changed_files(repo: Path, base: str) -> list[str] | None:
+    """Repo-relative paths changed since the merge-base with `base`, plus uncommitted and untracked
+    files; None when the diff cannot be read (unknown base, not a repository, git missing)."""
+    cands = [base] + (["main"] if base == "origin/main" else [])
+    mb = None
+    for cand in cands:
+        mb = git_text(repo, "merge-base", cand, "HEAD")
+        if mb:
+            break
+    if not mb:
+        return None
+    parts = (_git_z(repo, "diff", "--name-only", "--no-renames", "-z", f"{mb}...HEAD"),
+             _git_z(repo, "diff", "--name-only", "--no-renames", "-z", "HEAD"),
+             _git_z(repo, "ls-files", "--others", "--exclude-standard", "-z"))
+    if any(p is None for p in parts):
+        return None
+    seen: dict[str, None] = {}
+    for part in parts:
+        for p in part:
+            seen[p] = None
+    return list(seen)
+
+
+def _is_docs(path: str) -> bool:
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        try:
+            import change_scope
+        finally:
+            sys.path.pop(0)
+        return bool(change_scope.path_is_docs(path))
+    except Exception:
+        return False
+
+
+def select_tests(repo: Path, base: str) -> tuple[list[str] | None, str]:
+    """(test files to run, reason). A None list means the full suite; [] means no test is needed."""
+    changed = changed_files(repo, base)
+    if changed is None:
+        return None, "full suite: the diff could not be read"
+    for path in changed:
+        name = path.rsplit("/", 1)[-1]
+        if name in FULL_SUITE_NAMES or re.fullmatch(r"requirements[^/]*\.(txt|in)", name):
+            return None, f"full suite: {path} changes how every test runs"
+    listed = _git_z(repo, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+    if listed is None:
+        return None, "full suite: the file list could not be read"
+    test_files = [p for p in listed if TEST_FILE.search(p) and not p.startswith(SKIP_DIRS)
+                  and (repo / p).is_file()]
+    texts: dict[str, str] = {}
+    for tf in test_files:
+        try:
+            texts[tf] = (repo / tf).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None, f"full suite: {tf} could not be read"
+    picked: dict[str, None] = {}
+    for path in changed:
+        if path in texts:
+            picked[path] = None           # a changed test file runs itself
+            continue
+        if TEST_FILE.search(path):
+            continue                      # a deleted test file: nothing to run
+        if "__pycache__/" in path or path.endswith(".pyc"):
+            continue                      # bytecode: generated, never read by a test
+        if _is_docs(path):
+            continue
+        # Anything else must be a .py that a test names; every other shape (fixture, schema, shell script,
+        # unknown extension, a .py no test names) is something a test may read: the full suite (fail closed).
+        if not path.endswith(".py"):
+            return None, f"full suite: {path} is not a records file or Python module"
+        parts = path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path.split("/")
+        stem = parts[0]
+        if stem == "__init__":
+            stem = parts[1][-2] if len(parts[1]) > 1 else ""   # a package: tests that name its folder
+        pats = [re.compile(re.escape(path))]
+        if stem:
+            pats.append(re.compile(r"(?<![A-Za-z0-9_])" + re.escape(stem) + r"(?![A-Za-z0-9_])"))
+        hit = [tf for tf, text in texts.items() if any(p.search(text) for p in pats)]
+        if not hit:
+            return None, f"full suite: no test names {path}"
+        for tf in hit:
+            picked[tf] = None
+    chosen = sorted(picked)
+    return chosen, f"{len(chosen)} test file(s) for {len(changed)} changed file(s)"
+
+
+def _names_test_file(cmd: str) -> bool:
+    """True when a command line has a bare argument that is a test file (not an --ignore=... option)."""
+    return any(not t.startswith("-") and TEST_FILE.search(t) for t in re.split(r"[\s'\"]+", cmd))
+
+
+def narrow_pytest(steps: list[Step], tests: list[str]) -> None:
+    """Default mode: append the chosen test files to every pytest call, and skip the pytest step when
+    no test was chosen. A step that names a test file itself (the gated mutation matrix) is left alone."""
+    import shlex
+    for st in steps:
+        cmd = str(st.cmd or "")
+        if st.status != "PLAN" or not PYTEST_CALL.search(cmd) or _names_test_file(cmd):
+            continue
+        if not tests:
+            st.status, st.reason = "SKIP", "no test file touched by this change (use --full for all)"
+            continue
+        arg = " ".join(shlex.quote(t) for t in tests)
+        st.cmd = PYTEST_CALL.sub(lambda m: f"{m.group(1)} {arg}", cmd)
+
+
 # Generators and their regenerate form (the --check form without --check): (tool, extra args, generated file, when).
 REGEN_STEPS = (
     ("build_spec_digest.py", [], "views/spec-digest.md", None),
@@ -428,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--event", default="pull_request", help="event to mirror (default: pull_request)")
     ap.add_argument("--base", default="origin/main", help="base ref for the merge-base (default: origin/main)")
     ap.add_argument("--pr-body", help="file holding the PR description")
+    ap.add_argument("--full", action="store_true", help="run the whole test suite, not just the affected tests")
     ap.add_argument("--regen", action="store_true",
                     help="regenerate the project's generated files before the checks (not with --list)")
     args = ap.parse_args(argv)
@@ -470,6 +604,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         dedupe_pytest(steps, bash, repo, env)
+        if args.full:
+            select_note = "full suite (--full)"
+        elif args.event != "pull_request":
+            select_note = f"full suite (event is {args.event})"
+        else:
+            chosen, select_note = select_tests(repo, args.base)
+            if chosen is not None:
+                narrow_pytest(steps, chosen)
+                select_note += ": " + (", ".join(chosen) if chosen else "none")
+        print(f"tests: {select_note}", flush=True)
 
         if args.list:
             for st in steps:

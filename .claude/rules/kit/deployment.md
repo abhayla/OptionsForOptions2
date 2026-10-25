@@ -10,6 +10,8 @@ paths:
 
 # Deployment: one production deploy a day, staging in windows, production hosts are not test benches
 
+Counters: production deploys per day (P1), deploys with no rollback written first (P4), ad-hoc runs on a host (H1).
+
 version: "1.0.0" (generalized for the project kit)
 
 Why: several production deploys in one day burned scheduled job runs and CI minutes; staging rebuilt on every merge
