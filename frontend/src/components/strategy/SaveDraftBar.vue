@@ -236,7 +236,7 @@ v-if="current" type="button" data-testid="rename-open" class="rounded border bor
       <input
 id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class="mt-1 rounded border border-line px-2 py-1"
              :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />
-      <p class="text-xs text-ink-muted" data-testid="name-count">{{ nameText.length }}/{{ STRATEGY_NAME_MAX }} characters</p>
+      <p class="text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-count">{{ nameText.length }}/{{ STRATEGY_NAME_MAX }} characters</p>
       <div class="mt-1 flex gap-2">
         <button type="button" data-testid="name-cancel" class="rounded border border-line px-3 py-1" @click="cancelName">Cancel</button>
         <button type="submit" data-testid="name-confirm" class="rounded border border-line px-3 py-1" :disabled="busy">Save</button>

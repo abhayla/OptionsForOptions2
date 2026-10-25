@@ -58,6 +58,7 @@ from ofo.strategy.definition import (
     DEFAULT_STRATEGY_NAME,
     NAME_EMPTY,
     STRATEGY_NAME_MAX,
+    STRATEGY_NAME_TYPED_MAX,
     name_problem,
 )
 from ofo.strategy import settings_value
@@ -109,7 +110,7 @@ LIVE_STATE_FIELD = "live_state_field"
 UNKNOWN_NAME = "unknown_name"
 VALUE_NOT_ALLOWED = "value_not_allowed"  # ADR-069: a setting value that is not an identifier or a number
 STRATEGY_NAME_EMPTY = "strategy_name_empty"  # REQ-134 AC-1: an empty name ("Give the strategy a name")
-STRATEGY_NAME_INVALID = "strategy_name_invalid"  # REQ-134 AC-1: over 40 characters, a control character, not text
+STRATEGY_NAME_INVALID = "strategy_name_invalid"  # REQ-134 AC-1: over 20 characters typed, a control character, not text
 INVALID_PLANNED_ENTRY = "invalid_planned_entry"  # ADR-075: not a positive paise price with an aware capture time
 
 
@@ -590,16 +591,18 @@ def check_summary_text(text: str) -> str:
 
 
 def check_strategy_name(text: object) -> UserWords:
-    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_MAX characters, one line. Returns
+    """REQ-134 AC-1: the name a user typed for a strategy: trimmed, 1..STRATEGY_NAME_TYPED_MAX characters, one
+    line (ADR-183; a name stored before it may be up to STRATEGY_NAME_MAX and is still read by shown_name). Returns
     the user's words (the request door, ofo.errors.explanations.REQUEST_LAYER); StoredFormError otherwise.
     Duplicates are allowed, so nothing here looks at other names."""
     trimmed = text.strip() if type(text) is str else text
     problem = name_problem(trimmed)
-    if problem is None:
-        return user_words(trimmed)
+    if problem is None and len(trimmed) <= STRATEGY_NAME_TYPED_MAX:
+        return user_words(trimmed)  # not "problem is None": a name valid as STORED (up to 40) may be too long to TYPE
     if problem == NAME_EMPTY:
         raise StoredFormError(STRATEGY_NAME_EMPTY, "the strategy name is empty")
-    raise StoredFormError(STRATEGY_NAME_INVALID, f"a strategy name is 1..{STRATEGY_NAME_MAX} characters on one line")
+    raise StoredFormError(STRATEGY_NAME_INVALID,
+                          f"a strategy name is 1..{STRATEGY_NAME_TYPED_MAX} characters on one line")
 
 
 def shown_name(stored: object):

@@ -219,7 +219,7 @@ describe('REQ-134: the name as the API sends it (quoted user words, ADR-003)', (
 
 // The refusal and conflict texts are the catalogue's (backend/ofo/errors/templates.py strategy_name_empty, strategy_revision_conflict).
 const EMPTY_NAME = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.',
-  what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 40 characters, then save again.' }
+  what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
 const CONFLICT = { what_happened: 'This strategy was changed by another action after you opened it.', impact: 'The draft was not saved or changed.',
   what_is_blocked: 'Applying your change to the newer version.', next_action: 'Reload the strategy and make the change again.' }
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -233,12 +233,12 @@ async function bar(props = {}) {
 }
 
 describe('REQ-134 AC-1: the first Save of a never-saved strategy asks for a name', () => {
-  it('Save opens the name field prefilled "New Strategy" with the 12/40 hint and sends nothing yet', async () => {
+  it('Save opens the name field prefilled "New Strategy" with the 12/20 hint and sends nothing yet', async () => {
     const w = await bar()
     await t(w, 'save-draft').trigger('click')
     expect(t(w, 'name-input').element.value).toBe(STRATEGY_NAME_DEFAULT)
-    expect(t(w, 'name-input').attributes('maxlength')).toBe('40')
-    expect(t(w, 'name-count').text()).toBe('12/40 characters')
+    expect(t(w, 'name-input').attributes('maxlength')).toBe('20')
+    expect(t(w, 'name-count').text()).toBe('12/20 characters')
     expect(calls).toEqual([])
   })
   it('confirming POSTs the typed name; the saved name is shown without its quotes and the page is told id, revision and name', async () => {
@@ -353,7 +353,7 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
     expect(t(w, 'rename-open').exists()).toBe(false)
   })
   it('attack 4: an empty name shows the API refusal text and emits nothing', async () => {
-    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 40 characters, then save again.' }
+    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     answers['PATCH /strategies/7/name'] = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await bar({ current })
     await t(w, 'rename-open').trigger('click')

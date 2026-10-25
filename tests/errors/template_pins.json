@@ -1524,11 +1524,11 @@
     "reviewed": "pending owner read"
   },
   "strategy_name_empty": {
-    "sha256": "3a4bbfb301ba601ee3c8e75a4059c283ba0a7b24eb1f29b42d0661b82edd3b4b",
+    "sha256": "a3b7be505e42959d0b72f02931fd1e3903edce67207940de23df3a236b8d872d",
     "reviewed": "pending owner read"
   },
   "strategy_name_invalid": {
-    "sha256": "5766fd1930960fb2dd0f695d1028577c5523491ce7bbeb34ad3765a490a7ca34",
+    "sha256": "46638a9e28c3761e23f7781579fc0fb82345272079fafc0bc9c16ecd0eae77a0",
     "reviewed": "pending owner read"
   },
   "explanation:strategy_name_shown": {
