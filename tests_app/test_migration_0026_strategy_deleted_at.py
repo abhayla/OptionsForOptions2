@@ -1,4 +1,4 @@
-"""REQ-070 AC-6 (W-156, part 28b): migration 0026 adds strategies.deleted_at (hide a never-executed draft, keep its rows).
+"""REQ-070 AC-6 (W-156, part 28b): migration 0026 adds strategies.deleted_at (hides a never-executed draft).
 
 Spec basis (quoted): REQ-070 AC-6 "the draft is hidden from every list and kept on the server with its history for
 audit"; ADR-118 "Deleting never erases history or audit rows"; ADR-048 (the limited application role keeps what it had,
@@ -79,7 +79,7 @@ async def test_any_other_fixed_column_is_still_refused_for_the_app_role(app_engi
             strategy_id = await _new(conn, "test-0026-fixed")
             point = await conn.begin_nested()
             with pytest.raises(DBAPIError) as err:
-                await conn.execute(text(f"UPDATE public.strategies SET {column} = {value} WHERE id = :id"),  # noqa: S608
+                await conn.execute(text(f"UPDATE public.strategies SET {column} = {value} WHERE id = :id"),
                                    {"id": strategy_id})
             await point.rollback()
             assert getattr(err.value.orig, "sqlstate", None) in {NO_PRIVILEGE, GUARD_REFUSAL}

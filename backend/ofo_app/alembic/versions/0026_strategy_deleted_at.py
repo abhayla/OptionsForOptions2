@@ -3,7 +3,7 @@
 Spec basis: REQ-070 AC-6 ("the draft is hidden from every list and kept on the server with its history for audit");
 ADR-118 ("Deleting never erases history or audit rows"); ADR-048 (the limited application role).
 
-Copy from: none - this repo's own pattern: 0025's grant, allow-list replacement (``_replaced_once``) and downgrade refusal.
+Copy from: none - this repo's own pattern: 0025's grant, allow-list replacement (``_replaced_once``), downgrade refusal.
 
 Changes (owner-run, one transaction):
 - public.strategies.deleted_at TIMESTAMPTZ NULL (NULL = visible; a time = hidden since then).
@@ -14,7 +14,7 @@ Changes (owner-run, one transaction):
   ``deleted_at`` (NULL -> time, or back to NULL) already leaves both as they are. A test pins that (the guard pin in the
   allow-list is therefore the same as 0025's).
 - public.ofo_assert_app_role_allowlist: 0025's chain text with block 11's strategies UPDATE column list replaced.
-- downgrade: refuses while any row has deleted_at set (a hidden draft and its audit trail must not vanish silently); else
+- downgrade: refuses while any row has deleted_at set (a hidden draft and its audit trail must not vanish); else
   0025's state comes back.
 
 Revision ID: 0026_strategy_deleted_at
@@ -105,7 +105,7 @@ def downgrade() -> None:
             END IF;
         END
         $down$;
-        """  # noqa: E501, S608 constant names, one message line
+        """  # noqa: S608 constant names, one message line
     )
     op.execute(f"ALTER TABLE {_M8.STRATEGIES} DROP COLUMN {DELETED_COLUMN}")  # its column grants go with it
     _install(previous_allowlist_sql())

@@ -457,7 +457,7 @@ async def rename_strategy(strategy_id: int, body: StrategyNameIn, db: Annotated[
 @router.delete("/strategies/{strategy_id}", response_model=DeletedOut)
 async def delete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
                           user_ref: Annotated[str, Depends(current_user_ref)],
-                          expected_revision: int = Query(gt=0)) -> DeletedOut:
+                          expected_revision: Annotated[int, Query(gt=0)]) -> DeletedOut:
     """REQ-070 AC-6: hides a strategy that never sent a basket (its rows and history stay). 409 `Can't delete: orders
     were sent` otherwise; 404 for another user's, a missing or an already hidden strategy."""
     async def work():
@@ -469,7 +469,7 @@ async def delete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
 @router.post("/strategies/{strategy_id}/undelete", response_model=StrategyOut, response_model_exclude_unset=True)
 async def undelete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
                             user_ref: Annotated[str, Depends(current_user_ref)],
-                            expected_revision: int = Query(gt=0)) -> StrategyOut:
+                            expected_revision: Annotated[int, Query(gt=0)]) -> StrategyOut:
     """Undo of a delete: the same strategy comes back (REQ-070 AC-6)."""
     async def work():
         return await _strategy_out(db, await store.undelete_draft(db, user_ref, strategy_id,

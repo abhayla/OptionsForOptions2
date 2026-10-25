@@ -217,8 +217,7 @@ async def test_the_app_role_gains_exactly_insert_and_update_on_name(admin_engine
     own_down, own_up, _, _ = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]
     later_down = [sql for n in reversed(later_than(MIGRATION)) for sql in recorded(n, "downgrade")]
-    later_up = [sql for n in later_than(MIGRATION) for sql in recorded(n, "upgrade")]
-    down, up = own_down, own_up + later_up
+    down = own_down
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

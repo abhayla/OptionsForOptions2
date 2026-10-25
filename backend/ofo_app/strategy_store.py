@@ -108,7 +108,7 @@ _INSERT = text(
     "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version, name) "  # noqa: S608
     f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}"
 )
-#: One definition of "never sent a basket": no plan row of ANY status (an open plan may already be filled) and no version
+#: One definition of "never sent a basket": no plan row of ANY status (an open plan may already be filled), no version
 #: row (a version only exists after a fill). Reused by the list (can_delete) and by ``delete_draft``.
 _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
