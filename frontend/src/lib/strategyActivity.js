@@ -58,13 +58,10 @@ export async function fetchHistory(client, id) {
   } catch {
     current = null;
   }
-  return [...entries]
-    .reverse()
-    .map((e) => ({
-      ...e,
-      isCurrent:
-        current !== null && legSignature(e.definition?.legs) === current,
-    }));
+  return [...entries].reverse().map((e) => ({
+    ...e,
+    isCurrent: current !== null && legSignature(e.definition?.legs) === current,
+  }));
 }
 
 /** POST /strategies/{id}/restore/{seq}?expected_revision=N -> the restored strategy read through the one leg builder
