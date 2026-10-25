@@ -494,7 +494,7 @@ class SignedAmount(SlotType):
 
 
 class SignedRupees(SlotType):
-    """Exact money like `Rupees` (the engine's format) with an explicit plus for a gain: +₹1,240.00 / −₹1,240.00."""
+    """Exact money like `Rupees` (the engine's format) with an explicit plus for a gain; a loss keeps the engine's sign."""
 
     @staticmethod
     def validate(value: object) -> None:
