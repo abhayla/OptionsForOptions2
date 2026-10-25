@@ -1,6 +1,0 @@
-# Tests a docs-only pull request still runs (ci.yml "Run tests on pull request").
-# These read the records (evidence/, work/, spec/) that a docs-only change edits, so skipping them let PR #559
-# merge with 3 unbaselined reach hits and turned main red (finding docs-only-pr-skips-record-scans).
-tests/test_reach_check_real.py
-tests/test_tests_required_exist.py
-tests/test_spec_integrity.py

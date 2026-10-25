@@ -8,11 +8,11 @@
   "where": "main at 7e2153f2 (PR #559), seen on kit-upgrade PR #564",
   "evidence": "ci.yml on main: 7bd8807a success (run 40226732147), 7e2153f2 failure (run 40232012730); log '1 failed, 7135 passed', FAILED tests/test_reach_check_real.py ... new 3. Local on fix/main-red-reach-w160: the three record tests 11 passed in 13.29s."
  },
- "fix": "Instance: three baseline entries (W-160 AC-2/3/4, frontend-only, #532) in scripts/orchestrator/reach_check_baseline.json. Class: .claude/project/ci-docs-only-tests.txt (the kit's own hook for docs-only PRs) lists tests/test_reach_check_real.py, tests/test_tests_required_exist.py and tests/test_spec_integrity.py, so a records-only PR runs the tests that read records (~13 s).",
+ "fix": "Instance: three baseline entries (W-160 AC-2/3/4, frontend-only, #532) in scripts/orchestrator/reach_check_baseline.json. Class fix proposed, open for owner decision (SPEC CHANGE against ADR-187 (5), which keeps the project out of the kit's opt-in docs-only CI test list unless the owner says so): .claude/project/ci-docs-only-tests.txt listing tests/test_reach_check_real.py, tests/test_tests_required_exist.py and tests/test_spec_integrity.py, so a records-only PR runs the tests that read records (measured: 11 passed in 13.29 s).",
  "detection": {
-  "status": "guarded",
-  "checks": ["ci.yml 'Run tests on pull request' docs-only branch running .claude/project/ci-docs-only-tests.txt"],
-  "note": "A new repo test that reads records must be added to the list by hand; a harvest issue to the Factory can propose deriving the list from the repo_scan marker."
+  "status": "unguarded",
+  "checks": [],
+  "note": "Until the owner decides, a records-only PR can still turn main red; the push-to-main full suite is the only catch."
  },
  "spec_ref": [
   "spec/decisions/ADR-189.md"
