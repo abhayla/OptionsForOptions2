@@ -187,7 +187,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
 - ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
 - ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
-- ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078]
+- ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078; refines REQ-076]
 
 ## Requirements (131)
 
