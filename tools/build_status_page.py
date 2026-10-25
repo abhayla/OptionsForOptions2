@@ -1094,6 +1094,30 @@ def map_words(t: str) -> str:
     return t
 
 
+_PATH_RE = re.compile(r"(?<![\w/.-])[\w.-]+(?:/[\w.-]+)+")
+_FILE_RE = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:md|py|json|ya?ml|ps1|sh|js|html|txt)\b")
+_CMD_RE = re.compile(r"\b(?:python3?|pytest|npm|gh|git)\b(?:\s+-\S+)*(?:\s+[a-z][\w-]*)?", re.I)
+_VERSION_RE = re.compile(r"\bv?\d+\.\d+\.\d+\b")
+_LOWER_MAP = [(re.compile(r"\btiers?\b", re.I), "review level"), (re.compile(r"\blayers?\b", re.I), "kind"),
+              (re.compile(r"\bgates?\b", re.I), "check")]
+
+
+def plain_words(text) -> str:
+    """THE plain-words function (OD-117: record wording never fails the build). Every record text that reaches the first
+    screen ends here: ids dropped, any file name, path, command or version replaced by a plain word, section 4 words
+    mapped, leftover jargon words reworded, so no wording in a record can put jargon on the page."""
+    t = ANY_ID_RE.sub("", str(text or ""))
+    t = _PATH_RE.sub(lambda m: "a file" if _FILE_RE.fullmatch(m.group(0).rsplit("/", 1)[-1]) else "a folder", t)
+    t = _FILE_RE.sub("a file", t)
+    t = _CMD_RE.sub("a command", t)
+    t = _VERSION_RE.sub("a version", t)
+    t = map_words(t)
+    for rx, word in _LOWER_MAP:
+        t = rx.sub(lambda m, w=word: w + ("s" if m.group(0).lower().endswith("s") else ""), t)
+    t = re.sub(r"\(\s*\)", "", t)
+    return re.sub(r"\s+", " ", re.sub(r"\s+([,;:.])", r"\1", t)).strip(" ,;:")
+
+
 def has_jargon(t: str) -> bool:
     return bool(BAD_PLAIN_RE.search(t) or BAD_CASE_RE.search(t) or ANY_ID_RE.search(t))
 
@@ -1126,10 +1150,10 @@ def display_title(title, ids=()) -> tuple[str, str]:
     lead_id = re.match(r"[A-Z]{1,3}-\d+", lead.group(0)).group(0) if lead else ""
     suffix = ids[0] if ids else lead_id
     if ids and ctx.get(ids[0], {}).get("display_title"):
-        return map_words(str(ctx[ids[0]]["display_title"])), suffix
+        return plain_words(ctx[ids[0]]["display_title"]), suffix
     t0 = title_rule(title)
     if _title_ok(t0):
-        return map_words(t0), suffix
+        return plain_words(t0), suffix
     order: list[str] = []
     for i in ids + [x for x in re.findall(r"\b[A-Z]{1,3}-\d+\b", str(title or ""))]:
         for j in [i] + list((ctx.get(i) or {}).get("related") or []):
@@ -1141,8 +1165,8 @@ def display_title(title, ids=()) -> tuple[str, str]:
         cand = str(rec.get("display_title") or "") or title_rule(rec.get("title"))
         first = first or cand
         if _title_ok(cand):
-            return map_words(cand), suffix
-    return map_words(t0 or first or str(title or "")), suffix
+            return plain_words(cand), suffix
+    return plain_words(t0 or first or str(title or "")), suffix
 
 
 def show_title(title, ids=()) -> tuple[str, str]:
@@ -1150,10 +1174,8 @@ def show_title(title, ids=()) -> tuple[str, str]:
 
 
 def clean_prose(text) -> str:
-    """Free prose (plan-change Was/Now/Because): ids dropped, section 4 words mapped."""
-    t = ANY_ID_RE.sub("", str(text or ""))
-    t = re.sub(r"\(\s*\)", "", t)
-    return map_words(re.sub(r"\s+", " ", re.sub(r"\s+([,;:.])", r"\1", t)).strip(" ,;:"))
+    """Free prose (plan-change Was/Now/Because): through the one plain-words function."""
+    return plain_words(text)
 
 
 def checks_verified(res, n_acs: int) -> str:
@@ -1187,7 +1209,7 @@ def now_line_html(state: str, text: str) -> str:
     """'Working on' as a short title, a small grey id, and a grey detail line (plan step only when there is one)."""
     m = NOW_RE.match(text)
     if state != "working" or not m:
-        return f'<p id="now" data-state="{state}"><span class="dot"></span><span>{esc(text)}</span></p>'
+        return f'<p id="now" data-state="{state}"><span class="dot"></span><span>{esc(plain_words(text))}</span></p>'
     title, wid, sid, stext, ago = m.groups()
     if not wid:      # an unmapped branch name is a Development detail, never a first-screen title
         title = "Work in a working copy"
@@ -1209,7 +1231,7 @@ def not_moving_html(text: str, cap: int = 3) -> str:
             out.append(f'{_ttl_span(show_title(ttl, [ident])[0])} <span class="id">{esc(ident)}</span>'
                        f'<span class="sl">Not moving · No change for {esc(days)} days</span>')
         else:
-            out.append(f'<span class="ttl">{esc(it)}</span><span class="sl">Not moving</span>')
+            out.append(f'<span class="ttl">{esc(plain_words(it))}</span><span class="sl">Not moving</span>')
     more = f'<span class="sl">+ {len(items) - cap} more</span>' if len(items) > cap else ""
     return ('<p id="not-moving"><span class="dot"></span><span>'
             + '<br>'.join(out) + more + "</span></p>")
@@ -1559,7 +1581,7 @@ def plans_html(plans: list[dict]) -> str:
         steps_done = {m["step"] for m in p["mismatch"]}
         head = (f'{ring(p["percent"], 40)}' if p["total"] else "")
         words = f"{p['done']} of {p['total']} steps" if p["total"] else "No steps yet"
-        out = [f'<div class="plan" data-plan="{esc(p["id"])}"><div class="ph">{head}<div><h3>{esc(p["title"])} '
+        out = [f'<div class="plan" data-plan="{esc(p["id"])}"><div class="ph">{head}<div><h3>{esc(display_title(p["title"], [p["id"]])[0])} '
                f'<span class="id">{esc(p["id"])}</span></h3><p>{esc(words)} · {esc(str(p.get("status") or "").capitalize())}</p>'
                '</div></div>']
         if p["steps"]:
@@ -1568,7 +1590,7 @@ def plans_html(plans: list[dict]) -> str:
                 refs = ", ".join(str(r) for r in s_.get("refs") or [])
                 warn = (" " + chip("Marked done, work not finished", "warn")) if s_.get("id") in steps_done else ""
                 lis.append(f'<li data-step="{esc(s_.get("id"))}" class="{"dropped" if s_.get("status") == "dropped" else ""}">'
-                           f'{_step_icon(s_.get("status"))}<span class="ttl">{esc(s_.get("text"))}</span>'
+                           f'{_step_icon(s_.get("status"))}<span class="ttl">{esc(display_title(s_.get("text"), [str(x) for x in s_.get("refs") or []])[0])}</span>'
                            + (f' <span class="id">{esc(refs)}</span>' if refs else "") + warn + "</li>")
             out.append('<ul class="steps">' + "".join(lis) + "</ul>")
         if p["changes"]:

@@ -113,7 +113,7 @@ def _fit(template: Template, shape: Shape) -> tuple[dict[str, int], int] | str |
         values = solve_integer(equations, [p.name for p in template.params])
         if values is None:
             continue
-        problems = template.violations(values)
+        problems = template.violations(values, matching=True)  # ADR-186 (4): build-only rules skipped
         if problems:
             reason = problems[0]
             continue

@@ -9,184 +9,97 @@ description: >
 
 # Deliver
 
-Delivers exactly one work item through the loop: intake, build, verify (where the tier
-requires it), evidence, trace check, review, PR, merge, status update.
+Delivers exactly one work item: intake, build, check, evidence, trace check, PR, merge, status update.
+
+## Principles
+
+- The agent is a careful colleague; guards and gates protect against accidents. A guard or gate change gets one diff
+  review and its tests, with known bypasses written down in the guard's README, not chased.
+- The main session stays small: it never reads logs, diffs or tables into its context, only the last lines
+  (output to a log file, `tail`).
+- Models: Sonnet by default, Opus for Tier A only, Haiku for records and searches.
+- Kit work and kit upgrades go in a weekly batch.
 
 ## Loop steps
 
-1. **Intake** — confirm the requirement (`spec/requirements/REQ-###.md`) and the work item
-   (`work/W-###.md`) both exist and are lint-clean (`python tools/factory_lint.py .`). The requirement's acceptance criteria are what the work item's
-   `tests_required` must cover.
-   Then run `python tools/build_order.py . --may-start REQ-###` for each requirement the work
-   item delivers; a non-zero exit stops the delivery (it names the earlier `next` items, the
-   undone dependencies or the blocking root). Start out of order only when the work item carries
-   `order_override: <reason>` (the reason is the record), which --may-start prints.
-2. **Requirement + work item** — read them before anything else. They fix the acceptance
-   criteria and the tier; nothing below may silently redefine them. Any plan made or changed is written as `plans/PL-###.md`; a change appends a `changes` entry (was, now, why), never rewrites silently.
-3. **Builder** — dispatch the builder variant of the work item's tier in its own worktree: `builder-c` (Tier C,
-   40 turns), `builder-b` (Tier B, 75 turns) or `builder` (Tier A, 100 turns). The agent's `maxTurns` is the hard stop of
-   its tier and the budget hook refuses a Budget line above 80% of it. It writes code and one
-   test per acceptance criterion in `tests_required`. It never writes `evidence/` files and
-   never marks any status field verified or reviewed — doing so would make it its own
-   verifier, which is not independent verification.
-4. **Verifier (Tier B and Tier A only)** — dispatch the `verifier` agent in a fresh context
-   (different agent from the builder). It is read-only: it re-runs the exact test commands
-   itself, tries at least one way each acceptance criterion could plausibly fail, and
-   returns one evidence block per AC, each carrying the two lines `requirement: <REQ-id>` and
-   `ac_fp: "<hex>"` printed by
-   `python tools/ac_fp.py <REQ-id> <AC-id> --yaml` at the time it checked that criterion. Before
-   dispatching the verifier, the orchestrator records
-   `git status --porcelain --untracked-files=all -- evidence work spec`; after it returns, it runs
-   the same command and flags only NEW lines (lines present before are its own work and are left
-   alone). It also lists the quarantine folders under `<system temp>/verifier-quarantine/` created
-   since the dispatch and reconciles each entry of their `MANIFEST.json` (`moved`: a verifier file,
-   keep it out; `copied`/`deleted`: decide whose change it was). Flagged lines are reported, never
-   deleted blindly (REQ-015). Tier C work skips this step; CI is the check instead.
-5. **Evidence** — the orchestrator (never the builder, never the verifier) records the
-   verifier's returned blocks as `evidence/<W-id>/<AC-id>.md`. For Tier C, the orchestrator
-   records the CI run itself as the evidence. Every new evidence file carries the verifier's
-   `requirement: <REQ-id>` line (evidence proves only the requirement it names) and its
-   `ac_fp: "<hex>"` line, QUOTED (an all-digit hex would load as a number). Before writing,
-   run `python tools/ac_fp.py <REQ-id> <AC-id>`: if it differs from the verifier's value the
-   criterion changed after the check, so re-verify instead of writing. trace_check fails new
-   evidence without `ac_fp`; only files listed in `spec/traceability/unpinned-before-tracing.txt`
-   (written once at adoption) may lack it. Never add `ac_fp` to an existing evidence file.
-6. **Trace check** — run `python tools/trace_check.py .` (default mode; never `--strict` in
-   CI), so that a requirement cannot move to `Verified` while its chain to a work item and its
-   evidence is broken. Also `python tools/build_findings_index.py --check` and
-   `python tools/check_spec_refs.py .` when findings changed.
-7. **Review** — sized by tier (see the tier table below). A Tier A review dispatches the `reviewer` agent (read-only,
-   80 turns), one narrow area per reviewer, and its brief tells it to run the hands-on attacks FIRST and read the code after.
-8. **PR** — open the pull request from `.github/pull_request_template.md`; its Spec-deviation
-   block is required (`tools/check_pr_spec_block.py` fails the PR without it). CI must run and
-   pass (see CI below).
-9. **Merge** — merge ONLY with `python tools/merge_when_green.py <pr> --reviewed-sha <full sha of the reviewed commit>`, once the tier's required
-   review is in. Never `gh pr checks --watch && gh pr merge`: `gh pr checks --watch` exits 0 on
-   "no checks reported" before CI has even started, so that sequence merges an unproven PR. The
-   tool also refuses a CONFLICTING/DIRTY PR at once, since GitHub runs zero CI on one. In a
-   headless run (`claude -p`), run it in the FOREGROUND and wait for it to exit — a headless
-   session's turn ends when the turn ends, so a backgrounded merge_when_green never finishes and
-   the PR never gets merged.
-10. **Update statuses** — after merge, the orchestrator (never the builder, never the
-    verifier) advances `verification_status`, `review_status`, and the requirement's
-    lifecycle status.
-11. **Status page** - the `status-page-due` Stop hook watches for a stage change (a requirement, work item,
-    plan step or owner question status, a release, a merged pull request); if a stage changed, it builds
-    `views/status-page.html` itself and asks once, at the end of the turn, for one publish: Artifact with
-    `file_path` + the `url` in `views/status-page.json`, so the link stays the same. Do that when asked; do not
-    run the build by hand. A merged pull request IS a stage change, but only once the merge is in your local checkout: `merge_when_green.py` merges on GitHub and does not pull, so pull first. A squash merge moves nothing unless the files it changed do (a requirement, work item, plan or release file). A commit or a test run alone is not a stage change. With no link yet, the hook's
-    SessionStart note says the first publish is due. The first publish of a session may be refused as not viewed, then as identical:
-    publish again each time. With no `views/status-page.json` yet (first publish of a project) the hook stays
-    silent: build with `python tools/build_status_page.py . --fetch --out views/status-page.html`, publish once,
-    then create `views/status-page.json` as `{"url": "<the link>"}` and commit it.
+1. **Intake** - the requirement (`spec/requirements/REQ-###.md`) and work item (`work/W-###.md`) exist and are
+   lint-clean (`python tools/factory_lint.py .`); the work item's `tests_required` cover the requirement's acceptance
+   criteria. Run `python tools/build_order.py . --may-start REQ-###` per requirement; non-zero stops the delivery,
+   unless the work item carries `order_override: <reason>`. Any plan is written as `plans/PL-###.md`; a change
+   appends a `changes` entry (was, now, why), never rewrites silently.
+2. **Builder** - dispatch the builder of the tier in its own worktree: `builder-c` (Tier C, 40 turns), `builder-b`
+   (Tier B, 75 turns) or `builder` (Tier A, 100 turns). `maxTurns` is the hard stop and the budget hook refuses a Budget
+   line above 80% of it. It writes code and one test per acceptance criterion in `tests_required`, never writes
+   `evidence/` files and never marks a status verified or reviewed.
+3. **Checker (Tier B and A)** - one checker, the `verifier` agent (fresh context, read-only; Sonnet for B, Opus for A),
+   reviews the diff, re-runs the test commands and returns one evidence block per AC with the lines
+   `requirement: <REQ-id>` and `ac_fp: "<hex>"` from `python tools/ac_fp.py <REQ-id> <AC-id> --yaml`. It replaces
+   verifier plus reviewer: there is no independent-review step. Record, before dispatch,
+   `git status --porcelain --untracked-files=all -- evidence work spec`; after, flag only NEW lines, never delete them
+   blindly. Tier C skips this step; CI is the check.
+4. **Evidence** - the orchestrator (not the builder or checker) writes the blocks as `evidence/<W-id>/<AC-id>.md`; for
+   Tier C the CI run is the evidence. The orchestrator writes the checker's blocks with
+   `python tools/record_evidence.py <reply.json>`. Every new evidence file carries `requirement: <REQ-id>` and a QUOTED
+   `ac_fp: "<hex>"`; run `python tools/ac_fp.py <REQ-id> <AC-id>` first and re-verify if it differs. Never add
+   `ac_fp` to an existing file.
+5. **Trace check** - `python tools/trace_check.py .` (never `--strict` in CI), plus
+   `python tools/build_findings_index.py --check` and `python tools/check_spec_refs.py .` when findings changed.
+6. **PR** - from `.github/pull_request_template.md`; its Spec-deviation block is required.
+7. **Merge** - only with `python tools/merge_when_green.py <pr> --reviewed-sha <full sha of the checked commit>`, in the
+   FOREGROUND (a headless `claude -p` run waits for it, never backgrounds it), chained with `&&`. Never `gh pr checks --watch && gh pr merge` ("no checks reported" exits 0 before CI
+   starts).
+8. **Update statuses** - after merge the orchestrator advances `verification_status`, `review_status` and the
+   requirement's status.
+9. **Status page** - the `status-page-due` Stop hook builds `views/status-page.html` itself if a stage changed
+   (a requirement, work item, plan step or owner question status, a release, a merged pull request) and asks once
+   for one publish: Artifact with `file_path` + the `url` in `views/status-page.json`. Do that when asked; do not run
+   the build by hand. A merged pull request IS a stage change once the merge is in your local checkout, so pull first
+   (`merge_when_green.py` does not pull); a commit or a test run alone is not a stage change. With no `views/status-page.json`
+   yet, build with `python tools/build_status_page.py . --fetch --out views/status-page.html`, publish once, create
+   `views/status-page.json` as `{"url": "<the link>"}` and commit it.
+10. **Process review** - after each item record minutes, rounds and the cause of each extra round; apply the fix that
+    removes the cause the same turn.
 
-12. **Process review** - after each item closes, the orchestrator records its minutes, tokens, rounds and the
-    one-line cause of each extra round, and applies the change that removes that cause the same turn. A fresh agent
-    reviews those records every third item. A change that adds a check applies at once; one that removes or loosens
-    a check needs an independent read and the owner's yes. The final verifier still checks every acceptance
-    criterion in full, never only the attack list.
+## Tiers (chosen by the changed files; unsure: the higher one)
 
-## Work-item size
+| Tier | Changed files | What runs |
+|---|---|---|
+| **C** | docs, records, text, test-only | builder + CI only |
+| **B** | normal code, kit tools and hooks | builder + one Sonnet checker |
+| **A** | production deploy path, money and order maths, data migrations, auth and secrets | builder + one Opus checker |
 
-- Size a work item by files touched: 5 or fewer small, 6 to 15 medium, more than 15, or backend plus frontend,
-  large and split before the build.
-- A user-visible step is the planning and end-to-end unit; its end-to-end test runs in CI.
-- A pull request is small enough for one reviewer to read end to end; dependent pull requests are stacked.
-- A migration is its own pull request.
-- The kit sets no line count; a project may set one in its own rules.
+A change takes the tier of its highest-risk file. Mutation tests apply only to Tier A guards: at most 5 mutants, run by
+the builder on a scratch copy, not a gate.
 
-## Plans
+## Rounds and parking
 
-Every plan's "merged", "exists" and "done" claims are checked against GitHub before work starts. A plan that changes
-behaviour in a Tier A category gets a full design review. A plan's first run against a real outside system gets a
-one-reviewer check at the Tier B model and budget, covering what it touches and how to undo it. A project with no
-outside effect needs neither; every other plan gets the precondition check only.
+At most 2 rounds. Round 2 re-checks round 1's findings and the fix's files only, 15 min. Then park, or ship with the
+findings listed for the owner. Do not dispatch an independent review.
 
 ## Model and effort per dispatch
 
-Name the model (by alias) and the effort on every dispatch; the choice comes from `.claude/kit/model-routing.yaml`,
-and the dispatch hook refuses an unknown model, `opus` without a `Why Opus:` line and `fable` without a
-`Why Fable:` line. At intake run `python tools/model_mix.py --alarms`. On a `NEW MODEL` or `UNROUTED MODEL` line do
-not edit `.claude/kit/` (kit-owned, replaced by the next kit upgrade): record it as a finding with scope generic, so
-`kit_harvest` carries it to the kit's maintainers, and continue with the table as it is.
-On `NO TRANSCRIPTS: <path>` the report could not find this project's transcripts: check the path and continue (it is not an alarm).
+Name the model (alias) and effort on every dispatch from `.claude/kit/model-routing.yaml`; the dispatch hook refuses an unknown model and
+`opus` without a `Why Opus:` line. At intake run `python tools/model_mix.py --alarms`: on a `NEW MODEL` or `UNROUTED MODEL` line do not edit `.claude/kit/` (kit-owned): record a finding with scope generic so `kit_harvest` carries it, and continue. `NO TRANSCRIPTS: <path>`
+is not an alarm.
 
 | Dispatch | Model / effort |
 |---|---|
-| builder (`builder-c`, `builder-b` or `builder`, by tier) | builder sonnet/medium, always (the building class, whatever the tier; a fuzzy multi-file spec gets a design pass first on opus/high with a `Why Opus:` line) |
-| verifier, Tier B | verifier sonnet/high |
-| verifier, Tier A | verifier opus/high |
-| review, Tier B | review sonnet/high |
-| review, Tier A | review opus/xhigh (the `reviewer` agent) |
-| independent review after the same class fails twice | fable/high with a `Why Fable:` line |
-| read-only search across the codebase | the `Explore` agent (haiku/medium) |
+| builder (any tier) | sonnet/medium (a fuzzy multi-file spec gets a design pass first on opus/high with `Why Opus:`) |
+| checker, Tier B | verifier on sonnet/high |
+| checker, Tier A | verifier on opus/high |
+| records, data entry, search | haiku (the `Explore` agent for read-only search) |
 
-## Tier table
+## Sizing
 
-| Tier | What runs |
-|---|---|
-| **C** | builder + CI. No dedicated verifier or review pass; CI runs (trace check, findings index, lint, tests) are the evidence. Docs, config text, renames, generated files. |
-| **B** | Tier C, plus an independent verifier (fresh context, read-only) and a diff-focused review. Ordinary implementation work with green tests. |
-| **A** | Tier B, plus an adversarial review from a fresh, independent context and mutation tests on any guard the work adds or changes. Irreversible operations, production deploy, auth/secrets/data migrations, anything that deletes or moves data, any check meant to be hard to bypass. |
+- 5 or fewer small, 6 to 15 medium, more than 15 or backend plus frontend large and split before the build. A migration
+  is its own pull request. Dependent items go as stacked pull requests; update a branch from its base once, right
+  before the merge gate. If that changed a file in the diff or a Tier A path, the gate says `RE-REVIEW NEEDED`.
 
-When unsure which tier applies, use the higher tier.
+## Batches
 
-## Stacked items
+Batch similar changes: build together, check once. Run `python tools/ci_local.py` once, in the foreground, before
+the first push of a batch (once per batch). The core proof comes first and alone.
 
-Items that depend on each other go as stacked pull requests: the second item's branch starts from the first item's
-branch and its pull request targets that branch, so each reviewer reads one item and a later item never waits for the
-earlier one to reach the main branch. Merge the bottom pull request first, then retarget the next one to the main branch.
+## Builder is never the checker
 
-Update a branch from its base once, right before the merge gate runs, not after every change below it. The merge
-gate (`tools/merge_when_green.py`) does this itself when the branch is behind and every check is green: it adds one
-merge commit (never a rebase, so reviewed commits are not rewritten), at most three times, and it needs
-`--reviewed-sha` (always required, a full 40-character sha) to say which commit was reviewed. If the base update changed a file in the pull request's diff or
-a Tier A path, the gate refuses with `RE-REVIEW NEEDED` and the item gets a fresh review.
-
-Under a local-CI merge gate (the project runs its checks on the exact tree that will be merged, not on GitHub), a
-base update changes that tree, so the tested tree is void: the local gate runs again on the updated head before the
-merge, and the merge is pinned to the head that was tested.
-
-## Batches: check once per batch, not once per change
-
-Changes to the same module, or similar changes, are batched: built together and checked once.
-
-- **Review first, verifier after.** The review runs on the batch's final state, and the verifier
-  runs once, AFTER a clean review.
-- **Views and CI's local checks run once per batch** before the push (generated views, spec checks,
-  the commands in `.claude/kit/GUIDE.md` or the project's equivalent), not after each edit.
-- **One command mirrors CI:** run `python tools/ci_local.py` once, in the foreground, before the
-  first push of a batch (`--list` shows the plan); it runs every step CI runs.
-- **Not batched (exceptions):** the core proof, which always comes first and alone; unrelated
-  modules; a hook or guard that can block every session; a batch bigger than one reviewer can
-  read end to end.
-- **Reviewer scope:** the real inputs and the work's structural rule, never hypothetical
-  malformed input for files only this project writes.
-
-## Recovery
-
-- **Verifier fails an AC** — the builder fixes it (same worktree, new round). The builder's
-  targeted tests and the orchestrator's re-run are the only checks inside the fix loop; a
-  fresh verifier then re-checks *every* AC once, on the final state after the review is clean,
-  not after each fix round — a fix can break something an earlier pass already passed, and a
-  verifier pass made before a review that forces a code change is wasted.
-- **The same class of failure is red twice** — before the next builder round, dispatch an
-  independent review (a different model or a fresh instance, never the builder or verifier
-  that already touched it) with both failed rounds' diffs and evidence, asking what both
-  rounds missed. The next round is built around that review's findings.
-- **Red a third time after the independent review** — stop. Escalate to the owner with the
-  review, both prior rounds, and a recommendation. Do not attempt a fourth guess alone.
-
-## Builder is never the verifier
-
-This project's traceability check refuses any evidence file whose `verified_by` equals
-`builder` (or matches the builder's own identity). This is enforced by the checker, not
-only by agent instructions — a work item cannot reach `Verified` on self-certified evidence.
-
-## CI runs the default (non-strict) trace check
-
-CI runs the traceability check in its default mode, never a "strict" mode that would fail
-every pull request that adds a new, not-yet-delivered requirement (see
-`knowledge/findings/` for the finding this avoids, if the project has recorded one): a
-whole-repository check that demands every item be finished fails the moment a new,
-legitimately unfinished item is added, blocking normal intake of new work.
+`trace_check` refuses evidence whose `verified_by` is `builder`. CI runs the trace check in default mode, never `--strict`, which would fail every pull request that adds a new, not-yet-delivered requirement.

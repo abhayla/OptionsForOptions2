@@ -4,6 +4,63 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.14.0 — the parts 1.13.0 left out (OD-121, REQ-061)
+
+1. Rules (W-069): `learning.md` 2.0.0 follows the two-round process. A second red of a class is round two, the last;
+   red after round two parks the item or ships it with the findings listed; there is no automatic independent review,
+   and a process change goes to the owner with the current rule quoted beside the new one (the role-review rule is
+   gone). The detection-gap RCA covers Tier A only. The reviewer agent runs only when the owner asks for an independent
+   review, with accidents as its threat model. Every kit rule names its counter.
+   Migration: a project doc that asks for an independent reviewer on a second red, or for role reviews of a process
+   change, is brought in line by the project's own session.
+2. Evidence (W-070): `tools/record_evidence.py <reply.json>` writes the checker's blocks as evidence files with their
+   `ac_fp`, and writes nothing for the whole batch on any bad block; the deliver skill's evidence step names it.
+   Migration: none; a project script that wrote evidence files from agent output can be retired.
+3. Status page (W-070): every first-screen text passes one plain-words function, so record wording (a plan step, a
+   plan note, a record title) can no longer fail the first-screen test.
+   Migration: none.
+4. Budget (W-070): `kit_selftest.py` prints a `BUDGET:` line counting CLAUDE.md plus the always-loaded rules against
+   the cap in `.claude/kit/budget.json`, as a warning when over; its exit code is unchanged.
+   Migration: a project whose line says `over` slims its own CLAUDE.md (the kit never edits project files).
+
+## 1.13.0 — lean delivery process (OD-117 to OD-120, REQ-059, REQ-060)
+
+1. Process (W-063): the deliver skill and builder brief now spend review effort by the risk of the changed files.
+   Tier C (docs, records, text, test-only) gets CI checks only; Tier B (normal code, kit tools and hooks) gets the builder
+   plus one Sonnet checker; Tier A (production deploy path, money and order maths, data migrations, auth and secrets)
+   gets one Opus checker. One checker replaces verifier plus reviewer: at most two rounds, round two on round one's
+   findings and the fix's files only, then park or ship with the findings listed. Guards protect against accidents by a
+   careful agent; a deliberate bypass is out of scope and known gaps are written in the guard's README. Mutation tests
+   are no longer a gate (Tier A guards only, at most five mutants, run by the builder). The main session stays small
+   and reads only the last lines of logs. Sonnet by default, Opus only for Tier A, Haiku for records and searches. Kit
+   work and upgrades go in a weekly batch. The three always-loaded kit rules shrink from 14632 to 5912 bytes; the cap is
+   8192 bytes; spec-first R4 asks for a decision row only for a decision about what the product does.
+   Migration: a project-owned builder brief or delivery doc that restates the old tiers, review rounds or mutation gate
+   is brought in line by the project's own session (the kit never edits project files).
+2. Records (W-064): `spec_dupes.py` reports restatements, decision pins, relation grammar and coverage as `WARN` lines
+   and exits 0; only an unreadable spec file fails.
+   Migration: none; a CI step that relied on a duplicate failing the build now sees a warning.
+3. Tests (W-065): `ci_local.py` runs every check plus only the affected tests by default and fails closed to the full
+   suite on any file it cannot place; `--full` runs everything. CI runs spec checks only on a records-only pull request
+   with no opt-in list; code pull requests and pushes to main run the full suite.
+   Migration: none; `.claude/project/ci-docs-only-tests.txt`, if present, now adds tests to the records-only run.
+4. Guards (W-066): `kit_file_guard.py` (1946 to 403 lines) blocks a command, edit or write only when it would change a
+   kit-owned file by name, and allows reads, kit tool runs, commit messages and paths outside the project (issue 162's
+   blocked commands now pass). The verifier write guard refuses a read-only agent's write but never moves or deletes a
+   file.
+   Migration: none; a project workaround script that built kit paths at runtime to get past a read can be removed.
+5. Merge gate (W-067; issue 165): when GitHub's file list may be truncated, the complete list and the trace-check archive
+   are read in a fresh empty temporary repository fetched by sha (no template, grafts, commit-graph, replace refs or
+   alternates from the checkout; neutral git attributes; `safe.bareRepository` allowed); the kit job counts only when
+   its run comes from the kit workflow (checked by workflow id and the job's run id, head sha and name).
+   Migration: none; OptionsForOptions2's `GIT_GRAFT_FILE` stop-gap for the gate can be removed.
+6. New tool (W-068): `python tools/measure_tokens.py [--since YYYY-MM-DD]` prints calls, context tokens read, output
+   tokens and top tools per project, main session versus agents, and model, from Claude Code session files.
+   Migration: none.
+7. Mechanical steps for every project that takes 1.13.0 (when the owner names it): `python tools/kit_upgrade.py`, then
+   `python tools/kit_settings.py .`.
+   Migration: run those two commands.
+
 ## 1.12.0 — merge gate lands big pull requests, no Windows print crash, cheaper delivery (OD-103, OD-107, REQ-058)
 
 1. Delivery cost (W-057; issue 161): `builder-brief.md` gains an `Attack list:` fill-in line (the attacks the final

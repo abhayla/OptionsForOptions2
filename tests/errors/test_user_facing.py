@@ -137,6 +137,17 @@ def test_every_user_facing_subclass_renders_four_parts(name: str) -> None:
     assert len({getattr(message, p) for p in PARTS}) == 4
 
 
+def test_the_width_and_hedge_not_applicable_texts_name_the_shapes_from_catalogue_data() -> None:
+    """REQ-078 AC-2: the Width text is the AC's own example, word for word; Hedge names its shapes the same way. A
+    route cannot pass a family label of its own."""
+    width = LegEditRefused("leg_edit_width_not_applicable").message
+    assert width.what_happened == "Width applies to straddles, strangles, iron butterflies and iron condors."
+    hedge = LegEditRefused("leg_edit_hedge_not_applicable").message
+    assert hedge.what_happened == "Hedge applies to vertical spreads, iron butterflies and iron condors."
+    with pytest.raises(ValueError):
+        render("leg_edit_width_not_applicable", shapes=("sandwiches",))
+
+
 @pytest.mark.parametrize("build", [
     lambda: __import__("ofo.execution.send_guard", fromlist=["x"]).SendRefused("Leg 1 has already expired."),
     lambda: __import__("ofo.strategy.guard", fromlist=["x"]).GuardRefused("The risk changed."),

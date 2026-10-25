@@ -239,3 +239,192 @@ def test_ac_2_a_typed_price_is_stored_and_echoed_with_two_decimals(cat):
     for typed in ("81.3", D("81.3"), "81.30"):
         out = leg_edit.set_typed_price(cat, NIFTY, condor(), 0, typed)
         assert str(out[0].leg.entry_price) == "81.30"
+
+
+# ---- REQ-078 (W-158; ADR-186): Shift / Width / Hedge on the real instrument file ---------------------------------
+
+def max_loss_of(legs) -> D:
+    """The engine's max loss of the legs (a positive amount)."""
+    return strategy_metrics(Strategy(tuple(x.leg for x in legs))).max_loss
+
+
+def test_core_proof_shift_width_hedge_on_real_instrument_file(cat):
+    """REQ-078 AC-1 (core): the fixture's own NIFTY listing of 2026-10-06 runs 20800..25800 in steps of 50 (strike gap
+    50). The condor() is BUY 22800 PE @42.50, SELL 23000 PE @86.00, SELL 23400 CE @91.50, BUY 23600 CE @44.00, 65 units.
+    HAND, written before the code:
+      credit per unit = 86.00 + 91.50 - 42.50 - 44.00 = 91.00; both wings are 200 wide, so the worst case is a wing
+      fully in the money: loss per unit = 200 - 91.00 = 109.00, x 65 = 7,085.00.
+      Shift +1  -> 22850 / 23050 / 23450 / 23650: wings still 200 -> max loss 7,085.00.
+      Width +1  -> puts one step down, calls one step up: 22750 / 22950 / 23450 / 23650: wings still 200 -> 7,085.00;
+                   the width (lowest call - highest put) goes 23400 - 23000 = 400 to 23450 - 22950 = 500.
+      Hedge +1  -> both hedges (the two BUY legs) one step out: BUY 22750 PE and BUY 23650 CE: wings 250 -> loss per
+                   unit = 250 - 91.00 = 159.00, x 65 = 10,335.00.
+    Every strike must be in the fixture's listing and unexpired; the moved legs keep side, lots, expiry and type."""
+    start = condor()
+    listed = set(LISTING.strikes(NIFTY, EXPIRY, Instrument.CE)) & set(LISTING.strikes(NIFTY, EXPIRY, Instrument.PE))
+    assert (min(listed), max(listed)) == (FIRST_LISTED, LAST_LISTED) and cat.strike_gap(NIFTY, EXPIRY) == D("50")
+    assert max_loss_of(start) == D("7085.00")
+    protective = frozenset({0, 3})
+    cases = [("shift", leg_edit.shift(LISTING, NIFTY, start, 1), ["22850", "23050", "23450", "23650"], "7085.00"),
+             ("width", leg_edit.width(LISTING, NIFTY, start, 1), ["22750", "22950", "23450", "23650"], "7085.00"),
+             ("hedge", leg_edit.hedge(LISTING, NIFTY, start, protective, 1), ["22750", "23000", "23400", "23650"],
+              "10335.00")]
+    for name, result, expected, loss in cases:
+        assert strikes(result.legs) == [D(s) for s in expected], name
+        assert all(x.leg.strike in listed for x in result.legs), name
+        assert max_loss_of(result.legs) == D(loss), name
+        assert [(x.leg.action, x.leg.instrument, x.leg.expiry, x.lots, x.leg.quantity) for x in result.legs] == [
+            (x.leg.action, x.leg.instrument, x.leg.expiry, x.lots, x.leg.quantity) for x in start], name
+    assert strikes(start) == [D("22800"), D("23000"), D("23400"), D("23600")]  # the input is never changed
+    assert cases[0][1].moved == frozenset({0, 1, 2, 3}) and cases[2][1].moved == frozenset({0, 3})
+
+
+def test_attack_1_a_shift_landing_on_an_unlisted_or_expired_strike_refuses_the_whole_move_naming_the_leg(cat):
+    """REQ-078 AC-6: on 2026-09-29 the far strikes jump 19500 -> 20800, so a Shift -1 of a leg at 20800 would land on
+    20750 (not listed): nothing moves, even the leg that would have landed fine, and the text names that leg."""
+    legs = [one(Instrument.CE, "23000", EARLY_EXPIRY), one(Instrument.PE, "20800", EARLY_EXPIRY)]
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.shift(LISTING, NIFTY, legs, -1)
+    assert err.value.template == "leg_edit_landing_not_listed"
+    assert err.value.message.what_happened == "No 20,750 PE is listed for 29 Sep 2026, so leg 2 cannot move there."
+    assert strikes(legs) == [D("23000"), D("20800")]  # nothing changed
+    after = Listing(CAT, datetime.date(2026, 10, 7))  # the 2026-10-06 expiry has passed
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.shift(after, NIFTY, condor(), 1)
+    assert err.value.template == "leg_edit_strike_not_listed" and "Leg 1" in err.value.message.what_happened
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.shift(LISTING, NIFTY, [one(Instrument.FUT, None)], 1)
+    assert err.value.template == "leg_edit_shift_needs_option_leg"
+
+
+def test_ac_3_shift_moves_every_option_leg_and_no_futures_leg_and_a_negative_shift_goes_down(cat):
+    legs = [*condor(), one(Instrument.FUT, None, price="23100")]
+    up = leg_edit.shift(LISTING, NIFTY, legs, 1)
+    assert strikes(up.legs) == [D("22850"), D("23050"), D("23450"), D("23650"), None]
+    assert up.moved == frozenset({0, 1, 2, 3})
+    down = leg_edit.shift(LISTING, NIFTY, legs, -1)
+    assert strikes(down.legs) == [D("22750"), D("22950"), D("23350"), D("23550"), None]
+
+
+def test_ac_4_width_moves_both_sides_with_no_spot_and_never_goes_below_zero(cat):
+    """A strangle SELL 22900 PE / SELL 23100 CE has width 200: Width +1 -> 22850 / 23150 (300), Width -1 -> 22950 /
+    23050 (100). A straddle (width 0) and a width of one step refuse -1 (it would cross); +1 on the straddle works."""
+    strangle = [one(Instrument.PE, "22900", action=Action.SELL), one(Instrument.CE, "23100", action=Action.SELL)]
+    assert strikes(leg_edit.width(LISTING, NIFTY, strangle, 1).legs) == [D("22850"), D("23150")]
+    assert strikes(leg_edit.width(LISTING, NIFTY, strangle, -1).legs) == [D("22950"), D("23050")]
+    straddle = [one(Instrument.PE, "23000", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+    assert strikes(leg_edit.width(LISTING, NIFTY, straddle, 1).legs) == [D("22950"), D("23050")]
+    with pytest.raises(LegEditRefused) as err:  # width 0: nothing left to take away
+        leg_edit.width(LISTING, NIFTY, straddle, -1)
+    assert err.value.template == "leg_edit_width_below_zero"
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.width(LISTING, NIFTY, [one(Instrument.CE, "23000")], 1)
+    assert err.value.template == "leg_edit_width_not_applicable"
+
+
+def one_step_strangle() -> list[EditLeg]:
+    return [one(Instrument.PE, "22950", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+
+
+def test_adr_186_5_width_last_step_no_spot_moves_the_call_side():
+    """PROOF (core): strangle 22,950 PE / 23,000 CE (width 50 = one step), Width -1: half the change is under a step, so
+    ONE side moves by the whole change; with no live price the CALL moves -> 22,950 PE / 22,950 CE (ADR-186 example)."""
+    legs = one_step_strangle()
+    moved = leg_edit.width(LISTING, NIFTY, legs, -1)
+    assert strikes(moved.legs) == [D("22950"), D("22950")] and moved.moved == frozenset({1})
+    assert strikes(legs) == [D("22950"), D("23000")]  # the input is never changed
+    assert strikes(leg_edit.width(LISTING, NIFTY, legs, -1, None).legs) == [D("22950"), D("22950")]
+
+
+def test_adr_186_5_width_last_step_moves_the_side_nearer_spot_and_ties_go_to_the_call():
+    legs = one_step_strangle()
+    near_call = leg_edit.width(LISTING, NIFTY, legs, -1, D("22990"))
+    assert strikes(near_call.legs) == [D("22950"), D("22950")] and near_call.moved == frozenset({1})
+    near_put = leg_edit.width(LISTING, NIFTY, legs, -1, D("22955"))
+    assert strikes(near_put.legs) == [D("23000"), D("23000")] and near_put.moved == frozenset({0})
+    tie = leg_edit.width(LISTING, NIFTY, legs, -1, D("22975"))  # 25 from both sides: the call side, as with no price
+    assert strikes(tie.legs) == [D("22950"), D("22950")]
+    two = [one(Instrument.PE, "22900", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+    # width 100 = two steps: half the change is a whole step, so both sides move whatever the price says
+    assert strikes(leg_edit.width(LISTING, NIFTY, two, -1, D("22905")).legs) == [D("22950"), D("22950")]
+
+
+def test_adr_186_5_width_last_step_clamps_at_zero_and_a_zero_width_refuses_minus_one():
+    """Width never goes below 0: 75 wide (a typed gap, 1.5 steps) is not a case here; the clamp is for one step. A
+    straddle (width 0) refuses -1 whatever the price; +1 on one step works both sides."""
+    straddle = [one(Instrument.PE, "23000", action=Action.SELL), one(Instrument.CE, "23000", action=Action.SELL)]
+    for spot in (None, D("23000"), D("22000")):
+        with pytest.raises(LegEditRefused) as err:
+            leg_edit.width(LISTING, NIFTY, straddle, -1, spot)
+        assert err.value.template == "leg_edit_width_below_zero"
+    assert strikes(leg_edit.width(LISTING, NIFTY, one_step_strangle(), 1, D("22990")).legs) == [D("22900"), D("23050")]
+
+
+def test_minor_1_a_calendar_moves_each_leg_by_its_own_expiry_gap():
+    """REQ-078 AC-3: 'the strike gap read from the instrument file for that expiry'. A listing where 2026-09-29 lists
+    only every 100 (the real rows with the odd 50s removed) and 2026-10-06 every 50: Shift +1 moves the near leg 100 and
+    the far leg 50, and the Shift total's step is the nearest expiry's."""
+    thinned = Catalogue()
+    thinned.load([r for r in parse_instruments_csv(FIXTURE)
+                  if not (r.contract.name == NIFTY and r.contract.expiry == EARLY_EXPIRY and r.contract.strike % 100)])
+    listing = Listing(thinned, TODAY)
+    assert (thinned.strike_gap(NIFTY, EARLY_EXPIRY), thinned.strike_gap(NIFTY, EXPIRY)) == (D("100"), D("50"))
+    legs = [one(Instrument.CE, "23000", EARLY_EXPIRY, Action.SELL), one(Instrument.CE, "23000", EXPIRY)]
+    assert strikes(leg_edit.shift(listing, NIFTY, legs, 1).legs) == [D("23100"), D("23050")]
+    assert strikes(leg_edit.shift(listing, NIFTY, legs, -1).legs) == [D("22900"), D("22950")]
+    assert leg_edit.shift_step(listing, NIFTY, legs) == D("100")
+    assert leg_edit.shift_step(listing, NIFTY, legs[::-1]) == D("100")  # the nearest expiry, whatever the leg order
+
+
+def test_attack_3_hedge_moves_only_the_marked_legs_refuses_one_step_and_a_six_leg_set(cat):
+    """AC-5: Hedge +1 on the condor moves only the two BUY (marked) legs; Hedge -1 at 50-point hedges refuses; a 6-leg
+    set and an empty mark set refuse; a vertical spread moves its one hedge leg one step."""
+    protective = frozenset({0, 3})
+    plus = leg_edit.hedge(LISTING, NIFTY, condor(), protective, 1)
+    assert strikes(plus.legs) == [D("22750"), D("23000"), D("23400"), D("23650")] and plus.moved == protective
+    tight = [one(Instrument.PE, "22950"), one(Instrument.PE, "23000", action=Action.SELL),
+             one(Instrument.CE, "23400", action=Action.SELL), one(Instrument.CE, "23450")]
+    with pytest.raises(LegEditRefused) as err:
+        leg_edit.hedge(LISTING, NIFTY, tight, protective, -1)
+    assert err.value.template == "leg_edit_hedge_below_minimum" and "Leg 1" in err.value.message.what_happened
+    six = [*condor(), one(Instrument.CE, "23800"), one(Instrument.CE, "23900", action=Action.SELL)]
+    for bad, marks in ((six, protective), (condor(), frozenset())):
+        with pytest.raises(LegEditRefused) as err:
+            leg_edit.hedge(LISTING, NIFTY, bad, marks, 1)
+        assert err.value.template == "leg_edit_hedge_not_applicable"
+    spread = [one(Instrument.CE, "23000", action=Action.SELL), one(Instrument.CE, "23200")]
+    assert strikes(leg_edit.hedge(LISTING, NIFTY, spread, frozenset({1}), 1).legs) == [D("23000"), D("23250")]
+    assert strikes(leg_edit.hedge(LISTING, NIFTY, spread, frozenset({1}), -1).legs) == [D("23000"), D("23150")]
+
+
+def test_adr_186_1_unequal_hedges_even_out_only_one_side_moves(cat):
+    """put hedge 300 (BUY 22500 / SELL 22800 PE), call hedge 200 (SELL 23200 / BUY 23400 CE). Hedge +1: only the call
+    hedge goes out to 300 -> 23500, puts untouched; again: both 350. Hedge -1: only the FARTHER (put) hedge comes in to
+    200 -> 22600, calls untouched."""
+    unequal = [one(Instrument.PE, "22500"), one(Instrument.PE, "22800", action=Action.SELL),
+               one(Instrument.CE, "23200", action=Action.SELL), one(Instrument.CE, "23400")]
+    marks = frozenset({0, 3})
+    first = leg_edit.hedge(LISTING, NIFTY, unequal, marks, 1)
+    assert strikes(first.legs) == [D("22500"), D("22800"), D("23200"), D("23500")] and first.moved == frozenset({3})
+    second = leg_edit.hedge(LISTING, NIFTY, first.legs, marks, 1)
+    assert strikes(second.legs) == [D("22450"), D("22800"), D("23200"), D("23550")] and second.moved == marks
+    inward = leg_edit.hedge(LISTING, NIFTY, unequal, marks, -1)
+    assert strikes(inward.legs) == [D("22600"), D("22800"), D("23200"), D("23400")] and inward.moved == frozenset({0})
+
+
+def test_ac_7_a_move_changes_no_side_lots_expiry_type_or_leg_count(cat):
+    legs = condor()
+    for result in (leg_edit.shift(LISTING, NIFTY, legs, 1), leg_edit.width(LISTING, NIFTY, legs, -1),
+                   leg_edit.hedge(LISTING, NIFTY, legs, frozenset({0, 3}), 1)):
+        assert len(result.legs) == len(legs)
+        for before, after in zip(legs, result.legs, strict=True):
+            assert (before.leg.action, before.leg.instrument, before.leg.expiry, before.lots, before.base_lots,
+                    before.leg.quantity) == (after.leg.action, after.leg.instrument, after.leg.expiry, after.lots,
+                                             after.base_lots, after.leg.quantity)
+
+
+def test_ac_8_a_moved_leg_loses_its_typed_mark_an_unmoved_one_keeps_it(cat):
+    legs = leg_edit.set_typed_price(cat, NIFTY, condor(), 0, D("40.00"))
+    legs = leg_edit.set_typed_price(cat, NIFTY, legs, 1, D("80.00"))
+    out = leg_edit.hedge(LISTING, NIFTY, legs, frozenset({0, 3}), 1).legs
+    assert [x.typed for x in out] == [False, True, False, False] and out[1].leg.entry_price == D("80.00")

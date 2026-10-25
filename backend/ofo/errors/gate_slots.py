@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import cast
 
 from ofo.engine.legs import Action as _Action
 from ofo.engine.legs import Instrument as _EngineInstrument
@@ -116,6 +117,27 @@ class Strikes(SlotType):
     @staticmethod
     def format(value: tuple[Decimal, ...]) -> str:
         return " or ".join(_format_strike(s) for s in value)
+
+
+class ShapeFamilies(SlotType):
+    """Plural shape-family labels, each one the reviewed catalogue holds as a template's ``family_plural``
+    (REQ-078 AC-2): "straddles, strangles, iron butterflies and iron condors". No route can pass a label of its own."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.strategy.shape_families import reviewed_family_labels
+
+        _require_exact(value, tuple, "ShapeFamilies")
+        labels = tuple(cast("tuple[object, ...]", value))
+        if not labels or len(set(labels)) != len(labels) or any(type(x) is not str for x in labels):
+            raise ValueError("ShapeFamilies slot holds one or more distinct family labels")
+        unknown = [x for x in labels if x not in reviewed_family_labels()]
+        if unknown:
+            raise ValueError(f"ShapeFamilies slot takes catalogue family labels only, got {unknown}")
+
+    @staticmethod
+    def format(value: tuple[str, ...]) -> str:
+        return value[0] if len(value) == 1 else f"{', '.join(value[:-1])} and {value[-1]}"
 
 
 class Rupees(SlotType):

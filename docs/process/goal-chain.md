@@ -81,7 +81,7 @@ on the previous text.)
    owner step.
 7. GC-2a re-creates its W-080 worktree from `origin/land/W-080` (the old one is in an earlier session's scratchpad).
 8. **Tracker (ADR-112, owner 2026-10-18).** `build-ahead-tracker.md` holds one row per decided item with its contract.
-   A contract's close-out updates every row it touched, runs `python scripts/orchestrator/tracker_check.py .`, and its
+   A contract's close-out updates every row it touched (by hand; ADR-189 retired `tracker_check.py`), and its
    handover lists the rows still open with their next contract. A row is never deleted; it leaves only as `closed`,
    `parked #N` or `deferred #N`.
 9. **No orphan rows.** A close-out that leaves a row open with no contract assigned is not DONE: it assigns the row

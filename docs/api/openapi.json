@@ -787,6 +787,71 @@
         "title": "ContractsOut",
         "type": "object"
       },
+      "ControlReasonsOut": {
+        "additionalProperties": false,
+        "description": "Why a control is off (the catalogue text), else None.",
+        "properties": {
+          "hedge": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedge"
+          },
+          "shift": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift"
+          },
+          "width": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "shift",
+          "width",
+          "hedge"
+        ],
+        "title": "ControlReasonsOut",
+        "type": "object"
+      },
+      "ControlsOut": {
+        "additionalProperties": false,
+        "description": "REQ-078 AC-2/AC-10: which of the three move controls work on these legs right now.",
+        "properties": {
+          "hedge": {
+            "title": "Hedge",
+            "type": "boolean"
+          },
+          "shift": {
+            "title": "Shift",
+            "type": "boolean"
+          },
+          "width": {
+            "title": "Width",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shift",
+          "width",
+          "hedge"
+        ],
+        "title": "ControlsOut",
+        "type": "object"
+      },
       "CostOut": {
         "additionalProperties": false,
         "description": "W-102 (ADR-097 \"a final yes on the exact contract, side, quantity, limit price and cost\"): what the basket costs,\nevery figure computed on the server (one engine, ADR-008); the browser only shows it.",
@@ -1185,7 +1250,10 @@
               "price",
               "reset_prices",
               "reset_leg",
-              "read"
+              "read",
+              "shift",
+              "width",
+              "hedge"
             ],
             "title": "Control",
             "type": "string"
@@ -1472,6 +1540,10 @@
             "title": "Quantity",
             "type": "integer"
           },
+          "replaced_typed": {
+            "title": "Replaced Typed",
+            "type": "boolean"
+          },
           "strike": {
             "anyOf": [
               {
@@ -1499,6 +1571,7 @@
           "planned_entry",
           "captured_at",
           "price_source",
+          "replaced_typed",
           "included",
           "hedge",
           "price_reason",
@@ -2247,6 +2320,19 @@
             ],
             "title": "Seq"
           },
+          "shift_total": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": -1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift Total"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -2276,6 +2362,12 @@
       "LegEditOut": {
         "additionalProperties": false,
         "properties": {
+          "control_reasons": {
+            "$ref": "#/components/schemas/ControlReasonsOut"
+          },
+          "controls": {
+            "$ref": "#/components/schemas/ControlsOut"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/EditLegOut"
@@ -2324,10 +2416,24 @@
               }
             ],
             "title": "Shape Name"
+          },
+          "shift_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift Total"
           }
         },
         "required": [
           "legs",
+          "controls",
+          "control_reasons",
+          "shift_total",
           "shape",
           "shape_name",
           "outcome"

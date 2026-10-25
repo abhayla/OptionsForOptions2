@@ -14,7 +14,6 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "hooks"))
 sys.path.insert(0, str(REPO / "scripts" / "orchestrator"))
 import brief_path as bp  # noqa: E402
-import measure_process as mp  # noqa: E402
 
 REL = "docs/process/builder-sequence-briefs/row-99-x.md"
 
@@ -51,11 +50,3 @@ def test_resolve_brief_finds_an_absolute_brief_with_either_separator(tmp_path, s
 def test_resolve_brief_returns_none_for_a_missing_file_or_no_base(tmp_path):
     assert bp.resolve_brief(REL, [tmp_path]) is None
     assert bp.resolve_brief(REL, []) is None
-
-
-def test_measure_process_captures_a_whole_absolute_posix_path_and_a_backslash_relative_path():
-    """The Linux runner's tmp_path is `/tmp/.../docs/process/x.md`; the old pattern kept only `docs/process/x.md`."""
-    found = mp.BRIEF_PATH_RE.findall("Your full brief is the file /srv/work-0/t/docs/process/verify-row-99.md - go")
-    assert found == ["/srv/work-0/t/docs/process/verify-row-99.md"]
-    assert mp.BRIEF_PATH_RE.findall("Your brief is docs\\process\\verify-row-99.md") == [
-        "docs\\process\\verify-row-99.md"]

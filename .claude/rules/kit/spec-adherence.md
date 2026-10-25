@@ -7,6 +7,8 @@ paths:
 
 # Spec adherence: the spec is the single source of truth; every departure is classified, proven and reviewed
 
+Counters: pull requests without a Spec-deviation block, and class-2 departures merged without their six MUSTs.
+
 version: "1.1.0" (generalized for the project kit)
 
 See `spec/SPEC-DEVIATION.md` for worked examples and the class-3 request format.
@@ -39,8 +41,8 @@ call; or is the SECOND deviation on the same requirement.
 1. MUST be proven on at least **two differing real samples of every type touched** (different origin where data
    allows; at least one live or recent).
 2. MUST write a type with fewer than two real samples as **`unproven for type <X>`**, and MUST NOT claim that type.
-3. MUST NOT be labelled by its own builder: an **independent reviewer** (fresh context, a different model where
-   available) confirms the class and the two-per-type evidence before merge.
+3. MUST NOT be labelled by its own builder: the **checker** (the verifier, in a fresh context, never the builder)
+   confirms the class and the two-per-type evidence before merge.
 4. MUST be written into the spec in the SAME PR (the section defining the configuration/exception), with samples and
    date.
 5. MUST treat a **second deviation on the same requirement as class 3**; twice means the requirement is wrong.
@@ -54,7 +56,7 @@ Every PR body carries it, whether or not anything departs:
 Spec deviation
 Class: none | 1 | 2 | 3
 Spec section: spec/<file>#<section>
-Detail: <the corrected claim, or the samples and reviewer, or the owner decision id>
+Detail: <the corrected claim, or the samples and checker, or the owner decision id>
 ```
 
 `Class: none` is a valid answer; a missing block is not.
@@ -72,6 +74,6 @@ Detail: <the corrected claim, or the samples and reviewer, or the owner decision
 - MUST classify every departure as 1, 2 or 3 before writing code and state it in the Spec-deviation block
   (`Class: none` is valid, silence is not); a second deviation on one requirement is class 3.
 - MUST build to the spec's INTENT on a false factual claim, correcting the work item in the same PR.
-- MUST NOT ship class 2 without the six-step process (two real samples per type, independent reviewer, spec written
-  same PR); MUST NOT narrow scope, relax a definition of done, or repair production data as "minor".
+- MUST NOT ship class 2 without the six-step process (two real samples per type, the checker's confirmation, spec
+  written same PR); MUST NOT narrow scope, relax a definition of done, or repair production data as "minor".
 - MUST cite the spec section in every builder brief, and carry `spec_ref` on every finding.

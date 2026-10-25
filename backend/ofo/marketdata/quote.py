@@ -28,6 +28,12 @@ def is_live_price(ltp: Decimal | None) -> bool:
     return ltp is not None and ltp > 0
 
 
+def priced(quote: NormalizedQuote | None) -> bool:
+    """The one 'a quote's price counts' rule (ADR-015 never a verdict from stale data): the quote exists, its feed
+    health is AVAILABLE (a STALE quote keeps its ltp, which is then an old price) and the price is above 0."""
+    return quote is not None and quote.health is DataHealth.AVAILABLE and is_live_price(quote.ltp)
+
+
 def _require_nonempty(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string, got {value!r}")

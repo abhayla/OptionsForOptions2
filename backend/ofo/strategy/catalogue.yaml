@@ -18,6 +18,7 @@
 #   only where a constraint makes them true for every allowed parameter value (enforced at load).
 templates:
   - id: bull_call_spread
+    family_plural: "vertical spreads"
     name: "Bull Call Spread"
     description: Buy a call and sell a call at a higher strike, both the same expiry.
     level: Beginner
@@ -32,6 +33,7 @@ templates:
       - {name: short_call, action: SELL, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: bull_put_spread
+    family_plural: "vertical spreads"
     name: "Bull Put Spread"
     description: Sell a put and buy a put at a lower strike, both the same expiry.
     level: Beginner
@@ -61,6 +63,7 @@ templates:
       - {name: short_put, action: SELL, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: bear_put_spread
+    family_plural: "vertical spreads"
     name: "Bear Put Spread"
     description: Buy a put and sell a put at a lower strike, both the same expiry.
     level: Beginner
@@ -75,6 +78,7 @@ templates:
       - {name: short_put, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: bear_call_spread
+    family_plural: "vertical spreads"
     name: "Bear Call Spread"
     description: Sell a call and buy a call at a higher strike, both the same expiry.
     level: Beginner
@@ -104,12 +108,14 @@ templates:
       - {name: short_call, action: SELL, instrument: CE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: iron_condor
+    family_plural: "iron condors"
     name: "Short Iron Condor"
     description: >-
       Sell a put and a call at two different strikes, the put below the call, and buy a put and a call the
       same number of steps further out on each side, all the same expiry: a bull put spread plus a bear
       call spread.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
@@ -118,7 +124,7 @@ templates:
       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
     constraints:
-      - {equal: [w_put, w_call]}
+      - {equal: [w_put, w_call], build_only: true}
       - {order: [short_put, short_call]}
     legs:
       - {name: long_put, action: BUY, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
@@ -127,18 +133,20 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "q + w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: iron_butterfly
+    family_plural: "iron butterflies"
     name: "Iron Fly"
     description: >-
       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
       away on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
     constraints:
-      - {equal: [w_put, w_call]}
+      - {equal: [w_put, w_call], build_only: true}
     legs:
       - {name: long_put, action: BUY, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1, protective: true}
       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
@@ -146,9 +154,11 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "w_call", expiry_slot: near, quantity_multiplier: 1, protective: true}
 
   - id: short_straddle
+    family_plural: "straddles"
     name: "Short Straddle"
     description: Sell a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params: []
@@ -158,9 +168,11 @@ templates:
       - {name: short_put, action: SELL, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
 
   - id: short_strangle
+    family_plural: "strangles"
     name: "Short Strangle"
     description: Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
@@ -194,9 +206,11 @@ templates:
       - {name: long_call, action: BUY, instrument: CE, strike: "c + w", expiry_slot: near, quantity_multiplier: 1}
 
   - id: long_straddle
+    family_plural: "straddles"
     name: "Long Straddle"
     description: Buy a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params: []
@@ -206,9 +220,11 @@ templates:
       - {name: long_put, action: BUY, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
 
   - id: long_strangle
+    family_plural: "strangles"
     name: "Long Strangle"
     description: Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:
@@ -222,11 +238,13 @@ templates:
       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: reverse_iron_condor
+    family_plural: "iron condors"
     name: "Long Iron Condor"
     description: >-
       Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the
       same number of steps further out on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:
@@ -235,7 +253,7 @@ templates:
       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
     constraints:
-      - {equal: [w_put, w_call]}
+      - {equal: [w_put, w_call], build_only: true}
       - {order: [long_put, long_call]}
     legs:
       - {name: short_put, action: SELL, instrument: PE, strike: "-p - w_put", expiry_slot: near, quantity_multiplier: 1}
@@ -613,18 +631,20 @@ templates:
       - {name: short_puts, action: SELL, instrument: PE, strike: "k - w", expiry_slot: near, quantity_multiplier: 2}
 
   - id: long_iron_butterfly
+    family_plural: "iron butterflies"
     name: "Long Iron Butterfly"
     description: >-
       Buy a call and a put at the at-the-money strike, and sell a put and a call the same number of steps away
       on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:
       - {name: w_put, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
       - {name: w_call, unit: steps, default: 4, min: 1, max: 20, must_be_positive: true}
     constraints:
-      - {equal: [w_put, w_call]}
+      - {equal: [w_put, w_call], build_only: true}
     legs:
       - {name: long_put, action: BUY, instrument: PE, strike: 0, expiry_slot: near, quantity_multiplier: 1}
       - {name: short_put, action: SELL, instrument: PE, strike: "-w_put", expiry_slot: near, quantity_multiplier: 1}

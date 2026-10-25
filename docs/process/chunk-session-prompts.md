@@ -18,12 +18,12 @@ change 1a). Rows and tiers come from `docs/process/builder-sequence-2026-10-22.m
 
 ## Common rules (every session A and B below)
 
-Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
+Learned in chunks 1-2; since 2026-10-26 ADR-189 (kit 1.14.0 lean process) wins over ADR-178's tracker and reporting
+and ADR-181's gate command. How-to: `docs/process/runbook.md`.
 
-1. **Gate command first.** Every builder and checker runs the ADR-181 local gate command and pastes its last 5 lines,
-   including `GATE PASS <sha>`. A PASS report without them is not a pass. The orchestrator runs it before every push
-   and pushes only after `GATE PASS`, chained with `&&`. Never push while an App-tests run of the branch is in progress,
-   unless the push fixes a red.
+1. **Local checks once per batch.** Every builder and checker runs `python tools/ci_local.py` (the checks plus the
+   tests the change can break) and pastes its last 5 lines; the orchestrator runs it once before a batch's first push,
+   chained with `&&`. CI runs the full suites (app-tests.yml included).
 2. **Dispatch command only.** Briefs go out through the ADR-181 dispatch command: make_brief, check_brief,
    copy_from_check, overlap_gate. Every brief carries:
    - `Core:` / `Proof:`. Step 1 is the core proof on real input, or on a recorded real fixture.
@@ -46,8 +46,10 @@ Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
      `frontend/e2e/support/echoSeq.ts`.
    - The brief's file list comes from a grep of the call chain. A checker confirms the real values are not null on a
      recorded fixture.
-6. **Reviews.** At most 2 rounds. Round 2 checks round 1's findings only. A MAJOR after round 2 on Tier A code means an
-   independent Opus redesign, or park the row with an issue (ADR-106 rule 5).
+6. **Reviews.** One checker per item (Opus for Tier A, Sonnet for Tier B, none for Tier C). At most 2 rounds; round 2
+   checks round 1's findings only. A CRITICAL or MAJOR after round 2 on Tier A code parks the row with an issue;
+   anything else ships with its findings listed. No independent review (ADR-189). After each row record minutes,
+   rounds and the cause of each extra round in `docs/process/row-review.md` and apply the fix the same turn.
 7. **Records.** Findings go into `knowledge/findings` the same turn they are proven; a second occurrence of a class
    means its mechanism is due. Each chunk has one deferred issue. Generated files stay out of feature PRs.
 8. **Owner.** Never wait on owner answers. Questions go to `docs/process/owner-questions-<date>.md` with a
@@ -62,8 +64,8 @@ Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
 12. **ADR-188 speed rules** (2026-10-25 audit, `docs/process/process-audit-2026-10-25.md`):
     - Dispatch before asking: send every independent item first, ask the owner while agents run.
     - Batch SPEC CHANGE questions at measure time; the measure agent does the Sensibull research.
-    - One gate per sha: accept the builder's `GATE PASS <sha>` when sha = HEAD; `--pre-push` only if the sha changed.
-    - Builder handover = prettier on NEW frontend files only (never a whole-file reformat of an old file: the gate fails only new files or files formatted at base; row 30f's reformat of 7 old files added 3,339 lines and was reverted) + OpenAPI regenerate + every new tests_app file registered in the app-test selection pins when a model changed + hard stop at budget.
+    - One local check run per pushed sha: `python tools/ci_local.py --pr-body <body>` (ADR-189 replaced gate.py); re-run only when the sha changes; fetch before every push (the merge gate may have updated the remote branch).
+    - Builder handover = prettier on NEW frontend files only (never a whole-file reformat of an old file; row 30f's reformat of 7 old files added 3,339 lines and was reverted) + OpenAPI regenerated when a model changed + every new tests_app file in the app-test selection pins + every new template / slot type pinned + hard stop at budget.
     - Measure agents run on Sonnet.
     - Fresh orchestrator session about every 2 rows (context < 250k).
     - Owner decisions go to the session's docs branch, not row branches.
@@ -113,7 +115,8 @@ Stop condition: the item and the rows merged (or parked with an issue), and a "c
 /goal OptionsForOptions2 builder-sequence chunk 4, SESSION B, under ADR-178 and ADR-180, following the Common rules in docs/process/chunk-session-prompts.md. Start from the "chunk 4 session A END" block of docs/process/session-handover-2026-10-22-builder-sequence.md.
 (1) Row 33, option chain display and live data (REQ-029, Tier A). Step 1 is the core proof: the live NIFTY chain for the nearest expiry through the product path, with live ticks moving, read back and recorded.
 (2) Row 34, pick legs from the chain into the builder (REQ-030, Tier B), and row 35, live strategy preview (REQ-031, Tier A). Check PR #509's code against the spec before reusing any of it.
-(3) Chunk close, as in chunk 3 session B (the conformance check now measures every tracker row).
+(3) Chunk close: reference copy; conformance check; `python tools/measure_tokens.py --since <chunk start>` read into
+the handover (ADR-189 retired the tracker); one deferred issue for the chunk; handover block; memory note.
 Stop condition: rows 33-35 merged (or parked with an issue), the chunk close done, and the handover on main.
 ```
 

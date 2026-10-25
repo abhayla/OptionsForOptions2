@@ -117,10 +117,13 @@ def test_real_ruff_run_names_rules():
         shutil.rmtree(d, ignore_errors=True)
 
 
-def test_real_eslint_run_flags_unused_variable():
+def test_real_eslint_run_flags_unused_variable(monkeypatch):
     eslint = ROOT / "frontend" / "node_modules" / "eslint" / "bin" / "eslint.js"
     if not eslint.is_file():
         pytest.skip("frontend/node_modules absent")
+    # This test proves the hook FINDS the problem; the hook's 10 s limit is a typing-speed limit, and a cold eslint
+    # start alone took 8-30 s on a loaded PC (finding gate-timed-test-flakes-under-load), so it is lifted here only.
+    monkeypatch.setattr(edit_lint, "TIMEOUT_S", 120)
     d = ROOT / "frontend" / "src" / "_edit_lint_tmp"
     d.mkdir(exist_ok=True)
     try:

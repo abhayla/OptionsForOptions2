@@ -27,6 +27,8 @@ REASONS: dict[str, str] = {
         '(RD-013, ADR-016); no branch on the broker',
     'backend/ofo_app/routes/strategies.py':
         'imports the Zerodha eligibility loader (data layer) by its module name; no broker comparison',
+    'backend/ofo_app/routes/leg_edit.py':
+        'imports the Zerodha eligibility loader (data layer) by its module name for the move check; no broker comparison',
     'backend/ofo/strategy/modification.py':
         'type name of the eligibility table handed in (data layer class); no broker comparison',
     'backend/ofo/outcome/service.py':
@@ -161,6 +163,9 @@ LINES: dict[str, tuple[str, ...]] = {
     ),
     'backend/ofo_app/routes/strategies.py': (
         'from ofo_app import eligibility_from_zerodha as elig',
+    ),
+    'backend/ofo_app/routes/leg_edit.py': (
+        'from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415',
     ),
     'backend/ofo/strategy/modification.py': (
         'from ofo.instruments import Catalogue, ZerodhaEligibility',

@@ -13,16 +13,27 @@ import pathlib
 from decimal import Decimal
 
 import pytest
+import test_chain_live as live_fake  # the real FakeProvider class's index quote builder
 from httpx import ASGITransport, AsyncClient
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
+from ofo.rules.inputs import DataHealth
 from ofo.strategy import stored_form
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo_app.main import create_app
+from ofo_app.replay_mode import build_replay_context
 from ofo_app.routes import execute, leg_edit, strategies
-from ofo_app.routes.leg_edit import get_capture, get_contract_ids, get_edit_catalogue, get_edit_today, get_freeze_limits
+from ofo_app.routes.leg_edit import (
+    get_capture,
+    get_contract_ids,
+    get_edit_catalogue,
+    get_edit_today,
+    get_freeze_limits,
+    get_list_current,
+    get_move_eligibility,
+)
 from ofo_app.routes.outcome import (
     get_answer_clock,
     get_margin_source,
@@ -75,16 +86,24 @@ async def fake_contract_ids(instrument_ids):
     return {i: STORED[i] for i in instrument_ids if i in STORED and i != BY_KEY[("CE", 23350)]}
 
 
-def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture) -> tuple[int, dict]:
+async def all_tradable(contract_ids):
+    return [True] * len(contract_ids)
+
+
+def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture, **seams) -> tuple[int, dict]:
+    """``seams`` (REQ-078): ``current`` (today's list loaded, default True), ``tradable`` (stored eligibility, default
+    all tradable), ``stored`` (the stored contract ids, default ``fake_contract_ids``)."""
     app = create_app()
+    app.dependency_overrides[get_list_current] = lambda: seams.get("current", True)
+    app.dependency_overrides[get_move_eligibility] = lambda: seams.get("tradable", all_tradable)
     app.dependency_overrides[get_edit_catalogue] = lambda: cat
     app.dependency_overrides[get_edit_today] = lambda: today
     app.dependency_overrides[get_freeze_limits] = lambda: limits or {}
-    app.dependency_overrides[get_market_context] = lambda: None
+    app.dependency_overrides[get_market_context] = lambda: seams.get("ctx")
     app.dependency_overrides[get_margin_source] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
     app.dependency_overrides[get_capture] = lambda: capture
-    app.dependency_overrides[get_contract_ids] = lambda: fake_contract_ids
+    app.dependency_overrides[get_contract_ids] = lambda: seams.get("stored", fake_contract_ids)
     app.dependency_overrides[load_charge_rates] = lambda: None
     app.dependency_overrides[get_answer_clock] = lambda: lambda: TYPED_STAMP
 
@@ -284,7 +303,8 @@ def test_typed_price_off_tick_is_refused_and_on_tick_is_marked_typed():
 def test_a_control_without_its_fields_or_a_smuggled_leg_key_is_a_plain_validation_error():
     """A step with no index, a price with no price, an include with no tick, a leg with an unknown key: 422."""
     for bad in ({"control": "step", "direction": 1}, {"control": "step", "index": 0}, {"control": "price", "index": 1},
-                {"control": "include", "index": 1}, {"control": "multiplier"}, {"control": "shift", "direction": 1}):
+                {"control": "include", "index": 1}, {"control": "multiplier"}, {"control": "nudge", "direction": 1},
+                {"control": "shift"}, {"control": "width"}, {"control": "hedge"}):
         status, reply = post({"legs": legs(), "edit": bad})
         assert status == HTTP_UNPROCESSABLE and "no further" not in str(reply)
     edit = {"control": "multiplier", "multiplier": 2}
@@ -540,3 +560,301 @@ def test_req_135_ac_2_every_leg_carries_days_to_expiry_from_the_routes_ist_date_
     assert status == HTTP_OK
     leg = reply["legs"][0]
     assert (leg["expiry"], leg["days_to_expiry"]) == (BY_ID[fut].expiry.isoformat(), (BY_ID[fut].expiry - TODAY).days)
+
+
+# ---- REQ-078 (W-158; ADR-186): Shift / Width / Hedge through the route -----------------------------------------------
+
+LIST_OFF = "USER_INPUT_021"  # leg_edit_list_not_loaded_today
+NOT_TRADABLE = "USER_INPUT_015"  # leg_edit_landing_not_tradable
+WIDTH_OFF = "USER_INPUT_017"  # leg_edit_width_not_applicable
+HEDGE_OFF = "USER_INPUT_018"  # leg_edit_hedge_not_applicable
+SHIFT_STEP = 50  # NIFTY's strike gap on the fixture's 2026-10-06 expiry
+TYPED_LEGS = 2  # the first two legs of the typed-price test were typed
+SENT_TOTAL = 50  # a Shift total of one step, as the browser sends it back
+
+
+def priced(table=None):
+    """A capture that prices every contract (10.00 unless the hand table names it): a moved leg comes back priced."""
+    table = table or {}
+
+    async def capture(ctx, feed, underlying, ids):
+        key = {i: (BY_ID[i].instrument_type, int(BY_ID[i].strike)) for i in ids}
+        return NEW_STAMP, {i: PlannedEntry(Decimal(table.get(key[i], "10.00")), "ltp") for i in ids}
+    return capture
+
+
+def rows(spec, **extra):
+    """Request legs from (action, type, strike, entry) rows."""
+    return [{"instrument_id": BY_KEY[(t, k)], "action": a, "lots": 1, "base_lots": 1, "planned_entry": p,
+             "captured_at": STAMP.isoformat()} | extra for a, t, k, p in spec]
+
+
+async def all_stored(instrument_ids):
+    return {i: STORED[i] for i in instrument_ids if i in STORED}
+
+
+def move(control, direction, spec=START, stored=all_stored, **body):
+    return post({"legs": rows(spec), "edit": {"control": control, "direction": direction}} | body, capture=priced(),
+                stored=stored)
+
+
+def test_core_shift_width_hedge_move_by_one_step_on_the_server_and_the_engine_prices_the_moved_legs():
+    """REQ-078 AC-3/4/5/6 (core, route half): the golden condor (width 400, hedge 200, 50-point step) moved once by
+    each control comes back on listed strikes, the moved legs re-captured at the new time, and the outcome built from
+    them.
+    HAND: Shift +1 -> 22850/23050/23450/23650 total +50; Width +1 -> 22750/22950/23450/23650; Hedge +1 ->
+    22750/23000/23400/23650 (wings 250)."""
+    expected = {"shift": [22850, 23050, 23450, 23650], "width": [22750, 22950, 23450, 23650],
+                "hedge": [22750, 23000, 23400, 23650]}
+    for control, strikes_after in expected.items():
+        status, reply = move(control, 1)
+        assert status == HTTP_OK, (control, reply)
+        assert strikes(reply) == strikes_after, control
+        assert reply["controls"] == {"shift": True, "width": True, "hedge": True}
+        assert reply["outcome"] is not None
+        moved = [i for i, leg in enumerate(reply["legs"]) if leg["captured_at"][:19] == "2026-10-01T09:21:28"]
+        assert moved == ([0, 3] if control == "hedge" else [0, 1, 2, 3]), control
+        assert [leg["action"] for leg in reply["legs"]] == [a for a, _, _, _ in START]
+
+
+def test_ac_3_shift_total_adds_only_on_shift_and_resets_on_step_width_hedge_and_a_negative_shift_subtracts():
+    """ADR-186 (2): +50 after Shift +1; Shift +1 again with 50 sent is +100; Shift -1 from 50 is 0; unchanged on
+    multiplier / include / read; null ('-') after a step, a Width or a Hedge."""
+    assert move("shift", 1)[1]["shift_total"] == SHIFT_STEP
+    assert move("shift", 1, shift_total=SENT_TOTAL)[1]["shift_total"] == SENT_TOTAL + SHIFT_STEP
+    assert move("shift", -1, shift_total=SENT_TOTAL)[1]["shift_total"] == 0
+    assert move("shift", -1)[1]["shift_total"] == -SHIFT_STEP
+    for edit in ({"control": "multiplier", "multiplier": 2}, {"control": "include", "index": 1, "included": False},
+                 {"control": "read"}):
+        kept = post({"legs": rows(START), "edit": edit, "shift_total": SENT_TOTAL}, capture=priced())
+        assert kept[1]["shift_total"] == SENT_TOTAL
+    assert post({"legs": rows(START), "edit": {"control": "read"}})[1]["shift_total"] is None  # none sent, none back
+    for control in ("width", "hedge"):
+        assert move(control, 1, shift_total=SENT_TOTAL)[1]["shift_total"] is None, control
+    stepped = {"control": "step", "index": 2, "direction": 1}
+    step = post({"legs": rows(START), "edit": stepped, "shift_total": SENT_TOTAL})
+    assert step[0] == HTTP_OK and step[1]["shift_total"] is None
+
+
+@pytest.mark.parametrize("bad", ["5", 5.5, True, 1_000_001])
+def test_shift_total_is_a_strict_bounded_integer(bad):
+    status, _ = post({"legs": rows(START), "edit": {"control": "shift", "direction": 1}, "shift_total": bad})
+    assert status == HTTP_UNPROCESSABLE
+
+
+def test_ac_2_width_on_a_custom_strategy_and_hedge_on_a_strangle_are_refused_by_the_server():
+    """The browser forcing a control the shape does not allow: a Custom Strategy has Shift only; a strangle has Width
+    but no Hedge; a bull call spread has Hedge but no Width. Nothing changes (no legs in the 422)."""
+    custom = [("SELL", "CE", 23000, "90.00"), ("SELL", "CE", 23200, "60.00")]
+    status, reply = move("width", 1, custom)
+    assert status == HTTP_UNPROCESSABLE and WIDTH_OFF in str(reply) and "legs" not in reply
+    assert move("hedge", 1, custom)[0] == HTTP_UNPROCESSABLE
+    shifted = move("shift", 1, custom)[1]
+    assert strikes(shifted) == [23050, 23250]
+    assert shifted["controls"] == {"shift": True, "width": False, "hedge": False}
+    strangle = [("SELL", "PE", 22900, "60.00"), ("SELL", "CE", 23100, "62.00")]
+    assert move("width", 1, strangle)[0] == HTTP_OK
+    status, reply = move("hedge", 1, strangle)
+    assert status == HTTP_UNPROCESSABLE and HEDGE_OFF in str(reply)
+    spread = [("SELL", "CE", 23000, "90.00"), ("BUY", "CE", 23200, "40.00")]
+    status, reply = move("width", 1, spread)
+    assert status == HTTP_UNPROCESSABLE and WIDTH_OFF in str(reply)
+    hedged = move("hedge", 1, spread)[1]
+    assert strikes(hedged) == [23000, 23250] and hedged["legs"][1]["hedge"] is True
+
+
+def test_ac_2_the_read_control_answers_which_controls_apply_with_the_reasons():
+    status, reply = post({"legs": rows(START), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["controls"] == {"shift": True, "width": True, "hedge": True}
+    assert reply["control_reasons"] == {"shift": None, "width": None, "hedge": None}
+    custom = [("SELL", "CE", 23000, "90.00"), ("SELL", "CE", 23200, "60.00")]
+    status, reply = post({"legs": rows(custom), "edit": {"control": "read"}})
+    assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
+    assert reply["control_reasons"]["shift"] is None
+    assert WIDTH_OFF in str(reply["control_reasons"]["width"]) and HEDGE_OFF in str(reply["control_reasons"]["hedge"])
+    status, reply = post({"legs": rows(START[:1]), "edit": {"control": "read"}})  # one leg: AC-2 needs at least two
+    assert reply["controls"] == {"shift": False, "width": False, "hedge": False}
+    reasons = reply["control_reasons"]  # MINOR 2: each control says its own reason, not the Shift sentence
+    assert "Shift needs at least two legs" in str(reasons["shift"])
+    assert "Width needs at least two legs." in str(reasons["width"])
+    assert "Hedge needs at least two legs." in str(reasons["hedge"])
+    status, reply = move("shift", 1, START[:1])
+    assert status == HTTP_UNPROCESSABLE and "at least two legs" in str(reply)
+    for control, own in (("width", "Width needs at least two legs."), ("hedge", "Hedge needs at least two legs.")):
+        status, reply = move(control, 1, START[:1])
+        assert status == HTTP_UNPROCESSABLE and own in str(reply) and "Shift" not in str(reply), control
+
+
+def test_minor_3_a_long_iron_condor_hedge_reason_says_it_has_no_hedge_legs_as_a_condition_only():
+    """A Long Iron Condor has no Hedge-marked leg: the reason states that condition (ADR-003), and it is not the
+    shapes sentence 'Hedge applies to ... iron condors'. Width still applies to it."""
+    long_condor = [("SELL", "PE", 22800, "40.00"), ("BUY", "PE", 23000, "86.00"), ("BUY", "CE", 23400, "91.50"),
+                   ("SELL", "CE", 23600, "44.00")]
+    status, reply = post({"legs": rows(long_condor), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] == "reverse_iron_condor", reply["shape"]
+    assert reply["controls"] == {"shift": True, "width": True, "hedge": False}
+    assert "This strategy has no Hedge legs, so Hedge has nothing to move." in str(reply["control_reasons"]["hedge"])
+    assert "iron condors" not in str(reply["control_reasons"]["hedge"])
+    status, reply = move("hedge", 1, long_condor)
+    assert status == HTTP_UNPROCESSABLE and "no Hedge legs" in str(reply) and "legs" not in reply
+
+
+def test_adr_186_5_width_last_step_through_the_route_moves_the_call_with_no_live_price():
+    """ADR-186 (5), route half. A shape that is recognised can be one step wide only as an iron condor whose short put
+    sits at the money and short call one step above (a strangle needs a strike each side of the money, so it is two
+    steps at least). SELL 23,000 PE / SELL 23,050 CE with 200-point wings, Width -1, no live index price (the market
+    context is None here): the CALL side moves down 50 (both call legs), the put side stays, nothing is refused."""
+    condor = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 23000, "86.00"), ("SELL", "CE", 23050, "80.00"),
+              ("BUY", "CE", 23250, "40.00")]
+    status, reply = move("width", -1, condor)
+    assert status == HTTP_OK and strikes(reply) == [22800, 23000, 23000, 23200], reply
+    stamped = [leg["captured_at"][:19] for leg in reply["legs"]]
+    assert stamped == [STAMP.isoformat()[:19]] * 2 + ["2026-10-01T09:21:28"] * 2  # only the call side is re-captured
+
+
+CONDOR_186 = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 23000, "86.00"), ("SELL", "CE", 23050, "80.00"),
+              ("BUY", "CE", 23250, "40.00")]
+NIFTY_SPOT = "23010"
+
+
+_REPLAY = []
+
+
+def index_ctx(health):
+    """The real replay context (a real KiteProvider) whose index read answers one NIFTY quote at 23,010."""
+    if not _REPLAY:
+        _REPLAY.append(build_replay_context())
+    ctx = _REPLAY[0]
+    quote = live_fake.index_quote(NIFTY_SPOT, health=health)
+    ctx.provider.underlying_quote = lambda underlying: quote
+    return ctx
+
+
+def width_down_on(ctx):
+    status, reply = post({"legs": rows(CONDOR_186), "edit": {"control": "width", "direction": -1}}, capture=priced(),
+                         stored=all_stored, ctx=ctx)
+    assert status == HTTP_OK, reply
+    return reply
+
+
+def test_adr_186_5_a_live_index_quote_at_23010_makes_width_last_step_move_the_puts():
+    """Core (round 3), live half: AVAILABLE NIFTY 23,010 is the spot, the short put (23,000) is nearer, so the PUT side
+    moves up one step (both put legs) and the call side stays."""
+    reply = width_down_on(index_ctx(DataHealth.AVAILABLE))
+    assert strikes(reply) == [22850, 23050, 23050, 23250]
+
+
+@pytest.mark.parametrize("health", [h for h in DataHealth if h is not DataHealth.AVAILABLE])
+def test_adr_186_5_a_stale_index_quote_is_treated_as_no_price_width_moves_the_calls(health):
+    """Core (round 3): a quote whose health is not AVAILABLE keeps its ltp but is an old level (ADR-015); the move reads
+    it exactly as no price, so the CALL side moves down (as with no market context)."""
+    reply = width_down_on(index_ctx(health))
+    assert strikes(reply) == [22800, 23000, 23000, 23200]
+    assert reply["legs"] == width_down_on(None)["legs"]
+
+
+@pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.UNAVAILABLE])
+def test_a_stale_index_quote_gives_the_shape_read_the_answer_of_no_quote(health):
+    """The shape and hedge marks read against a stale quote equal those read with no quote at all."""
+    body = {"legs": rows(CONDOR_186), "edit": {"control": "read"}}
+    (status, stale), (_, none) = post(body, stored=all_stored, ctx=index_ctx(health)), post(body, stored=all_stored)
+    assert status == HTTP_OK
+    assert {k: v for k, v in stale.items() if k != "outcome"} == {k: v for k, v in none.items() if k != "outcome"}
+
+
+def test_attack_4_without_todays_list_the_three_controls_are_refused_and_off_but_step_still_works():
+    """AC-10 (ADR-104): the list is not current -> Shift / Width / Hedge are refused with the reason, every control is
+    false with that reason on a read, nothing is computed from the list the route holds; the stepper is REQ-076's."""
+    for control in ("shift", "width", "hedge"):
+        status, reply = post({"legs": rows(START), "edit": {"control": control, "direction": 1}}, current=False)
+        assert status == HTTP_UNPROCESSABLE and LIST_OFF in str(reply) and "legs" not in reply, control
+    status, reply = post({"legs": rows(START), "edit": {"control": "read"}}, current=False)
+    assert status == HTTP_OK and reply["controls"] == {"shift": False, "width": False, "hedge": False}
+    assert all(LIST_OFF in str(why) for why in reply["control_reasons"].values())
+    status, reply = post({"legs": rows(START), "edit": {"control": "step", "index": 2, "direction": 1}}, current=False)
+    assert status == HTTP_OK and strikes(reply) == [22800, 23000, 23450, 23600]
+
+
+def test_ac_6_a_landing_contract_that_is_not_tradable_or_has_no_stored_row_refuses_the_whole_move_naming_the_leg():
+    """AC-6 'not eligible': the stored eligibility says the landing contract is not tradable -> refused, text names the
+    leg, no legs in the answer. A landing contract with no stored row at all (CE 23350 in this fake store) is refused
+    too: no status is not tradable (fail closed)."""
+    async def only_first_blocked(contract_ids):
+        return [n != 0 for n in range(len(contract_ids))]
+
+    status, reply = post({"legs": rows(START), "edit": {"control": "shift", "direction": 1}}, capture=priced(),
+                         tradable=only_first_blocked)
+    assert status == HTTP_UNPROCESSABLE and NOT_TRADABLE in str(reply) and "legs" not in reply
+    assert "Leg 1" in str(reply)
+    status, reply = move("shift", -1, stored=fake_contract_ids)  # lands on CE 23350: no stored row
+    assert status == HTTP_UNPROCESSABLE and NOT_TRADABLE in str(reply) and "Leg 3" in str(reply)
+    status, reply = move("shift", 1)
+    assert status == HTTP_OK  # every landing contract is stored and tradable
+
+
+def test_attack_5_a_typed_leg_that_moves_comes_back_captured_and_replaced_an_unmoved_typed_leg_keeps_its_price():
+    """AC-8: Hedge +1 moves legs 0 and 3 only. Leg 0 was typed (41.00) and moves -> price captured (hand table 12.30),
+    typed false, replaced_typed true; leg 1 was typed (80.00) and does not move -> still 80.00 typed, not replaced."""
+    spec = [("BUY", "PE", 22800, "41.00"), ("SELL", "PE", 23000, "80.00"), ("SELL", "CE", 23400, "91.50"),
+            ("BUY", "CE", 23600, "44.00")]
+    body = {"legs": [leg | ({"typed": True} if n < TYPED_LEGS else {}) for n, leg in enumerate(rows(spec))],
+            "edit": {"control": "hedge", "direction": 1}}
+    status, reply = post(body, capture=priced({("PE", 22750): "12.30"}))
+    out = reply["legs"]
+    assert status == HTTP_OK and strikes(reply) == [22750, 23000, 23400, 23650]
+    assert (out[0]["planned_entry"], out[0]["price_source"], out[0]["replaced_typed"]) == ("12.30", "captured", True)
+    assert (out[1]["planned_entry"], out[1]["price_source"], out[1]["replaced_typed"]) == ("80.00", "typed", False)
+    assert [leg["replaced_typed"] for leg in out[2:]] == [False, False]
+    status, reply = post(body | {"edit": {"control": "shift", "direction": 1}}, capture=priced())
+    assert [leg["replaced_typed"] for leg in reply["legs"]] == [True, True, False, False]
+
+
+def test_a_moved_leg_with_no_live_price_is_unpriced_never_the_old_price():
+    status, reply = post({"legs": rows(START), "edit": {"control": "shift", "direction": 1}})  # table lacks one
+    legs_out = reply["legs"]
+    assert status == HTTP_OK and reply["outcome"] is None
+    assert [leg["planned_entry"] for leg in legs_out] == ["45.00", "90.00", "88.00", None]  # no CE 23650
+    assert legs_out[3]["price_reason"] == "no_live_price" and legs_out[2]["price_source"] == "captured"
+    assert legs_out[3]["price_source"] == "none" and legs_out[3]["captured_at"] is None
+
+
+UNEQUAL = [("BUY", "PE", 22500, "30.00"), ("SELL", "PE", 22800, "60.00"), ("SELL", "CE", 23200, "62.00"),
+           ("BUY", "CE", 23400, "30.00")]  # ADR-186's example: put wing 300, call wing 200
+
+
+def test_adr_186_4_an_unequal_wing_condor_is_named_with_its_hedge_marks_and_hedge_evens_the_wings_out():
+    """Attack 2 + 5: the server names the unequal condor (so Width and Hedge apply to it), Hedge +1 moves ONLY the call
+    wing out to 300 (puts untouched), Hedge -1 moves ONLY the put wing in to 200, and the reply's controls and reasons
+    agree with the shape name. HAND: 23400 + 100 = 23500 CE; 22500 + 100 = 22600 PE."""
+    status, reply = post({"legs": rows(UNEQUAL), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] == "iron_condor" and reply["shape_name"] == "Short Iron Condor"
+    assert [leg["hedge"] for leg in reply["legs"]] == [True, False, False, True]
+    assert reply["controls"] == {"shift": True, "width": True, "hedge": True}
+    assert reply["control_reasons"] == {"shift": None, "width": None, "hedge": None}
+    status, up = move("hedge", 1, UNEQUAL)
+    assert status == HTTP_OK and strikes(up) == [22500, 22800, 23200, 23500]
+    assert up["shape"] == "iron_condor" and [leg["captured_at"][:19] for leg in up["legs"]].count(
+        "2026-10-01T09:21:28") == 1
+    status, down = move("hedge", -1, UNEQUAL)
+    assert status == HTTP_OK and strikes(down) == [22600, 22800, 23200, 23400]
+    status, wider = move("width", 1, UNEQUAL)
+    assert status == HTTP_OK and strikes(wider) == [22450, 22750, 23250, 23450]
+
+
+def test_adr_186_4_a_put_pair_plus_one_call_is_custom_and_the_server_refuses_width_and_hedge_on_it():
+    """Attack 3 + 5: not a put pair + a call pair -> Custom Strategy; the browser cannot force Width or Hedge on it, and
+    the refusal names the shapes from the catalogue (REQ-078 AC-2)."""
+    custom = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 22500, "30.00"), ("SELL", "CE", 23200, "62.00")]
+    status, reply = post({"legs": rows(custom), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] is None and reply["shape_name"] is None
+    assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
+    assert "Width applies to straddles, strangles, iron butterflies and iron condors." in str(
+        reply["control_reasons"]["width"])
+    assert move("width", 1, custom)[0] == HTTP_UNPROCESSABLE and move("hedge", 1, custom)[0] == HTTP_UNPROCESSABLE
+
+
+def test_ac_4_width_never_goes_below_zero_through_the_route():
+    straddle = [("SELL", "PE", 23000, "80.00"), ("SELL", "CE", 23000, "85.00")]
+    status, reply = move("width", -1, straddle)
+    assert status == HTTP_UNPROCESSABLE and "cannot go below 0" in str(reply) and "legs" not in reply
+    assert strikes(move("width", 1, straddle)[1]) == [22950, 23050]

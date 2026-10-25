@@ -60,9 +60,9 @@ CASES = [
      None, None, "short_straddle", "strikes do not fit"),
     ("R10 FUT + ITM short call is not a Covered Call", NIFTY, [_leg(B, FUT, None), _leg(S, CE, "22000")],
      None, None, "covered_call", "outside its bounds"),
-    ("R11 condor with unequal wings", NIFTY,
+    ("R11 condor with unequal wings is still an Iron Condor (ADR-186 (4))", NIFTY,
      [_leg(B, PE, "23000"), _leg(S, PE, "23100"), _leg(S, CE, "23300"), _leg(B, CE, "23450")],
-     None, None, "iron_condor", "equal constraint"),
+     "iron_condor", {"p": 2, "q": 2, "w_put": 2, "w_call": 3}, None, None),
     ("R12 reverse calendar is not a Calendar Spread", NIFTY,
      [_leg(B, CE, "23200", expiry=NEAR), _leg(S, CE, "23200", expiry=NEXT)], None, None, None, None),
     ("R13 strike off the strike grid", NIFTY, [_leg(S, PE, "23025")], None, None, None, None),
@@ -160,11 +160,18 @@ def _without(template, kind):
 
 
 def test_mutation_equal_constraint_is_load_bearing():
-    """Unequal-wing condor: refused by the real template, accepted once the equal constraint is removed."""
+    """Unequal-wing condor (ADR-186 (4)): BUILDING one is refused by the equal constraint, accepted once it is removed;
+    MATCHING one names it either way (the constraint is build-only)."""
     condor = BY_ID["iron_condor"]
-    shape = template_shape(condor, {"p": 2, "q": 2, "w_put": 2, "w_call": 3})
-    assert isinstance(match_shape(shape, [condor]), Custom)
-    assert isinstance(match_shape(shape, [_without(condor, EqualConstraint)]), MatchResult)
+    unequal = {"p": 2, "q": 2, "w_put": 2, "w_call": 3}
+    shape = template_shape(condor, unequal)
+    assert isinstance(match_shape(shape, [condor]), MatchResult)
+    with pytest.raises(TemplateError):
+        resolve_template(condor, spot=NIFTY[0], strike_gap=NIFTY[1], expiries={"near": NEAR},
+                         prices=[Decimal("10")] * 4, overrides=unequal)
+    relaxed = _without(condor, EqualConstraint)
+    assert resolve_template(relaxed, spot=NIFTY[0], strike_gap=NIFTY[1], expiries={"near": NEAR},
+                            prices=[Decimal("10")] * 4, overrides=unequal)
 
 
 def test_mutation_order_constraint_is_load_bearing():

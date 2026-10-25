@@ -6,7 +6,7 @@ paths:
 
 # Learning: every proven finding is a class in the registry, and every repeat becomes a mechanism
 
-version: "1.0.0" (generalized for the project kit)
+version: "2.0.0" (lean: OD-117)
 
 Why: lessons written as prose were re-derived every session, and the same failure classes repeated because nothing
 checked for them.
@@ -30,7 +30,7 @@ The project's registry is `knowledge/findings/`: one JSON file per class (format
   column aggregate can drop a field.
 - **F6 Honest status.** `detection.status` is `unguarded` until a named check covers the class; a fix without
   detection says so. A check finding nothing is still recorded, including what it does NOT cover; an undeliverable
-  number is written as unmeasured, never a default.
+  number is written as unmeasured, never a default. Counter: findings whose `detection.status` is `guarded`.
 
 ## L. Learn or block
 
@@ -39,29 +39,26 @@ The project's registry is `knowledge/findings/`: one JSON file per class (format
 - **L2 Second occurrence of a class = a mechanism, same turn**: a gate/test/lint/CI check with a red-then-green
   self-test, planned as a work item. "Fixed" means the mechanism landed and the entry's detection is `guarded`.
 - **L3 Root cause beats instance fix:** sweep equivalent places in this repo when a class is found in one, and
-  record the sweep in the entry.
+  record the sweep in the entry. Counter: repeat occurrences of a registered class.
 
-## R. Repeated failure: change who aims
+## R. Repeated failure: change the aim, not the number of reviewers
 
-- **R1 Second red of the same class** (same root cause, not symptom) after one fix round, in CI, staging or a gate:
-  dispatch an INDEPENDENT reviewer the same turn, no owner question — fresh context, a different model or instance,
-  never the builder/fixer. Give it the class, both rounds' diffs, evidence lines and "what did both rounds miss?".
-  Output: findings and an approach, no code.
-- **R2** Accept/reject each finding with a line of evidence, write the third-round brief AROUND them; its PR body
-  cites the review; the owner is told afterwards, as information.
-- **R3 Third red after the reviewed round is a stop:** escalate with the review, both briefs and a recommendation.
-- **R4 A process change gets role reviews before the owner sees it:** a change to review tiers, rounds, verifiers
-  or guards goes to independent reviewers (safety, delivery, platform), each given the current rule quoted beside
-  the proposed one (finding `process-change-narrows-safety-rule`).
+- **R1 Second red of the same class** (same root cause, not symptom) is round 2, the last one (run-discipline B1):
+  write its brief around the class and both diffs ("what did round 1 miss?"), never just the symptom. There is no
+  automatic independent review. Counter: items reaching round 2.
+- **R2 Red after round 2 stops the item:** park it, or ship it with the findings listed, and tell the owner with the
+  evidence and a recommendation; the owner may ask for an independent review. Counter: parked items.
+- **R3 A process change shows the current rule quoted beside the proposed one** (finding
+  `process-change-narrows-safety-rule`), gets one diff review like any change, and goes to the owner for approval.
 
-- **R5 A repeated orchestrator miss gets a hook, not a memory note.** Three lessons for such a hook: check only the
+- **R4 A repeated orchestrator miss gets a hook, not a memory note.** Three lessons for such a hook: check only the
   brief the dispatch names (never a file the prompt merely mentions); treat a crash of the checked tool as
   fail-open (allow); expect interpreter-flag and wrapper spellings (`python -X utf8 ...`, `timeout 900 python ...`).
 
-## D. Detection-gap RCA (high-risk reviews and production defects)
+## D. Detection-gap RCA (Tier A findings and production defects)
 
-Between a fix wave and the next review of high-risk work (deletes, deploys, auth, payments, secrets, migrations,
-hooks), and for every production defect, record per finding: (a) instance fixed; (b) class mechanism shipped;
+Between a fix and the next review of Tier A work (deploys, money and order maths, migrations, auth and secrets), and
+for every production defect, record per finding: (a) instance fixed; (b) class mechanism shipped;
 (c) which check should've caught it and why it didn't; (d) a detection upgrade shipped BEFORE the next review
 (scheduled audit, monitor or CI test). Next review requires (a)-(d) done. Success: recurrences of a fixed class = 0
 and findings a listed check should've caught = 0; either non-zero means RCA the RCA first.
@@ -73,6 +70,7 @@ and findings a listed check should've caught = 0; either non-zero means RCA the 
   why/design/is-this-new question, and marked `unguarded` until a named check covers it.
 - MUST follow L: give every failure or correction a registry entry the same turn, and turn a second occurrence of a
   class into a mechanism (red-then-green test) the same turn.
-- MUST follow R: dispatch an independent reviewer on the second red of a class, and escalate a third red to the owner.
-- MUST follow D: ship a detection upgrade for every high-risk review finding and production defect before the next
+- MUST follow R: aim round 2 at the class, stop after it (park or ship with findings listed), and take a process
+  change to the owner with the current rule quoted beside the new one.
+- MUST follow D: ship a detection upgrade for every Tier A review finding and production defect before the next
   review.

@@ -24,7 +24,7 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
@@ -995,6 +995,41 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
           "The typed price was refused and the previous price stays.", "This price.",
           "Type a price that is a multiple of the tick size.", {"leg": LegRef, "tick": Money}),
+    # W-158 (REQ-078 AC-3..AC-6, AC-10; ADR-186): Shift / Width / Hedge. Each refusal changes nothing.
+    _gate("leg_edit_landing_not_listed", _UI, 14,
+          "No {strikes} {kind} is listed for {expiry}, so leg {number} cannot move there.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use the stepper or the leg picker to choose a listed strike.",
+          {"strikes": Strikes, "kind": Instrument, "expiry": Date, "number": Count}),
+    _gate("leg_edit_landing_not_tradable", _UI, 15, "{leg} cannot be traded from Zerodha's current data.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use the stepper or the leg picker to choose another strike.", {"leg": LegRef}),
+    _gate("leg_edit_shift_needs_option_leg", _UI, 16, "Shift needs at least two legs, at least one of them an option.",
+          "The move was refused and no leg changed.", "This move.", "Add an option leg first.", {}),
+    _gate("leg_edit_width_not_applicable", _UI, 17,
+          "Width applies to {shapes}.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
+    _gate("leg_edit_hedge_not_applicable", _UI, 18,
+          "Hedge applies to {shapes}.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
+    _gate("leg_edit_width_below_zero", _UI, 19, "The width cannot go below 0.",
+          "The move was refused and no leg changed.", "This move.", "Use Width + to widen, or Shift to move.", {}),
+    _gate("leg_edit_hedge_below_minimum", _UI, 20, "{leg} cannot come closer than one strike step to its short leg.",
+          "The move was refused and no leg changed.", "This move.", "Use Hedge + to move the hedge out.",
+          {"leg": LegRef}),
+    _gate("leg_edit_list_not_loaded_today", _UI, 21,
+          "Today's instrument list is not loaded, so Shift, Width and Hedge are off.",
+          "The move was refused and no leg changed.", "Shift, Width and Hedge.",
+          "Wait for today's list to load, or change the strikes with the stepper.", {}),
+    _gate("leg_edit_width_needs_two_legs", _UI, 22, "Width needs at least two legs.",
+          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
+    _gate("leg_edit_hedge_needs_two_legs", _UI, 23, "Hedge needs at least two legs.",
+          "The move was refused and no leg changed.", "This move.", "Add the other legs first.", {}),
+    _gate("leg_edit_hedge_no_hedge_legs", _UI, 24, "This strategy has no Hedge legs, so Hedge has nothing to move.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or change the strikes yourself.", {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES

@@ -34,7 +34,7 @@ check must never block a session start).
 | File | Source (Capability Library) | sha256 |
 |---|---|---|
 | `agent_budget_required.py` | `capabilities/hooks/agent-budget-required/agent_budget_required.py` | `7b28634a32f505ffea74a912e7688ac14444dfeb7f7b4a5e48a1cdbdea1f5601` |
-| `agent_model_required.py` | `capabilities/hooks/agent-model-required/agent_model_required.py` | `760d89c3a1090e7e7c279a3e598c4c02e3933472ad49c256d2a85db7a255c0b3` |
+| `agent_model_required.py` | `capabilities/hooks/agent-model-required/agent_model_required.py` | `ed4c359e084c3d7ce7559b0c82177055da32fbc169b886e964ff185d03b30960` |
 | `evidence_claim_guard.py` | `capabilities/hooks/evidence-claim-guard/evidence_claim_guard.py` | `c56b9d0c080800e126eba0934a0f6ca8f9811e1aaa45dba12770ff8f13fa443f` |
 | `spec_basis_gate.py` | `capabilities/hooks/spec-basis-gate/spec_basis_gate.py` | `179db94356bed5443ef391777291d6faf8554f46a1c3fbe7ce178f4efef06059` |
 | `answer_writeback_guard.py` | `capabilities/hooks/answer-writeback-guard/answer_writeback_guard.py` | `3a4f6fd94ef0ffabcc234ce719df141bf9b5f14602710572d2d0426aab34bf90` |
@@ -42,7 +42,7 @@ check must never block a session start).
 | `git_discard_uncommitted_guard.py` | `capabilities/hooks/git-discard-uncommitted-guard/git_discard_uncommitted_guard.py` | `6cc931e14caf0a3dc68b74e7814b4eed26c82b91002dcd2cba39399ec3797ca0` |
 | `git_hook_bypass_guard.py` | `capabilities/hooks/git-hook-bypass-guard/git_hook_bypass_guard.py` | `6058465bf03078ddf905b8eeba1c3d18b7e5e90048e544b32e8b9113ad15fe83` |
 | `git_stash_worktree_guard.py` | `capabilities/hooks/git-stash-worktree-guard/git_stash_worktree_guard.py` | `3345a59bd57e22d96d3d9420839b87e85a135907389bbc36ea84e0951fd14cf8` |
-| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `7e7d178e46d94e8291ca4db94bbe5a0c6de39809eca5220972fe64d3571070fa` |
+| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `f0f3f6d769e36f29f96e48c5bf5503bd0f5f74777ae76c203b11c0920ca3d2d6` |
 | `gate.py` | `the production seatbelt's gate script (Capability Library)` | `89eca78b5f905d6e9557852f2766ce65d955304f9e5d9adf23b9c997b773ddbc` |
 | `recorder.py` | `the production seatbelt's recorder script (Capability Library)` | `8e63830068828db0582d40580d0b198f907cfd52181f8968540e9ab5a5cb2cbf` |
 | `_common.py` | `the production seatbelt's shared helper module (Capability Library)` | `c2a0b081880de0949642894a3b26047f9b5e0536d070a5c315be5e17243f25cc` |
