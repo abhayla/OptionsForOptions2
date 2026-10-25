@@ -30,7 +30,7 @@ import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -93,6 +93,8 @@ if (linkRefused.value) {
 // old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
 const shapeName = ref(null)
 const hasReply = ref(false)
+// W-158 (REQ-078 AC-2/AC-3): which of Shift / Width / Hedge work and the Shift total, exactly as the newest applied reply sent them.
+const controls = ref(NO_CONTROLS)
 const editError = ref(null)
 const editErrorIndex = ref(null) // the leg of a refused typed price (its error shows under that field), else null
 const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.included === false)
@@ -267,6 +269,7 @@ const setLegs = (next) => {
   legs.value = next
   hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
   shapeName.value = null
+  controls.value = NO_CONTROLS // REQ-078 AC-9: a picker replacement (or any new leg list) ends the Shift total; the server cannot see it
   editError.value = null
   load()
   syncLive()
@@ -319,7 +322,7 @@ const editView = () => {
   return view ? { view } : {}
 }
 async function editLeg(edit) {
-  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit)
+  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit, controls.value.shiftTotal)
   if (!body) return
   const mine = guard.next('leg-edit') // aborts the edit still in flight
   editError.value = null
@@ -332,6 +335,7 @@ async function editLeg(edit) {
       if (Array.isArray(reply?.legs) && reply.legs.length === legs.value.length) {
         legs.value = applyEditReply(legs.value, reply)
         shapeName.value = reply.shape_name ?? null
+        controls.value = controlsFrom(reply)
         hasReply.value = true
       }
       return
@@ -343,6 +347,7 @@ async function editLeg(edit) {
       savedRevision.value = null
     }
     shapeName.value = reply.shape_name ?? null
+    controls.value = controlsFrom(reply) // the server's controls and Shift total (null after a step, Width or Hedge)
     hasReply.value = true
     // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
     // choice on screen and no outcome request is pending (that one is never cancelled here: its reply is checked the same way).
@@ -439,7 +444,7 @@ const pricesStamp = computed(() => {
     <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
     <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
-      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
+      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
       :undo-offered="undoHeld !== null"
       @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
     />

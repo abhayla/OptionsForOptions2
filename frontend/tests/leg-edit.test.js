@@ -28,6 +28,10 @@ import {
 import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { movedMarker } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
+import rec from './fixtures/leg-edit-controls.json'
+import LegPicker from '@/components/strategy/LegPicker.vue'
+import { buildSaveBody } from '@/lib/saveDraft'
+import { NO_CONTROLS, NO_REASON_FALLBACK, WIDTH_REASON_FALLBACK, controlsFrom, replacedPriceNote, shiftText, showsControls } from '@/lib/legEdit'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const row = (w, i) => w.findAll('[data-testid="leg-row"]')[i]
@@ -56,9 +60,9 @@ beforeEach(() => {
   answers = {}
 })
 
-async function openPage() {
+async function openPage(read = READ) {
   answers['POST /strategies/outcome'] = real
-  answers['POST /strategies/leg-edit'] = READ
+  answers['POST /strategies/leg-edit'] = read
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
   await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
   await router.isReady()
@@ -113,7 +117,8 @@ describe('the request carries one edit and nothing computed', () => {
   })
   it('an edit missing its fields, an unknown control or a leg with no id builds nothing (no guess)', () => {
     expect(buildEditRequest('NIFTY', legs, { control: 'step', index: 0 })).toBeNull()
-    expect(buildEditRequest('NIFTY', legs, { control: 'shift', direction: 1 })).toBeNull() // REQ-078, not this row
+    expect(buildEditRequest('NIFTY', legs, { control: 'shift' })).toBeNull() // REQ-078: a move without its direction
+    expect(buildEditRequest('NIFTY', legs, { control: 'nudge', direction: 1 })).toBeNull() // an unknown control
     expect(buildEditRequest('NIFTY', legs, { control: 'price', index: 0 })).toBeNull() // a price edit without its text
     expect(buildEditRequest('NIFTY', [{ ...legs[0], instrument_id: null }], { control: 'include', index: 0, included: false })).toBeNull()
     expect(buildEditRequest('NIFTY', [], { control: 'multiplier', multiplier: 2 })).toBeNull()
@@ -691,6 +696,148 @@ describe('REQ-135 AC-2: the leg row shows the server\'s days to expiry', () => {
     const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true } } })
     await flushPromises()
     expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(Array(4).fill('13 Oct (6 days)'))
+    w.unmount()
+  })
+})
+
+// ---- Row 30f (W-158; REQ-078 AC-2, AC-3, AC-6, AC-8, AC-9; ADR-186 (2)-(4)): Shift / Width / Hedge ----
+// The control fields below are the RECORDED replies of the real route (tests/fixtures/leg-edit-controls.json, recorded from
+// POST /api/strategies/leg-edit on the golden NIFTY condor and a bull call spread, row 30f step 1). The legs of a page reply
+// take the page's own instrument ids (the outcome fixture), the strikes and flags the recording.
+const fromRec = (r) => ({ ...r, outcome: null,
+  legs: real.legs.map((l, i) => replyLeg(l, { strike: r.legs[i].strike, replaced_typed: r.legs[i].replaced_typed, hedge: r.legs[i].hedge })) })
+const READ_C = { ...READ, controls: rec.read.controls, control_reasons: rec.read.control_reasons, shift_total: null } // the load read, with the recorded controls
+const SHIFTED = fromRec(rec.shift_plus1)
+const SHIFTED_TWICE = { ...SHIFTED, shift_total: 100 }
+const clickAndWait = async (w, id) => { await t(w, id).trigger('click'); await flushPromises() }
+
+describe('W-158 core: Shift + sends the control and direction; the page draws the recorded reply (strikes, controls, +50)', () => {
+  it('attack 1: a Shift click sends {control, direction} and no strike, price or lot field; the redrawn strikes and +50 are the reply\'s', async () => {
+    const w = await openPage(READ_C)
+    answers['POST /strategies/leg-edit'] = SHIFTED
+    await clickAndWait(w, 'shift-plus')
+    expect(edits()).toHaveLength(1)
+    const body = edits()[0].body
+    expect(body.edit).toEqual({ control: 'shift', direction: 1 })
+    expect(Object.keys(body).filter((k) => !['underlying', 'edit', 'legs', 'seq', 'view'].includes(k))).toEqual([]) // no shift_total yet: none had come back
+    expect(body.legs.map((l) => l.planned_entry)).toEqual(real.legs.map((l) => l.planned_entry)) // the legs as they were, nothing moved by the browser
+    expect(all(w, 'leg-strike').map((e) => e.text())).toEqual(rec.shift_plus1.legs.map((l) => l.strike))
+    expect(t(w, 'shift-total').text()).toBe('+50')
+    answers['POST /strategies/leg-edit'] = SHIFTED_TWICE
+    await clickAndWait(w, 'shift-plus')
+    expect(edits()[1].body.shift_total).toBe(50) // the page sends the integer the server gave it
+    expect(t(w, 'shift-total').text()).toBe('+100')
+    w.unmount()
+  })
+
+  it('the save body never carries shift_total, controls or replaced_typed', () => {
+    const body = buildSaveBody(real.legs.map((l) => ({ ...l, contract_id: 1, lot_size: 65, replaced_typed: true })), '', 'x')
+    expect(JSON.stringify(body)).not.toMatch(/shift_total|controls|replaced_typed/)
+  })
+})
+
+describe('W-158 attack 2: controls are the server\'s, with its reasons; hidden below 2 legs or with futures only', () => {
+  it('controlsFrom: all on for the condor read; Width off with the server\'s sentence on the bull call spread; shift_total as sent', () => {
+    expect(controlsFrom(rec.read)).toEqual({ shift: true, width: true, hedge: true, shiftTotal: null, reasons: { shift: null, width: null, hedge: null } })
+    const spread = controlsFrom(rec.bull_call_read)
+    expect(spread).toMatchObject({ shift: true, width: false, hedge: true })
+    expect(spread.reasons.width).toBe(rec.bull_call_read.control_reasons.width.what_happened)
+    expect(controlsFrom(rec.shift_plus1).shiftTotal).toBe(50)
+  })
+  it('an old server (no controls field) gives NO_CONTROLS: nothing applies; a control off with no reason text gets the fallback only', () => {
+    expect(controlsFrom({ legs: [] })).toBe(NO_CONTROLS)
+    expect(controlsFrom(null)).toBe(NO_CONTROLS)
+    expect([NO_CONTROLS.shift, NO_CONTROLS.width, NO_CONTROLS.hedge]).toEqual([false, false, false])
+    const bare = controlsFrom({ controls: { shift: true, width: false, hedge: false }, control_reasons: { shift: null, width: null, hedge: null }, shift_total: 'x' })
+    expect(bare.reasons).toEqual({ shift: null, width: WIDTH_REASON_FALLBACK, hedge: NO_REASON_FALLBACK })
+    expect(bare.shiftTotal).toBeNull() // only an integer is a total
+    expect(controlsFrom({ controls: { shift: 'yes', width: 1, hedge: true } })).toMatchObject({ shift: false, width: false, hedge: true }) // only true turns one on
+  })
+  it('a disabled control shows the server\'s reason, is disabled and emits nothing; an enabled one emits control and direction only', async () => {
+    const legs = applyEditReply(real.legs.map((l, i) => ({ id: i, underlying: 'NIFTY', ...l })), SHIFTED)
+    const w = mount(LegList, { props: { legs, controls: controlsFrom(rec.bull_call_read) } })
+    expect(t(w, 'width-plus').attributes('disabled')).toBeDefined()
+    expect(t(w, 'width-minus').attributes('disabled')).toBeDefined()
+    expect(t(w, 'width-reason').text()).toBe(rec.bull_call_read.control_reasons.width.what_happened)
+    expect(t(w, 'hedge-plus').attributes('disabled')).toBeUndefined() // the server said Hedge works on this spread
+    await t(w, 'width-plus').trigger('click')
+    expect(w.emitted('edit')).toBeUndefined()
+    await t(w, 'hedge-minus').trigger('click')
+    expect(w.emitted('edit')).toEqual([[{ control: 'hedge', direction: -1 }]])
+    w.unmount()
+  })
+  it('before any reply every control is disabled with a reason (nothing applies until the server says so)', () => {
+    const w = mount(LegList, { props: { legs: real.legs.map((l) => ({ ...l, instrument_type: l.instrument })) } })
+    for (const id of ['shift', 'width', 'hedge']) {
+      expect(t(w, `${id}-plus`).attributes('disabled')).toBeDefined()
+      expect(t(w, `${id}-reason`).text().length).toBeGreaterThan(0)
+    }
+    w.unmount()
+  })
+  it('the controls are absent with 1 leg or with futures legs only', () => {
+    const fut = (n) => ({ id: n, instrument_type: 'FUT', strike: null, expiry: '2026-10-27', action: 'BUY', lots: 1 })
+    expect([showsControls([]), showsControls([{ instrument_type: 'CE' }]), showsControls([fut(1), fut(2)]), showsControls([fut(1), { instrument_type: 'PE' }])]).toEqual([false, false, false, true])
+    expect(mount(LegList, { props: { legs: [fut(1), fut(2)] } }).find('[data-testid="strategy-controls"]').exists()).toBe(false)
+    expect(mount(LegList, { props: { legs: [{ ...real.legs[0], instrument_type: 'CE' }] } }).find('[data-testid="strategy-controls"]').exists()).toBe(false)
+  })
+})
+
+describe('W-158 attack 3: the Shift total is the server\'s, shown as text, and ends on a manual edit', () => {
+  it('shiftText: +50, -100, and - for none or 0 (no arithmetic)', () => {
+    expect([shiftText(50), shiftText(-100), shiftText(0), shiftText(null), shiftText(undefined), shiftText('50')]).toEqual(['+50', '-100', '-', '-', '-', '-'])
+  })
+  async function afterShift() {
+    calls.length = 0
+    const w = await openPage(READ_C)
+    answers['POST /strategies/leg-edit'] = SHIFTED_TWICE
+    await clickAndWait(w, 'shift-plus')
+    expect(t(w, 'shift-total').text()).toBe('+100')
+    return w
+  }
+  it('a Width click, a Hedge click and a manual stepper edit each make it - (the reply\'s null), and the next request sends no total', async () => {
+    for (const control of ['width', 'hedge', 'step']) {
+      const w = await afterShift()
+      answers['POST /strategies/leg-edit'] = fromRec(rec.read) // shift_total null, as the server sends after these
+      if (control === 'step') await all(w, 'strike-plus')[0].trigger('click')
+      else await t(w, `${control}-plus`).trigger('click')
+      await flushPromises()
+      expect(t(w, 'shift-total').text()).toBe('-')
+      expect(edits().at(-1).body.shift_total).toBe(100) // that click still carried the page's last total; the server resets it
+      await clickAndWait(w, 'shift-plus')
+      expect('shift_total' in edits().at(-1).body).toBe(false)
+      w.unmount()
+    }
+  })
+  it('a picker replacement resets the total itself (the server cannot see it)', async () => {
+    const w = await afterShift()
+    answers['POST /strategies/leg-edit'] = fromRec(rec.read)
+    w.findComponent(LegPicker).vm.$emit('update:legs', DRAFT.legs.map((l, i) => ({ ...l, id: `p${i}`, underlying: 'NIFTY' })))
+    await flushPromises()
+    expect(t(w, 'shift-total').text()).toBe('-')
+    w.unmount()
+  })
+  it('a refused move leaves the legs and the total untouched and shows the refusal text', async () => {
+    const w = await afterShift()
+    const before = all(w, 'leg-strike').map((e) => e.text())
+    answers['POST /strategies/leg-edit'] = Object.assign(new Error('refused'), REFUSED)
+    await clickAndWait(w, 'shift-plus')
+    expect(all(w, 'leg-strike').map((e) => e.text())).toEqual(before)
+    expect(t(w, 'shift-total').text()).toBe('+100')
+    expect(t(w, 'edit-error').text()).toContain('That strike is not listed.')
+    w.unmount()
+  })
+})
+
+describe('W-158 attack 4: a typed price lost on a move is said so', () => {
+  it('the sentence names the leg number and the new contract as sent; none for an untouched leg; one literal', async () => {
+    expect(replacedPriceNote(2, { strike: '23050', instrument_type: 'CE' })).toBe('Your price for leg 2 was replaced by the captured price of 23050 CE.')
+    const w = await openPage(READ_C)
+    answers['POST /strategies/leg-edit'] = fromRec(rec.shift_typed_leg0)
+    await clickAndWait(w, 'shift-plus')
+    expect(all(w, 'replaced-note').map((e) => e.text())).toEqual([`Your price for leg 1 was replaced by the captured price of ${rec.shift_typed_leg0.legs[0].strike} ${real.legs[0].instrument}.`])
+    answers['POST /strategies/leg-edit'] = SHIFTED
+    await clickAndWait(w, 'shift-plus')
+    expect(all(w, 'replaced-note')).toHaveLength(0) // the next reply replaced nothing
     w.unmount()
   })
 })

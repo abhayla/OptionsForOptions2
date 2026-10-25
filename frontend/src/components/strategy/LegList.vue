@@ -11,8 +11,9 @@ import { contractName, expiryWithDays, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
-  canStep, movedMarker, priceReasonText, removeAllPrompt,
+  NO_CONTROLS, canStep, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
+import StrategyControls from '@/components/strategy/StrategyControls.vue'
 
 const props = defineProps({
   legs: { type: Array, required: true },
@@ -22,6 +23,7 @@ const props = defineProps({
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that field (REQ-077 AC-2)
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
+  controls: { type: Object, default: () => NO_CONTROLS }, // REQ-078 AC-2: controlsFrom(the newest reply); nothing applies until one arrives
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
 })
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear'])
@@ -35,6 +37,8 @@ const depthFor = ref(null) // the leg whose depth popup is open
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
 const shown = computed(() => (props.hasReply ? props.shapeName ?? CUSTOM_STRATEGY : null))
 const legName = (l) => contractName(l)
+// REQ-078 AC-8: one sentence per leg whose typed price the newest reply replaced (the legs carry the reply's flag)
+const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 // ADR-085: a leg saved without a planned entry says so and offers Reprice (REQ-077 AC-7); Edit and Reprice both open the picker's own edit form
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 
@@ -82,6 +86,7 @@ function setMultiplier(index) {
           <option v-for="n in MULTIPLIER_CHOICES" :key="n" :value="n">{{ n }}</option>
         </select>
       </label>
+      <StrategyControls v-if="showsControls(legs)" :controls="controls" @edit="(e) => emit('edit', e)" />
       <label class="mt-1 flex items-center gap-2">Show
         <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
           <option  value="lots">Lots</option>
@@ -96,6 +101,7 @@ function setMultiplier(index) {
         <button type="button" class="ml-1 rounded border border-line px-2" data-testid="clear-confirm-no" @click="confirmingClear = false">Cancel</button>
       </span>
       <ErrorMessage v-if="errorParts && errorIndex === null" class="mt-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
+      <p v-for="n in replacedNotes" :key="n" class="mt-1 text-ink-muted" data-testid="replaced-note">{{ n }}</p>
       <ul>
         <li
           v-for="(leg, i) in legs" :key="leg.id ?? i" class="flex flex-wrap items-center gap-2 py-1"
