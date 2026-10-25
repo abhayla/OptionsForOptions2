@@ -100,7 +100,7 @@ def env_bypass(command: str) -> bool:
 
 def main():
     try:
-        data = json.loads(sys.stdin.read())
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     except Exception:
         sys.exit(0)
     try:

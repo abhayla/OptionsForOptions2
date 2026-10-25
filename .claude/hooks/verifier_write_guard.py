@@ -3,7 +3,7 @@
 
 Wired in the project settings (never only in an agent's frontmatter, which does not run in a
 headless session) on PreToolUse, PostToolUse and PostToolUseFailure for the shell tools (Bash,
-PowerShell), and on SubagentStop (cleanup only, see below). It acts ONLY when the hook input's `agent_type` names a read-only agent: `verifier` by
+PowerShell), and on SubagentStop (cleanup only, see below). It acts ONLY when the hook input's `agent_type` names a read-only agent: `verifier` and `reviewer` by
 default, the env var VERIFIER_WRITE_GUARD_AGENTS adds more (comma-separated), and a namespaced name
 counts by its last ':' part (`plugin:verifier`). Every other agent and the main session (no
 `agent_type`) pass through untouched, exit 0.
@@ -17,19 +17,25 @@ CLAUDE_PROJECT_DIR, and every worktree `git worktree list` names for them.
                set, into <system temp>/verifier-write-guard/snap/<16 hex>.json. A snapshot that
                cannot be written refuses the call.
   PostToolUse  compare with the snapshot. An entry is MOVED to
-  (+Failure)   <system temp>/verifier-quarantine/<stamp>/<relative path> only if it was ABSENT at Pre
-               AND git reports it UNTRACKED now (an honest verifier's new file; a merge or checkout
-               brings tracked files). Every other change (a changed file, a new tracked file) is
-               COPIED there and reported, never moved or reverted, because the guard cannot tell
-               whose edit it is; a deletion is reported. MANIFEST.json in the quarantine folder
+  (+Failure)   <system temp>/verifier-quarantine/<stamp>/<relative path> only if it was ABSENT at Pre,
+               git reports it UNTRACKED now (an honest verifier's new file; a merge or checkout
+               brings tracked files), AND it sits in the call's OWN root: the git top level of the
+               hook input's cwd (REQ-057 AC-4), recorded in the snapshot at Pre; if the Post input's own root
+               differs, or the snapshot has none, nothing is moved. In every other judged root (another worktree, the
+               CLAUDE_PROJECT_DIR checkout) the orchestrator may be writing, so a new untracked entry
+               there is COPIED and reported like a changed one (MANIFEST action `copied`), never moved.
+               Every other change (a changed file, a new tracked file) is COPIED there and reported,
+               never moved or reverted, because the guard cannot tell whose edit it is; a deletion is
+               reported. MANIFEST.json in the quarantine folder
                lists each entry (checkout root, path, sha256, action). Any change: exit 2 with
                "REFUSED: the verifier must not write files; ..." naming each path with its checkout
                and the quarantine folder. Nothing changed: exit 0.
 
   SubagentStop a read-only agent finished: delete the snapshots THIS agent left behind (a call another
                PreToolUse hook blocked never gets a Post event). Only a snapshot whose recorded
-               agent_id AND session_id both equal the stop input's is deleted (parallel verifiers run
-               at once). It never touches, judges or quarantines a repo file, and ALWAYS exits 0 (exit 2
+               agent_id equals the stop input's AND its session_id equals the stop input's, or was
+               recorded as None/missing (an empty string is a recorded value), is deleted (parallel verifiers run at once; a snapshot with a
+               different non-empty session_id is kept). It never touches, judges or quarantines a repo file, and ALWAYS exits 0 (exit 2
                would stop the subagent from finishing). A missing agent_id deletes nothing; an
                unreadable or non-object snapshot, or one without an agent_id, is left for the 24 h prune.
                The main session's Stop is not judged: exit 0.
@@ -60,7 +66,7 @@ import tempfile
 import time
 
 PROTECTED = ("evidence", "work", "spec")
-DEFAULT_READ_ONLY_AGENTS = ("verifier",)
+DEFAULT_READ_ONLY_AGENTS = ("verifier", "reviewer")
 ENV_AGENTS = "VERIFIER_WRITE_GUARD_AGENTS"
 PRE = "PreToolUse"
 POST_EVENTS = ("PostToolUse", "PostToolUseFailure")
@@ -139,6 +145,15 @@ def judged_roots(data: dict) -> list[str]:
             for wt in _worktrees(top):
                 add(wt)
     return roots
+
+
+def own_root(data: dict) -> str | None:
+    """The git top level of the hook input's cwd (the folder the judged call ran in), or the cwd
+    itself outside git. None when the input names no usable cwd: then nothing is ever moved."""
+    cwd = data.get("cwd")
+    if not isinstance(cwd, str) or not cwd.strip() or not os.path.isdir(cwd):
+        return None
+    return _git_toplevel(cwd) or os.path.abspath(cwd)
 
 
 def is_link(path: str) -> bool:
@@ -327,9 +342,9 @@ def new_report() -> dict:
     return {"moved": [], "copied": [], "deleted": [], "quarantine": None, "manifest": []}
 
 
-def judge(roots_before: list[dict], report: dict) -> None:
-    """Compare each root's snapshot with disk now. MOVE an entry only if it was absent at Pre and
-    git sees it as untracked now; COPY (never move, never revert) every other change; note
+def judge(roots_before: list[dict], report: dict, own: str | None = None) -> None:
+    """Compare each root's snapshot with disk now. MOVE an entry only if it is in `own` (the call's
+    own root), was absent at Pre and git sees it as untracked now; COPY (never move, never revert) every other change; note
     deletions. Writes MANIFEST.json into the quarantine folder."""
     q = None
 
@@ -351,20 +366,22 @@ def judge(roots_before: list[dict], report: dict) -> None:
         deleted = sorted(set(before) - set(now))
         if not (created or changed or deleted):
             continue
-        untracked = untracked_set(root) if created else set()
+        is_own = own is not None and _norm(root) == _norm(own)
+        untracked = untracked_set(root) if (created and is_own) else set()
         moved_any = False
         for rel in created:
             full = os.path.join(root, *rel.split("/"))
             dst = _q_target(qdir(), idx, rel)
             sha = _file_sha(full)
-            if _is_untracked(rel, untracked):
+            if is_own and _is_untracked(rel, untracked):
                 take_out(full, dst)
                 report["moved"].append((root, rel))
                 report["manifest"].append({"root": root, "path": rel, "sha256": sha, "action": "moved"})
                 moved_any = True
             else:
                 _copy_out(full, dst)
-                report["copied"].append((root, rel, "new, tracked"))
+                report["copied"].append((root, rel, "new, tracked" if is_own
+                                         else "new, outside this call's own checkout"))
                 report["manifest"].append({"root": root, "path": rel, "sha256": sha, "action": "copied"})
         if moved_any:
             # folders the call created and left empty after the move (deepest first)
@@ -444,7 +461,7 @@ def on_pre(data: dict, agent: str, roots: list[str]) -> None:
     notes: list[str] = []
     try:
         _prune_old_state()
-        manifest = {"roots": [],
+        manifest = {"roots": [], "own_root": own_root(data),
                     "agent_id": data.get("agent_id") if isinstance(data.get("agent_id"), str) else None,
                     "session_id": data.get("session_id") if isinstance(data.get("session_id"), str) else None}
         for root in roots:
@@ -490,7 +507,11 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
                "or modified under evidence/, work/, spec/ (the orchestrator must check each): %s. Quote "
                "this refusal in your final reply." % (why, agent, "; ".join(lines) if lines else "none"))
     report = new_report()
-    judge(manifest["roots"], report)
+    # The own root is fixed at Pre. Move only when the Post input's own root is the same folder;
+    # any mismatch, or a snapshot without the field, copies (never moves) and still refuses.
+    recorded, post_own = manifest.get("own_root"), own_root(data)
+    same = (isinstance(recorded, str) and post_own is not None and _norm(recorded) == _norm(post_own))
+    judge(manifest["roots"], report, post_own if same else None)
     try:
         os.remove(sp)
     except OSError:
@@ -504,8 +525,8 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
 
 
 def on_subagent_stop(data: dict) -> None:
-    """Delete only the snapshots THIS agent left (recorded agent_id AND session_id both equal the
-    stop input's). Never touches the repo, never judges, never quarantines; always exits 0 (exit 2 on
+    """Delete only the snapshots THIS agent left (recorded agent_id equals the stop input's, and the
+    recorded session_id equals it or was recorded as None/missing). Never touches the repo, never judges, never quarantines; always exits 0 (exit 2 on
     SubagentStop would stop the subagent from finishing). Anything unreadable, not a dict, or without
     an agent_id is skipped and left for the 24 h prune."""
     try:
@@ -513,7 +534,7 @@ def on_subagent_stop(data: dict) -> None:
         if not isinstance(agent_id, str) or not agent_id.strip():
             sys.exit(0)
         if not isinstance(session_id, str):
-            sys.exit(0)  # cannot tell the session: delete nothing
+            session_id = None  # matches only a snapshot recorded without a session id
         base = os.path.join(state_base(), "snap")
         try:
             names = os.listdir(base)
@@ -528,7 +549,8 @@ def on_subagent_stop(data: dict) -> None:
                     m = json.load(fh)
                 if not isinstance(m, dict):
                     continue
-                if m.get("agent_id") == agent_id and m.get("session_id") == session_id:
+                if m.get("agent_id") == agent_id and (m.get("session_id") == session_id
+                                                      or m.get("session_id") is None):
                     os.remove(path)
             except Exception:  # one bad snapshot file must not stop the others being cleaned
                 continue
@@ -546,7 +568,7 @@ NOT_JUDGED_EVENTS =("Stop",)  # the main session's stop is not judged; exit 0
 
 
 def main() -> None:
-    raw = sys.stdin.read()
+    raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     try:
         data = json.loads(raw)
     except ValueError:

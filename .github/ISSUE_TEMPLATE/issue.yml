@@ -1,0 +1,24 @@
+name: Issue
+description: Report a defect, gap or task. Every issue names the requirement it relates to, so the status page can place it.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The status page maps an issue to a requirement only from a line of its body that reads
+        `Relates-to:` naming either requirement ids (`Relates-to: REQ-006` or `Relates-to: REQ-006, REQ-007`)
+        or a section (`Relates-to: section <name>`). An issue without such a line shows as UNMAPPED.
+  - type: textarea
+    id: relates_to
+    attributes:
+      label: Relates-to (keep the line, replace REQ-### and the section name)
+      description: "Replace the whole placeholder with one of: `Relates-to: REQ-008`, `Relates-to: REQ-006, REQ-007` or `Relates-to: section Never-run gates`."
+      value: "Relates-to: REQ-### | section <name>"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What is wrong or missing
+      description: What you saw, what you expected, and the command or file that shows it.
+    validations:
+      required: true

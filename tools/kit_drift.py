@@ -533,7 +533,8 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
 
 def _git_show_file(cwd: Path, ref: str, rel_path: str) -> str | None:
     result = subprocess.run(
-        ["git", "show", f"{ref}:{rel_path}"], cwd=cwd, capture_output=True, text=True
+        ["git", "show", f"{ref}:{rel_path}"], cwd=cwd, capture_output=True, text=True,
+        encoding="utf-8", errors="replace"
     )
     if result.returncode != 0:
         return None
@@ -624,5 +625,17 @@ def main(argv: list[str] | None = None) -> int:
     return run_project_mode(Path(args.project), ci=args.ci, base=args.base)
 
 
+def _stdio_replace() -> None:
+    """Keep the stream's encoding but replace what it cannot hold, so a cp1252 console (Windows) never
+    raises UnicodeEncodeError on text from a child process, GitHub or a spec file (issue 159)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 if __name__ == "__main__":
+    _stdio_replace()
     sys.exit(main())

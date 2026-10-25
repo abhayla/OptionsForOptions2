@@ -547,7 +547,7 @@ def _warn_once(msg: str) -> None:
         _WARNED = True
 
 
-def deny(path_rel: str, reason_kind: str) -> None:
+def deny(path_rel: str, reason_kind: str, note: str = "") -> None:
     if reason_kind == "owner":
         msg = (
             "BLOCKED: '" + path_rel + "' is owner-locked (only the human project owner edits "
@@ -574,6 +574,8 @@ def deny(path_rel: str, reason_kind: str) -> None:
             "a hook wiring entry in the project's hook addendum, or run the Factory's kit "
             "upgrade."
         )
+    if note:
+        msg += "\n" + note
     sys.stderr.write(msg + "\n")
     sys.exit(2)
 
@@ -848,6 +850,20 @@ def _check_named_command(command: str, shell: str, hit: tuple[str, str]) -> tupl
 #     first non-flag word), then files; any later word starting with "-" is refused.
 #   - a leading `cd <one plain dir> &&` (_CD_PREFIX_OPS); the rest must pass the existing rules.
 #
+# W-051 (REQ-057 AC-2) adds three more, same path, each a data table:
+#   - generator regenerates (_GENERATOR_RUNS / _GENERATOR_PROGRAMS): the WHOLE command is
+#     `python tools/<generator> <dir> [exact trailing words]`, plain words only, run from a folder
+#     holding a lock file; <dir> is `.` or one plain absolute path to a folder holding a lock file,
+#     not inside a protected folder of either project (_GENERATOR_DIR_BANNED_FOLDERS);
+#   - `cd <dir> && X` (_cd_kit_tool_allows): <dir> is absolute or starts with `.` (no CDPATH lookup)
+#     and holds a lock file; X is ONE `python tools/<name>.py ...` run that main's read-only kit tool
+#     rule allows, judged against the current project's lock AND the cd target's, or X is the
+#     generator shape with `.` meaning the cd target; nothing may follow X; never an always-writer;
+#   - a bare flag word (_BARE_FLAG_RE) is not a path mention: allowed when every protected-name
+#     mention in the command is such a word (main would see no protected path without them).
+# Known gap (W-051, main's too): a short flag with a glued value (`tar -Ctools`) is not seen as a
+# mention by main's name match, so main already allows it; this path adds nothing there.
+#
 # KNOWN GAPS (out of scope by the W-041 threat model; reported, not defended here):
 #   - a `git commit` runs the project's own git hooks (pre-commit, commit-msg, ...) and, for
 #     `gh pr create`, a push runs pre-push: a hook is code the repo owner chose, outside this text;
@@ -912,7 +928,28 @@ _GH_ACTIONS = {"view", "list"}
 _GH_REPO_VALUE_RE = re.compile(
     r"^(?:[A-Za-z0-9][A-Za-z0-9.-]*/)?[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$"
 )
-_FINDINGS_REGEN_WORDS = ["python", "tools/build_findings_index.py", "."]
+# W-051 (REQ-057 AC-2): the generator regenerates a project is told to run. Generalises the old
+# findings-index special case (`python tools/build_findings_index.py .`). The whole command must be
+# `<program> tools/<name> <dir> <exact trailing words>`, every token a plain word, run from a folder
+# holding a lock file; <dir> is `.` or one plain absolute path to a folder holding a lock file, not
+# inside a protected folder of either project. Data tables, so a mutation test can loosen each one.
+_GENERATOR_PROGRAMS = ("python",)
+_GENERATOR_RUNS = {  # tool file -> the exact words that must follow the directory argument
+    "build_spec_digest.py": (),
+    "build_spec_index.py": (),
+    "build_order.py": (),
+    "build_findings_index.py": (),
+    "trace_check.py": ("--write-view",),
+}
+_GENERATOR_DIR_BANNED_FOLDERS = KIT_ONLY_FOLDERS + _FIXED_PROTECTED_FOLDERS
+# W-051: a bare flag word (one or two dashes, then only letters, digits and dashes) is not a path
+# mention. Main's name match needs a non-alphanumeric character before a protected name, so inside
+# such a word a name can only follow a dash: a glued short-flag value (`-Ctools`) is never matched
+# here (main does not see it either), and a word with `=`, `/`, `\`, `.` keeps today's verdict.
+_BARE_FLAG_RE = re.compile(r"^--?[A-Za-z0-9][A-Za-z0-9-]*\Z")
+# W-051: a kit tool run after a leading `cd <dir> &&`: the program words and the tool word shape.
+_CD_TOOL_PROGRAMS = ("python", "python3", "py")
+_CD_TOOL_WORD_RE = re.compile(r"^tools/[A-Za-z0-9_][A-Za-z0-9_.-]*\.py\Z")
 _LAUNCHER_PROGRAMS = {"powershell", "pwsh"}
 _LAUNCHER_FLAG_NOVALUE = {"-noprofile"}
 _LAUNCHER_FLAG_VALUE = {"-executionpolicy"}
@@ -1638,25 +1675,173 @@ def _has_cd_prefix(command: str, segments) -> bool:
             and len(segments) >= 2 and segments[0] == [[toks[0], toks[1]]])
 
 
-def _simple_allows(command: str, project_root: str, lock) -> bool:
-    """True only when the whole command is in the strict grammar and every program passes."""
+def _lock_root_dir(text: str, cwd: str | None) -> str | None:
+    """Canonical directory named by `.` or one plain absolute word, when it holds a lock file at its
+    root; else None. No `~`, no glob, no relative word other than `.` (fail closed)."""
+    if not text or "*" in text or "~" in text:
+        return None
+    if text == ".":
+        if not cwd:
+            return None
+        resolved = _canon(cwd)
+    else:
+        if not _is_abs_form(text):
+            return None
+        found = _abs_resolutions(text)
+        if len(found) != 1:
+            return None
+        resolved = found[0]
+    if not os.path.isdir(resolved) or not os.path.isfile(os.path.join(resolved, LOCK_REL)):
+        return None
+    return resolved
+
+
+def _in_any_kit_folder(resolved: str, project_root: str) -> bool:
+    """True when `resolved` sits inside (or is) a protected folder of the current project or of the
+    project that contains it (the first lock found walking up from its parent)."""
+    roots = [_canon(project_root)]
+    cur = os.path.dirname(resolved)
+    while True:
+        if os.path.isfile(os.path.join(cur, LOCK_REL)):
+            roots.append(_canon(cur))
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    for root in roots:
+        for folder in _GENERATOR_DIR_BANNED_FOLDERS:
+            if _is_under(resolved, _canon(os.path.join(root, folder))):
+                return True
+    return False
+
+
+def _generator_dir_ok(text: str, cwd: str | None, project_root: str) -> bool:
+    resolved = _lock_root_dir(text, cwd)
+    return resolved is not None and not _in_any_kit_folder(resolved, project_root)
+
+
+def _generator_run_allows(cmd, cwd: str | None, project_root: str) -> bool:
+    """W-051: `python tools/<generator> <dir> [exact trailing words]`, every token a plain word, run
+    from a directory holding a lock file (so `tools/<generator>` is that project's kit tool)."""
+    if not cmd or any(k != "w" for k, _t in cmd):
+        return False
+    words = [t for _k, t in cmd]
+    if len(words) < 3 or words[0] not in _GENERATOR_PROGRAMS or not words[1].startswith("tools/"):
+        return False
+    trailing = _GENERATOR_RUNS.get(words[1][len("tools/"):])
+    if trailing is None or tuple(words[3:]) != tuple(trailing):
+        return False
+    if _lock_root_dir(".", cwd) is None:
+        return False  # tools/<generator> must be a lock-holding project's own kit tool
+    return _generator_dir_ok(words[2], cwd, project_root)
+
+
+def _cd_target(command: str, cwd: str | None):
+    """(canonical cd target, the command text after `&&`) for `cd <one plain word> && <rest>`, or
+    None. The target must hold a lock file at its root; CDPATH set in the hook's environment, a `~`,
+    a glob or a word starting with `-` fail closed."""
+    toks = _simple_lex(command)
+    if (len(toks) < 4 or toks[0] != ("w", _CD_PROGRAM) or toks[1][0] != "w"
+            or toks[2] != ("op", "&&") or not _cd_dir_ok(toks[1][1])):
+        return None
+    if os.environ.get("CDPATH"):
+        return None
+    word = toks[1][1]
+    if "~" in word:
+        return None
+    if _is_abs_form(word):
+        found = _abs_resolutions(word)
+        target = found[0] if len(found) == 1 else None
+    elif word in (".", "..") or word.startswith(("./", "../")):
+        target = _resolve_token(word, cwd, True, False)  # bash never applies CDPATH to these
+    else:
+        return None  # `cd name` may follow CDPATH set in a shell rc the hook cannot see
+    if target is None or not os.path.isdir(target) or not os.path.isfile(os.path.join(target, LOCK_REL)):
+        return None
+    head = command.find("&&")  # the cd word is a plain word, so the first && is the operator
+    if head < 0:
+        return None
+    return target, command[head + 2:].strip()
+
+
+def _cd_kit_tool_allows(command: str, project_root: str, lock, cwd: str | None) -> bool:
+    """W-051: `cd <lock-holding dir> && X`, X ONE kit tool run (`python tools/<name>.py ...`) that
+    main's guard allows on its own as a read-only kit tool run, judged against the current project's
+    lock AND the cd target's lock, or X the generator shape with `.` meaning the cd target."""
+    found = _cd_target(command, cwd)
+    if found is None:
+        return False
+    target, rest = found
+    segs = _simple_parse(rest)
+    if not segs or len(segs) != 1 or len(segs[0]) != 1:
+        return False  # nothing may follow X: no list, no pipeline, no loop
+    cmd = segs[0][0]
+    if len(cmd) < 2 or any(k not in ("w", "q") for k, _t in cmd):
+        return False  # no redirect, no data token, no variable
+    if cmd[0][0] != "w" or cmd[0][1] not in _CD_TOOL_PROGRAMS:
+        return False
+    if cmd[1][0] != "w" or not _CD_TOOL_WORD_RE.match(cmd[1][1]):
+        return False
+    if _in_any_kit_folder(target, project_root):
+        return False
+    if _generator_run_allows(cmd, target, project_root):
+        return True
+    if cmd[1][1][len("tools/"):] in _KIT_TOOLS_ALWAYS_WRITE:
+        return False
+    if not _is_readonly_segment(rest, "Bash"):
+        return False  # main's own read-only kit tool rule (writer flags, conditional writers)
+    target_lock = load_lock(target)
+    if target_lock is None:
+        return False
+    return (check_shell_tool(rest, project_root, lock, "Bash") is None
+            and check_shell_tool(rest, target, target_lock, "Bash") is None)
+
+
+def _protected_word_hit(word: str, names) -> bool:
+    norm = _norm_command_text(word)
+    return any(_contains_path_token(norm, tok) for tok in names)
+
+
+def _bare_flags_only_mention(command: str, project_root: str, lock) -> bool:
+    """W-051: True when every protected-name mention in the (strict-grammar) command is a bare flag
+    word. False when no word explains main's deny at all (fail closed: something else did)."""
+    toks = _simple_lex(command)
+    names = [_norm_command_text(rel) for rel, _k in _protected_rel_names(project_root, lock)]
+    if any(any(c.isspace() for c in tok) for tok in names):
+        return False  # a protected name could span words: cannot judge word by word
+    mentions = [(k, t) for k, t in toks if _protected_word_hit(t, names)]
+    if not mentions:
+        return False
+    return all(k == "w" and _BARE_FLAG_RE.match(t) for k, t in mentions)
+
+
+def _simple_allows(command: str, project_root: str, lock, cwd: str | None = None) -> bool:
+    """True only when the whole command is in the strict grammar and every program passes.
+    `cwd` is the directory the shell runs in (the payload's cwd); None means the project root."""
+    if cwd is None:
+        cwd = project_root
     segments = _simple_parse(command)
     if not segments:
         return False
     if len(segments) == 1 and len(segments[0]) == 1 and not command.startswith("for "):
-        # the two whole-command shapes: never inside a loop, a list or a pipeline
+        # the whole-command shapes: never inside a loop, a list or a pipeline
         only = segments[0][0]
-        if [t for _k, t in only] == _FINDINGS_REGEN_WORDS and all(k == "w" for k, _t in only):
+        if _generator_run_allows(only, cwd, project_root):
             return True
         if only[0][0] == "w" and only[0][1] in _LAUNCHER_PROGRAMS:
             return _launcher_allows(only, project_root, lock)
+    if _bare_flags_only_mention(command, project_root, lock):
+        return True  # main denied only because a bare flag word spells a protected name
     if _has_cd_prefix(command, segments):
+        if len(segments) == 2 and _cd_kit_tool_allows(command, project_root, lock, cwd):
+            return True
         segments = segments[1:]  # the leading cd is checked above; every later segment is not
     return all(_program_allows(cmd) for seg in segments for cmd in seg)
 
 
 def check_shell_command(
-    tool_name: str, command: str, project_root: str, lock: dict | None
+    tool_name: str, command: str, project_root: str, lock: dict | None, cwd: str | None = None
 ) -> tuple[str, str] | None:
     """Main's verdict first; a denied command is allowed only from the Bash tool, and only when
     _simple_allows proves it (any internal error keeps the deny). W-046 merge: the tool name is
@@ -1667,16 +1852,41 @@ def check_shell_command(
     if tool_name != "Bash":
         return hit
     try:
-        if _simple_allows(command, project_root, lock):
+        if _simple_allows(command, project_root, lock, cwd):
             return None
     except Exception:
         return hit
     return hit
 
 
+OUTSIDE_NOTE = (
+    "Every path this names is outside the project: use the Read and Write tools for files "
+    "outside the project, not a shell command."
+)
+
+
+def _outside_only(command: str, project_root: str, lock) -> bool:
+    """W-051 deny text: True when every word naming a protected name is an absolute (or `~`) path
+    that resolves outside the project root. Any doubt -> False (the plain message)."""
+    try:
+        words = _shlex.split(command, posix=True)
+    except Exception:
+        return False
+    names = [_norm_command_text(rel) for rel, _k in _protected_rel_names(project_root, lock)]
+    mentions = [w for w in words if _protected_word_hit(w, names)]
+    if not mentions:
+        return False
+    root = _canon(project_root)
+    for w in mentions:
+        found = _abs_resolutions(w)
+        if not found or any(_is_under(r, root) for r in found):
+            return False
+    return True
+
+
 def main() -> None:
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     except Exception:
         sys.exit(0)
 
@@ -1713,10 +1923,14 @@ def main() -> None:
                 deny(path_shown, kind)
         elif tool_name in SHELL_TOOLS:
             command = tool_input.get("command", "") or ""
-            hit = check_shell_command(tool_name, command, project_root, lock)
+            hit = check_shell_command(tool_name, command, project_root, lock, cwd)
             if hit:
                 path_shown, kind = hit
-                deny(path_shown, kind)
+                try:
+                    note = OUTSIDE_NOTE if _outside_only(command, project_root, lock) else ""
+                except Exception:
+                    note = ""
+                deny(path_shown, kind, note)
     except SystemExit:
         raise
     except Exception:

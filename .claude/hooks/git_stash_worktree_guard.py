@@ -245,6 +245,7 @@ def is_linked_worktree(path: str):
             cwd=path,
             capture_output=True,
             text=True,
+            encoding="utf-8", errors="replace",
             timeout=3,
         )
         if proc.returncode != 0:
@@ -268,7 +269,7 @@ def is_linked_worktree(path: str):
 
 def main():
     try:
-        raw = sys.stdin.read()
+        raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
         data = json.loads(raw)
     except Exception:
         sys.exit(0)  # malformed JSON -> allow
