@@ -374,6 +374,26 @@ def test_two_puts_and_one_call_is_still_a_custom_strategy():
     assert isinstance(match(wrong, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, templates=CATALOGUE), Custom)
 
 
+def test_the_families_in_the_not_applicable_texts_follow_the_catalogue_data_not_a_typed_list(monkeypatch):
+    """REQ-078 AC-2: change a label in the data and the control's families change with it; a control with a template
+    that has no label is refused (fail closed)."""
+    from dataclasses import replace
+
+    from ofo.strategy import shape_families
+
+    assert shape_families.control_families("width") == ("straddles", "strangles", "iron butterflies", "iron condors")
+    assert shape_families.control_families("hedge") == ("vertical spreads", "iron butterflies", "iron condors")
+    relabelled = tuple(replace(t, family_plural="odd fish") if t.id == "iron_condor" else t for t in CATALOGUE)
+    monkeypatch.setattr(shape_families, "load_templates", lambda: relabelled)
+    assert "odd fish" in shape_families.control_families("width")
+    unlabelled = tuple(replace(t, family_plural=None) if t.id == "iron_condor" else t for t in CATALOGUE)
+    monkeypatch.setattr(shape_families, "load_templates", lambda: unlabelled)
+    with pytest.raises(ValueError):
+        shape_families.control_families("width")
+    with pytest.raises(ValueError):
+        shape_families.control_families("shift")
+
+
 def test_the_catalogue_names_the_shape_family_for_the_not_applicable_texts():
     """REQ-078 AC-2: the plural family label is DATA on the templates, never typed in backend code."""
     labels = {t.id: t.family_plural for t in CATALOGUE if t.family_plural}
