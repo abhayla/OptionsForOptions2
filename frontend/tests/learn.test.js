@@ -18,7 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import { routes } from '@/router/routes'
 import SOURCE from '@/lib/learnContent.js?raw'
-import { CONCEPTS, PLATFORM, SHAPES, STRATEGY_PARTS, STRATEGY_TEXT, allLearnText } from '@/lib/learnContent'
+import { CONCEPTS, HOW_IT_WORKS, PLATFORM, SHAPES, STRATEGY_PARTS, STRATEGY_TEXT, allLearnText } from '@/lib/learnContent'
 import REAL from './fixtures/strategy-templates-real.json'
 
 class FakeSocket {
@@ -196,6 +196,19 @@ describe('Learn tabs, content home, strategy page (GC-6 LEARN)', () => {
     for (const raw of contentText) {
       const line = raw.normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ')
       for (const re of banned) expect(line, `${re}: ${raw}`).not.toMatch(re)
+    }
+  })
+
+  it('W-159 (REQ-085 AC-7): the "How this trade works" bullets are in the scanned text, name only known slots and typed numbers nowhere', () => {
+    expect(Object.keys(HOW_IT_WORKS).length).toBeGreaterThan(0)
+    const slots = new Set(['buyCE', 'sellCE', 'buyPE', 'sellPE', 'expiry', 'underlying'])
+    for (const [id, bullets] of Object.entries(HOW_IT_WORKS)) {
+      expect(REAL.templates.map((t) => t.id), id).toContain(id) // a real server template id
+      for (const b of bullets) {
+        expect(contentText, b).toContain(b) // so the advice scan above covers it
+        expect(b, b).not.toMatch(/\d/) // every number comes from the reply's strings
+        for (const m of b.matchAll(/\{(\w+)\}/g)) expect(slots.has(m[1]), `${id}: ${m[1]}`).toBe(true)
+      }
     }
   })
 

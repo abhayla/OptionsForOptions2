@@ -167,6 +167,55 @@ export const STRATEGY_TEXT = {
     'A small fall can lose more than no move at all. The sold puts add a margin need.'),
 }
 
+// REQ-085 AC-7 "How this trade works": decision-support bullets per template id, DRAFT for the owner's read. {slots} are filled
+// only with strike / expiry strings the server sent for the legs (src/lib/howItWorks.js); a bullet whose slot has no value is
+// left out (AC-8). Slots: buyCE sellCE buyPE sellPE (the strike of the one leg of that kind), expiry, underlying.
+export const HOW_TITLE = 'How this trade works'
+export const HOW_LEARN_LINK = 'Learn about this strategy'
+const WHY = 'because you expect {underlying} to'
+export const HOW_IT_WORKS = {
+  bull_call_spread: [
+    `You buy the {buyCE} CE ${WHY} rise.`,
+    'You sell the {sellCE} CE, which pays for part of the call you bought and stops the profit rising above that strike.',
+    'Both calls expire on {expiry}.',
+  ],
+  bear_put_spread: [
+    `You buy the {buyPE} PE ${WHY} fall.`,
+    'You sell the {sellPE} PE, which pays for part of the put you bought and stops the profit rising below that strike.',
+    'Both puts expire on {expiry}.',
+  ],
+  bull_put_spread: [
+    `You sell the {sellPE} PE ${WHY} stay above that strike.`,
+    'You buy the {buyPE} PE, which limits the loss if the index falls below that strike.',
+    'Both puts expire on {expiry}.',
+  ],
+  bear_call_spread: [
+    `You sell the {sellCE} CE ${WHY} stay below that strike.`,
+    'You buy the {buyCE} CE, which limits the loss if the index rises above that strike.',
+    'Both calls expire on {expiry}.',
+  ],
+  short_strangle: [
+    `You sell the {sellPE} PE and the {sellCE} CE ${WHY} stay between those two strikes.`,
+    'The loss has no fixed limit on either side unless a bought option covers it.',
+    'Both options expire on {expiry}.',
+  ],
+  short_straddle: [
+    `You sell the {sellCE} CE and the {sellPE} PE ${WHY} stay close to that strike.`,
+    'The loss has no fixed limit on either side unless a bought option covers it.',
+    'Both options expire on {expiry}.',
+  ],
+  long_strangle: [
+    `You buy the {buyPE} PE and the {buyCE} CE ${WHY} move beyond one of those two strikes.`,
+    'The most you can lose is the premium you paid.',
+    'Both options expire on {expiry}.',
+  ],
+  long_straddle: [
+    `You buy the {buyCE} CE and the {buyPE} PE ${WHY} move a long way from that strike.`,
+    'The most you can lose is the premium you paid.',
+    'Both options expire on {expiry}.',
+  ],
+}
+
 // Part headings, in template order (REQ-011 AC-1 strategy page template).
 export const STRATEGY_PARTS = [
   ['what', 'What it is'],
@@ -259,6 +308,7 @@ export function allLearnText() {
   const out = []
   for (const l of [...CONCEPTS, ...PLATFORM]) out.push(l.title, l.summary, ...l.body)
   for (const t of Object.values(STRATEGY_TEXT)) out.push(...STRATEGY_PARTS.filter(([k]) => k !== 'shape').map(([k]) => t[k]))
-  out.push(SAMPLE_NOTE, NUMBERS_NOTE)
+  for (const bullets of Object.values(HOW_IT_WORKS)) out.push(...bullets)
+  out.push(SAMPLE_NOTE, NUMBERS_NOTE, HOW_TITLE, HOW_LEARN_LINK)
   return out
 }

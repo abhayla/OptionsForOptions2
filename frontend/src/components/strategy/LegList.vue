@@ -23,6 +23,7 @@ const props = defineProps({
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that field (REQ-077 AC-2)
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
+  warningsById: { type: Object, default: () => ({}) }, // REQ-085: the outcome's own per-leg warning lists by instrument id (liquidity codes only)
   controls: { type: Object, default: () => NO_CONTROLS }, // REQ-078 AC-2: controlsFrom(the newest reply); nothing applies until one arrives
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
 })
@@ -120,6 +121,7 @@ function setMultiplier(index) {
           <span v-if="legUnit === 'quantity'" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
           <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
           <span v-if="leg.hedge === true" class="tag" data-testid="hedge-mark">Hedge</span>
+          <span v-for="(w, k) in warningsById[leg.instrument_id] ?? []" :key="k" class="tag" :data-code="w.code" :title="w.text" data-testid="leg-warning">{{ w.text }}</span>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
           <span v-if="leg.planned_entry != null && leg.captured_at != null" class="text-ink-muted" data-testid="leg-captured">{{ leg.typed === true ? 'typed' : 'captured' }} {{ istTime(leg.captured_at) }}</span>

@@ -31,6 +31,8 @@ import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
+import StrategyWarnings from '@/components/strategy/StrategyWarnings.vue'
+import HowThisTradeWorks from '@/components/strategy/HowThisTradeWorks.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
@@ -93,6 +95,7 @@ if (linkRefused.value) {
 // W-148 (REQ-076): the leg-edit state. The shape name is the server's (null until a reply named it); `updating` marks the
 // old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
 const shapeName = ref(null)
+const shapeId = ref(null) // REQ-085 AC-7: the matched template's id (null = Custom Strategy), beside its name
 const hasReply = ref(false)
 // W-158 (REQ-078 AC-2/AC-3): which of Shift / Width / Hedge work and the Shift total, exactly as the newest applied reply sent them.
 const controls = ref(NO_CONTROLS)
@@ -270,6 +273,7 @@ const setLegs = (next) => {
   legs.value = next
   hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
   shapeName.value = null
+  shapeId.value = null
   controls.value = NO_CONTROLS // REQ-078 AC-9: a picker replacement (or any new leg list) ends the Shift total; the server cannot see it
   editError.value = null
   load()
@@ -336,6 +340,7 @@ async function editLeg(edit) {
       if (Array.isArray(reply?.legs) && reply.legs.length === legs.value.length) {
         legs.value = applyEditReply(legs.value, reply)
         shapeName.value = reply.shape_name ?? null
+        shapeId.value = reply.shape ?? null
         controls.value = controlsFrom(reply)
         hasReply.value = true
       }
@@ -348,6 +353,7 @@ async function editLeg(edit) {
       savedRevision.value = null
     }
     shapeName.value = reply.shape_name ?? null
+    shapeId.value = reply.shape ?? null
     controls.value = controlsFrom(reply) // the server's controls and Shift total (null after a step, Width or Hedge)
     hasReply.value = true
     // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
@@ -404,6 +410,8 @@ const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 const legQuoteRows = computed(() => legQuotes(data.value))
+// REQ-085 AC-1/AC-8: each leg's warning list from the outcome the page draws; a leg whose list is absent has no entry
+const warningsById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => Array.isArray(l.warnings)).map((l) => [l.instrument_id, l.warnings])))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 // ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
@@ -445,10 +453,11 @@ const pricesStamp = computed(() => {
     <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
     <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
     <LegList
-      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
+      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :warnings-by-id="warningsById"
       :undo-offered="undoHeld !== null"
       @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
     />
+    <HowThisTradeWorks v-if="hasReply && legs.length >= 2" :shape-id="shapeId" :legs="legs" :underlying="headerUnderlying" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
@@ -501,6 +510,8 @@ const pricesStamp = computed(() => {
           <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
         </ul>
       </div>
+
+      <StrategyWarnings :warnings="data.warnings ?? null" :label="data.warnings_label ?? null" />
 
       <SummaryCards
         class="mt-4"
