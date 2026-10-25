@@ -417,16 +417,16 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     return off
 
 
-Gate = tuple[dict[str, str | None], frozenset[int]]  # (the reason each control is off, the Hedge-marked indexes)
+# (the reason each control is off, the Hedge-marked indexes, the live index level for Width's last-step case or None)
+Gate = tuple[dict[str, str | None], frozenset[int], Decimal | None]
 
 
-def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None,
-                spot: Decimal | None):
+def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
     """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
     e = req.edit
     if gate is None:  # unreachable: the route always passes it for a move
         raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
-    off, hedged = gate
+    off, hedged, spot = gate
     if off[e.control] is not None:
         raise LegEditRefused(off[e.control])
     listing, direction = edit.Listing(cat, today), e.direction or 1
@@ -439,14 +439,13 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     return moved.legs, moved.moved
 
 
-def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None,
-               spot: Decimal | None = None):
+def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
-    hedge) needs ``gate`` (:func:`_controls` and the Hedge marks, computed by the server from the legs as sent);
-    ``spot`` is the live index level for Width's last-step case (None: no price, ADR-186 (5))."""
+    hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
+    None: no price, ADR-186 (5); all computed by the server from the legs as sent)."""
     e, name = req.edit, req.underlying
     if e.control in MOVES:
-        return _apply_move(cat, req, legs, today, gate, spot)
+        return _apply_move(cat, req, legs, today, gate)
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":
@@ -465,7 +464,7 @@ def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: 
     if req.edit.control not in MOVES:
         return None
     template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
-    return _controls(template, hedged, legs, list_current), hedged
+    return _controls(template, hedged, legs, list_current), hedged, _live_spot(ctx, req.underlying)
 
 
 async def _check_landing(tradable: Tradable, underlying: str, new_legs: list[EditLeg], moved: frozenset[int],
@@ -526,8 +525,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
     legs = _legs_of(cat, req, today)
-    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current),
-                                 _live_spot(ctx, req.underlying))
+    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stored_ids = await contract_ids(ids)

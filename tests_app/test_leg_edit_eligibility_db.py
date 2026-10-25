@@ -76,9 +76,9 @@ async def test_the_real_eligibility_check_refuses_every_contract_when_no_list_wa
 
 
 async def test_the_real_list_check_is_current_on_the_loaded_day_and_not_the_day_after(app_engine, monkeypatch):
-    """AC-10: the database stamps the load time itself (it cannot be back-dated), so "yesterday's list" is judged one day
-    ahead: a list loaded now is today's list today and is yesterday's list tomorrow (the three controls are then off);
-    with no load at all it is not current either."""
+    """AC-10: the database stamps the load time itself (it cannot be back-dated), so "yesterday's list" is judged
+    one day ahead: a list loaded now is today's list today and is yesterday's list tomorrow (the three controls are
+    then off); with no load at all it is not current either."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
