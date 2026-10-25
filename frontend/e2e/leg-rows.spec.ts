@@ -73,6 +73,53 @@ test('REQ-077 AC-1: typing a price on a leg row sends it as text and the row sho
   expect(sent[0].edit).toEqual({ control: 'price', index: 0, price: '81.30' })
 })
 
+// W-158 (REQ-078 AC-2, AC-3, AC-6): the Strike Controls. The reply fields below come from the RECORDED reply of the real route
+// (tests/fixtures/leg-edit-controls.json); only the instrument ids are the page's own (the stored instrument file is empty in ofo_test).
+const rec = JSON.parse(readFileSync(resolve(fileURLToPath(new URL('.', import.meta.url)), '../tests/fixtures/leg-edit-controls.json'), 'utf-8'))
+const withControls = (from: any, extra: object = {}) => ({ controls: from.controls, control_reasons: from.control_reasons, shift_total: from.shift_total, ...extra })
+
+test('REQ-078 AC-3/AC-6: Shift + sends only control and direction; the four strikes redraw one step up and the total shows +50', async ({ page }) => {
+  const sent: any[] = []
+  await page.route('**/api/strategies/leg-edit', async (route) => {
+    const body = route.request().postDataJSON()
+    const shifting = body.edit.control === 'shift'
+    if (body.edit.control !== 'read') sent.push(body)
+    await route.fulfill({ json: { ...replyFrom(body, (i) => (shifting ? { strike: rec.shift_plus1.legs[i].strike } : {})),
+      ...withControls(shifting ? rec.shift_plus1 : rec.read), shape_name: 'Short Iron Condor' } })
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
+  await expect(page.getByTestId('shift-total')).toHaveText('-')
+  await page.getByTestId('shift-plus').click()
+  await expect(page.getByTestId('shift-total')).toHaveText('+50')
+  await expect(page.getByTestId('leg-strike')).toHaveText(rec.shift_plus1.legs.map((l: any) => l.strike))
+  expect(sent).toHaveLength(1)
+  expect(sent[0].edit).toEqual({ control: 'shift', direction: 1 })
+})
+
+test('REQ-078 AC-2: Width is disabled with the server\'s sentence on a bull call spread; a Custom Strategy shows the server\'s reason, never a built one', async ({ page }) => {
+  const two = { underlying: 'NIFTY', legs: DRAFT.legs.slice(0, 2) }
+  await page.route('**/api/strategies/leg-edit', async (route) => {
+    const body = route.request().postDataJSON()
+    await route.fulfill({ json: { ...replyFrom(body, () => ({})), ...withControls(rec.bull_call_read), shape_name: 'Bull Call Spread' } })
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(two))}`)
+  await expect(page.getByTestId('width-plus')).toBeDisabled()
+  await expect(page.getByTestId('width-reason')).toHaveText(rec.bull_call_read.control_reasons.width.what_happened)
+  await expect(page.getByTestId('shift-plus')).toBeEnabled()
+})
+
+test('REQ-078 ADR-186 (4): an unequal-wing condor named Iron Condor by the server has Width and Hedge enabled; the page infers nothing from the name', async ({ page }) => {
+  await page.route('**/api/strategies/leg-edit', async (route) => {
+    const body = route.request().postDataJSON()
+    // the stand-in says Custom Strategy (no name) yet enables every control: the buttons follow `controls`, not the name
+    await route.fulfill({ json: { ...replyFrom(body, () => ({})), ...withControls(rec.read), shape_name: null } })
+  })
+  await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
+  await expect(page.getByTestId('shape-name')).toContainText('Custom Strategy')
+  await expect(page.getByTestId('width-plus')).toBeEnabled()
+  await expect(page.getByTestId('hedge-plus')).toBeEnabled()
+})
+
 test('with no legs the page says No legs yet and shows no numbers', async ({ page }) => {
   await page.goto(`${REPLAY_URL}/strategy/builder`)
   await expect(page.getByTestId('no-legs-text')).toHaveText('No legs yet')
