@@ -242,6 +242,26 @@ def test_a_migration_only_diff_selects_the_fixed_migration_set() -> None:
     names = {pathlib.PurePosixPath(p).name for p in chosen}
     assert chosen and {p.name for p in TESTS_APP.glob("test_*migration*.py")} <= names
     assert "test_strategy_shape_matrix.py" in names and "test_alembic_migration_guard.py" in names
+    # every tests_app file that only says "alembic" (no NEW_PINS, no _migration_replay) is in the set too
+    alembic_only = {p.name for p in TESTS_APP.glob("test_*.py")
+                    if re.search(r"\balembic\b", p.read_text(encoding="utf-8"))}
+    assert alembic_only and alembic_only <= names, sorted(alembic_only - names)
+
+
+def test_a_top_level_package_init_change_selects_its_importers() -> None:
+    """backend/ofo/__init__.py keys on the package 'ofo'; every tests_app file importing ofo must be picked."""
+    rel = "backend/ofo/__init__.py"
+    diff = f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n@@ -1,1 +1,2 @@\n x = 1\n+X = 1\n"
+    chosen = sel.select([rel], diff, TESTS_APP, lambda r: "x = 1\nX = 1\n", ROUTES)
+    importers = {f"tests_app/{p.name}" for p in TESTS_APP.glob("test_*.py")
+                 if re.search(r"^\s*(?:import ofo\b|from ofo[. ])", p.read_text(encoding="utf-8"), re.M)}
+    assert importers and importers <= set(chosen), sorted(importers - set(chosen))
+
+
+def test_the_selector_source_holds_no_control_bytes() -> None:
+    """A '\\b' once landed as a literal backspace byte and silently dropped 16 migration tests (PR #567 review)."""
+    src = (ROOT / "scripts" / "orchestrator" / "select_app_tests.py").read_bytes()
+    assert not [c for c in src if c < 32 and c not in (9, 10, 13)]
 
 
 def test_a_comment_only_migration_edit_selects_nothing() -> None:

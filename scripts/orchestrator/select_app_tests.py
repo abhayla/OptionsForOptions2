@@ -43,7 +43,7 @@ ROUTES_DIR = "backend/ofo_app/routes/"
 MAX_FILES = 12
 #: a changed migration selects a FIXED set: every tests_app file named *migration* plus every file whose text mentions
 #: alembic, NEW_PINS (the validator pins a migration publishes) or the migration replay helper
-MIGRATION_TEXT = re.compile(r"alembic|NEW_PINS|_migration_replay")
+MIGRATION_TEXT = re.compile(r"\balembic\b|NEW_PINS|_migration_replay")
 _METHODS = {"get", "post", "put", "delete", "patch", "websocket"}
 
 
@@ -62,7 +62,7 @@ class Key:
         if self.kind == "migration":
             return MIGRATION_TEXT
         if self.kind == "module" and "." not in self.name:
-            return re.compile(r"" + re.escape(self.name) + r"")  # a top-level package: any mention
+            return re.compile(r"\b" + re.escape(self.name) + r"\b")  # a top-level package: any mention
         if self.kind == "module":
             pkg, mod = self.name.rsplit(".", 1)
             p, m = re.escape(pkg), re.escape(mod)
