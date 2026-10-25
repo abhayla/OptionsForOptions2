@@ -316,6 +316,30 @@ def test_req134_ac1_a_name_over_40_characters_with_a_control_character_or_not_te
     assert refused.value.code == sf.STRATEGY_NAME_INVALID
 
 
+@pytest.mark.parametrize("typed", ["\u200b", " \u200b ", "\ufeff", "\u2060\u200b", "\u00ad", "\u2028", "\u2029",
+                                   "\u200b\u2003"])
+def test_req134_ac1_a_name_with_no_visible_character_after_trimming_is_refused_as_empty(typed):
+    """Finding 2: a zero-width-space-only name looks empty, so it gets the empty-name text."""
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_EMPTY
+
+
+@pytest.mark.parametrize("typed", ["a\u2028b", "a\u2029b", "a\u2028\u2028b", "\u2028a\u2028b"])
+def test_req134_ac1_a_line_or_paragraph_separator_inside_a_name_is_refused_as_invalid(typed):
+    """Finding 2: the one-line rule covers U+2028 and U+2029 (an edge one is trimmed first, an inner one is refused)."""
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_INVALID
+
+
+@pytest.mark.parametrize("typed,stored", [("a\u200b", "a\u200b"), ("\u200ba", "\u200ba"), ("a\u00adb", "a\u00adb"),
+                                          ("\u00a0 NIFTY\u3000", "NIFTY")])
+def test_req134_ac1_a_name_with_a_visible_character_stays_accepted(typed, stored):
+    """Finding 2 (green side): invisible characters beside a visible one are the user's words; only edges trim."""
+    assert str.__str__(sf.check_strategy_name(typed)) == stored
+
+
 def test_req134_ac1_the_empty_message_is_the_catalogues_not_an_ad_hoc_string():
     from ofo.errors import render  # noqa: PLC0415
 
