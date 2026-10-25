@@ -1,0 +1,23 @@
+{
+ "id": "gate-timed-test-flakes-under-load",
+ "scope": "generic",
+ "class": "A local check that runs an external tool under a fixed wall-clock limit and treats a timeout as an empty (clean) result turns into a false failure when the machine is loaded by parallel agents: the assertion expects output, the tool is killed at the limit, and the gate stops on a red that has nothing to do with the change.",
+ "mechanism": "tests/test_edit_lint_hook.py::test_real_eslint_run_flags_unused_variable asserts scripts/hooks/edit_lint.py returns findings for a planted unused variable; edit_lint kills eslint at TIMEOUT_S = 10 and returns '' (fail-open, as the edit hook must not block typing). With a fix-round builder (vitest, eslint, gate) and a 52-file DB run going at once, eslint took more than 10 s and the test failed inside gate.py's guard-tests step.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "chunk 3 session A, gate.py --pre-push on build/c3-row-28 at 25a28021",
+  "evidence": "gate-28b-push.log: 'AssertionError: assert '' != ''' at tests/test_edit_lint_hook.py:129, '1 failed, 1286 passed'; the same test alone on the same tree: '1 passed in 4.20s'; the same tree passed the gate twice before at 7caea7ac (builder, checker)."
+ },
+ "fix": "Instance: re-run the gate when the failing test passes alone on the same tree and the change does not touch it. Class fix candidate (not built): the test asks edit_lint for a longer limit (a parameter) or skips with a visible reason on timeout, so a loaded machine cannot turn the guard red; the hook itself keeps its 10 s fail-open limit.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Seen once; a second occurrence makes the test-side limit due."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-181.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-25", "where": "row 28b pre-push gate", "evidence": "eslint killed at 10 s under parallel load"}
+ ]
+}

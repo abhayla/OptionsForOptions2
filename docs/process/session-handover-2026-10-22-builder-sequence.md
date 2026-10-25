@@ -1,6 +1,46 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE chunk 2 LANDED (session f1b75d11), 2026-10-24 evening - START HERE (newest)
+## UPDATE chunk 3 session A END (session a43256ae), 2026-10-25 - START HERE (newest)
+Session A ran 2026-10-24 19:50 to 2026-10-25 ~12:xx IST (owner asleep 2026-10-25 ~00:xx-08:15; owner questions parked,
+then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker briefs `check-*.md`, wrappers):
+`C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\a43256ae-1cfc-4a9f-8c25-066f2fdf30c0\scratchpad`.
+- **DONE (merged, CI green on main):**
+  - #536 ADR-181 tools: `scripts/orchestrator/gate.py` (local gate; `--pre-push` refuses while an App-tests run is
+    pending unless it fixes a red) and `scripts/orchestrator/dispatch.py` (make_brief + check_brief + copy_from_check +
+    overlap_gate; refuses a row's third fix round; ledger `.git/ofo-dispatch-ledger.jsonl`). #539 = the gate's defect
+    fix (local false failures) - counted as part of item 1 (owner Q3, ADR-184 (4)).
+  - #538 repo guards: C2 all-routes order closure (Tier A) and C1 Playwright live-socket fakes (two bypasses remain ->
+    #537 A, structural fix).
+  - #540 row 27 (W-155, REQ-135); #541 row 29 (W-157, REQ-134, migration 0025); #542 row 28 backend (W-156, REQ-070,
+    migration 0026: delete hides, keeps rows and history, Undo; any plan row blocks delete).
+  - ROW28F_STATE (fill in: PR number / parked issue)
+  - ROW29C_STATE (fill in: PR number - 20-character typed names, ADR-183)
+  - Docs PR (this one): ADR-182 (price protection measured from the market price at Execute - owner Q1, Sensibull LTP),
+    ADR-183 (names 1-20 characters, owner Q2 over the approved 40; stored names up to 40 stay readable), ADR-184 (owner
+    Q3-Q6: rename entries shown not restorable; history view-only after execution; a tracked draft deletes; #539 is gate
+    item 1); REQ-070 AC-2/AC-5/AC-6 and REQ-134 AC-1 amended; findings shared-test-db-holds-undeletable-committed-rows,
+    db-tests-outside-the-row-red-only-in-ci, browser-infers-a-server-permission, gate-timed-test-flakes-under-load.
+- **PENDING:** session B: rows 25 and 26 and the chunk 3 close (process review per docs/process/row-review.md).
+- **BLOCKED:** none. **PARKED:** PARKED_STATE (fill in).
+- **NEXT (fresh session B, prompt in chunk-session-prompts.md):** rows 25, 26 (row 26 owns bounded Reward/Risk and option
+  time/intrinsic value - row 27 built only the lone-futures case), then the chunk close. Price protection wiring follows
+  ADR-182 whenever its row comes.
+- **Measured (use for every estimate):** PR1+PR2 ~5 h; row 27 2.5 h; row 29 3.6 h; row 28 ~4 h (two parts, two fix
+  rounds). A row is ~3.5 h wall clock (build ~40 min; the rest is check, fix rounds, gate re-runs ~8-10 min each, CI ~25
+  min); +1.5 h with a migration or guard change. Never estimate from build time (owner asked twice, 10-24 and 10-25).
+- **Process changes this session (technical calls):** (1) DB tests outside a row run in CI through an early draft PR,
+  in parallel with the Opus check - a local 52-file run over the tunnel took 1h49m (CI ~15 min); a builder runs only its
+  own DB files via db_run_fresh.py. (2) Every migration publishes NEW_PINS when it re-creates a validator. (3) A screen
+  offers a server-refused action only on a server-computed permission field (can_delete, restorable). (4) Checkers run
+  as general-purpose agents. (5) Brief quotes may cite only text on main: a decision still on the docs branch is named
+  without quote marks (check_brief reads main).
+- **Rules learned:** builders over-run budgets (28b: 112 calls vs ~64) and skip Tier A mutants - the checker runs them;
+  a builder migrated the shared ofo_dev to an unmerged revision (brief gap, #537); a timed lint test goes red under
+  parallel load (re-run alone before acting); wt-new's -Name takes the suffix only (passing the full name doubled the
+  prefix: `-OptionsForOptions2-c3r28f`).
+- **Worktrees left:** WORKTREES_STATE (fill in); `-c3docs` until this PR merges.
+
+## UPDATE chunk 2 LANDED (session f1b75d11), 2026-10-24 evening (older)
 Chunk 2 (rows 17-24) is on main: part A #533 (rows 17-20 + row 21 parts 21m/21b, with migration 0024 at its reviewed
 version) and part B #531 (row 21 complete, rows 22-24, reference copy, chunk Tier A review fixes). Session f1b75d11 ran
 past its three rows (rows 21-24 + the chunk close) because the goal's stop hook kept it going.
