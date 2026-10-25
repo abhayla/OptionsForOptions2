@@ -4,6 +4,22 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.15.0 — measure before speeding up (OD-124, REQ-062)
+
+1. Red CI report (W-071): `python tools/ci_reds.py --repo OWNER/NAME [--workflow FILE] [--event NAME] --since
+   YYYY-MM-DD` lists every red run with its failed jobs and steps and the commit that followed it on the branch, then
+   the count per step and the median minutes of red and green runs. It reads run metadata through `gh` only (no logs)
+   and writes nothing. Use it before changing a process to save CI time.
+   Migration: none.
+2. Budget report (W-072): `python tools/measure_tokens.py --budgets` shows each agent's Budget line beside its actual
+   tool calls and wall-clock minutes (waits included), marked OVER, OK or NO-BUDGET, with the number of transcripts per
+   folder. The pattern is the budget hook's own. The default report is unchanged.
+   Migration: none; a project script that counted builder calls by hand can be retired.
+3. Kit text (W-073): the builder brief asks for a work-in-progress commit after each acceptance criterion and the next
+   command at the end of the report; the deliver skill continues in a fresh session when the token report shows the
+   main session reading more than 300,000 context tokens per call.
+   Migration: a project brief template copied from the kit's adds the same two lines in the project's own session.
+
 ## 1.14.0 — the parts 1.13.0 left out (OD-121, REQ-061)
 
 1. Rules (W-069): `learning.md` 2.0.0 follows the two-round process. A second red of a class is round two, the last;

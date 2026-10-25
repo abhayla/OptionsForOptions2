@@ -8,7 +8,7 @@ read by `agent_model_required.py` (Tier A only). Other lines are read by the che
 Core: <the one mechanism everything else depends on>
 Proof: <the smallest real run on real input that shows it works; step 1 of the brief IS this run>
 Budget: <N> min wall-clock, <M> tool calls
-Report: evidence-table (claim | command run this turn + its result line; under 300 words)
+Report: evidence-table (claim | command run this turn + its result line; under 300 words), then the next command to run
 Class: <fixes only: the population the defect is a sample of, as a data filter, before and after>
 Round: <n>/2
 Findings checked: <ids from the findings registry>
@@ -28,3 +28,6 @@ Delete lines that do not apply. Tier C briefs need only `Budget:` and `Report:`.
 - [ ] A change to a shown value greps every test tree, end-to-end included, for the old value.
 - [ ] Tier A guards only: a mutation test (at most 5 mutants, on a scratch copy) fails when the guard is removed.
 - [ ] A guard's known bypasses are written in its README, not chased.
+
+Commit your work in progress in your worktree after each acceptance criterion passes, so a session restart loses at
+most one; end the report with the next command to run.
