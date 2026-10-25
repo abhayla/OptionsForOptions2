@@ -1,6 +1,41 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE chunk 3 session A END (session a43256ae), 2026-10-25 - START HERE (newest)
+## UPDATE chunk 4 session A END (sessions c097bcc4 and its restarts), 2026-10-26 ~02:xx IST - START HERE (newest)
+Ran 2026-10-25 13:20 to 2026-10-26 early morning; the Claude process restarted three times (in-flight agents lost
+once: a whole 31b build). Process changed mid-session: kit 1.14.0 + ADR-189 (another session, #555/#556) retired
+gate.py, the ADR-178 tracker and measure_process.py; follow `docs/process/runbook.md` (`python tools/ci_local.py
+--pr-body <body>` before a push; one checker per tier; after round 2 a Tier A MAJOR parks the item).
+- **DONE (merged, CI green):** #549 measure_process fix (process item; retired by ADR-189 the same night - its measured
+  values are in row-review.md); #553 overlap gate skips generated files (second process item, ADR-188); #547 row 32
+  (REQ-136, PARTIAL: net premium, charges, funds needed -> row 26; target-date breakeven -> row 37; expected-move bands
+  -> row 38); #552 + #554 row 30 (REQ-078, code merged, PARTIAL until AC-1's live half: 50 edits, p95 <= 1,000 ms on
+  the dev server with the owner's live session).
+- **PARKED: row 31 (REQ-085) - issue #558.** Backend PR #557 (draft, head 44cacfdc) + frontend branch build/c4-row-31f
+  (6fc7f935, Sonnet PASS). Round 2 (Opus) MAJOR: Builder and Execute disagree for a FUTURE that expires before the sold
+  call (options fixed in round 1). New round = merge main, fix futures with the same `expiry_covers`, three tests for
+  the surviving mutants, one findings-only Opus check, land 31b then 31f (~1.5-2 h).
+- **Owner decisions this session (in this docs PR or on main via the row PRs):** ADR-185 (unhedged warning per strategy
+  and direction, as in Sensibull); ADR-186 (1)-(5) (Hedge evens unequal hedges; Width/Hedge reset the Shift total; no
+  history per click; unequal wings keep the condor name; Width's last step with no price moves the call side);
+  ADR-188 (overlap gate item + audit speed-ups; item (3) superseded by ADR-189).
+- **Independent audit 2026-10-25** (docs/process/process-audit-2026-10-25.md): about half of row 30's time was
+  waiting; orchestrator context 312k then 415k/turn vs < 250k; builders over budget every time. Binding rules: memory
+  note audit-2026-10-25-speed-rules + session rule 12 in chunk-session-prompts.md.
+- **PENDING / NEXT:** (1) chunk 3 session B as planned (rows 25, 26 + chunk 3 close) - row 26 ALSO mounts row 32's
+  info marks for net premium, charges, funds needed from frontend/src/lib/figureDefinitions.js; (2) row 30 AC-1 live
+  half (owner's live session, dev server, 50 edits); (3) chunk 4 session B: rows 33-35 + chunk 4 close; (4) the chunk 4
+  deferred issue (to file at chunk close, items collected in the 2026-10-25 docs batch: 30b vacuous stale-quote test,
+  stale-price sweep outside leg_edit, 60-s list cache, select_app_tests misses function-level imports, 30f/31f/32f
+  MINORs, 31b lot-size note); (5) owner reading list: 24 "How this trade works" bullets (learnContent.js HOW_IT_WORKS,
+  row 31f), the figure definitions (row 32), the new warning texts (row 31b) - all drafts.
+- **BLOCKED:** none. **PARKED:** row 31, #558 (above).
+- **Worktrees left:** -c4docs until this PR merges; -c4r31b and -c4r31f kept for the #558 round (branches pushed; TTL
+  48 h); four empty agent worktrees under the hidden worktrees folder go at the next sweep.
+- **Rules learned:** fetch before every push (the merge gate updates the remote branch); merge main into a stacked
+  branch BEFORE its gate; prettier on NEW files only; pin every new slot type / template / tests_app file (ci_local does
+  not run tests_app - two CI-only reds this session); a builder's report of "red before" is a claim - ask for the line.
+
+
 Session A ran 2026-10-24 19:50 to 2026-10-25 ~12:15 IST (owner asleep 2026-10-25 ~00:xx-08:15; owner questions parked,
 then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker briefs `check-*.md`, wrappers):
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\a43256ae-1cfc-4a9f-8c25-066f2fdf30c0\scratchpad`.

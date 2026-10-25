@@ -77,6 +77,11 @@
    "date": "2026-10-24",
    "where": "row 23a builder (103 calls vs 80) and its fix round (92 calls vs a 48-call hard stop in the dispatch prompt), session f1b75d11",
    "evidence": "Twelfth and thirteenth occurrences: the dispatch prompt's HARD STOP line was ignored by both Sonnet and Opus builders; the agent definition's maxTurns is the only enforced cap."
+  },
+  {
+   "date": "2026-10-25",
+   "where": "chunk 4 session c097bcc4: 30b, 30b2, measure-fix, 30b-fix1",
+   "evidence": "tool calls used / budget: 30b 115/80, 30b2 144/80, measure-fix 62/40, 30b-fix1 65/40 (audit section 3 item 5; 30b + 30b2 read 58M context). ADR-188 (2) adds a hard stop at budget to the builder handover; tracker row 16 counts agent calls over budget (limit 0)."
   }
  ]
 }

@@ -61,6 +61,15 @@ and ADR-181's gate command. How-to: `docs/process/runbook.md`.
 11. **Live proofs.** Use `scripts/orchestrator/dev_run.py` (database `ofo_dev` only). The Kite login happens once, in a
     private window, from the cached daily token. Never click inside a live order panel. Use options only and never sell
     holdings; the owner presses Execute.
+12. **ADR-188 speed rules** (2026-10-25 audit, `docs/process/process-audit-2026-10-25.md`):
+    - Dispatch before asking: send every independent item first, ask the owner while agents run.
+    - Batch SPEC CHANGE questions at measure time; the measure agent does the Sensibull research.
+    - One local check run per pushed sha: `python tools/ci_local.py --pr-body <body>` (ADR-189 replaced gate.py); re-run only when the sha changes; fetch before every push (the merge gate may have updated the remote branch).
+    - Builder handover = prettier on NEW frontend files only (never a whole-file reformat of an old file; row 30f's reformat of 7 old files added 3,339 lines and was reverted) + OpenAPI regenerated when a model changed + every new tests_app file in the app-test selection pins + every new template / slot type pinned + hard stop at budget.
+    - Measure agents run on Sonnet.
+    - Fresh orchestrator session about every 2 rows (context < 250k).
+    - Owner decisions go to the session's docs branch, not row branches.
+    - Open a draft chunk PR from the chunk's first row (ADR-178 row 8; missed in chunks 3-4).
 
 ## Chunk 3
 

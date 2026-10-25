@@ -1,0 +1,27 @@
+{
+ "id": "overlap-gate-refuses-generated-files",
+ "scope": "generic",
+ "class": "A dispatch-time overlap gate that compares the files two rows touch counts generated or shared registry files as overlap, so two rows with no real product overlap are serialised and the second sits idle.",
+ "mechanism": "overlap_gate treats every file two rows both touch as a conflict, including generated files (views/spec-digest.md, docs/process/coverage-stages.yaml, the findings INDEX) that regen.py can rebuild at merge. Spec write-backs on row branches make every row touch them.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "row 31 dispatch (audit section 3 item 2)",
+  "evidence": "dispatch-31b.log: 'OVERLAP GATE: REFUSED - both rows touch: docs/process/coverage-stages.yaml, views/spec-digest.md'; row 31 blocked about 190 min (3.2 h idle) at the time of the audit."
+ },
+ "fix": "ADR-188 (1): the overlap gate ignores generated files and spec write-backs go on one docs branch, not row branches. Branch build/c4-overlap-generated carries the gate change (a process-tool change under the ADR-178 freeze; see ADR-188).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The covering test is tests/orchestrator/test_overlap_gate.py once branch build/c4-overlap-generated merges; status stays unguarded until then."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-188.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "row 31b dispatch",
+   "evidence": "dispatch-31b.log OVERLAP GATE: REFUSED on coverage-stages.yaml and spec-digest.md; ~190 min idle"
+  }
+ ]
+}

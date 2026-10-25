@@ -43,3 +43,25 @@ Lesson ids keep their old numbers (R1 -> L1) because scripts cite them. L7 (the 
 Format: `### <row/W-id> - <title> (<date>)` then one line each: `minutes: <wall-clock>`, `rounds: <n>`,
 `extra rounds: <cause, one sentence each, or none>`, `fix applied: <what changed in a brief, rule, test or tool, and
 where; or none>`.
+
+### W-159 row 31 - REQ-085 Builder warnings and "How this trade works" (2026-10-25/26) - PARKED #558
+- minutes: ~330 working (measure 14:00-14:40; owner question ADR-185 ~14:20-14:50; blocked by the overlap gate until #552 merged ~15:10Z; 31b build x2 - the first lost to a session restart - fix round, two Opus rounds; 31f build + Sonnet check); parked 2026-10-26 ~02:30 IST unmerged (PR #557 draft, branch build/c4-row-31f pushed)
+- rounds: 2 Opus rounds (backend), 1 Sonnet round (frontend, PASS)
+- extra rounds: round 1 - reverse calendar not covered the way Execute sees it, liquidity settings untested, unsigned decay text; round 2 - the same Builder/Execute class for FUTURES (expiry ignored for futures in warnings.py) -> ADR-189 park; one brief error (the orchestrator wrote "covered call -> none", contradicting ADR-185's lone-future case)
+- fix applied: shared `expiry_covers` in execution/sequence.py used by both screens; the parked issue names the futures fix and the three tests that kill the surviving mutants; checker briefs now ask "does Builder == Execute for every leg kind (options AND futures)"
+
+### W-158 row 30 - REQ-078 Shift / Width / Hedge (2026-10-25)
+- minutes: ~454 (13:33-21:07 IST, merge of #554 at 15:37Z); code merged (#552 backend, #554 frontend); PARTIAL until AC-1's live half (50 edits, p95 <= 1,000 ms on the dev server, owner's live session)
+- rounds: 2 Opus rounds + an independent redesign (backend), 1 Sonnet round (frontend)
+- extra rounds: round 1 - the orchestrator's brief said Width always moves both sides (AC-4's last step was missed) and the route tests faked the eligibility check; round 2 - a STALE index quote kept its price and counted as live (ADR-015); 5 owner questions (~89 min waiting, one held ~70 min of ready work); CI red once - a new slot type not pinned, and the app-test selector does not pick the slot-pin test
+- fix applied: ADR-186 (1)-(5) written; one shared `priced(quote)` rule in backend/ofo/marketdata/quote.py; ADR-188 builder handover checklist (docs/process/builder-brief.md: new-file prettier only, selection/slot/template pins, OpenAPI); dispatch before asking; the selector gap -> chunk 4 deferred issue
+
+### W-160 row 32 - REQ-136 Figure definitions and the projections note (2026-10-25)
+- minutes: ~128 (13:25-15:33 IST); merged #547; PARTIAL - net premium, charges, funds needed (row 26), breakeven on the target date (row 37), expected-move bands (row 38) get their info mark in the row that renders them
+- rounds: 1 Sonnet round (0 MAJOR, 5 MINOR; two wording MINORs fixed by the orchestrator)
+- extra rounds: none; one gate red on formatting (builder skipped the gate) and one red from a flaky test under load
+- fix applied: builder handover checklist (ADR-188); measure briefs check each AC item against what renders today
+
+### Chunk 4 session A process (2026-10-25, measured)
+- measure_process.py fix merged (#549) then retired by ADR-189 the same night; its measured values for chunk 3 session A (a43256ae): context 363k/turn over 627 turns (limit < 250k), 3 rows closed, 0 table prints, 7 Opus dispatches without a safety-set file, round-2 checkers 8/9/15/17/36 min, 4 local DB runs vs 3 rows, row-10 worst 52 min; this session (c097bcc4): 415k/turn over 413 turns
+- the independent audit (docs/process/process-audit-2026-10-25.md, ADR-188): about half of row 30's time was waiting; the overlap gate's generated-file refusals fixed (#553)

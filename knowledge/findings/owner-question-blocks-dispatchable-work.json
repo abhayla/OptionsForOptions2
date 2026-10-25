@@ -1,0 +1,27 @@
+{
+ "id": "owner-question-blocks-dispatchable-work",
+ "scope": "generic",
+ "class": "The orchestrator asks the owner a question with the interactive tool while independent work is ready to dispatch: the tool stops the orchestrator until the owner answers, so ready briefs wait for the whole answer time.",
+ "mechanism": "The question tool blocks the orchestrator's turn. Nothing in the process orders 'dispatch every independent item first, then ask while agents run', so the question goes out first and the dispatchable items wait behind it.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "row 30, question at 16:32 IST (audit section 3 item 1)",
+  "evidence": "audit_main.py events: '16:32:02 62.2m AskUserQuestion'; 30f's measure and worktree were ready at 16:23 and MAJOR 2 of the fix did not depend on the answer; both were dispatched at 17:46, about 70 min lost. The question came from the orchestrator's own brief error (MAJOR 1: 'Width always moves both sides')."
+ },
+ "fix": "Practice adopted in ADR-188 (2): dispatch every independent item before asking, ask while agents run. ADR-178 tracker row 13 counts question-tool minutes while a ready brief waited (limit 0).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check yet. measure_process.py could count question-tool time while a ready brief existed - chunk 5 process candidate. Until then the tracker row 13 is counted by hand (ledger dispatch times vs question-tool calls in the transcript)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-188.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "row 30, 16:32 IST question (62.2 min)",
+   "evidence": "audit section 3 item 1; ~70 min lost; other question waits that day 22.9, 1.9, 1.3, 1.1 min (89 min in all)"
+  }
+ ]
+}
