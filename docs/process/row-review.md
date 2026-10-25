@@ -159,6 +159,32 @@ recurs twice after it was added is rewritten or turned into a machine check at t
 
 ## Log (newest first)
 
+### Meta review after row 30 (2026-10-25, sessions c097bcc4 + its continuation; independent audit docs/process/process-audit-2026-10-25.md)
+- Measured misses: (1) orchestrator context 312k/turn (audit) then 415k/turn over 413 turns (measure_process.py
+  --session c097bcc4) against < 250k - the largest token cost, two sessions running; (2) a 62-min owner question held
+  ~70 min of dispatchable work; (3) row 31 blocked ~190 min by the overlap gate on generated files (fixed: #553);
+  (4) 5 of 10 orchestrator gates red on handover misses (format, OpenAPI, selection pins, money-guard line, slot pin
+  caught only by CI) and 6 timed-test flakes under low memory (one gate killed by the OS); (5) builders over budget
+  every time (115, 144, 99 calls vs 60-80); (6) three orchestrator brief errors (Width last step, measure row-10
+  definition, ADR-186 (5) example) and one premature push (remote branch already updated by the merge gate: +1 gate).
+- Followed: dispatch command on every row brief; overlap gate honoured; owner answers written into the spec the same
+  turn (ADR-185, ADR-186 (1)-(5), ADR-188); round 2 within 15 min (13 and 3 min).
+- Changes adopted: ADR-188 (dispatch before asking, one gate per sha, builder handover checklist incl. selection and
+  slot pins, Sonnet measures, fresh session about every 2 rows, decisions on the docs branch); fetch before every push.
+
+### Row 30 - REQ-078 Shift / Width / Hedge (code merged 2026-10-25, session c097bcc4; PARTIAL until AC-1's live half; PRs #552 backend, #554 frontend)
+- A user sees: a "Strike Controls" group (2+ legs, an option leg) with Shift (+50 total, "-" after Width/Hedge/a manual
+  edit), Width and Hedge, each enabled only where the server says it applies, with the server's reason otherwise;
+  unequal hedges even out and unequal-wing condors keep their name (Sensibull, ADR-186); a move onto an unlisted,
+  expired or not-tradable contract is refused whole, naming the leg; a moved typed price is replaced with a note.
+- Expected vs actual: measured 75 min build + ~90 min checks; actual 13:33-21:07 (~7.6 h): 5 owner questions (~89 min
+  waiting), 30b build + addition after ADR-186 (4), Opus r1 REVISE (2 MAJOR, one from the orchestrator's brief),
+  fix 1, Opus r2 REVISE (stale index price counted as live), redesign (one shared priced() rule) + narrow Opus PASS,
+  CI red once (slot pin not selected locally), 30f build + finish + Sonnet PASS; ~9 local gate runs.
+- Right: the independent checks caught two real Tier A defects (untested eligibility path; stale price used as live).
+  Wrong: brief errors, waiting on questions, gate re-runs; AC-1's live half (50 edits, p95 <= 1,000 ms, owner's live
+  session) not run - row stays PARTIAL until it is.
+
 ### Row 32 - REQ-136 Figure definitions and the projections note (closed 2026-10-25, session c097bcc4, PARTIAL; PR #547)
 - A user sees: an info mark beside max profit, max loss, breakeven at expiry, reward/risk, time value, intrinsic
   value, probability of profit, margin needed / available and the estimated-now view, opening a plain definition on
