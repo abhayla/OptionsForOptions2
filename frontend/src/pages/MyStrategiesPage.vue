@@ -6,13 +6,16 @@
      as the API sent it. The Completed page lists only statuses in COMPLETED_STATUSES; the store holds only 'draft'
      today (alembic 0008 CHECK), so that list is empty and the page says so instead of offering a filter it cannot back. -->
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import DraftDelete from '@/components/strategy/DraftDelete.vue'
+import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
 import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
 import { useOrderPath } from '@/lib/orderPath'
+import { useDeleteFlow } from '@/lib/strategyHistory'
 
 const COMPLETED_STATUSES = []
 
@@ -33,7 +36,7 @@ const errorParts = ref(null)
 const shown = computed(() => (completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
-onMounted(async () => {
+async function loadList() {
   try {
     const list = (await api.get('/strategies')).data?.strategies
     rows.value = Array.isArray(list) ? list : []
@@ -42,7 +45,16 @@ onMounted(async () => {
   } finally {
     loaded.value = true
   }
+}
+onMounted(loadList)
+
+// REQ-070 AC-6: Delete with Undo (one flow, shared with the Builder's saved list). Undo puts the row back from a fresh read.
+const deleteFlow = useDeleteFlow(api, {
+  onRemoved: (id) => { rows.value = rows.value.filter((r) => r.id !== id) },
+  onBack: loadList,
+  reload: loadList,
 })
+onBeforeUnmount(() => deleteFlow.dispose())
 
 // REQ-134 AC-5: the Builder opens the saved strategy from its `strategy` link and reads the saved copy itself (legs, planned
 // entries and revision as saved), so a reload opens it again and Save there updates this strategy.
@@ -108,6 +120,7 @@ v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3
           <span v-if="trackedText(s.tracked)" class="text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
           <button type="button" class="underline" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="underline" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
+          <DraftDelete :row="s" :flow="deleteFlow" />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           <form v-if="renaming && renaming.id === s.id" class="flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="rounded border border-line px-2 py-1" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
@@ -118,5 +131,6 @@ v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3
         </li>
       </ul>
     </template>
+    <DraftDeleteStatus :flow="deleteFlow" />
   </section>
 </template>
