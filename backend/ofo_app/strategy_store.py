@@ -45,6 +45,8 @@ VERSION_PENDING = "version_pending"
 VERSION_NOT_FOUND = "version_not_found"
 #: W-144 fix 1 (ADR-018, REQ-060 Q222): Zerodha is away from the active version; sticky until a recorded resolution.
 RECONCILIATION_REQUIRED = "reconciliation_required"
+#: W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket (any plan row or version row) is never deleted.
+DELETE_AFTER_BASKET = "delete_after_basket"
 
 
 class StrategyStoreError(ValueError):
@@ -77,6 +79,7 @@ class StrategySummary:
     name: str = sf.DEFAULT_STRATEGY_NAME  # REQ-134 AC-4: the saved-strategies list shows it
     leg_count: int = 0  # the ACTIVE definition's legs (the active version's after the first execution)
     first_leg: Optional[FirstLeg] = None  # its first leg's contract terms; the browser writes "... and N more"
+    can_delete: bool = False  # REQ-070 AC-6: no plan row and no version row; False (fail closed) unless proven
 
 
 @dataclass(frozen=True)
@@ -105,18 +108,31 @@ _INSERT = text(
     "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version, name) "  # noqa: S608
     f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}"
 )
-_SELECT = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref")
+#: One definition of "never sent a basket": no plan row of ANY status (an open plan may already be filled) and no version
+#: row (a version only exists after a fill). Reused by the list (can_delete) and by ``delete_draft``.
+_CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
+                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
+_CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+_SELECT_HIDDEN = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref "  # noqa: S608
+                      "AND deleted_at IS NOT NULL FOR UPDATE")
+_SET_DELETED = text("UPDATE public.strategies SET deleted_at = clock_timestamp() WHERE id = :id AND deleted_at IS NULL")
+_CLEAR_DELETED = text("UPDATE public.strategies SET deleted_at = NULL WHERE id = :id AND deleted_at IS NOT NULL")
+#: REQ-070 AC-6: a hidden (deleted) draft answers every read below exactly like a missing one.
+_SELECT = text(f"SELECT {_COLUMNS} FROM public.strategies "  # noqa: S608
+               "WHERE id = :id AND user_ref = :user_ref AND deleted_at IS NULL")
 _SELECT_FOR_UPDATE = text(
-    f"SELECT {_COLUMNS}, underlying FROM public.strategies WHERE id = :id AND user_ref = :user_ref FOR UPDATE")
+    f"SELECT {_COLUMNS}, underlying FROM public.strategies WHERE id = :id AND user_ref = :user_ref "
+    "AND deleted_at IS NULL FOR UPDATE")
 #: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
     "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, "
+    f"{_CAN_DELETE_SQL} AS can_delete, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
     "WHERE v.strategy_id = s.id AND v.state = 'active'), s.definition) AS definition) AS d "
-    "WHERE s.user_ref = :user_ref ORDER BY s.id")
+    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY s.id")
 _RENAME = text("UPDATE public.strategies SET name = :name WHERE id = :id RETURNING id, name, revision, updated_at")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
@@ -125,7 +141,8 @@ _UPDATE = text(f"UPDATE public.strategies SET definition = CAST(:definition AS J
                f"RETURNING {_COLUMNS}")
 _HISTORY = text("SELECT seq, at, change_summary::text AS change_summary, definition::text AS definition_text FROM public.strategy_history "
                 "WHERE strategy_id = :id ORDER BY seq")
-_HISTORY_ONE = text("SELECT definition::text AS definition_text FROM public.strategy_history "
+_HISTORY_ONE = text("SELECT definition::text AS definition_text, change_summary::text AS change_summary "
+                    "FROM public.strategy_history "
                     "WHERE strategy_id = :id AND seq = :seq")
 _EXISTING_IDS = text("SELECT id FROM public.catalogue_contracts WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 
@@ -247,6 +264,36 @@ async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
     return RenamedStrategy(int(written.id), written.name, int(written.revision), written.updated_at)
 
 
+async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> None:
+    """REQ-070 AC-6 / ADR-118: hides a strategy that never sent a basket; the row and its history stay. The decision is
+    read inside the strategy's row lock, so a plan creation (which takes the same lock) serializes with it. An
+    unreadable plan table refuses (fail closed). A hidden strategy answers NOT_FOUND. The caller commits."""
+    async with conn.begin_nested():
+        row = await _locked(conn, user_ref, strategy_id)
+        _check_revision(row, expected_revision)
+        try:
+            async with conn.begin_nested():
+                deletable = (await conn.execute(_CAN_DELETE, {"id": row.id})).scalar_one() is True
+        except Exception:  # noqa: BLE001 - an unreadable answer is "a basket may have been sent"
+            deletable = False
+        if not deletable:
+            raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
+        await conn.execute(_SET_DELETED, {"id": row.id})
+
+
+async def undelete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> StoredStrategy:
+    """Undo of ``delete_draft``: the same id, revision and last-saved time come back. A visible strategy answers
+    NOT_FOUND. The caller commits."""
+    async with conn.begin_nested():
+        row = (await conn.execute(_SELECT_HIDDEN, {"id": _check_id(strategy_id, "strategy"),
+                                                   "user_ref": user_ref})).one_or_none()
+        if row is None:
+            raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
+        _check_revision(row, expected_revision)
+        await conn.execute(_CLEAR_DELETED, {"id": row.id})
+    return await load(conn, user_ref, row.id)
+
+
 async def _write_history(conn: Any, strategy_id: int, summary: str, current_text: str) -> int:
     summary = sf.check_summary_text(summary)  # closed shape or refused: no text that is not catalogue data is stored
     version = sf.check_schema_version(sf.parse_json(current_text))
@@ -306,6 +353,14 @@ async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefi
     return _stored(written, saved)
 
 
+def _is_rename_only(change_summary: str) -> bool:
+    """A history entry whose items are all ``renamed`` is shown but is not a restore target (it holds the definition
+    that was already current when the name changed)."""
+    items = sf.parse_json(change_summary)
+    return isinstance(items, list) and bool(items) and all(
+        isinstance(i, dict) and i.get("kind") == "renamed" for i in items)
+
+
 async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
                   expected_revision: int) -> StoredStrategy:
     """Makes history entry ``seq`` current; the replaced definition is written as a new entry first (nothing is
@@ -318,9 +373,10 @@ async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
         _check_revision(row, expected_revision)
         if await execution_state(conn, user_ref, row.id) != NOT_EXECUTED:  # ADR-019: restore is pre-execution only
             raise StrategyStoreError(RESTORE_AFTER_EXECUTION, f"strategy {strategy_id} has executed")
-        entry_text =(await conn.execute(_HISTORY_ONE, {"id": row.id, "seq": seq})).scalar_one_or_none()
-        if entry_text is None:
+        entry = (await conn.execute(_HISTORY_ONE, {"id": row.id, "seq": seq})).one_or_none()
+        if entry is None or _is_rename_only(entry.change_summary):  # Q4 (pending owner): a rename is never a target
             raise StrategyStoreError(HISTORY_NOT_FOUND, f"strategy {strategy_id} has no history entry {seq}")
+        entry_text = entry.definition_text
         saved = await _read(conn, entry_text)
         resolve = await catalogue_resolver(conn, saved.contract_ids)
         sf.check_against_catalogue(saved, resolve, require_live=True)
@@ -623,7 +679,7 @@ async def version_saved(conn: Any, version: StoredVersion) -> sf.SavedDefinition
 async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
-                            len(r.legs), _first_leg(r.legs)) for r in rows]
+                            len(r.legs), _first_leg(r.legs), r.can_delete is True) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

@@ -202,6 +202,7 @@ class SummaryOut(ApiModel):
     leg_count: int  # legs of the active definition; "and N more" is leg_count - 1
     first_leg: FirstLegOut
     tracked: Optional[bool]  # noqa: UP045 - True/False from the tracking store; None = could not be read (never "no")
+    can_delete: bool  # REQ-070 AC-6: False once a basket was sent (or when that could not be read)
 
 
 class RenamedOut(ApiModel):
@@ -209,6 +210,11 @@ class RenamedOut(ApiModel):
     name: CatalogueText
     revision: int  # unchanged by a rename (REQ-134 AC-3)
     updated_at: datetime.datetime  # unchanged by a rename: the last-saved time follows the definition
+
+
+class DeletedOut(ApiModel):
+    id: int
+    revision: int  # unchanged by a delete or its Undo
 
 
 class StrategyListOut(ApiModel):
@@ -266,6 +272,7 @@ _STORE_REFUSAL = MappingProxyType({
     store.RESTORE_AFTER_EXECUTION: ("strategy_restore_after_execution", Failure.CONFLICT),  # W-144, ADR-019
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
     store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
+    store.DELETE_AFTER_BASKET: ("strategy_delete_after_basket", Failure.CONFLICT),  # REQ-070 AC-6, ADR-118
 })
 
 
@@ -421,7 +428,7 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
              "updated_at": r.updated_at, "name": sf.shown_name(r.name), "leg_count": r.leg_count,
              "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
                            "expiry": r.first_leg.expiry},
-             "tracked": None if tracked is None else r.id in tracked} for r in rows]})
+             "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete} for r in rows]})
     return await _run(db, work, form_status=409)
 
 
@@ -445,6 +452,29 @@ async def rename_strategy(strategy_id: int, body: StrategyNameIn, db: Annotated[
         return RenamedOut.model_validate({"id": renamed.id, "name": sf.shown_name(renamed.name),
                                           "revision": renamed.revision, "updated_at": renamed.updated_at})
     return await _run(db, work, form_status=422)
+
+
+@router.delete("/strategies/{strategy_id}", response_model=DeletedOut)
+async def delete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
+                          user_ref: Annotated[str, Depends(current_user_ref)],
+                          expected_revision: int = Query(gt=0)) -> DeletedOut:
+    """REQ-070 AC-6: hides a strategy that never sent a basket (its rows and history stay). 409 `Can't delete: orders
+    were sent` otherwise; 404 for another user's, a missing or an already hidden strategy."""
+    async def work():
+        await store.delete_draft(db, user_ref, strategy_id, expected_revision=expected_revision)
+        return DeletedOut.model_validate({"id": strategy_id, "revision": expected_revision})
+    return await _run(db, work, form_status=409)
+
+
+@router.post("/strategies/{strategy_id}/undelete", response_model=StrategyOut, response_model_exclude_unset=True)
+async def undelete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
+                            user_ref: Annotated[str, Depends(current_user_ref)],
+                            expected_revision: int = Query(gt=0)) -> StrategyOut:
+    """Undo of a delete: the same strategy comes back (REQ-070 AC-6)."""
+    async def work():
+        return await _strategy_out(db, await store.undelete_draft(db, user_ref, strategy_id,
+                                                                  expected_revision=expected_revision))
+    return await _run(db, work, form_status=409)
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
