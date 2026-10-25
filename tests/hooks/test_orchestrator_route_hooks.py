@@ -348,19 +348,22 @@ def test_merge_chain_order_and_success(capsys):
     assert "merge_when_green.py" in r.calls[2][1] and r.calls[2][2:] == ["308", "--reviewed-sha", SHA]
 
 
-def test_merge_children_run_in_utf8_mode(monkeypatch):
-    # PR 473 (2026-10-20): the kit gate's reader thread decoded a gh reply as cp1252 and the gate refused
+def test_merge_children_run_without_grafts_or_utf8_override(monkeypatch):
+    # PR 473 (2026-10-20) needed a UTF-8 env workaround for the kit gate; kit 1.11.0/1.12.0 fix it in the kit, so
+    # merge.py no longer forces it. Grafts are switched off for every child (Tier A review of PR #546, 2026-10-25).
     seen = {}
 
     def fake_run(cmd, **kw):
-        seen.update(kw.get("env") or {})
+        seen.update(kw)
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setenv("PYTHONUTF8", "0")
     monkeypatch.setattr(merge.subprocess, "run", fake_run)
     merge.run(["gh", "--version"])
-    assert seen.get("PYTHONUTF8") == "1" and seen.get("PYTHONIOENCODING") == "utf-8"
-    assert "PATH" in seen  # the rest of the environment is kept
+    env = seen["env"]
+    assert env["PYTHONUTF8"] == "0" and "PATH" in env  # the caller's environment is passed through unchanged
+    assert not pathlib.Path(env["GIT_GRAFT_FILE"]).exists()
+    assert seen.get("encoding") == "utf-8" and seen.get("errors") == "replace"
 
 
 def test_merge_stops_on_failed_close_check():

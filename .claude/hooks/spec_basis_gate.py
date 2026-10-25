@@ -155,7 +155,7 @@ def main():
     except (AttributeError, ValueError):
         pass
     try:
-        raw = sys.stdin.buffer.read().decode("utf-8")
+        raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
         data = json.loads(raw)
     except Exception:
         return 0

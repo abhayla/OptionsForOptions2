@@ -24,6 +24,7 @@ Proof: <fixes only: the one real-data run that shows the class is fixed>
 Threat model: in scope <...> / out of scope <...>   (any guard or check: what it must stop, and what it need not)
 Round: <n>/2
 Findings checked: <ids from the findings registry this change was checked against>
+Attack list: <the attacks the final verifier will run, one per line; written by the start check or the measure step before the build, never by the builder>
 Guard tests: <the repo's guard test files the change must keep green>
 Precondition: each "merged"/"exists"/"done" claim in this brief checked against GitHub: <how, and the result>
 Spec quote: <the exact spec line this work implements, with its id>
@@ -42,7 +43,13 @@ Delete the lines that do not apply (the `Class:` pair for new work; the threat m
   functions) and names its guard by import source, not identifier text.
 - [ ] A feature that decides on another system's answer lists every answer state (stated, absent, not found,
   failed, empty, ambiguous) and what each does.
+- [ ] A change to a shown value greps every test tree, end-to-end tests included, for the old value.
+- [ ] After merging main, re-run the lint ratchet.
 - [ ] One test per acceptance criterion; targeted test files only, output to a log file, tail only.
 - [ ] Every guard has a mutation test that fails when the guard is removed.
 - [ ] Where a detector keeps losing, the brief asks for a structural guarantee (the one path every case passes) and
   checks that path really runs first.
+- [ ] The builder runs each listed attack and reports its result before reporting done.
+- [ ] Run every test file you changed in full, never a name-filtered subset, before reporting done.
+- [ ] A skipped test counts as not run and is reported as skipped.
+- [ ] A mutation check edits a scratch copy, never a checked-out file.

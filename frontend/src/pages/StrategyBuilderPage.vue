@@ -16,6 +16,7 @@ import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
+import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
@@ -516,6 +517,7 @@ const pricesStamp = computed(() => {
         :time-value="data.summary.time_value ?? null"
         :intrinsic-value="data.summary.intrinsic_value ?? null"
       />
+      <ProjectionsNote />
       <p v-if="pricesStamp" class="px-4 text-xs text-ink-muted" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
       <PopFigure :pop="data.probability_of_profit ?? null" />
       <MarginLine :margin="data.margin" :capabilities="capabilities" />

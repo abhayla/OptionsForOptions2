@@ -40,10 +40,11 @@ from ofo.errors.explanations import render_explanation
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.marketdata.quote import priced
 from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
-from ofo.strategy import stored_form
+from ofo.strategy import shape_families, stored_form
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, render_reason
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
@@ -344,7 +345,7 @@ def _entry_of(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int):
 def _live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
     """The live index level, or None (no feed, no price): the shape is read from the strikes, no spot invented."""
     quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
-    return quote.ltp if quote is not None and quote.ltp is not None and quote.ltp > 0 else None
+    return quote.ltp if priced(quote) else None
 
 
 def _reference_spot(ctx: MarketContext | None, underlying: str, legs: list[EditLeg], gap: Decimal) -> Decimal:
@@ -399,17 +400,26 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
     if not current:
         off = dict.fromkeys(off, "leg_edit_list_not_loaded_today")
-    elif len(legs) < MIN_SHAPE_LEGS or all(x.leg.instrument is Instrument.FUT for x in legs):
+    elif all(x.leg.instrument is Instrument.FUT for x in legs):
         off = dict.fromkeys(off, "leg_edit_shift_needs_option_leg")
+    elif len(legs) < MIN_SHAPE_LEGS:  # each control says its own reason (REQ-078 AC-2)
+        off = {"shift": "leg_edit_shift_needs_option_leg", "width": "leg_edit_width_needs_two_legs",
+               "hedge": "leg_edit_hedge_needs_two_legs"}
     else:
         if template is None or not template.width_adjustable:
             off["width"] = "leg_edit_width_not_applicable"
-        if template is None or not hedged or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
+        if template is None or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
             off["hedge"] = "leg_edit_hedge_not_applicable"
+        elif not hedged:
+            # a shape of a Hedge family that has no Hedge-marked leg (Long Iron Condor / Butterfly): the shapes sentence
+            # would name its own family as unsupported, so the reason states the condition only (ADR-003)
+            in_family = template.family_plural in shape_families.control_families(shape_families.HEDGE)
+            off["hedge"] = "leg_edit_hedge_no_hedge_legs" if in_family else "leg_edit_hedge_not_applicable"
     return off
 
 
-Gate = tuple[dict[str, str | None], frozenset[int]]  # (the reason each control is off, the Hedge-marked indexes)
+# (the reason each control is off, the Hedge-marked indexes, the live index level for Width's last-step case or None)
+Gate = tuple[dict[str, str | None], frozenset[int], Decimal | None]
 
 
 def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
@@ -417,14 +427,14 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     e = req.edit
     if gate is None:  # unreachable: the route always passes it for a move
         raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
-    off, hedged = gate
+    off, hedged, spot = gate
     if off[e.control] is not None:
         raise LegEditRefused(off[e.control])
     listing, direction = edit.Listing(cat, today), e.direction or 1
     if e.control == "shift":
         moved = edit.shift(listing, req.underlying, legs, direction)
     elif e.control == "width":
-        moved = edit.width(listing, req.underlying, legs, direction)
+        moved = edit.width(listing, req.underlying, legs, direction, spot)
     else:
         moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
     return moved.legs, moved.moved
@@ -432,7 +442,8 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
 
 def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
-    hedge) needs ``gate`` (:func:`_controls` and the Hedge marks, computed by the server from the legs as sent)."""
+    hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
+    None: no price, ADR-186 (5); all computed by the server from the legs as sent)."""
     e, name = req.edit, req.underlying
     if e.control in MOVES:
         return _apply_move(cat, req, legs, today, gate)
@@ -454,7 +465,7 @@ def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: 
     if req.edit.control not in MOVES:
         return None
     template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
-    return _controls(template, hedged, legs, list_current), hedged
+    return _controls(template, hedged, legs, list_current), hedged, _live_spot(ctx, req.underlying)
 
 
 async def _check_landing(tradable: Tradable, underlying: str, new_legs: list[EditLeg], moved: frozenset[int],
@@ -472,7 +483,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     """AC-3/AC-9 (ADR-186 (2)): only Shift adds to the total; a manual step, Width or Hedge resets it ('-')."""
     control = req.edit.control
     if control == "shift":
-        step = int(edit.strike_step(edit.Listing(cat, today), req.underlying, legs))
+        step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
         return (req.shift_total or 0) + (req.edit.direction or 1) * step
     return None if control in ("step", "width", "hedge") else req.shift_total
 

@@ -54,6 +54,10 @@ The project's registry is `knowledge/findings/`: one JSON file per class (format
   or guards goes to independent reviewers (safety, delivery, platform), each given the current rule quoted beside
   the proposed one (finding `process-change-narrows-safety-rule`).
 
+- **R5 A repeated orchestrator miss gets a hook, not a memory note.** Three lessons for such a hook: check only the
+  brief the dispatch names (never a file the prompt merely mentions); treat a crash of the checked tool as
+  fail-open (allow); expect interpreter-flag and wrapper spellings (`python -X utf8 ...`, `timeout 900 python ...`).
+
 ## D. Detection-gap RCA (high-risk reviews and production defects)
 
 Between a fix wave and the next review of high-risk work (deletes, deploys, auth, payments, secrets, migrations,

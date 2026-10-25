@@ -123,8 +123,8 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   regenerated files in the PR".
 - Merge only with `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` (or `land.py`), which runs
   the kit gate `tools/merge_when_green.py <pr> --reviewed-sha <full sha>` in the foreground — never
-  `gh pr checks --watch && gh pr merge`, which merges before CI has started. On Windows prefix `merge.py`/`land.py`
-  with `PYTHONUTF8=1`: without it the gate cannot decode a large diff and times out ("staleness unreadable", kit #154). The sha is the full 40-character sha of
+  `gh pr checks --watch && gh pr merge`, which merges before CI has started. No `PYTHONUTF8=1` prefix is needed
+  since kit 1.12.0 (kit #154/#159 fixed in the kit); run it from a full clone. The sha is the full 40-character sha of
   the commit the reviewer/verifier passed (kit 1.8.0); the gate refuses without it and answers `RE-REVIEW NEEDED`
   when a later push or base update touches the PR's files or a Tier A path.
 - Fast delivery (owner 2026-10-16, revised by ADR-106; reasons there and in `docs/process/goal-chain.md`):

@@ -7,7 +7,7 @@ step's output to a log file outside the repo, and prints one line per step plus 
 
 Usage:
     python tools/ci_local.py [--list] [--repo PATH] [--workflow PATH] [--event NAME]
-                             [--base REF] [--pr-body FILE]
+                             [--base REF] [--pr-body FILE] [--regen]
 
 Options:
     --list         print the plan (PLAN / SKIP lines, pytest collection included); run nothing
@@ -17,6 +17,11 @@ Options:
     --base         base ref for `git merge-base <base> HEAD` (the PR base sha); default: origin/main
     --pr-body FILE a file holding the PR description; written into a temp event JSON and given to
                    every step as GITHUB_EVENT_PATH (tools/check_pr_spec_block.py reads it)
+    --regen        before the checks, run each generator's regenerate form that exists in the project
+                   (spec digest, requirements index, build order, findings index when findings exist,
+                   trace view when views/trace.md exists) and print each file it rewrote, so a spec or
+                   decision change never reaches a push with a stale generated file (REQ-057 AC-7).
+                   Default: off. Not run with --list (which runs nothing).
 
 Plan rules (every step of every job, in file order, each accounted for):
     uses: step                      SKIP  environment setup
@@ -34,7 +39,7 @@ Plan rules (every step of every job, in file order, each accounted for):
     (no exit code is ever turned into SKIP: a non-zero exit is FAIL)
 Fail closed (UNSUPPORTED, exit 2, before anything runs): any other `if:` shape, any `${{ }}` in a
 command other than github.event.pull_request.base.sha / github.event.before (resolved to the
-merge-base), a job-level `if:`, a step `working-directory:`, a step `shell:` or job `defaults.run.shell` other than bash.
+merge-base), a job-level `if:` other than the kit's draft-skip condition, a step `working-directory:`, a step `shell:` or job `defaults.run.shell` other than bash.
 
 Exit codes: 0 all steps passed or skipped (or --list); 1 at least one step failed;
 2 usage error, unsupported workflow shape, or no bash.
@@ -60,6 +65,8 @@ EVENT_COND = re.compile(r"^github\.event_name\s*(==|!=)\s*'([^']*)'$")
 OUTPUT_COND = re.compile(r"^steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)\s*==\s*'([^']*)'$")
 NOT_CANCELLED = re.compile(r"!cancelled\(\)(?:\s*&&\s*(.+))?", re.S)
 EXPR = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+# The kit CI job skips a draft pull request; a local run is never a draft, so exactly this condition is true here.
+DRAFT_JOB_COND = "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
 BASE_TERMS = {"github.event.pull_request.base.sha", "github.event.before"}
 
 
@@ -148,7 +155,7 @@ def build_plan(workflow: dict, event: str, repo: Path | None = None,
     steps: list[Step] = []
     idx = 0
     for job_name, job in jobs.items():
-        if "if" in job:
+        if "if" in job and _strip_cond(job["if"]) != DRAFT_JOB_COND:
             raise Unsupported(f"job {job_name}: job-level if: `{job['if']}` is not supported")
         job_env = job.get("env") or {}
         job_shell = ((job.get("defaults") or {}).get("run") or {}).get("shell")
@@ -244,7 +251,8 @@ def collect_tests(bash: str, cmd: str, repo: Path, env: dict) -> set[str] | None
     cmd = cmd.strip()
     extra = "--collect-only" if re.search(r"(^|\s)-q\b", cmd) else "--collect-only -q"
     proc = subprocess.run([bash, "-e", "-c", f"{cmd} {extra}"], cwd=str(repo), env=env,
-                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                          encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         return None
     ids = {ln.strip() for ln in proc.stdout.splitlines() if "::" in ln and not ln.startswith(" ")}
@@ -356,10 +364,60 @@ def read_outputs(path: Path) -> dict[str, str]:
 
 def merge_base(repo: Path, base: str) -> str:
     proc = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=str(repo),
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         raise RuntimeError(f"git merge-base {base} HEAD failed: {proc.stderr.strip()}")
     return proc.stdout.strip()
+
+
+# Generators and their regenerate form (the --check form without --check): (tool, extra args, generated file, when).
+REGEN_STEPS = (
+    ("build_spec_digest.py", [], "views/spec-digest.md", None),
+    ("build_spec_index.py", [], "spec/requirements/INDEX.md", None),
+    ("build_order.py", [], "views/build-order.md", None),
+    ("build_findings_index.py", [], "knowledge/findings/INDEX.md", "findings"),
+    ("trace_check.py", ["--write-view"], "views/trace.md", "trace-view"),
+)
+
+
+def _file_bytes(path: Path) -> bytes | None:
+    """The file's bytes with CRLF folded to LF (a checkout's line-ending style is not a content change)."""
+    try:
+        return path.read_bytes().replace(bytes((13, 10)), bytes((10,)))
+    except OSError:
+        return None
+
+
+def regen(repo: Path, out=None) -> list[str]:
+    """Run each generator's regenerate form that exists in the project; print and return the files rewritten.
+
+    A generator is skipped when its tool is not in the project's tools/, the findings index when there are
+    no findings (knowledge/findings/*.json), the trace view when views/trace.md does not exist. A generator
+    that fails is reported on its own line and never stops the others (the checks that follow report it)."""
+    out = out or sys.stdout
+    rewrote: list[str] = []
+    for tool, extra, rel, when in REGEN_STEPS:
+        script = repo / "tools" / tool
+        if not script.is_file():
+            continue
+        if when == "findings" and not list((repo / "knowledge" / "findings").glob("*.json")):
+            continue
+        if when == "trace-view" and not (repo / "views" / "trace.md").is_file():
+            continue
+        target = repo / rel
+        before = _file_bytes(target)
+        proc = subprocess.run([sys.executable, str(script), ".", *extra], cwd=str(repo), capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
+        after = _file_bytes(target)
+        if proc.returncode != 0:
+            first = _first_line(proc.stdout) or _first_line(proc.stderr)
+            print(f"regen: {tool} exit {proc.returncode}: {first}", file=out, flush=True)
+        if after is not None and after != before:
+            rewrote.append(rel)
+            print(f"regen: rewrote {rel}", file=out, flush=True)
+    if not rewrote:
+        print("regen: every generated file was already current", file=out, flush=True)
+    return rewrote
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -370,6 +428,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--event", default="pull_request", help="event to mirror (default: pull_request)")
     ap.add_argument("--base", default="origin/main", help="base ref for the merge-base (default: origin/main)")
     ap.add_argument("--pr-body", help="file holding the PR description")
+    ap.add_argument("--regen", action="store_true",
+                    help="regenerate the project's generated files before the checks (not with --list)")
     args = ap.parse_args(argv)
 
     repo = Path(args.repo).resolve()
@@ -420,6 +480,9 @@ def main(argv: list[str] | None = None) -> int:
                     first = str(st.cmd).strip().splitlines()[0]
                     print(f"PLAN  {st.idx:02d}  {st.label}  : {first}{gate}")
             return 0
+
+        if args.regen:
+            regen(repo)
 
         run_dir = Path(tempfile.gettempdir()) / "ci-local" / time.strftime("%Y%m%d-%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -490,5 +553,17 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _stdio_replace() -> None:
+    """Keep the stream's encoding but replace what it cannot hold, so a cp1252 console (Windows) never
+    raises UnicodeEncodeError on text from a child process, GitHub or a spec file (issue 159)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 if __name__ == "__main__":
+    _stdio_replace()
     sys.exit(main())

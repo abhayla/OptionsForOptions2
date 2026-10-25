@@ -144,7 +144,7 @@ def main():
     if os.environ.get("ANSWER_WRITEBACK_GUARD") == "0":
         return
     try:
-        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     except Exception:
         return
     if not isinstance(data, dict) or data.get("stop_hook_active"):

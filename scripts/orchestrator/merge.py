@@ -12,11 +12,12 @@ Exit code: that of the first failing step, else 0; 2 for bad usage.
 """
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+from gate_env import no_graft_env
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -26,16 +27,12 @@ FULL_SHA = re.compile(r"[0-9a-fA-F]{40}")  # the kit gate's own rule (merge_when
 USAGE = "usage: python scripts/orchestrator/merge.py <pr-number> --reviewed-sha <full 40-character sha>"
 
 
-def child_env() -> dict[str, str]:
-    # The kit gate decodes gh output with the platform default; on cp1252 Windows a byte like 0x90 in a compare reply
-    # crashed its reader thread and the gate refused with "staleness unreadable" (PR 473, 2026-10-20). UTF-8 mode
-    # for every child fixes the class without editing the kit file.
-    return {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-
-
 def run(cmd: list[str]) -> tuple[int, str]:
+    # No UTF-8 environment override: kit 1.11.0/1.12.0 decode subprocess output as UTF-8 and make the kit tools'
+    # prints safe on a cp1252 console (kit #154, #159), the cause of PR 473's "staleness unreadable" (2026-10-20).
+    # Grafts are switched off for every child, the kit gate included (gate_env.py).
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",  # noqa: S603
-                       errors="replace", check=False, env=child_env())
+                       errors="replace", check=False, env=no_graft_env())
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 

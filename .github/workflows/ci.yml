@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    # A draft pull request is skipped by the job condition below; edited/labeled events never start a run.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -12,10 +14,13 @@ concurrency:
 
 jobs:
   lint-and-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the docs-only test choice diffs the pull request against its base commit
 
       - uses: actions/setup-python@v5
         with:
@@ -69,13 +74,41 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tools/check_spec_refs.py .
 
-      - name: Run tests
-        if: ${{ !cancelled() }}
+      - name: Run tests on push (always the full suite)
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         run: |
           if [ -d tests ]; then
             python -m pytest -q -p no:cacheprovider
           else
             echo "no tests/ folder yet — skipping"
+          fi
+
+      # Pull request: a docs-only change runs only the tests the project lists in
+      # .claude/project/ci-docs-only-tests.txt (opt-in; see the kit GUIDE). No list, an empty list, or
+      # any doubt about the diff (tools/change_scope.py answers `code`) runs the full suite as before.
+      - name: Run tests on pull request (full suite unless docs-only with a project test list)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: |
+          if [ ! -d tests ]; then
+            echo "no tests/ folder yet — skipping"
+            exit 0
+          fi
+          LIST=.claude/project/ci-docs-only-tests.txt
+          TESTS=""
+          if [ -f "$LIST" ]; then
+            TESTS=$(tr -d '\r' < "$LIST" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' || true)
+          fi
+          SCOPE=code
+          # tools/ci_local.py (a local run, no GITHUB_ACTIONS) always runs the full suite
+          if [ -n "$TESTS" ] && [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+            SCOPE=$(python tools/change_scope.py --base "${{ github.event.pull_request.base.sha }}" || echo code)
+          fi
+          if [ "$SCOPE" = "docs-only" ]; then
+            echo "docs-only pull request: running only the tests listed in $LIST"
+            # shellcheck disable=SC2086
+            python -m pytest -q -p no:cacheprovider $TESTS
+          else
+            python -m pytest -q -p no:cacheprovider
           fi
 
       - name: Run the kit self-test (wired scripts, folder purity, context budget, guards, release notes)
