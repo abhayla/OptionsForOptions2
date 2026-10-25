@@ -17,6 +17,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "orchestrator"))
 import make_brief as mb  # noqa: E402
+import safety_set  # noqa: E402
 
 CHECK = REPO / "scripts" / "orchestrator" / "check_brief.py"
 MAKE = REPO / "scripts" / "orchestrator" / "make_brief.py"
@@ -201,10 +202,20 @@ def test_safety_file_adds_why_opus_and_other_files_do_not(measure):
     assert "Why Opus" not in mb.render(measure, "build", REPO)
 
 
+def test_mutation_line_only_for_tier_a_safety_files(measure):
+    """Attack 5: a safety-set file keeps the (non-gate) mutation line; other files get none."""
+    measure["files"] = ["backend/ofo/outcome/service.py", "tests/x.py"]
+    out = mb.render(measure, "build", REPO)
+    assert "Tier A guards only: run `python scripts/orchestrator/mutation_gate.py` on at most 5 mutants" in out
+    assert "Not a merge gate." in out
+    measure["files"] = ["frontend/src/a.vue", "frontend/src/b.vue"]
+    assert "mutation_gate.py" not in mb.render(measure, "build", REPO)
+
+
 def test_safety_set_is_imported_not_copied():
-    """The brief's SAFETY_SET is the measure_process object itself (one home)."""
-    import measure_process
-    assert mb.measure_process.SAFETY_SET is measure_process.SAFETY_SET
+    """The brief's SAFETY_SET is the safety_set object itself (one home)."""
+    assert mb.safety_set.SAFETY_SET is safety_set.SAFETY_SET
+    assert mb.SAFETY_SOURCE == "SAFETY_SET in scripts/orchestrator/safety_set.py"
     assert "SAFETY_SET = (" not in (REPO / "scripts" / "orchestrator" / "make_brief.py").read_text(encoding="utf-8")
 
 
