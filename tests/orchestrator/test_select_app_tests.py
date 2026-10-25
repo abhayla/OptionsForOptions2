@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan  # reads every file in tests_app/ (the selector's own matching and the set checks)
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "orchestrator"))
 import select_app_tests as sel  # noqa: E402
