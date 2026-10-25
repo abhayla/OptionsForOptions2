@@ -80,14 +80,17 @@ describe('REQ-136 AC-2: wording (ADR-003)', () => {
 
 describe('REQ-136 AC-4: models and exactness', () => {
   const SRC = readFileSync(join(ROOT, 'backend/ofo/errors/explanations.py'), 'utf8')
-  const engineModel = SRC.match(/"estimate_model_name",[^)]*?"(Black-Scholes-Merton[^"]*)"/s)
+  // The first string segment of the engine's own template: "<model> (European, each expiry's implied dividend yield ...".
+  const engineModel = SRC.match(/"estimate_model_name",\s*"values_seen",\s*"([^"]*)"/)
 
-  it('the engine names Black-Scholes-Merton with each expiry\'s implied dividend yield; the catalogue says the same', () => {
+  it("the model the catalogue names is the engine's model (read from explanations.py, so a model change turns this red)", () => {
     expect(engineModel, 'estimate_model_name template not found').not.toBeNull()
-    expect(engineModel[1]).toContain('Black-Scholes-Merton')
+    const family = engineModel[1].split(' (')[0]
+    expect(family).toMatch(/^[A-Z][\w-]+$/)
+    expect(MODEL_PHRASE.startsWith(`${family} price`)).toBe(true)
     expect(engineModel[1]).toContain("each expiry's implied dividend yield")
-    expect(MODEL_PHRASE).toBe("Black-Scholes-Merton price from today's implied volatility, with each expiry's implied dividend yield")
     expect(MODEL_PHRASE).toContain("each expiry's implied dividend yield")
+    expect(MODEL_PHRASE).toBe("Black-Scholes-Merton price from today's implied volatility, with each expiry's implied dividend yield")
   })
 
   it.each(['estimated_now', 'breakeven_target', 'expected_move_bands', 'probability_of_profit'])('%s names the model', (id) => {
