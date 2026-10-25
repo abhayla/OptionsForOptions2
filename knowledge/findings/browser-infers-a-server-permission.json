@@ -1,0 +1,24 @@
+{
+ "id": "browser-infers-a-server-permission",
+ "scope": "generic",
+ "class": "A screen decides whether to offer an action the server permits or refuses (Restore, Delete, Execute) by re-deriving the rule from other data it holds (comparing legs, reading a summary) or by not checking at all and relying on the server's refusal, instead of reading one per-row permission field the server computes. The derivation drifts from the server rule in the cases the screen's data cannot express, so the button is offered and the click is refused.",
+ "mechanism": "Row 28f (REQ-070, ADR-184): ActivityPanel.vue hid Restore only when an entry's legs equal the current legs (strategyActivity.js:63); a rename entry stores the definition at rename time (strategy_store.py:262), so after rename-then-edit the rename entry's legs differ and Restore was offered although the server answers 404. After a basket was sent the page read no field at all and offered Restore, relying on the server's 409. The history reply (EntryOut) carried no kind or restorable field, so the screen had nothing to read. Delete in the same row did it right: the list reply carries can_delete and the screen offers Delete only on can_delete === true (fail closed).",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "chunk 3 session A, row 28f Opus check round 1 (head 4713c1e1)",
+  "evidence": "checker read: save, rename, add a leg, save -> the rename entry's legs no longer equal the current legs -> ActivityPanel.vue:114-133 renders restore-<seq>; strategy-history.test.js:97 covers only a rename that is the newest change; strategy-history.test.js:105 asserts Restore shown after a sent basket (server 409)."
+ },
+ "fix": "Structural (run-discipline C8): the server computes one per-entry permission (restorable: false for a rename entry and for any entry once the strategy sent a basket) in the one place that already refuses the restore, sends it on every history entry, and the screen offers Restore only on restorable === true (missing -> hidden). Same shape as can_delete. Undo-after-save reads the same field.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught by the Tier A checker reading the code, not by a test. Candidate check: a frontend guard like tests_app/test_browser_never_decides_eligibility.py that fails when a button's v-if for a server-refused action reads anything other than the server's permission field."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-184.md",
+  "spec/requirements/REQ-070.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-25", "where": "row 28f, ActivityPanel.vue Restore", "evidence": "Opus check round 1 MAJOR 1 and 2"}
+ ]
+}
