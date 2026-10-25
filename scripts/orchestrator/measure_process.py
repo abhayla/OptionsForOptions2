@@ -1,6 +1,7 @@
 """ADR-178 process counters (docs/process/adr-178-tracker.md rows 1-7 and 10), each against its limit.
 
-Usage: python scripts/orchestrator/measure_process.py [--repo <root>] [--sessions <n>] [--chunk-start <sha>]
+Usage: python scripts/orchestrator/measure_process.py [--repo <root>] [--sessions <n> | --session <id-prefix> ...]
+           [--chunk-start <sha>]
            [--sessions-dir <dir>] [--tasks-dir <dir>] [--commits-json <file>] [--since YYYY-MM-DD]
 Prints `MISS` lines first, then `OK` lines, then `UNMEASURED` lines; exit 1 on any MISS, else 0.
 Rows and limits (the tracker is the source; the numbers here must match it):
@@ -12,6 +13,11 @@ Rows and limits (the tracker is the source; the numbers here must match it):
   6 local database runs per session (fresh_launch / db_run commands)  <= rows closed in that session (one per row)
   7 commits touching scripts/orchestrator or scripts/hooks since the chunk start   <= 1 (generator + this script exempt)
  10 minutes from a fix commit to the next checker dispatch            <= 15
+`--repo` may be a linked worktree: the folders are slugged from the MAIN checkout (git common dir), falling back to
+`--repo` when git cannot answer. `--session <id-prefix>` (repeatable) picks sessions by file-name prefix; an id with no
+file or several files prints an UNMEASURED line. Agent transcripts of a session = `<session>/subagents/*.jsonl` under
+the sessions folder, plus (with `--session`) `<id>/tasks/*.output` under the temp folder, deduped by agent id.
+The `read:` line (printed just before the summary) names what was read.
 Transcripts are streamed line by line (never loaded whole). Sessions = the main-session JSONL files under the Claude
 projects folder for this repo (`--sessions-dir` overrides; `--sessions N` = the N newest). Agent transcripts =
 `*/tasks/*.output` under the Claude temp folder for this repo (`--tasks-dir` overrides). Commits come from `git log`
@@ -22,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import glob
 import json
 import os
 import re
@@ -224,12 +229,68 @@ def git_commits(repo: Path, since: str) -> list[dict]:
     return commits
 
 
-def _default_dirs(repo: Path) -> tuple[Path, Path]:
-    slug = re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
+def _git_common_dir(repo: Path) -> str:
+    """Absolute git common dir of `repo` as git prints it ('' when git fails)."""
+    cmd = ["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-common-dir"]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, check=False,  # noqa: S603
+                             encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def main_checkout(repo: Path, resolver=_git_common_dir) -> tuple[Path, str]:
+    """The main checkout of `repo` (the parent of its git common dir) and where the answer came from. Any git answer
+    that is not an existing absolute directory (error, empty, relative) falls back to `repo` itself."""
+    answer = resolver(repo)
+    common = Path(answer) if answer else None
+    if common is not None and common.is_absolute() and common.is_dir():
+        return common.parent, "main checkout via git"
+    return repo, "--repo fallback (git gave no usable common dir)"
+
+
+def _default_dirs(repo: Path, resolver=_git_common_dir) -> tuple[Path, Path]:
+    root, _ = main_checkout(repo, resolver)
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(root.resolve()))
     home = Path.home()
     sessions = home / ("." + "claude") / "projects" / slug
     temp = Path(os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local"))) / "Temp" / "claude" / slug
     return sessions, temp
+
+
+def _choose_sessions(sessions_dir: Path, n: int, ids: list[str]) -> tuple[list[Path], list[str]]:
+    """Session files: the N newest, or exactly those whose name starts with each id. Returns (paths, UNMEASURED lines)."""
+    files = sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime) if sessions_dir.is_dir() else []
+    if not ids:
+        return files[-n:], []
+    chosen, errors = [], []
+    for sid in ids:
+        hits = [p for p in files if p.name.startswith(sid)]
+        if len(hits) == 1:
+            chosen.append(hits[0])
+        else:
+            why = "no transcript" if not hits else "ambiguous: " + ", ".join(p.stem[:12] for p in hits)
+            errors.append(f"UNMEASURED rows 1-6, 10: session {sid}: {why} under {sessions_dir}")
+    return chosen, errors
+
+
+def _agent_files(sessions_dir: Path, tasks_dir: Path, chosen: list[Path], explicit: bool) -> list[Path]:
+    """Agent transcripts, deduped by agent id (file stem without `agent-`). Explicit sessions read only their own
+    subagents and tasks folders; otherwise every tasks folder plus the chosen sessions' subagents."""
+    found: dict[str, Path] = {}
+
+    def add(files) -> None:
+        for f in sorted(files):
+            found.setdefault(f.stem.removeprefix("agent-"), f)
+
+    for p in chosen:
+        add((sessions_dir / p.stem / "subagents").glob("*.jsonl"))
+        if explicit:
+            add((tasks_dir / p.stem / "tasks").glob("*.output"))
+    if not explicit:
+        add(tasks_dir.glob("*/tasks/*.output"))
+    return list(found.values())
 
 
 class Report:
@@ -237,6 +298,7 @@ class Report:
         self.miss: list[str] = []
         self.ok: list[str] = []
         self.unm: list[str] = []
+        self.read = ""
 
     def row(self, n: int, good: bool, text: str) -> None:
         (self.ok if good else self.miss).append(f"{'OK  ' if good else 'MISS'} row {n}: {text}")
@@ -248,6 +310,9 @@ def _in(s: dict, t) -> bool:
 
 def _session_rows(s: dict, dated: list[dict], rep: Report) -> None:
     name = Path(s["path"]).stem[:8]
+    if not s["turns"]:
+        rep.unm.append(f"UNMEASURED rows 1-4, 6: session {name} has no assistant turns")
+        return
     rep.row(1, s["avg_ctx"] < LIMITS[1],
             f"session {name} avg context {s['avg_ctx'] // 1000}k/turn over {s['turns']} turns (limit < 250k)")
     closed = [c for c in dated if _in(s, _iso(c["time"])) and CLOSE_RE.search(c["subject"])]
@@ -265,33 +330,37 @@ def _session_rows(s: dict, dated: list[dict], rep: Report) -> None:
         later = [d for d in s["checkers"] if d >= f]
         if later:
             gaps.append((min(later) - f).total_seconds() / 60)
-    if fixes and not gaps:
+    if not fixes:
+        rep.unm.append(f"UNMEASURED row 10: session {name} has no fix commit in its window")
+    elif not gaps:
         rep.unm.append(f"UNMEASURED row 10: session {name} has {len(fixes)} fix commits and no checker dispatch after")
-    elif gaps:
+    else:
         rep.row(10, max(gaps) <= LIMITS[10], f"session {name} fix commit -> checker dispatch worst {max(gaps):.0f} min "
                 f"over {len(gaps)} fixes (limit <= 15)")
 
 
 def measure(dirs: tuple[Path, Path], commits: list[dict], n_sessions: int, chunk_start: str | None,
-            repo: Path | None = None) -> Report:
+            repo: Path | None = None, session_ids: list[str] | None = None, project_note: str = "") -> Report:
     """`dirs` = (orchestrator sessions folder, agent tasks folder)."""
     sessions_dir, tasks_dir = dirs
     rep = Report()
-    paths = []
-    if sessions_dir.is_dir():
-        paths = sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)[-n_sessions:]
+    ids = session_ids or []
+    paths, errors = _choose_sessions(sessions_dir, n_sessions, ids)
+    rep.unm.extend(errors)
     sessions = [read_session(p, repo) for p in paths]
-    if not sessions:
+    if not sessions and not ids:
         rep.unm.append(f"UNMEASURED rows 1-4, 6: no session transcript under {sessions_dir}")
     dated = [c for c in commits if _iso(c["time"])]
     for s in sessions:
         _session_rows(s, dated, rep)
 
-    tasks = []
-    if tasks_dir.is_dir():
-        tasks = [read_task(Path(p)) for p in glob.glob(str(tasks_dir / "*" / "tasks" / "*.output"))]
+    agent_files = _agent_files(sessions_dir, tasks_dir, paths, bool(ids))
+    rep.read = (f"read: sessions {sessions_dir} ({len(paths)} files chosen: "
+                f"{', '.join(p.stem[:8] for p in paths) or 'none'}), agent transcripts {len(agent_files)}"
+                + (f"; {project_note}" if project_note else ""))
+    tasks = [read_task(f) for f in agent_files]
     r2 = [t for t in tasks if t and ROUND2_RE.search(t["head"]) and CHECKER_RE.search(t["head"])]
-    if sessions and sessions[0]["first"]:
+    if sessions and sessions[0]["first"] and not ids:
         r2 = [t for t in r2 if t["first"] >= sessions[0]["first"]]
     if not r2:
         rep.unm.append("UNMEASURED row 5: no round-2 checker transcript in the measured window")
@@ -321,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parents[2]))
     ap.add_argument("--sessions", type=int, default=2, help="the N newest orchestrator sessions")
+    ap.add_argument("--session", action="append", default=[], help="session file-name prefix (repeatable)")
     ap.add_argument("--chunk-start", default=None)
     ap.add_argument("--sessions-dir", default=None)
     ap.add_argument("--tasks-dir", default=None)
@@ -328,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--since", default=(dt.datetime.now(dt.UTC) - dt.timedelta(days=3)).date().isoformat())
     args = ap.parse_args(argv)
     repo = Path(args.repo)
+    root, how = main_checkout(repo)
     d_sessions, d_tasks = _default_dirs(repo)
     sessions_dir = Path(args.sessions_dir) if args.sessions_dir else d_sessions
     tasks_dir = Path(args.tasks_dir) if args.tasks_dir else d_tasks
@@ -335,8 +406,9 @@ def main(argv: list[str] | None = None) -> int:
         commits = json.loads(Path(args.commits_json).read_text(encoding="utf-8"))
     else:
         commits = git_commits(repo, args.since)
-    rep = measure((sessions_dir, tasks_dir), commits, args.sessions, args.chunk_start, repo)
-    out = rep.miss + rep.ok + rep.unm
+    rep = measure((sessions_dir, tasks_dir), commits, args.sessions, args.chunk_start, repo, args.session,
+                  f"project root {root} ({how})")
+    out = rep.miss + rep.ok + rep.unm + [rep.read]
     out.append(f"{len(rep.miss)} MISS, {len(rep.ok)} OK, {len(rep.unm)} UNMEASURED (ADR-178 tracker rows 1-7, 10)")
     sys.stdout.write("\n".join(out) + "\n")
     return 1 if rep.miss else 0

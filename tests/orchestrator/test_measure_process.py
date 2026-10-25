@@ -166,3 +166,100 @@ def test_one_message_id_on_three_lines_counts_one_turn(tmp_path):
     p = _write(tmp_path, "s.jsonl", [line("m1"), line("m1"), line("m1"), line("m2"), line(None)])
     s = mp.read_session(p)
     assert (s["turns"], s["ctx"]) == (3, 3000)
+
+
+# ---- chunk 4 (#532 F): the right folders, --session, the read line, row 10 always printed ----
+
+SID_A = "a43256ae-1cfc-4a9f-8c25-066f2fdf30c0"
+SID_B = "b99999ff-0000-4000-8000-000000000000"
+
+
+def _session(folder: pathlib.Path, sid: str, hour: int = 9) -> pathlib.Path:
+    return _write(folder, f"{sid}.jsonl", [_turn(_ts(hour), 100_000, "hello")])
+
+
+def _r2_agent(folder: pathlib.Path, name: str, minutes: int) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    _write(folder, name, [_task_line(_ts(9, 1), "user", "Round 2 verifier, findings only"),
+                          _task_line(_ts(9, 1 + minutes), "assistant")])
+
+
+def test_worktree_path_slugs_the_main_checkout(tmp_path):
+    main = tmp_path / "main-repo"
+    (main / ".git").mkdir(parents=True)
+    wt = tmp_path / "main-repo-c4"
+    sessions, temp = mp._default_dirs(wt, lambda _r: str(main / ".git"))
+    assert sessions.name == mp.re.sub(r"[^A-Za-z0-9]", "-", str(main.resolve()))
+    assert temp.name == sessions.name
+    assert mp.main_checkout(wt, lambda _r: str(main / ".git")) == (main, "main checkout via git")
+
+
+@pytest.mark.parametrize("answer", ["", "relative/.git", "nowhere-absolute-xxxxx"])
+def test_unusable_git_answers_fall_back_to_repo(tmp_path, answer):
+    root, how = mp.main_checkout(tmp_path, lambda _r: answer)
+    assert root == tmp_path and "fallback" in how
+
+
+def test_session_prefix_picks_the_named_file_even_when_a_newer_one_exists(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _session(s, SID_B)  # newer by mtime
+    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    assert code == 0 and "session a43256ae avg context" in out and "b99999ff" not in out
+    assert "(1 files chosen: a43256ae)" in out
+
+
+def test_session_without_a_match_or_with_two_matches_is_unmeasured_by_name(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _session(s, "a43256ae-ffff-4000-8000-000000000000")
+    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "zzz", "--session", "a43256ae"])
+    assert code == 0
+    assert "UNMEASURED rows 1-6, 10: session zzz: no transcript" in out
+    assert "UNMEASURED rows 1-6, 10: session a43256ae: ambiguous" in out
+    assert "(0 files chosen: none)" in out
+
+
+def test_session_subagents_and_tasks_are_read_and_deduped(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _r2_agent(s / SID_A / "subagents", "agent-a1.jsonl", 20)  # a slow round-2 checker
+    _r2_agent(t / SID_A / "tasks", "a1.output", 2)  # same agent id: the subagents copy wins
+    _r2_agent(t / SID_A / "tasks", "a2.output", 3)
+    _r2_agent(s / SID_B / "subagents", "agent-other.jsonl", 40)  # another session's agent: never read
+    code, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    assert code == 1
+    assert "MISS row 5: round-2 checker agent-a1 ran 20 min" in out
+    assert "OK   row 5: round-2 checker a2 ran 3 min" in out
+    assert "agent transcripts 2" in out and "other" not in out
+
+
+def test_default_run_also_reads_the_chosen_sessions_subagents(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _r2_agent(s / SID_A / "subagents", "agent-a1.jsonl", 5)
+    _, out = _run(_argv(s, t, _commits(tmp_path, [])))
+    assert "OK   row 5: round-2 checker agent-a1 ran 5 min" in out
+
+
+def test_session_without_assistant_turns_is_unmeasured(tmp_path):
+    s, t = _dirs(tmp_path)
+    _write(s, f"{SID_A}.jsonl", [_task_line(_ts(9), "user", "hi")])
+    _, out = _run(_argv(s, t, _commits(tmp_path, [])) + ["--session", "a43256ae"])
+    assert "UNMEASURED rows 1-4, 6: session a43256ae has no assistant turns" in out
+    assert "row 1:" not in out
+
+
+def test_row_10_line_is_present_without_fix_commits(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _, out = _run(_argv(s, t, _commits(tmp_path, [])))
+    assert "UNMEASURED row 10: session a43256ae has no fix commit in its window" in out
+
+
+def test_read_line_names_folder_and_counts(tmp_path):
+    s, t = _dirs(tmp_path)
+    _session(s, SID_A)
+    _, out = _run(_argv(s, t, _commits(tmp_path, [])))
+    line = next(ln for ln in out.splitlines() if ln.startswith("read:"))
+    assert f"sessions {s} (1 files chosen: a43256ae), agent transcripts 0" in line
