@@ -52,8 +52,8 @@ Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
    means its mechanism is due. Each chunk has one deferred issue. Generated files stay out of feature PRs.
 8. **Owner.** Never wait on owner answers. Questions go to `docs/process/owner-questions-<date>.md` with a
    recommendation. Business calls only.
-9. **Landing.** Land each batch as soon as it is green: a PR under 300 files through `python
-   scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` (ADR-180). Run `npm ci` in every new worktree. Remove
+9. **Landing.** Land each batch as soon as it is green: a PR of any size through `python
+   scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` (ADR-187 ended ADR-180's 300-file limit). Run `npm ci` in every new worktree. Remove
    each worktree with wt-rm when its PR merges.
 10. **Session end.** Write a handover block (DONE / PENDING / BLOCKED / PARKED / NEXT) and update the memory note.
 11. **Live proofs.** Use `scripts/orchestrator/dev_run.py` (database `ofo_dev` only). The Kite login happens once, in a

@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (181)
+## Decisions (182)
 
-- Older decisions: 141 rows, ADR-1..ADR-142 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-143 2026-10-20: (1) When the engine returns no worst-case loss for a basket (for example legs on different expiries… [extends ADR-140]
+- Older decisions: 142 rows, ADR-1..ADR-143 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
 - ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
 - ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
+- ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
 
 ## Requirements (131)
 
