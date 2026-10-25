@@ -48,6 +48,9 @@ PINNED_SLOT_TYPES = frozenset({
         "Rupees", "Points", "ExceptLevels", "LevelRegions", "SignedAmount", "HourMinute", "ClockSeconds",
         "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "CellText",
         "ColumnLabel", "HealthLabel", "ScenarioViewLabel",
+        # W-159 (row 31, REQ-085 AC-3): Rupees.validate (exact Decimal) and Rupees.format, plus a leading "+" for a
+        # gain - reviewed 2026-10-25 (explanations.py SignedRupees: no new parsing, the engine's rupee format only)
+        "SignedRupees",
         # W-117 (Learn): only a text the loaded strategy catalogue holds (name/description). The W-117 verifier
         # attacked it on 2026-10-19 (forged, empty, 1M-char, lookalike, NFD, str subclass, bytes: all refused);
         # per-field tightening is #435.
