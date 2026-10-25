@@ -2,7 +2,7 @@
 
 # Findings index
 
-112 finding(s), generated from `knowledge/findings/*.json`.
+113 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -65,6 +65,7 @@
 | loss-region-inferred-from-breakevens | A user-facing statement of WHERE a strategy loses money that is chosen from the breakevens (their count, and the sign of the P&L at one or a few sample points) instead of from the regions where the expiry P&L is actually negative is wrong whenever the P&L touches or sits at zero (a zero-premium spread, a ratio, a debit equal to the width, a plateau) or loses in more regions than the breakeven count implies; breakevens are where P&L crosses zero, loss regions are where P&L < 0, and the two stop matching exactly in those shapes. | unguarded | occurrences, scope, spec_ref |
 | margin-gate-blocks-closing-basket | A pre-trade check that validates the broker's required-margin figure as 'a non-negative amount' blocks every basket that reduces or closes held positions, because the broker reports such a basket with a NEGATIVE required margin (it releases money). Wider shape: a validity range written from entry orders only ('margin is >= 0') turns the risk-reducing order - the exit - into a refused one. | unguarded | occurrences, scope, spec_ref |
 | measure-file-list-misses-shared-registries | A row's planned file list, built from a grep of its own call chain, leaves out the shared registry files that every change of its kind must also edit (the user-text catalogue, the committed OpenAPI document, the response-door model sweep, the template pins), so two rows measured as disjoint both edit the same registries and the overlap is found only after both are built. | unguarded | occurrences, scope, spec_ref |
+| merge-gate-local-git-honours-grafts | A gate that rebuilds a review-coverage file list from LOCAL git history trusts repository-local history rewrites (grafts, replace refs, shallow boundaries) that any process with write access to the shared .git folder can plant; a planted rewrite can make the changed-file list come back empty, and a gate that reads an empty list as 'nothing changed' passes instead of refusing. | guarded | occurrences, scope, spec_ref |
 | merge-leaves-conflict-markers | A merge that auto-resolves most files can still leave conflict markers in one of them; an audit that only LISTS the files changed on both sides for a human to read lets the markers be committed and pushed, because nobody reads a list while other checks are green. | guarded | occurrences, scope, spec_ref |
 | money-parsed-through-float | Any adapter that reads a JSON reply with the default number parser turns every price, margin and charge into a binary float before it becomes a Decimal, so values like 291444.67000000004 enter the money path and rupee totals pick up representation error. | unguarded | occurrences, scope, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | scope, spec_ref |
