@@ -9,6 +9,8 @@ paths:
 
 # A status artifact other people read is generated, role-complete, and cheap to update
 
+Counters: hand edits to a generated view, and numbers shown with no source or `unknown` label.
+
 version: "1.0.0" (generalized for the project kit)
 
 Why: a hand-typed status page drifted three items from its source and was believed; a renderer that patched its own

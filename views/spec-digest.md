@@ -47,6 +47,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-185 2026-10-25: The builder's unhedged_short warning (REQ-085) is decided per STRATEGY, not per leg: it fires once… [amends REQ-085]
 - ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078; refines REQ-076]
 - ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
+- ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
 
 ## Requirements (131)
 

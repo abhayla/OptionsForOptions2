@@ -10,47 +10,37 @@ counts by its last ':' part (`plugin:verifier`). Every other agent and the main 
 
 It judges one foreground call at a time, by what changed on disk (never by the command text), in
 evidence/, work/ and spec/ of every judged root: the git top level of the hook input's cwd and of
-CLAUDE_PROJECT_DIR, and every worktree `git worktree list` names for them.
+CLAUDE_PROJECT_DIR, and every linked worktree of each.
 
   PreToolUse   a call asked to run in the background is refused before it runs. Otherwise:
-               snapshot path -> sha256 of every entry under the three folders, plus git's untracked
-               set, into <system temp>/verifier-write-guard/snap/<16 hex>.json. A snapshot that
-               cannot be written refuses the call.
-  PostToolUse  compare with the snapshot. An entry is MOVED to
-  (+Failure)   <system temp>/verifier-quarantine/<stamp>/<relative path> only if it was ABSENT at Pre,
-               git reports it UNTRACKED now (an honest verifier's new file; a merge or checkout
-               brings tracked files), AND it sits in the call's OWN root: the git top level of the
-               hook input's cwd (REQ-057 AC-4), recorded in the snapshot at Pre; if the Post input's own root
-               differs, or the snapshot has none, nothing is moved. In every other judged root (another worktree, the
-               CLAUDE_PROJECT_DIR checkout) the orchestrator may be writing, so a new untracked entry
-               there is COPIED and reported like a changed one (MANIFEST action `copied`), never moved.
-               Every other change (a changed file, a new tracked file) is COPIED there and reported,
-               never moved or reverted, because the guard cannot tell whose edit it is; a deletion is
-               reported. MANIFEST.json in the quarantine folder
-               lists each entry (checkout root, path, sha256, action). Any change: exit 2 with
-               "REFUSED: the verifier must not write files; ..." naming each path with its checkout
-               and the quarantine folder. Nothing changed: exit 0.
+               snapshot path -> sha256 of every entry under the three folders into
+               <system temp>/verifier-write-guard/snap/<16 hex>.json. A snapshot that cannot be
+               written refuses the call.
+  PostToolUse  compare with the snapshot. Any created, changed or deleted entry: exit 2 with
+  (+Failure)   "REFUSED: the verifier must not write files; ..." listing each path with its checkout.
+               The guard NEVER moves, copies, restores or deletes a repo file (OD-120): the
+               orchestrator checks the listed paths. Nothing changed: exit 0.
 
   SubagentStop a read-only agent finished: delete the snapshots THIS agent left behind (a call another
                PreToolUse hook blocked never gets a Post event). Only a snapshot whose recorded
                agent_id equals the stop input's AND its session_id equals the stop input's, or was
-               recorded as None/missing (an empty string is a recorded value), is deleted (parallel verifiers run at once; a snapshot with a
-               different non-empty session_id is kept). It never touches, judges or quarantines a repo file, and ALWAYS exits 0 (exit 2
-               would stop the subagent from finishing). A missing agent_id deletes nothing; an
-               unreadable or non-object snapshot, or one without an agent_id, is left for the 24 h prune.
-               The main session's Stop is not judged: exit 0.
+               recorded as None/missing (an empty string is a recorded value), is deleted (parallel
+               verifiers run at once; a snapshot with a different non-empty session_id is kept). It
+               never touches a repo file, and ALWAYS exits 0 (exit 2 would stop the subagent from
+               finishing). A missing agent_id deletes nothing; an unreadable or non-object snapshot, or
+               one without an agent_id, is left for the 24 h prune. The main session's Stop is not judged.
 
-Links and junctions are never walked or followed: each is one opaque entry; a moved one is removed
-as a link (its target is recorded and never touched).
+Links and junctions are never walked or followed: each is one opaque entry.
 
 Fail safe (REQ-015 AC-3): no snapshot, or an unreadable one -> refuse and LIST what git sees as
-untracked or modified under the three folders, moving and restoring nothing. A malformed input that
+untracked or modified under the three folders, touching nothing. A malformed input that
 names a read-only agent is refused; one that names none exits 0 with a note. A crash while judging a
 read-only agent's call is a refusal. A missing script is a no-op (the settings command checks the file
 exists first). A file that cannot be read during the snapshot is skipped with a note.
 
-Threat model: this stops an honest verifier's writes. It does not stop a deliberate forger running
-as the same user, who can edit the snapshot or this script.
+Threat model (OD-120): an accident guard. It reports an honest verifier's write and refuses the call;
+it does not stop a deliberate forger running as the same user, who can edit the snapshot or this script,
+and a write undone inside the same call is not seen.
 """
 from __future__ import annotations
 
@@ -58,7 +48,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -72,7 +61,6 @@ PRE = "PreToolUse"
 POST_EVENTS = ("PostToolUse", "PostToolUseFailure")
 SNAP_TTL_SECONDS = 24 * 3600
 GUARD_DIR_NAME = "verifier-write-guard"
-QUARANTINE_DIR_NAME = "verifier-quarantine"
 UNREADABLE = "unreadable"
 
 
@@ -145,15 +133,6 @@ def judged_roots(data: dict) -> list[str]:
             for wt in _worktrees(top):
                 add(wt)
     return roots
-
-
-def own_root(data: dict) -> str | None:
-    """The git top level of the hook input's cwd (the folder the judged call ran in), or the cwd
-    itself outside git. None when the input names no usable cwd: then nothing is ever moved."""
-    cwd = data.get("cwd")
-    if not isinstance(cwd, str) or not cwd.strip() or not os.path.isdir(cwd):
-        return None
-    return _git_toplevel(cwd) or os.path.abspath(cwd)
 
 
 def is_link(path: str) -> bool:
@@ -240,20 +219,6 @@ def snap_path(data: dict) -> str | None:
 
 
 
-def new_quarantine_dir() -> str:
-    stamp = time.strftime("%Y%m%d-%H%M%S") + "-%d" % time.time_ns()
-    q = os.path.join(tempfile.gettempdir(), QUARANTINE_DIR_NAME, stamp)
-    os.makedirs(q, exist_ok=False)
-    return q
-
-
-def _q_target(q: str, root_index: int, rel: str) -> str:
-    parts = rel.split("/")
-    if root_index:
-        parts = ["root-%d" % root_index] + parts
-    return os.path.join(q, *parts)
-
-
 def _write_json(path: str, obj) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -278,26 +243,6 @@ def _prune_old_state() -> None:
             except OSError:
                 pass
 
-
-def take_out(full: str, dst: str) -> None:
-    """Move one created entry out of the repo. A link or junction is removed as a link (its target
-    is recorded and never touched); a file is copied then unlinked (works across drives)."""
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    if is_link(full):
-        with open(dst + ".link.txt", "w", encoding="utf-8") as fh:
-            fh.write("link removed from the repo; target (untouched): %s\n" % _link_target(full))
-        if os.path.isdir(full) and not os.path.islink(full):
-            os.rmdir(full)  # a junction: removes the link only, never the target's contents
-        else:
-            try:
-                os.unlink(full)
-            except IsADirectoryError:
-                os.rmdir(full)
-        return
-    shutil.copy2(full, dst)
-    os.remove(full)
-
-
 # ------------------------------------------------------------------------------------ judging
 
 
@@ -308,29 +253,6 @@ def _porcelain(root: str) -> list[str] | None:
     return [l for l in r.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
 
 
-def untracked_set(root: str) -> set[str] | None:
-    """Paths git reports as untracked (`??`) under the three folders, or None if git cannot say."""
-    lines = _porcelain(root)
-    if lines is None:
-        return None
-    out = set()
-    for l in lines:
-        if l.startswith("?? "):
-            p = l[3:].strip()
-            if p.startswith('"') and p.endswith('"'):
-                p = p[1:-1].encode("latin-1", "backslashreplace").decode("unicode_escape").encode("latin-1").decode("utf-8", "replace")
-            out.add(p.rstrip("/"))
-    return out
-
-
-def _is_untracked(rel: str, untracked: set[str] | None) -> bool:
-    """True only when git itself names `rel` (or, for a link or folder git lists by its contents,
-    something under it) as untracked. No git answer = not untracked (never moved)."""
-    if not untracked:
-        return False
-    return rel in untracked or any(u.startswith(rel + "/") for u in untracked)
-
-
 def _file_sha(path: str) -> str:
     try:
         return _entry_hash(path)
@@ -339,77 +261,20 @@ def _file_sha(path: str) -> str:
 
 
 def new_report() -> dict:
-    return {"moved": [], "copied": [], "deleted": [], "quarantine": None, "manifest": []}
+    return {"created": [], "changed": [], "deleted": []}
 
 
-def judge(roots_before: list[dict], report: dict, own: str | None = None) -> None:
-    """Compare each root's snapshot with disk now. MOVE an entry only if it is in `own` (the call's
-    own root), was absent at Pre and git sees it as untracked now; COPY (never move, never revert) every other change; note
-    deletions. Writes MANIFEST.json into the quarantine folder."""
-    q = None
-
-    def qdir() -> str:
-        nonlocal q
-        if q is None:
-            q = new_quarantine_dir()
-            report["quarantine"] = q
-        return q
-
-    for idx, entry in enumerate(roots_before):
+def judge(roots_before: list[dict], report: dict) -> None:
+    """Compare each root's snapshot with disk now and list every created, changed or deleted entry.
+    Nothing on disk is touched."""
+    for entry in roots_before:
         root = entry["root"]
         before = entry.get("files", {})
-        before_dirs = set(entry.get("dirs", []))
-        now, now_dirs = scan(root)
-        created = sorted(set(now) - set(before))
-        changed = sorted(r for r in set(now) & set(before)
-                         if now[r] != before[r] and UNREADABLE not in (now[r], before[r]))
-        deleted = sorted(set(before) - set(now))
-        if not (created or changed or deleted):
-            continue
-        is_own = own is not None and _norm(root) == _norm(own)
-        untracked = untracked_set(root) if (created and is_own) else set()
-        moved_any = False
-        for rel in created:
-            full = os.path.join(root, *rel.split("/"))
-            dst = _q_target(qdir(), idx, rel)
-            sha = _file_sha(full)
-            if is_own and _is_untracked(rel, untracked):
-                take_out(full, dst)
-                report["moved"].append((root, rel))
-                report["manifest"].append({"root": root, "path": rel, "sha256": sha, "action": "moved"})
-                moved_any = True
-            else:
-                _copy_out(full, dst)
-                report["copied"].append((root, rel, "new, tracked" if is_own
-                                         else "new, outside this call's own checkout"))
-                report["manifest"].append({"root": root, "path": rel, "sha256": sha, "action": "copied"})
-        if moved_any:
-            # folders the call created and left empty after the move (deepest first)
-            for rel_dir in sorted(now_dirs - before_dirs, key=lambda p: p.count("/"), reverse=True):
-                try:
-                    os.rmdir(os.path.join(root, *rel_dir.split("/")))
-                except OSError:
-                    pass
-        for rel in changed:
-            full = os.path.join(root, *rel.split("/"))
-            _copy_out(full, _q_target(qdir(), idx, rel))
-            report["copied"].append((root, rel, "changed"))
-            report["manifest"].append({"root": root, "path": rel, "sha256": _file_sha(full), "action": "copied"})
-        for rel in deleted:
-            report["deleted"].append((root, rel))
-            report["manifest"].append({"root": root, "path": rel, "sha256": before[rel], "action": "deleted"})
-    if q is not None:
-        with open(os.path.join(q, "MANIFEST.json"), "w", encoding="utf-8") as fh:
-            json.dump(report["manifest"], fh, indent=1)
-
-
-def _copy_out(full: str, dst: str) -> None:
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    if is_link(full):
-        with open(dst + ".link.txt", "w", encoding="utf-8") as fh:
-            fh.write("link (left in place, not followed); target: %s\n" % _link_target(full))
-    else:
-        shutil.copyfile(full, dst)
+        now, _dirs = scan(root)
+        report["created"] += [(root, r) for r in sorted(set(now) - set(before))]
+        report["changed"] += [(root, r) for r in sorted(set(now) & set(before))
+                              if now[r] != before[r] and UNREADABLE not in (now[r], before[r])]
+        report["deleted"] += [(root, r) for r in sorted(set(before) - set(now))]
 
 
 def _where(root: str, rel: str) -> str:
@@ -417,20 +282,12 @@ def _where(root: str, rel: str) -> str:
 
 
 def refusal_text(report: dict) -> str:
-    bits = []
-    if report["moved"]:
-        bits.append("created, untracked (moved out of the repo): "
-                    + ", ".join(_where(r, p) for r, p in report["moved"]))
-    if report["copied"]:
-        bits.append("changed or tracked (NOT moved, NOT reverted; a copy is in quarantine; the orchestrator "
-                    "must check each): " + ", ".join("%s [%s]" % (_where(r, p), k) for r, p, k in report["copied"]))
-    if report["deleted"]:
-        bits.append("deleted (not restored; the orchestrator must check each): "
-                    + ", ".join(_where(r, p) for r, p in report["deleted"]))
+    bits = ["%s: %s" % (k, ", ".join(_where(r, p) for r, p in report[k]))
+            for k in ("created", "changed", "deleted") if report[k]]
     return ("REFUSED: the verifier must not write files; under evidence/, work/ or spec/ this call left: "
-            "%s. Quarantine folder (with MANIFEST.json): %s. Return your evidence blocks in your reply; "
-            "the orchestrator records them. Quote this refusal in your final reply."
-            % ("; ".join(bits), report.get("quarantine")))
+            "%s. Nothing was moved, copied or restored (the orchestrator must check each path). Return "
+            "your evidence blocks in your reply; the orchestrator records them. Quote this refusal in "
+            "your final reply." % "; ".join(bits))
 
 
 def list_from_git(roots: list[str]) -> tuple[list[str], bool]:
@@ -461,14 +318,12 @@ def on_pre(data: dict, agent: str, roots: list[str]) -> None:
     notes: list[str] = []
     try:
         _prune_old_state()
-        manifest = {"roots": [], "own_root": own_root(data),
+        manifest = {"roots": [],
                     "agent_id": data.get("agent_id") if isinstance(data.get("agent_id"), str) else None,
                     "session_id": data.get("session_id") if isinstance(data.get("session_id"), str) else None}
         for root in roots:
-            files, dirs = scan(root, notes)
-            u = untracked_set(root)
-            manifest["roots"].append({"root": root, "files": files, "dirs": sorted(dirs),
-                                      "untracked_at_pre": sorted(u) if u is not None else None})
+            files, _dirs = scan(root, notes)
+            manifest["roots"].append({"root": root, "files": files})
         _write_json(sp, manifest)
     except OSError as exc:
         refuse("REFUSED: verifier-write-guard could not write its snapshot for this %s call (%s), "
@@ -500,23 +355,19 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
                else "no snapshot from before this call (missing or unreadable)")
         if not git_ok:
             refuse("REFUSED: verifier-write-guard had %s (%s call) and git status failed, so it cannot "
-                   "list what changed under evidence/, work/ or spec/; nothing was moved. The "
+                   "list what changed under evidence/, work/ or spec/; nothing was changed. The "
                    "orchestrator must check those folders. Quote this refusal in your final reply."
                    % (why, agent))
         refuse("REFUSED: verifier-write-guard had %s (%s call); nothing was moved or restored. Untracked "
                "or modified under evidence/, work/, spec/ (the orchestrator must check each): %s. Quote "
                "this refusal in your final reply." % (why, agent, "; ".join(lines) if lines else "none"))
     report = new_report()
-    # The own root is fixed at Pre. Move only when the Post input's own root is the same folder;
-    # any mismatch, or a snapshot without the field, copies (never moves) and still refuses.
-    recorded, post_own = manifest.get("own_root"), own_root(data)
-    same = (isinstance(recorded, str) and post_own is not None and _norm(recorded) == _norm(post_own))
-    judge(manifest["roots"], report, post_own if same else None)
+    judge(manifest["roots"], report)
     try:
         os.remove(sp)
     except OSError:
         pass
-    if report["moved"] or report["copied"] or report["deleted"]:
+    if report["created"] or report["changed"] or report["deleted"]:
         refuse(refusal_text(report))
     sys.exit(0)
 
@@ -526,7 +377,7 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
 
 def on_subagent_stop(data: dict) -> None:
     """Delete only the snapshots THIS agent left (recorded agent_id equals the stop input's, and the
-    recorded session_id equals it or was recorded as None/missing). Never touches the repo, never judges, never quarantines; always exits 0 (exit 2 on
+    recorded session_id equals it or was recorded as None/missing). Never touches the repo, never judges; always exits 0 (exit 2 on
     SubagentStop would stop the subagent from finishing). Anything unreadable, not a dict, or without
     an agent_id is skipped and left for the 24 h prune."""
     try:

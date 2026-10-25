@@ -35,7 +35,8 @@ Records. Every id is unique per kind: two OD rows, requirement files or decision
 (DUPLICATE-ID, naming every file/row), and a requirement or decision file that cannot be parsed blocks (UNREADABLE,
 naming the file and the error); nothing is skipped silently.
 
-Exit codes: 0 clean; 1 any blocking record, pair, exemption or pin (each line names the ids); 2 usage error.
+Exit codes (W-064, REQ-060 AC-2): 0 unless a spec file is unreadable (UNREADABLE); duplicates, pins, relation grammar,
+records, sources and coverage print as `WARN ...` lines and never fail; 1 unreadable file; 2 usage error.
 """
 from __future__ import annotations
 
@@ -602,22 +603,26 @@ def main(argv: list[str] | None = None) -> int:
     cov_lines = ([f"COVERAGE decision {d}: cited by no requirement (its relations need one)" for d in dec_gaps]
                  + [f"COVERAGE handoff §{n}: a `requirement` section of {HANDOFF_SORT} cited by no requirement "
                     f"(write `handoff §{n}` in a requirement's source or spec_refs)" for n in sec_gaps or []])
-    for line in (warnings + record_failures + accepted + failures + pin_failures + source_failures + rel_reports
-                 + cov_lines + ((sugg + pin_sugg) if args.suggest else [])):
+    # W-064 (REQ-060 AC-2): only an unreadable spec file fails; every other finding is a WARN line.
+    unreadable = [ln for ln in record_failures if ln.startswith("UNREADABLE")]
+    soft = [ln for ln in record_failures + failures + pin_failures + source_failures if ln not in unreadable]
+    for line in (unreadable + [w if w.startswith("WARN") else "WARN " + w for w in warnings]
+                 + ["WARN " + ln for ln in soft] + accepted + rel_reports
+                 + ["WARN " + ln for ln in cov_lines] + ((sugg + pin_sugg) if args.suggest else [])):
         print(line)
     n_req = sum(len(r.items) for r in records if r.kind == "requirement")
     n_dec = sum(len(r.items) for r in records if r.kind == "decision")
     n_pairs = sum(1 for ln in failures if ln.startswith("DUPLICATE")) + len(accepted)
     print(f"spec_dupes: {n_req} requirement items, {n_dec} decision items (full scan); pairs >= {st.THRESHOLD:.2f}: "
-          f"{n_pairs} ({n_pairs - len(accepted)} blocking, {len(accepted)} exempted); "
+          f"{n_pairs} ({n_pairs - len(accepted)} warned, {len(accepted)} exempted); "
           f"exemption failures: {sum(1 for ln in failures if ln.startswith('EXEMPTION'))}; "
           f"pin failures: {len(pin_failures)}; record failures: {len(record_failures)}; "
           f"source failures: {len(source_failures)}")
-    print(f"COVERAGE ({mode} mode, {'blocking' if mode == 'block' else 'not blocking'}): decisions not covered: "
+    print(f"COVERAGE ({mode} mode, not blocking): decisions not covered: "
           f"{len(dec_gaps)}; requirement sections not covered: {'n/a' if sec_gaps is None else len(sec_gaps)}; "
           f"decision records without relations: {len(rel_reports)}")
-    coverage_blocks = mode == "block" and bool(dec_gaps or sec_gaps)
-    return 1 if record_failures or failures or pin_failures or source_failures or coverage_blocks else 0
+    return 1 if unreadable else 0
+
 
 def _stdio_replace() -> None:
     """Keep the stream's encoding but replace what it cannot hold, so a cp1252 console (Windows) never

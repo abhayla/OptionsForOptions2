@@ -1,4 +1,4 @@
 {
-  "always_loaded_max_bytes": 23632,
-  "why": "OD-23 item 3, re-set by REQ-043 (OD-59), raised on purpose by W-043 (REQ-055 AC-3, OD-83: run-discipline 1.1.0 added the standing brief items and C8) and by W-055 (REQ-057 AC-8: the park rule gained one sentence, +134 bytes, 14498 -> 14632): measured always-loaded kit rule bytes 14632 (evidence-and-proof, run-discipline, spec-first) + project headroom 9000 (2 x 4500 bytes for two project rules) = 23632; path-scoped rules are excluded. A later always-on kit rule must raise this cap on purpose."
+  "always_loaded_max_bytes": 8192,
+  "why": "OD-117 (REQ-060 AC-1): always-loaded rule text was 14632 bytes of kit rules; cut to a hard cap of 8192 bytes, kit rules and project rules together, keeping only rules that change behaviour. A later always-on rule must fit under the cap or replace one. The cap covers CLAUDE.md too: the template's CLAUDE.md plus its always-loaded rules must fit (hard); the self-test warns, never fails, when a project's CLAUDE.md plus rules is over it."
 }

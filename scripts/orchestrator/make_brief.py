@@ -14,7 +14,7 @@ REQUIRED when the register has no open record for `req`, because the line then r
 Derived, never typed: Size and Budget (files: <= 5 S 30/40, 6-15 M 60/80, more refused as L - split), the round-2
 budget (15 min / 20 calls), the `Reference:` line (reference_register.py open records plus their screens; SPEC CHANGE
 records are marked as waiting for the owner), the `Why Opus:` line (only when a file is in `SAFETY_SET` of
-measure_process.py, imported here, never copied) and the constant Common brief / Tests / Report / checklist lines.
+safety_set.py, imported here, never copied) and the constant Common brief / Tests / Report / checklist lines.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import check_brief  # noqa: E402
-import measure_process  # noqa: E402
+import safety_set  # noqa: E402
 
 KINDS = ("build", "fix", "verify-r2")
 TIERS = ("A", "B", "C")
@@ -48,10 +48,10 @@ TESTS_LINE = ("Tests: python -m pytest -q -p no:cacheprovider tests/test_*.py te
               "tests/errors/test_producer_inventory.py; python -m pytest -q -p no:cacheprovider -m repo_scan tests")
 CHECKLIST_TAIL = ("no new duplicated literal; reuse the existing helper; ruff/mypy baselines must not rise; targeted "
                   "tests only; no regenerated files in the PR.")
-MUTATION = ("Run `python scripts/orchestrator/mutation_gate.py` on every guard you add or move before reporting; "
-            "write the results to a file in your scratch folder and quote it.")
+MUTATION = ("Tier A guards only: run `python scripts/orchestrator/mutation_gate.py` on at most 5 mutants of each guard "
+            "you add or move, on a scratch copy; quote the results. Not a merge gate.")
 BARE_NA_RE = re.compile(r"^\s*n/?a\s*\.?\s*$", re.I)
-SAFETY_SOURCE = "SAFETY_SET in scripts/orchestrator/measure_process.py"
+SAFETY_SOURCE = "SAFETY_SET in scripts/orchestrator/safety_set.py"
 TAIL_LINES = 6
 
 
@@ -105,7 +105,7 @@ def size_and_budget(files: list[str]) -> tuple[str, int, int]:
 
 
 def _safety_file(files: list[str]) -> str | None:
-    return next((f for f in files if measure_process.names_safety_file(f)), None)
+    return next((f for f in files if safety_set.names_safety_file(f)), None)
 
 
 def _why_opus(files: list[str]) -> list[str]:
@@ -183,8 +183,8 @@ def render_build(data: dict, kind: str, root: Path) -> str:
     terms = _strings(data, "search_terms") if "search_terms" in data else []
     findings = _strings(data, "findings_checked")
     out = _head(data, kind)
-    out += [f"{COMMON} (Budget hard stop: at {int(calls * HARD_STOP)} calls start nothing new, commit, report). "
-            f"{MUTATION}",
+    out += [f"{COMMON} (Budget hard stop: at {int(calls * HARD_STOP)} calls start nothing new, commit, report).",
+            *([MUTATION] if _safety_file(files) else []),
             f"Size: {size}, {len(files)} files, {len(items)} items", f"CI: {data['ci']}", _expected(data), "",
             f"Core: {data['core']}", f"Proof: {data['proof']}", "",
             f"Spec basis: {data['spec_basis']}", f"Copy from: {data['copy_from']}",

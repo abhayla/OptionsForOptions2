@@ -2,25 +2,28 @@
 
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
-Process learnings are logged per row in `docs/process/row-review.md`; its standing rules R1-R5 apply to every brief.
-Size every brief by the files the fix must touch (R3): <= 5 files S (30 min / 40 calls), 6-15 M (60 / 80), more or
+Process lessons live in `docs/process/row-review.md` (L1-L19; per-item log per the kit deliver skill's step 10, ADR-189).
+Size every brief by the files the fix must touch (L3): <= 5 files S (30 min / 40 calls), 6-15 M (60 / 80), more or
 backend + frontend L (split backend then frontend). The orchestrator copies the start check's or Measure's attack list
-into the brief as `Attack list:` (R1).
+into the brief as `Attack list:` (L1).
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
 tier, the `Standing items:` line (section below), and the literal `Budget:` / `Report:` / `Tests:` lines, which the
 dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
 attack list, not a rewrite (ADR-106 item 9).
 
-## Safety set and round 2 (ADR-178)
-**Safety set** - a changed file under any of these makes the checker Opus with mutation tests on its guards; otherwise
-the checker is Sonnet, whatever the row's Tier column says (the list is `SAFETY_SET` in
-`scripts/orchestrator/measure_process.py`; change both together): `backend/ofo/engine/`, `backend/ofo/scenario/`,
+## Tiers, safety set and round 2 (ADR-189, ADR-106 (1), ADR-178 (1))
+**Tiers** - Tier A (a safety-set file changed): builder + one Opus checker; Tier B (other code): builder + one Sonnet
+checker; Tier C (docs, records, test-only): CI only. One checker replaces verifier plus reviewer. At most 2 rounds;
+after round 2 a CRITICAL or MAJOR on Tier A parks the item unmerged, anything else ships with its findings listed. No
+automatic independent review. Mutation tests: Tier A guards only, at most 5 mutants, run by the builder on a scratch
+copy; not a gate.
+**Safety set** - a changed file under any of these makes the item Tier A, whatever the row's Tier column says (the
+list is `SAFETY_SET` in `scripts/orchestrator/safety_set.py`; change both together): `backend/ofo/engine/`, `backend/ofo/scenario/`,
 `backend/ofo/table/`, `backend/ofo/outcome/`, `backend/ofo/marketdata/`, `backend/ofo/feed*`, `backend/ofo_app/kite_ws*`,
 `backend/ofo_app/feed*`, `backend/ofo/broker/`, `backend/ofo_app/kite_*`, `backend/ofo_app/routes/auth*`,
 `backend/ofo_app/broker_sessions*`, `backend/ofo/orders/`, `backend/ofo/execution/`, `backend/ofo/reconciliation/`,
-`backend/ofo_app/alembic/`, `scripts/hooks/`. An Opus dispatch names the safety-set file in its `Why Opus:` line; the
-session-end script lists every Opus dispatch without one as a MISS.
+`backend/ofo_app/alembic/`, `scripts/hooks/`. An Opus dispatch names the safety-set file in its `Why Opus:` line.
 **Round-2 checker brief** (findings-only, ADR-178 (1)): `Round 2 findings:` with round 1's numbered findings, `Changed
 files:` with the fix commit's files, the attack items those findings touch, `Budget: 15 min wall-clock, 20 tool calls`.
 A full re-check only when the fix touched a safety-set file round 1 did not see - the brief says which.
@@ -102,33 +105,33 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   through `scripts/orchestrator/db_run_fresh.py <worktree> python -m pytest -q -p no:cacheprovider -c pytest-app.ini
   <files>` (a throwaway database; never the shared ofo_test) before reporting. A migration that re-creates a validator
   publishes `NEW_PINS`.
-- **Gate before PASS (ADR-181):** run `python scripts/orchestrator/gate.py` on your clean worktree after your last
-  commit and paste its last 5 lines, `GATE PASS <sha>` included; a report or a checker PASS without them is not a pass.
+- **Local checks before PASS (ADR-189):** run `python tools/ci_local.py` on your clean worktree after your last
+  commit and paste its last 5 lines; a report or a checker PASS without them is not a pass. CI runs the full suites.
 - **Test doubles from the real thing** (finding test-double-encodes-old-assumption, #532 C1): every stand-in model,
   fake server or socket fake is built from the real class (same base, e.g. ApiModel) or checked against the real
   server's behaviour; a Playwright spec that answers `**/api/strategies/live` itself stamps every push with
   `frontend/e2e/support/echoSeq.ts` (repo test `tests/test_e2e_live_socket_fakes.py`).
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
-- **Run the brief's `Attack list:` yourself before reporting** (row-review R1, 2026-10-22: row 2's round 1 failed on
+- **Run the brief's `Attack list:` yourself before reporting** (row-review.md L1, 2026-10-22: row 2's round 1 failed on
   an attack nobody listed, "a heartbeat alone must not count as a price"). Each item gets a test or a scratch run
   and a line in the report.
-- **Run every changed test file in full, never a `-k` subset** (row-review R2: two stale tests reached the verifier).
+- **Run every changed test file in full, never a `-k` subset** (row-review.md L2: two stale tests reached the verifier).
   DB-backed `tests_app` files run through the MAIN checkout's `scripts/orchestrator/db_run.py <your worktree> python
   -m pytest ...` (a worktree has no `.env`); a skipped DB test is NOT run and is reported as skipped. Grep every test
   tree for the old value or answer of anything you changed.
-- **Mutation checks use scratch copies only**, never an in-place edit of a checked-out file (row-review R4).
-  Run `python scripts/orchestrator/mutation_gate.py` on your attack-list mutants before reporting; quote its results
-  file; a non-zero exit means not done.
-- **Run the app tests your change can break** (row-review R13; row 7 found a row-5 stale test in a file nobody ran):
+- **Mutation checks (Tier A guards only) use scratch copies only**, never an in-place edit of a checked-out file
+  (L4). Run `python scripts/orchestrator/mutation_gate.py` on at most 5 mutants of each guard you add or move and quote
+  its results file (L18). Not a merge gate.
+- **Run the app tests your change can break** (row-review.md L13; row 7 found a row-5 stale test in a file nobody ran):
   for every backend file you change, list the `tests_app` files that import it or call its routes
   (`scripts/orchestrator/select_app_tests.py` does this for a whole branch; for your own commits grep the importers),
   run them all through the throwaway-database runner, and list them in your report.
-- **A cache or memo key is built from the call it guards** (row-review R14; row 8, 2026-10-22: 30 of 40 key parts had
+- **A cache or memo key is built from the call it guards** (row-review.md L14; row 8, 2026-10-22: 30 of 40 key parts had
   no killing test, so a later edit dropping one would serve stale figures with every test green): one helper takes the
   computation's exact arguments and returns key + result; a test changes one input at a time and asserts a recompute.
-- **Every caller of a changed entry point** is named in the brief and tested (row-review R15; row 8 missed two routes).
+- **Every caller of a changed entry point** is named in the brief and tested (row-review.md L15; row 8 missed two routes).
 - **DB-backed app runs start first**, in the background, with `-o faulthandler_timeout=60`, and the report gives their
-  timing (row-review R16; ~23 s per DB test over the tunnel).
+  timing (row-review.md L16; ~23 s per DB test over the tunnel).
 - **The `Budget:` is a hard stop** (row 4, 2026-10-22: a builder used 152 tool calls on an 80-call budget, hit the
   100-turn hard limit and stopped mid-rename with uncommitted files). At 80% of the calls (64 of 80, 32 of 40):
   start no new change; finish or revert the one in hand so the tree is consistent; commit; report done / not done /
