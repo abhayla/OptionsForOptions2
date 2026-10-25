@@ -93,6 +93,31 @@ def test_a_second_computation_of_the_same_snapshot_carries_identical_warning_cod
     assert [leg["warnings"] for leg in first["legs"]] == [leg["warnings"] for leg in second["legs"]]
 
 
+def _leg_codes(replayed, legs, monkeypatch, minutes, spread):
+    """The per-leg warning texts of one computation with the two admin settings overridden (the route reads them
+    through ``get_settings``)."""
+    from types import SimpleNamespace
+
+    from ofo_app.routes import outcome as route
+    monkeypatch.setattr(route, "get_settings", lambda: SimpleNamespace(
+        LIQUIDITY_NO_TRADE_MINUTES=minutes, LIQUIDITY_MAX_SPREAD_PERCENT=Decimal(spread)))
+    body = _answer(replayed, legs)
+    return [[w["text"] for w in leg["warnings"] if w["code"] == "low_liquidity"] for leg in body["legs"]]
+
+
+def test_the_two_liquidity_settings_change_which_leg_is_flagged_at_the_route(replayed, monkeypatch):
+    # replay feed: the 25000 CE quotes 1.00 / 1.05 (4.9% of mid) and traded under 2 minutes before the answer
+    legs = [("SELL", "CE", 25000)]
+    assert _leg_codes(replayed, legs, monkeypatch, 5, "10") == [[]]  # the defaults flag nothing
+    spread = _leg_codes(replayed, legs, monkeypatch, 5, "3")
+    assert len(spread[0]) == 1 and "4.9%" in spread[0][0]  # a tighter spread setting flags the spread
+    quiet = _leg_codes(replayed, legs, monkeypatch, 1, "10")
+    assert len(quiet[0]) == 1 and "1 minute" in quiet[0][0]  # a shorter no-trade setting flags the no-trade time
+    assert _leg_codes(replayed, legs, monkeypatch, 5, "50") == [[]]  # a looser one still flags nothing
+    # the other way round: a looser spread setting clears a leg that the 3% setting flagged
+    assert _leg_codes(replayed, legs, monkeypatch, 5, "5") == [[]] and len(spread[0]) == 1
+
+
 def test_rest_leg_edit_and_live_push_all_go_through_the_one_door_and_compute_no_warning_themselves():
     for module in (live_push, leg_edit):
         source = inspect.getsource(module)
