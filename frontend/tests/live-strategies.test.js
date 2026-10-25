@@ -452,3 +452,14 @@ describe('start queue: one card loading at a time (F-45, db-role-limit-below-poo
     expect(w.find('[data-testid="live-group-drafts"]').exists()).toBe(true)
   })
 })
+
+describe('REQ-134 reader sweep: the card title is the strategy name (quoted user words, shown without the API quotes)', () => {
+  it('a named row shows its name as text, then the underlying; a row without a name (older server) keeps "Draft <id>"', async () => {
+    listAnswer = { strategies: [{ ...row(1), name: '"<b>NIFTY</b> Oct condor"' }, row(2)] }
+    const w = await mountPage()
+    const titles = w.findAll('[data-testid="live-strategy-title"]').map((x) => x.text())
+    expect(titles).toContain('<b>NIFTY</b> Oct condor, NIFTY')
+    expect(titles).toContain('Draft 2, NIFTY')
+    expect(w.find('[data-testid="live-strategy-title"] b').exists()).toBe(false)
+  })
+})

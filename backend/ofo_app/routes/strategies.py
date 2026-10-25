@@ -43,6 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
+from ofo_app import tracking_store
 from ofo_app import tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -90,6 +91,24 @@ class StrategyIn(BaseModel):
     preferences: dict[str, str] = Field(default_factory=dict)
 
     _no_live = model_validator(mode="before")(_refuse_live_state)
+
+
+class StrategyCreateIn(StrategyIn):
+    """Save Draft and Save As (REQ-134 AC-1, AC-2): a new strategy with the name the user typed. The name is optional
+    only so an older client keeps working; it then holds the default (``sf.DEFAULT_STRATEGY_NAME``)."""
+
+    name: str = Field(default=sf.DEFAULT_STRATEGY_NAME,
+                      description="1 to 40 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)")
+
+
+class StrategyNameIn(BaseModel):
+    """Rename (REQ-134 AC-3): the new name and the revision the screen showed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str
+    expected_revision: int = Field(gt=0, description="The revision this change was based on (409 if another change "
+                                                     "landed since)")
 
 
 class StrategyUpdateIn(StrategyIn):
@@ -156,6 +175,7 @@ class VersionOut(ApiModel):
 
 class StrategyOut(ApiModel):
     id: int
+    name: CatalogueText  # REQ-134: the user's name, quoted user text (strip the outer quotes to edit it)
     status: Identifier
     revision: int
     created_at: datetime.datetime
@@ -164,12 +184,31 @@ class StrategyOut(ApiModel):
     versions: list[VersionOut] = Field(default_factory=list)  # W-144: empty before the first execution
 
 
+class FirstLegOut(ApiModel):
+    """REQ-134 AC-4: the first leg's contract terms; the browser writes "NIFTY 27 Oct 22500 PE and 3 more"."""
+
+    instrument: Identifier
+    strike: Optional[Identifier]  # noqa: UP045 - None for a future
+    expiry: Identifier
+
+
 class SummaryOut(ApiModel):
     id: int
     underlying: Underlying
     status: Identifier
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    name: CatalogueText  # REQ-134 AC-4: quoted user text
+    leg_count: int  # legs of the active definition; "and N more" is leg_count - 1
+    first_leg: FirstLegOut
+    tracked: Optional[bool]  # noqa: UP045 - True/False from the tracking store; None = could not be read (never "no")
+
+
+class RenamedOut(ApiModel):
+    id: int
+    name: CatalogueText
+    revision: int  # unchanged by a rename (REQ-134 AC-3)
+    updated_at: datetime.datetime  # unchanged by a rename: the last-saved time follows the definition
 
 
 class StrategyListOut(ApiModel):
@@ -209,6 +248,8 @@ _FORM_TEMPLATE = MappingProxyType({
     sf.QUANTITY_NOT_LOT_MULTIPLE: "strategy_quantity_not_lot_multiple",
     sf.UNDERLYING_MISMATCH: "strategy_underlying_mismatch",
     sf.UNKNOWN_NAME: "strategy_name_not_allowed",
+    sf.STRATEGY_NAME_EMPTY: "strategy_name_empty",  # REQ-134 AC-1: "Give the strategy a name"
+    sf.STRATEGY_NAME_INVALID: "strategy_name_invalid",
     sf.VALUE_NOT_ALLOWED: "user_input_request_invalid",  # ADR-069: the fixed input error (422), value never echoed
     sf.INVALID_PLANNED_ENTRY: "user_input_request_invalid",  # ADR-075: a malformed / one-sided / future entry (422)
 })
@@ -274,7 +315,7 @@ async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
     version_docs = [_definition_out(await store.version_saved(db, v)) for v in stored.versions]
     await _with_tokens(db, doc, *version_docs)
     return StrategyOut.model_validate({
-        "id": stored.id, "status": stored.status, "revision": stored.revision,
+        "id": stored.id, "name": sf.shown_name(stored.name), "status": stored.status, "revision": stored.revision,
         "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
         "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
                       "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome,
@@ -361,12 +402,12 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
 
 
 @router.post("/strategies", status_code=201, response_model=StrategyOut, response_model_exclude_unset=True)
-async def save_draft(body: StrategyIn, today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
                      db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         saved = await _definition(db, body)
         await _check_eligible(db, saved, today_of, None)
-        return await _strategy_out(db, await store.save_draft(db, user_ref, saved))
+        return await _strategy_out(db, await store.save_draft(db, user_ref, saved, body.name))
     return await _run(db, work, form_status=422)
 
 
@@ -374,10 +415,36 @@ async def save_draft(body: StrategyIn, today_of: Annotated[elig.TodayReader, Dep
 async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
+        tracked = await _tracked_ids(db, [r.id for r in rows])
         return StrategyListOut.model_validate({"strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
-             "updated_at": r.updated_at} for r in rows]})
+             "updated_at": r.updated_at, "name": sf.shown_name(r.name), "leg_count": r.leg_count,
+             "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
+                           "expiry": r.first_leg.expiry},
+             "tracked": None if tracked is None else r.id in tracked} for r in rows]})
     return await _run(db, work, form_status=409)
+
+
+async def _tracked_ids(db: Any, ids: list[int]) -> set[int] | None:
+    """The ids with a tracking row, or None when the tracking store cannot be read: the list still answers and every
+    row says "unknown", never "not tracked" by default (REQ-134 AC-4). The read runs in its own savepoint."""
+    try:
+        async with db.begin_nested():
+            return await tracking_store.tracked_ids(db, ids)
+    except Exception:  # noqa: BLE001 - any read failure only costs the tracked flag
+        return None
+
+
+@router.patch("/strategies/{strategy_id}/name", response_model=RenamedOut, response_model_exclude_unset=True)
+async def rename_strategy(strategy_id: int, body: StrategyNameIn, db: Annotated[Any, Depends(get_db)],
+                          user_ref: Annotated[str, Depends(current_user_ref)]) -> RenamedOut:
+    """REQ-134 AC-3: changes only the name (and adds one history entry). 404 for another user's strategy, 409 on a
+    stale revision, 422 for an empty or over-long name."""
+    async def work():
+        renamed = await store.rename(db, user_ref, strategy_id, body.name, expected_revision=body.expected_revision)
+        return RenamedOut.model_validate({"id": renamed.id, "name": sf.shown_name(renamed.name),
+                                          "revision": renamed.revision, "updated_at": renamed.updated_at})
+    return await _run(db, work, form_status=422)
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)

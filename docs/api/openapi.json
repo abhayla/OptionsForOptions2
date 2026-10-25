@@ -1730,6 +1730,41 @@
         "title": "FeaturesOut",
         "type": "object"
       },
+      "FirstLegOut": {
+        "additionalProperties": false,
+        "description": "REQ-134 AC-4: the first leg's contract terms; the browser writes \"NIFTY 27 Oct 22500 PE and 3 more\".",
+        "properties": {
+          "expiry": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Instrument",
+            "type": "string"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          }
+        },
+        "required": [
+          "instrument",
+          "strike",
+          "expiry"
+        ],
+        "title": "FirstLegOut",
+        "type": "object"
+      },
       "ForwardOut": {
         "additionalProperties": false,
         "properties": {
@@ -3333,6 +3368,35 @@
         "title": "RefusalOut",
         "type": "object"
       },
+      "RenamedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "revision",
+          "updated_at"
+        ],
+        "title": "RenamedOut",
+        "type": "object"
+      },
       "ReturnContractOut": {
         "additionalProperties": false,
         "properties": {
@@ -3843,8 +3907,9 @@
         "title": "StrategyContractOut",
         "type": "object"
       },
-      "StrategyIn": {
+      "StrategyCreateIn": {
         "additionalProperties": false,
+        "description": "Save Draft and Save As (REQ-134 AC-1, AC-2): a new strategy with the name the user typed. The name is optional\nonly so an older client keeps working; it then holds the default (``sf.DEFAULT_STRATEGY_NAME``).",
         "properties": {
           "legs": {
             "items": {
@@ -3853,6 +3918,12 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "name": {
+            "default": "New Strategy",
+            "description": "1 to 40 characters after trimming, one line; duplicates allowed (REQ-134 AC-1)",
+            "title": "Name",
+            "type": "string"
           },
           "preferences": {
             "additionalProperties": {
@@ -3893,7 +3964,7 @@
           "underlying",
           "legs"
         ],
-        "title": "StrategyIn",
+        "title": "StrategyCreateIn",
         "type": "object"
       },
       "StrategyListOut": {
@@ -3913,6 +3984,28 @@
         "title": "StrategyListOut",
         "type": "object"
       },
+      "StrategyNameIn": {
+        "additionalProperties": false,
+        "description": "Rename (REQ-134 AC-3): the new name and the revision the screen showed.",
+        "properties": {
+          "expected_revision": {
+            "description": "The revision this change was based on (409 if another change landed since)",
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expected_revision"
+        ],
+        "title": "StrategyNameIn",
+        "type": "object"
+      },
       "StrategyOut": {
         "additionalProperties": false,
         "properties": {
@@ -3927,6 +4020,9 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "name": {
+            "title": "Name"
           },
           "revision": {
             "title": "Revision",
@@ -3952,6 +4048,7 @@
         },
         "required": [
           "id",
+          "name",
           "status",
           "revision",
           "created_at",
@@ -5506,14 +5603,35 @@
             "title": "Created At",
             "type": "string"
           },
+          "first_leg": {
+            "$ref": "#/components/schemas/FirstLegOut"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "leg_count": {
+            "title": "Leg Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name"
           },
           "status": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Status",
             "type": "string"
+          },
+          "tracked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracked"
           },
           "underlying": {
             "enum": [
@@ -5534,7 +5652,11 @@
           "underlying",
           "status",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "name",
+          "leg_count",
+          "first_leg",
+          "tracked"
         ],
         "title": "SummaryOut",
         "type": "object"
@@ -6458,7 +6580,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StrategyIn"
+                "$ref": "#/components/schemas/StrategyCreateIn"
               }
             }
           },
@@ -6700,6 +6822,56 @@
           }
         },
         "summary": "Strategy History"
+      }
+    },
+    "/strategies/{strategy_id}/name": {
+      "patch": {
+        "description": "REQ-134 AC-3: changes only the name (and adds one history entry). 404 for another user's strategy, 409 on a\nstale revision, 422 for an empty or over-long name.",
+        "operationId": "rename_strategy_strategies__strategy_id__name_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyNameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Strategy"
       }
     },
     "/strategies/{strategy_id}/restore/{seq}": {

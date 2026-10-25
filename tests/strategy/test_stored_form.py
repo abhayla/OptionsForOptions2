@@ -283,3 +283,107 @@ def test_a_summary_outside_the_closed_shape_is_refused_on_write_and_a_fixed_line
     assert shown == "this change could not be shown"  # the catalogue fallback, never the raw text
     from ofo.errors.explanations import ExplanationText
     assert type(shown) is ExplanationText
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# REQ-134 (W-157): the name a user gives a saved strategy
+# ---------------------------------------------------------------------------------------------------------------
+
+from ofo.errors import explanations  # noqa: E402
+from ofo.errors.explanations import UserWords  # noqa: E402
+
+
+@pytest.mark.parametrize("typed,stored", [("a", "a"), ("x" * 40, "x" * 40),
+                                          ("  NIFTY Oct condor  ", "NIFTY Oct condor"),
+                                          ("You should buy now", "You should buy now"),
+                                          ("<b>bold</b>", "<b>bold</b>"), ("New Strategy", "New Strategy")])
+def test_req134_ac1_a_name_of_1_to_40_characters_after_trimming_is_accepted_as_the_users_words(typed, stored):
+    name = sf.check_strategy_name(typed)
+    assert type(name) is UserWords and str.__str__(name) == stored
+
+
+@pytest.mark.parametrize("typed", ["", " ", "   ", "\t \n"])
+def test_req134_ac1_an_empty_name_is_refused_with_the_empty_code(typed):
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_EMPTY
+
+
+@pytest.mark.parametrize("typed", ["x" * 41, "x" * 5000, "a\nb", "a\x00b", "a\x7fb", "a\x85b", None, 5, ["a"], b"a"])
+def test_req134_ac1_a_name_over_40_characters_with_a_control_character_or_not_text_is_refused(typed):
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_INVALID
+
+
+@pytest.mark.parametrize("typed", ["\u200b", " \u200b ", "\ufeff", "\u2060\u200b", "\u00ad", "\u2028", "\u2029",
+                                   "\u200b\u2003"])
+def test_req134_ac1_a_name_with_no_visible_character_after_trimming_is_refused_as_empty(typed):
+    """Finding 2: a zero-width-space-only name looks empty, so it gets the empty-name text."""
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_EMPTY
+
+
+@pytest.mark.parametrize("typed", ["a\u2028b", "a\u2029b", "a\u2028\u2028b", "\u2028a\u2028b"])
+def test_req134_ac1_a_line_or_paragraph_separator_inside_a_name_is_refused_as_invalid(typed):
+    """Finding 2: the one-line rule covers U+2028 and U+2029 (an edge one is trimmed first, an inner one is refused)."""
+    with pytest.raises(sf.StoredFormError) as refused:
+        sf.check_strategy_name(typed)
+    assert refused.value.code == sf.STRATEGY_NAME_INVALID
+
+
+@pytest.mark.parametrize("typed,stored", [("a\u200b", "a\u200b"), ("\u200ba", "\u200ba"), ("a\u00adb", "a\u00adb"),
+                                          ("\u00a0 NIFTY\u3000", "NIFTY")])
+def test_req134_ac1_a_name_with_a_visible_character_stays_accepted(typed, stored):
+    """Finding 2 (green side): invisible characters beside a visible one are the user's words; only edges trim."""
+    assert str.__str__(sf.check_strategy_name(typed)) == stored
+
+
+def test_req134_ac1_the_empty_message_is_the_catalogues_not_an_ad_hoc_string():
+    from ofo.errors import render  # noqa: PLC0415
+
+    assert render("strategy_name_empty").what_happened == "Give the strategy a name"
+
+
+def test_req134_a_name_cannot_be_minted_outside_the_request_layer():
+    """ADR-003: UserWords is made only by user_words() from a REQUEST_LAYER module; this test module is none."""
+    assert "ofo.strategy.stored_form" in explanations.REQUEST_LAYER
+    with pytest.raises(TypeError):
+        explanations.user_words("NIFTY Oct condor")
+    with pytest.raises(TypeError):
+        UserWords("NIFTY Oct condor")
+
+
+def test_req134_ac3_a_rename_summary_is_the_one_closed_renamed_item_and_renders_the_names_quoted():
+    summary = sf.rename_summary("Old", "You should buy now")
+    assert json.loads(summary) == [{"kind": "renamed", "from": "Old", "to": "You should buy now"}]
+    shown = str(sf.render_summary(summary))
+    assert shown == 'Renamed from "Old" to "You should buy now"'
+
+
+@pytest.mark.parametrize("item", [
+    {"kind": "renamed", "from": "Old"},
+    {"kind": "renamed", "from": "Old", "to": "New", "note": "free text"},
+    {"kind": "renamed", "from": " Old", "to": "New"},
+    {"kind": "renamed", "from": "Old", "to": ""},
+    {"kind": "renamed", "from": "Old", "to": "x" * 41},
+    {"kind": "renamed", "from": "Old", "to": 7},
+    {"kind": "renamed", "from": "Old", "to": "line\nbreak"},
+    {"kind": "note", "text": "You should buy now"},
+])
+def test_req134_ac3_every_other_free_text_summary_is_still_refused(item):
+    with pytest.raises(sf.StoredFormError):
+        sf.summary_text([item])
+
+
+def test_req134_a_summary_that_does_not_validate_is_shown_as_the_fixed_catalogue_line():
+    bad = json.dumps([{"kind": "renamed", "from": "Old", "to": "x" * 41}])
+    assert str(sf.render_summary(bad)) == "this change could not be shown"
+
+
+def test_req134_the_stored_name_is_shown_back_only_as_quoted_user_text():
+    assert str(sf.shown_name("You should buy now")) == '"You should buy now"'
+    for bad in ("", " x", "x" * 41, None):
+        with pytest.raises(sf.StoredFormError):
+            sf.shown_name(bad)

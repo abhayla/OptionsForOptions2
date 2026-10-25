@@ -187,17 +187,27 @@ async def test_ac4_downgrade_without_a_typed_leg_restores_0011s_validator_and_up
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
+            at_head = await _grants(conn)
+            assert at_head
+            # A later migration may change grants itself (0025 grants the strategy name), so the grants this
+            # migration must keep are the ones at 0024: take them after the later migrations' own downgrades.
+            later_down, later_up = down[:len(down) - len(own_down)], up[len(own_up):]
+            assert later_down + own_down == down and own_up + later_up == up
+            for sql in later_down:
+                await conn.execute(text(sql))
             before = await _grants(conn)
-            assert before
-            for sql in down:
+            for sql in own_down:
                 await conn.execute(text(sql))
             assert await _grants(conn) == before
             assert await _insert_verdict(conn, LEG_8) == (None, "")
             state, _ = await _insert_verdict(conn, LEG_9)
             assert state == CHECK_VIOLATION, state
-            for sql in up:
+            for sql in own_up:
                 await conn.execute(text(sql))
             assert await _grants(conn) == before
+            for sql in later_up:
+                await conn.execute(text(sql))
+            assert await _grants(conn) == at_head
             assert await _insert_verdict(conn, LEG_9) == (None, "")
         finally:
             await trans.rollback()

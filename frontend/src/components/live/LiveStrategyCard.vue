@@ -9,7 +9,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
-import { fetchSavedLegs } from '@/lib/saveDraft'
+import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
 import { istTime, maxLine } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -118,7 +118,7 @@ const healthWord = (leg) => (leg.health === 'available' ? null : leg.health || '
 class="rounded border border-line bg-surface p-4" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-center gap-2">
-      <h2 class="text-base font-medium" data-testid="live-strategy-title">Draft {{ strategy.id }}, {{ strategy.underlying }}</h2>
+      <h2 class="text-base font-medium" data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</h2>
       <span class="text-sm text-ink-muted" data-testid="live-strategy-status">{{ strategy.status }}</span>
       <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">

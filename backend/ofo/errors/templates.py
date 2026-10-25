@@ -888,6 +888,15 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.",
           "Preparing orders from an older version of this strategy.",
           "Review the current plan, then prepare the orders again."),
+    # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
+    _gate("strategy_name_empty", _SV, 430,
+          "Give the strategy a name",
+          "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
+          "Type a name of 1 to 40 characters, then save again."),
+    _gate("strategy_name_invalid", _SV, 431,
+          "A strategy name is 1 to 40 characters on one line.",
+          "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
+          "Shorten the name or remove line breaks and control characters, then save again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

@@ -164,9 +164,10 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
          "expiry": "2026-10-27", "quantity": 75}], "rules_ref": None, "risk_limits": {"max_loss": "5000"},
         "preferences": {}}
     utc = datetime.timezone.utc
-    stored = SimpleNamespace(id=3, status="draft", revision=2, saved=object(), versions=(),
-                             created_at=datetime.datetime(2026, 10, 12, 9, 15, 0, tzinfo=utc),
-                             updated_at=datetime.datetime(2026, 10, 12, 9, 15, 0, 250000, tzinfo=utc))
+    stored = strategies.store.StoredStrategy(  # the real class: a field added to it cannot be missing from the fake
+        id=3, user_ref="u", status="draft", revision=2, saved=object(), versions=(), name="NIFTY Oct condor",
+        created_at=datetime.datetime(2026, 10, 12, 9, 15, 0, tzinfo=utc),
+        updated_at=datetime.datetime(2026, 10, 12, 9, 15, 0, 250000, tzinfo=utc))
 
     async def load(db, user_ref, strategy_id):
         return stored
@@ -189,7 +190,7 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
     assert response.status_code == 200
     # REQ-038 AC-3 (row 16): versions is always written; an unversioned strategy answers an empty list.
     assert response.content == (
-        b'{"id":3,"status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
         b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
@@ -213,8 +214,9 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
     at = datetime.datetime(2026, 10, 12, 9, 15, 0, tzinfo=utc)
     version = SimpleNamespace(number=1, state="active", based_on=None, created_at=at, confirmed_at=at,
                               reconciled_at=at, outcome=None, reconciliation_required=True, definition_text="{}")
-    stored = SimpleNamespace(id=3, status="draft", revision=2, saved=object(), versions=(version,),
-                             created_at=at, updated_at=at)
+    stored = strategies.store.StoredStrategy(id=3, user_ref="u", status="draft", revision=2, saved=object(),
+                                             versions=(version,), name="NIFTY Oct condor", created_at=at,
+                                             updated_at=at)
 
     async def load(db, user_ref, strategy_id):
         return stored
@@ -244,7 +246,7 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
                   b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27","quantity":75}],'
                   b'"rules_ref":null,"risk_limits":{},"preferences":{}}')
     assert response.content == (
-        b'{"id":3,"status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00Z","definition":' + definition + b',"versions":[{"number":1,'
         b'"state":"active","based_on":null,"created_at":"2026-10-12T09:15:00Z","confirmed_at":"2026-10-12T09:15:00Z",'
         b'"reconciled_at":"2026-10-12T09:15:00Z","outcome":null,"reconciliation_required":true,"definition":'
@@ -378,9 +380,11 @@ APP_MODELS = (
     "ofo_app.routes.ready_made.ReadyMadeOut",
     "ofo_app.routes.strategies.DefinitionOut",
     "ofo_app.routes.strategies.EntryOut",
+    "ofo_app.routes.strategies.FirstLegOut",
     "ofo_app.routes.strategies.HistoryOut",
     "ofo_app.routes.strategies.LegOut",
     "ofo_app.routes.strategies.PreferencesOut",
+    "ofo_app.routes.strategies.RenamedOut",
     "ofo_app.routes.strategies.RiskLimitsOut",
     "ofo_app.routes.strategies.StrategyListOut",
     "ofo_app.routes.strategies.StrategyOut",
