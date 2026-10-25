@@ -57,7 +57,10 @@ PINNED_SLOT_TYPES = frozenset({
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",
         "OrderRef", "UnitsByContract",
         # W-081 (margin gate): exact Decimal only, shown by the engine's rupee formatter (ADR-008)
-        "DisplayRupees")),
+        "DisplayRupees",
+        # W-158 (row 30, REQ-078 AC-2): only family_plural labels the loaded catalogue holds; the row 30 Opus check's
+        # mutant "slot accepts unknown labels" was killed (2026-10-25)
+        "ShapeFamilies")),
     *(f"ofo.errors.slots.{n}" for n in (
         "Money", "PnLMoney", "Int", "Count", "Time", "Instrument", "Code", "Underlying", "ExternalText")),
 })
