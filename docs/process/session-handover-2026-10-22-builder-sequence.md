@@ -40,7 +40,12 @@ then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker
   a builder migrated the shared ofo_dev to an unmerged revision (brief gap, #537); a timed lint test goes red under
   parallel load (re-run alone before acting); wt-new's -Name takes the suffix only (passing the full name doubled the
   prefix: `-OptionsForOptions2-c3r28f`).
-- **Worktrees left:** WORKTREES_STATE (fill in); `-c3docs` until this PR merges.
+- **Worktrees left:** `-OptionsForOptions2-c3r28f` (row 28f, until its PR merges), `-c3r29c` (row 29c, stacked on
+  28f), `-c3docs` until this PR merges; the empty agent worktree `agent-a0303a33e34999355` (locked by a finished agent
+  process) goes at the next session-start sweep.
+- **Memory pressure (2026-10-25 ~10:55):** Claude Code stopped the 28f pre-push gate for critically low memory (3.5 of
+  15.7 GB free afterwards; Chrome ~1 GB, three Claude processes ~1.5 GB). Run one gate at a time and close idle sessions
+  before a gate.
 
 ## UPDATE chunk 2 LANDED (session f1b75d11), 2026-10-24 evening (older)
 Chunk 2 (rows 17-24) is on main: part A #533 (rows 17-20 + row 21 parts 21m/21b, with migration 0024 at its reviewed
