@@ -325,11 +325,9 @@ def ledger_window(entries: list[dict], s: dict) -> list[tuple]:
                      str(e.get("round", "")).strip()) for e in entries if _in(s, _iso(e["at"])))
     seen: dict[str, int] = {}
     out = []
-    for at, row, kind, rnd in inside:
-        if kind == "fix":
-            seen[row] = seen.get(row, 0) + 1
-            rnd = rnd if rnd.isdigit() else str(seen[row])
-        out.append((at, row, kind, rnd))
+    for at, row, kind, given in inside:
+        seen[row] = seen.get(row, 0) + (kind == "fix")
+        out.append((at, row, kind, given if given.isdigit() or kind != "fix" else str(seen[row])))
     return out
 
 
