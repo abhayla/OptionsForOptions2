@@ -325,6 +325,7 @@ decisions:
   ADR-183: S6.1         # typed strategy name 1-20 characters, as in Sensibull; stored names up to 40 readable (owner Q2, 2026-10-25)
   ADR-184: S6.1         # history/delete readings as in Sensibull; #539 counts as gate item 1 (owner Q3-Q6, 2026-10-25)
   ADR-187: S6.7         # kit 1.12.0 taken; merge path ignores git grafts; no UTF-8 prefix; 300-file chunk limit ends
+  ADR-188: S6.7         # chunk 4 second process item (overlap gate skips generated files) + audit speed-ups (owner, 2026-10-25)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
