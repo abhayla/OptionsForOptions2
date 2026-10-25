@@ -57,9 +57,9 @@ engine-driven figures, migrations, auth/tokens); B = Sonnet review. Every row al
 | 24 | W-152 | REQ-133 | Old live frames dropped; a new screen waits for its first price | P1 core | 2 | A | Done (2026-10-24: measured first - the false alarm came from the server's Kite feed reconnect, F-61; "Waiting for the first live price" inside the staleness setting; versioned live frames; W-152 in_review until chunk PR #531; evidence W-152 AC-1..4; MINORs #532) |
 | 25 | W-153 | REQ-055 | Margin check, read part (Zerodha's margin for the plan) | P1 core | 3 | A | Not started (partly built) |
 | 26 | W-154 | REQ-081 | Money summary: net premium, charges, margin, reward/risk | P1 core | 3 | A | Not started (partly built on branch W-127) |
-| 27 | W-155 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Not started (not built) |
+| 27 | W-155 | REQ-135 | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg | P1 core | 3 | A | Done (2026-10-25, PR #540: 27b Opus PASS, 27f Sonnet PASS; bounded Reward/Risk and option time/intrinsic value left to row 26 by decision; CI red once on test_pinned_clock, fixed; W-155 in_review; MINORs #537 C) |
 | 28 | W-156 | REQ-070 | Builder history and restore | P1 core | 3 | B | Not started (server only) |
-| 29 | W-157 | REQ-134 | Name a strategy, Save As, rename, saved list with search | P1 core | 3 | B | Not started (not built) |
+| 29 | W-157 | REQ-134 | Name a strategy, Save As, rename, saved list with search | P1 core | 3 | B | Done (2026-10-25, PR #541: migration 0025; 29b Opus PASS + fix round + round 2 PASS; 29f PASS incl. builder rename; CI red once on two migration-pin tests, fixed; names 40 chars pending owner Q2; W-157 in_review) |
 | 30 | W-158 | REQ-078 | Shift / Width / Hedge | P2 | 4 | A | Not started (built on branch W-126) |
 | 31 | W-159 | REQ-085 | Warnings and "How this trade works" | P2 | 4 | A | Not started (not built) |
 | 32 | W-160 | REQ-136 | Figure definitions and the projections note | P2 | 4 | B | Not started (not built) |
