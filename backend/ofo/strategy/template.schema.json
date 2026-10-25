@@ -28,6 +28,7 @@
         "name": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[A-Za-z][A-Za-z0-9 ()'-]*$"},
         "description": {"type": "string", "minLength": 1, "maxLength": 400},
         "level": {"enum": ["Beginner", "Intermediate", "Advanced"]},
+        "width_adjustable": {"type": "boolean"},
         "views": {"$ref": "#/$defs/views"},
         "objectives": {"$ref": "#/$defs/objectives"},
         "params": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/param"}},

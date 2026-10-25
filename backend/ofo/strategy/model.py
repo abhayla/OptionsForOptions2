@@ -165,6 +165,8 @@ class Template:
     params: tuple[Param, ...]
     constraints: tuple[Constraint, ...]
     legs: tuple[TemplateLeg, ...]
+    #: REQ-078 AC-2: the Width control applies (data, never per-strategy code; REQ-028 AC-5)
+    width_adjustable: bool = False
     _params_by_name: dict = field(init=False, repr=False, compare=False)
     _legs_by_name: dict = field(init=False, repr=False, compare=False)
 

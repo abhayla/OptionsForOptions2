@@ -110,6 +110,7 @@ templates:
       same number of steps further out on each side, all the same expiry: a bull put spread plus a bear
       call spread.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
@@ -132,6 +133,7 @@ templates:
       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
       away on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
@@ -149,6 +151,7 @@ templates:
     name: "Short Straddle"
     description: Sell a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params: []
@@ -161,6 +164,7 @@ templates:
     name: "Short Strangle"
     description: Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [range-bound]
     objectives: [income]
     params:
@@ -197,6 +201,7 @@ templates:
     name: "Long Straddle"
     description: Buy a call and a put at the at-the-money strike, the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params: []
@@ -209,6 +214,7 @@ templates:
     name: "Long Strangle"
     description: Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:
@@ -227,6 +233,7 @@ templates:
       Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the
       same number of steps further out on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:
@@ -618,6 +625,7 @@ templates:
       Buy a call and a put at the at-the-money strike, and sell a put and a call the same number of steps away
       on each side, all the same expiry.
     level: Intermediate
+    width_adjustable: true
     views: [volatile]
     objectives: [volatility]
     params:

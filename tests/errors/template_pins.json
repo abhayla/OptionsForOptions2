@@ -1487,6 +1487,38 @@
     "sha256": "6f66686722d95876bc85977232872fb72771236decea29c6dc35e1ae59aaced0",
     "reviewed": "pending owner read"
   },
+  "leg_edit_landing_not_listed": {
+    "sha256": "18a45fa4cc58b8b82f08c4eb1463f225d8689e523211959338fc87080d921ca6",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_landing_not_tradable": {
+    "sha256": "e08b7b617b2976b15baf79a1bf21b0f836fbd3c977b020ff7ace70750a3fc9a4",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_shift_needs_option_leg": {
+    "sha256": "04d6cc0efb779eb1b50e0460764c6eb9b4cfe0379e94bbf6e3cf93a7c546c105",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_not_applicable": {
+    "sha256": "217af6c8e6100eec868f7e7b9d2ca1d385757ee1f4a2d2d92d5546b050b303bd",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_not_applicable": {
+    "sha256": "9bb638357efb6399571ee11b83c0f4f51b3fc1e9b2f7aa43429f3273b377dad7",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_width_below_zero": {
+    "sha256": "2499f803810fa82dc012d97222e1a75ef7461a842899ef877e6adca4206a892b",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_hedge_below_minimum": {
+    "sha256": "8f7706bb57544fd5ff21c28d3972f80893c9dd4bdbcddec630222928b15a9ec2",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_list_not_loaded_today": {
+    "sha256": "33f067935058022eb65362cab27ca119656157efa260137de4fb02fb57eb4a26",
+    "reviewed": "pending owner read"
+  },
   "explanation:ready_made_fixed_rule_label": {
     "sha256": "fd98968c08bd3b7eff12e3471002c112d6064cbf0596c55cdb11361337dd7a27",
     "reviewed": "pending owner read"

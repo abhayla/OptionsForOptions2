@@ -1,7 +1,7 @@
 """Leg edits of the Strategy Builder: strike step, multiplier, include tick, typed price (REQ-076, W-148).
 
-Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo/strategy/leg_edit.py), REQ-076 parts only: the
-Shift / Width / Hedge moves are REQ-078 (row 30) and are not here.
+Adapted from this repo's own branch build/W-126-a1-leg-rows (backend/ofo/strategy/leg_edit.py): REQ-076 parts, and the
+REQ-078 Shift / Width / Hedge moves (W-158; ADR-186), all landing through the one rule :func:`_land`.
 
 Spec: REQ-076 AC-1 (strikes come from the instrument file, listed and not expired), AC-2 (a stepped leg is a new
 contract, so only its planned entry is captured again), AC-4/AC-5 (multiplier; quantity = lots x the file's lot size;
@@ -34,6 +34,8 @@ from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 from ofo.money import PAISE
 
 MULTIPLIER_MIN, MULTIPLIER_MAX = 1, 50  # REQ-076 AC-4: whole numbers 1 to 50
+OPTIONS = (Instrument.CE, Instrument.PE)
+MAX_HEDGE_LEGS = 4  # REQ-078 AC-5: Hedge needs an even number of legs, at most 4
 _TYPED_PRICE = re.compile(r"-?[0-9]{1,30}(\.[0-9]{1,30})?")  # ASCII digits only; the shape check, the rules come after
 
 
@@ -87,6 +89,22 @@ class Listing:
                              and e.contract.instrument_type == instrument.value}))
 
 
+def _land(listing: Listing, underlying: str, legs: list[EditLeg], targets: Mapping[int, Decimal]) -> Moved:
+    """The one landing rule (REQ-078 AC-6, REQ-076 AC-1): move each leg in ``targets`` to its new strike. If ANY target
+    is not a listed, unexpired strike of that leg's expiry and type the whole move is refused (nothing changes) and the
+    text names that leg. A moved leg is a new contract, so its typed mark goes."""
+    out = list(legs)
+    for index, strike in sorted(targets.items()):
+        leg = legs[index].leg
+        if strike <= 0:  # no strike exists below zero: the text cannot show it, so it is the "no further strike" answer
+            raise LegEditRefused("leg_edit_no_further_strike", leg=leg_ref(underlying, legs, index))
+        if strike not in listing.strikes(underlying, leg.expiry, leg.instrument):
+            raise LegEditRefused("leg_edit_landing_not_listed", strikes=(strike,), kind=leg.instrument,
+                                 expiry=leg.expiry, number=index + 1)
+        out[index] = replace(legs[index], leg=replace(leg, strike=strike), typed=False)
+    return Moved(out, frozenset(targets))
+
+
 def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: int, direction: int) -> Moved:
     """REQ-076 AC-1: the next LISTED strike above / below (never strike + a typed constant). A strike that is not
     listed is refused, never rounded; the first / last listed strike has no further step."""
@@ -99,9 +117,92 @@ def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: i
     at = grid.index(leg.strike) + direction
     if not 0 <= at < len(grid):
         raise LegEditRefused("leg_edit_no_further_strike", leg=leg_ref(underlying, legs, index))
-    out = list(legs)
-    out[index] = replace(legs[index], leg=replace(leg, strike=grid[at]), typed=False)
-    return Moved(out, frozenset({index}))
+    return _land(listing, underlying, legs, {index: grid[at]})
+
+
+def strike_step(listing: Listing, underlying: str, legs: list[EditLeg]) -> Decimal:
+    """REQ-078 AC-3: one strike step = the strike gap the instrument file gives for the legs' expiry (the smallest gap
+    across their expiries). An option leg on an expired expiry, or an expiry the file has no strikes for, is refused
+    naming that leg: a step is never read from a list that does not hold the leg."""
+    gaps = []
+    for index, x in enumerate(legs):
+        if x.leg.instrument not in OPTIONS:
+            continue
+        if not listing.strikes(underlying, x.leg.expiry, x.leg.instrument):
+            raise LegEditRefused("leg_edit_strike_not_listed", leg=leg_ref(underlying, legs, index))
+        gaps.append(listing.cat.strike_gap(underlying, x.leg.expiry))
+    return min(gaps)
+
+
+def shift(listing: Listing, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
+    """REQ-078 AC-3: every option leg by one strike step; futures legs stay where they are."""
+    options = [i for i, x in enumerate(legs) if x.leg.instrument in OPTIONS]
+    if not options:
+        raise LegEditRefused("leg_edit_shift_needs_option_leg")
+    step = direction * strike_step(listing, underlying, legs)
+    return _land(listing, underlying, legs, {i: legs[i].leg.strike + step for i in options})
+
+
+def width(listing: Listing, underlying: str, legs: list[EditLeg], direction: int) -> Moved:
+    """REQ-078 AC-4 / ADR-186: every call leg one step up and every put leg one step down (reversed for -1), so the
+    width (the lowest call strike minus the highest put strike) changes by two steps and the hedge distances stay. A
+    click always moves both sides, so no live spot is needed. The width never goes below 0."""
+    puts = [x.leg.strike for x in legs if x.leg.instrument is Instrument.PE]
+    calls = [x.leg.strike for x in legs if x.leg.instrument is Instrument.CE]
+    if not puts or not calls:
+        raise LegEditRefused("leg_edit_width_not_applicable")
+    step = strike_step(listing, underlying, legs)
+    if min(calls) - max(puts) + direction * 2 * step < 0:
+        raise LegEditRefused("leg_edit_width_below_zero")
+    targets = {i: x.leg.strike + (direction * step if x.leg.instrument is Instrument.CE else -direction * step)
+               for i, x in enumerate(legs) if x.leg.instrument in OPTIONS}
+    return _land(listing, underlying, legs, targets)
+
+
+def _hedge_distances(legs: list[EditLeg], protective: frozenset[int]) -> dict[int, tuple[int, Decimal]]:
+    """For each Hedge leg (by index): (the index of its short leg, its distance from it, outwards). A Hedge leg must be
+    an option, be the only Hedge of its type, and sit beyond a non-Hedge leg of the same type; anything else is not a
+    shape this control handles (fail closed)."""
+    out: dict[int, tuple[int, Decimal]] = {}
+    for i in sorted(protective):
+        leg = legs[i].leg
+        if leg.instrument not in OPTIONS or any(legs[j].leg.instrument is leg.instrument for j in out):
+            raise LegEditRefused("leg_edit_hedge_not_applicable")
+        sign = 1 if leg.instrument is Instrument.CE else -1  # a call hedge sits above its short, a put hedge below
+        shorts = [j for j, x in enumerate(legs) if j not in protective and x.leg.instrument is leg.instrument
+                  and sign * (leg.strike - x.leg.strike) > 0]
+        if not shorts:
+            raise LegEditRefused("leg_edit_hedge_not_applicable")
+        near = min(shorts, key=lambda j: abs(leg.strike - legs[j].leg.strike))
+        out[i] = (near, sign * (leg.strike - legs[near].leg.strike))
+    return out
+
+
+def hedge(listing: Listing, underlying: str, legs: list[EditLeg], protective: frozenset[int], direction: int) -> Moved:
+    """REQ-078 AC-5 / ADR-186: only the legs marked Hedge move, away from (+1) or towards (-1) their short leg; the
+    distance never goes below one step; an even number of legs, at most 4.
+
+    Equal put-side and call-side distances: both move one step. Unequal (as in Sensibull): +1 moves ONLY the nearer
+    hedge out until its distance equals the farther one; -1 moves ONLY the farther hedge in until its distance equals
+    the nearer one. A vertical spread (one hedge) moves its one hedge one step."""
+    if not protective or len(legs) % 2 or len(legs) > MAX_HEDGE_LEGS:
+        raise LegEditRefused("leg_edit_hedge_not_applicable")
+    step = strike_step(listing, underlying, legs)
+    found = _hedge_distances(legs, protective)
+    distances = {i: d for i, (_, d) in found.items()}
+    if len(set(distances.values())) > 1:  # unequal: only the side that evens them out
+        pick = min(distances.values()) if direction > 0 else max(distances.values())
+        wanted = {i: max(distances.values()) if direction > 0 else min(distances.values())
+                  for i, d in distances.items() if d == pick}
+    else:
+        wanted = {i: d + direction * step for i, d in distances.items()}
+    targets: dict[int, Decimal] = {}
+    for i, new_distance in wanted.items():
+        short = legs[found[i][0]].leg.strike
+        if new_distance < step:
+            raise LegEditRefused("leg_edit_hedge_below_minimum", leg=leg_ref(underlying, legs, i))
+        targets[i] = short + new_distance if legs[i].leg.instrument is Instrument.CE else short - new_distance
+    return _land(listing, underlying, legs, targets)
 
 
 def apply_multiplier(cat: Catalogue, underlying: str, legs: list[EditLeg], multiplier: int) -> list[EditLeg]:

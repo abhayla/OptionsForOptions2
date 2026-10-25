@@ -273,3 +273,20 @@ def test_catalogue_descriptions_hold_for_every_parameter_value():
         "long_iron_butterfly",
     }
     assert all(leg.instrument is not Instrument.FUT or leg.strike is None for t in CATALOGUE for leg in t.legs)
+
+
+# --- REQ-078 AC-2 (W-158): the Width and Hedge controls are catalogue DATA, not per-template code. --------------------
+
+WIDTH_ADJUSTABLE = {"short_straddle", "short_strangle", "long_straddle", "long_strangle", "iron_condor",
+                    "reverse_iron_condor", "iron_butterfly", "long_iron_butterfly"}  # Sensibull's 8 Width codes
+HEDGE_SHAPES = {"bull_call_spread", "bull_put_spread", "bear_put_spread", "bear_call_spread", "iron_condor",
+                "iron_butterfly"}  # the templates that carry a Hedge (protective) leg today
+
+
+def test_req_078_width_adjustable_is_exactly_the_eight_shapes_of_ac_2():
+    assert {t.id for t in CATALOGUE if t.width_adjustable} == WIDTH_ADJUSTABLE
+    assert all(type(t.width_adjustable) is bool for t in CATALOGUE)
+
+
+def test_req_078_hedge_applies_only_to_the_templates_with_protective_legs():
+    assert {t.id for t in CATALOGUE if any(leg.protective for leg in t.legs)} == HEDGE_SHAPES
