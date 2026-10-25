@@ -1,7 +1,7 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
 ## UPDATE chunk 3 session A END (session a43256ae), 2026-10-25 - START HERE (newest)
-Session A ran 2026-10-24 19:50 to 2026-10-25 ~12:xx IST (owner asleep 2026-10-25 ~00:xx-08:15; owner questions parked,
+Session A ran 2026-10-24 19:50 to 2026-10-25 ~12:15 IST (owner asleep 2026-10-25 ~00:xx-08:15; owner questions parked,
 then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker briefs `check-*.md`, wrappers):
 `C:\Users\itsab\AppData\Local\Temp\claude\D--Abhay-Ventures-OptionsForOptions2\a43256ae-1cfc-4a9f-8c25-066f2fdf30c0\scratchpad`.
 - **DONE (merged, CI green on main):**
@@ -13,15 +13,18 @@ then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker
     #537 A, structural fix).
   - #540 row 27 (W-155, REQ-135); #541 row 29 (W-157, REQ-134, migration 0025); #542 row 28 backend (W-156, REQ-070,
     migration 0026: delete hides, keeps rows and history, Undo; any plan row blocks delete).
-  - ROW28F_STATE (fill in: PR number / parked issue)
-  - ROW29C_STATE (fill in: PR number - 20-character typed names, ADR-183)
+  - #543 row 28 frontend (activity history; Restore/Undo only on the server's `restorable` flag; Delete with Undo).
+    Two fix rounds plus a redesign proposed by the independent Opus round 2: restore, the history flag and delete share
+    one `never_sent()` rule (no plan row, no version row), so a strategy that ever sent a basket is view-only.
+  - #544 row 29 part c (ADR-183): a typed name is 1 to 20 characters; stored names up to 40 stay readable; RD-108
+    closed as copied.
   - Docs PR (this one): ADR-182 (price protection measured from the market price at Execute - owner Q1, Sensibull LTP),
     ADR-183 (names 1-20 characters, owner Q2 over the approved 40; stored names up to 40 stay readable), ADR-184 (owner
     Q3-Q6: rename entries shown not restorable; history view-only after execution; a tracked draft deletes; #539 is gate
     item 1); REQ-070 AC-2/AC-5/AC-6 and REQ-134 AC-1 amended; findings shared-test-db-holds-undeletable-committed-rows,
     db-tests-outside-the-row-red-only-in-ci, browser-infers-a-server-permission, gate-timed-test-flakes-under-load.
 - **PENDING:** session B: rows 25 and 26 and the chunk 3 close (process review per docs/process/row-review.md).
-- **BLOCKED:** none. **PARKED:** PARKED_STATE (fill in).
+- **BLOCKED:** none. **PARKED:** none. Deferred MINORs and process items: issue #537.
 - **NEXT (fresh session B, prompt in chunk-session-prompts.md):** rows 25, 26 (row 26 owns bounded Reward/Risk and option
   time/intrinsic value - row 27 built only the lone-futures case), then the chunk close. Price protection wiring follows
   ADR-182 whenever its row comes.
@@ -40,8 +43,8 @@ then asked 08:20-08:40). Scratchpad (measure JSONs, briefs `brief-*.md`, checker
   a builder migrated the shared ofo_dev to an unmerged revision (brief gap, #537); a timed lint test goes red under
   parallel load (re-run alone before acting); wt-new's -Name takes the suffix only (passing the full name doubled the
   prefix: `-OptionsForOptions2-c3r28f`).
-- **Worktrees left:** `-OptionsForOptions2-c3r28f` (row 28f, until its PR merges), `-c3r29c` (row 29c, stacked on
-  28f), `-c3docs` until this PR merges; the empty agent worktree `agent-a0303a33e34999355` (locked by a finished agent
+- **Worktrees left:** `-c3docs` until this PR merges (row worktrees removed after each merge, main checkout proven
+  intact each time); the empty agent worktree `agent-a0303a33e34999355` (locked by a finished agent
   process) goes at the next session-start sweep.
 - **Memory pressure (2026-10-25 ~10:55):** Claude Code stopped the 28f pre-push gate for critically low memory (3.5 of
   15.7 GB free afterwards; Chrome ~1 GB, three Claude processes ~1.5 GB). Run one gate at a time and close idle sessions

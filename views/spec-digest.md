@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (178)
+## Decisions (181)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -144,9 +144,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-137 2026-10-20: (1) A strategy (or several sharing a contract) bl… [amends REQ-060; extends ADR-116]
 - ADR-138 2026-10-20: (1) Orders screen: one line per strategy order in… [amends REQ-073; amends REQ-044; amends REQ-064; a…]
 - ADR-139 2026-10-20: (1) The first line of the Execute review follows… [refines REQ-056]
-- ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: NORMAL when the worst-case loss is limited and with… [refines REQ-056]
-- ADR-141 2026-10-20: (1) The recorded action "Use Zerodha's numbers for this contract" (ADR-137) places no order, so it… [refines ADR-137]
-- ADR-142 2026-10-20: (1) The recovery actions of ADR-136/137 refuse with exactly these lines: open order on the contract… [refines ADR-136]
+- ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: N… [refines REQ-056]
+- ADR-141 2026-10-20: (1) The recorded action "Use Zerodha's numbers fo… [refines ADR-137]
+- ADR-142 2026-10-20: (1) The recovery actions of ADR-136/137 refuse wi… [refines ADR-136]
 - ADR-143 2026-10-20: (1) When the engine returns no worst-case loss for a basket (for example legs on different expiries… [extends ADR-140]
 - ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
@@ -184,6 +184,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-179 2026-10-23: Technical decision of the orchestrator (REQ-118 is a TECH row, master register MR-095, decided by t… [amends REQ-118]
 - ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
 - ADR-181 2026-10-24: Owner-approved amendment of ADR-178's process-tool freeze ("at most one item per chunk on Sonnet"):… [extends ADR-178]
+- ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
+- ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134 AC-1 (SPEC CHANGE: "1 to 40 charac…]
+- ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; clarifies REQ-070 AC-2, AC-5, AC…]
 
 ## Requirements (131)
 
