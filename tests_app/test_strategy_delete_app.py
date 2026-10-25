@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_execution_plan_store import _close, _order, _Tx
 from test_strategy_followups import _ConnMaker
-from test_strategy_store import WING, _app, _body, _client, _history_rows, _ids, _saved_in, _user, _with_draft
+from test_strategy_store import WING, _app, _body, _client, _history_rows, _saved_in, _user, _with_draft
 
 RAW_ROW = text("SELECT id, revision, updated_at, deleted_at FROM public.strategies WHERE id = :id")
 REFUSAL_TEXT = "Can't delete: orders were sent"
@@ -91,7 +91,7 @@ async def test_a_draft_with_a_version_row_is_never_deleted(app_engine):
                                             {"id": tx.strategy_id})).scalar_one()
         await tx.conn.execute(store._INSERT_VERSION, {
             "id": tx.strategy_id, "n": 1, "state": "active", "based_on": None, "definition": definition,
-            "version": 1, "confirmed_at": None, "reconciled_at": None})
+            "version": 1, "confirmed_at": store._now(), "reconciled_at": store._now()})
         assert [(s.id, s.can_delete) for s in await store.list_strategies(tx.conn, tx.user)] == [(tx.strategy_id, False)]
         with pytest.raises(store.StrategyStoreError) as err:
             await store.delete_draft(tx.conn, tx.user, tx.strategy_id, expected_revision=1)
@@ -232,14 +232,21 @@ async def test_q4_a_rename_entry_is_shown_but_is_not_a_restore_target(app_engine
 
 async def test_q5_history_stays_readable_after_a_basket_and_restore_keeps_its_refusal(app_engine):
     """Q5 (pending owner): REQ-070 AC-5 history readable; ADR-019 restore refused, on the same executed strategy."""
-    async with _Tx(app_engine) as tx:
-        saved = await _saved_in(tx.conn, tx.user, await _ids(tx.conn), WING)
-        await store.update(tx.conn, tx.user, tx.strategy_id, saved, expected_revision=1)
-        await _record_plan(tx, "filled")
-        assert len(await store.history(tx.conn, tx.user, tx.strategy_id)) == 1
-        with pytest.raises(store.StrategyStoreError) as err:
-            await store.restore(tx.conn, tx.user, tx.strategy_id, 1, expected_revision=1)
-        assert err.value.code == store.RESTORE_AFTER_EXECUTION
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            edited = await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING),
+                                        expected_revision=1)
+            number = await plans.next_plan_number(conn, user, first.id)
+            await plans.record_plan(conn, user, first.id, number, "ENTRY", (_order(first.id, number, "SELL", "7.00"),))
+            await _close(conn, user, first.id, number, "filled")
+            assert len(await store.history(conn, user, first.id)) == 1
+            with pytest.raises(store.StrategyStoreError) as err:
+                await store.restore(conn, user, first.id, 1, expected_revision=edited.revision)
+            assert err.value.code == store.RESTORE_AFTER_EXECUTION
+        finally:
+            await trans.rollback()
 
 
 async def test_the_app_role_cannot_insert_a_row_born_hidden(app_engine):

@@ -94,7 +94,7 @@ async def test_the_guard_itself_refuses_a_fixed_column_alongside_deleted_at_for_
             strategy_id = await _new(conn, "test-0026-owner")
             point = await conn.begin_nested()
             with pytest.raises(DBAPIError) as err:
-                await conn.execute(text("UPDATE public.strategies SET deleted_at = now(), status = 'draft' "
+                await conn.execute(text("UPDATE public.strategies SET deleted_at = now(), revision = 9 "
                                         "WHERE id = :id"), {"id": strategy_id})
             await point.rollback()
             assert getattr(err.value.orig, "sqlstate", None) == GUARD_REFUSAL
