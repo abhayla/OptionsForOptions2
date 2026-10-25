@@ -19,7 +19,7 @@ export function buildSaveBody(legs, rulesRef, name) {
     }),
   }
   if (rulesRef) body.rules_ref = rulesRef
-  if (typeof name === 'string') body.name = name // REQ-134 AC-1: sent as typed; the server trims, checks 1 to 40 and refuses
+  if (typeof name === 'string') body.name = name // REQ-134 AC-1: sent as typed; the server trims, checks 1 to 20 and refuses
   return body
 }
 
@@ -30,9 +30,9 @@ export function buildUpdateBody(legs, rulesRef, revision) {
 }
 
 // REQ-134 (AC-1, AC-2): the name's default, cap and Save As suffix. The server owns the rule (ofo.strategy.definition
-// STRATEGY_NAME_MAX, explanations DEFAULT_STRATEGY_NAME); these are the field's prefill and its length hint only.
+// STRATEGY_NAME_TYPED_MAX (ADR-183), explanations DEFAULT_STRATEGY_NAME); these are the field's prefill and its length hint only.
 export const STRATEGY_NAME_DEFAULT = 'New Strategy'
-export const STRATEGY_NAME_MAX = 40
+export const STRATEGY_NAME_MAX = 20
 export const SAVE_AS_SUFFIX = ' copy'
 
 /** The API sends a name as the user's quoted words (ADR-003, template strategy_name_shown): "NIFTY Oct condor" arrives

@@ -124,6 +124,7 @@ v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           <form v-if="renaming && renaming.id === s.id" class="flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="rounded border border-line px-2 py-1" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
+            <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>
             <button type="submit" class="underline" :disabled="busy" data-testid="rename-save">Save</button>
             <button type="button" class="underline" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
           </form>

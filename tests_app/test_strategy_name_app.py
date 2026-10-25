@@ -1,6 +1,7 @@
 """REQ-134 (W-157, part 29b): a saved strategy's name, Save As, rename and the enriched own-user list, through the API.
 
-Spec basis (quoted): REQ-134 AC-1 "1 to 40 characters after trimming spaces; an empty name is refused with \"Give the
+Spec basis (quoted): REQ-134 AC-1 "1 to 20 characters after trimming spaces (ADR-183; a name stored with up to
+40 stays readable); an empty name is refused with \"Give the
 strategy a name\". Two strategies of one user may share a name; each keeps its own id."; AC-2 "Save As ... creates a new
 strategy with the current legs and planned entries ... and leaves the original exactly as it was saved"; AC-3 "Renaming
 changes only the name; it adds a history entry (\"Renamed from X to Y\") and never changes legs, prices, tracking state
@@ -95,10 +96,11 @@ async def test_ac1_an_empty_name_is_refused_with_the_catalogue_message_and_store
             await trans.rollback()
 
 
-@pytest.mark.parametrize("name,ok", [("a", True), ("x" * 40, True), ("x" * 41, False), ("two\nlines", False),
+@pytest.mark.parametrize("name,ok", [("a", True), ("x" * 20, True), ("x" * 21, False), ("x" * 41, False),
+                                     ("two\nlines", False),
                                      ("<script>" + "alert(1);" * 60 + "</script>", False)])
 async def test_ac1_name_length_boundaries_through_the_api(app_engine, name, ok):
-    """Attack 4/6: 1 and 40 characters are stored; 41, a line break and a very long script text are refused (422)."""
+    """Attack 1/4/6: 1 and 20 characters are stored; 21, 41, a line break and a very long script are refused (422)."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -115,7 +117,7 @@ async def test_ac1_name_length_boundaries_through_the_api(app_engine, name, ok):
 
 async def test_ac1_markup_in_a_name_comes_back_as_plain_json_text(app_engine):
     """Attack 6: a name with markup is stored as typed and comes back as a JSON string value, in the closed shape."""
-    markup = "<img src=x onerror=alert(1)>"
+    markup = "<img onerror=x(1)>"  # 18 characters: inside the typed limit (ADR-183)
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -174,6 +176,51 @@ async def test_ac2_save_as_creates_a_second_strategy_and_leaves_the_original_byt
 async def store_view(conn, user: str, strategy_id: int) -> dict:
     async with _client(_app(_ConnMaker(conn), user)) as ac:
         return (await ac.get(f"/strategies/{strategy_id}")).json()
+
+
+async def test_adr183_save_as_refuses_a_21_character_name_and_stores_nothing(app_engine):
+    """Attack 1: Save As is the same request door as the first save; 21 is refused, 20 is stored."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, original = await _with_draft(conn, user := _user())
+            before = await _snapshot(conn, original.id)
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                refused = await _post(ac, ids, "x" * 21)
+                assert (refused.status_code, refused.json()["code"]) == (422, INVALID_NAME_CODE), refused.text
+                assert (await _post(ac, ids, "x" * 20)).status_code == HTTPStatus.CREATED
+            assert await _snapshot(conn, original.id) == before
+        finally:
+            await trans.rollback()
+
+
+LONG_STORED = "y" * 26  # saved before ADR-183 (the stored limit stays 40)
+
+
+async def test_adr183_a_strategy_stored_with_a_26_character_name_lists_opens_and_keeps_it_after_edit(admin_engine):
+    """Attacks 3 and 4: the owner role stores a 26-character name (the database CHECK still allows 40); the list and
+    the open answer it, a leg edit keeps it, and renaming it to another 26-character name is refused (nothing
+    written)."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, user := _user())
+            await conn.execute(text("UPDATE public.strategies SET name = :n WHERE id = :id"),
+                               {"n": LONG_STORED, "id": stored.id})
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                listed = (await ac.get("/strategies")).json()["strategies"]
+                assert [s["name"] for s in listed if s["id"] == stored.id] == [quoted(LONG_STORED)]
+                opened = await ac.get(f"/strategies/{stored.id}")
+                assert (opened.status_code, opened.json()["name"]) == (200, quoted(LONG_STORED)), opened.text
+                edited = await ac.put(f"/strategies/{stored.id}", json=_body(ids, wing=WING, expected_revision=1))
+                assert edited.status_code == HTTPStatus.OK and edited.json()["name"] == quoted(LONG_STORED), edited.text
+                before = await _snapshot(conn, stored.id)
+                refused = await ac.patch(f"/strategies/{stored.id}/name",
+                                         json={"name": "z" * 26, "expected_revision": 2})
+                assert (refused.status_code, refused.json()["code"]) == (422, INVALID_NAME_CODE), refused.text
+            assert await _snapshot(conn, stored.id) == before
+        finally:
+            await trans.rollback()
 
 
 # --- AC-3: rename ------------------------------------------------------------------------------------------------
@@ -243,7 +290,8 @@ async def test_ac3_a_stale_revision_is_refused_409_and_writes_nothing(app_engine
             await trans.rollback()
 
 
-@pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
+@pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE),
+                                       ("x" * 21, INVALID_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
 async def test_ac3_a_rename_follows_the_same_name_rules(app_engine, name, code):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
