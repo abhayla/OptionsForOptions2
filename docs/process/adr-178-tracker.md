@@ -12,6 +12,7 @@ How it is enforced (built 2026-10-23 on `build/seq-process`):
 - **Every chunk end:** a fresh Sonnet conformance check (`builder-sequence-briefs/conformance-check-chunk.md`, 15 min /
   25 calls, never the orchestrator) re-runs the script, measures rows 8, 9, 11, 12 by their commands, marks each row
   followed / missed with its evidence, and the misses are fixed before the next chunk.
+- The 2026-10-25 audit (`docs/process/process-audit-2026-10-25.md`) found rows 1 and 8 of this tracker not followed in two sessions; rows 13-18 were added from it (ADR-188).
 - Status values: `open` (not built or not yet measured), `followed` (last measurement within the limit, with the date),
   `missed` (over the limit; names the finding).
 
@@ -29,6 +30,12 @@ How it is enforced (built 2026-10-23 on `build/seq-process`):
 | 10 | A small row-ahead fix is verified when built (change 7) | minutes between a fix commit and its verifier dispatch | <= 15 | missed (chunk 3 session A a43256ae, measured 2026-10-25 by `measure_process.py --session a43256ae --chunk-start 038e7889 --since 2026-10-24` after the #532 F fix (chunk 4 process item): worst 52 min, fix c1 round 1 commit 16:55Z -> check 17:48Z; 29b 27 min; 2 of 6 fixes measured, 4 had no check after them - c2 r1, 28f r1-r3) |
 | 11 | Reference-product COPY gaps per chunk (change 8, ADR-178 (2)) | `reference_register.py --close-check` over the chunk's requirements at chunk close | exit 0 (spec_change records excluded) | missed (chunk-2 conformance check 2026-10-24, measure_process.py --sessions 2 --chunk-start 9d885bda: --close-check exit 1, 11 records - 5 spec_change excluded (RD-124/133/147/149/154); 6 not: RD-032 (Q211), RD-141 (REQ-138), RD-148 (owner-pending RD-149), RD-153 (row 37), RD-097 and RD-132 (built, not verified) - now deferred with owners in #532 E) |
 | 12 | Paperwork per chunk (change 9, ADR-178 (3)) | full reports per chunk; deferred issues per chunk | 1 full report per chunk (+1 per row > 50% over); 1 deferred issue per chunk | followed (chunk-2 conformance check 2026-10-24, measure_process.py --sessions 2 --chunk-start 9d885bda: 1 deferred issue, #532; full reports: row-review entries only, prose for no row >50% over - full-report count by commit subject 0) |
+| 13 | Dispatch before asking (ADR-188 (2)) | question-tool minutes while a ready brief waited; by hand: ledger dispatch times vs question-tool calls in the transcript | 0 | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
+| 14 | Spec questions batched at measure time (ADR-188 (2)) | owner questions asked after a row's build started; by hand: question-tool calls in the transcript after the row's build dispatch | 0 unless a checker finding raises a new gap | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
+| 15 | One gate per commit (ADR-188 (2)) | gate runs per sha; by hand: count `GATE PASS`/`GATE FAIL` lines per sha in the gate logs | <= 1, plus `--pre-push` only if the sha changed | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
+| 16 | Builder handover and budget stop (ADR-188 (2)) | red gate runs on frontend-format / openapi-drift; agent calls over budget (completion record tool uses vs the brief's Budget line) | 0 and 0 | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
+| 17 | Measure agents on Sonnet (ADR-188 (2)) | Opus measure dispatches; by hand: ledger/dispatch log model per measure agent | 0 | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
+| 18 | Fresh orchestrator session about every 2 rows, context < 250k (ADR-188 (2)) | same counter as row 1 (average context per turn, `measure_process.py --session`) | < 250k average | open (adopted 2026-10-25, ADR-188; first measurement at the chunk 4 close) |
 
 Not enforceable by any script - judgement calls, stated plainly (auditor, section C):
 - Whether the orchestrator reads a log or diff into its context: only row 1's number shows it, after the fact.

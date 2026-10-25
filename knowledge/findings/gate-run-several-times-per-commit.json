@@ -1,0 +1,27 @@
+{
+ "id": "gate-run-several-times-per-commit",
+ "scope": "generic",
+ "class": "The same full local gate runs more than once on the same commit (builder, orchestrator, then --pre-push), each taking minutes, and CI then re-runs everything again; the repeats add time and extra chances for a load-related false red without adding evidence.",
+ "mechanism": "Each role runs the gate on its own because no rule says a builder's GATE PASS <sha> is accepted when the sha equals HEAD. Three runs of about 8-11 min each stack up per change, before CI's own 7.2 min plus 10-16 min runs.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "rows 30-32, audit section 3 items 3-4 and section 5 #4",
+  "evidence": "builder gate + orchestrator gate + --pre-push, about 8-11 min each; gh run list: CI 7.2 min, App tests 9.7-15.6 min; 5 of 10 orchestrator gates failed (about 44 of 93 min); the 30b builder's 10-min gate ran on a tree that had already moved and was thrown away."
+ },
+ "fix": "ADR-188 (2): one gate per commit. The orchestrator accepts the builder's GATE PASS <sha> when sha = HEAD; --pre-push only if the sha changed. ADR-178 tracker row 15.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check: this is an ADR-188 (2) practice. Tracker row 15 counts gate runs per sha by hand until a script does."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-188.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "rows 30 and 32",
+   "evidence": "three gate runs per change plus CI (audit section 3 item 4)"
+  }
+ ]
+}

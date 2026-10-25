@@ -59,6 +59,15 @@ Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
 11. **Live proofs.** Use `scripts/orchestrator/dev_run.py` (database `ofo_dev` only). The Kite login happens once, in a
     private window, from the cached daily token. Never click inside a live order panel. Use options only and never sell
     holdings; the owner presses Execute.
+12. **ADR-188 speed rules** (2026-10-25 audit, `docs/process/process-audit-2026-10-25.md`):
+    - Dispatch before asking: send every independent item first, ask the owner while agents run.
+    - Batch SPEC CHANGE questions at measure time; the measure agent does the Sensibull research.
+    - One gate per sha: accept the builder's `GATE PASS <sha>` when sha = HEAD; `--pre-push` only if the sha changed.
+    - Builder handover = prettier on touched frontend files + OpenAPI regenerate when a model changed + hard stop at budget.
+    - Measure agents run on Sonnet.
+    - Fresh orchestrator session about every 2 rows (context < 250k).
+    - Owner decisions go to the session's docs branch, not row branches.
+    - Open a draft chunk PR from the chunk's first row (ADR-178 row 8; missed in chunks 3-4).
 
 ## Chunk 3
 

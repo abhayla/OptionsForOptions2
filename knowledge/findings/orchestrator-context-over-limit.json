@@ -1,0 +1,32 @@
+{
+ "id": "orchestrator-context-over-limit",
+ "scope": "generic",
+ "class": "A long-running orchestrator session keeps growing its context past the 250k-token limit set by ADR-178, so every later turn re-sends a huge context and the orchestrator alone burns about half of the session's tokens.",
+ "mechanism": "Nothing stops or restarts the session at a context size; the limit is prose (ADR-178 change 1) and the session runs on through several rows. Each turn, and each kit-guard block (2 turns), re-sends the whole context.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "chunk 3 session A a43256ae and chunk 4 session c097bcc4",
+  "evidence": "measure_process.py --session a43256ae: avg context 363k/turn over 627 turns (audit: 366k x 1,400 turns, 512M tokens, 17.3 h); audit_main.py for c097bcc4: 574 turns at an average of 312k = 179M tokens, 50% of the session's tokens (agents 178M); 16 / 20 kit-guard blocks at about 2 x 312k = ~10M per session."
+ },
+ "fix": "ADR-188 (2): a fresh orchestrator session about every 2 rows. ADR-178 tracker rows 1 and 18 (same counter: average context per turn < 250k).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "measure_process.py reports the number after the fact at session end (tracker row 1 is 'missed'); nothing stops a session at the limit."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-188.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "chunk 3 session A a43256ae",
+   "evidence": "avg context 363k/turn over 627 turns (measure_process.py --session a43256ae); audit: 366k"
+  },
+  {
+   "date": "2026-10-25",
+   "where": "chunk 4 session c097bcc4",
+   "evidence": "574 turns at an average of 312k = 179M tokens (audit section 3 item 7)"
+  }
+ ]
+}
