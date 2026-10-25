@@ -1,0 +1,24 @@
+{
+ "id": "e2e-stand-in-drifts-from-server",
+ "scope": "generic",
+ "class": "A Playwright spec that replaces a server route or socket with a hand-written stand-in keeps the server's OLD behaviour when the server changes (a new protocol field, an edit the route now applies); the page, written against the new server, then never reaches the state the spec waits for, and the only catch is the Playwright CI job after the push.",
+ "mechanism": "Two runs since 2026-10-24. (1) Run 40083846807 (build/seq-chunk-2 7f86296): 20cdbbc1 made the page drop a strategy-socket push whose seq is not the version it sent; the two socket fakes in feed-reconnect.spec.ts and execute-screen.spec.ts sent no seq, so data-live stayed 'connecting' ('no Execute action: phase=waiting-live'). Fixed by 5c35b41f (shared helper frontend/e2e/support/echoSeq.ts). (2) Run 40045667454 (43edf26): the leg-edit stand-in in leg-rows.spec.ts copied each leg's old 'included' instead of applying the include edit as the real route does, so 'Left out of the numbers' never showed. Fixed by b6e9421b.",
+ "first_seen": {
+  "date": "2026-10-24",
+  "where": "chunk 2 (build/seq-chunk-2), CI runs 40045667454 and 40083846807",
+  "evidence": "gh run view <id> --log-failed read on this PC 2026-10-26: leg-rows.spec.ts:45 toHaveText('Left out of the numbers') element not found (4 failures incl. retry #1); feed-reconnect.spec.ts:44 data-live expected 'live' received 'connecting' (incl. retry #1). Neither is timing-dependent."
+ },
+ "fix": "Instances fixed (5c35b41f, b6e9421b). Class fix open for owner decision (owner-questions-2026-10-26.md Q4): running the Playwright specs that stand in for a changed route or socket before the push is a local app check, which ADR-189 removed. Until then: a brief that changes a route reply or a socket message greps frontend/e2e for stand-ins of that route (routeWebSocket, page.route) and updates them (kit builder-brief standing item 'a change to a shown value greps every test tree, end-to-end included').",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by the Playwright CI job (one red run, ~9 min median, plus a fix round each). Specs still using routeWebSocket without echoSeq on main 2026-10-26: chain-selection, home, index-view, live-strategies, strategy-live (not checked whether each fakes the strategy socket)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-24", "where": "row 20, run 40045667454", "evidence": "leg-edit stand-in, fixed b6e9421b"},
+  {"date": "2026-10-24", "where": "row 24, run 40083846807", "evidence": "socket fakes without seq, fixed 5c35b41f"}
+ ]
+}
