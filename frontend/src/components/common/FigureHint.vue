@@ -12,14 +12,13 @@ const panelId = `figure-hint-${props.id}-${Math.random().toString(36).slice(2, 8
 const hovered = ref(false)
 const focused = ref(false)
 const pinned = ref(false)
-let touching = false // a touch press also focuses the button; that focus must not hold the panel open after a second tap
 const open = computed(() => hovered.value || focused.value || pinned.value)
 
-const onEnter = (e) => { if (e.pointerType !== 'touch') hovered.value = true }
+const onEnter = () => { hovered.value = true }
 const onLeave = () => { hovered.value = false }
-const onDown = (e) => { touching = e.pointerType === 'touch' }
-const onFocus = () => { if (!touching) focused.value = true }
-const onBlur = () => { focused.value = false; pinned.value = false; touching = false }
+const onFocus = () => { focused.value = true }
+const onBlur = () => { focused.value = false; pinned.value = false }
+// A tap also hovers and focuses the mark, so closing by a second tap clears all three (else the panel stays open).
 const onClick = () => {
   pinned.value = !pinned.value
   if (!pinned.value) { focused.value = false; hovered.value = false }
@@ -40,7 +39,6 @@ const onKey = (e) => {
       data-testid="figure-hint-mark"
       @pointerenter="onEnter"
       @pointerleave="onLeave"
-      @pointerdown="onDown"
       @focus="onFocus"
       @blur="onBlur"
       @click="onClick"

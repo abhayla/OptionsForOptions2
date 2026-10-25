@@ -84,6 +84,7 @@ describe('REQ-136 AC-1: hover, focus and tap each open the definition (core)', (
   it('a tap opens and a second tap closes (a touch press also focuses the mark, which must not hold it open)', async () => {
     const w = mount(FigureHint, { props: { id: 'time_value' } })
     const mark = w.get('button')
+    await mark.trigger('pointerenter', { pointerType: 'touch' })
     await mark.trigger('pointerdown', { pointerType: 'touch' })
     await mark.trigger('focus')
     await mark.trigger('click')
