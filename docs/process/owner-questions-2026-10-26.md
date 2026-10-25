@@ -35,4 +35,24 @@ Options:
   before a push (catches app breaks before CI; a few minutes per push).
 - Hold the PR: leave #556 open; say which item to change.
 
+Answer: "merge #556" (owner, 2026-10-26 ~01:05 IST; PR #556 merged as 7bd8807a).
+
+## Q2: where does the measure_process record live - row-review.md (ADR-189) or a restored adr-178-tracker.md?
+
+Asked by the night guard's route (L17) at ~02:2x IST by the chunk 4 session A orchestrator.
+Business call: two of your instructions conflict and only you choose between them. The chunk 4 session A goal says
+"record the measured values in docs/process/adr-178-tracker.md"; your ADR-189 (#556, ~01:05) deleted that file and the
+measuring script.
+Spec basis: ADR-189 (tracker retired; row-review.md's step-10 log replaces it); ADR-178 (created the tracker).
+
+Facts: the measured values ARE on main in docs/process/row-review.md (#559): chunk 3 session A (a43256ae) context
+363k/turn over 627 turns (limit < 250k), 3 rows closed, 0 table prints, 7 Opus dispatches without a safety-set file,
+round-2 checkers 8/9/15/17/36 min, 4 local DB runs vs 3 rows, row-10 worst 52 min; this session (c097bcc4) 415k/turn.
+Everything else in the goal is met: rows merged or parked with issues (#558 row 31, #560 row 30 AC-1 live half, #561
+row 32 marks); handover #559/#562; memory note updated.
+
+Options:
+- **row-review.md is the record (Recommended).** ADR-189 wins; nothing to rebuild; the goal counts as met.
+- Restore docs/process/adr-178-tracker.md with these values (~15 min docs PR), against ADR-189.
+
 Answer: (pending)
