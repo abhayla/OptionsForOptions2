@@ -40,6 +40,7 @@ from ofo.errors.explanations import render_explanation
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.marketdata.quote import priced
 from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
@@ -344,7 +345,7 @@ def _entry_of(cat: Catalogue, underlying: str, legs: list[EditLeg], index: int):
 def _live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
     """The live index level, or None (no feed, no price): the shape is read from the strikes, no spot invented."""
     quote = None if ctx is None else ctx.provider.underlying_quote(underlying)
-    return quote.ltp if quote is not None and quote.ltp is not None and quote.ltp > 0 else None
+    return quote.ltp if priced(quote) else None
 
 
 def _reference_spot(ctx: MarketContext | None, underlying: str, legs: list[EditLeg], gap: Decimal) -> Decimal:

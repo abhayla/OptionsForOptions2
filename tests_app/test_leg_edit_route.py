@@ -13,14 +13,17 @@ import pathlib
 from decimal import Decimal
 
 import pytest
+import test_chain_live as live_fake  # the real FakeProvider class's index quote builder
 from httpx import ASGITransport, AsyncClient
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
+from ofo.rules.inputs import DataHealth
 from ofo.strategy import stored_form
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo_app.main import create_app
+from ofo_app.replay_mode import build_replay_context
 from ofo_app.routes import execute, leg_edit, strategies
 from ofo_app.routes.leg_edit import (
     get_capture,
@@ -96,7 +99,7 @@ def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture, **
     app.dependency_overrides[get_edit_catalogue] = lambda: cat
     app.dependency_overrides[get_edit_today] = lambda: today
     app.dependency_overrides[get_freeze_limits] = lambda: limits or {}
-    app.dependency_overrides[get_market_context] = lambda: None
+    app.dependency_overrides[get_market_context] = lambda: seams.get("ctx")
     app.dependency_overrides[get_margin_source] = lambda: None
     app.dependency_overrides[get_live_feed] = lambda: None
     app.dependency_overrides[get_capture] = lambda: capture
@@ -707,6 +710,56 @@ def test_adr_186_5_width_last_step_through_the_route_moves_the_call_with_no_live
     assert status == HTTP_OK and strikes(reply) == [22800, 23000, 23000, 23200], reply
     stamped = [leg["captured_at"][:19] for leg in reply["legs"]]
     assert stamped == [STAMP.isoformat()[:19]] * 2 + ["2026-10-01T09:21:28"] * 2  # only the call side is re-captured
+
+
+CONDOR_186 = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 23000, "86.00"), ("SELL", "CE", 23050, "80.00"),
+              ("BUY", "CE", 23250, "40.00")]
+NIFTY_SPOT = "23010"
+
+
+_REPLAY = []
+
+
+def index_ctx(health):
+    """The real replay context (a real KiteProvider) whose index read answers one NIFTY quote at 23,010."""
+    if not _REPLAY:
+        _REPLAY.append(build_replay_context())
+    ctx = _REPLAY[0]
+    quote = live_fake.index_quote(NIFTY_SPOT, health=health)
+    ctx.provider.underlying_quote = lambda underlying: quote
+    return ctx
+
+
+def width_down_on(ctx):
+    status, reply = post({"legs": rows(CONDOR_186), "edit": {"control": "width", "direction": -1}}, capture=priced(),
+                         stored=all_stored, ctx=ctx)
+    assert status == HTTP_OK, reply
+    return reply
+
+
+def test_adr_186_5_a_live_index_quote_at_23010_makes_width_last_step_move_the_puts():
+    """Core (round 3), live half: AVAILABLE NIFTY 23,010 is the spot, the short put (23,000) is nearer, so the PUT side
+    moves up one step (both put legs) and the call side stays."""
+    reply = width_down_on(index_ctx(DataHealth.AVAILABLE))
+    assert strikes(reply) == [22850, 23050, 23050, 23250]
+
+
+@pytest.mark.parametrize("health", [h for h in DataHealth if h is not DataHealth.AVAILABLE])
+def test_adr_186_5_a_stale_index_quote_is_treated_as_no_price_width_moves_the_calls(health):
+    """Core (round 3): a quote whose health is not AVAILABLE keeps its ltp but is an old level (ADR-015); the move reads
+    it exactly as no price, so the CALL side moves down (as with no market context)."""
+    reply = width_down_on(index_ctx(health))
+    assert strikes(reply) == [22800, 23000, 23000, 23200]
+    assert reply["legs"] == width_down_on(None)["legs"]
+
+
+@pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.UNAVAILABLE])
+def test_a_stale_index_quote_gives_the_shape_read_the_answer_of_no_quote(health):
+    """The shape and hedge marks read against a stale quote equal those read with no quote at all."""
+    body = {"legs": rows(CONDOR_186), "edit": {"control": "read"}}
+    (status, stale), (_, none) = post(body, stored=all_stored, ctx=index_ctx(health)), post(body, stored=all_stored)
+    assert status == HTTP_OK
+    assert {k: v for k, v in stale.items() if k != "outcome"} == {k: v for k, v in none.items() if k != "outcome"}
 
 
 def test_attack_4_without_todays_list_the_three_controls_are_refused_and_off_but_step_still_works():
