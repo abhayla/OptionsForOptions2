@@ -1,0 +1,23 @@
+{
+ "id": "shared-test-db-holds-undeletable-committed-rows",
+ "scope": "generic",
+ "class": "A local run that COMMITS rows into an append-only table of the shared test database (a table whose guard refuses DELETE by design) leaves that database permanently unable to run every test that starts from an empty table, so those tests can no longer be judged on the developer PC and only CI's fresh database can prove them.",
+ "mechanism": "On 2026-10-24 parallel builders and checkers of chunk 3 ran DB tests against the one shared ofo_test database; afterwards public.catalogue_contracts and public.broker_instruments held 1,085 rows each. Every test that asserts the catalogue is empty first (tests_app/test_catalogue_picker_api.py, test_pinned_clock.py, the seed tests) failed locally, so row 27's change to the catalogue expiries reply was never run against them, and CI then went red on tests_app/test_pinned_clock.py:140 (a reader of the reply the local runs could not reach). scripts/orchestrator/reset_test_catalogue.py cannot clean it: the catalogue guards refuse DELETE (`zerodha row 227713285 of contract 3278525 is never deleted (REQ-054 AC-3)`), and disabling a guard is not allowed.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "chunk 3 session A, rows 27b and 29b DB tests; reset attempt after CI red on PR #540",
+  "evidence": "reset_test_catalogue.py dry run: broker_instruments 1085, catalogue_contracts 1085; --yes: backup verified in D:\\Abhay\\scratch\\ofo2-test-db-backups\\20261024T212516Z, then DATABASE ERROR (rolled back, nothing deleted): broker instruments: zerodha row 227713285 of contract 3278525 is never deleted (REQ-054 AC-3). CI run 40132982617: 1 failed (test_pinned_clock.py:140), 3963 passed."
+ },
+ "fix": "Local DB runs use a throwaway database per run (scripts/orchestrator/db_run_fresh.py exists for this) instead of the shared ofo_test, so a committing test can never poison the next run; a brief that touches a route read by DB tests runs them through the fresh-database runner. Recreating ofo_test itself is an owner-host action (the PostgreSQL also serves IPODhan production).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check stops a local run from committing into ofo_test; no check reports a non-empty catalogue before a run starts (the tests fail one by one instead). Which run committed the rows is unmeasured."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-25", "where": "chunk 3 session A", "evidence": "1,085 undeletable catalogue rows in ofo_test"}
+ ]
+}

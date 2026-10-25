@@ -96,6 +96,12 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   does. Example: GC-3L met Kite's `InputException` "tag should be max 8 characters", a state no brief had listed.
 
 ## Quality bar (the reviewer will check exactly this)
+- **Database tests outside your files** (finding db-tests-outside-the-row-red-only-in-ci, 2 occurrences): if your diff
+  touches `backend/ofo_app/alembic/`, a `*_store.py` or a route's reply, run EVERY database test
+  `select_app_tests.py` selects plus every `tests_app/test_migration_*.py` and `tests_app/test_strategy_shape_matrix.py`
+  through `scripts/orchestrator/db_run_fresh.py <worktree> python -m pytest -q -p no:cacheprovider -c pytest-app.ini
+  <files>` (a throwaway database; never the shared ofo_test) before reporting. A migration that re-creates a validator
+  publishes `NEW_PINS`.
 - **Gate before PASS (ADR-181):** run `python scripts/orchestrator/gate.py` on your clean worktree after your last
   commit and paste its last 5 lines, `GATE PASS <sha>` included; a report or a checker PASS without them is not a pass.
 - **Test doubles from the real thing** (finding test-double-encodes-old-assumption, #532 C1): every stand-in model,

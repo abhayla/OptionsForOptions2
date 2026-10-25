@@ -1,0 +1,37 @@
+{
+ "id": "gate-timed-test-flakes-under-load",
+ "scope": "generic",
+ "class": "A local check that runs an external tool under a fixed wall-clock limit and treats a timeout as an empty (clean) result turns into a false failure when the machine is loaded by parallel agents: the assertion expects output, the tool is killed at the limit, and the gate stops on a red that has nothing to do with the change.",
+ "mechanism": "tests/test_edit_lint_hook.py::test_real_eslint_run_flags_unused_variable asserts scripts/hooks/edit_lint.py returns findings for a planted unused variable; edit_lint kills eslint at TIMEOUT_S = 10 and returns '' (fail-open, as the edit hook must not block typing). With a fix-round builder (vitest, eslint, gate) and a 52-file DB run going at once, eslint took more than 10 s and the test failed inside gate.py's guard-tests step.",
+ "first_seen": {
+  "date": "2026-10-25",
+  "where": "chunk 3 session A, gate.py --pre-push on build/c3-row-28 at 25a28021",
+  "evidence": "gate-28b-push.log: 'AssertionError: assert '' != ''' at tests/test_edit_lint_hook.py:129, '1 failed, 1286 passed'; the same test alone on the same tree: '1 passed in 4.20s'; the same tree passed the gate twice before at 7caea7ac (builder, checker)."
+ },
+ "fix": "Mechanism due (third occurrence in one day): gate.py takes one machine-wide lock so only one gate runs at a time and a second waits instead of racing (every false red came with 2-3 gates, mutation runs or DB runs at once). Until it is built the orchestrator runs at most one gate at a time with no heavy job beside it and re-runs a red test alone before acting. A gate change is a process item: next chunk, counted by the owner (ADR-178 change 6). Instance fixes: re-run alone, green each time.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Three occurrences on 2026-10-25 (eslint 10 s limit; vitest 5 s timeout and socket counts in live-strategies.test.js). Mechanism due: one-gate-at-a-time lock."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-181.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-25",
+   "where": "row 28b pre-push gate",
+   "evidence": "eslint killed at 10 s under parallel load"
+  },
+  {
+   "date": "2026-10-25",
+   "where": "row 29c checker gate at 69dc7293",
+   "evidence": "GATE FAIL frontend-vitest-changed: 4 failed, 527 passed in live-strategies.test.js (socket count) and scenario-choice.test.js (5 s timeout), files the diff does not touch; alone: 2 files, 49 passed; the builder's gate on the same sha: GATE PASS"
+  },
+  {
+   "date": "2026-10-25",
+   "where": "row 28f redesign gate at 057e2697",
+   "evidence": "GATE FAIL frontend-vitest-changed: 2 failed, 528 passed; live-strategies.test.js AC-4 'expected length 13 but got 8' while mutation-gate DB runs loaded the machine; alone: 30 passed (30)"
+  }
+ ]
+}

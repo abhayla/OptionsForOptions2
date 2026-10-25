@@ -5,11 +5,11 @@
   "reference_behaviour": "Saving asks for a name, prefilled New Strategy, at most 20 characters.",
   "reference_screens": ["screen 116", "screen 117"],
   "reference_label": "Save New Strategy",
-  "ours": "SPEC CHANGE: REQ-134 AC-1 (approved) allows 1 to 40 characters with the same default; copying means a 20-character limit. Today saved drafts show only Draft <id>.",
+  "ours": "COPIED (owner 2026-10-25, ADR-183): REQ-134 AC-1 now allows 1 to 20 typed characters with the same default; names stored before ADR-183 with up to 40 stay readable. Built in PR #544.",
   "req": "REQ-134",
   "ac": "AC-1",
   "row": 29,
-  "status": "open",
+  "status": "verified",
   "spec_change": true,
   "bug": false,
   "recorded": "2026-10-23"
