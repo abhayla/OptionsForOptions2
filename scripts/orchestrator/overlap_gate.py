@@ -65,7 +65,7 @@ def main(argv: list[str]) -> int:
     shared = sorted(both - GENERATED)
     if not shared and both:
         sys.stdout.write("OVERLAP GATE: OK - shared only generated files: " + ", ".join(sorted(both))
-                         + " (regen.py rebuilds them at merge, ADR-188)\n")
+                         + " (rebuilt by regen.py, or hand-merged for coverage-stages.yaml; ADR-188)\n")
         return 0
     if shared:
         sys.stdout.write("OVERLAP GATE: REFUSED - both rows touch: " + ", ".join(shared) + "\n")

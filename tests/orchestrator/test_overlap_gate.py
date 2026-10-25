@@ -110,7 +110,12 @@ def test_a_non_listed_file_under_views_still_refuses(tmp_path, capsys):
 
 def test_generated_list_is_exact_paths_only():
     assert not any("*" in g or g.endswith("/") for g in gate.GENERATED)
-    assert len(gate.GENERATED) == 5  # noqa: PLR2004
+    # pinned exactly: a product file swapped into the list would let a real overlap through (review MINOR 2)
+    expected = {
+        "views/spec-digest.md", "views/build-order.md", "spec/requirements/INDEX.md",
+        "knowledge/findings/INDEX.md", "docs/process/coverage-stages.yaml",
+    }
+    assert set(gate.GENERATED) == expected
 
 
 def test_an_unreadable_worktree_or_ref_fails_closed(tmp_path):
