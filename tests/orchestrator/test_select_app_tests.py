@@ -60,6 +60,7 @@ PR241_SELECTION = {
     "tests_app/test_catalogue_picker_api.py", "tests_app/test_chain_live.py", "tests_app/test_chain_permissions.py",
     "tests_app/test_eligibility_from_zerodha.py", "tests_app/test_response_door.py",
     "tests_app/test_strategy_closed_shape.py", "tests_app/test_strategy_followups.py",
+    "tests_app/test_strategy_delete_app.py",
     "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
