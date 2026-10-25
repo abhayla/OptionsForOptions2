@@ -1,0 +1,244 @@
+diff --git a/backend/ofo/errors/explanations.py b/backend/ofo/errors/explanations.py
+index b5fe9815..683f1ee1 100644
+--- a/backend/ofo/errors/explanations.py
++++ b/backend/ofo/errors/explanations.py
+@@ -1012,6 +1012,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
+     ExplanationTemplate("summary_make_unlimited", "values_seen",
+                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
+     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
++    ExplanationTemplate("summary_reward_risk_none", "values_seen", "No fixed maximum"),
+     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
+     ExplanationTemplate("summary_make_at_most_with_charges", "values_seen",
+                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
+diff --git a/backend/ofo/outcome/serialize.py b/backend/ofo/outcome/serialize.py
+index 4e97ff2f..33c6df95 100644
+--- a/backend/ofo/outcome/serialize.py
++++ b/backend/ofo/outcome/serialize.py
+@@ -10,6 +10,7 @@ from typing import Any
+ from ofo.outcome.service import Outcome, OutcomeLeg
+ from ofo.table import Cell, ColumnSpec, Table
+ from ofo.table.model import scenario_caption_parts
++from ofo.timeutil import days_to_expiry
+ 
+ 
+ def _s(value: Decimal | int | None) -> str | None:
+@@ -58,16 +59,18 @@ def _table(table: Table, visible_cols) -> dict[str, Any]:
+                      for r in table.rows]}
+ 
+ 
+-def _leg(leg: OutcomeLeg) -> dict[str, Any]:
++def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
+     return {"instrument_id": leg.instrument_id, "symbol": leg.symbol, "action": leg.action.value,
+             "instrument": None if leg.instrument is None else leg.instrument.value, "strike": _s(leg.strike),
+-            "expiry": None if leg.expiry is None else leg.expiry.isoformat(), "lots": leg.lots,
++            "expiry": None if leg.expiry is None else leg.expiry.isoformat(),
++            "days_to_expiry": None if today is None else days_to_expiry(leg.expiry, today), "lots": leg.lots,
+             "lot_size": leg.lot_size, "quantity": leg.quantity, "planned_entry": _s(leg.planned_entry),
+             "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "iv": _s(leg.iv),
+             "health": None if leg.health is None else leg.health.value, "label": leg.label}
+ 
+ 
+-def outcome_to_dict(out: Outcome) -> dict[str, Any]:
++def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
++    """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
+     scenario = payoff = summary = table = None
+     if out.scenario is not None and out.level_set is not None:
+         v, ls = out.scenario, out.level_set
+@@ -90,6 +93,8 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
+             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),
+             "risk_boundaries": [_s(b) for b in s.risk_boundaries],
+             "charges": _s(s.charges), "charges_unavailable": s.charges_unavailable,
++            "reward_risk": _s(s.reward_risk), "reward_risk_reason": s.reward_risk_reason,
++            "time_value": _s(s.time_value), "intrinsic_value": _s(s.intrinsic_value),
+         }
+     if out.table is not None:
+         table = _table(out.table, out.visible_columns)
+@@ -97,7 +102,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
+         "state": out.state.value, "underlying": out.underlying,
+         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
+         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
+-        "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
++        "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
+         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
+     }
+     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
+diff --git a/backend/ofo/outcome/service.py b/backend/ofo/outcome/service.py
+index 7ea3f3b7..86d5ca09 100644
+--- a/backend/ofo/outcome/service.py
++++ b/backend/ofo/outcome/service.py
+@@ -141,6 +141,13 @@ class Summary:
+     # a leg the rate table cannot price - the sentences then keep ADR-071's "before charges and taxes" wording)
+     charges: Decimal | None = None
+     charges_unavailable: bool = False
++    # REQ-135 AC-4 (W-155): a strategy of one futures leg. A side with no fixed maximum has no Reward/Risk, and the
++    # reason says so; a futures leg holds no time value and no intrinsic value (both 0.00). Every other strategy keeps
++    # these None: the money-summary requirement (W-154) owns its Reward/Risk, Time value and Intrinsic value.
++    reward_risk: Decimal | None = None
++    reward_risk_reason: ExplanationText | None = None
++    time_value: Decimal | None = None
++    intrinsic_value: Decimal | None = None
+ 
+ 
+ @dataclass(frozen=True)
+@@ -329,9 +336,14 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
+         make = render_explanation("summary_make_at_most_with_charges", amount=max_profit, charges=charges)
+     lo, up = level_set.lower_be, level_set.upper_be
+     start = _start_losing(metrics.loss_regions, idx)
++    legs = inputs.strategy.legs
++    reason = render_explanation("summary_reward_risk_none") if profit_unl or loss_unl else None
++    future_only = len(legs) == 1 and legs[0].instrument is Instrument.FUT
++    nothing = Decimal(0).quantize(HUNDREDTH) if future_only else None  # a futures leg: no time, no intrinsic value
+     return Summary(lose, make, start, None if profit_unl else max_profit,
+                    None if loss_unl else max_loss, profit_unl, loss_unl, level_set.breakevens,
+-                   lo, up, level_set.risk_boundaries, charges, charges_unavailable)
++                   lo, up, level_set.risk_boundaries, charges, charges_unavailable,
++                   reward_risk_reason=reason, time_value=nothing, intrinsic_value=nothing)
+ 
+ 
+ def _refused(definition, reason: ExplanationText, legs, message=None) -> Outcome:
+diff --git a/backend/ofo/timeutil.py b/backend/ofo/timeutil.py
+index 607a6679..00654e6a 100644
+--- a/backend/ofo/timeutil.py
++++ b/backend/ofo/timeutil.py
+@@ -40,3 +40,13 @@ SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading
+ 
+ # The market-hours check is NOT here: it needs the holiday calendar (ADR-119, REQ-114 AC-7), which this
+ # standard-library-only constants module cannot read. The one check is `ofo.market_calendar.is_market_open`.
++
++
++def days_to_expiry(expiry: datetime.date | None, today: datetime.date) -> int | None:
++    """REQ-135 AC-2: the calendar days from ``today`` (the IST date, from the one clock the caller already holds) to
++    ``expiry``: 0 on expiry day. None when the expiry is absent or already past (fails closed: a past expiry is not
++    listed, so a negative count is never shown)."""
++    if expiry is None:
++        return None
++    days = (expiry - today).days
++    return days if days >= 0 else None
+diff --git a/backend/ofo_app/freeze_read.py b/backend/ofo_app/freeze_read.py
+index 7699a28f..6fd91035 100644
+--- a/backend/ofo_app/freeze_read.py
++++ b/backend/ofo_app/freeze_read.py
+@@ -1,8 +1,9 @@
+ """The stored exchange freeze limit in force, read side (W-076, REQ-054 AC-4, ADR-081, REQ-076 AC-5).
+ 
+ Split out of ``freeze_store`` so the leg-edit route can read the limits without its import closure reaching any
+-``ofo.execution`` module (the order path's plan-side join stays in ``freeze_store``). Imports nothing from the order
+-path: ``tests_app/test_order_path_switch.py`` walks the closure and fails if that ever changes.
++``ofo.execution`` module (the order path's plan-side join stays in ``freeze_store``). The import walk of
++``tests_app/test_order_path_switch.py`` run on this module finds no order module in its closure (no allow-list entry
++needed); the leg-edit route's walk fails if that changes. An import is not a call: this says nothing about runtime.
+ """
+ 
+ from __future__ import annotations
+diff --git a/backend/ofo_app/routes/catalogue.py b/backend/ofo_app/routes/catalogue.py
+index 066b7cfe..af258d16 100644
+--- a/backend/ofo_app/routes/catalogue.py
++++ b/backend/ofo_app/routes/catalogue.py
+@@ -16,6 +16,7 @@ import datetime
+ from typing import Any, Literal, Optional
+ 
+ from fastapi import APIRouter, Depends, Query
++from ofo.timeutil import days_to_expiry
+ 
+ from ofo_app import catalogue_picker as picker
+ from ofo_app.api_models import ApiModel, Identifier, Money
+@@ -26,9 +27,15 @@ from ofo_app.underlying import Underlying, require_supported
+ router = APIRouter(route_class=ClosedRoute)
+ 
+ 
++class ExpiryDaysOut(ApiModel):
++    expiry: datetime.date
++    days: int | None  # calendar days from today (IST, the database clock) to the expiry; 0 on expiry day
++
++
+ class ExpiriesOut(ApiModel):
+     underlying: Underlying
+     expiries: list[datetime.date]
++    expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
+ 
+ 
+ class ContractOut(ApiModel):
+@@ -56,8 +63,10 @@ async def get_today(db: Any = Depends(get_db)) -> datetime.date:
+ async def expiries(underlying: str, db: Any = Depends(get_db),
+                    today: datetime.date = Depends(get_today)) -> ExpiriesOut:
+     require_supported(underlying)
+-    return ExpiriesOut.model_validate({"underlying": underlying,
+-                                       "expiries": await picker.pickable_expiries(db, underlying, today)})
++    listed = await picker.pickable_expiries(db, underlying, today)
++    return ExpiriesOut.model_validate({
++        "underlying": underlying, "expiries": listed,
++        "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
+ 
+ 
+ @router.get("/api/catalogue/{underlying}/contracts", response_model=ContractsOut)
+diff --git a/backend/ofo_app/routes/leg_edit.py b/backend/ofo_app/routes/leg_edit.py
+index c7244782..b21c9678 100644
+--- a/backend/ofo_app/routes/leg_edit.py
++++ b/backend/ofo_app/routes/leg_edit.py
+@@ -44,6 +44,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused
+ from ofo.strategy.loader import load_templates
+ from ofo.strategy.matching import Custom, match, protective_keys
+ from ofo.strategy.model import atm_strike
++from ofo.timeutil import days_to_expiry
+ from pydantic import (
+     AwareDatetime,
+     BaseModel,
+@@ -212,6 +213,7 @@ class EditLegOut(ApiModel):
+     instrument: Literal["CE", "PE", "FUT"]
+     strike: Money | None
+     expiry: datetime.date
++    days_to_expiry: int | None  # REQ-135 AC-2: calendar days left from today (IST, the database clock); 0 on expiry day
+     lots: int
+     base_lots: int
+     quantity: int
+@@ -407,7 +409,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one
+     out_legs = [{
+         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
+         "action": x.leg.action.value, "instrument": x.leg.instrument.value,
+-        "strike": x.leg.strike, "expiry": x.leg.expiry, "lots": x.lots, "base_lots": x.base_lots,
++        "strike": x.leg.strike, "expiry": x.leg.expiry,
++        "days_to_expiry": days_to_expiry(x.leg.expiry, today), "lots": x.lots, "base_lots": x.base_lots,
+         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
+         "captured_at": None if i in unpriced else stamps[i],
+         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
+diff --git a/backend/ofo_app/routes/outcome.py b/backend/ofo_app/routes/outcome.py
+index 44e93dd2..af78f06f 100644
+--- a/backend/ofo_app/routes/outcome.py
++++ b/backend/ofo_app/routes/outcome.py
+@@ -43,6 +43,7 @@ from ofo.outcome.service import Margin, waiting_first_price
+ from ofo.scenario.config import ScenarioConfig, ScenarioSettings
+ from ofo.scenario.levels import RangeOverride, resolve_range
+ from ofo.scenario.views import View
++from ofo.timeutil import IST
+ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
+ 
+ from ofo_app import charge_rates_store, db
+@@ -356,6 +357,11 @@ class SummaryOut(ApiModel):
+     risk_boundaries: list[Money]
+     charges: Money | None = None  # W-075: the round-trip charges inside max_profit / max_loss
+     charges_unavailable: bool = False
++    # REQ-135 AC-4: present for a strategy of one futures leg (and the reason for any unlimited side); else null
++    reward_risk: Money | None = None
++    reward_risk_reason: CatalogueText | None = None
++    time_value: Money | None = None
++    intrinsic_value: Money | None = None
+ 
+ 
+ class MarginOut(ApiModel):
+@@ -375,6 +381,7 @@ class LegOut(ApiModel):
+     instrument: Literal["CE", "PE", "FUT"] | None
+     strike: Money | None
+     expiry: datetime.date | None
++    days_to_expiry: int | None = None  # REQ-135 AC-2: days left from the answer's IST date (0 on expiry day)
+     lots: int
+     lot_size: int | None
+     quantity: int | None
+@@ -522,7 +529,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
+                                 config=config, override=override, shared=shared)
+     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
+         out = dataclasses.replace(out, margin=margin)
+-    body = outcome_to_dict(out)
++    body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
+     body["answered_at"] = answered_at
+     state = market_state(ctx, answered_at)
+     body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at

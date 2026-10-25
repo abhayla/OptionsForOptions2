@@ -80,6 +80,11 @@ PR241_SELECTION = {
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
+    # backend/ofo/ modules are in scope since the run-40201288521 fix; the diff changes ofo.errors.explanations, which
+    # these import (directly or through a route that imports it):
+    "tests_app/test_api_models.py", "tests_app/test_identifier_and_slots.py", "tests_app/test_outcome_catalogue.py",
+    "tests_app/test_outcome_margin.py", "tests_app/test_outcome_split_loss.py",
+    "tests_app/test_strategy_templates_route.py",
 }
 
 
@@ -136,11 +141,10 @@ def test_a_changed_module_constant_is_not_a_silent_zero() -> None:
     assert chosen != [] and "tests_app/test_outcome_route.py" in chosen
 
 
-def test_a_diff_touching_no_ofo_app_file_selects_nothing() -> None:
-    diff = ("diff --git a/backend/ofo/errors/explanations.py b/backend/ofo/errors/explanations.py\n"
-            "--- a/backend/ofo/errors/explanations.py\n+++ b/backend/ofo/errors/explanations.py\n"
-            "@@ -1,1 +1,2 @@\n x\n+y = 1\n")
-    assert pick(["backend/ofo/errors/explanations.py"], diff) == []
+def test_a_diff_touching_no_backend_python_file_selects_nothing() -> None:
+    y = "backend/ofo/strategy/catalogue.yaml"
+    diff = f"diff --git a/{y} b/{y}\n--- a/{y}\n+++ b/{y}\n@@ -1,1 +1,2 @@\n x\n+y: 1\n"
+    assert pick(["backend/ofo/strategy/catalogue.yaml"], diff) == []  # known blind spot: data files, see the docstring
     assert pick([], "") == []
 
 
@@ -182,3 +186,82 @@ def test_a_route_path_that_is_not_a_literal_fails_closed() -> None:
     diff = "diff --git a/backend/ofo_app/routes/x.py b/backend/ofo_app/routes/x.py\n@@ -5,1 +5,1 @@\n-    return 2\n+    return 1\n"
     with pytest.raises(sel.DiffNotParsed):
         sel.select(["backend/ofo_app/routes/x.py"], diff, TESTS_APP, lambda rel: src, ROUTES)
+
+
+# ---- the three red "api / Run app tests" runs the selector let through (REAL branch diffs, saved in fixtures/) ----
+# Diff bases: run 40201288521 = merge-base(9aa21296^1, 5d77c4b) (head was merged by PR #552; origin/main contains it, so
+# the plain merge-base is the head itself); runs 40132982617 and 40146949616 = d549c211, the main commit the
+# chunk-3 rows branched from (those heads are merged into main through chunk merges with no single PR parent).
+RUNS_SRC = FIX / "runs-src"
+
+
+def run_files(run: str) -> tuple:
+    diff = (FIX / f"{run}-backend.diff").read_text(encoding="utf-8")
+    return re.findall(r"^diff --git a/\S+ b/(\S+)", diff, re.M), diff
+
+
+def run_snap(rel: str) -> str:
+    """Snapshot of the backend file as the red head had it, else today's tree (docstring-line check only)."""
+    p = RUNS_SRC / (pathlib.PurePosixPath(rel).name + ".txt")
+    return p.read_text(encoding="utf-8") if p.exists() else (ROOT / rel).read_text(encoding="utf-8")
+
+
+def pick_run(run: str) -> list:
+    files, diff = run_files(run)
+    return sel.select(files, diff, TESTS_APP, run_snap, ROUTES)
+
+
+def test_run_40201288521_a_domain_module_change_reaches_the_test_that_imports_it() -> None:
+    """backend/ofo/errors/gate_slots.py is outside backend/ofo_app/; test_identifier_and_slots.py imports it."""
+    chosen = pick_run("40201288521")
+    print("RUN 40201288521:", len(chosen), chosen)
+    assert "tests_app/test_identifier_and_slots.py" in chosen, chosen
+
+
+def test_run_40132982617_the_catalogue_route_change_selects_the_pinned_clock_test() -> None:
+    """Measured: the selector already picks test_pinned_clock.py for this diff (route key /api/catalogue/{underlying}/
+    expiries). The run was red because the selection is over MAX_FILES (atool refuses and defers to CI), not because
+    the file was missed. This pins that the file stays selected."""
+    chosen = pick_run("40132982617")
+    print("RUN 40132982617:", len(chosen), chosen)
+    assert "tests_app/test_pinned_clock.py" in chosen, chosen
+
+
+def test_run_40146949616_a_migration_change_selects_the_migration_and_pin_tests() -> None:
+    chosen = pick_run("40146949616")
+    print("RUN 40146949616:", len(chosen), chosen)
+    assert {"tests_app/test_migration_0024_typed_entry.py", "tests_app/test_strategy_shape_matrix.py"} <= set(chosen)
+
+
+MIG = "backend/ofo_app/alembic/versions/0099_x.py"
+
+
+def test_a_migration_only_diff_selects_the_fixed_migration_set() -> None:
+    diff = f"diff --git a/{MIG} b/{MIG}\n--- a/{MIG}\n+++ b/{MIG}\n@@ -1,1 +1,2 @@\n x = 1\n+X = 1\n"
+    chosen = sel.select([MIG], diff, TESTS_APP, lambda r: "x = 1\nX = 1\n", ROUTES)
+    names = {pathlib.PurePosixPath(p).name for p in chosen}
+    assert chosen and {p.name for p in TESTS_APP.glob("test_*migration*.py")} <= names
+    assert "test_strategy_shape_matrix.py" in names and "test_alembic_migration_guard.py" in names
+
+
+def test_a_comment_only_migration_edit_selects_nothing() -> None:
+    diff = f"diff --git a/{MIG} b/{MIG}\n--- a/{MIG}\n+++ b/{MIG}\n@@ -1,1 +1,2 @@\n x = 1\n+# a comment\n"
+    assert sel.select([MIG], diff, TESTS_APP, lambda r: "x = 1\n# a comment\n", ROUTES) == []
+
+
+def test_a_domain_module_edit_with_a_missing_hunk_fails_closed() -> None:
+    rel = "backend/ofo/errors/gate_slots.py"
+    diff = f"diff --git a/{rel} b/{rel}\nsimilarity index 100%\n"
+    with pytest.raises(sel.DiffNotParsed):
+        sel.select([rel], diff, TESTS_APP, run_snap, ROUTES)
+
+
+def test_a_domain_module_edit_absent_from_the_diff_fails_closed() -> None:
+    with pytest.raises(sel.DiffNotParsed):
+        sel.select(["backend/ofo/errors/gate_slots.py"], "", TESTS_APP, run_snap, ROUTES)
+
+
+def test_a_comment_only_edit_in_a_domain_module_selects_nothing() -> None:
+    rel = "backend/ofo/errors/gate_slots.py"
+    diff = f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n@@ -1,1 +1,2 @@\n x\n+# only a comment\n"
+    assert sel.select([rel], diff, TESTS_APP, run_snap, ROUTES) == []
