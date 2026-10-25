@@ -32,6 +32,7 @@ from ofo.engine.decay import decay_estimate
 from ofo.engine.legs import Action, Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.execution.safety import expires_today
+from ofo.execution.sequence import expiry_covers
 from ofo.market_calendar import CalendarError
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
@@ -77,15 +78,40 @@ def _signed(leg: OutcomeLeg) -> int:
     return leg.quantity if leg.action is Action.BUY else -leg.quantity  # type: ignore[operator]
 
 
+def _uncovered(legs: Sequence[OutcomeLeg], kind: Instrument) -> tuple[int, int]:
+    """(sold quantity with no cover, bought quantity left over) for one option type. A bought option covers a sold
+    one of the same type whatever its strike, but only if it expires on or after it (``expiry_covers``, the rule
+    Execute's ``protects`` uses). Greedy from the latest sold expiry, using the earliest eligible buy first; integers."""
+    sold: dict[datetime.date, int] = {}
+    bought: dict[datetime.date, int] = {}
+    for x in legs:
+        if x.instrument is kind:
+            side = sold if x.action is Action.SELL else bought
+            side[x.expiry] = side.get(x.expiry, 0) + x.quantity  # type: ignore[index, operator]
+    uncovered = 0
+    for sold_expiry in sorted(sold, reverse=True):
+        need = sold[sold_expiry]
+        for bought_expiry in sorted(bought):
+            if need and expiry_covers(bought_expiry, sold_expiry):
+                take = min(need, bought[bought_expiry])
+                bought[bought_expiry] -= take
+                need -= take
+        uncovered += need
+    return uncovered, sum(bought.values())
+
+
 def unhedged_directions(legs: Sequence[OutcomeLeg]) -> tuple[bool, bool]:
     """ADR-185: (rising, falling) - whether the loss has no fixed limit when the index rises / falls. Integer
-    quantities only (lots x lot size). A bought option of the same type covers a sold one whatever its expiry or strike
-    (ADR-143 (2), the same answer as ``execution.sequence.protects``): the expiry payoff slope above the highest strike
-    is (bought calls + net futures - sold calls) per point, below the lowest strike (net futures - net puts)."""
-    calls = sum(_signed(x) for x in legs if x.instrument is Instrument.CE)
-    puts = sum(_signed(x) for x in legs if x.instrument is Instrument.PE)
+    quantities only (lots x lot size). A bought option of the same type covers a sold one whatever its strike
+    (ADR-143 (2)) but only if it expires on or after it - the same answer as ``execution.sequence.protects`` (a
+    reverse calendar is warned). Net futures are unchanged: long futures cover sold calls, short futures cover sold
+    puts, and a left-over bought option offsets a short (calls) or long (puts) future."""
+    calls, spare_calls = _uncovered(legs, Instrument.CE)
+    puts, spare_puts = _uncovered(legs, Instrument.PE)
     futures = sum(_signed(x) for x in legs if x.instrument is Instrument.FUT)
-    return calls + futures < 0, futures - puts > 0
+    rising = calls > max(futures, 0) or (futures < 0 and -futures > spare_calls)
+    falling = puts > max(-futures, 0) or (futures > 0 and futures > spare_puts)
+    return rising, falling
 
 
 def _unhedged(legs: Sequence[OutcomeLeg], underlying: str) -> list[Warning_]:
@@ -164,6 +190,9 @@ def strategy_warnings(definition, legs: Sequence[OutcomeLeg], snapshot: MarketSn
     list is refused and logged: a partial list would read as "no warning")."""
     if any(x.quantity is None or x.lot_size is None for x in legs):
         log.error("warnings refused: a leg of %s has no lot size", definition.underlying)
+        return None
+    if any(x.instrument in (Instrument.CE, Instrument.PE) and x.expiry is None for x in legs):
+        log.error("warnings refused: an option leg of %s has no expiry", definition.underlying)  # cover needs it
         return None
     strategy = _unhedged(legs, snapshot.underlying) + _decay(valuation, totals_theta, calendar)
     per_leg = {x.instrument_id: _liquidity(x, snapshot, valuation, liquidity_settings) + _expiry_day(x, valuation)

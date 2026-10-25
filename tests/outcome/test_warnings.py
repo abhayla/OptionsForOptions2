@@ -82,6 +82,50 @@ def test_calendar_with_a_later_expiry_bought_call_is_not_warned():
     assert directions(legs) == (False, False, 0)
 
 
+def _execute_leg(x):
+    from ofo.engine.legs import Leg
+    return Leg(action=x.action, instrument=x.instrument, strike=x.strike, expiry=x.expiry, quantity=x.quantity,
+               entry_price=Decimal(10))
+
+
+def _execute_says_naked(legs):
+    """Execute's own answer (``execution.sequence.protects``): is any sold option left without a protector?"""
+    from ofo.execution.sequence import protects
+    engine = [_execute_leg(x) for x in legs]
+    return any(s.action is Action.SELL and s.instrument is not Instrument.FUT
+               and not any(protects(p, s) for p in engine) for s in engine)
+
+
+def test_reverse_calendar_sold_later_bought_earlier_warns_rising_and_execute_agrees():
+    # the round-1 probe: SELL next-month 24000 CE + BUY this-week 24000 CE -> the bought call expires first
+    legs = [leg(Action.SELL, Instrument.CE, 24000, expiry=NEXT_MONTH), leg(Action.BUY, Instrument.CE, 24000)]
+    assert directions(legs) == (True, False, 1) and _execute_says_naked(legs)
+
+
+def test_forward_calendar_is_not_warned_and_execute_agrees():
+    legs = [leg(Action.SELL, Instrument.CE, 24000), leg(Action.BUY, Instrument.CE, 24000, expiry=NEXT_MONTH)]
+    assert directions(legs) == (False, False, 0) and not _execute_says_naked(legs)
+
+
+def test_reverse_calendar_of_puts_warns_falling():
+    legs = [leg(Action.SELL, Instrument.PE, 22500, expiry=NEXT_MONTH), leg(Action.BUY, Instrument.PE, 22500)]
+    assert directions(legs) == (False, True, 1)
+
+
+def test_mixed_expiry_one_sold_lot_is_left_uncovered():
+    # SELL 2 next-month + BUY 1 next-month + BUY 1 this-week: only one sold lot has a buy on or after its expiry
+    legs = [leg(Action.SELL, Instrument.CE, 24000, lots=2, expiry=NEXT_MONTH),
+            leg(Action.BUY, Instrument.CE, 24200, expiry=NEXT_MONTH), leg(Action.BUY, Instrument.CE, 24200)]
+    assert directions(legs) == (True, False, 1)
+
+
+def test_one_later_buy_cannot_cover_two_sold_expiries_twice():
+    # BUY 1 next-month covers ONE of the two sold lots (this-week or next-month), never both
+    legs = [leg(Action.SELL, Instrument.CE, 24000), leg(Action.SELL, Instrument.CE, 24000, expiry=NEXT_MONTH),
+            leg(Action.BUY, Instrument.CE, 24200, expiry=NEXT_MONTH)]
+    assert directions(legs) == (True, False, 1)
+
+
 def test_two_to_one_call_ratio_warns_rising():
     legs = [leg(Action.SELL, Instrument.CE, 22900, lots=2), leg(Action.BUY, Instrument.CE, 23100, lots=1)]
     assert directions(legs) == (True, False, 1)
@@ -118,6 +162,13 @@ def test_friday_to_monday_is_three_days_with_a_decimal_rupee_estimate():
     (w,) = decay(Decimal("-413.3333"))
     assert "Over the 3 days to Monday" in w.text and "₹1,240.00" in w.text.replace("−", "")  # 413.3333 x 3 = 1240
     assert decay_estimate(Decimal("-413.3333"), 3) == Decimal(-1240)
+
+
+def test_decay_gain_shows_a_plus_and_a_loss_shows_a_minus():
+    (loss,) = decay(Decimal("-413.3333"))
+    (gain,) = decay(Decimal("413.3333"))
+    assert "about −₹1,240" in loss.text and "about +₹1,240" in gain.text
+    assert "+" not in loss.text and "−" not in gain.text
 
 
 def test_a_midweek_evening_is_one_day_and_no_code():

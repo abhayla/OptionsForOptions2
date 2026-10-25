@@ -61,6 +61,7 @@ from __future__ import annotations
 
 from ofo.errors.user_facing import UserFacing
 
+import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -222,11 +223,17 @@ class OrderSequence:
         return self.simulate(tuple(dict.fromkeys(ref for ref, _ in failing)))
 
 
+def expiry_covers(protector_expiry: datetime.date, sold_expiry: datetime.date) -> bool:
+    """The one expiry rule of cover: a protector caps a sold option only if it expires on or after it. Execute's
+    ``protects`` and the Builder's unhedged warning (``outcome.warnings``) both call this, so they cannot disagree."""
+    return protector_expiry >= sold_expiry
+
+
 def protects(protector: Leg, sold: Leg) -> bool:
     """True when ``protector`` caps ``sold``'s loss (rules and sources in the module docstring)."""
     if sold.action is not Action.SELL or sold.instrument is Instrument.FUT or protector is sold:
         return False
-    if protector.expiry < sold.expiry:
+    if not expiry_covers(protector.expiry, sold.expiry):
         return False
     if sold.instrument is Instrument.CE:
         return protector.action is Action.BUY and protector.instrument in (Instrument.CE, Instrument.FUT)

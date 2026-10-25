@@ -493,6 +493,18 @@ class SignedAmount(SlotType):
         return f"{abs(value):+f}" if value.is_zero() else f"{value:+f}"  # plain notation, never +1E+2 or -0
 
 
+class SignedRupees(SlotType):
+    """Exact money like `Rupees` (the engine's format) with an explicit plus for a gain: +₹1,240.00 / −₹1,240.00."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        return ("+" if value > 0 else "") + Rupees.format(value)
+
+
 class HourMinute(SlotType):
     """A timezone-aware time as the IST hour and minute, "09:20" (the data-label wording)."""
 
@@ -862,7 +874,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "cover all its sold puts and bought futures.", {"underlying": UnderlyingName}),
     ExplanationTemplate("warn_weekend_holiday_decay", "values_seen",
                         "Over the {days} days to {day}, time decay changes this strategy's value by about {amount} "
-                        "(estimate).", {"days": Days, "day": Recorded, "amount": Rupees}),
+                        "(estimate).", {"days": Days, "day": Recorded, "amount": SignedRupees}),
     ExplanationTemplate("warn_low_liquidity_no_trade", "values_seen",
                         "No trade in the last {minutes} minutes.", {"minutes": Amount}),
     ExplanationTemplate("warn_low_liquidity_no_quote", "values_seen", "No bid or no offer."),
