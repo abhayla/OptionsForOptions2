@@ -95,7 +95,7 @@ def _build(raw: dict[str, Any]) -> Template:
     constraints: list[Constraint] = []
     for c in raw["constraints"]:
         if "equal" in c:
-            constraints.append(EqualConstraint(params=tuple(c["equal"])))
+            constraints.append(EqualConstraint(params=tuple(c["equal"]), build_only=c.get("build_only", False)))
         elif "sign" in c:
             constraints.append(SignConstraint(leg=c["sign"]["leg"], sign=c["sign"]["is"]))
         else:
@@ -106,6 +106,7 @@ def _build(raw: dict[str, Any]) -> Template:
             level=raw["level"], views=tuple(raw["views"]), objectives=tuple(raw["objectives"]),
             params=params, constraints=tuple(constraints), legs=tuple(legs),
             width_adjustable=raw.get("width_adjustable", False),
+            family_plural=raw.get("family_plural"),
         )
     except TemplateError as exc:
         raise TemplateError(f"template {tid!r}: {exc}") from exc

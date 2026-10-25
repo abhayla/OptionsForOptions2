@@ -15,11 +15,17 @@ from pathlib import Path
 
 import pytest
 
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import MultiExpiryError, strategy_metrics
 from ofo.strategy.loader import DEFAULT_CATALOGUE_PATH, load_templates
-from ofo.strategy.matching import match
-from ofo.strategy.model import TemplateError, resolve_template
+from ofo.strategy.matching import Custom, MatchResult, match, match_shape, protective_keys, template_shape
+from ofo.strategy.model import (
+    EqualConstraint,
+    OrderConstraint,
+    SignConstraint,
+    TemplateError,
+    resolve_template,
+)
 from ofo.strategy.wording import find_banned_phrases, find_position_words
 
 pytestmark = pytest.mark.repo_scan
@@ -290,3 +296,89 @@ def test_req_078_width_adjustable_is_exactly_the_eight_shapes_of_ac_2():
 
 def test_req_078_hedge_applies_only_to_the_templates_with_protective_legs():
     assert {t.id for t in CATALOGUE if any(leg.protective for leg in t.legs)} == HEDGE_SHAPES
+
+
+# --- ADR-186 (4): unequal wings keep the shape name; a NEW strategy still starts with equal wings. ----------------
+
+UNEQUAL_SPOT, UNEQUAL_GAP = Decimal("23000"), Decimal("50")
+EQUAL_WING_TEMPLATES = {"iron_condor", "iron_butterfly", "reverse_iron_condor", "long_iron_butterfly"}
+
+
+def _legs(rows):
+    return [Leg(Action(a), Instrument(i), Decimal(k), NEAR, 65, Decimal("10")) for a, i, k in rows]
+
+
+def test_core_unequal_wing_condor_on_real_listed_strikes_is_an_iron_condor_with_both_hedge_marks():
+    """ADR-186 (4) core: the ADR's example, SELL 22800 PE / BUY 22500 PE (put wing 300), SELL 23200 CE / BUY 23400 CE
+    (call wing 200), all listed on the fixture's 2026-10-06 NIFTY expiry, is named Iron Condor, both BUY legs Hedge."""
+    legs = _legs([("SELL", "PE", "22800"), ("BUY", "PE", "22500"), ("SELL", "CE", "23200"), ("BUY", "CE", "23400")])
+    result = match(legs, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, templates=CATALOGUE)
+    assert isinstance(result, MatchResult) and result.template.id == "iron_condor"
+    assert (result.params["w_put"], result.params["w_call"]) == (6, 4)
+    marks = protective_keys(result)
+    kinds = {(a, i) for a, i, _, _ in marks}
+    assert kinds == {(Action.BUY, Instrument.PE), (Action.BUY, Instrument.CE)} and len(marks) == len(kinds)
+
+
+def test_an_unequal_wing_iron_butterfly_is_named_with_its_hedge_marks():
+    legs = _legs([("SELL", "PE", "23000"), ("BUY", "PE", "22800"), ("SELL", "CE", "23000"), ("BUY", "CE", "23300")])
+    result = match(legs, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, templates=CATALOGUE)
+    assert isinstance(result, MatchResult) and result.template.id == "iron_butterfly"
+    assert {i for _, i, _, _ in protective_keys(result)} == {Instrument.PE, Instrument.CE}
+
+
+def test_the_long_twins_with_unequal_wings_keep_their_names():
+    for template_id in ("long_iron_butterfly", "reverse_iron_condor"):
+        template = BY_ID[template_id]
+        equal = next(c for c in template.constraints if isinstance(c, EqualConstraint))
+        point = {**template.defaults(), equal.params[0]: 3, equal.params[1]: 2}
+        assert template.violations(point) and not template.violations(point, matching=True), template_id
+        shape = template_shape(template, point)
+        result = match_shape(shape, CATALOGUE)
+        assert isinstance(result, MatchResult) and result.template.id == template_id, template_id
+
+
+def test_a_new_strategy_built_from_the_catalogue_still_has_equal_wings():
+    """Building keeps the equal-wings default: an unequal override is refused by resolve, for every template that has
+    an equal constraint."""
+    equal_templates = [t for t in CATALOGUE if any(isinstance(c, EqualConstraint) for c in t.constraints)]
+    assert {t.id for t in equal_templates} == EQUAL_WING_TEMPLATES
+    for template in equal_templates:
+        equal = next(c for c in template.constraints if isinstance(c, EqualConstraint))
+        defaults = template.defaults()
+        assert defaults[equal.params[0]] == defaults[equal.params[1]], template.id
+        with pytest.raises(TemplateError):
+            resolve_template(template, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, expiries={"near": NEAR},
+                             prices=[Decimal("10")] * len(template.legs), base_quantity=65,
+                             overrides={equal.params[0]: 3, equal.params[1]: 2})
+
+
+def test_every_equal_constraint_is_build_only_and_an_unknown_constraint_kind_must_be_classified():
+    """Standing item (c): fails closed. Every EqualConstraint in the catalogue is build_only; the matcher-skipped set
+    is exactly the build_only equal constraints, so a new constraint kind is not silently skipped or silently kept."""
+    seen = 0
+    for template in CATALOGUE:
+        for constraint in template.constraints:
+            assert isinstance(constraint, (EqualConstraint, SignConstraint, OrderConstraint)), (template.id, constraint)
+            if isinstance(constraint, EqualConstraint):
+                assert constraint.build_only is True, template.id
+                seen += 1
+    assert seen == len(EQUAL_WING_TEMPLATES)
+
+
+def test_two_puts_and_one_call_is_still_a_custom_strategy():
+    legs = _legs([("BUY", "PE", "22800"), ("SELL", "PE", "22500"), ("SELL", "CE", "23200")])  # a put pair + ONE call
+    assert isinstance(match(legs, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, templates=CATALOGUE), Custom)
+    # a put pair + call pair whose order is wrong (short put above short call) stays Custom as well
+    wrong = _legs([("SELL", "PE", "23400"), ("BUY", "PE", "23100"), ("SELL", "CE", "23200"), ("BUY", "CE", "23400")])
+    assert isinstance(match(wrong, spot=UNEQUAL_SPOT, strike_gap=UNEQUAL_GAP, templates=CATALOGUE), Custom)
+
+
+def test_the_catalogue_names_the_shape_family_for_the_not_applicable_texts():
+    """REQ-078 AC-2: the plural family label is DATA on the templates, never typed in backend code."""
+    labels = {t.id: t.family_plural for t in CATALOGUE if t.family_plural}
+    assert labels["iron_condor"] == "iron condors" and labels["iron_butterfly"] == "iron butterflies"
+    assert labels["short_straddle"] == labels["long_straddle"] == "straddles"
+    assert labels["short_strangle"] == labels["long_strangle"] == "strangles"
+    assert {t.id for t in CATALOGUE if t.width_adjustable} <= set(labels)
+    assert {t.id for t in CATALOGUE if any(leg.protective for leg in t.legs)} <= set(labels)

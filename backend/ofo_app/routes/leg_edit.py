@@ -35,7 +35,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.errors import LegValue, render
+from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
@@ -44,7 +44,7 @@ from ofo.money import PAISE
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
 from ofo.strategy import stored_form
-from ofo.strategy.leg_edit import EditLeg, LegEditRefused
+from ofo.strategy.leg_edit import EditLeg, LegEditRefused, render_reason
 from ofo.strategy.loader import load_templates
 from ofo.strategy.matching import Custom, match, protective_keys
 from ofo.strategy.model import atm_strike
@@ -570,7 +570,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
     reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
-             "control_reasons": {name: None if why is None else render(why) for name, why in off_now.items()},
+             "control_reasons": {name: None if why is None else render_reason(why) for name, why in off_now.items()},
              "shift_total": shift_total, "shape": None if template is None else template.id, "shape_name": name,
              "outcome": outcome}
     return echo_seq(LegEditOut.model_validate(reply), req.seq)  # REQ-119 AC-1

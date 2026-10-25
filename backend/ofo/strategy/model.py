@@ -128,9 +128,13 @@ class TemplateLeg:
 
 @dataclass(frozen=True)
 class EqualConstraint:
-    """Two parameters must take the same value."""
+    """Two parameters must take the same value.
+
+    ``build_only`` (ADR-186 (4)): the rule shapes what a NEW strategy starts as (resolve refuses unequal values) but
+    does not decide a leg set's NAME, so the shape matcher skips it (``Template.violations(matching=True)``)."""
 
     params: tuple[str, str]
+    build_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,6 +171,9 @@ class Template:
     legs: tuple[TemplateLeg, ...]
     #: REQ-078 AC-2: the Width control applies (data, never per-strategy code; REQ-028 AC-5)
     width_adjustable: bool = False
+    #: REQ-078 AC-2: plural display label of this template's family ("iron condors"), read by the Width / Hedge
+    #: not-applicable texts; data, so no backend code types a template or shape name
+    family_plural: str | None = None
     _params_by_name: dict = field(init=False, repr=False, compare=False)
     _legs_by_name: dict = field(init=False, repr=False, compare=False)
 
@@ -258,8 +265,10 @@ class Template:
         """Each leg's strike offset from ATM, in steps (``None`` for a futures leg)."""
         return {leg.name: None if leg.strike is None else leg.strike.evaluate(values) for leg in self.legs}
 
-    def violations(self, values: Mapping[str, int]) -> list[str]:
-        """Every bound or constraint ``values`` breaks; empty when the parameter set is allowed."""
+    def violations(self, values: Mapping[str, int], *, matching: bool = False) -> list[str]:
+        """Every bound or constraint ``values`` breaks; empty when the parameter set is allowed.
+
+        ``matching=True`` is the shape matcher's question (ADR-186 (4)): a build-only equal constraint is skipped."""
         problems: list[str] = []
         if set(values) != self._params_by_name.keys():
             return [f"params must be exactly {sorted(self._params_by_name)}, got {sorted(values)}"]
@@ -273,7 +282,7 @@ class Template:
         for constraint in self.constraints:
             if isinstance(constraint, EqualConstraint):
                 a, b = constraint.params
-                if values[a] != values[b]:
+                if not (matching and constraint.build_only) and values[a] != values[b]:
                     problems.append(f"equal constraint {a}={values[a]} vs {b}={values[b]}")
             elif isinstance(constraint, SignConstraint):
                 if not sign_holds(constraint.sign, offsets[constraint.leg]):

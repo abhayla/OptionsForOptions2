@@ -24,7 +24,7 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
@@ -1007,13 +1007,13 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_shift_needs_option_leg", _UI, 16, "Shift needs at least two legs, at least one of them an option.",
           "The move was refused and no leg changed.", "This move.", "Add an option leg first.", {}),
     _gate("leg_edit_width_not_applicable", _UI, 17,
-          "Width applies to straddles, strangles and four-leg shapes made of a put pair and a call pair.",
+          "Width applies to {shapes}.",
           "The move was refused and no leg changed.", "This move.",
-          "Use Shift, or change the strikes yourself.", {}),
+          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
     _gate("leg_edit_hedge_not_applicable", _UI, 18,
-          "Hedge applies to vertical spreads and to four-leg shapes with a bought leg on each outer side.",
+          "Hedge applies to {shapes}.",
           "The move was refused and no leg changed.", "This move.",
-          "Use Shift, or change the strikes yourself.", {}),
+          "Use Shift, or change the strikes yourself.", {"shapes": ShapeFamilies}),
     _gate("leg_edit_width_below_zero", _UI, 19, "The width cannot go below 0.",
           "The move was refused and no leg changed.", "This move.", "Use Width + to widen, or Shift to move.", {}),
     _gate("leg_edit_hedge_below_minimum", _UI, 20, "{leg} cannot come closer than one strike step to its short leg.",

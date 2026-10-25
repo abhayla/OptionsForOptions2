@@ -32,6 +32,7 @@ from ofo.errors import LegValue, UserFacing, UserFacingError, render
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 from ofo.money import PAISE
+from ofo.strategy import shape_families
 
 MULTIPLIER_MIN, MULTIPLIER_MAX = 1, 50  # REQ-076 AC-4: whole numbers 1 to 50
 OPTIONS = (Instrument.CE, Instrument.PE)
@@ -39,12 +40,26 @@ MAX_HEDGE_LEGS = 4  # REQ-078 AC-5: Hedge needs an even number of legs, at most 
 _TYPED_PRICE = re.compile(r"-?[0-9]{1,30}(\.[0-9]{1,30})?")  # ASCII digits only; the shape check, the rules come after
 
 
+#: the not-applicable texts of the controls that name the shapes they apply to (REQ-078 AC-2), by catalogue template
+_SHAPE_TEXT_CONTROL = {"leg_edit_width_not_applicable": shape_families.WIDTH,
+                       "leg_edit_hedge_not_applicable": shape_families.HEDGE}
+
+
+def render_reason(template: str, **slots: object) -> str:
+    """The catalogue text of a refusal; the Width / Hedge not-applicable texts get the shape families from the
+    strategy catalogue's data (never typed in code)."""
+    control = _SHAPE_TEXT_CONTROL.get(template)
+    if control is not None:
+        slots.setdefault("shapes", shape_families.control_families(control))
+    return render(template, **slots)
+
+
 class LegEditRefused(UserFacing, ValueError):
     """An edit the rules refuse; nothing changed. Carries the catalogue template, its slots and the rendered message."""
 
     def __init__(self, template: str, **slots: object) -> None:
         self.template = template
-        self.message = render(template, **slots)
+        self.message = render_reason(template, **slots)
         super().__init__(template)
 
 

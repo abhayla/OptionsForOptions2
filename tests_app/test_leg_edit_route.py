@@ -731,6 +731,41 @@ def test_a_moved_leg_with_no_live_price_is_unpriced_never_the_old_price():
     assert legs_out[3]["price_source"] == "none" and legs_out[3]["captured_at"] is None
 
 
+UNEQUAL = [("BUY", "PE", 22500, "30.00"), ("SELL", "PE", 22800, "60.00"), ("SELL", "CE", 23200, "62.00"),
+           ("BUY", "CE", 23400, "30.00")]  # ADR-186's example: put wing 300, call wing 200
+
+
+def test_adr_186_4_an_unequal_wing_condor_is_named_with_its_hedge_marks_and_hedge_evens_the_wings_out():
+    """Attack 2 + 5: the server names the unequal condor (so Width and Hedge apply to it), Hedge +1 moves ONLY the call
+    wing out to 300 (puts untouched), Hedge -1 moves ONLY the put wing in to 200, and the reply's controls and reasons
+    agree with the shape name. HAND: 23400 + 100 = 23500 CE; 22500 + 100 = 22600 PE."""
+    status, reply = post({"legs": rows(UNEQUAL), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] == "iron_condor" and reply["shape_name"] == "Short Iron Condor"
+    assert [leg["hedge"] for leg in reply["legs"]] == [True, False, False, True]
+    assert reply["controls"] == {"shift": True, "width": True, "hedge": True}
+    assert reply["control_reasons"] == {"shift": None, "width": None, "hedge": None}
+    status, up = move("hedge", 1, UNEQUAL)
+    assert status == HTTP_OK and strikes(up) == [22500, 22800, 23200, 23500]
+    assert up["shape"] == "iron_condor" and [leg["captured_at"][:19] for leg in up["legs"]].count(
+        "2026-10-01T09:21:28") == 1
+    status, down = move("hedge", -1, UNEQUAL)
+    assert status == HTTP_OK and strikes(down) == [22600, 22800, 23200, 23400]
+    status, wider = move("width", 1, UNEQUAL)
+    assert status == HTTP_OK and strikes(wider) == [22450, 22750, 23250, 23450]
+
+
+def test_adr_186_4_a_put_pair_plus_one_call_is_custom_and_the_server_refuses_width_and_hedge_on_it():
+    """Attack 3 + 5: not a put pair + a call pair -> Custom Strategy; the browser cannot force Width or Hedge on it, and
+    the refusal names the shapes from the catalogue (REQ-078 AC-2)."""
+    custom = [("BUY", "PE", 22800, "40.00"), ("SELL", "PE", 22500, "30.00"), ("SELL", "CE", 23200, "62.00")]
+    status, reply = post({"legs": rows(custom), "edit": {"control": "read"}})
+    assert status == HTTP_OK and reply["shape"] is None and reply["shape_name"] is None
+    assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
+    assert "Width applies to straddles, strangles, iron butterflies and iron condors." in str(
+        reply["control_reasons"]["width"])
+    assert move("width", 1, custom)[0] == HTTP_UNPROCESSABLE and move("hedge", 1, custom)[0] == HTTP_UNPROCESSABLE
+
+
 def test_ac_4_width_never_goes_below_zero_through_the_route():
     straddle = [("SELL", "PE", 23000, "80.00"), ("SELL", "CE", 23000, "85.00")]
     status, reply = move("width", -1, straddle)

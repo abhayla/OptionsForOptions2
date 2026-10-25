@@ -29,6 +29,7 @@
         "description": {"type": "string", "minLength": 1, "maxLength": 400},
         "level": {"enum": ["Beginner", "Intermediate", "Advanced"]},
         "width_adjustable": {"type": "boolean"},
+        "family_plural": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[a-z][a-z ]*$"},
         "views": {"$ref": "#/$defs/views"},
         "objectives": {"$ref": "#/$defs/objectives"},
         "params": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/param"}},
@@ -78,7 +79,8 @@
           "additionalProperties": false,
           "required": ["equal"],
           "properties": {
-            "equal": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}}
+            "equal": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}},
+            "build_only": {"type": "boolean"}
           }
         },
         {
