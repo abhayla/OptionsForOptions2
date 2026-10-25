@@ -36,6 +36,9 @@ const CONTROL_FIELDS = {
   price: ['index', 'price'], // REQ-077 AC-1/AC-2: the typed TEXT as entered, judged by the server only
   reset_prices: [], // REQ-077 AC-5: every leg is re-captured from its current price
   reset_leg: ['index'], // REQ-077 AC-5: the same for one leg
+  shift: ['direction'], // REQ-078 AC-6: the browser sends only the control and its direction; the server moves the strikes
+  width: ['direction'],
+  hedge: ['direction'],
   read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
 }
 
@@ -49,8 +52,9 @@ export function executeRefusal(legs) {
   return legs.some((l) => l.included === false) ? EXECUTE_NEEDS_ALL_TICKED : null
 }
 
-/** The request body for ONE edit; null for an edit that is not complete or a leg the server cannot name. */
-export function buildEditRequest(underlying, legs, edit) {
+/** The request body for ONE edit; null for an edit that is not complete or a leg the server cannot name. `shiftTotal` is the
+ *  page's last Shift total as the server sent it (an integer, never computed from strikes); sent only when there is one. */
+export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
   const fields = CONTROL_FIELDS[edit?.control]
   if (!fields || fields.some((f) => edit[f] === undefined || edit[f] === null)) return null
   if (!legs.length || legs.some((l) => typeof l.instrument_id !== 'string' || !l.instrument_id)) return null
@@ -60,6 +64,7 @@ export function buildEditRequest(underlying, legs, edit) {
   return {
     underlying,
     edit: body,
+    ...(Number.isInteger(shiftTotal) ? { shift_total: shiftTotal } : {}),
     legs: legs.map((l) => ({
       instrument_id: l.instrument_id,
       action: l.action,
@@ -99,6 +104,7 @@ export function applyEditReply(prev, reply) {
       typed: r.price_source === 'typed',
       price_reason: r.price_reason ?? null,
       hedge: r.hedge === true,
+      replaced_typed: r.replaced_typed === true, // REQ-078 AC-8: a typed price this reply replaced (the screen says so)
       block: r.block ?? null,
       instrument_type: r.instrument,
       strike: r.strike,
@@ -107,6 +113,41 @@ export function applyEditReply(prev, reply) {
     }
   })
 }
+
+/** REQ-078 AC-2: shown only when the strategy has at least 2 legs and at least one option leg. */
+export function showsControls(legs) {
+  return legs.length >= 2 && legs.some(canStep)
+}
+
+/** REQ-078 AC-2: nothing applies until the server says so (no reply yet, or an old server without the field). */
+/** The AC-2 sentence for Width, used only when a control is off and the server sent no reason for it. */
+export const WIDTH_REASON_FALLBACK = 'Width applies to straddles, strangles, iron butterflies and iron condors.'
+export const NO_REASON_FALLBACK = 'This move is not available for these legs.'
+export const NO_CONTROLS = Object.freeze({ shift: false, width: false, hedge: false, shiftTotal: null,
+  reasons: Object.freeze({ shift: NO_REASON_FALLBACK, width: WIDTH_REASON_FALLBACK, hedge: NO_REASON_FALLBACK }) })
+
+/** REQ-078 AC-2/AC-3: which controls work and the Shift total, exactly as the reply sent them. A control is on only when the
+ *  server said `true`; the reason is the server's sentence (`what_happened` of its catalogue text), never built here. */
+export function controlsFrom(reply) {
+  const c = reply?.controls
+  if (!c || typeof c !== 'object') return NO_CONTROLS
+  const reasons = {}
+  for (const id of ['shift', 'width', 'hedge']) {
+    const text = reply.control_reasons?.[id]?.what_happened
+    reasons[id] = c[id] === true ? null : typeof text === 'string' && text ? text : id === 'width' ? WIDTH_REASON_FALLBACK : NO_REASON_FALLBACK
+  }
+  return { shift: c.shift === true, width: c.width === true, hedge: c.hedge === true,
+    shiftTotal: Number.isInteger(reply.shift_total) ? reply.shift_total : null, reasons }
+}
+
+/** REQ-078 AC-3 / ADR-186 (2): the Shift total as text from the server's integer: '+50', '-100'; '-' for none or 0. No arithmetic. */
+export function shiftText(total) {
+  if (!Number.isInteger(total) || total === 0) return '-'
+  return total > 0 ? `+${total}` : `${total}`
+}
+
+/** REQ-078 AC-8: the sentence for a leg whose typed price this reply replaced; strike and type as the server sent them. */
+export const replacedPriceNote = (number, leg) => `Your price for leg ${number} was replaced by the captured price of ${leg.strike} ${leg.instrument_type}.`
 
 /** REQ-076 AC-8/AC-9: the shape name exactly as the server sent it; 'Custom Strategy' when it matched none. */
 export function shapeLabel(reply) {
