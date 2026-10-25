@@ -44,13 +44,15 @@ from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
+from ofo.market_calendar import next_open
 from ofo.outcome.snapshot import MarketSnapshot
+from ofo.outcome.warnings import LiquiditySettings, Warning_, no_warnings_label, strategy_warnings
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import ColumnKind, ExpectedMove, LevelColumn, LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, scenario_values
-from ofo.table import ColumnSpec, Table, build_table, visible_columns
+from ofo.table import TOTAL_ROW_ID, ColumnId, ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
@@ -120,6 +122,8 @@ class OutcomeLeg:
     iv: Decimal | None
     health: DataHealth | None
     label: ExplanationText | None
+    #: REQ-085: this leg's warnings (liquidity, expiry day). None = not computed (an absent list, never "none")
+    warnings: tuple[Warning_, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -183,6 +187,9 @@ class Outcome:
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
     centre_label: ExplanationText | None = None  # FROM_ENTRIES only: where the level grid is centred, and why
+    #: REQ-085: the strategy's warnings; None on every answer that is not a live computed one (absent, not empty)
+    warnings: tuple[Warning_, ...] | None = None
+    warnings_label: ExplanationText | None = None  # AC-8: "No warnings for this strategy" when the list is empty
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -532,11 +539,29 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         centre_label=render_explanation("outcome_from_entries_centre", level=centre))
 
 
+def _with_warnings(definition: StrategyDefinition, legs: tuple[OutcomeLeg, ...], snapshot: MarketSnapshot,
+                   valuation: datetime.datetime, table: Table, liquidity: LiquiditySettings):
+    """REQ-085: the ONE call of ``strategy_warnings`` (a computed answer only). Returns (legs carrying their warnings,
+    the strategy's warnings, the empty-state label). A refused list (a leg without a lot size) leaves all three absent."""
+    total = next((r for r in table.rows if r.row_id == TOTAL_ROW_ID), None)  # position level, per calendar day
+    theta = None if total is None else total.cells.get(ColumnId.THETA)
+    got = strategy_warnings(definition, legs, snapshot, valuation,
+                            totals_theta=theta.value if theta is not None and isinstance(theta.value, Decimal) else None,
+                            calendar=next_open, liquidity_settings=liquidity)
+    if got is None:
+        return legs, None, None
+    strategy, per_leg = got
+    shown = tuple(dataclasses.replace(x, warnings=tuple(per_leg[x.instrument_id])) for x in legs)
+    everything = bool(strategy) or any(per_leg.values())
+    return shown, tuple(strategy), (None if everything else no_warnings_label())
+
+
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
-                  override: RangeOverride | None = None, shared: FeedScope | None = None) -> Outcome:
+                  override: RangeOverride | None = None, shared: FeedScope | None = None,
+                  liquidity: LiquiditySettings | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
@@ -649,12 +674,15 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     table = build_table(model, level_set=level_set, scenario=values,
                         leg_greeks=_shared_leg_greeks(model, snapshot, shared))
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
+    legs_out, strategy_w, label_w = _with_warnings(definition, tuple(legs), snapshot, valuation, table,
+                                                   liquidity or LiquiditySettings())
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
     # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).
     return Outcome(
         state=OutcomeState.COMPUTED, underlying=definition.underlying, status_label=message,
-        reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
+        reason=None, legs=legs_out, margin=MARGIN, valuation=valuation,
         output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
-        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))
+        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
+        warnings=strategy_w, warnings_label=label_w)

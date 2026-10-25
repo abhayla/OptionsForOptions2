@@ -39,15 +39,17 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.outcome.warnings import LiquiditySettings
 from ofo.outcome.service import Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.timeutil import IST
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import ValidationError, AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
+from ofo_app.config import get_settings
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.underlying import Underlying
@@ -374,6 +376,13 @@ class MarginOut(ApiModel):
     shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)
 
 
+class WarningOut(ApiModel):
+    """REQ-085 AC-1: one warning code with its reviewed catalogue text (never text built in the browser)."""
+    code: Literal["unhedged_short", "weekend_holiday_decay", "low_liquidity", "liquidity_unknown", "expiry_day",
+                  "market_event"]
+    text: CatalogueText
+
+
 class LegOut(ApiModel):
     instrument_id: InstrumentId
     symbol: Identifier | None
@@ -391,6 +400,8 @@ class LegOut(ApiModel):
     iv: Money | None
     health: HealthCode | None
     label: CatalogueText | None
+    #: REQ-085: this leg's warnings; absent (not empty) when the answer is not a live computed one
+    warnings: list[WarningOut] | None = None
 
 
 class LegQuoteOut(ApiModel):
@@ -427,6 +438,10 @@ class OutcomeResponse(ApiModel):
     leg_quotes: list[LegQuoteOut] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
+    #: REQ-085 AC-1 / AC-8: the strategy's warning codes with text, and "No warnings for this strategy" when there is
+    #: none; both absent (not empty) on a not-connected, not-live, waiting, refused or from-entries answer
+    warnings: list[WarningOut] | None = None
+    warnings_label: CatalogueText | None = None
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -491,6 +506,16 @@ def live_context() -> MarketContext | None:
     return _live_market().current_context()
 
 
+def liquidity_settings() -> LiquiditySettings:
+    """REQ-085 AC-4: the two admin settings, read ONCE here from ``Settings`` and passed into the engine. A process with
+    no database setting at all (a unit test of the route) falls back to the same defaults the settings carry."""
+    try:
+        s = get_settings()
+    except ValidationError:
+        return LiquiditySettings()
+    return LiquiditySettings(s.LIQUIDITY_NO_TRADE_MINUTES, s.LIQUIDITY_MAX_SPREAD_PERCENT)
+
+
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
@@ -526,7 +551,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override, shared=shared)
+                                config=config, override=override, shared=shared, liquidity=liquidity_settings())
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2

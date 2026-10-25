@@ -1586,5 +1586,37 @@
   "strategy_delete_after_basket": {
     "sha256": "abf645a78fb7af6b73038aae355c38b7a00df76aedcc39021aeb19bb48c02197",
     "reviewed": "pending owner read"
+  },
+  "explanation:warn_unhedged_rising": {
+    "sha256": "86a5dd2c03b2b82f5a853f7b31917335343a0a250878782e0a33f9ffb61efbc2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_unhedged_falling": {
+    "sha256": "50740d1a025330dc0f2b46bd1d9142128071e1b5f3e8159eb797f4e093d3cbb5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_weekend_holiday_decay": {
+    "sha256": "49103dd1b6cbd739be3257355ab51750dc50da072e4c679bd23a571428355631",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_low_liquidity_no_trade": {
+    "sha256": "86d9b09e56dabd122c956d5515ac69fb6094fdd0fcc6e486610b909de9c7ca3f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_low_liquidity_no_quote": {
+    "sha256": "47654be8913aed608e378504e6be60d244884156abc0aa5565a15a6699138b42",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_low_liquidity_spread": {
+    "sha256": "6b294525283cc26406a8ef5f67b6ed6c7fd4f4ccfc6c06d7ccded1e4a2002e7a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warn_liquidity_unknown": {
+    "sha256": "d89d553859c423f9b31115257bfb53f2b8d57abbf4ac8139ece6f34460381dc0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:warnings_none": {
+    "sha256": "03a20310cec7e45827ff924d01a9f98c143d3fe89aac6b719be6512148656e7e",
+    "reviewed": "pending owner read"
   }
 }

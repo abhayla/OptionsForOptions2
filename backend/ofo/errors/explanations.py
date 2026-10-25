@@ -853,6 +853,23 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("confirm_expiry_day_short_future", "values_seen",
                         "{symbols}: short future(s) that expire today, with no margin offset against a later-expiry "
                         "leg. Futures expiry is cash-settled.", {"symbols": LegRefs}),
+    # Builder warnings (REQ-085, ADR-185): the condition and the number only, never what to trade (AC-5).
+    ExplanationTemplate("warn_unhedged_rising", "values_seen",
+                        "If {underlying} rises, this strategy's loss has no fixed limit: its bought calls and "
+                        "futures do not cover all its sold calls.", {"underlying": UnderlyingName}),
+    ExplanationTemplate("warn_unhedged_falling", "values_seen",
+                        "If {underlying} falls, this strategy's loss has no fixed limit: its bought puts do not "
+                        "cover all its sold puts and bought futures.", {"underlying": UnderlyingName}),
+    ExplanationTemplate("warn_weekend_holiday_decay", "values_seen",
+                        "Over the {days} days to {day}, time decay changes this strategy's value by about {amount} "
+                        "(estimate).", {"days": Days, "day": Recorded, "amount": Rupees}),
+    ExplanationTemplate("warn_low_liquidity_no_trade", "values_seen",
+                        "No trade in the last {minutes} minutes.", {"minutes": Amount}),
+    ExplanationTemplate("warn_low_liquidity_no_quote", "values_seen", "No bid or no offer."),
+    ExplanationTemplate("warn_low_liquidity_spread", "values_seen",
+                        "The bid-ask spread is {percent}% of the mid price.", {"percent": Amount}),
+    ExplanationTemplate("warn_liquidity_unknown", "values_seen", "Liquidity unknown - no live depth."),
+    ExplanationTemplate("warnings_none", "values_seen", "No warnings for this strategy"),
     ExplanationTemplate("confirm_to_continue", "values_seen", "Confirm to continue."),
     # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),

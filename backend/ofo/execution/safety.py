@@ -529,6 +529,12 @@ def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Che
     return out, unchecked
 
 
+def expires_today(expiry: datetime.date | None, as_of: datetime.datetime) -> bool:
+    """W-086's one test, public so the Builder's expiry_day warning (REQ-085) asks the same question: the contract
+    expires on the IST date of ``as_of``."""
+    return expiry == as_of.astimezone(IST).date()
+
+
 def _expiry_day_flags(
     strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, held_legs: tuple[Leg, ...] | None
 ) -> list[Flag]:
@@ -542,12 +548,11 @@ def _expiry_day_flags(
     held legs). Held legs missing or unverified (None): every expiring leg is flagged (fail safe)."""
     if ctx.action is ExecutionAction.EXIT or ctx.underlying not in SUPPORTED_UNDERLYINGS:
         return []
-    today = ctx.as_of.astimezone(IST).date()
     index = _index(catalogue, ctx.underlying)
     held = _positions(held_legs) if ctx.action is ExecutionAction.ADJUSTMENT and held_legs is not None else {}
     out: list[Flag] = []
     for leg in strategy.legs:
-        if leg.expiry != today:
+        if not expires_today(leg.expiry, ctx.as_of):
             continue
         if leg.quantity <= held.get((_key(leg.expiry, leg.instrument.value, leg.strike), leg.action.value), 0):
             continue  # a held position kept or reduced: not an entry

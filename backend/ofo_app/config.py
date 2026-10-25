@@ -7,6 +7,7 @@ from decimal import Decimal
 from functools import lru_cache
 from urllib.parse import urlsplit
 
+from ofo.outcome.warnings import DEFAULT_MAX_SPREAD_PERCENT, DEFAULT_NO_TRADE_MINUTES
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
     #: ADR-058 admin setting: refuse a catalogue update that would drop MORE than this percentage of an index's live
     #: contracts at once (catalogue_store.DEFAULT_MAX_DELIST_PERCENT; a test asserts both are 10).
     CATALOGUE_MAX_DELIST_PERCENT: Decimal = Decimal("10")
+    #: REQ-085 AC-4 admin settings (defaults live in ofo.outcome.warnings: one home): a leg with no trade for this many
+    #: minutes, or a bid-ask spread wider than this percentage of the mid price, gets the low_liquidity warning.
+    LIQUIDITY_NO_TRADE_MINUTES: int = Field(default=DEFAULT_NO_TRADE_MINUTES, ge=1)
+    LIQUIDITY_MAX_SPREAD_PERCENT: Decimal = Field(default=DEFAULT_MAX_SPREAD_PERCENT, gt=0)
     #: W-064: TEST-ONLY. Serves the outcome route from the recorded 2026-10-08 frames (ofo_app.replay_mode). Refused at
     #: start-up unless APP_ENV is exactly "test", so production settings cannot enable it.
     OUTCOME_REPLAY: bool = False

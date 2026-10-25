@@ -59,6 +59,10 @@ def _table(table: Table, visible_cols) -> dict[str, Any]:
                      for r in table.rows]}
 
 
+def _warnings(items) -> list[dict[str, Any]]:
+    return [{"code": w.code.value, "text": w.text} for w in items]
+
+
 def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
     return {"instrument_id": leg.instrument_id, "symbol": leg.symbol, "action": leg.action.value,
             "instrument": None if leg.instrument is None else leg.instrument.value, "strike": _s(leg.strike),
@@ -66,7 +70,8 @@ def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
             "days_to_expiry": None if today is None else days_to_expiry(leg.expiry, today), "lots": leg.lots,
             "lot_size": leg.lot_size, "quantity": leg.quantity, "planned_entry": _s(leg.planned_entry),
             "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "iv": _s(leg.iv),
-            "health": None if leg.health is None else leg.health.value, "label": leg.label}
+            "health": None if leg.health is None else leg.health.value, "label": leg.label,
+            **({} if leg.warnings is None else {"warnings": _warnings(leg.warnings)})}
 
 
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
@@ -105,6 +110,10 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
     }
+    if out.warnings is not None:  # REQ-085: only a live computed answer; every other state keeps its exact keys
+        body["warnings"] = _warnings(out.warnings)
+        if out.warnings_label is not None:
+            body["warnings_label"] = out.warnings_label
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     return body

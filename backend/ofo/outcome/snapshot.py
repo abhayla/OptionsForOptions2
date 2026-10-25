@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from ofo.engine.black_scholes import DAYS_IN_YEAR
+from ofo.engine.executable_price import Depth
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import ListedContract
@@ -47,6 +48,16 @@ class LegMarket:
 
 
 @dataclass(frozen=True)
+class LegLiquidity:
+    """REQ-085 AC-4: what the feed holds for one leg's liquidity, read at the snapshot's clock. ``depth`` None = the feed
+    holds no depth for it (a quote or ltp packet, or the feed not healthy): the warning is then "liquidity unknown",
+    never a verdict. ``last_trade_ts`` is epoch seconds; None = none yet (or no day values)."""
+
+    depth: Depth | None
+    last_trade_ts: int | None
+
+
+@dataclass(frozen=True)
 class MarketSnapshot:
     underlying: str
     valuation: datetime.datetime
@@ -61,6 +72,8 @@ class MarketSnapshot:
     #: REQ-106 AC-1 / REQ-027 (Q254): each read expiry's chain quotes, kept so the outcome finds the ATM strike (nearest
     #: that expiry's forward) and solves its CE and PE IV for the expected move; read at the same instant as the rest.
     chains: Mapping[datetime.date, tuple[NormalizedQuote, ...]] = field(default_factory=dict)
+    #: REQ-085 AC-4: each read leg's depth and last trade time; a leg missing from here has unknown liquidity
+    liquidity: Mapping[str, LegLiquidity] = field(default_factory=dict)
 
 
 #: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
@@ -109,6 +122,7 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
     master = {contract_id(lc): lc for lc in provider.instrument_master()}
     chains: dict[datetime.date, list[NormalizedQuote]] = {}
     legs: dict[str, LegMarket] = {}
+    liquidity: dict[str, LegLiquidity] = {}
     for iid in instrument_ids:
         lc = master.get(iid)
         if lc is None or lc.contract.instrument_type not in _LEG_TYPES:  # an INDEX row is not a leg (REQ-001 AC-2)
@@ -126,6 +140,8 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
             chains[c.expiry] = provider.option_chain_snapshot(underlying, c.expiry)
         quote = next((q for q in chains[c.expiry] if q.instrument_id == iid), None)
         legs[iid] = LegMarket(iid, lc, quote)
+        day = provider.latest_day_stats(iid, valuation).stats
+        liquidity[iid] = LegLiquidity(provider.latest_depth(iid, valuation), None if day is None else day.last_trade_ts)
     instant = snapshot_instant(valuation, [spot, *(q for chain in chains.values() for q in chain)])
     forwards: dict[datetime.date, ExpiryForward] = {}
     errors: dict[datetime.date, str] = {}
@@ -142,4 +158,4 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
         if t is not None:
             ended[iid] = t
     return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended,
-                          {expiry: tuple(chain) for expiry, chain in chains.items()})
+                          {expiry: tuple(chain) for expiry, chain in chains.items()}, liquidity)
