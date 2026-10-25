@@ -94,6 +94,7 @@ NOT_MONEY_ON_MAIN_WHY: dict[str, str] = {
     "backend/ofo/range/pick_lists.py": 'snaps a strike or index level to a step; points, not rupees',
     "backend/ofo/reconciliation/compare.py": 'adds a contract quantity (units), not money',
     "backend/ofo/strategy/guard.py": 'sign of a number (-1/0/1)',
+    "backend/ofo/strategy/leg_edit.py": 'strike width and index-to-strike distance (REQ-078 AC-4); points, not rupees',
     "backend/ofo/strategy/linear.py": 'exact linear algebra over generic coefficients/values',
     "backend/ofo_app/errors.py": 'encodes an HTTP header value, not money',
     "backend/ofo_app/reconcile_attribution.py": (
@@ -117,6 +118,10 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     ),
     "backend/ofo/strategy/guard.py": (
         'return (value > 0) - (value < 0)',
+    ),
+    "backend/ofo/strategy/leg_edit.py": (
+        'now = min(calls.values()) - max(puts.values())',
+        'put_nearer = spot is not None and abs(spot - max(puts.values())) < abs(spot - min(calls.values()))',
     ),
     "backend/ofo/strategy/linear.py": (
         'return self.const + sum(coefficient * values[name] for name, coefficient in self.coefficients)',
