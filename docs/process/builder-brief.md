@@ -110,7 +110,7 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   `frontend/e2e/support/echoSeq.ts` (repo test `tests/test_e2e_live_socket_fakes.py`).
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
 - **Handover checklist (ADR-188 (2); finding builder-handover-skips-format-and-regeneration):** before reporting, run
-  prettier on the frontend files you touched, regenerate the OpenAPI file when a model changed, and stop hard at the
+  prettier on NEW frontend files only (never reformat an old file whole), register every new tests_app file in tests/orchestrator/test_select_app_tests.py's pinned set when it imports a changed module, regenerate the OpenAPI file when a model changed, and stop hard at the
   brief's Budget line (report done / not done / next command).
 - **Run the brief's `Attack list:` yourself before reporting** (row-review R1, 2026-10-22: row 2's round 1 failed on
   an attack nobody listed, "a heartbeat alone must not count as a price"). Each item gets a test or a scratch run

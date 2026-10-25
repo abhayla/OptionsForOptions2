@@ -63,7 +63,7 @@ Learned in chunks 1-2. Measured in `docs/process/row-review.md` and issue #532.
     - Dispatch before asking: send every independent item first, ask the owner while agents run.
     - Batch SPEC CHANGE questions at measure time; the measure agent does the Sensibull research.
     - One gate per sha: accept the builder's `GATE PASS <sha>` when sha = HEAD; `--pre-push` only if the sha changed.
-    - Builder handover = prettier on touched frontend files + OpenAPI regenerate when a model changed + hard stop at budget.
+    - Builder handover = prettier on NEW frontend files only (never a whole-file reformat of an old file: the gate fails only new files or files formatted at base; row 30f's reformat of 7 old files added 3,339 lines and was reverted) + OpenAPI regenerate + every new tests_app file registered in the app-test selection pins when a model changed + hard stop at budget.
     - Measure agents run on Sonnet.
     - Fresh orchestrator session about every 2 rows (context < 250k).
     - Owner decisions go to the session's docs branch, not row branches.
