@@ -36,6 +36,9 @@ Options:
 What happens meanwhile: nothing - row 21 builds AC-8 as written (the limit comes from depth only), and the wiring of
 price protection waits for this answer.
 
+ANSWERED 2026-10-25 08:29 IST: "Read what sensibull does and go with it." Sensibull measures market protection from
+the last traded price, so option 1 -> ADR-182 (protection measured from the market price at Execute time).
+
 ## Q2 - Strategy name length: 40 characters (our approved rule) or 20 (Sensibull)? (row 29, REQ-134 AC-1, record RD-108)
 
 Business call: the name limit is what every user sees and types when saving a strategy; it is a product rule, and the
@@ -56,6 +59,9 @@ Options:
 
 What happens meanwhile: row 29 builds 40 (the approved text); RD-108 stays open.
 
+ANSWERED 2026-10-25 ~08:31 IST: "Change to 20" -> ADR-183, REQ-134 AC-1 now says 1 to 20 (stored names up to 40 stay
+readable). Code follows in row 29 part c (request layer + screens); RD-108 closes as copied when it lands.
+
 ## Q3 - Counting process items in chunk 3 (ADR-181 allows two)
 
 Business call: ADR-181's cap is your rule about how much process work a chunk may carry; only you can say how it counts.
@@ -74,6 +80,9 @@ Options:
 2. Count it as a third item (record a miss on tracker row 7 for chunk 3).
 
 What happens meanwhile: the handover counts it as part of item 1 and says so.
+
+ANSWERED 2026-10-25: "Part of item 1 (Recommended)". No spec change: ADR-181's text already names the gate command as
+item 1; a defect fix of it is that item (recorded here and in the chunk 3 session A END block).
 
 ## Q4 - Does a rename appear in the strategy's history, and what does Restore do with it? (rows 28 and 29; REQ-070 AC-2/AC-3, REQ-134 AC-3)
 
@@ -100,6 +109,8 @@ Options:
 2. No rename entry in the history (SPEC CHANGE of REQ-134 AC-3).
 3. Rename entries are restorable (restoring brings back the old name too).
 
+ANSWERED 2026-10-25: "Shown, not restorable (Recommended)" -> REQ-070 AC-2 gains the rename line (as built).
+
 ## Q5 - After a strategy is executed, can an earlier configuration still be restored? (row 28; REQ-070 AC-3/AC-5, REQ-038 AC-2, ADR-019)
 
 Business call: whether a user can rewrite a strategy whose orders were sent is a product and audit rule.
@@ -118,6 +129,9 @@ Options:
    Zerodha holds; restoring would make the screen disagree with the broker.
 2. Restore after execution creates a NEW draft copy (Save As) from the old configuration, leaving the executed one as is.
 
+ANSWERED 2026-10-25: "Do what sensibull does". Sensibull has no restore of an executed strategy (study screens
+177-178: it changes only through Add Orders / Exit Orders) -> option 1, view-only; REQ-070 AC-5 gains the line (as built).
+
 ## Q6 - Can a strategy that is being tracked but never sent a basket be deleted? (row 28; REQ-070 AC-6, ADR-118)
 
 Business call: deleting something the user asked to monitor is a product rule.
@@ -133,3 +147,6 @@ deleting also stops its tracking, and Undo brings both back.
 Options:
 1. (Recommended) As built.
 2. A tracked strategy cannot be deleted until tracking is stopped (the Delete button explains why).
+
+ANSWERED 2026-10-25: "Same as sensibull". Sensibull deletes a saved strategy behind one confirm with no extra condition
+(screens 270-271) -> option 1, as built; REQ-070 AC-6 gains the tracking line. ADR-118's "never sent a basket" stays.
