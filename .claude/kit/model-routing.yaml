@@ -108,7 +108,10 @@ classes:
 # or whose `model` or `effort` differs from its class.
 agents:
   builder: building
+  builder-c: building
+  builder-b: building
   verifier: verify_a
+  reviewer: review_a
   Explore: lookup
 
 # The model id each alias resolved to when the table was last reviewed (the only dated ids allowed in config).

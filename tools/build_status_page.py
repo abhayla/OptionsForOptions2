@@ -3879,5 +3879,17 @@ def main(argv=None) -> int:
     return 0
 
 
+def _stdio_replace() -> None:
+    """Keep the stream's encoding but replace what it cannot hold, so a cp1252 console (Windows) never
+    raises UnicodeEncodeError on text from a child process, GitHub or a spec file (issue 159)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 if __name__ == "__main__":
+    _stdio_replace()
     sys.exit(main())

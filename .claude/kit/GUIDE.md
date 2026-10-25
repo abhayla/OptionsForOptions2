@@ -21,6 +21,10 @@ line; read it before pushing or touching process files.
 - `python tools/check_pr_spec_block.py` (pull requests only; needs the PR body)
 - Merge a PR: `python tools/merge_when_green.py <pr> --reviewed-sha <full sha of the reviewed commit>`
 
+## Cheaper CI for docs-only pull requests (opt-in)
+CI skips draft pull requests and runs on opened, synchronize, reopened and ready_for_review only. By default every pull request runs the full test suite. To run less on a pull request that changes only records (`docs/`, `spec/`, `views/`, `knowledge/`, `evidence/`, `work/`, `releases/`, `plans/`, `owner-questions/`, root `.md`; lower-case `.md .json .yaml .yml .csv .html .svg .png`), list test files, one path per line (`#` comments allowed), in `.claude/project/ci-docs-only-tests.txt`; `python tools/change_scope.py --base <sha>` prints `docs-only` or `code`; on `docs-only` CI runs `python -m pytest -q -p no:cacheprovider $TESTS` (your listed files), and any doubt means the full suite. No file or an empty one means the full suite; a push to main always runs it all.
+Do not opt in if your pytest collects `.md` or `.json` files, or if a test reads real spec data (list those tests too). Pushes to main and local `ci_local.py` runs are always full.
+
 ## Kit files: never edit them in the project
 `.claude/rules/kit/`, `.claude/kit/` (this guide included), `.claude/README.md`, `.claude/hooks/`, `.claude/agents/`,
 `.claude/skills/deliver/`, `.claude/skills/intake/`, `tools/`, `factory/schemas/`, `.github/workflows/ci.yml`,

@@ -156,7 +156,7 @@ def main():
     if os.environ.get("AGENT_BUDGET_REQUIRED") == "0":
         return  # off-switch: allow everything, log nothing
 
-    data = json.load(sys.stdin)
+    data = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
     if data.get("tool_name") not in ("Agent", "Task"):
         return
     tool_input = data.get("tool_input")
