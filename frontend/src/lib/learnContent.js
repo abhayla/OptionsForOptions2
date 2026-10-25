@@ -181,7 +181,7 @@ export const HOW_IT_WORKS = {
   ],
   bear_put_spread: [
     `You buy the {buyPE} PE ${WHY} fall.`,
-    'You sell the {sellPE} PE, which pays for part of the put you bought and stops the profit rising below that strike.',
+    'You sell the {sellPE} PE, which pays for part of the put you bought and stops the profit growing once the index falls below that strike.',
     'Both puts expire on {expiry}.',
   ],
   bull_put_spread: [
