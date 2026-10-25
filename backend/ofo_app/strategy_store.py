@@ -109,7 +109,8 @@ _INSERT = text(
     f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version, :name) RETURNING {_COLUMNS}"
 )
 #: One definition of "never sent a basket": no plan row of ANY status (an open plan may already be filled), no version
-#: row (a version only exists after a fill). Reused by the list (can_delete) and by ``delete_draft``.
+#: row (a version only exists after a fill). Reused by the list (can_delete) and by ``never_sent`` (delete, history,
+#: restore).
 _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
@@ -264,6 +265,16 @@ async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
     return RenamedStrategy(int(written.id), written.name, int(written.revision), written.updated_at)
 
 
+async def never_sent(conn: Any, strategy_id: int) -> bool:
+    """REQ-070 AC-6: True only when the strategy never sent a basket (``_CAN_DELETE_SQL``, the list's can_delete).
+    The ONE reader of that rule for delete, history and restore. An unreadable answer is False (fail closed)."""
+    try:
+        async with conn.begin_nested():
+            return (await conn.execute(_CAN_DELETE, {"id": strategy_id})).scalar_one() is True
+    except Exception:  # noqa: BLE001 - an unreadable answer is "a basket may have been sent"
+        return False
+
+
 async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> None:
     """REQ-070 AC-6 / ADR-118: hides a strategy that never sent a basket; the row and its history stay. The decision is
     read inside the strategy's row lock, so a plan creation (which takes the same lock) serializes with it. An
@@ -271,12 +282,7 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
-        try:
-            async with conn.begin_nested():
-                deletable = (await conn.execute(_CAN_DELETE, {"id": row.id})).scalar_one() is True
-        except Exception:  # noqa: BLE001 - an unreadable answer is "a basket may have been sent"
-            deletable = False
-        if not deletable:
+        if not await never_sent(conn, row.id):
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
         await conn.execute(_SET_DELETED, {"id": row.id})
 
@@ -361,6 +367,19 @@ def _is_rename_only(change_summary: str) -> bool:
         isinstance(i, dict) and i.get("kind") == "renamed" for i in items)
 
 
+def is_restore_target(change_summary: str, sent_nothing: object) -> bool:
+    """The ONE rule for "may this history entry be restored": the strategy never sent a basket (``never_sent``, the
+    delete rule: no plan row of any status, no version row) and the entry is not a rename-only one. ``restore`` refuses
+    by it and ``history`` reports it as ``restorable``, so the flag and the refusal cannot disagree. Anything else
+    (``sent_nothing`` False or None, an unreadable summary) is False."""
+    if sent_nothing is not True:
+        return False
+    try:
+        return not _is_rename_only(change_summary)
+    except Exception:  # noqa: BLE001 - a summary that cannot be read is never a restore target (fail closed)
+        return False
+
+
 async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
                   expected_revision: int) -> StoredStrategy:
     """Makes history entry ``seq`` current; the replaced definition is written as a new entry first (nothing is
@@ -371,10 +390,11 @@ async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
-        if await execution_state(conn, user_ref, row.id) != NOT_EXECUTED:  # ADR-019: restore is pre-execution only
-            raise StrategyStoreError(RESTORE_AFTER_EXECUTION, f"strategy {strategy_id} has executed")
+        sent_nothing = await never_sent(conn, row.id)  # read under the row lock a plan creation also takes
+        if not sent_nothing:  # REQ-070 AC-6 / ADR-019: restore only before any basket was sent
+            raise StrategyStoreError(RESTORE_AFTER_EXECUTION, f"strategy {strategy_id} sent a basket or may have")
         entry = (await conn.execute(_HISTORY_ONE, {"id": row.id, "seq": seq})).one_or_none()
-        if entry is None or _is_rename_only(entry.change_summary):  # Q4 (pending owner): a rename is never a target
+        if entry is None or not is_restore_target(entry.change_summary, sent_nothing):  # a rename is never a target
             raise StrategyStoreError(HISTORY_NOT_FOUND, f"strategy {strategy_id} has no history entry {seq}")
         entry_text = entry.definition_text
         saved = await _read(conn, entry_text)
@@ -691,7 +711,9 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
     row = (await conn.execute(_SELECT, {"id": _check_id(strategy_id, "strategy"), "user_ref": user_ref})).one_or_none()
     if row is None:
         raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
+    sent_nothing = await never_sent(conn, row.id)  # once per call, not per entry
     out = []
     for r in (await conn.execute(_HISTORY, {"id": row.id})).all():
-        out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text)))
+        out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text),
+                                   restorable=is_restore_target(r.change_summary, sent_nothing)))
     return out

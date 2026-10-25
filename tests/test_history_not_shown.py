@@ -12,6 +12,7 @@ that a literal check cannot see (a non-literal call is flagged, not followed).
 """
 import ast
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,13 @@ ALLOWED_FRONTEND_WORDS = frozenset({
     ("router/routes.js", "alerts-history"),  # route name of the Alerts > History page (fired alerts, REQ-009 AC-6)
     ("lib/brokerCapabilities.js", "intraday_product"),  # a broker flag name (REQ-117): MIS support
     ("pages/BrokerSettingsPage.vue", "history-statement"),  # test id of the "not available" sentence (ADR-066)
+})
+
+# The ONE request path exempt from the path scan (REQ-070 AC-5): the user's OWN strategy activity (the saved edits of a
+# strategy they made), not market data, so ADR-066 does not apply. Exact (file, literal) pair: the same literal in any
+# other file, any other history literal in this file, a concatenated or imported one, all still fail.
+ALLOWED_FRONTEND_PATHS = frozenset({
+    ("lib/strategyActivity.js", "/strategies/${id}/history"),
 })
 
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
@@ -289,12 +297,19 @@ def frontend_hits(text: str) -> list[str]:
     return hits
 
 
+def _frontend_allowed(rel: str, hit: str) -> bool:
+    """True when a hit is an exact exempt (file, literal): a word hit in the words list, or a word/path hit whose whole
+    literal (a path hit is the quoted literal: one quote char each side) is in the paths list."""
+    if hit.startswith("word "):
+        return (rel, hit[5:]) in ALLOWED_FRONTEND_WORDS | ALLOWED_FRONTEND_PATHS
+    return hit.startswith("path ") and (rel, hit[6:-1]) in ALLOWED_FRONTEND_PATHS
+
+
 def scan_frontend(src: Path) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for path in sorted(p for p in src.rglob("*") if p.suffix in {".js", ".ts", ".vue", ".mjs", ".jsx", ".tsx"}):
         rel = path.relative_to(src).as_posix()
-        hits = [h for h in frontend_hits(path.read_text(encoding="utf-8"))
-                if not (h.startswith("word ") and (rel, h[5:]) in ALLOWED_FRONTEND_WORDS)]
+        hits = [h for h in frontend_hits(path.read_text(encoding="utf-8")) if not _frontend_allowed(rel, h)]
         if hits:
             found[rel] = hits
     return found
@@ -455,3 +470,62 @@ def test_an_unlisted_user_history_literal_is_still_flagged_by_file_and_literal(t
     (tmp_path / "router" / "nav.js").write_text("['history', 'History']\n['intraday', 'x']\n", encoding="utf-8")
     (tmp_path / "other.js").write_text("['history', 'History']\n", encoding="utf-8")
     assert scan_frontend(tmp_path) == {"router/nav.js": ["word intraday"], "other.js": ["word history", "word History"]}
+
+
+# ---- REQ-070 AC-5 exemption self-tests: the user's own strategy activity route, one exact (file, literal) pair
+_ACTIVITY_FILE = "lib/strategyActivity.js"
+_ACTIVITY_LITERAL = "/strategies/${id}/history"
+
+
+def _plant(root: Path, rel: str, source: str) -> None:
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_text(source, encoding="utf-8")
+
+
+def test_the_activity_route_literal_passes_only_in_its_named_file(tmp_path):
+    """The exemption is exact: the literal passes in lib/strategyActivity.js, and fails in any other file."""
+    source = f"export const f = (c, id) => c.get(`{_ACTIVITY_LITERAL}`)\n"
+    _plant(tmp_path, _ACTIVITY_FILE, source)
+    _plant(tmp_path, "lib/other.js", source)
+    _plant(tmp_path, "pages/Other.vue", f"<script>\nconst u = `{_ACTIVITY_LITERAL}`\n</script>\n")
+    found = scan_frontend(tmp_path)
+    assert sorted(found) == ["lib/other.js", "pages/Other.vue"]
+    # both the path hit and the word hit stay flagged: neither check alone is what holds the line
+    assert all(h == [f"path `{_ACTIVITY_LITERAL}`", f"word {_ACTIVITY_LITERAL}"] for h in found.values())
+
+
+def test_a_market_data_history_path_in_the_activity_file_is_still_flagged(tmp_path):
+    """Any other history literal in the named file fails, even next to the exempt one."""
+    _plant(tmp_path, _ACTIVITY_FILE,
+           f"export const a = (c, id) => c.get(`{_ACTIVITY_LITERAL}`)\n"
+           "export const b = (c) => c.get('/api/history/candles')\n")
+    hits = scan_frontend(tmp_path)[_ACTIVITY_FILE]
+    assert hits and all("candles" in h for h in hits)
+    _plant(tmp_path, _ACTIVITY_FILE, "export const b = (c, id) => c.get(`/instruments/${id}/history`)\n")
+    other = "/instruments/${id}/history"
+    assert scan_frontend(tmp_path)[_ACTIVITY_FILE] == [f"path `{other}`", f"word {other}"]
+
+
+def test_a_prefix_widened_activity_literal_is_flagged_on_the_path_half_and_the_word_half(tmp_path):
+    """The exemption is the whole literal, not a prefix: a literal that merely STARTS with it still fails."""
+    for widened in (f"{_ACTIVITY_LITERAL}/export", f"{_ACTIVITY_LITERAL}-all", f"{_ACTIVITY_LITERAL}?x=1"):
+        _plant(tmp_path, _ACTIVITY_FILE, f"export const f = (c, id) => c.get(`{widened}`)\n")
+        assert scan_frontend(tmp_path)[_ACTIVITY_FILE] == [f"path `{widened}`", f"word {widened}"], widened
+        assert not _frontend_allowed(_ACTIVITY_FILE, f"path `{widened}`")
+        assert not _frontend_allowed(_ACTIVITY_FILE, f"word {widened}")
+
+
+def test_a_concatenated_or_imported_history_in_the_activity_file_is_still_flagged(tmp_path):
+    _plant(tmp_path, _ACTIVITY_FILE, "export const u = '/strategies/' + 'history'\n")
+    assert scan_frontend(tmp_path)[_ACTIVITY_FILE]
+    _plant(tmp_path, _ACTIVITY_FILE, "import { x } from '@/lib/kite_history'\n")
+    assert scan_frontend(tmp_path)[_ACTIVITY_FILE]
+    _plant(tmp_path, _ACTIVITY_FILE, "export const f = (n) => import(n)\n")
+    assert scan_frontend(tmp_path)[_ACTIVITY_FILE]
+
+
+def test_removing_the_exemption_makes_the_repo_scan_fail_on_the_activity_file(monkeypatch):
+    """The exemption is load-bearing and is the only one: with it gone the real activity file is flagged."""
+    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL)} == ALLOWED_FRONTEND_PATHS
+    monkeypatch.setattr(sys.modules[__name__], "ALLOWED_FRONTEND_PATHS", frozenset())
+    assert _ACTIVITY_FILE in scan_frontend(FRONTEND_SRC)

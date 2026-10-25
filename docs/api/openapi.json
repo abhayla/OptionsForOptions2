@@ -1522,6 +1522,10 @@
           "definition": {
             "$ref": "#/components/schemas/DefinitionOut"
           },
+          "restorable": {
+            "title": "Restorable",
+            "type": "boolean"
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"
@@ -1536,7 +1540,8 @@
           "seq",
           "at",
           "change_summary",
-          "definition"
+          "definition",
+          "restorable"
         ],
         "title": "EntryOut",
         "type": "object"

@@ -14,6 +14,7 @@ SELECT on both tables and passes through none of the store's filters.
 from __future__ import annotations
 
 from http import HTTPStatus
+from types import SimpleNamespace
 
 import pytest
 from ofo_app import execution_plan_store as plans
@@ -21,6 +22,7 @@ from ofo_app import strategy_store as store
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_execution_plan_store import _close, _order, _Tx
+from test_reconciliation_store import _mismatch
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import WING, _app, _body, _client, _history_rows, _saved_in, _user, _with_draft
 
@@ -233,6 +235,136 @@ async def test_q4_a_rename_entry_is_shown_but_is_not_a_restore_target(app_engine
                                         params={"expected_revision": 1})
                 code = (refused.status_code, refused.json()["code"])
                 assert code == (HTTPStatus.NOT_FOUND, NOT_FOUND_CODE), refused.text
+        finally:
+            await trans.rollback()
+
+
+RENAME_SUMMARY = '[{"kind": "renamed"}]'
+EDIT_SUMMARY = '[{"kind": "removed"}]'
+
+
+@pytest.mark.parametrize(("summary", "never_sent", "expected"), [
+    (EDIT_SUMMARY, True, True),
+    (RENAME_SUMMARY, True, False),
+    (EDIT_SUMMARY, False, False),
+    (EDIT_SUMMARY, None, False),
+    ("not json", True, False),
+])
+def test_is_restore_target_is_true_only_for_a_non_rename_entry_of_a_strategy_that_never_sent_a_basket(
+        summary, never_sent, expected):
+    assert store.is_restore_target(summary, never_sent) is expected
+
+
+async def _flags(ac, strategy_id: int) -> list[tuple[str, bool]]:
+    entries = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
+    return [(e["change_summary"], e["restorable"]) for e in entries]
+
+
+async def test_core_history_flags_rename_false_edit_true_and_every_entry_false_after_a_plan_row(app_engine):
+    """Core: save, rename, add a leg and save: [rename: false, edit: true]; a plan row -> all false. The flag comes from
+    the same helper restore() refuses by, so each flag is also checked against the real restore call."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                renamed = await ac.patch(f"/strategies/{first.id}/name", json={"name": "Wider", "expected_revision": 1})
+                assert renamed.status_code == HTTPStatus.OK, renamed.text
+                revision = renamed.json()["revision"]
+                edited = await ac.put(f"/strategies/{first.id}", json=_body(ids, wing=WING, expected_revision=revision))
+                assert edited.status_code == HTTPStatus.OK, edited.text
+                flags = [flag for _, flag in await _flags(ac, first.id)]
+                assert flags == [False, True]
+                revision = edited.json()["revision"]
+                for seq, flag in enumerate(flags, start=1):  # the flag and the refusal never disagree
+                    answer = await ac.post(f"/strategies/{first.id}/restore/{seq}",
+                                           params={"expected_revision": revision})
+                    assert (answer.status_code == HTTPStatus.OK) is flag, (seq, answer.text)
+                    if flag:
+                        revision = answer.json()["revision"]
+                number = await plans.next_plan_number(conn, user, first.id)
+                await plans.record_plan(conn, user, first.id, number, "ENTRY",
+                                        (_order(first.id, number, "SELL", "7.00"),))
+                after = await _flags(ac, first.id)
+                assert len(after) == EDITS + 1 and [flag for _, flag in after] == [False] * (EDITS + 1)
+                refused = await ac.post(f"/strategies/{first.id}/restore/2", params={"expected_revision": revision})
+                assert refused.status_code == HTTPStatus.CONFLICT, refused.text
+        finally:
+            await trans.rollback()
+
+
+async def _send_basket(conn, user: str, strategy_id: int, close: str) -> None:
+    """One way a strategy sends a basket (a plan row, any close) or has executed (a version row)."""
+    if close == "version row":
+        definition = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
+                                         {"id": strategy_id})).scalar_one()
+        await conn.execute(store._INSERT_VERSION, {
+            "id": strategy_id, "n": 1, "state": "active", "based_on": None, "definition": definition,
+            "version": 1, "confirmed_at": store._now(), "reconciled_at": store._now()})
+        return
+    number = await plans.next_plan_number(conn, user, strategy_id)
+    await plans.record_plan(conn, user, strategy_id, number, "ENTRY", (_order(strategy_id, number, "SELL", "7.00"),))
+    if close == plans.UNRESOLVED:  # the close needs an unresolved mismatch of the strategy (execution_plan_store)
+        await _mismatch(SimpleNamespace(conn=conn, user=user, strategy_id=strategy_id))
+        await plans.close_plan(conn, user, strategy_id, number, reason=plans.UNRESOLVED)
+    elif close != "open":
+        await _close(conn, user, strategy_id, number, close)
+
+
+@pytest.mark.parametrize("close", ["open", "nothing_placed", plans.UNRESOLVED, "filled", "version row"],
+                         ids=["open plan", "closed nothing placed", "closed unresolved", "closed filled", "version"])
+async def test_a_strategy_that_sent_a_basket_has_no_restorable_entry_and_restore_refuses(app_engine, close):
+    """Attacks 1, 2, 5. REQ-070 AC-6: any plan row means a basket was sent (a plan row is written only when Execute
+    sends it), so a closed plan that filled nothing is still "sent": every entry is restorable false, restore() answers
+    RESTORE_AFTER_EXECUTION, and the list's can_delete agrees with the flag (one rule, _CAN_DELETE_SQL)."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING), expected_revision=1)
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [True]
+            assert [s.can_delete for s in await store.list_strategies(conn, user)] == [True]
+            await _send_basket(conn, user, first.id, close)
+            flags = [e.restorable for e in await store.history(conn, user, first.id)]
+            assert flags == [False]
+            assert [s.can_delete for s in await store.list_strategies(conn, user)] == flags  # attack 5
+            with pytest.raises(store.StrategyStoreError) as err:
+                await store.restore(conn, user, first.id, 1, expected_revision=await _revision(conn, first.id))
+            assert err.value.code == store.RESTORE_AFTER_EXECUTION
+        finally:
+            await trans.rollback()
+
+
+async def test_a_strategy_that_never_sent_a_basket_restores_a_leg_edit(app_engine):
+    """Attack 3: no plan row, no version row -> the leg-edit entry is restorable, restore() works, can_delete."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            edited = await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING),
+                                        expected_revision=1)
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [True]
+            assert [s.can_delete for s in await store.list_strategies(conn, user)] == [True]
+            restored = await store.restore(conn, user, first.id, 1, expected_revision=edited.revision)
+            assert restored.revision == edited.revision + 1
+        finally:
+            await trans.rollback()
+
+
+async def test_an_unreadable_plan_table_makes_every_history_entry_not_restorable(app_engine, monkeypatch):
+    """Attack 4: the never-sent read raises -> restorable false (fail closed), and restore refuses."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, first = await _with_draft(conn, user := _user())
+            edited = await store.update(conn, user, first.id, await _saved_in(conn, user, ids, WING),
+                                        expected_revision=1)
+
+            monkeypatch.setattr(store, "_CAN_DELETE", text("SELECT 1 / 0"))  # the never-sent read raises
+            assert [e.restorable for e in await store.history(conn, user, first.id)] == [False]
+            with pytest.raises(store.StrategyStoreError) as err:
+                await store.restore(conn, user, first.id, 1, expected_revision=edited.revision)
+            assert err.value.code == store.RESTORE_AFTER_EXECUTION
         finally:
             await trans.rollback()
 

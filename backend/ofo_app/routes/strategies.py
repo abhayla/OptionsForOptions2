@@ -229,6 +229,7 @@ class EntryOut(ApiModel):
     at: datetime.datetime
     change_summary: CatalogueText
     definition: DefinitionOut
+    restorable: bool  # the server's answer (the rule restore enforces); the screen offers Restore/Undo only on true
 
 
 class HistoryOut(ApiModel):
@@ -503,7 +504,8 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
                            user_ref: str = Depends(current_user_ref)) -> HistoryOut:
     async def work():
         entries = await store.history(db, user_ref, strategy_id)
-        docs = [sf.entry_to_document(e) | {"definition": _definition_out(e.saved)} for e in entries]
+        docs = [sf.entry_to_document(e) | {"definition": _definition_out(e.saved), "restorable": e.restorable}
+                for e in entries]
         await _with_tokens(db, *(d["definition"] for d in docs))
         return HistoryOut.model_validate({"entries": [
             doc | {"change_summary": sf.render_summary(doc["change_summary"])} for doc in docs]})

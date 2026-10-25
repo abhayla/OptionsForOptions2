@@ -7,10 +7,14 @@
      re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import DraftDelete from '@/components/strategy/DraftDelete.vue'
+import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
+import { CLEAR_UNDO_MS } from '@/lib/legEdit'
+import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
   SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, strategyLabel,
 } from '@/lib/saveDraft'
@@ -21,7 +25,7 @@ const props = defineProps({
   // the saved strategy this screen is editing ({ id, revision, name } as the page loaded or saved it), or null for a never-saved one
   current: { type: Object, default: null },
 })
-const emit = defineEmits(['open', 'saved', 'renamed'])
+const emit = defineEmits(['open', 'saved', 'renamed', 'deleted'])
 
 const drafts = ref([])
 const busy = ref(false)
@@ -30,6 +34,38 @@ const savedName = ref(null)
 const errorParts = ref(null)
 const asking = ref(null) // null | 'save' | 'save-as': the name field is open for that action
 const nameText = ref('')
+
+// REQ-070 AC-6: Delete with Undo, one flow shared with My Strategies. When the deleted strategy is the one open, the Builder is told.
+let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
+const deleteFlow = useDeleteFlow(api, {
+  onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
+  onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
+  onBack: async (id, body) => {
+    if (deletedOpenId === id && Number.isInteger(body?.revision)) {
+      deletedOpenId = null
+      emit('saved', id, body.revision, typeof body.name === 'string' ? body.name : null) // the Builder holds it again: the next Save updates it
+    }
+    await refresh()
+  },
+  reload: () => refresh(),
+})
+
+// REQ-070 AC-4: Undo after a meaningful save. The save of a saved strategy wrote one history entry holding the configuration it
+// replaced; that entry is offered back for CLEAR_UNDO_MS (the Clear-all window). A save that wrote no entry offers nothing.
+const saveUndo = ref(null) // { id, seq, revision } or null
+let saveUndoTimer = null
+function dropSaveUndo() {
+  clearTimeout(saveUndoTimer)
+  saveUndo.value = null
+}
+// Any new leg list (an edit, a restore, an open) supersedes the Undo: it can never restore over newer legs. "New" means different legs
+// as a save would send them; the Builder's own read of the shape name replaces the array with the same legs and must not drop it.
+const sentLegs = (legs) => JSON.stringify(legs.map((l) => [l.contract_id, l.action, l.lots, l.lot_size, l.planned_entry ?? null, l.captured_at ?? null, l.typed === true]))
+watch(() => sentLegs(props.legs), dropSaveUndo)
+onBeforeUnmount(() => {
+  dropSaveUndo()
+  deleteFlow.dispose()
+})
 
 const canSave = computed(() => !busy.value && canSaveLegs(props.legs))
 
@@ -60,10 +96,40 @@ async function save() {
   busy.value = true
   savedId.value = null
   errorParts.value = null
+  dropSaveUndo()
   try {
+    const before = await newestSeq(api, id) // null = unreadable: no Undo is offered
     const res = await api.put(`/strategies/${id}`, buildUpdateBody(props.legs, props.rulesRef, revision))
     const next = done(res.data)
     emit('saved', res.data.id, next, savedName.value)
+    await offerUndo(id, before, next)
+    await refresh()
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS
+  } finally {
+    busy.value = false
+  }
+}
+
+async function offerUndo(id, before, revision) {
+  if (before === null || !Number.isInteger(revision)) return
+  const after = await newestEntry(api, id)
+  if (after === null || after.seq <= before) return // the save wrote no entry (nothing changed): nothing to undo
+  if (after.restorable !== true) return // the server says this entry is not a restore target: no Undo (fail closed)
+  dropSaveUndo()
+  saveUndo.value = { id, seq: after.seq, revision }
+  saveUndoTimer = setTimeout(dropSaveUndo, CLEAR_UNDO_MS)
+}
+
+async function undoSave() {
+  const held = saveUndo.value
+  if (!held || busy.value) return
+  busy.value = true
+  errorParts.value = null
+  dropSaveUndo()
+  try {
+    const { legs, revision, name } = await restoreEntry(api, held.id, held.seq, held.revision)
+    emit('open', legs, held.id, revision, name)
     await refresh()
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -176,13 +242,19 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
         <button type="submit" data-testid="name-confirm" class="rounded border border-line px-3 py-1" :disabled="busy">Save</button>
       </div>
     </form>
+    <p v-if="saveUndo" class="mt-2 flex items-center gap-2 text-sm" data-testid="save-undo-toast">
+      <span>Saved.</span>
+      <button type="button" class="underline" :disabled="busy" data-testid="save-undo" @click="undoSave">Undo</button>
+    </p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="save-error" data-testid="save-error" />
     <h2 class="mt-3 text-sm font-medium">Saved drafts</h2>
     <ul v-if="drafts.length" class="mt-1 text-sm" data-testid="saved-drafts">
       <li v-for="d in drafts" :key="d.id" class="flex flex-wrap items-center gap-2" data-testid="saved-draft-row">
         <span data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}, {{ d.underlying }}, updated {{ istTime(d.updated_at) }}</span>
         <button type="button" :data-testid="`open-draft-${d.id}`" class="underline" :disabled="busy" @click="open(d.id)">Open</button>
+        <DraftDelete :row="d" :flow="deleteFlow" />
       </li>
     </ul>
+    <DraftDeleteStatus :flow="deleteFlow" />
   </section>
 </template>
