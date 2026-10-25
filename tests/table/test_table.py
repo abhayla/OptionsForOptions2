@@ -17,7 +17,7 @@ from ofo.engine.black_scholes import Greeks
 from ofo.table.columns import ColumnId
 from ofo.table.model import CellKind, LegStatus, StrategyHealth, TOTAL_ROW_ID, build_table
 
-from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from table_fixtures import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
 
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,

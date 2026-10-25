@@ -4,7 +4,7 @@ from collections import Counter
 from decimal import Decimal as D
 
 import pytest
-from conftest import gated, nifty_input, nifty_leg
+from table_fixtures import gated, nifty_input, nifty_leg
 
 import ofo.table.model as table_model
 from ofo.engine.black_scholes import Greeks

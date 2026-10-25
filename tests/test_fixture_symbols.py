@@ -99,23 +99,23 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("execution/test_complete_slices.py", "NIFTY26O0623625CE"):
         "attack fixture (AC-4 negative): a plan contract the catalogue does not hold, proving "
         "sequence_plan refuses an unknown symbol instead of guessing a lot size.",
-    ("engine/conftest.py", "NIFTY26OCT"):
+    ("engine/engine_fixtures.py", "NIFTY26OCT"):
         "locked spec example (scenario-calculations.md section 6, the golden Iron Condor) at the "
         "monthly 2026-10-27 expiry; this catalogue slice holds only the monthly FUTURE for that "
         "expiry (NIFTY26OCTFUT), no options -- there is no real row to correct the option legs to, "
         "and the IV values are computed from the spec, never the catalogue.",
     ("engine/test_inputs.py", "NIFTY26OCT22800PE"):
-        "same golden Iron Condor fixture as engine/conftest.py: no NIFTY option row exists at the "
+        "same golden Iron Condor fixture as engine/engine_fixtures.py: no NIFTY option row exists at the "
         "2026-10-27 expiry in this catalogue slice.",
     ("scenario/scenario_fixtures.py", "NIFTY26OCT"):
         "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for scenario "
         "tests: no NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
-    ("table/conftest.py", "NIFTY26OCT"):
+    ("table/table_fixtures.py", "NIFTY26OCT"):
         "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for the table tests: no "
         "NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
     ("scenario/test_modes.py", "NIFTY26OCT22800PE"):
         "same golden Iron Condor fixture: the unavailable-IV message names the same leg used by "
-        "engine/conftest.py, for which no catalogue row exists at 2026-10-27.",
+        "engine/engine_fixtures.py, for which no catalogue row exists at 2026-10-27.",
     ("execution/test_freeze_review_block.py", "NIFTY26O1923550CE"):
         "W-076 / F-36: Zerodha's real tradingsymbol for NSE token 47185 (NIFTY 23550 CE of 2026-10-19, lot 65, freeze "
         "limit 3511 on NSE's 15 Oct 2026 contract file); this catalogue slice (2026-09 list) predates that expiry.",

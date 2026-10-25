@@ -2,7 +2,7 @@
 from decimal import Decimal as D
 
 import pytest
-from conftest import leg_input
+from engine_fixtures import leg_input
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, legs, scenario_grid, strategy_metrics
 from ofo.engine.estimate import EstimatedNow, estimate_now, estimate_now_grid

@@ -3,7 +3,7 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-from conftest import EXPIRY, RATE, SPOT, VALUATION, leg_input
+from engine_fixtures import EXPIRY, RATE, SPOT, VALUATION, leg_input
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.black_scholes import Greeks

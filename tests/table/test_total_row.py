@@ -5,7 +5,7 @@ Every expected value below is a hand computation (shown in each docstring), not 
 import datetime
 from decimal import Decimal as D
 
-from conftest import NIFTY_EXPIRY, nifty_input, nifty_leg
+from table_fixtures import NIFTY_EXPIRY, nifty_input, nifty_leg
 
 from ofo.engine.legs import Action, Instrument
 from ofo.table.columns import ColumnId

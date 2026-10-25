@@ -9,7 +9,7 @@ from ofo.engine.legs import Action, Instrument
 from ofo.table.columns import ColumnId
 from ofo.table.model import TOTAL_ROW_ID, build_table
 
-from conftest import NIFTY_EXPIRY, nifty_input, nifty_leg
+from table_fixtures import NIFTY_EXPIRY, nifty_input, nifty_leg
 
 REAL_2026_10_15 = [
     (Action.SELL, Instrument.CE, "23200", "42.70", "42.00"),
