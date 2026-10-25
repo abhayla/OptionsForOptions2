@@ -73,6 +73,46 @@ def test_a_planned_file_shared_with_the_older_row_is_refused_before_any_change(t
     assert gate.main([str(main), "base", str(young), str(plan)]) == 0
 
 
+def _both_touch(main, young, *names):
+    for n in names:
+        for root in (main, young):
+            path = root / n
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{root.name}\n", encoding="utf-8")
+
+
+def test_rows_sharing_only_generated_files_pass(tmp_path, capsys):
+    main, young = _repo(tmp_path)
+    _both_touch(main, young, "views/spec-digest.md", "docs/process/coverage-stages.yaml")
+    assert gate.main([str(main), "base", str(young)]) == 0
+    out = capsys.readouterr().out
+    assert "shared only generated files" in out
+    assert "views/spec-digest.md" in out
+
+
+def test_a_product_file_plus_a_generated_file_refuses_naming_only_the_product_file(tmp_path, capsys):
+    main, young = _repo(tmp_path)
+    _both_touch(main, young, "views/build-order.md", "tests/errors/template_pins.json")
+    assert gate.main([str(main), "base", str(young)]) == 1
+    out = capsys.readouterr().out
+    assert "tests/errors/template_pins.json" in out
+    assert "build-order" not in out
+
+
+def test_a_non_listed_file_under_views_still_refuses(tmp_path, capsys):
+    main, young = _repo(tmp_path)
+    _both_touch(main, young, "views/README.md", "views/extra/spec-digest.md")
+    assert gate.main([str(main), "base", str(young)]) == 1
+    out = capsys.readouterr().out
+    assert "views/README.md" in out
+    assert "views/extra/spec-digest.md" in out
+
+
+def test_generated_list_is_exact_paths_only():
+    assert not any("*" in g or g.endswith("/") for g in gate.GENERATED)
+    assert len(gate.GENERATED) == 5  # noqa: PLR2004
+
+
 def test_an_unreadable_worktree_or_ref_fails_closed(tmp_path):
     main, young = _repo(tmp_path)
     assert gate.main([str(main), "base", str(tmp_path / "missing")]) == 2  # noqa: PLR2004

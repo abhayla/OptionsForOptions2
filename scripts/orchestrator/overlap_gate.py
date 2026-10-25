@@ -7,11 +7,21 @@ ADR-171 rule 3 by machine (owner 2026-10-23: "This should be clear cut rule and 
 never touch the same file. Reads the REAL changes of each row - the older row's files changed since its start ref, the
 younger row's since the point its branch split from the older row's branch (git merge-base), each plus every
 uncommitted change (staged, unstaged, untracked) in its worktree - and exits 1 naming each shared file. Exit 0 only when
-the two sets are disjoint. Run before the younger row's builder starts, when it reports, and before its rebase. A
+the two sets share nothing but GENERATED files (ADR-188). Run before the younger row's builder starts, when it reports, and before its rebase. A
 worktree or ref that cannot be read fails closed (exit 2).
 """
 import subprocess
 import sys
+
+# ADR-188 (1): files regen.py rebuilds at merge (plus the hand-merged, conflict-trivial coverage stages). Exact paths
+# only - never a prefix or glob, so views/README.md or any other product file still refuses.
+GENERATED = frozenset({
+    "views/spec-digest.md",
+    "views/build-order.md",
+    "spec/requirements/INDEX.md",
+    "knowledge/findings/INDEX.md",
+    "docs/process/coverage-stages.yaml",
+})
 
 
 def _git(worktree: str, *args: str) -> list[str]:
@@ -51,7 +61,12 @@ def main(argv: list[str]) -> int:
     except (subprocess.CalledProcessError, FileNotFoundError, OSError, IndexError) as exc:
         sys.stderr.write(f"OVERLAP GATE: cannot read a worktree or ref ({type(exc).__name__}) - fail closed\n")
         return 2
-    shared = sorted(a & b)
+    both = a & b
+    shared = sorted(both - GENERATED)
+    if not shared and both:
+        sys.stdout.write("OVERLAP GATE: OK - shared only generated files: " + ", ".join(sorted(both))
+                         + " (regen.py rebuilds them at merge, ADR-188)\n")
+        return 0
     if shared:
         sys.stdout.write("OVERLAP GATE: REFUSED - both rows touch: " + ", ".join(shared) + "\n")
         return 1
