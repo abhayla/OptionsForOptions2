@@ -32,7 +32,7 @@ from enum import Enum
 from typing import Final
 
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, round_trip_charges
+from ofo.charges.round_trip import ChargesBreakdown, ChargesNotComputable, holds_bought_option, round_trip_breakdown
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, StrategyMetrics, strategy_metrics
@@ -44,6 +44,7 @@ from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
+from ofo.outcome import money
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -148,6 +149,14 @@ class Summary:
     reward_risk_reason: ExplanationText | None = None
     time_value: Decimal | None = None
     intrinsic_value: Decimal | None = None
+    # REQ-081 (W-154): the money figures, all from ofo.outcome.money. ``value_label`` / ``value_reason``: the label of
+    # the time and intrinsic values, or why they are absent; ``funds_share`` is set after the margin read
+    # (CHECKED only).
+    risk_reward: Decimal | None = None
+    net_premium: money.NetPremium | None = None
+    value_label: ExplanationText | None = None
+    value_reason: ExplanationText | None = None
+    funds_share: money.FundsShare | None = None
 
 
 @dataclass(frozen=True)
@@ -185,6 +194,8 @@ class Outcome:
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
     centre_label: ExplanationText | None = None  # FROM_ENTRIES only: where the level grid is centred, and why
+    # ADR-167 (2): the round trip by component; None = no rate set / not priced
+    charges_breakdown: ChargesBreakdown | None = None
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -321,8 +332,18 @@ def exercise_stt_line(legs) -> ExplanationText | None:
     return render_explanation("summary_lose_exercise_stt_note") if holds_bought_option(legs) else None
 
 
-def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
-             charges: Decimal | None = None, charges_unavailable: bool = False) -> Summary:
+def _charges_breakdown(model: ModelInputs, underlying: str, rates: ChargeRates | None) -> ChargesBreakdown | None:
+    """The one place the round trip is priced for an answer: None with no rate set or a leg the table cannot price."""
+    if rates is None:
+        return None
+    try:
+        return round_trip_breakdown(model.strategy.legs, underlying, rates)
+    except ChargesNotComputable:
+        return None
+
+
+def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,  # noqa: PLR0913
+             charges: Decimal | None = None, charges_unavailable: bool = False, spot: Decimal | None = None) -> Summary:
     idx = inputs.underlying
     profit_unl, loss_unl = metrics.max_profit is UNLIMITED, metrics.max_loss is UNLIMITED
     max_loss = metrics.max_loss if loss_unl or charges is None else metrics.max_loss + charges  # ADR-082 (2)
@@ -345,13 +366,20 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
     lo, up = level_set.lower_be, level_set.upper_be
     start = _start_losing(metrics.loss_regions, idx)
     legs = inputs.strategy.legs
-    reason = render_explanation("summary_reward_risk_none") if profit_unl or loss_unl else None
+    shown_profit, shown_loss = None if profit_unl else max_profit, None if loss_unl else max_loss
+    ratio = money.reward_risk(shown_profit, shown_loss, single_expiry=inputs.strategy.is_single_expiry,
+                              charges_priced=charges is not None)
     future_only = len(legs) == 1 and legs[0].instrument is Instrument.FUT
-    nothing = Decimal(0).quantize(HUNDREDTH) if future_only else None  # a futures leg: no time, no intrinsic value
-    return Summary(lose, make, start, None if profit_unl else max_profit,
-                   None if loss_unl else max_loss, profit_unl, loss_unl, level_set.breakevens,
+    if future_only:  # REQ-135 AC-4 (row 27): a futures leg holds no time and no intrinsic value
+        nothing = Decimal(0).quantize(HUNDREDTH)
+        split = money.ValueSplit(nothing, nothing, None, None)
+    else:
+        split = money.time_and_intrinsic(legs, spot)
+    return Summary(lose, make, start, shown_profit, shown_loss, profit_unl, loss_unl, level_set.breakevens,
                    lo, up, level_set.risk_boundaries, charges, charges_unavailable,
-                   reward_risk_reason=reason, time_value=nothing, intrinsic_value=nothing)
+                   reward_risk=ratio.reward_risk, reward_risk_reason=ratio.reason, time_value=split.time,
+                   intrinsic_value=split.intrinsic, risk_reward=ratio.risk_reward,
+                   net_premium=money.net_premium(legs), value_label=split.label, value_reason=split.reason)
 
 
 def _refused(definition, reason: ExplanationText, legs, message=None) -> Outcome:
@@ -512,12 +540,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         level_set = _no_current(build_level_set(model, config, override=override))
     except (MultiExpiryError, ForwardUnavailable):
         return None
-    charges = None
-    if rates is not None:
-        try:
-            charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
-        except ChargesNotComputable:
-            charges = None
+    breakdown = _charges_breakdown(model, definition.underlying, rates)
+    charges = None if breakdown is None else breakdown.total
     # the ONE computation: always the At Expiry view; Estimated Now needs live prices and is never computed here
     values = scenario_values(level_set, model, View.AT_EXPIRY, rates=None if charges is None else rates)
     shown = values
@@ -537,7 +561,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,
         summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
-        centre_label=render_explanation("outcome_from_entries_centre", level=centre))
+        charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre))
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
@@ -646,12 +670,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
     move = _expected_move(inputs, snapshot, valuation, shared, solved)
     level_set = build_level_set(model, config, expected_move=move, override=override)
-    charges = None
-    if rates is not None:
-        try:
-            charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
-        except ChargesNotComputable:
-            charges = None
+    breakdown = _charges_breakdown(model, definition.underlying, rates)
+    charges = None if breakdown is None else breakdown.total
     # the ONE computation (AC-8)
     values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
     table = build_table(model, level_set=level_set, scenario=values,
@@ -665,4 +685,6 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
-        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))
+        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None,
+                         spot=model.spot_level),
+        charges_breakdown=breakdown)

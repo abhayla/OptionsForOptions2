@@ -136,6 +136,81 @@
         ],
         "title": "CellOut"
       },
+      "ChargesBreakdownOut": {
+        "properties": {
+          "brokerage": {
+            "type": "string",
+            "title": "Brokerage"
+          },
+          "stt": {
+            "type": "string",
+            "title": "Stt"
+          },
+          "exchange_transaction": {
+            "type": "string",
+            "title": "Exchange Transaction"
+          },
+          "gst": {
+            "type": "string",
+            "title": "Gst"
+          },
+          "stamp": {
+            "type": "string",
+            "title": "Stamp"
+          },
+          "sebi": {
+            "type": "string",
+            "title": "Sebi"
+          },
+          "total": {
+            "type": "string",
+            "title": "Total"
+          },
+          "rates_read_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Rates Read On"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "exercise_stt_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Rate"
+          },
+          "exercise_stt_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brokerage",
+          "stt",
+          "exchange_transaction",
+          "gst",
+          "stamp",
+          "sebi",
+          "total",
+          "rates_read_on",
+          "label"
+        ],
+        "title": "ChargesBreakdownOut",
+        "description": "ADR-167 (2): the round trip by component, from the engine (Decimal strings); null on the outcome if unpriced."
+      },
       "ColumnOut": {
         "properties": {
           "id": {
@@ -190,6 +265,71 @@
           "visible"
         ],
         "title": "ColumnOut"
+      },
+      "FundsShareOut": {
+        "properties": {
+          "funds": {
+            "type": "string",
+            "title": "Funds"
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Read At"
+          },
+          "max_profit_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Percent"
+          },
+          "max_loss_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Percent"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "funds",
+          "read_at",
+          "max_profit_percent",
+          "max_loss_percent",
+          "max_profit_text",
+          "max_loss_text"
+        ],
+        "title": "FundsShareOut",
+        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."
       },
       "HTTPValidationError": {
         "properties": {
@@ -625,6 +765,76 @@
         "title": "MarginOut",
         "description": "ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."
       },
+      "NetPremiumOut": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "get",
+                  "pay"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "per_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "side",
+          "per_unit",
+          "text",
+          "reason"
+        ],
+        "title": "NetPremiumOut",
+        "description": "REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a\nleg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the\nlegs' quantities differ."
+      },
       "OutcomeRequest": {
         "properties": {
           "underlying": {
@@ -889,6 +1099,16 @@
               }
             ],
             "title": "Centre Label"
+          },
+          "charges_breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargesBreakdownOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "seq": {
             "anyOf": [
@@ -1228,6 +1448,55 @@
               }
             ],
             "title": "Intrinsic Value"
+          },
+          "risk_reward": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Reward"
+          },
+          "value_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Label"
+          },
+          "value_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Reason"
+          },
+          "net_premium": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetPremiumOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "funds_share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundsShareOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,

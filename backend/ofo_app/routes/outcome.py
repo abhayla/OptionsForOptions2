@@ -38,6 +38,7 @@ from ofo.outcome import (
     not_live,
     read_snapshot,
 )
+from ofo.outcome.money import with_funds
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -343,6 +344,43 @@ class PayoffOut(ApiModel):
     points: list[PointOut]
 
 
+class NetPremiumOut(ApiModel):
+    """REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a
+    leg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the
+    legs' quantities differ."""
+    amount: Money | None
+    side: Literal["get", "pay"] | None
+    per_unit: Money | None
+    text: CatalogueText | None
+    reason: CatalogueText | None
+
+
+class FundsShareOut(ApiModel):
+    """ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never
+    estimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."""
+    funds: Money
+    read_at: datetime.datetime
+    max_profit_percent: Money | None
+    max_loss_percent: Money | None
+    max_profit_text: CatalogueText | None
+    max_loss_text: CatalogueText | None
+
+
+class ChargesBreakdownOut(ApiModel):
+    """ADR-167 (2): the round trip by component, from the engine (Decimal strings); null on the outcome if unpriced."""
+    brokerage: Money
+    stt: Money
+    exchange_transaction: Money
+    gst: Money
+    stamp: Money
+    sebi: Money
+    total: Money
+    rates_read_on: datetime.date
+    label: CatalogueText
+    exercise_stt_rate: Money | None = None  # ADR-167 (4): only with a bought option; rate and condition, no amount
+    exercise_stt_note: CatalogueText | None = None
+
+
 class SummaryOut(ApiModel):
     what_can_i_lose: CatalogueText
     what_can_i_make: CatalogueText
@@ -362,6 +400,12 @@ class SummaryOut(ApiModel):
     reward_risk_reason: CatalogueText | None = None
     time_value: Money | None = None
     intrinsic_value: Money | None = None
+    # REQ-081 (W-154): null = absent; the reason text says why (never "0.00" for an absent figure)
+    risk_reward: Money | None = None
+    value_label: CatalogueText | None = None
+    value_reason: CatalogueText | None = None
+    net_premium: NetPremiumOut | None = None
+    funds_share: FundsShareOut | None = None
 
 
 class MarginOut(ApiModel):
@@ -429,6 +473,7 @@ class OutcomeResponse(ApiModel):
     leg_quotes: list[LegQuoteOut] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
+    charges_breakdown: ChargesBreakdownOut | None = None  # REQ-081 AC-2 / ADR-167 (2)
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -530,7 +575,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
-        out = dataclasses.replace(out, margin=margin)
+        out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     state = market_state(ctx, answered_at)

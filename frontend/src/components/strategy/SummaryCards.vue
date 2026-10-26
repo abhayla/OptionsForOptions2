@@ -18,6 +18,7 @@
       </div>
       <p class="text-sm" data-testid="sum-make">{{ whatCanIMake }}</p>
       <div class="mt-1 text-xl font-bold text-green-600" data-testid="max-profit">{{ maxProfit }}</div>
+      <p v-if="fundsShare?.max_profit_text" class="text-xs text-gray-500" data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</p>
     </div>
 
     <!-- Max Loss -->
@@ -33,6 +34,7 @@
       </div>
       <p class="text-sm" data-testid="sum-lose">{{ whatCanILose }}</p>
       <div class="mt-1 text-xl font-bold text-red-600" data-testid="max-loss">{{ maxLoss }}</div>
+      <p v-if="fundsShare?.max_loss_text" class="text-xs text-gray-500" data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</p>
     </div>
 
     <!-- Breakeven -->
@@ -60,18 +62,41 @@
       </div>
       <div class="text-2xl font-bold text-yellow-700" data-testid="spot-level">{{ currentSpot }}</div>
     </div>
-    <!-- REQ-135 AC-4: Reward/Risk with its reason, Time value, Intrinsic value: the server's strings, each hidden when absent -->
-    <dl v-if="showRatio || timeValue != null || intrinsicValue != null" class="sm:col-span-2 lg:col-span-4 flex flex-wrap gap-6 text-sm" data-testid="summary-extras">
-      <div v-if="showRatio"><dt class="inline text-gray-500">Reward/Risk: </dt><FigureHint id="reward_risk" /><dd class="inline font-medium" data-testid="reward-risk">{{ rewardRisk ?? '-' }}</dd>
-        <span v-if="rewardRiskReason" class="text-gray-500" data-testid="reward-risk-reason"> ({{ rewardRiskReason }})</span></div>
-      <div v-if="timeValue != null"><dt class="inline text-gray-500">Time value: </dt><FigureHint id="time_value" /><dd class="inline font-medium" data-testid="time-value">{{ timeValue }}</dd></div>
-      <div v-if="intrinsicValue != null"><dt class="inline text-gray-500">Intrinsic value: </dt><FigureHint id="intrinsic_value" /><dd class="inline font-medium" data-testid="intrinsic-value">{{ intrinsicValue }}</dd></div>
+    <!-- REQ-081 AC-10: the funds the percentages are of, and when Zerodha was read; only when the server sent the share -->
+    <p v-if="fundsShare" class="sm:col-span-2 lg:col-span-4 text-xs text-gray-500 min-w-0 break-words" data-testid="funds-line">
+      Percentages are of Rs {{ fundsShare.funds }} available funds, read {{ istTime(fundsShare.read_at) }}
+    </p>
+    <!-- REQ-135 AC-4 / REQ-081 AC-3, AC-4: Reward/Risk (or Risk/Reward) with its reason, Time value, Intrinsic value: the server's
+         strings, '-' with the server's reason when absent (an absent figure is not zero) -->
+    <dl v-if="showRatio || showValues" class="sm:col-span-2 lg:col-span-4 flex flex-wrap gap-x-6 gap-y-2 text-sm min-w-0" data-testid="summary-extras">
+      <div v-if="showRatio">
+        <dt class="inline text-gray-500" data-testid="ratio-label">{{ flipped ? 'Risk/Reward' : 'Reward/Risk' }}: </dt>
+        <FigureHint v-if="!flipped" id="reward_risk" />
+        <dd class="inline font-medium" data-testid="reward-risk">{{ (flipped ? riskReward : rewardRisk) ?? '-' }}</dd>
+        <span v-if="rewardRiskReason" class="text-gray-500" data-testid="reward-risk-reason"> ({{ rewardRiskReason }})</span>
+        <button type="button" class="ml-2 text-xs underline text-accent" data-testid="ratio-switch" :aria-pressed="flipped ? 'true' : 'false'" @click="flipped = !flipped">
+          Show {{ flipped ? 'Reward/Risk' : 'Risk/Reward' }}
+        </button>
+      </div>
+      <div v-if="showValues" data-testid="value-split">
+        <div>
+          <dt class="inline text-gray-500">Time value: </dt><FigureHint v-if="timeValue != null" id="time_value" />
+          <dd class="inline font-medium" data-testid="time-value">{{ timeValue ?? '-' }}</dd>
+        </div>
+        <div>
+          <dt class="inline text-gray-500">Intrinsic value: </dt><FigureHint v-if="intrinsicValue != null" id="intrinsic_value" />
+          <dd class="inline font-medium" data-testid="intrinsic-value">{{ intrinsicValue ?? '-' }}</dd>
+        </div>
+        <div v-if="valueLabel" class="text-xs text-gray-500" data-testid="value-label">{{ valueLabel }}</div>
+        <div v-if="valueReason" class="text-xs text-gray-500" data-testid="value-reason">{{ valueReason }}</div>
+      </div>
     </dl>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { istTime } from '@/lib/displayFormat'
 import FigureHint from '@/components/common/FigureHint.vue'
 const props = defineProps({
   maxProfit: { type: String, default: '-' },
@@ -86,6 +111,12 @@ const props = defineProps({
   rewardRiskReason: { type: String, default: null },
   timeValue: { type: String, default: null },
   intrinsicValue: { type: String, default: null },
+  riskReward: { type: String, default: null },
+  valueLabel: { type: String, default: null },
+  valueReason: { type: String, default: null },
+  fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless Zerodha's funds were read)
 })
+const flipped = ref(false) // which of the server's two ratio strings is shown; never a calculation
 const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)
+const showValues = computed(() => props.timeValue != null || props.intrinsicValue != null || props.valueReason != null)
 </script>

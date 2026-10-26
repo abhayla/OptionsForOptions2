@@ -1586,5 +1586,57 @@
   "strategy_delete_after_basket": {
     "sha256": "abf645a78fb7af6b73038aae355c38b7a00df76aedcc39021aeb19bb48c02197",
     "reviewed": "pending owner read"
+  },
+  "explanation:money_premium_get": {
+    "sha256": "d042c6c69b5beffa75cb4876d4a37f7a094f198d8c7b38af1aa30a104c8a3d8a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_premium_pay": {
+    "sha256": "90ec4599bf007a4b3c7d09d318470973449b0b6155a6e8d747f879204b035f46",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_premium_futures": {
+    "sha256": "41fc6c00739ea9c526cb84c6b650d775cea2670df4a785feabb7a9d99e6226c0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_price_missing": {
+    "sha256": "a71cb36ab993546b79bd35aa68b1c7bceeb7f3eaeaefa270bfae92d141a55c3d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_value_price_missing": {
+    "sha256": "eeffca39fce7599b1eadd51dc7927802de0dd0360d11e3fa878fc6bd4f858eb4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_value_label": {
+    "sha256": "1e3c6f16109fc32ab9f969b7a91f6c68608e18d2ebdb9810322b78d7edc25277",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_charges_label": {
+    "sha256": "e45b9fa1519314e5bf237d625a699671701dbfd009badb6028f6ef5cc7ad4bfa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_reward_risk_zero_loss": {
+    "sha256": "0ed133e7d40748ccaf2b74361de04b190140fa9e90777ef3595b311f966082c1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_reward_risk_multi_expiry": {
+    "sha256": "4ba48cbd849357ef85f18aaba0be0df7f5cdc8587370d9fa45c70cde3e0df8c1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_funds_percent": {
+    "sha256": "b85fa6b70f8d7bbebc97e4facb499e803042ad39069100510fccc63fb77a68c5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_funds_percent_small": {
+    "sha256": "6f34368317c1c6530a035de7045c52391d1dfeba2e935ac782011a0de63076a2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_reward_risk_no_charges": {
+    "sha256": "a4186caf26978f7f1d734da1e67e36e60b8b5cc7cf8b7fe2f3fd2ef3d6e20c7e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_charges_exercise_stt": {
+    "sha256": "13e217a34c653fab6be78fe9fe9701a0d1f2d842cd3e8cca3c5f02deadaaef57",
+    "reviewed": "pending owner read"
   }
 }

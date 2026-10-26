@@ -7,6 +7,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+from ofo.errors.explanations import render_explanation
+from ofo.outcome import money
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts
@@ -31,6 +33,34 @@ def _margin(out: Outcome) -> dict[str, Any]:
             "available": _s(m.available),
             "checked_at": _t(m.checked_at), "shortfall": m.shortfall,
             "shortfall_reason": m.shortfall_reason}
+
+
+def _breakdown(b: Any) -> dict[str, Any] | None:
+    """ADR-167 (2): the round-trip charges by component as Decimal strings, shown once (Sensibull screen 022);
+    ``rates_read_on`` is the date of the rates; ``label`` the catalogue word "estimate". Hunk from
+    origin/build/W-127-b2-payoff @194cc405 (backend/ofo/outcome/serialize.py), plus the label and the rates date."""
+    if b is None:
+        return None
+    return {"brokerage": _s(b.brokerage), "stt": _s(b.stt), "exchange_transaction": _s(b.exchange_transaction),
+            "gst": _s(b.gst), "stamp": _s(b.stamp), "sebi": _s(b.sebi), "total": _s(b.total),
+            "rates_read_on": b.read_on.isoformat(), "label": render_explanation("money_charges_label"),
+            "exercise_stt_rate": _s(b.exercise_stt_rate),
+            "exercise_stt_note": None if b.exercise_stt_rate is None else render_explanation(
+                "money_charges_exercise_stt", pct=(b.exercise_stt_rate * 100).normalize())}
+
+
+def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
+    if p is None:
+        return None
+    return {"amount": _s(p.amount), "side": p.side, "per_unit": _s(p.per_unit), "text": p.text, "reason": p.reason}
+
+
+def _funds_share(f: money.FundsShare | None) -> dict[str, Any] | None:
+    if f is None:
+        return None
+    return {"funds": _s(f.funds), "read_at": _t(f.read_at), "max_profit_percent": _s(f.max_profit_percent),
+            "max_loss_percent": _s(f.max_loss_percent), "max_profit_text": f.max_profit_text,
+            "max_loss_text": f.max_loss_text}
 
 
 def _col_id(cid: object) -> str:
@@ -97,6 +127,8 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "charges": _s(s.charges), "charges_unavailable": s.charges_unavailable,
             "reward_risk": _s(s.reward_risk), "reward_risk_reason": s.reward_risk_reason,
             "time_value": _s(s.time_value), "intrinsic_value": _s(s.intrinsic_value),
+            "risk_reward": _s(s.risk_reward), "value_label": s.value_label, "value_reason": s.value_reason,
+            "net_premium": _net_premium(s.net_premium), "funds_share": _funds_share(s.funds_share),
         }
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
@@ -106,6 +138,7 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
+        "charges_breakdown": _breakdown(out.charges_breakdown),
     }
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
