@@ -76,9 +76,8 @@ function placeMenu(key) {
     menuLeft.value = 0
     return
   }
-  const left = li.getBoundingClientRect().left - head.getBoundingClientRect().left
-  const max = Math.max(8, head.clientWidth - SMALL_MENU_WIDTH - 8)
-  menuLeft.value = Math.min(Math.max(8, left), max)
+  // The section's offset only; the clamp to the header's edges is CSS clamp() on the panel (ADR-008: no browser maths).
+  menuLeft.value = li.getBoundingClientRect().left - head.getBoundingClientRect().left
 }
 function openMenu(key, byHover = false) {
   clearHover()
@@ -332,7 +331,7 @@ onBeforeUnmount(() => {
       :aria-label="openSection.label"
       class="absolute top-full z-40 border border-line bg-surface shadow-menu"
       :class="isMega ? 'inset-x-0 border-x-0 border-t-0 px-4 py-4' : 'mt-0 w-64 rounded-b-lg py-1'"
-      :style="isMega ? undefined : { left: `${menuLeft}px` }"
+      :style="isMega ? undefined : { left: `clamp(8px, ${menuLeft}px, max(8px, calc(100% - ${SMALL_MENU_WIDTH}px - 8px)))`, maxWidth: 'calc(100vw - 16px)' }"
       :data-section="openSection.key"
       data-testid="nav-menu"
       @keydown="onPanelKey"
