@@ -294,6 +294,19 @@ def test_typed_message_still_uses_its_own_stamp_when_an_enqueue_exists(tmp_path)
     assert _ask(path) is None
 
 
+def test_entry_without_a_source_uses_its_enqueue_time_when_one_exists(tmp_path):
+    """Re-check MINOR 1: queued 90 min ago, delivered 1 min ago with no promptSource -> dated by the enqueue."""
+    assert _ask(_transcript(tmp_path, _enqueue(_ago(90), "go"), _line(_ago(1), "go", HUMAN)))
+
+
+def test_entry_with_an_unknown_source_and_no_enqueue_does_not_count(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "go", HUMAN, extra={"promptSource": "something_new"})))
+
+
+def test_entry_without_a_source_and_no_enqueue_uses_its_own_stamp(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "go", HUMAN))) is None
+
+
 def test_deeply_nested_line_is_skipped_not_a_crash(tmp_path):
     deep = "[" * 100000 + "]" * 100000
     assert _ask(_transcript(tmp_path, deep, _line(_ago(2), "after the deep line", HUMAN))) is None

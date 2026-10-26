@@ -40,6 +40,9 @@ NIGHT_START_HOUR = 22
 NIGHT_END_HOUR = 8
 OWNER_PRESENT_MINUTES = 10
 FUTURE_SKEW = datetime.timedelta(minutes=1)
+# promptSource values stamped when the owner typed (measured over 431 real human entries: typed 134,
+# suggestion_accepted 28, queued 263, missing 6); anything else is dated only by its enqueue line
+DIRECT_SOURCES = frozenset({"typed", "suggestion_accepted"})
 INJECTED_PREFIXES = (
     "<system-reminder>",
     "<task-notification>",
@@ -117,12 +120,15 @@ def _typed_stamp(entry: object, pending: dict[str, list[datetime.datetime]]) -> 
     if text is None:
         return None
     stamp = datetime.datetime.fromisoformat(str(entry["timestamp"]))
-    if entry.get("promptSource") != "queued":
+    source = entry.get("promptSource")
+    if source in DIRECT_SOURCES:
         return stamp
     waiting = pending.get(text.strip())
-    if not waiting:
-        return None  # typed at an unknown earlier time: never trust the delivery stamp
-    return min(stamp, waiting.pop(0))
+    if waiting:
+        return min(stamp, waiting.pop(0))  # an enqueue line with the same text dates it
+    # no enqueue line: a missing source field (6 real human entries) keeps its own stamp; queued or an unknown
+    # source was typed at an unknown earlier time, so the delivery stamp is never trusted
+    return stamp if source is None else None
 
 
 def owner_last_seen(transcript_path: str | None, now: datetime.datetime | None = None) -> datetime.datetime | None:
