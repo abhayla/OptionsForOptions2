@@ -96,10 +96,12 @@ def basket_orders(provider: MarketDataProvider, legs: Sequence[PlannedOrderIn]) 
     return tuple(orders)
 
 
-def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal]:
-    """In a worker thread: Zerodha's available funds, then the basket's required total."""
+def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal, Decimal]:
+    """In a worker thread: Zerodha's available funds, then the basket's required total (ours, ADR-094) and Zerodha's
+    own figure."""
     available = client.fetch_available_funds()
-    return available, client.fetch_basket_margin(orders).required_total
+    basket = client.fetch_basket_margin(orders)
+    return available, basket.required_total, basket.zerodha_total
 
 
 @dataclass(frozen=True)
@@ -179,7 +181,8 @@ class OutcomeMargin:
             client = await asyncio.wait_for(self._open(), timeout)
             if client is None:  # no stored session after all
                 return MARGIN, False
-            available, needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders), timeout)
+            available, needed, broker_needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders),
+                                                                       timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
             if exc.code == MARGIN_BUSY_CODE:
@@ -189,7 +192,7 @@ class OutcomeMargin:
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)
             return margin_unreadable(), False
         try:
-            return margin_checked(needed, available, self._clock()), True
+            return margin_checked(needed, available, self._clock(), broker_needed), True
         except ValueError:
             return margin_unreadable(), False
 

@@ -203,9 +203,6 @@ LINES: dict[str, tuple[str, ...]] = {
         "import { KITE_ORDER_BOOK_URL } from '@/lib/execute'",
         '<a v-if="state === \'buy_failed\'" :href="KITE_ORDER_BOOK_URL" target="_blank" rel="noopener" data-testid="two-basket-kite-link" class="underline">{{ message }}</a>',
     ),
-    'frontend/src/components/strategy/MarginLine.vue': (
-        'Margin (Zerodha): Rs {{ margin.needed }} needed, Rs {{ margin.available }} available',
-    ),
     'frontend/src/lib/chainUnavailable.js': (
         "export const UNAVAILABLE_LABEL = 'Currently unavailable on Zerodha'",
         'not_listed: "Not in Zerodha\'s list today.",',

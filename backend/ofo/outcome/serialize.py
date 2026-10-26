@@ -27,7 +27,8 @@ def _t(value: datetime.datetime | None) -> str | None:
 
 def _margin(out: Outcome) -> dict[str, Any]:
     m = out.margin
-    return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "available": _s(m.available),
+    return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "broker_needed": _s(m.broker_needed),
+            "available": _s(m.available),
             "checked_at": _t(m.checked_at), "shortfall": m.shortfall,
             "shortfall_reason": m.shortfall_reason}
 

@@ -968,14 +968,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Margin from Zerodha is not shown yet; it needs your Kite login."),
     # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
     ExplanationTemplate("outcome_margin_checked", "values_seen",
-                        "Margin from Zerodha for these planned orders: {needed} needed, {available} available. "
-                        "Checked at {time}.",
-                        {"needed": Rupees, "available": Rupees, "time": ClockSeconds}),
+                        "Zerodha's own margin figure is {broker_needed}. With the premium up to your limit prices, "
+                        "about {needed} is needed (an estimate); {available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
     # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
     ExplanationTemplate("outcome_margin_short", "values_seen",
-                        "Zerodha says these planned orders need {needed} of margin; {available} is available in your "
-                        "account. " + MARGIN_SHORTFALL_NEXT_ACTION,
-                        {"needed": Rupees, "available": Rupees}),
+                        "Zerodha's own margin figure is {broker_needed}. With the premium up to your limit prices, "
+                        "about {needed} is needed (an estimate); {available} is available in your account. "
+                        + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3

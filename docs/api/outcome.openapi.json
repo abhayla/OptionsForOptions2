@@ -567,6 +567,17 @@
             ],
             "title": "Needed"
           },
+          "broker_needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed"
+          },
           "available": {
             "anyOf": [
               {

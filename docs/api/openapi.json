@@ -5311,6 +5311,17 @@
             ],
             "title": "Available"
           },
+          "broker_needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed"
+          },
           "checked_at": {
             "anyOf": [
               {

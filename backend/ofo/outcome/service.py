@@ -159,6 +159,7 @@ class Margin:
     state: str
     reason: ExplanationText
     needed: Decimal | None = None
+    broker_needed: Decimal | None = None  # CHECKED only: Zerodha's own final.total (a closing basket: 0), never ours
     available: Decimal | None = None
     checked_at: datetime.datetime | None = None
     shortfall: bool = False  # CHECKED only: Zerodha's available funds are below the amount needed (Decimal compare)
@@ -189,23 +190,27 @@ class Outcome:
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
 
 
-def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime) -> Margin:
-    """ADR-099: Zerodha's two figures and the time they were read. Both arrive already rounded half-up to the paisa
+def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime,
+                   broker_needed: Decimal) -> Margin:
+    """ADR-099: the amount needed (ours: Zerodha's figure plus the ADR-094 top-up), Zerodha's own figure, Zerodha's
+    available funds and the time they were read. Both arrive already rounded half-up to the paisa
     where they were parsed (ADR-101: Kite's float noise 68498.85000000001 reads 68498.85); any rounding left here is on
     the safe side (needed UP, funds DOWN) for figures not from Kite, and ``shortfall``
     compares exactly the two amounts shown, so the screen never shows equal figures with a shortfall mark, nor hides a
     shortfall the gate would block. Display only: the gate (REQ-055) is the check before the basket."""
-    for value in (needed, available):
+    for value in (needed, available, broker_needed):
         if type(value) is not Decimal or not value.is_finite():
             raise ValueError("a margin figure must be a finite Decimal")
     if not isinstance(checked_at, datetime.datetime) or checked_at.tzinfo is None:
         raise ValueError("checked_at must be a timezone-aware datetime")
     need = needed.quantize(HUNDREDTH, rounding=ROUND_CEILING)
     have = available.quantize(HUNDREDTH, rounding=ROUND_FLOOR)
+    theirs = max(broker_needed, Decimal(0)).quantize(HUNDREDTH, rounding=ROUND_CEILING)  # a closing basket: 0
     short = have < need
-    reason = render_explanation("outcome_margin_short", needed=need, available=have) if short else None
-    return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", needed=need, available=have,
-                                                     time=checked_at), need, have, checked_at, short, reason)
+    figures = {"broker_needed": theirs, "needed": need, "available": have}  # REQ-055 AC-3: each named for itself
+    reason = render_explanation("outcome_margin_short", **figures) if short else None
+    return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", **figures), need,
+                  theirs, have, checked_at, short, reason)
 
 
 def margin_unreadable() -> Margin:

@@ -935,11 +935,13 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
 )
 
 # --- W-081 (REQ-055 AC-1/AC-4): the margin check before the Kite basket is built (ofo.execution.margin_gate). Both
-# figures are Zerodha's (`available` from the funds read, `required` from the basket margin's final total); amounts
-# print with the engine's rupee formatter. New: awaiting the owner's read.
+# figures: `available` is Zerodha's (funds read), `required` is OURS (Zerodha's basket final total plus the ADR-094
+# BUY top-up; REQ-055 AC-3: never worded as Zerodha's); amounts print with the engine's rupee formatter. New:
+# awaiting the owner's read.
 _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("margin_basket_insufficient", _MG, 201,
-          "Zerodha says this strategy needs {required} of margin; {available} is available in your account.",
+          "This strategy needs {required} of margin with the premium up to your limit prices (an estimate); "
+          "{available} is available in your account.",
           "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
           "Building the Zerodha basket for this strategy.",
           MARGIN_SHORTFALL_NEXT_ACTION,
