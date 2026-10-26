@@ -1,6 +1,7 @@
-"""REQ-034 AC-7 / ADR-082 (2) (W-075): the At Expiry scenario values include the round-trip charges, and a BOUGHT option
-finishing in the money adds STT on exercise at that level's intrinsic value; SOLD options and out-of-the-money bought
-options add none; Estimated Now and the per-leg rows are not touched.
+"""REQ-081 AC-4 / ADR-167 (W-154, supersedes the values half of ADR-082 (2) / W-075): the At Expiry scenario values are
+before charges and before STT on exercise; the round trip is carried beside them (``charges``). Estimated Now and the
+per-leg rows are not touched. Exercise STT (BUY 22800 PE at 22,000: 90; BUY 23600 CE at 24,000: 45) stays out of
+the curve.
 
 Hand figures for the §6 condor (BUY 22800 PE 42.50, SELL 23000 PE 86.00, SELL 23400 CE 91.50, BUY 23600 CE 44.00, 75
 units): premium 19,800 each side; brokerage 160 + STT 29.7 + exchange 14.06988 + SEBI 0.0396 + stamp 0.594 + GST
@@ -30,33 +31,26 @@ def values(golden, settings, rates=RATES, view=View.AT_EXPIRY):
     return scenario_values(ls, golden, view, rates=rates)
 
 
-def test_expiry_values_are_old_minus_round_trip_and_exercise_stt(golden, settings):
+def test_expiry_values_are_the_grid_before_charges_and_exercise_stt(golden, settings):
     plain, v = values(golden, settings, rates=None), values(golden, settings)
-    assert v.charges == ROUND_TRIP
-    old, new = dict(zip(plain.levels, plain.totals, strict=True)), dict(zip(v.levels, v.totals, strict=True))
-    assert new[D("23047")] == D("6825") - ROUND_TRIP  # nothing bought is in the money
-    assert new[D("22000")] == D("-8175") - ROUND_TRIP - D("90")  # bought 22800 PE: 800 x 75 x 0.15%
-    assert new[D("24000")] == D("-8175") - ROUND_TRIP - D("45")  # bought 23600 CE: 400 x 75 x 0.15%
-    for level in plain.levels:
-        if level < D("22800"):
-            extra = (D("22800") - level) * 75 * D("0.0015")
-        elif level > D("23600"):
-            extra = (level - D("23600")) * 75 * D("0.0015")
-        else:
-            extra = D("0")
-        assert new[level] == old[level] - ROUND_TRIP - extra, level
+    assert v.charges == ROUND_TRIP  # carried beside the values (ADR-167 (2)), not inside them
+    new = dict(zip(v.levels, v.totals, strict=True))
+    assert new[D("23047")] == D("6825")  # hand figure, before charges
+    assert new[D("22000")] == D("-8175")  # bought 22800 PE in the money: no exercise STT in the curve
+    assert new[D("24000")] == D("-8175")  # bought 23600 CE in the money: no exercise STT in the curve
+    assert v.totals == plain.totals
 
 
 def test_guard_a_sold_option_in_the_money_adds_no_exercise_stt(golden, settings):
     # at 22900 the SOLD 23000 PE is in the money by 100 and no bought option is
     plain, v = values(golden, settings, rates=None), values(golden, settings)
     new, old = dict(zip(v.levels, v.totals, strict=True)), dict(zip(plain.levels, plain.totals, strict=True))
-    assert new[D("22900")] == old[D("22900")] - ROUND_TRIP
+    assert new[D("22900")] == old[D("22900")]
 
 
-def test_guard_charges_are_subtracted_never_added(golden, settings):
+def test_guard_charges_are_never_subtracted_from_a_total(golden, settings):
     plain, v = values(golden, settings, rates=None), values(golden, settings)
-    assert all(n < o for n, o in zip(v.totals, plain.totals, strict=True))
+    assert all(n == o for n, o in zip(v.totals, plain.totals, strict=True))  # mutant `- charges` -> red
 
 
 def test_guard_no_rates_leaves_the_values_exactly_as_before(golden, settings):
@@ -83,3 +77,10 @@ def test_guard_a_futures_leg_has_no_rate_so_scenario_values_refuses_instead_of_g
     with pytest.raises(ChargesNotComputable):
         scenario_values(ls, fut, View.AT_EXPIRY, rates=RATES)
     assert scenario_values(ls, fut, View.AT_EXPIRY).charges is None  # without rates it still computes
+
+
+def test_guard_estimated_now_totals_are_identical_with_and_without_rates(golden, settings):
+    a = values(golden, settings, rates=None, view=View.ESTIMATED_NOW)
+    b = values(golden, settings, view=View.ESTIMATED_NOW)
+    assert a.available and a.totals == b.totals and a.leg_rows == b.leg_rows
+    assert a.charges is None and b.charges is None
