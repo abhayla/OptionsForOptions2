@@ -70,7 +70,10 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
 class ChargesBreakdown:
     """ADR-167 (2): the round-trip charges shown ONCE, by component (Sensibull screen 022). Each component is the sum
     over the strategy's entry and exit orders rounded half-even to the paisa; ``total`` is :func:`round_trip_charges`
-    (rounded UP once), so the parts can differ from the total by a paisa or two. ``read_on`` is the date of the rates.
+    (rounded UP once) only as an input check; the shown ``total`` is the sum of the shown paise-rounded parts, so the
+    items add up to it exactly and that one figure feeds the sentences and ratios. ``read_on`` is the date of the
+    rates. ``exercise_stt_rate`` is the STT-on-exercise rate when the strategy holds a bought option (ADR-167 (4)),
+    else None; it carries NO amount (that depends on the settlement level) and is not part of ``total``.
     Never part of a payoff curve or a scenario value."""
 
     brokerage: Decimal
@@ -81,12 +84,13 @@ class ChargesBreakdown:
     sebi: Decimal
     total: Decimal
     read_on: datetime.date
+    exercise_stt_rate: Decimal | None = None
 
 
 def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRates) -> ChargesBreakdown:
     """The charges of :func:`round_trip_charges`, split by component; ChargesNotComputable gives no breakdown at all."""
     # copied from origin/build/W-127-b2-payoff @194cc405 (backend/ofo/charges/round_trip.py), plus read_on
-    total = round_trip_charges(legs, underlying, rates)  # raises ChargesNotComputable for what has no rate
+    round_trip_charges(legs, underlying, rates)  # raises ChargesNotComputable for what has no rate
     segment = _segment(underlying)
     orders: list[ChargeOrder] = []
     for leg in legs:
@@ -98,10 +102,11 @@ def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRate
     def paise(amounts: Sequence[Decimal]) -> Decimal:
         return sum(amounts, Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
-    return ChargesBreakdown(
-        paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
-        paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
-        paise([c.stamp for c in parts]), paise([c.sebi for c in parts]), total, rates.read_on)
+    shown = (paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
+             paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
+             paise([c.stamp for c in parts]), paise([c.sebi for c in parts]))
+    return ChargesBreakdown(*shown, sum(shown, Decimal("0")), rates.read_on,
+                            rates.stt_exercise_rate if holds_bought_option(legs) else None)
 
 
 def is_bought_option(leg: Leg) -> bool:

@@ -43,7 +43,10 @@ def _breakdown(b: Any) -> dict[str, Any] | None:
         return None
     return {"brokerage": _s(b.brokerage), "stt": _s(b.stt), "exchange_transaction": _s(b.exchange_transaction),
             "gst": _s(b.gst), "stamp": _s(b.stamp), "sebi": _s(b.sebi), "total": _s(b.total),
-            "rates_read_on": b.read_on.isoformat(), "label": render_explanation("money_charges_label")}
+            "rates_read_on": b.read_on.isoformat(), "label": render_explanation("money_charges_label"),
+            "exercise_stt_rate": _s(b.exercise_stt_rate),
+            "exercise_stt_note": None if b.exercise_stt_rate is None else render_explanation(
+                "money_charges_exercise_stt", pct=(b.exercise_stt_rate * 100).normalize())}
 
 
 def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:

@@ -173,6 +173,26 @@
           },
           "label": {
             "title": "Label"
+          },
+          "exercise_stt_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Rate"
+          },
+          "exercise_stt_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Note"
           }
         },
         "additionalProperties": false,

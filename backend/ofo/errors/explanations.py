@@ -1038,6 +1038,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("money_value_label", "values_seen", "value of the options, not P&L"),
     ExplanationTemplate("money_charges_label", "values_seen", "estimate"),
     ExplanationTemplate("money_reward_risk_zero_loss", "values_seen", "max loss is 0"),
+    ExplanationTemplate("money_reward_risk_no_charges", "values_seen",
+                        "the charges could not be priced, so the ratio is not shown"),
+    ExplanationTemplate("money_charges_exercise_stt", "values_seen",
+                        "STT on exercise: {pct}% of the value of a bought option that finishes in the money. "
+                        "It depends on where the index settles, so it is not in this total.", {"pct": Amount}),
     ExplanationTemplate("money_reward_risk_multi_expiry", "values_seen",
                         "no worst case for legs on different expiries"),
     ExplanationTemplate("money_funds_percent", "values_seen", "{pct}% of funds", {"pct": Amount}),

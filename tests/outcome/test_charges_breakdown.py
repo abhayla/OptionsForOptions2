@@ -27,11 +27,33 @@ def test_components_equal_the_hand_arithmetic():
     assert b.total == HAND_PAISE and b.read_on == RATES.read_on
 
 
-def test_total_is_the_rounded_up_round_trip_and_parts_are_within_a_paisa_or_two():
+def _parts(b):
+    return b.brokerage + b.stt + b.exchange_transaction + b.sebi + b.stamp + b.gst
+
+
+def test_shown_items_sum_exactly_to_the_shown_total():
+    """MINOR (a): one figure, no Rs 0.01-0.02 gap; the exact round trip is within two paise of it (never far off)."""
     b = round_trip_breakdown(legs(), "NIFTY", RATES)
-    assert b.total == round_trip_charges(legs(), "NIFTY", RATES)
-    parts = b.brokerage + b.stt + b.exchange_transaction + b.sebi + b.stamp + b.gst
-    assert abs(parts - b.total) <= 2 * ONE_PAISE
+    assert _parts(b) == b.total == HAND_PAISE
+    assert abs(b.total - round_trip_charges(legs(), "NIFTY", RATES)) <= 2 * ONE_PAISE
+
+
+def test_a_case_that_differed_before_now_sums():
+    """Hand: one sold CE 100.37 x 65 -> parts rounded each half-even differ from the exact total rounded up."""
+    one = (Leg(Action.SELL, Instrument.CE, D("23000"), EXPIRY, Q, D("100.37")),)
+    b = round_trip_breakdown(one, "NIFTY", RATES)
+    assert _parts(b) == b.total
+
+
+def test_exercise_stt_line_has_the_rate_and_no_amount_when_a_bought_option_is_held():
+    b = round_trip_breakdown(legs(), "NIFTY", RATES)  # the condor holds two bought options
+    assert b.exercise_stt_rate == RATES.stt_exercise_rate == D("0.0015")
+    assert b.total == HAND_PAISE  # the line is not part of the total
+
+
+def test_no_exercise_stt_line_without_a_bought_option():
+    sold = tuple(x for x in legs() if x.action is Action.SELL)
+    assert round_trip_breakdown(sold, "NIFTY", RATES).exercise_stt_rate is None
 
 
 def test_a_futures_leg_gives_no_breakdown_not_a_partial_one():

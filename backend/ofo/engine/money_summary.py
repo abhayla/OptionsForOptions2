@@ -7,7 +7,7 @@ goes with a figure is shaped in ``ofo.outcome.money``.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from typing import Any, Final
 
 from ofo.engine.legs import Action, Instrument
@@ -68,4 +68,4 @@ def percent_of_funds(amount: Decimal, funds: Decimal) -> Decimal:
 
 
 def whole_percent(raw: Decimal) -> Decimal:
-    return raw.quantize(_WHOLE, ROUND_HALF_EVEN)
+    return raw.quantize(_WHOLE, ROUND_HALF_UP)

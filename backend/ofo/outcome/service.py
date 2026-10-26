@@ -367,7 +367,8 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
     start = _start_losing(metrics.loss_regions, idx)
     legs = inputs.strategy.legs
     shown_profit, shown_loss = None if profit_unl else max_profit, None if loss_unl else max_loss
-    ratio = money.reward_risk(shown_profit, shown_loss, single_expiry=inputs.strategy.is_single_expiry)
+    ratio = money.reward_risk(shown_profit, shown_loss, single_expiry=inputs.strategy.is_single_expiry,
+                              charges_priced=charges is not None)
     future_only = len(legs) == 1 and legs[0].instrument is Instrument.FUT
     if future_only:  # REQ-135 AC-4 (row 27): a futures leg holds no time and no intrinsic value
         nothing = Decimal(0).quantize(HUNDREDTH)

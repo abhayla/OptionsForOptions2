@@ -377,6 +377,8 @@ class ChargesBreakdownOut(ApiModel):
     total: Money
     rates_read_on: datetime.date
     label: CatalogueText
+    exercise_stt_rate: Money | None = None  # ADR-167 (4): only with a bought option; rate and condition, no amount
+    exercise_stt_note: CatalogueText | None = None
 
 
 class SummaryOut(ApiModel):

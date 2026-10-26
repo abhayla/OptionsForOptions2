@@ -169,11 +169,15 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     d, out = outcome_of(replayed, RATES)
     assert out.state is OutcomeState.COMPUTED, out.reason
     rows = [("SELL" if p.action is Action.SELL else "BUY", p.planned_entry) for p in d.legs]
-    charges = D("0")
+    parts = dict.fromkeys(("brokerage", "stt", "txn", "sebi", "stamp", "gst"), D("0"))
     for side, price in rows:
         other = "SELL" if side == "BUY" else "BUY"
-        charges += hand(side, price)["total"] + hand(other, price)["total"]
-    charges = to_paise_up(charges)  # ADR-082 (2): the API carries the charges rounded UP to the paisa
+        for name in parts:
+            parts[name] += hand(side, price)[name] + hand(other, price)[name]
+    # the shown items are rounded half-even to the paisa and the shown total is their sum (row 26b: one figure); the
+    # exact total rounded UP would be 215.10 for these replay prices
+    charges = sum((x.quantize(D("0.01")) for x in parts.values()), D("0"))
+    assert charges == D("215.09") and to_paise_up(sum(parts.values(), D("0"))) == D("215.10")
     s = out.summary
     assert s.charges == charges and not s.charges_unavailable
     assert s.max_loss == D("8245.25") + charges  # charges ADDED to the loss (mutation: subtracted -> red)
