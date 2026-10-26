@@ -220,6 +220,13 @@ def test_missing_transcript_blocks(tmp_path):
     assert _ask(str(tmp_path / "nope.jsonl"))
 
 
+def test_owner_last_seen_is_none_on_any_doubt(tmp_path):
+    assert qng.owner_last_seen(str(tmp_path / "nope.jsonl")) is None
+    assert qng.owner_last_seen(str(tmp_path)) is None  # a directory is unreadable as a file
+    assert qng.owner_last_seen(None) is None
+    assert qng.owner_last_seen(_transcript(tmp_path, "garbage")) is None
+
+
 def test_no_transcript_path_blocks():
     assert qng.decide("AskUserQuestion", Q, now=NIGHT, env={})
     assert qng.decide("AskUserQuestion", Q, now=NIGHT, env={}, transcript_path="")

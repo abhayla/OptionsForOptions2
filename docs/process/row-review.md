@@ -32,7 +32,8 @@ Lesson ids keep their old numbers (R1 -> L1) because scripts cite them. L7 (the 
 - **L15 Measure lists every caller** of a changed entry point (row 8 missed two routes).
 - **L16 Slow DB runs start first**, in the background, with `-o faulthandler_timeout=60` (~23 s per DB test).
 - **L17 A business question never holds the session** (row 9: one question held the session ~7.5 h overnight). The
-  question tool only while the owner is active and not 22:00-08:00 IST (`question_night_guard.py`); otherwise
+  question tool only while the owner is active (at 22:00-08:00 IST: a typed message in the last 10 minutes, read from
+  the transcript by `question_night_guard.py`, fail closed); otherwise
   `docs/process/owner-questions-<date>.md` with the recommendation, and the build continues.
 - **L18 Mutation results go to a file as they run** (row 9: results lost when the run was killed); quote the file.
 - **L19 Every time written is read, never typed** (2026-10-23: nine typed times, up to 34 min in the future). Use
