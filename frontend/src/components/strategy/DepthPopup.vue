@@ -67,30 +67,33 @@ const levels = computed(() => {
 </script>
 
 <template>
-  <div class="mt-2 rounded border border-line bg-surface p-3 text-sm" role="dialog" data-testid="depth-popup" :data-instrument-id="instrumentId">
+  <!-- UI-115 (I-11): a 360 px popover; every value is its own padded table cell, never run together. -->
+  <div class="w-[360px] rounded-lg border border-line bg-surface p-3 text-sm shadow" role="dialog" :aria-label="`Market depth${title ? `: ${title}` : ''}`" data-testid="depth-popup" :data-instrument-id="instrumentId" @keydown.esc="emit('close')">
     <div class="flex items-center justify-between">
-      <h3 class="font-medium">Market depth{{ title ? `: ${title}` : '' }}</h3>
-      <button type="button" data-testid="depth-close" class="underline" @click="emit('close')">Close</button>
+      <h3 class="truncate font-medium">Market depth{{ title ? `: ${title}` : '' }}</h3>
+      <button type="button" data-testid="depth-close" class="text-accent" @click="emit('close')">Close</button>
     </div>
     <p v-if="!loaded" data-testid="depth-loading">Reading depth...</p>
     <template v-else-if="available">
-      <table class="mt-2" data-testid="depth-table">
-        <thead><tr><th>Bid qty</th><th>Bid</th><th>Ask</th><th>Ask qty</th></tr></thead>
+      <dl class="mt-2 grid grid-cols-4 gap-2" data-testid="depth-day">
+        <div><dt class="text-xs text-ink-muted">Open</dt><dd data-testid="depth-open">{{ shown(answer.day_open) }}</dd></div>
+        <div><dt class="text-xs text-ink-muted">High</dt><dd data-testid="depth-high">{{ shown(answer.day_high) }}</dd></div>
+        <div><dt class="text-xs text-ink-muted">Low</dt><dd data-testid="depth-low">{{ shown(answer.day_low) }}</dd></div>
+        <div v-if="answer.prev_close != null"><dt class="text-xs text-ink-muted">Prev close</dt><dd data-testid="depth-prev-close">{{ answer.prev_close }}</dd></div>
+      </dl>
+      <table class="mt-2 w-full border-collapse text-right tabular-nums" data-testid="depth-table">
+        <thead class="text-xs text-ink-muted"><tr><th class="px-3 py-1">Bids</th><th class="px-3 py-1">Qty</th><th class="px-3 py-1">Offers</th><th class="px-3 py-1">Qty</th></tr></thead>
         <tbody>
-          <tr v-for="(l, i) in levels" :key="i" data-testid="depth-level">
-            <td>{{ shown(l.bid?.quantity) }}</td><td>{{ shown(l.bid?.price) }}</td>
-            <td>{{ shown(l.ask?.price) }}</td><td>{{ shown(l.ask?.quantity) }}</td>
+          <tr v-for="(l, i) in levels" :key="i" class="h-7 border-t border-line" data-testid="depth-level">
+            <td class="px-3" data-testid="depth-bid">{{ shown(l.bid?.price) }}</td><td class="px-3 text-buy" data-testid="depth-bid-qty">{{ shown(l.bid?.quantity) }}</td>
+            <td class="px-3" data-testid="depth-ask">{{ shown(l.ask?.price) }}</td><td class="px-3 text-sell" data-testid="depth-ask-qty">{{ shown(l.ask?.quantity) }}</td>
           </tr>
         </tbody>
       </table>
-      <dl class="mt-2 grid grid-cols-2 gap-x-3" data-testid="depth-day">
-        <dt>Open</dt><dd data-testid="depth-open">{{ shown(answer.day_open) }}</dd>
-        <dt>High</dt><dd data-testid="depth-high">{{ shown(answer.day_high) }}</dd>
-        <dt>Low</dt><dd data-testid="depth-low">{{ shown(answer.day_low) }}</dd>
-        <template v-if="answer.prev_close != null"><dt>Previous close</dt><dd data-testid="depth-prev-close">{{ answer.prev_close }}</dd></template>
-        <dt>Last trade</dt><dd data-testid="depth-last-trade">{{ answer.last_trade_at ? istTime(answer.last_trade_at) : '-' }}</dd>
-        <dt>Read at</dt><dd data-testid="depth-read-at">{{ istTime(answer.read_at) }}</dd>
-      </dl>
+      <p class="mt-2 text-xs text-ink-muted">
+        Last trade <span data-testid="depth-last-trade">{{ answer.last_trade_at ? istTime(answer.last_trade_at) : '-' }}</span> ·
+        read <span data-testid="depth-read-at">{{ istTime(answer.read_at) }}</span>
+      </p>
       <p v-if="answer.day_stats_reason" class="mt-1 text-ink-muted" data-testid="depth-day-reason">Day figures not shown: {{ dayStatsReasonText(answer.day_stats_reason) }}</p>
     </template>
     <div v-else data-testid="depth-unavailable">

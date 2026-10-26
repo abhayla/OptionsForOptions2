@@ -48,6 +48,36 @@ describe('Save Draft bar', () => {
     await flushPromises()
     expect(t(w, 'saved-draft-row').text()).toContain('Draft 7, NIFTY, updated 15 Oct 2026, 11:59:59 IST')
   })
+
+  // W-192 (ADR-193 UI-108, UI-112): Save in the action row, Save As / Rename in the "..." menu, the list in the Saved tab
+  it('UI-112: the Saved tab shows the 10 first rows of the server list, narrowed by a text search on name or underlying', async () => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Plan ${i + 1}`, underlying: i === 11 ? 'SENSEX' : 'NIFTY', updated_at: '2026-10-15T06:29:59Z' }))
+    answers['GET /strategies'] = { strategies: rows }
+    const w = mount(SaveDraftBar, { props: { legs: [] }, attachTo: document.body })
+    await flushPromises()
+    expect(t(w, 'tab-panel-saved').isVisible()).toBe(false) // Ready-made is the first tab
+    await t(w, 'tab-saved').trigger('click')
+    expect(t(w, 'tab-panel-saved').isVisible()).toBe(true)
+    expect(w.findAll('[data-testid="saved-draft-row"]').map((r) => r.attributes('data-current'))).toHaveLength(10)
+    await t(w, 'saved-search').setValue('sensex')
+    expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12, SENSEX, updated 15 Oct 2026, 11:59:59 IST'])
+    await t(w, 'saved-search').setValue('no such plan')
+    expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches.')
+    w.unmount()
+  })
+
+  it('UI-108: Save is in the action row; Save As and Rename open from the "..." menu for an open strategy', async () => {
+    const w = mount(SaveDraftBar, { props: { legs: [LEG], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body })
+    await flushPromises()
+    expect(t(w, 'action-row').find('[data-testid="save-draft"]').text()).toBe('Save')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    await t(w, 'more-menu').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(true)
+    await t(w, 'rename-open').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    expect(t(w, 'name-form').attributes('data-mode')).toBe('rename')
+    w.unmount()
+  })
 })
 
 describe('contract names in the advanced details and the picker', () => {

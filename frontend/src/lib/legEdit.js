@@ -175,3 +175,18 @@ export function movedMarker(leg, ltp) {
   const since = leg.captured_at == null ? '' : ` since ${istTime(leg.captured_at)}`
   return `Price has moved${since}: planned ${leg.planned_entry}, now ${ltp}`
 }
+
+/** ADR-195 (Sensibull S-111, ADR-152): while any leg is left out of the numbers the builder names no shape, shows no Hedge
+ *  mark and turns Width and Hedge off with this reason; ticking every leg again restores the server's controls as sent. */
+export const UNTICKED_CONTROL_REASON = 'Width and Hedge work only when every leg is ticked.'
+export const anyUnticked = (legs) => (Array.isArray(legs) ? legs : []).some((l) => l?.included === false)
+export function controlsForSelection(controls, legs) {
+  if (!anyUnticked(legs)) return controls
+  return { ...controls, width: false, hedge: false, reasons: { ...controls.reasons, width: UNTICKED_CONTROL_REASON, hedge: UNTICKED_CONTROL_REASON } }
+}
+
+/** W-192 (UI-104): the compact leg row's column widths in px, in order (tick, B/S, expiry, strike, type, lots, price, depth,
+ *  edit, remove). Their sum plus the card's side padding stays within the 480 px narrowest left column, so a row never wraps. */
+export const LEG_ROW_COLUMNS = Object.freeze([22, 26, 92, 96, 34, 44, 72, 22, 22, 22])
+export const LEG_CARD_PADDING_PX = 12
+export const LEFT_COLUMN_MIN_PX = 480

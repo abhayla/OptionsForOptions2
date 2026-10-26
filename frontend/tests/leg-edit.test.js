@@ -32,6 +32,8 @@ import rec from './fixtures/leg-edit-controls.json'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { buildSaveBody } from '@/lib/saveDraft'
 import { NO_CONTROLS, NO_REASON_FALLBACK, WIDTH_REASON_FALLBACK, controlsFrom, replacedPriceNote, shiftText, showsControls } from '@/lib/legEdit'
+import { LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, LEFT_COLUMN_MIN_PX, UNTICKED_CONTROL_REASON, YOUR_PRICE_LABEL } from '@/lib/legEdit'
+import { REPRICE_PROMPT } from '@/lib/legPicker'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const row = (w, i) => w.findAll('[data-testid="leg-row"]')[i]
@@ -201,7 +203,8 @@ describe('LegList rows (screens 011, 012)', () => {
     await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
     expect(t(w, 'shape-name').text()).toContain('Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(1)
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('H') // W-192 UI-105: a 10 px "H" badge
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').attributes('aria-label')).toBe('Hedge')
     expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
     expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
   })
@@ -402,13 +405,14 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
   }
   it('AC-5: lots by default; Quantity shows each leg\'s reply quantity as sent (NIFTY 195, SENSEX 60), no multiplication', async () => {
     const legs = [lotsRow(), lotsRow({ id: 2, underlying: 'SENSEX', instrument_id: 'BSE_FO:1', lots: 3, quantity: 60 })]
+    // W-192 UI-103: the switch lives in the page's Settings popover; LegList draws the unit it is given
     const w = mount(LegList, { props: { legs } })
     expect(all(w, 'leg-lots').map((x) => x.text())).toEqual(['3 lot', '3 lot'])
     expect(all(w, 'leg-quantity')).toHaveLength(0)
-    await t(w, 'lots-quantity-switch').setValue('quantity')
+    await w.setProps({ legUnit: 'quantity' })
     expect(all(w, 'leg-quantity').map((x) => x.text())).toEqual(['195', '60'])
     expect(all(w, 'leg-lots')).toHaveLength(0)
-    await t(w, 'lots-quantity-switch').setValue('lots')
+    await w.setProps({ legUnit: 'lots' })
     expect(all(w, 'leg-lots')).toHaveLength(2)
   })
   it('AC-5: on the page the reply quantity reaches the row; switching to Quantity shows it', async () => {
@@ -838,6 +842,100 @@ describe('W-158 attack 4: a typed price lost on a move is said so', () => {
     answers['POST /strategies/leg-edit'] = SHIFTED
     await clickAndWait(w, 'shift-plus')
     expect(all(w, 'replaced-note')).toHaveLength(0) // the next reply replaced nothing
+    w.unmount()
+  })
+})
+
+// ---- W-192 (ADR-193 PR-2a, ADR-195; REQ-076 AC-6/AC-8, REQ-077 AC-1/AC-6/AC-7): the compact left-column leg table ----
+const condorLegs = (extra = () => ({})) => real.legs.map((l, i) => ({ id: i + 1, underlying: 'NIFTY', ...l, instrument_type: l.instrument,
+  hedge: i === 0 || i === 3, included: true, ...extra(i) }))
+
+describe('W-192 ADR-195: with any leg unticked the label shows only the count, no Hedge mark, Width and Hedge off with a reason', () => {
+  it('one leg unticked: "3 selected" with no shape name, no Hedge marks, Width/Hedge disabled with the reason; Shift stays the server\'s', async () => {
+    const props = { legs: condorLegs((i) => (i === 3 ? { included: false } : {})), hasReply: true, shapeName: 'Short Iron Condor', controls: controlsFrom(rec.read) }
+    const w = mount(LegList, { props })
+    expect(t(w, 'leg-edit-header').text()).toContain('3 selected')
+    expect(t(w, 'shape-name').exists()).toBe(false)
+    expect(all(w, 'hedge-mark')).toHaveLength(0)
+    for (const id of ['width', 'hedge']) {
+      expect(t(w, `${id}-plus`).attributes('disabled')).toBeDefined()
+      expect(t(w, `${id}-minus`).attributes('disabled')).toBeDefined()
+      expect(t(w, `${id}-reason`).text()).toBe(UNTICKED_CONTROL_REASON)
+    }
+    expect(t(w, 'shift-plus').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('some')
+    // ticking every leg again restores the server's name, marks and controls
+    await w.setProps({ legs: condorLegs() })
+    expect(t(w, 'shape-name').text()).toContain('Short Iron Condor')
+    expect(all(w, 'hedge-mark')).toHaveLength(2)
+    expect(t(w, 'width-plus').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'hedge-plus').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('all')
+    w.unmount()
+  })
+})
+
+describe('W-192 UI-104 (I-7): one leg row per leg that never wraps at the 480 px narrowest left column', () => {
+  it('the fixed columns plus the card padding fit in 480 px; every row line is a single no-wrap grid of those columns', () => {
+    const sum = LEG_ROW_COLUMNS.reduce((a, b) => a + b, 0)
+    expect(sum + 2 * LEG_CARD_PADDING_PX).toBeLessThanOrEqual(LEFT_COLUMN_MIN_PX)
+    const w = mount(LegList, { props: { legs: condorLegs(), hasReply: true, shapeName: 'Short Iron Condor', controls: controlsFrom(rec.read) }, attachTo: document.body })
+    const lines = all(w, 'leg-row-line')
+    expect(lines).toHaveLength(4)
+    for (const line of lines) {
+      expect(line.classes()).toEqual(expect.arrayContaining(['grid', 'h-7', 'whitespace-nowrap'])) // one 28 px line, nothing wraps
+      expect(line.attributes('style')).toContain(`${LEG_ROW_COLUMNS[0]}px ${LEG_ROW_COLUMNS[1]}px ${LEG_ROW_COLUMNS[2]}px minmax(${LEG_ROW_COLUMNS[3]}px, 1fr)`)
+    }
+    // the words that wrapped rows in the walkthrough are no longer visible row text (I-7): icons, a menu or screen-reader text
+    for (const line of lines) {
+      const menu = line.find('[data-testid="price-menu-panel"]')
+      expect(menu.isVisible()).toBe(false) // closed until the price menu button opens it
+      expect(line.text().replace(menu.text(), '')).not.toMatch(/Set price|Remove|Edit|Depth|captured/)
+    }
+    w.unmount()
+  })
+  it('the page is two columns from 1100 px: left 480..572 px, right flexible', async () => {
+    const w = await openPage()
+    expect(t(w, 'builder-columns').classes()).toContain('min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]')
+    expect(t(w, 'builder-left').find('[data-testid="leg-edit-list"]').exists()).toBe(true)
+    expect(t(w, 'builder-right').find('[data-testid="numbers"]').exists()).toBe(true)
+    expect(t(w, 'underlying-spot').text()).toBe(real.spot_level ?? '—') // the outcome reply's own string, nothing derived
+    w.unmount()
+  })
+})
+
+describe('W-192 Revision 1 (REQ-077 AC-1, AC-6, AC-7): a visible second line only when needed; Reset and capture time in the price menu', () => {
+  it('a plain captured entry has no second line; its capture time and the per-leg Reset sit in a keyboard menu on the price field', async () => {
+    const w = mount(LegList, { props: { legs: condorLegs() }, attachTo: document.body })
+    expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
+    const panel = () => row(w, 0).find('[data-testid="price-menu-panel"]')
+    expect(panel().isVisible()).toBe(false)
+    await row(w, 0).find('[data-testid="price-menu"]').trigger('click')
+    expect(panel().isVisible()).toBe(true)
+    expect(panel().find('[data-testid="leg-captured"]').text()).toMatch(/^captured /)
+    expect(panel().find('[data-testid="reset-leg"]').exists()).toBe(true)
+    await panel().trigger('keydown', { key: 'Escape' })
+    expect(panel().isVisible()).toBe(false)
+    w.unmount()
+  })
+  it('a typed price shows "Your price, typed <time>" as visible text', () => {
+    const w = mount(LegList, { props: { legs: condorLegs((i) => (i === 1 ? { typed: true, planned_entry: '81.30' } : {})) } })
+    expect(row(w, 1).find('[data-testid="leg-typed-line"]').text()).toMatch(new RegExp(`^${YOUR_PRICE_LABEL}, typed `))
+    expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('a moved price shows the marker with both prices as visible text (AC-6)', () => {
+    const legs = condorLegs()
+    const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' } } })
+    expect(row(w, 0).find('[data-testid="leg-second-line"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')
+    w.unmount()
+  })
+  it('a leg saved without an entry shows the ADR-085 message and a Reprice button on the second line (AC-7)', async () => {
+    const w = mount(LegList, { props: { legs: condorLegs((i) => (i === 2 ? { planned_entry: null, captured_at: null, reason_code: 'needs_reprice' } : {})) } })
+    const line = row(w, 2).find('[data-testid="leg-second-line"]')
+    expect(line.find('[data-testid="leg-reprice-prompt"]').text()).toBe(REPRICE_PROMPT)
+    await line.find('[data-testid="reprice-leg"]').trigger('click')
+    expect(w.emitted('edit-leg')).toEqual([[2]])
     w.unmount()
   })
 })

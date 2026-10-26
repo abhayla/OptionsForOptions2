@@ -7,6 +7,10 @@
      W-148 (REQ-076): leg rows with -/+, multiplier, tick; each edit is one POST /strategies/leg-edit and its reply is drawn.
      States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced), left-out,
      refused, error, no-draft.
+     W-192 (ADR-193 UI study b.1 + Revision 1, ADR-195): two columns at 1100 px and up. Left (572 px, min 480, sticky, own
+     scroll): Region A underlying bar, Region B strategy card (LegList) with its action row, Region C bottom tabs (inside
+     SaveDraftBar), Region D prices stamp. Right: the existing state panels and numbers blocks, unchanged (PR-2b/PR-2c restyle
+     them). Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -26,6 +30,7 @@ import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import Icon from '@/components/common/Icon.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import PopFigure from '@/components/strategy/PopFigure.vue'
@@ -378,12 +383,29 @@ async function editLeg(edit) {
   }
 }
 const picker = ref(null)
+// W-192 UI-108/UI-110: the inline add-leg form sits in the left column behind Add/Edit (open on an empty builder) until the
+// PR-3 drawer replaces it. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover (UI-103).
+const pickerOpen = ref(legs.value.length === 0)
+const settingsOpen = ref(false)
+const legUnit = ref('lots')
 // Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
 const openInPicker = (i) => {
   const leg = legs.value[i]
-  if (leg) picker.value?.startEdit(leg)
+  if (!leg) return
+  pickerOpen.value = true
+  picker.value?.startEdit(leg)
 }
-const focusPicker = () => document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
+const focusPicker = () => {
+  pickerOpen.value = true
+  document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
+}
+// "..." menu items: History opens the existing activity panel; Start tracking goes to the existing tracking block (right column)
+const showHistory = () => {
+  const toggle = document.querySelector('[data-testid="activity-toggle"]')
+  toggle?.scrollIntoView?.()
+  toggle?.click()
+}
+const goToTracking = () => document.querySelector('[data-testid="tracking-panel"]')?.scrollIntoView?.()
 // AC-4: Execute stays disabled, with its reason, until the latest outcome and edit reply has arrived
 const refusal = computed(() => executeRefusal(legs.value) ?? (updating.value ? EXECUTE_WAITS_FOR_LATEST : null))
 const setChoice = (next) => {
@@ -436,109 +458,155 @@ const pricesStamp = computed(() => {
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
     <MarketClosedBanner v-if="data?.market_closed" class="mt-2" :prices-at="data.last_price_at" />
-    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
-
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
-    <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted" />
-    <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
-    <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
-    <LegList
-      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
-      :undo-offered="undoHeld !== null"
-      @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
-    />
+    <div class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">
+      <div
+        class="flex min-w-0 flex-col gap-4 max-[1099px]:contents min-[1100px]:sticky min-[1100px]:top-[72px] min-[1100px]:max-h-[calc(100vh-88px)] min-[1100px]:self-start min-[1100px]:overflow-y-auto"
+        data-testid="builder-left"
+      >
+        <!-- Region A (UI-100, UI-103): the underlying and the outcome reply's spot level; day change omitted until REQ-139 sends it -->
+        <div class="flex h-12 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm" data-testid="underlying-bar">
+          <span class="flex items-center gap-2">
+            <span class="font-semibold" data-testid="underlying-name">{{ headerUnderlying || '-' }}</span>
+            <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || undefined">{{ data?.spot_level ?? NO_LIVE_LEVEL }}</span>
+          </span>
+          <span class="relative">
+            <button
+              type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
+              data-testid="builder-settings" @click="settingsOpen = !settingsOpen" @keydown.esc="settingsOpen = false"
+            ><Icon name="gear" :size="14" />Settings</button>
+            <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover" @keydown.esc="settingsOpen = false">
+              <label class="flex items-center justify-between gap-2">Show legs as
+                <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
+                  <option value="lots">Lots</option>
+                  <option value="quantity">Quantity</option>
+                </select>
+              </label>
+            </span>
+          </span>
+        </div>
 
-    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
-    <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
+        <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
+        <!-- Region B (UI-104..UI-108) -->
+        <LegList
+          :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
+          :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
+          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
+        >
+          <template #money>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
+          </template>
+        </LegList>
+        <div v-show="pickerOpen" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" /></div>
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+          <template #add-edit>
+            <button type="button" class="rounded border border-line px-3 py-1" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+          </template>
+          <template #menu="{ close }">
+            <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
+            <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
+          </template>
+          <template #ready-made><ReadyMadePanel :legs="legs" @update:legs="setLegs" /></template>
+        </SaveDraftBar>
+        <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
 
-    <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
-      Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
-    </p>
-
-    <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg above to start one.</p>
-
-    <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
-      <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
-      <p class="font-medium">Every leg is left out of the numbers.</p>
-      <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
-    </div>
-
-    <div v-else-if="state === 'error'" class="mt-4">
-      <ErrorMessage :parts="errorParts" data-testid="state-error" />
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
-      <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-      <ul class="mt-2 text-sm" data-testid="draft-legs">
-        <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
-      </ul>
-    </div>
-
-    <div v-else-if="state === 'refused'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-refused">
-      <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
-      <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
-      <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
-        <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
-        <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
-        <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
-        <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
-        <ul v-if="staleLegs.length">
-          <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
-        </ul>
+        <!-- Region D (UI-150): the one prices stamp and the reconnecting line -->
+        <div class="text-xs text-ink-muted max-[1099px]:order-3" data-testid="stamp-line">
+          <p v-if="live.reconnecting.value" class="font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
+          <p v-if="showNumbers && pricesStamp" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
+        </div>
       </div>
 
-      <MoneySummary :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" />
-      <SummaryCards
-        class="mt-4"
-        :max-profit="maxProfit"
-        :max-loss="maxLoss"
-        :breakevens="data.summary.breakevens"
-        :what-can-i-make="data.summary.what_can_i_make"
-        :what-can-i-lose="data.summary.what_can_i_lose"
-        :where-i-start-losing="data.summary.where_do_i_start_losing"
-        :current-spot="data.spot_level ?? NO_LIVE_LEVEL"
-        :underlying="data.underlying"
-        :reward-risk="data.summary.reward_risk ?? null"
-        :reward-risk-reason="data.summary.reward_risk_reason ?? null"
-        :time-value="data.summary.time_value ?? null"
-        :intrinsic-value="data.summary.intrinsic_value ?? null"
-        :risk-reward="data.summary.risk_reward ?? null"
-        :value-label="data.summary.value_label ?? null"
-        :value-reason="data.summary.value_reason ?? null"
-        :funds-share="data.summary.funds_share ?? null"
-      />
-      <ProjectionsNote />
-      <p v-if="pricesStamp" class="px-4 text-xs text-ink-muted" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
-      <PopFigure :pop="data.probability_of_profit ?? null" />
-      <MarginLine :margin="data.margin" :capabilities="capabilities" />
+      <div class="min-w-0 max-[1099px]:order-1" data-testid="builder-right">
+        <StrategyHeader v-if="state !== 'no-draft'" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
+        <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
 
-      <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
-      <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
-      <StrategyTable
-        :table="data.table"
-        :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
-        :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
-      />
-      <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
-      <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-      <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
-      <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
+        <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
+          Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
+        </p>
+
+        <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg to start one.</p>
+
+        <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
+          <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
+          <p class="font-medium">Every leg is left out of the numbers.</p>
+          <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
+        </div>
+
+        <div v-else-if="state === 'error'" class="mt-4">
+          <ErrorMessage :parts="errorParts" data-testid="state-error" />
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
+          <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <ul class="mt-2 text-sm" data-testid="draft-legs">
+            <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
+          </ul>
+        </div>
+
+        <div v-else-if="state === 'refused'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-refused">
+          <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
+          <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
+          <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
+            <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
+            <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
+            <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
+            <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
+            <ul v-if="staleLegs.length">
+              <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
+            </ul>
+          </div>
+
+          <SummaryCards
+            class="mt-4"
+            :max-profit="maxProfit"
+            :max-loss="maxLoss"
+            :breakevens="data.summary.breakevens"
+            :what-can-i-make="data.summary.what_can_i_make"
+            :what-can-i-lose="data.summary.what_can_i_lose"
+            :where-i-start-losing="data.summary.where_do_i_start_losing"
+            :current-spot="data.spot_level ?? NO_LIVE_LEVEL"
+            :underlying="data.underlying"
+            :reward-risk="data.summary.reward_risk ?? null"
+            :reward-risk-reason="data.summary.reward_risk_reason ?? null"
+            :time-value="data.summary.time_value ?? null"
+            :intrinsic-value="data.summary.intrinsic_value ?? null"
+            :risk-reward="data.summary.risk_reward ?? null"
+            :value-label="data.summary.value_label ?? null"
+            :value-reason="data.summary.value_reason ?? null"
+            :funds-share="data.summary.funds_share ?? null"
+          />
+          <ProjectionsNote />
+          <PopFigure :pop="data.probability_of_profit ?? null" />
+          <MarginLine :margin="data.margin" :capabilities="capabilities" />
+
+          <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
+          <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
+          <StrategyTable
+            :table="data.table"
+            :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+            :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+          />
+          <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
+          <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
+          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
+          <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
+        </div>
+      </div>
     </div>
   </section>
 </template>

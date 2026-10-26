@@ -4,6 +4,7 @@
      server's `controls` said so, and is disabled with the server's reason otherwise; a click emits only the control and its
      direction. No strike, total or reason is built here (ADR-008; finding browser-infers-a-server-permission). -->
 <script setup>
+import Tooltip from "@/components/common/Tooltip.vue";
 import { shiftText } from "@/lib/legEdit";
 
 defineProps({
@@ -20,16 +21,16 @@ const STEPPERS = [
 
 <template>
   <div
-    class="mt-2 flex flex-wrap items-start gap-4"
+    class="flex flex-nowrap items-center divide-x divide-line whitespace-nowrap"
     data-testid="strategy-controls"
     role="group"
     aria-label="Strike Controls"
   >
-    <span class="text-ink-muted">Strike Controls</span>
+    <span class="sr-only">Strike Controls</span>
     <div
       v-for="c in STEPPERS"
       :key="c.id"
-      class="flex flex-col"
+      class="flex items-center gap-2 px-3 first:pl-0"
       :data-testid="`control-${c.id}`"
     >
       <span class="text-ink-muted"
@@ -62,9 +63,14 @@ const STEPPERS = [
           +
         </button>
       </span>
+      <Tooltip
+        v-if="!controls[c.id]"
+        :text="controls.reasons[c.id]"
+        :label="`Why ${c.label} is off`"
+      />
       <span
         v-if="!controls[c.id]"
-        class="max-w-xs text-ink-muted"
+        class="sr-only"
         :data-testid="`${c.id}-reason`"
         >{{ controls.reasons[c.id] }}</span
       >
