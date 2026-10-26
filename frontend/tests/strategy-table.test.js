@@ -258,7 +258,7 @@ describe('REQ-077 AC-9: with no live data the page shows At Expiry from the user
     expect(w.find('[data-testid="numbers"]').exists()).toBe(true)
     expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
     expect(w.find('[data-testid="centre-label"]').text()).toContain('22,800')
-    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="underlying-spot"]').text()).toBe('—') // W-193: the level card is gone; the spot is in the underlying bar
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
     expect(w.find('[data-testid="footer-valuation"]').exists()).toBe(false)
     expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)

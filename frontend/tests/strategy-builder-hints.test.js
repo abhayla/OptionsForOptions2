@@ -220,10 +220,11 @@ describe("REQ-136 AC-1: marks on the figures that exist today", () => {
     const w = mount(MarginLine, {
       props: { margin: MARGIN.enough, capabilities: ON },
     });
+    // W-193 (I-8): one labelled mark per row (Margin needed, Margin available), funds_needed on the figures sentence
     expect(hintIds(w)).toEqual([
       "margin_needed",
-      "funds_needed",
       "margin_available",
+      "funds_needed",
     ]);
     expect(t(w, "margin-figures").text()).toMatch(
       /^Zerodha's own margin figure is \S+ With the premium up to your limit prices, about \S+ is needed \(an estimate\); \S+ is available in your Zerodha account\.$/,
@@ -355,8 +356,19 @@ describe("REQ-136 AC-3: the standing note under the summary", () => {
     expect(note.text()).toBe(PROJECTIONS_NOTE);
     expect(note.element.closest('[data-testid="figure-hint"]')).toBeNull();
     expect(note.element.closest('[role="tooltip"]')).toBeNull();
-    expect(t(w, "summary-cards").element.nextElementSibling).toBe(note.element);
+    // W-193 (Revision 1 M4): the Important info note is the element right after the summary card, always open: no
+    // collapse control, no details/summary, and it carries the planning sentence that left the page title block
+    const info = t(w, "important-info");
+    expect(t(w, "summary-cards").element.nextElementSibling).toBe(info.element);
+    expect(info.element.contains(note.element)).toBe(true);
+    expect(info.find("details").exists()).toBe(false);
+    expect(info.find("button").exists()).toBe(false);
+    expect(info.find("[aria-expanded]").exists()).toBe(false);
+    expect(t(w, "planning-note").text()).toBe(
+      "A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.",
+    );
     expect(w.findAll('[data-testid="projections-note"]')).toHaveLength(1);
+    expect(w.findAll('[data-testid="planning-note"]')).toHaveLength(1);
     w.unmount();
   });
 
@@ -379,6 +391,71 @@ describe("REQ-136 AC-3: the standing note under the summary", () => {
     ])
       expect(ids).toContain(id);
     expect(t(w, "max-profit").text()).toContain(real.summary.max_profit);
+    w.unmount();
+  });
+});
+
+// W-193 (ADR-193 Region E, UI-116..UI-120, Revision 1): the page draws ONE summary card at the top of the numbers with
+// POP and Funds & Margins inside it, the margin message once, and no page title block.
+describe("W-193: the builder page summary card", () => {
+  it("core: the card is the first block of the numbers and holds the margin block; the old level card is gone", async () => {
+    const w = await openBuilder({ ...real, margin: MARGIN.enough });
+    const card = t(w, "summary-cards");
+    expect(w.findAll('[data-testid="summary-cards"]')).toHaveLength(1);
+    expect(card.find('[data-testid="margin"]').exists()).toBe(true);
+    expect(card.find('[data-testid="margin-needed"]').text()).toBe(MARGIN.enough.needed);
+    expect(card.find('[data-testid="margin-available"]').text()).toBe(MARGIN.enough.available);
+    expect(card.find('[data-testid="max-profit"]').text()).toBe(real.summary.max_profit);
+    expect(t(w, "spot-level").exists()).toBe(false);
+    // the summary card comes before the chart and the table in the right column
+    const order = t(w, "numbers").element.innerHTML;
+    expect(order.indexOf('data-testid="summary-cards"')).toBeLessThan(order.indexOf('data-testid="payoff-chart"'));
+    w.unmount();
+  });
+
+  it("UI-119 / I-8: a shortfall draws the message once on the whole page, under the three blocks", async () => {
+    const w = await openBuilder({ ...real, margin: MARGIN.short });
+    expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1);
+    expect(t(w, "margin-shortfall").text()).toBe(MARGIN.short.shortfall_reason);
+    expect(t(w, "margin-shortfall").classes()).toContain("col-span-full");
+    expect(t(w, "summary-cards").find('[data-testid="margin-shortfall"]').exists()).toBe(true);
+    expect(t(w, "margin").attributes("data-short")).toBe("true");
+    expect(w.text().split("Reduce the quantity").length - 1).toBe(1);
+    w.unmount();
+  });
+
+  it("UI-117: POP sits in Block 2 of the card when the held switch is on, and is absent (no dash) while held", async () => {
+    held = ["probability_of_profit"];
+    const on = await openBuilder({ ...real, probability_of_profit: { percent: 61 }, margin: MARGIN.enough });
+    await flushPromises();
+    expect(t(on, "summary-block-ratios").find('[data-testid="pop-figure"]').exists()).toBe(true);
+    on.unmount();
+    held = [];
+    const off = await openBuilder({ ...real, probability_of_profit: { percent: 61 }, margin: MARGIN.enough });
+    await flushPromises();
+    expect(t(off, "pop-row").exists()).toBe(false);
+    expect(t(off, "summary-block-ratios").text()).not.toContain("POP");
+    off.unmount();
+  });
+
+  it("UI-005: no visible page title block; the heading stays for screen readers and the planning sentence moved to the note", async () => {
+    const w = await openBuilder({ ...real, margin: MARGIN.enough });
+    expect(t(w, "page-title").classes()).toContain("sr-only");
+    const sentence = "This is for planning, not a recommendation.";
+    expect(w.text().split(sentence).length - 1).toBe(1);
+    expect(t(w, "important-info").text()).toContain(sentence);
+    w.unmount();
+  });
+
+  it("I-9: the data label is named in the data-health strip and is the tooltip beside the Estimated Now switch", async () => {
+    const label = "estimated from spot";
+    const w = await openBuilder({ ...real, output_label: label, margin: MARGIN.enough });
+    expect(t(w, "output-label").text()).toBe(label);
+    expect(t(w, "output-label").element.parentElement.textContent).toBe(`Price data: ${label}`);
+    const note = t(w, "estimate-note");
+    expect(note.exists()).toBe(true);
+    await note.get('[data-testid="tooltip-trigger"]').trigger("click");
+    expect(note.get('[data-testid="tooltip-text"]').text()).toBe(label);
     w.unmount();
   });
 });

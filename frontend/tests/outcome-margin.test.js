@@ -58,10 +58,38 @@ describe('outcome margin slot (ADR-099)', () => {
     const w = line(STATES.shortfall)
     expect(t(w, 'margin').attributes('data-margin-state')).toBe('CHECKED')
     expect(t(w, 'margin-figures').text()).toBe(STATES.shortfall.reason)
-    expect(t(w, 'margin-figures').classes()).toContain('text-red-700')
+    // W-193 (I-8): the figures sentence is no longer printed in red; the block carries the loss border and one line
+    expect(t(w, 'margin-figures').classes()).not.toContain('text-red-700')
+    expect(t(w, 'margin').attributes('data-short')).toBe('true')
+    expect(t(w, 'margin').classes()).toEqual(expect.arrayContaining(['border-l-4', 'border-loss']))
+    expect(t(w, 'margin-short-line').text()).toBe('Not enough funds for this strategy')
+    expect(t(w, 'margin-short-line').classes()).toContain('text-loss')
     expect(t(w, 'margin-shortfall').text()).toBe('Available funds are below the margin needed.')
+    expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1)
     expect(t(w, 'margin-checked-at').text()).toBe('Checked at 16 Oct 2026, 12:08:52 IST')
     expect(t(w, 'margin-text').exists()).toBe(false)
+  })
+
+  it('W-193 (UI-118): Margin needed and Margin available are the server strings as sent, each with one labelled mark', () => {
+    const w = line(STATES.enough)
+    expect(t(w, 'margin-needed').text()).toBe(STATES.enough.needed)
+    expect(t(w, 'margin-available').text()).toBe(STATES.enough.available)
+    expect(t(w, 'funds-margins-title').text()).toBe('Funds & Margins')
+    expect(t(w, 'margin').attributes('data-short')).toBe('false')
+    expect(t(w, 'margin').classes()).not.toContain('border-loss')
+    expect(t(w, 'margin-short-line').exists()).toBe(false)
+    const marks = w.findAll('[data-testid="figure-hint-mark"]').map((m) => m.attributes('aria-label'))
+    expect(marks).toEqual(['What is Margin needed?', 'What is Margin available?', 'What is Funds needed?'])
+    // "Funds needed" as a figure row is absent: the reply has no such figure yet (REQ-081)
+    expect(w.find('[data-testid="funds-needed"]').exists()).toBe(false)
+  })
+
+  it('W-193 (I-8): with the server message the shortfall text appears ONCE and the figures sentence is not repeated', () => {
+    const w = line(STATES.short)
+    expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1)
+    expect(t(w, 'margin-figures').exists()).toBe(false)
+    expect(w.text().split("Zerodha's own margin figure").length - 1).toBe(1)
+    expect(t(w, 'margin-short-line').exists()).toBe(true)
   })
 
   it('short with the server line: shown verbatim, with both ways forward (REQ-055 AC-4)', () => {
@@ -87,9 +115,13 @@ describe('outcome margin slot (ADR-099)', () => {
   })
 
   it('REQ-055 AC-3: the browser adds no Zerodha label; the server text names the two figures apart', () => {
+    // W-193: on a shortfall the server's message carries the figures (once); the figures sentence is checked on `enough`
     const w = line(STATES.short)
-    const text = t(w, 'margin-figures').text()
-    expect(text).toBe(STATES.short.reason)
+    const shortText = t(w, 'margin-shortfall').text()
+    expect(shortText).toContain("Zerodha's own margin figure is ₹6,409.00")
+    expect(shortText).toContain('about ₹7,065.50 is needed (an estimate)')
+    const text = t(line(STATES.enough), 'margin-figures').text()
+    expect(text).toBe(STATES.enough.reason)
     expect(text).toContain("Zerodha's own margin figure is ₹6,409.00")
     expect(text).toContain('about ₹7,065.50 is needed (an estimate)')
     expect(w.text()).not.toContain('Margin (Zerodha)')

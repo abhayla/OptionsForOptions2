@@ -58,9 +58,9 @@ describe("core: the real reply is printed as sent", () => {
 
   it("the switch only chooses which server string is shown", async () => {
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
-    expect(t(c, "ratio-label").text()).toBe("Reward/Risk:");
+    expect(t(c, "ratio-label").text()).toBe("Reward/Risk");
     await t(c, "ratio-switch").trigger("click");
-    expect(t(c, "ratio-label").text()).toBe("Risk/Reward:");
+    expect(t(c, "ratio-label").text()).toBe("Risk/Reward");
     expect(t(c, "reward-risk").text()).toBe(CONDOR.summary.risk_reward);
     expect(t(c, "ratio-switch").attributes("aria-pressed")).toBe("true");
     await t(c, "ratio-switch").trigger("click");
@@ -210,7 +210,7 @@ describe("the fixtures are replies of the current backend (26b)", () => {
       `(${NO_RATES.summary.reward_risk_reason})`,
     );
     await t(c, "ratio-switch").trigger("click");
-    expect(t(c, "ratio-label").text()).toBe("Risk/Reward:");
+    expect(t(c, "ratio-label").text()).toBe("Risk/Reward");
     expect(t(c, "reward-risk").text()).toBe("-");
     expect(t(c, "reward-risk-reason").text()).toBe(
       `(${NO_RATES.summary.reward_risk_reason})`,
@@ -223,7 +223,7 @@ describe("a live update replaces the data", () => {
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
     await t(c, "ratio-switch").trigger("click");
     await c.setProps(cardProps(NO_RATES));
-    expect(t(c, "ratio-label").text()).toBe("Risk/Reward:");
+    expect(t(c, "ratio-label").text()).toBe("Risk/Reward");
     // 26b: without priced charges both ratios are absent; the flipped side shows '-' and the server reason (never 1/x)
     expect(NO_RATES.summary.risk_reward).toBeNull();
     expect(t(c, "reward-risk").text()).toBe("-");
@@ -261,5 +261,100 @@ describe("no browser money arithmetic and no advice wording in the new component
       expect(w.text().toLowerCase()).not.toMatch(
         /\b(return|gain|expected|promise)/,
       );
+  });
+});
+
+// W-193 (ADR-193 UI study b.1 Region E, UI-116..UI-120, Revision 1 M1/M3): one summary card, three blocks, from the
+// existing reply fields only. Real fixture (the recorded condor), so every value below is the server's string.
+describe("W-193: the summary card (Region E)", () => {
+  const full = (o, slots = {}) =>
+    mount(SummaryCards, {
+      props: {
+        ...cardProps(o),
+        whatCanIMake: o.summary.what_can_i_make,
+        whatCanILose: o.summary.what_can_i_lose,
+        whereIStartLosing: o.summary.where_do_i_start_losing,
+      },
+      slots,
+    });
+
+  it("core: one card with three blocks: outcome, ratios and the margin slot", () => {
+    const c = full(CONDOR, { margin: '<div data-testid="margin-slot">m</div>' });
+    expect(c.findAll('[data-testid="summary-cards"]')).toHaveLength(1);
+    for (const id of ["summary-block-outcome", "summary-block-ratios", "summary-block-margin"])
+      expect(t(c, id).exists(), id).toBe(true);
+    expect(t(c, "summary-block-margin").find('[data-testid="margin-slot"]').exists()).toBe(true);
+    const s = CONDOR.summary;
+    expect(t(c, "max-profit").text()).toBe(s.max_profit);
+    expect(t(c, "max-loss").text()).toBe(s.max_loss);
+    expect(t(c, "breakevens").text()).toBe(s.breakevens.join(", "));
+    expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
+    expect(t(c, "time-value").text()).toBe(s.time_value);
+    expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value);
+  });
+
+  it("Revision 1 M1 (REQ-034 AC-7): the three plain sentences stay VISIBLE under their figures, outside any tooltip", () => {
+    const c = full(CONDOR);
+    for (const [id, text] of [
+      ["sum-make", CONDOR.summary.what_can_i_make],
+      ["sum-lose", CONDOR.summary.what_can_i_lose],
+      ["sum-start", CONDOR.summary.where_do_i_start_losing],
+    ]) {
+      expect(t(c, id).text(), id).toBe(text);
+      expect(t(c, id).element.closest('[role="tooltip"]'), id).toBeNull();
+      expect(t(c, id).classes(), id).toContain("text-[13px]");
+    }
+  });
+
+  it("Revision 1 M3 (REQ-081 AC-10): the funds caption is visible in Block 1, under the figures", () => {
+    const c = full(CONDOR);
+    expect(t(c, "summary-block-outcome").find('[data-testid="funds-line"]').exists()).toBe(true);
+    expect(t(c, "funds-line").element.closest('[role="tooltip"]')).toBeNull();
+  });
+
+  it("UI-116: soft profit / loss pills; Unlimited is shown as the word", () => {
+    const c = mount(SummaryCards, { props: { ...cardProps(CONDOR), maxLoss: "Unlimited" } });
+    expect(t(c, "max-profit").element.parentElement.className).toContain("bg-profit-soft");
+    expect(t(c, "max-loss").element.parentElement.className).toContain("bg-loss-soft");
+    expect(t(c, "max-loss").text()).toBe("Unlimited");
+  });
+
+  it("UI-116: Breakeven shows Expiry chosen and Target disabled with its reason (REQ-084 not built)", async () => {
+    const c = full(CONDOR);
+    expect(t(c, "breakeven-expiry").attributes("aria-pressed")).toBe("true");
+    expect(t(c, "breakeven-target").attributes("aria-disabled")).toBe("true");
+    const trigger = c.get('[data-testid="tooltip-trigger"]');
+    expect(trigger.attributes("aria-label")).toContain("needs a target date");
+    await trigger.trigger("click");
+    expect(c.get('[data-testid="tooltip-text"]').text()).toContain("Needs a target date");
+  });
+
+  it("UI-117: the ratio switch is a 1/x button that only picks which server string is shown", async () => {
+    const c = full(CONDOR);
+    expect(t(c, "ratio-switch").text()).toBe("1/x");
+    expect(t(c, "ratio-switch").attributes("aria-label")).toBe("Show Risk/Reward");
+    await t(c, "ratio-switch").trigger("click");
+    expect(t(c, "reward-risk").text()).toBe(CONDOR.summary.risk_reward);
+    expect(t(c, "ratio-switch").attributes("aria-label")).toBe("Show Reward/Risk");
+  });
+
+  it("UI-117: POP sits in Block 2 when the slot has it; with the slot empty (held) there is no POP row", () => {
+    const withPop = full(CONDOR, { pop: '<div data-testid="pop-row">POP</div>' });
+    expect(t(withPop, "summary-block-ratios").find('[data-testid="pop-row"]').exists()).toBe(true);
+    const held = full(CONDOR);
+    expect(t(held, "pop-row").exists()).toBe(false);
+    expect(t(held, "summary-block-ratios").text()).not.toContain("POP");
+  });
+
+  it("UI-120: the yellow index-level card is gone, and no health colour is used", () => {
+    const c = full(CONDOR);
+    expect(t(c, "spot-level").exists()).toBe(false);
+    expect(c.html()).not.toMatch(/yellow|amber/);
+  });
+
+  it("ADR-008: the card shows no decimal number the reply did not send", () => {
+    const c = full(CONDOR);
+    const sent = JSON.stringify(CONDOR);
+    for (const n of c.text().match(/\d[\d,]*\.\d+/g) ?? []) expect(sent, n).toContain(n);
   });
 });

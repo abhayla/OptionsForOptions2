@@ -82,7 +82,7 @@ test('every number on the screen equals the API response text for the condor', a
   await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit)
   await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss)
   await expect(page.getByTestId('breakevens')).toHaveText(api.summary.breakevens.join(', '))
-  await expect(page.getByTestId('spot-level')).toHaveText(api.spot_level)
+  await expect(page.getByTestId('underlying-spot')).toHaveText(api.spot_level) // W-193: the yellow level card is gone (UI-120)
   await expect(page.getByTestId('sum-lose')).toHaveText(api.summary.what_can_i_lose)
   await expect(page.getByTestId('sum-make')).toHaveText(api.summary.what_can_i_make)
   await expect(page.getByTestId('sum-make')).toContainText('4,539.65')

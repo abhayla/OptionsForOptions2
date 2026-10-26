@@ -13,8 +13,9 @@ const text = computed(() => popText(props.pop))
 </script>
 
 <template>
-  <div v-if="on && text" class="mt-2 flex items-center text-sm">
-    <p data-testid="pop-figure">{{ text }}</p>
-    <FigureHint id="probability_of_profit" />
+  <!-- W-193 (UI-117): a label-value row in Block 2 of the summary card; absent while held, never a dash. -->
+  <div v-if="on && text" class="flex min-h-7 items-center justify-between gap-2 text-sm" data-testid="pop-row">
+    <span class="flex items-center text-ink-muted">POP<FigureHint id="probability_of_profit" /></span>
+    <p class="text-right font-medium text-ink" data-testid="pop-figure">{{ text }}</p>
   </div>
 </template>

@@ -385,7 +385,7 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     expect(state(w)).toBe('from-entries')
     expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
     expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
-    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="underlying-spot"]').text()).toBe('—') // W-193: the level card is gone; the spot is in the underlying bar
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
     expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)
     w.unmount()

@@ -5,10 +5,14 @@
 import { computed, ref, watch } from 'vue'
 import { VIEWS, isPoints, rangeIsComplete } from '@/lib/scenarioChoice'
 import FigureHint from '@/components/common/FigureHint.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 
 const props = defineProps({
   choice: { type: Object, required: true },
   scenarioLabel: { type: String, default: '' },
+  // W-193 (I-9): the reply's data label (for example "estimated from spot"), the tooltip beside the Estimated Now switch
+  // until the chart legend (PR-2c) draws the estimate; the server's text as sent.
+  estimateNote: { type: String, default: '' },
 })
 const emit = defineEmits(['update:choice'])
 
@@ -52,6 +56,7 @@ const resetRange = () => {
         >
           {{ v.label }}
         </button>
+        <span v-if="estimateNote" data-testid="estimate-note"><Tooltip :text="estimateNote" label="About the price data of the estimate" /></span>
       </div>
       <label class="flex items-center gap-2">First level
         <input v-model="start" data-testid="range-start" inputmode="numeric" class="w-24 rounded border border-line px-2 py-1" />
