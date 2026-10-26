@@ -1,7 +1,8 @@
 """Every e2e stand-in of the strategy socket echoes the server's seq (finding e2e-stand-in-drifts-from-server).
 
 Run 40083846807: the page began to drop a strategy-socket push whose `seq` is not the version it sent; two Playwright
-specs that played the server themselves sent no seq and only the CI Playwright job noticed. frontend/e2e/support/echoSeq.ts
+specs that played the server themselves sent no seq and only the CI Playwright job noticed.
+frontend/e2e/support/echoSeq.ts
 is the one place a spec copies the seq. This test reads, with plain text scanning (no node), every
 `routeWebSocket(<url>, <handler>)` under frontend/e2e and asserts the handlers of the STRATEGY socket are safe.
 
@@ -9,23 +10,29 @@ The strategy socket URL is read from `export const LIVE_PATH = '...'` in fronten
 the path the real client opens (never typed here).
 
 Per routeWebSocket call, answer states:
-- URL is a plain string literal that does not end with LIVE_PATH: another socket (chain, indices); not this test's concern.
+- URL is a plain string literal that does not end with LIVE_PATH: another socket (chain, indices); not this test's
+concern.
 - URL is not a plain literal (template with ${}, variable, concatenation): FAIL CLOSED, the socket cannot be identified.
 - strategy socket, handler calls connectToServer(): a pass-through to the real server, which echoes seq itself; allowed.
 - strategy socket, handler never sends (`.send(` absent): a silent socket (support/quiet-live.ts); allowed.
-- strategy socket, handler sends AND uses echoSeq() with .stamp(...) AND the file imports echoSeq from support/echoSeq: allowed.
+- strategy socket, handler sends AND uses echoSeq() with .stamp(...) AND the file imports echoSeq from
+support/echoSeq: allowed.
 - strategy socket, handler sends but the helper is missing (or imported from elsewhere): FAIL.
 LIVE_PATH not found / not a literal, or no e2e dir: FAIL CLOSED.
 
 Measured on origin/main b7670e10 (step 1): 8 routeWebSocket calls; strategy socket: execute-screen and feed-reconnect
-(fakes, both use echoSeq), live-strategies and strategy-live (connectToServer pass-through), support/quiet-live (silent);
+(fakes, both use echoSeq), live-strategies and strategy-live (connectToServer pass-through), support/quiet-live
+(silent);
 other sockets: chain-selection (fake of /api/market/chain/live, not versioned in useChainLive.js), home and index-view
 (pass-through of /api/market/indices/live). Fakes of the strategy socket without echoSeq: 0.
 
 Known blind spots: a socket opened by a page-side `new WebSocket` override (addInitScript) instead of routeWebSocket; a
-pass-through handler that rewrites the server's pushes; a handler that imports echoSeq but never stamps the push it sends
-(only the presence of `.stamp(` in the handler is checked); a `//` after whitespace inside a string literal; a `//` inside a string literal that follows whitespace; a URL passed through a variable (fails closed, by design);
-parentheses inside a regex literal in a handler (the balance scan skips quoted strings only). Presence check, not behaviour.
+pass-through handler that rewrites the server's pushes; a handler that imports echoSeq but never stamps the push it
+sends
+(only the presence of `.stamp(` in the handler is checked); a `//` after whitespace inside a string literal; a `//`
+inside a string literal that follows whitespace; a URL passed through a variable (fails closed, by design);
+parentheses inside a regex literal in a handler (the balance scan skips quoted strings only). Presence check, not
+behaviour.
 """
 
 import os
@@ -46,7 +53,7 @@ IMPORT_RE = re.compile(r"""import\s*\{[^}]*\bechoSeq\b[^}]*\}\s*from\s*['"](?:\.
 def strategy_path(source: str) -> str:
     m = re.search(r"""export\s+const\s+LIVE_PATH\s*=\s*(['"])([^'"`$]+)\1""", source)
     if not m:
-        pytest.fail(f"LIVE_PATH is not a plain string literal in {LIVE_FILE}; cannot tell which socket is the strategy one")
+        pytest.fail(f"LIVE_PATH is not a plain string literal in {LIVE_FILE}; cannot find the socket")
     return m.group(2)
 
 
@@ -59,7 +66,7 @@ def _skip_string(text: str, i: int) -> int:
 
 
 def _call_args(text: str, open_idx: int) -> str:
-    """The text between the parenthesis at open_idx and its match (quoted strings skipped). Fails closed if unbalanced."""
+    """The text between the parenthesis at open_idx and its match (quoted strings skipped). Fails closed if open."""
     depth = 0
     i = open_idx
     while i < len(text):
@@ -100,14 +107,14 @@ def judge(rel: str, text: str, live_path: str) -> list[str]:
     code = _strip_comments(text)
     for url, args in socket_calls(text):
         if url is None:
-            problems.append(f"{rel}: routeWebSocket URL is not a plain string literal; cannot tell if it is the strategy socket")
+            problems.append(f"{rel}: routeWebSocket URL is not a plain string literal; cannot tell which socket it is")
             continue
         if not url.endswith(live_path):
             continue
         if "connectToServer(" in args or ".send(" not in args:
             continue  # pass-through to the real server, or a silent socket
         if not (re.search(r"\bechoSeq\s*\(", args) and ".stamp(" in args and IMPORT_RE.search(code)):
-            problems.append(f"{rel}: fakes the strategy socket {url} and sends pushes without the shared echoSeq helper")
+            problems.append(f"{rel}: fakes the strategy socket {url} and sends pushes without the echoSeq helper")
     return problems
 
 
@@ -142,7 +149,10 @@ def test_every_strategy_socket_stand_in_uses_the_shared_seq_helper():
 
 
 # parser answer states, on synthetic source
-SRC_FAKE = "import { x } from './y'\nawait page.routeWebSocket('**/api/strategies/live', (ws) => { ws.onMessage(() => ws.send('{}')) })\n"
+SRC_FAKE = (
+    "import { x } from './y'\n"
+    "await page.routeWebSocket('**/api/strategies/live', (ws) => { ws.onMessage(() => ws.send('{}')) })\n"
+)
 SRC_HELPER = (
     "import { echoSeq } from './support/echoSeq'\n"
     "await page.routeWebSocket('**/api/strategies/live', (ws) => {\n  const echo = echoSeq()\n"
@@ -160,7 +170,10 @@ def test_fake_without_helper_is_red_and_with_helper_is_green():
 
 
 def test_pass_through_silent_and_other_sockets_are_allowed():
-    through = "page.routeWebSocket('**/api/strategies/live', (ws) => { const s = ws.connectToServer(); ws.onMessage((m) => s.send(m)) })"
+    through = (
+        "page.routeWebSocket('**/api/strategies/live', "
+        "(ws) => { const s = ws.connectToServer(); ws.onMessage((m) => s.send(m)) })"
+    )
     silent = "page.routeWebSocket('**/api/strategies/live', () => {})"
     other = "page.routeWebSocket('**/api/market/chain/live', (ws) => { ws.send('{}') })"
     for src in (through, silent, other):
@@ -178,7 +191,11 @@ def test_computed_url_fails_closed():
 
 def test_live_path_unreadable_fails_closed():
     assert strategy_path("export const LIVE_PATH = '/api/strategies/live'\n") == "/api/strategies/live"
-    for bad in ("const LIVE_PATH = '/x'\n", "export const LIVE_PATH = `/api/${x}`\n", "export const LIVE_PATH = BASE + '/x'\n"):
+    for bad in (
+        "const LIVE_PATH = '/x'\n",
+        "export const LIVE_PATH = `/api/${x}`\n",
+        "export const LIVE_PATH = BASE + '/x'\n",
+    ):
         with pytest.raises(pytest.fail.Exception):
             strategy_path(bad)
     with pytest.raises(pytest.fail.Exception):
