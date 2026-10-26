@@ -101,7 +101,7 @@ def _statuses(registry) -> list:
 
 
 def _catalogue(permissions) -> ChainCatalogue:
-    return ChainCatalogue((EXPIRY,), CONTRACTS, permissions=permissions)
+    return ChainCatalogue(expiries=(EXPIRY,), contracts=CONTRACTS, permissions=permissions)
 
 
 def _live_provider() -> FakeProvider:
