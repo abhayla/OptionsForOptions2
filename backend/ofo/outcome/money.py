@@ -101,8 +101,8 @@ def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True) -
 
 @dataclass(frozen=True)
 class FundsShare:
-    """ADR-164: each maximum as a whole percent of the available funds Zerodha reported, with that figure and when it was
-    read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue wording."""
+    """ADR-164: each maximum as a whole percent of the available funds Zerodha reported, with that figure and when it
+    was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue wording."""
 
     funds: Any
     read_at: Any

@@ -149,8 +149,9 @@ class Summary:
     reward_risk_reason: ExplanationText | None = None
     time_value: Decimal | None = None
     intrinsic_value: Decimal | None = None
-    # REQ-081 (W-154): the money figures, all from ofo.outcome.money. ``value_label`` / ``value_reason``: the label of the
-    # time and intrinsic values, or why they are absent; ``funds_share`` is set after the margin read (CHECKED only).
+    # REQ-081 (W-154): the money figures, all from ofo.outcome.money. ``value_label`` / ``value_reason``: the label of
+    # the time and intrinsic values, or why they are absent; ``funds_share`` is set after the margin read
+    # (CHECKED only).
     risk_reward: Decimal | None = None
     net_premium: money.NetPremium | None = None
     value_label: ExplanationText | None = None
@@ -192,7 +193,8 @@ class Outcome:
     payoff_points: tuple[tuple[Decimal, Decimal], ...] = ()
     summary: Summary | None = None
     centre_label: ExplanationText | None = None  # FROM_ENTRIES only: where the level grid is centred, and why
-    charges_breakdown: ChargesBreakdown | None = None  # ADR-167 (2): the round trip by component; None = no rate set / not priced
+    # ADR-167 (2): the round trip by component; None = no rate set / not priced
+    charges_breakdown: ChargesBreakdown | None = None
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
