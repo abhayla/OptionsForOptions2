@@ -62,6 +62,8 @@ describe('builder page: the margin line asks the basket_margin_quote flag', () =
     expect(t(w, 'margin-figures').exists()).toBe(true)
     expect(t(w, 'margin-hidden-reason').exists()).toBe(false)
     expect(calls.filter((c) => c.url === '/broker/capabilities')).toHaveLength(1)
+    // row 26f (issue #561): the funds_needed mark sits with the figures, next to the existing margin marks
+    expect(w.find('[data-testid="margin"] [data-figure="funds_needed"]').exists()).toBe(true)
   })
 
   it.each([
@@ -74,5 +76,6 @@ describe('builder page: the margin line asks the basket_margin_quote flag', () =
     expect(t(w, 'margin-hidden-reason').text()).toBe(REASON)
     expect(t(w, 'margin-figures').exists()).toBe(false)
     expect(t(w, 'margin-checked-at').exists()).toBe(false)
+    expect(w.find('[data-testid="margin"] [data-figure]').exists()).toBe(false)
   })
 })

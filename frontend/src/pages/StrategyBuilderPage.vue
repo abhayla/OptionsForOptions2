@@ -15,6 +15,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
+import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
@@ -502,6 +503,7 @@ const pricesStamp = computed(() => {
         </ul>
       </div>
 
+      <MoneySummary :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" />
       <SummaryCards
         class="mt-4"
         :max-profit="maxProfit"
@@ -516,6 +518,10 @@ const pricesStamp = computed(() => {
         :reward-risk-reason="data.summary.reward_risk_reason ?? null"
         :time-value="data.summary.time_value ?? null"
         :intrinsic-value="data.summary.intrinsic_value ?? null"
+        :risk-reward="data.summary.risk_reward ?? null"
+        :value-label="data.summary.value_label ?? null"
+        :value-reason="data.summary.value_reason ?? null"
+        :funds-share="data.summary.funds_share ?? null"
       />
       <ProjectionsNote />
       <p v-if="pricesStamp" class="px-4 text-xs text-ink-muted" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
