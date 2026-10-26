@@ -16,6 +16,8 @@ const props = defineProps({
     validator: (v) => ["left", "right"].includes(v),
   },
   width: { type: String, default: "420px" },
+  // W-195: keep the content mounted (hidden) while closed, so its state and requests survive a close (the leg picker)
+  persist: { type: Boolean, default: false },
 });
 const emit = defineEmits(["close"]);
 const panel = ref(null);
@@ -52,7 +54,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    v-if="open"
+    v-if="open || persist"
+    v-show="open"
     class="fixed inset-x-0 top-14 bottom-0 z-50"
     data-testid="drawer-root"
     @keydown="onRootKey"

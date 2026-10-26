@@ -386,9 +386,9 @@ async function editLeg(edit) {
   }
 }
 const picker = ref(null)
-// W-192 UI-108/UI-110: the inline add-leg form sits in the left column behind Add/Edit (open on an empty builder) until the
-// PR-3 drawer replaces it. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover (UI-103).
-const pickerOpen = ref(legs.value.length === 0)
+// W-195 (ADR-193 UI-200): the leg picker is the left slide-in drawer, opened by Add/Edit or the empty state's buttons; the
+// inline add-leg form is gone from the left column. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover.
+const pickerOpen = ref(false)
 const settingsOpen = ref(false)
 const settingsRoot = ref(null)
 const settingsButton = ref(null)
@@ -407,10 +407,8 @@ const openInPicker = (i) => {
   pickerOpen.value = true
   picker.value?.startEdit(leg)
 }
-const focusPicker = async () => {
+const focusPicker = () => {
   pickerOpen.value = true
-  await nextTick()
-  document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
 }
 // "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
 // existing tracking block (right column)
@@ -528,17 +526,19 @@ const pricesStamp = computed(() => {
         </LegList>
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
-            <button type="button" class="rounded border border-line px-3 py-1" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+            <button type="button" class="rounded border border-line px-3 py-1" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
           <template #menu="{ close }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
             <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
           </template>
-          <template #after-actions>
-            <div v-show="pickerOpen" class="mt-4" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" /></div>
-          </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
         </SaveDraftBar>
+        <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
+             it on a leg and a half-made selection survives a close -->
+        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist @close="pickerOpen = false">
+          <div data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" @update:legs="setLegs" @done="pickerOpen = false" /></div>
+        </Drawer>
         <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
           <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
         </Drawer>

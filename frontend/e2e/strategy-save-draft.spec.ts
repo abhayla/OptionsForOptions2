@@ -73,6 +73,7 @@ async function legFields(page: Page) {
 test('a saved draft reopens from the saved list with identical legs, planned entries and capture times', async ({ page }) => {
   await stubCapture(page)
   await page.goto(`${URL}/strategy/builder?rules_ref=${TAG}`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('pick-expiry')).toBeVisible()
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1) // the API's expiries have arrived
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
@@ -121,6 +122,7 @@ const listIds = async (page: Page): Promise<number[]> =>
 async function startCondor(page: Page, tag: string) {
   await stubCapture(page)
   await page.goto(`${URL}/strategy/builder?rules_ref=${tag}`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1)
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
     (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)

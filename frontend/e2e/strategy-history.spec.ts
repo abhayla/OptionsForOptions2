@@ -46,6 +46,7 @@ async function addLeg(page: Page, type: string, action: string, strikeIndex: num
 async function startAndSave(page: Page, name: string) {
   await stubCapture(page)
   await page.goto(`${URL}/strategy/builder?rules_ref=${TAG}`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1)
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
     (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)

@@ -168,3 +168,21 @@ export function lotChoices(mode, lotSize) {
 export function contractByInstrumentId(contracts, id) {
   return contracts.find((c) => instrumentId(c.exchange_segment, c.exchange_token) === id) ?? null
 }
+
+/** W-195 (UI-202): the OI bar's display scale - each cell's OI as a percent of the largest OI in the rows on screen,
+ *  keyed by instrument id. A drawing width only, never shown as a figure and never a money number (ADR-008); the OI
+ *  itself is shown as the server sent it. A missing or non-integer OI draws no bar. */
+export function oiBarPercents(rows) {
+  const cells = (rows ?? []).flatMap((r) => [r?.ce, r?.pe]).filter((c) => c && Number.isInteger(c.oi))
+  const largest = cells.reduce((m, c) => (c.oi > m ? c.oi : m), 0)
+  const out = {}
+  if (largest > 0) for (const c of cells) out[c.instrument_id] = (c.oi * 100) / largest
+  return out
+}
+
+/** W-195 (UI-202): which half of each row is in the money, read from the server's ATM flag and the ascending row order
+ *  only (calls below the ATM row, puts above it). No ATM row (no live spot) shades nothing: never guessed. */
+export function itmSides(rows) {
+  const atm = (rows ?? []).findIndex((r) => r.is_atm)
+  return (rows ?? []).map((_, i) => ({ ce: atm >= 0 && i < atm, pe: atm >= 0 && i > atm }))
+}

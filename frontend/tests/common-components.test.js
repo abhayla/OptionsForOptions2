@@ -165,6 +165,17 @@ describe('Drawer (UI-016)', () => {
     await w.get('[data-testid="drawer-overlay"]').trigger('click')
     expect(w.emitted('close')).toHaveLength(1)
   })
+
+  it('W-195 persist: closed, the content stays mounted but hidden; without persist a closed drawer renders nothing', async () => {
+    const w = mount(Drawer, { props: { open: false, title: 'Add a leg', side: 'left', persist: true }, slots: { default: '<p data-testid="kept">kept</p>' } })
+    expect(w.find('[data-testid="kept"]').exists()).toBe(true)
+    expect(w.get('[data-testid="drawer-root"]').element.style.display).toBe('none')
+    await w.setProps({ open: true })
+    expect(w.get('[data-testid="drawer-root"]').element.style.display).toBe('')
+    const plain = mount(Drawer, { props: { open: false, title: 'Warnings' }, slots: { default: '<p data-testid="kept">kept</p>' } })
+    expect(plain.find('[data-testid="drawer-root"]').exists()).toBe(false)
+    expect(plain.find('[data-testid="kept"]').exists()).toBe(false)
+  })
 })
 
 describe('Tooltip (UI-017, Revision 1 M6)', () => {
