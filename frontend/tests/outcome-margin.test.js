@@ -57,7 +57,7 @@ describe('outcome margin slot (ADR-099)', () => {
   it('shortfall: the figures, the shortfall mark and the Checked-at time', () => {
     const w = line(STATES.shortfall)
     expect(t(w, 'margin').attributes('data-margin-state')).toBe('CHECKED')
-    expect(t(w, 'margin-figures').text()).toBe('Margin (Zerodha): Rs 7065.50 needed, Rs 671.50 available')
+    expect(t(w, 'margin-figures').text()).toBe(STATES.shortfall.reason)
     expect(t(w, 'margin-figures').classes()).toContain('text-red-700')
     expect(t(w, 'margin-shortfall').text()).toBe('Available funds are below the margin needed.')
     expect(t(w, 'margin-checked-at').text()).toBe('Checked at 16 Oct 2026, 12:08:52 IST')
@@ -80,10 +80,27 @@ describe('outcome margin slot (ADR-099)', () => {
 
   it('enough funds: the figures without a shortfall mark', () => {
     const w = line(STATES.enough)
-    expect(t(w, 'margin-figures').text()).toBe('Margin (Zerodha): Rs 7065.50 needed, Rs 12500.00 available')
+    expect(t(w, 'margin-figures').text()).toBe(STATES.enough.reason)
     expect(t(w, 'margin-figures').classes()).not.toContain('text-red-700')
     expect(t(w, 'margin-shortfall').exists()).toBe(false)
     expect(t(w, 'margin-checked-at').text()).toBe('Checked at 16 Oct 2026, 12:08:52 IST')
+  })
+
+  it('REQ-055 AC-3: the browser adds no Zerodha label; the server text names the two figures apart', () => {
+    const w = line(STATES.short)
+    const text = t(w, 'margin-figures').text()
+    expect(text).toBe(STATES.short.reason)
+    expect(text).toContain("Zerodha's own margin figure is ₹6,409.00")
+    expect(text).toContain('about ₹7,065.50 is needed (an estimate)')
+    expect(w.text()).not.toContain('Margin (Zerodha)')
+    expect(w.text()).not.toMatch(/Zerodha says/)
+  })
+
+  it('an old reply without broker_needed still renders its server line', () => {
+    expect(STATES.old_reply.broker_needed).toBeUndefined()
+    const w = line(STATES.old_reply)
+    expect(t(w, 'margin-figures').text()).toBe(STATES.old_reply.reason)
+    expect(t(w, 'margin-shortfall').exists()).toBe(true)
   })
 
   it('the shortfall mark follows the server flag only, never a browser comparison', () => {

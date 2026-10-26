@@ -1024,11 +1024,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_checked": {
-    "sha256": "020eabd2e5e7f1639dab1ef453be7255578bc9d8ca31851accadc8915d993b94",
+    "sha256": "f1a91dba85d9d187d9904859c910edc0e2bafcecc6ef85a343de4a69ea881d4a",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_short": {
-    "sha256": "785064e95b053990e665276cc0a971c000de6f451fbdd67295bbd7de2dbe1e7d",
+    "sha256": "9bbe351dceab20214af0970262fa59f73990fa5393b521ac05907582663f3573",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_unreadable": {
@@ -1356,7 +1356,7 @@
     "reviewed": "pending owner read"
   },
   "margin_basket_insufficient": {
-    "sha256": "322daa3cb313eae76eb7e9b41a1c6dbeebd925455b044380f98d1788d36a9773",
+    "sha256": "c339bc309c8e06bf838c7a8b8a7396acb7dfc512ec994c31d2279d49896b9a6d",
     "reviewed": "pending owner read"
   },
   "order_path_off": {

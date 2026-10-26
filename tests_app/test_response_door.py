@@ -1758,10 +1758,19 @@ def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for
 
 def test_margin_shortfall_reason_is_catalogue_text_and_a_free_string_is_refused() -> None:
     """REQ-055 AC-4: MarginOut.shortfall_reason is a catalogue line; a typed-in sentence is refused at the door."""
-    line = render_explanation("outcome_margin_short", needed=Decimal("7065.50"), available=Decimal("671.50"))
+    line = render_explanation("outcome_margin_short", broker_needed=Decimal("6409.00"), needed=Decimal("7065.50"),
+                              available=Decimal("671.50"))
     base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
     ok = MarginOut(**base, shortfall=True, shortfall_reason=line)
     assert json.loads(api_models.emit(ok))["shortfall_reason"] == str(line)
     assert json.loads(api_models.emit(MarginOut(**base)))["shortfall_reason"] is None
     with pytest.raises(ValidationError, match="never a plain string"):
         MarginOut(**base, shortfall=True, shortfall_reason=str(line))
+
+
+def test_margin_broker_needed_is_a_money_string_and_never_a_number() -> None:
+    """REQ-055 AC-3: Zerodha's own figure rides next to ours as a money string (two decimals), absent by default."""
+    base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
+    body = json.loads(api_models.emit(MarginOut(**base, needed=Decimal("7065.50"), broker_needed=Decimal("6409.00"))))
+    assert (body["broker_needed"], body["needed"]) == ("6409.00", "7065.50")
+    assert json.loads(api_models.emit(MarginOut(**base)))["broker_needed"] is None
