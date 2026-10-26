@@ -15,6 +15,7 @@ from decimal import Decimal
 
 import pytest
 
+from ofo.errors.templates import CATALOGUE
 from ofo.execution import margin_gate
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 
@@ -255,6 +256,32 @@ def test_adr094_core_real_long_strangle_reply_adds_the_premium_above_kites_figur
     assert [o["option_premium"] for o in data["orders"]] == [Decimal("2697.5"), Decimal("3711.5")]
     assert [(o.quantity, o.price) for o in orders] == [(65, Decimal("45.55")), (65, Decimal("63.15"))]
     assert required_from_basket_reply(data, orders) == Decimal("7065.50")
+
+
+def test_f2_a_block_our_estimate_decided_never_states_zerodhas_verdict(strangle) -> None:
+    """F2 (REQ-055 AC-3, ADR-094): Zerodha's own final.total 6409 is covered by the 7000 available; our estimate 7065.50
+    (6409 plus the BUY top-up) blocks. No part of the refusal may say Zerodha would reject; same decision as before."""
+    data, orders = strangle
+    assert data["final"]["total"] == Decimal("6409") < Decimal("7000")
+    verdict = check_margin(Decimal("7000"), required_from_basket_reply(data, orders))
+    assert verdict.allowed is False and verdict.message is not None
+    shown = " ".join((verdict.message.what_happened, verdict.message.impact, verdict.message.what_is_blocked,
+                      verdict.message.next_action))
+    assert "Zerodha would reject" not in shown and "Zerodha's figure is final" not in shown
+    assert verdict.message.impact == (
+        "Funds are below the margin this plan needs (our estimate, including the premium up to your limit prices), "
+        "so the basket was not built.")
+    assert check_margin(Decimal("7065.50"), Decimal("7065.50")).allowed is True
+    assert check_margin(Decimal("7065.49"), Decimal("7065.50")).allowed is False
+    assert check_margin(Decimal("-1"), Decimal("0")).allowed is False
+
+
+def test_f2_the_other_margin_texts_state_no_zerodha_verdict_either() -> None:
+    """F2 class: the Execute check and the older margin_insufficient text also never say Zerodha would reject."""
+    for template_id in ("margin_insufficient", "gate_margin_insufficient", "margin_basket_insufficient"):
+        template = CATALOGUE[template_id]
+        shown = " ".join((template.what_happened, template.impact, template.what_is_blocked, template.next_action))
+        assert "Zerodha would reject" not in shown and "figure is final" not in shown, template_id
 
 
 def test_adr094_the_1033_case_two_buy_legs_5_above_live() -> None:

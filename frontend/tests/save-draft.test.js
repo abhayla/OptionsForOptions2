@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import {
   STRATEGY_NAME_DEFAULT, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsFromSaved, legsLine, noMatchText, plainName,
-  searchStrategies, strategyLabel, trackedText,
+  saveAsName, searchStrategies, strategyLabel, trackedText,
 } from '@/lib/saveDraft'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 
@@ -374,13 +374,35 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
   })
 })
 
+describe('ADR-192: the Save As pre-fill is the cut original plus " copy", at most 20 characters', () => {
+  it.each([
+    ['Iron fly', 'Iron fly copy'], // 8
+    ['123456789012345', '123456789012345 copy'], // 15 -> exactly 20
+    ['1234567890123456', '123456789012345 copy'], // 16: one character cut
+    ['NIFTY Oct condor', 'NIFTY Oct condo copy'], // the spec example
+    ['x'.repeat(25), `${'x'.repeat(15)} copy`],
+    ['x'.repeat(20), `${'x'.repeat(15)} copy`], // a full-length name
+  ])('%s -> %s', (name, expected) => {
+    const out = saveAsName(name)
+    expect(out).toBe(expected)
+    expect(out.length).toBeLessThanOrEqual(20)
+  })
+  it('a cut that ends in a space drops the space', () => {
+    expect(saveAsName('abcdefghijklmn opq')).toBe('abcdefghijklmn copy') // cut at 15 leaves a trailing space
+  })
+  it('no name gives the default name plus the suffix', () => {
+    expect(saveAsName(null)).toBe(`${STRATEGY_NAME_DEFAULT} copy`)
+    expect(saveAsName(undefined)).toBe('New Strategy copy')
+  })
+})
+
 describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never sends the original', () => {
   const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
   it('Save As is offered only for a saved strategy and prefills "<name> copy" without the API quotes', async () => {
     expect(t(await bar(), 'save-as').exists()).toBe(false)
     const w = await bar({ current })
     await t(w, 'save-as').trigger('click')
-    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor copy')
+    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condo copy') // ADR-192: 20 characters, cut from the end
     expect(t(w, 'name-form').attributes('data-mode')).toBe('save-as')
   })
   it('confirming POSTs a NEW strategy with the typed name and the on-screen legs, then opens the copy; no request names id 7', async () => {
