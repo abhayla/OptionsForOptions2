@@ -521,7 +521,7 @@ const pricesStamp = computed(() => {
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
         </SaveDraftBar>
-        <Drawer :open="historyOpen && !!openStrategy" title="History" side="right" @close="historyOpen = false">
+        <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
           <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
         </Drawer>
 
