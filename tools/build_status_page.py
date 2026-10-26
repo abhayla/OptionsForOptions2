@@ -610,7 +610,7 @@ def read_work_ages(root: Path, now: datetime.datetime | None = None) -> dict[str
     ages: dict[str, float | None] = {}
     if out is None:
         return {str(w.get("id")): None for w in read_works(Path(root))}
-    for block in out.split("")[1:]:
+    for block in out.split("\x01")[1:]:
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
         when = _parse_iso(lines[0]) if lines else None
         for f in lines[1:]:
@@ -639,7 +639,7 @@ def read_this_week(root: Path, prs: dict | None = None, now: datetime.datetime |
     if out is None:
         unm.append(_unm(_git_cmd(*args)))
         out = ""
-    for block in out.split("")[1:]:
+    for block in out.split("\x01")[1:]:
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
         if not lines:
             continue

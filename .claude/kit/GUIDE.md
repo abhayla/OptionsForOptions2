@@ -6,6 +6,7 @@ line; read it before pushing or touching process files.
 ## Commands (mirror CI before every push)
 - `pip install pyyaml jsonschema pytest` (once)
 - `python tools/kit_settings.py . --check`
+- `python tools/check_control_bytes.py .` (no control bytes in tracked text files; exempt one with a reason in `.claude/project/control-bytes-allow.txt`)
 - `python tools/factory_lint.py .`
 - `python tools/trace_check.py .`
 - `python tools/build_order.py . --check` (regenerate without `--check`; before starting work: `--may-start REQ-###`)
@@ -26,9 +27,15 @@ line; read it before pushing or touching process files.
 module; any changed file it cannot place (a fixture, a schema, an unknown type, a conftest or a requirements file) runs the
 full suite. `--full` runs everything (a kit release, or after a large merge); `--list` shows the plan. In CI a pull
 request that `python tools/change_scope.py` calls `docs-only`, its changes all records (`docs/`, `spec/`, `views/`, `knowledge/`, `evidence/`, `work/`, `releases/`,
-`plans/`, `owner-questions/`, root `.md`) runs the spec checks only; `.claude/project/ci-docs-only-tests.txt`, if present,
-adds tests to that run, as `python -m pytest -q -p no:cacheprovider $TESTS`. Code pull requests and every push to main
+`plans/`, `owner-questions/`, root `.md`) runs the spec checks and the records test set: the tests marked `records` (or the marker named in
+`.claude/project/ci-records-marker.txt`; none marked is a warning, not a failure). `.claude/project/ci-docs-only-tests.txt`, if present,
+adds tests to that set, as `python -m pytest -q -p no:cacheprovider $TESTS`. A change that touches a records file
+also adds the marked tests to `ci_local.py`'s selection. When the change needed tests and no test step ran,
+`ci_local.py` ends its total line with `TESTS NOT RUN` and exits 1; `--no-tests` accepts that on purpose. Code pull requests and every push to main
 run the full suite.
+
+## Trigger paths: heavy CI before the checker
+List your trigger paths in `.claude/project/ci-trigger-paths.txt` (one glob per line, `#` comments; migrations, API reply models, socket messages: whatever your database and end-to-end suites read). Your heavy workflow must run on draft pull requests, because the kit's own CI job skips drafts.
 
 ## Kit files: never edit them in the project
 `.claude/rules/kit/`, `.claude/kit/` (this guide included), `.claude/README.md`, `.claude/hooks/`, `.claude/agents/`,

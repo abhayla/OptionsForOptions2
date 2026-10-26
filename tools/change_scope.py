@@ -9,13 +9,23 @@ repo root, AND ends in a listed lower-case extension, AND is not named like a te
 anything it cannot resolve (unreadable diff, unknown base, shallow clone, any exception), is `code`:
 a wrong `code` costs one full test run, a wrong `docs-only` skips tests that could have caught a break.
 
+Trigger mode (REQ-063 AC-5, OD-125): `python tools/change_scope.py --base <sha> [--head <sha>] --triggers` reads
+`.claude/project/ci-trigger-paths.txt` at the git top level (one glob per line; blank lines, `#` comment lines and a
+trailing ` # note` ignored; a missing file means no triggers) and prints each changed path (both paths of a rename) that matches any glob, one per line,
+then exits 0; it prints nothing when none match. Glob dialect (tiny matcher, `glob_to_regex`): `*` is any run of
+characters inside one folder name, `?` is one such character, `**/` is any number of folders (including none), a
+trailing `**` is everything below; every other character is literal; the match is against the whole path. When the
+diff or base cannot be read it prints `UNKNOWN` and exits 0; the caller treats UNKNOWN as "triggers matched".
+
 Stdlib only. The rule tables are module-level data on purpose (the tests loosen each one in turn).
 """
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 DOCS_FOLDERS = ("docs", "spec", "views", "knowledge", "evidence", "work", "releases", "plans", "owner-questions")
 ALLOWED_EXTENSIONS = (".md", ".json", ".yaml", ".yml", ".csv", ".html", ".svg", ".png")
@@ -128,14 +138,95 @@ def classify_range(base: str, head: str = "HEAD") -> str:
         return ON_DOUBT
 
 
+TRIGGER_FILE = (".claude", "project", "ci-trigger-paths.txt")
+UNKNOWN = "UNKNOWN"
+
+
+def glob_to_regex(glob: str) -> "re.Pattern[str]":
+    """Translate one trigger glob to a whole-path regex (dialect in the module docstring)."""
+    out, i = [], 0
+    while i < len(glob):
+        if glob.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif glob.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif glob[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif glob[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(glob[i]))
+            i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def read_trigger_globs(root: str = ".") -> list[str]:
+    """Globs from the project's trigger file; a missing file means none."""
+    path = Path(root).joinpath(*TRIGGER_FILE)
+    if not path.is_file():
+        return []
+    globs = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = re.split(r"(?:^|\s)#", line, maxsplit=1)[0].strip()   # a full-line or trailing ` # note` comment
+        if line:
+            globs.append(line)
+    return globs
+
+
+def repo_root() -> str:
+    """The git top-level folder, so the trigger file is found from any subfolder; `.` when git cannot say."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30)
+        return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else "."
+    except Exception:
+        return "."
+
+
+def matching_paths(entries, globs: list[str]) -> list[str]:
+    patterns = [glob_to_regex(g) for g in globs]
+    found: list[str] = []
+    for entry in entries:
+        for p in entry[1]:
+            if p not in found and any(rx.match(p) for rx in patterns):
+                found.append(p)
+    return found
+
+
+def trigger_paths(base: str, head: str = "HEAD", root: str | None = None) -> list[str] | None:
+    """Matching changed paths; None (-> UNKNOWN) when the diff cannot be read. Never raises."""
+    try:
+        entries = changed_entries(base, head)
+        if entries is None:
+            return None
+        return matching_paths(entries, read_trigger_globs(repo_root() if root is None else root))
+    except Exception:
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         ap = argparse.ArgumentParser(description=__doc__)
         ap.add_argument("--base", default="")
         ap.add_argument("--head", default="HEAD")
+        ap.add_argument("--triggers", action="store_true")
         args = ap.parse_args(argv)
+        if args.triggers:
+            found = trigger_paths(args.base, args.head)
+            if found is None:
+                print(UNKNOWN)
+            elif found:
+                print("\n".join(found))
+            return 0
         result = classify_range(args.base, args.head)
     except BaseException:  # argparse exits via SystemExit; still answer `code`
+        if "--triggers" in (argv if argv is not None else sys.argv[1:]):
+            print(UNKNOWN)
+            return 0
         result = ON_DOUBT
     print(result)
     return 0

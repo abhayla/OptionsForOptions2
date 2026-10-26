@@ -25,8 +25,9 @@ Post-review bookkeeping carve-out (OD-86). Trust is decided by exact SHAPE, neve
 trace_check pick files up by NAME (a conftest.py or test_*.py anywhere), so a folder carve-out would be a code
 execution carve-out. A PR-pushed file in C is bookkeeping only when the T check passed first and it is one of:
 evidence/W-<id>/AC-<n>.md, reviews/W-<id>-r<n>.md (ids of 3 or more digits, .md only, and only for the PR's OWN
-work items, the W-ids whose work/W-<id>.md is in the PR diff at R); views/trace.md, views/build-order.md,
-views/spec-digest.md (the only views CI regenerates and compares); work/W-<own id>.md where only status,
+work items, the W-ids whose work/W-<id>.md is in the PR diff at R); any generated file named in the one table
+tools/generated_files.py (views/trace.md, views/build-order.md, views/spec-digest.md, spec/requirements/INDEX.md,
+knowledge/findings/INDEX.md; see "Generated files" below); work/W-<own id>.md where only status,
 verification_status, review_status and next_action differ between R and H (every other field, tests_required
 included, and the body must be equal; a work item added after review is not bookkeeping). Anything else pushed after
 review is RE-REVIEW NEEDED. When bookkeeping is present, trace_check must pass at H, run on a `git archive` of H in
@@ -34,6 +35,13 @@ a temp dir (fetch, extract, this interpreter, timeout, remove); a non-zero exit,
 refuses (fail closed). Honesty line: the gate guarantees the bookkeeping is inert (no code runs because of it and
 it changes nothing a reviewer judged); whether the evidence is honest stays the orchestrator's duty, not this
 tool's.
+
+Generated files (REQ-063 AC-4): tools/generated_files.py is the one table of every generated file with its regenerate
+and check command (ci_local.py --regen reads it too). A table file changed after review (in C and in a PR diff,
+past the Tier A check, which still runs first for every file) is bookkeeping only when its check command exits 0 on
+the same archive of H that trace_check runs on: one extraction, trace_check, then each needed check. A non-zero
+exit, a timeout or a missing tool refuses with "RE-REVIEW NEEDED: <file>". A file not in the table is refused.
+Editing a generator itself is a tools/ change, refused as non-bookkeeping.
 
 Known gap (no fix without branch protection): the base can move between the staleness check and the merge. GitHub
 then merges the PR into a base that CI never saw, an untested combination; only branch protection ("require branches
@@ -70,6 +78,9 @@ import sys
 import tarfile
 import tempfile
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # tools/ and a project's tools/ both ship it
+import generated_files  # noqa: E402 - the one table of generated files (REQ-063 AC-4)
 
 # The kit CI workflow name and job id in the template CI workflow (a test asserts both are equal). A merge
 # needs the kit job itself to have PASSED on the head: other checks passing, or the kit job being skipped
@@ -648,7 +659,6 @@ _HEX40 = re.compile(r"[0-9a-fA-F]{40}")
 _WORK_ITEM = re.compile(r"work/W-([0-9]{3,})\.md")
 _EVIDENCE = re.compile(r"evidence/W-([0-9]{3,})/AC-[0-9]+\.md")
 _REVIEW_RECORD = re.compile(r"reviews/W-([0-9]{3,})-r[0-9]+\.md")
-_CI_VIEWS = {"views/trace.md", "views/build-order.md", "views/spec-digest.md"}  # CI regenerates and compares these
 _WORK_STATUS_FIELDS = {"status", "verification_status", "review_status", "next_action"}
 
 
@@ -662,7 +672,7 @@ def bookkeeping_shape(path, own_ids):
     match = _EVIDENCE.fullmatch(path) or _REVIEW_RECORD.fullmatch(path) or _WORK_ITEM.fullmatch(path)
     if match:
         return _own(match, own_ids)
-    return path in _CI_VIEWS
+    return path in generated_files.paths()   # the one table; a file not in it is never bookkeeping
 
 
 def reviewed_sha_problem(value):
@@ -704,8 +714,11 @@ def work_item_status_only(path, reviewed, head):
     return body_before == body_after and keep(fm_before) == keep(fm_after)
 
 
-def run_trace_check(sha, timeout_s=300):
-    """Run the project's trace_check on a `git archive` of `sha` (no worktree). Returns (ok, message); fails closed."""
+def run_trace_check(sha, timeout_s=300, checks=()):
+    """Run the project's trace_check on a `git archive` of `sha` (no worktree). Returns (ok, message); fails closed.
+
+    `checks` = table files (generated_files.py) that changed after review: on the same extraction each one's check
+    command must also exit 0, else "RE-REVIEW NEEDED: <file>" (non-zero, timeout, missing tool or not in the table)."""
     tmp = None
     try:
         try:
@@ -734,6 +747,20 @@ def run_trace_check(sha, timeout_s=300):
         if done.returncode != 0:
             tail = ((done.stdout or "") + (done.stderr or "")).strip()[-400:]
             return (False, "REFUSED: trace_check failed at %s: %s" % (sha[:12], tail))
+        for path in sorted(checks):
+            row = generated_files.row_for(path)
+            tool = os.path.join(tmp, "tools", row.tool) if row else ""
+            if not row or not os.path.isfile(tool):
+                return (False, "RE-REVIEW NEEDED: %s (no check command available at %s)" % (path, sha[:12]))
+            try:
+                done = subprocess.run([sys.executable, tool, tmp, *row.check_args], cwd=tmp, capture_output=True,
+                                      text=True, encoding="utf-8", errors="replace", timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                return (False, "RE-REVIEW NEEDED: %s (check %s timed out after %s s)" % (path, row.tool, timeout_s))
+            if done.returncode:
+                tail = ((done.stdout or "") + (done.stderr or "")).strip()[-300:]
+                return (False, "RE-REVIEW NEEDED: %s (check %s %s failed: %s)"
+                        % (path, row.tool, " ".join(row.check_args), tail))
         return (True, "")
     except subprocess.TimeoutExpired:
         return (False, "REFUSED: trace_check timed out after %s s at %s" % (timeout_s, sha[:12]))
@@ -786,7 +813,7 @@ def check_coverage(base, reviewed, head, incoming=False):
     if hit:
         return (False, "RE-REVIEW NEEDED: %s" % ", ".join(sorted(hit)))
     if bookkeeping and not incoming:
-        return run_trace_check(head)
+        return run_trace_check(head, checks=sorted(f for f in bookkeeping if generated_files.row_for(f)))
     return (True, "")
 
 

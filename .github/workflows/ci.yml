@@ -33,6 +33,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tools/kit_settings.py . --check
 
+      - name: Check tracked text files hold no control bytes
+        if: ${{ !cancelled() }}
+        run: python tools/check_control_bytes.py .
+
       - name: Lint project artifacts
         if: ${{ !cancelled() }}
         run: python tools/factory_lint.py .
@@ -84,9 +88,10 @@ jobs:
           fi
 
       # Pull request: a change that is all docs or records (tools/change_scope.py answers `docs-only`) runs the
-      # spec checks above and no test suite; optional extra tests are listed in
-      # .claude/project/ci-docs-only-tests.txt. Any code change, any doubt about the diff, and every push to
-      # main run the full suite.
+      # spec checks above and the records test set: the tests carrying the records marker (default `records`;
+      # .claude/project/ci-records-marker.txt may name another), plus any tests listed in
+      # .claude/project/ci-docs-only-tests.txt (the list adds, it never replaces). No test carrying the marker is
+      # not a failure. Any code change, any doubt about the diff, and every push to main run the full suite.
       - name: Run tests on pull request (full suite unless docs-only)
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: |
@@ -95,22 +100,40 @@ jobs:
             exit 0
           fi
           SCOPE=code
-          # tools/ci_local.py (a local run, no GITHUB_ACTIONS) runs its own test choice, never this branch
+          # a local run (no GITHUB_ACTIONS) runs its own test choice, never this branch
           if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
             SCOPE=$(python tools/change_scope.py --base "${{ github.event.pull_request.base.sha }}" || echo code)
           fi
           if [ "$SCOPE" = "docs-only" ]; then
+            MARKER=records
+            MFILE=.claude/project/ci-records-marker.txt
+            if [ -f "$MFILE" ]; then
+              NAMED=$(tr -d '\r' < "$MFILE" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sed -n '1s/^[[:space:]]*//;1s/[[:space:]]*$//;1p' || true)
+              if [ -n "$NAMED" ]; then
+                MARKER=$NAMED
+              fi
+            fi
+            echo "docs-only pull request: running the tests marked $MARKER"
+            RC=0
+            if python -m pytest -q -p no:cacheprovider -m "$MARKER"; then RC=0; else RC=$?; fi
+            if [ "$RC" = "5" ]; then
+              echo "no test carries the $MARKER marker; records changes are checked by no test"
+            elif [ "$RC" = "2" ] || [ "$RC" = "3" ] || [ "$RC" = "4" ]; then
+              echo "the $MARKER tests could not be collected (pytest exit $RC): running the full suite"
+              python -m pytest -q -p no:cacheprovider
+              exit $?
+            elif [ "$RC" != "0" ]; then
+              exit "$RC"
+            fi
             LIST=.claude/project/ci-docs-only-tests.txt
             TESTS=""
             if [ -f "$LIST" ]; then
               TESTS=$(tr -d '\r' < "$LIST" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' || true)
             fi
             if [ -n "$TESTS" ]; then
-              echo "docs-only pull request: running only the tests listed in $LIST"
+              echo "docs-only pull request: also running the tests listed in $LIST"
               # shellcheck disable=SC2086
               python -m pytest -q -p no:cacheprovider $TESTS
-            else
-              echo "docs-only pull request: spec checks only, no test suite"
             fi
           else
             python -m pytest -q -p no:cacheprovider

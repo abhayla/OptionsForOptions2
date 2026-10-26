@@ -8,6 +8,7 @@ step's output to a log file outside the repo, and prints one line per step plus 
 Usage:
     python tools/ci_local.py [--list] [--repo PATH] [--workflow PATH] [--event NAME]
                              [--base REF] [--pr-body FILE] [--regen] [--full]
+                             [--no-tests]
 
 Options:
     --list         print the plan (PLAN / SKIP lines, pytest collection included, and which tests the
@@ -25,6 +26,9 @@ Options:
                    then main when origin/main does not exist
     --pr-body FILE a file holding the PR description; written into a temp event JSON and given to
                    every step as GITHUB_EVENT_PATH (tools/check_pr_spec_block.py reads it)
+    --no-tests     accept a run in which no pytest step ran although the change needed tests (the full suite
+                   or a non-empty selection). Without it that run ends its TOTAL line with TESTS NOT RUN and
+                   exits 1 (REQ-063 AC-1). A docs-only change (empty selection) needs no tests and exits 0.
     --regen        before the checks, run each generator's regenerate form that exists in the project
                    (spec digest, requirements index, build order, findings index when findings exist,
                    trace view when views/trace.md exists) and print each file it rewrote, so a spec or
@@ -41,6 +45,8 @@ Plan rules (every step of every job, in file order, each accounted for):
     `if:` !cancelled()              always PLAN (a local run is never cancelled; kit 1.5.1)
     `if:` !cancelled() && github.event_name ==/!= 'x'  the event test alone, as above
     (any other use of cancelled(), always(), `||`, or a second `&&` clause is UNSUPPORTED)
+    A shell comment never decides this: text after an unquoted # is ignored, and a step that calls pytest
+    is never skipped for reading GITHUB_EVENT_PATH.
     A failed step never stops the run: every later step still runs and prints its line.
     command runs a repo file that mentions GITHUB_EVENT_PATH, no --pr-body
                                     SKIP  reads GITHUB_EVENT_PATH; pass --pr-body FILE
@@ -49,7 +55,7 @@ Fail closed (UNSUPPORTED, exit 2, before anything runs): any other `if:` shape, 
 command other than github.event.pull_request.base.sha / github.event.before (resolved to the
 merge-base), a job-level `if:` other than the kit's draft-skip condition, a step `working-directory:`, a step `shell:` or job `defaults.run.shell` other than bash.
 
-Exit codes: 0 all steps passed or skipped (or --list); 1 at least one step failed;
+Exit codes: 0 all steps passed or skipped (or --list); 1 at least one step failed, or tests were needed and none ran (TESTS NOT RUN);
 2 usage error, unsupported workflow shape, or no bash.
 """
 from __future__ import annotations
@@ -143,9 +149,30 @@ def _without_not_cancelled(cond: str, where: str) -> str | None:
     return rest
 
 
+def _strip_comments(cmd: str) -> str:
+    """The command without shell comments: on each line, text from an unquoted # that starts the line or
+    follows whitespace is dropped (a comment never decides whether a step runs; REQ-063 AC-1)."""
+    out = []
+    for line in cmd.splitlines():
+        quote = ""
+        cut = len(line)
+        for i, ch in enumerate(line):
+            if quote:
+                if ch == quote:
+                    quote = ""
+            elif ch in "\"'":
+                quote = ch
+            elif ch == "#" and (i == 0 or line[i - 1].isspace()):
+                cut = i
+                break
+        out.append(line[:cut])
+    return "\n".join(out)
+
+
 def reads_event_file(cmd: str, repo: Path) -> str | None:
-    """Name of a repo file in the command whose text mentions GITHUB_EVENT_PATH, else None."""
-    for tok in re.split(r"[\s;&|<>()]+", cmd):
+    """Name of a repo file in the command whose text mentions GITHUB_EVENT_PATH, else None.
+    Comments are ignored."""
+    for tok in re.split(r"[\s;&|<>()]+", _strip_comments(cmd)):
         tok = tok.strip("\"'")
         if not tok or tok.startswith("-"):
             continue
@@ -214,7 +241,8 @@ def build_plan(workflow: dict, event: str, repo: Path | None = None,
                     raise Unsupported(f"{where}: unsupported if: `{st.cond}`")
             if st.sid and st.cmd is not None:
                 seen_ids.add(str(st.sid))
-            if st.status == "PLAN" and st.cmd is not None and repo is not None and not has_pr_body:
+            if (st.status == "PLAN" and st.cmd is not None and repo is not None and not has_pr_body
+                    and not PYTEST_CALL.search(str(st.cmd))):
                 hit = reads_event_file(str(st.cmd), repo)
                 if hit:
                     st.status = "SKIP"
@@ -432,6 +460,48 @@ def _is_docs(path: str) -> bool:
         return False
 
 
+RECORDS_MARKER_DEFAULT = "records"
+RECORDS_MARKER_FILE = ".claude/project/ci-records-marker.txt"
+DOCS_ONLY_LIST_FILE = ".claude/project/ci-docs-only-tests.txt"
+
+
+def _list_lines(path: Path) -> list[str]:
+    """Non-comment, non-blank lines of a project list file; [] when missing or unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [ln.strip() for ln in text.replace("\r", "").splitlines()
+            if ln.strip() and not ln.strip().startswith("#")]
+
+
+def records_marker(repo: Path) -> str:
+    """The records marker: first line of ci-records-marker.txt, else `records` (REQ-063 AC-2)."""
+    lines = _list_lines(repo / RECORDS_MARKER_FILE)
+    return lines[0] if lines else RECORDS_MARKER_DEFAULT
+
+
+def collect_marked_files(repo: Path, marker: str) -> list[str] | None:
+    """Test files holding a test that carries the marker; None when collection failed (fail closed).
+    pytest exit 5 (nothing collected) is an empty list, not a failure. `-o addopts=` drops a project's own verbosity
+    options (`-q`, `-v`), which change the shape of the collection output; exit 0 with no test id read back is a
+    parse failure, never "nothing marked"."""
+    try:
+        proc = subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-o", "addopts=",
+                               "-m", marker, "--collect-only", "-q"], cwd=str(repo), capture_output=True, text=True,
+                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                              stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if proc.returncode == 5:
+        return []
+    if proc.returncode != 0:
+        return None
+    files = {ln.split("::", 1)[0].strip() for ln in proc.stdout.splitlines()
+             if "::" in ln and not ln.startswith(" ")}
+    return sorted(files) if files else None
+
+
 def select_tests(repo: Path, base: str) -> tuple[list[str] | None, str]:
     """(test files to run, reason). A None list means the full suite; [] means no test is needed."""
     changed = changed_files(repo, base)
@@ -453,6 +523,7 @@ def select_tests(repo: Path, base: str) -> tuple[list[str] | None, str]:
         except OSError:
             return None, f"full suite: {tf} could not be read"
     picked: dict[str, None] = {}
+    records_touched = False
     for path in changed:
         if path in texts:
             picked[path] = None           # a changed test file runs itself
@@ -462,6 +533,7 @@ def select_tests(repo: Path, base: str) -> tuple[list[str] | None, str]:
         if "__pycache__/" in path or path.endswith(".pyc"):
             continue                      # bytecode: generated, never read by a test
         if _is_docs(path):
+            records_touched = True
             continue
         # Anything else must be a .py that a test names; every other shape (fixture, schema, shell script,
         # unknown extension, a .py no test names) is something a test may read: the full suite (fail closed).
@@ -478,6 +550,16 @@ def select_tests(repo: Path, base: str) -> tuple[list[str] | None, str]:
         if not hit:
             return None, f"full suite: no test names {path}"
         for tf in hit:
+            picked[tf] = None
+    if records_touched:
+        # A records file changed: the records test set runs too (REQ-063 AC-2), plus the project's own list.
+        marker = records_marker(repo)
+        marked = collect_marked_files(repo, marker)
+        if marked is None:
+            return None, f"full suite: tests marked {marker} could not be collected"
+        if not marked:
+            print("WARN: no test carries the records marker; records changes are checked by no test", flush=True)
+        for tf in marked + _list_lines(repo / DOCS_ONLY_LIST_FILE):
             picked[tf] = None
     chosen = sorted(picked)
     return chosen, f"{len(chosen)} test file(s) for {len(changed)} changed file(s)"
@@ -504,13 +586,17 @@ def narrow_pytest(steps: list[Step], tests: list[str]) -> None:
 
 
 # Generators and their regenerate form (the --check form without --check): (tool, extra args, generated file, when).
-REGEN_STEPS = (
-    ("build_spec_digest.py", [], "views/spec-digest.md", None),
-    ("build_spec_index.py", [], "spec/requirements/INDEX.md", None),
-    ("build_order.py", [], "views/build-order.md", None),
-    ("build_findings_index.py", [], "knowledge/findings/INDEX.md", "findings"),
-    ("trace_check.py", ["--write-view"], "views/trace.md", "trace-view"),
-)
+# The one table is tools/generated_files.py, which the merge gate reads too (REQ-063 AC-4).
+def _generated_table():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import generated_files
+    finally:
+        sys.path.pop(0)
+    return generated_files.regen_steps()
+
+
+REGEN_STEPS = _generated_table()
 
 
 def _file_bytes(path: Path) -> bytes | None:
@@ -562,6 +648,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default="origin/main", help="base ref for the merge-base (default: origin/main)")
     ap.add_argument("--pr-body", help="file holding the PR description")
     ap.add_argument("--full", action="store_true", help="run the whole test suite, not just the affected tests")
+    ap.add_argument("--no-tests", action="store_true",
+                    help="allow a run in which no test step ran although the change needed tests")
     ap.add_argument("--regen", action="store_true",
                     help="regenerate the project's generated files before the checks (not with --list)")
     args = ap.parse_args(argv)
@@ -604,12 +692,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         dedupe_pytest(steps, bash, repo, env)
+        tests_needed = True
         if args.full:
             select_note = "full suite (--full)"
         elif args.event != "pull_request":
             select_note = f"full suite (event is {args.event})"
         else:
             chosen, select_note = select_tests(repo, args.base)
+            tests_needed = chosen is None or bool(chosen)
             if chosen is not None:
                 narrow_pytest(steps, chosen)
                 select_note += ": " + (", ".join(chosen) if chosen else "none")
@@ -642,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
         counts = {"PASS": 0, "FAIL": 0, "SKIP": 0}
         outputs_file: dict[str, Path] = {}
         base_sha: str | None = None
+        pytest_ran = False
 
         for st in steps:
             def report(kind: str, secs: float, note: str = "") -> None:
@@ -676,6 +767,8 @@ def main(argv: list[str] | None = None) -> int:
             with open(log_path, "w", encoding="utf-8", errors="replace") as log:
                 rc = run_bash(bash, cmd, repo, step_env, log)
             secs = time.time() - t0
+            if PYTEST_CALL.search(cmd):
+                pytest_ran = True
             junit_ran += [(st.label, rel) for rel in junit_paths]
             if rc == 0:
                 report("PASS", secs)
@@ -690,9 +783,10 @@ def main(argv: list[str] | None = None) -> int:
         when = when[:-2] + ":" + when[-2:] if re.search(r"[+-]\d{4}$", when) else when
         summary = write_test_summary(repo, junit_ran, start_sha, start_dirty, when)
         print(f"test results: {summary}", flush=True)
+        not_run = tests_needed and not pytest_ran and not args.no_tests
         print(f"TOTAL: {counts['PASS']} passed, {counts['FAIL']} failed, {counts['SKIP']} skipped "
-              f"({time.time() - t_all:.1f}s) - logs: {run_dir}")
-        return 1 if counts["FAIL"] else 0
+              f"({time.time() - t_all:.1f}s) - logs: {run_dir}" + (" TESTS NOT RUN" if not_run else ""))
+        return 1 if counts["FAIL"] or not_run else 0
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

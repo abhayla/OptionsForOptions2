@@ -4,6 +4,40 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.16.0 — tests a change can break run before it lands (OD-125, OD-126, REQ-063)
+
+From OptionsForOptions2's harvest of kit 1.15.0 (Factory issues 172 to 176).
+
+1. ci_local test step (W-074, issue 172): a shell comment never decides whether a step runs, and a pytest step is
+   never skipped for the event-file reason. Before this, every default `python tools/ci_local.py` run skipped the
+   pull request test step (a comment in it named a tool that reads the event file) and still exited 0. When the
+   change needed tests and no test step ran, the total line now ends with `TESTS NOT RUN` and the exit is 1; pass
+   `--no-tests` to accept that on purpose.
+   Migration: none.
+2. Records test set (W-075, issue 173): a records-only pull request, and any `ci_local.py` run whose change touches a
+   records file, runs the tests carrying the `records` pytest marker; `.claude/project/ci-records-marker.txt` may
+   name the project's own marker instead, and `.claude/project/ci-docs-only-tests.txt` adds tests to that set. No
+   marked test is not a failure; `ci_local.py` then warns that records changes are checked by no test.
+   Migration: mark the tests that read `spec/`, `evidence/`, `work/`, `knowledge/` or `releases/` with `records` and
+   register the marker in the project's pytest config, or name the project's existing marker in
+   `.claude/project/ci-records-marker.txt` (for example `repo_scan`).
+3. Control bytes (W-076, issue 174): `python tools/check_control_bytes.py .` fails on a byte below 0x20 other than
+   tab, LF and CR in any tracked text file, as `path:line:column 0xNN`; it runs as a fast CI step, so `ci_local.py`
+   runs it too. `.claude/project/control-bytes-allow.txt` exempts a path with a reason after `#`. Binary files and
+   submodule folders are skipped.
+   Migration: run it once; rewrite any hit as an escape in the source, or exempt the file with its reason.
+4. Generated files at the merge gate (W-077, issue 175): `tools/generated_files.py` is the one table of generated
+   files and their check commands, read by `ci_local.py --regen` and by `merge_when_green.py`. A table file changed
+   after review is accepted when its check passes on the archive of the head, and refused (`RE-REVIEW NEEDED`) when the
+   check fails, times out or its tool is missing; the three views accepted before are now also checked.
+   Migration: none.
+5. Heavy suites before the checker (W-078, issue 176, OD-125): `python tools/change_scope.py --base <sha> --triggers`
+   prints the changed paths that match `.claude/project/ci-trigger-paths.txt` (one glob per line, `**` for any
+   folders, `#` comments), or `UNKNOWN`. When it prints anything, the deliver skill opens a draft pull request right
+   after the builder and starts the checker only once the project's heavy CI is green on that head.
+   Migration: list the project's trigger paths (migrations, API reply models, socket messages); make the project's
+   heavy workflow run on draft pull requests, because the kit's own CI job skips drafts.
+
 ## 1.15.0 — measure before speeding up (OD-124, REQ-062)
 
 1. Red CI report (W-071): `python tools/ci_reds.py --repo OWNER/NAME [--workflow FILE] [--event NAME] --since
