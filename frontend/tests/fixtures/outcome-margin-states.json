@@ -8,6 +8,24 @@
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": true
  },
+ "short": {
+  "state": "CHECKED",
+  "reason": "Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹671.50 available. Checked at 12:08:52 PM.",
+  "needed": "7065.50",
+  "available": "671.50",
+  "checked_at": "2026-10-16T06:38:52Z",
+  "shortfall": true,
+  "shortfall_reason": "Zerodha says these planned orders need ₹7,065.50 of margin; ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+ },
+ "string_trap": {
+  "state": "CHECKED",
+  "reason": "Margin from Zerodha for these planned orders: ₹9.00 needed, ₹10.00 available. Checked at 12:08:52 PM.",
+  "needed": "9.00",
+  "available": "10.00",
+  "checked_at": "2026-10-16T06:38:52Z",
+  "shortfall": true,
+  "shortfall_reason": "The server decided this one."
+ },
  "enough": {
   "state": "CHECKED",
   "reason": "Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹12,500.00 available. Checked at 12:08:52 PM.",

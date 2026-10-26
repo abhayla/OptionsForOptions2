@@ -64,6 +64,20 @@ describe('outcome margin slot (ADR-099)', () => {
     expect(t(w, 'margin-text').exists()).toBe(false)
   })
 
+  it('short with the server line: shown verbatim, with both ways forward (REQ-055 AC-4)', () => {
+    const w = line(STATES.short)
+    expect(t(w, 'margin-shortfall').text()).toBe(STATES.short.shortfall_reason)
+    expect(t(w, 'margin-shortfall').text()).toContain('Reduce the quantity, review the strategy, or add funds')
+    expect(t(w, 'margin-shortfall').findAll('button, a').length).toBe(0) // text only: nothing places, builds or changes anything
+  })
+
+  it('the browser never compares: figures that read needed < available with shortfall true still show the shortfall', () => {
+    const w = line(STATES.string_trap)
+    expect(t(w, 'margin-shortfall').text()).toBe('The server decided this one.')
+    const none = line({ ...STATES.string_trap, shortfall: false, shortfall_reason: null })
+    expect(t(none, 'margin-shortfall').exists()).toBe(false)
+  })
+
   it('enough funds: the figures without a shortfall mark', () => {
     const w = line(STATES.enough)
     expect(t(w, 'margin-figures').text()).toBe('Margin (Zerodha): Rs 7065.50 needed, Rs 12500.00 available')

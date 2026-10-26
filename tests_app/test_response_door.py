@@ -1748,3 +1748,21 @@ def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for
     assert _through_boundary(app) == _wire(_door("closed"))
     response = _client(create_app()).get(PATH)
     assert response.status_code == 200 and response.content == GOLDEN_REFUSAL
+
+
+def test_margin_shortfall_reason_is_catalogue_text_and_a_free_string_is_refused() -> None:
+    """REQ-055 AC-4: MarginOut.shortfall_reason is a catalogue line; a typed-in sentence is refused at the door."""
+    from decimal import Decimal
+
+    from pydantic import ValidationError
+
+    from ofo.errors.explanations import render_explanation
+    from ofo_app.routes.outcome import MarginOut
+
+    line = render_explanation("outcome_margin_short", needed=Decimal("7065.50"), available=Decimal("671.50"))
+    base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
+    ok = MarginOut(**base, shortfall=True, shortfall_reason=line)
+    assert json.loads(api_models.emit(ok))["shortfall_reason"] == str(line)
+    assert json.loads(api_models.emit(MarginOut(**base)))["shortfall_reason"] is None
+    with pytest.raises(ValidationError, match="never a plain string"):
+        MarginOut(**base, shortfall=True, shortfall_reason=str(line))

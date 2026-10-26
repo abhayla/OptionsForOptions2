@@ -20,6 +20,11 @@ const quoteOn = computed(() => capabilityOn(props.capabilities, 'basket_margin_q
 const checked = computed(() => props.margin.state === 'CHECKED' && typeof props.margin.needed === 'string'
   && typeof props.margin.available === 'string' && typeof props.margin.checked_at === 'string')
 const short = computed(() => checked.value && props.margin.shortfall === true)
+// REQ-055 AC-4: the server's own line (both figures and the ways forward), shown as it is; an older answer without
+// the field keeps the plain line, so a cached answer still shows the shortfall.
+const FALLBACK_SHORTFALL = 'Available funds are below the margin needed.'
+const shortfallText = computed(() => (typeof props.margin.shortfall_reason === 'string' && props.margin.shortfall_reason
+  ? props.margin.shortfall_reason : FALLBACK_SHORTFALL))
 </script>
 
 <template>
@@ -33,7 +38,7 @@ const short = computed(() => checked.value && props.margin.shortfall === true)
         <FigureHint id="margin_needed" />
         <FigureHint id="margin_available" />
       </div>
-      <p v-if="short" class="text-red-700" data-testid="margin-shortfall">Available funds are below the margin needed.</p>
+      <p v-if="short" class="text-red-700" data-testid="margin-shortfall">{{ shortfallText }}</p>
       <p class="text-ink-muted" data-testid="margin-checked-at">Checked at {{ istTime(margin.checked_at) }}</p>
     </template>
     <p v-else class="text-ink-muted" data-testid="margin-text">{{ margin.reason }}</p>

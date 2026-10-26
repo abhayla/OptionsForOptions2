@@ -23,7 +23,7 @@ from types import MappingProxyType
 from ofo import wording as _wording
 
 from ofo.errors.slots import SlotType, _require_exact
-from ofo.errors.templates import ZERODHA_BUSY_TEXT
+from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
@@ -971,6 +971,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Margin from Zerodha for these planned orders: {needed} needed, {available} available. "
                         "Checked at {time}.",
                         {"needed": Rupees, "available": Rupees, "time": ClockSeconds}),
+    # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
+    ExplanationTemplate("outcome_margin_short", "values_seen",
+                        "Zerodha says these planned orders need {needed} of margin; {available} is available in your "
+                        "account. " + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3

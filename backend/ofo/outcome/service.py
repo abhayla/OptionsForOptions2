@@ -162,6 +162,7 @@ class Margin:
     available: Decimal | None = None
     checked_at: datetime.datetime | None = None
     shortfall: bool = False  # CHECKED only: Zerodha's available funds are below the amount needed (Decimal compare)
+    shortfall_reason: ExplanationText | None = None  # REQ-055 AC-4: set only with ``shortfall`` (the one comparison)
 
 
 @dataclass(frozen=True)
@@ -201,8 +202,10 @@ def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.dat
         raise ValueError("checked_at must be a timezone-aware datetime")
     need = needed.quantize(HUNDREDTH, rounding=ROUND_CEILING)
     have = available.quantize(HUNDREDTH, rounding=ROUND_FLOOR)
+    short = have < need
+    reason = render_explanation("outcome_margin_short", needed=need, available=have) if short else None
     return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", needed=need, available=have,
-                                                     time=checked_at), need, have, checked_at, have < need)
+                                                     time=checked_at), need, have, checked_at, short, reason)
 
 
 def margin_unreadable() -> Margin:

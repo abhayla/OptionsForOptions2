@@ -5342,6 +5342,15 @@
             "title": "Shortfall",
             "type": "boolean"
           },
+          "shortfall_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Reason"
+          },
           "state": {
             "enum": [
               "NOT_AVAILABLE_YET",
