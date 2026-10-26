@@ -95,11 +95,13 @@ def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRate
         orders.append(ChargeOrder(segment, "SELL" if entry == "BUY" else "BUY", leg.quantity, leg.entry_price))
     parts = charges_for_orders(orders, rates).orders
 
-    def part(name: str) -> Decimal:
-        return sum((getattr(c, name) for c in parts), Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    def paise(amounts: Sequence[Decimal]) -> Decimal:
+        return sum(amounts, Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
-    return ChargesBreakdown(part("brokerage"), part("stt"), part("exchange_transaction"), part("gst"), part("stamp"),
-                            part("sebi"), total, rates.read_on)
+    return ChargesBreakdown(
+        paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
+        paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
+        paise([c.stamp for c in parts]), paise([c.sebi for c in parts]), total, rates.read_on)
 
 
 def is_bought_option(leg: Leg) -> bool:
