@@ -3,13 +3,16 @@
   "kind": "COPY",
   "title": "Itemised charges with an approximate-figures disclaimer, and circuit limits read (G-03-3)",
   "reference_behaviour": "A charges panel lists brokerage, STT, exchange charges, GST, stamp duty and SEBI fee with a note that the figures are approximate and come from the broker; circuit limits are read from the broker.",
-  "reference_screens": ["screen 022"],
-  "ours": "REQ-081 AC-2 (itemised charges with the rates date) not built; no requirement reads circuit limits yet.",
+  "reference_screens": [
+    "screen 022"
+  ],
+  "ours": "REQ-081 partly built (row 26): itemised round-trip charges with rates date and exercise-STT line; circuit limits not shown (no requirement covers them); #537 F1",
   "req": "REQ-081",
   "ac": "AC-2",
   "row": 26,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 537
 }

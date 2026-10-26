@@ -3,13 +3,16 @@
   "kind": "COPY",
   "title": "Warn before unsaved legs are discarded (G-16-7)",
   "reference_behaviour": "Before discarding unsaved trades or leaving edit mode, the user is warned that there are unsaved changes.",
-  "reference_screens": ["screen 118"],
+  "reference_screens": [
+    "screen 118"
+  ],
   "reference_label": "You have Unsaved changes",
-  "ours": "NEW AC NEEDED: no guard found; opening a saved strategy over unsaved legs replaces them silently. REQ-079 AC-5 covers only Replace from the ready-made panel.",
+  "ours": "REQ-134: not built - opening a saved strategy replaces the legs with no unsaved-changes guard (StrategyBuilderPage.vue openSaved); needs an AC first (chunk 3 deferred issue #537 F1)",
   "req": "REQ-134",
   "row": 29,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 537
 }

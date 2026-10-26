@@ -3,13 +3,17 @@
   "kind": "COPY",
   "title": "Three labelled money figures with tooltips: funds needed, margin needed, margin available (row 3 gap G-03-1)",
   "reference_behaviour": "A strip in the builder shows Funds Needed, Margin Needed and Margin Available, each with a definition tooltip; a negative margin needed is explained as a margin benefit to existing positions.",
-  "reference_screens": ["screen 012", "screen 241"],
-  "ours": "One line Margin (Zerodha): Rs X needed, Rs Y available, no tooltips. Copy the labels and tooltips (REQ-081, REQ-136 AC-1); the reference's summed Funds Needed is inexact, so premium stays a separate engine line (money, ADR-152 (c)).",
+  "reference_screens": [
+    "screen 012",
+    "screen 241"
+  ],
+  "ours": "REQ-081 partly built (row 26): margin info marks and Zerodha's own figure beside ours; no labelled three-figure strip, no negative-margin explanation; #537 F1",
   "req": "REQ-081",
   "ac": "AC-5",
   "row": 26,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 537
 }
