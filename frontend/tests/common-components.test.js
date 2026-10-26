@@ -90,8 +90,28 @@ describe('shared parts render', () => {
       expect(w.text()).toContain('What this means: B')
       expect(w.text()).toContain('What is blocked: C')
       expect(w.text()).toContain('What to do next: D')
-      expect(w.get('[role="alert"]').classes()).toContain('border-loss')
+      const cls = w.get('[role="alert"]').classes()
+      expect(cls).toContain('border-error')
+      expect(cls).toContain('bg-error-soft')
+      expect(cls).not.toContain('border-loss')
+      expect(cls).not.toContain('bg-loss-soft')
     }
+  })
+})
+
+describe('Modal keyboard (review round 2)', () => {
+  it('Tab and Shift+Tab stay inside the dialog', async () => {
+    const w = mount(Modal, { props: { open: true, title: 'Save' }, slots: { default: '<input data-testid="f" />', actions: '<button data-testid="cancel">Cancel</button><button data-testid="save">Save</button>' }, attachTo: document.body })
+    await flushPromises()
+    const dialog = w.get('[data-testid="modal"]')
+    const close = w.get('[data-testid="modal-close"]').element
+    const save = w.get('[data-testid="save"]').element
+    save.focus()
+    await dialog.trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    await dialog.trigger('keydown', { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(save)
+    w.unmount()
   })
 })
 
@@ -132,6 +152,12 @@ describe('Drawer (UI-016)', () => {
     expect(w.find('[data-testid="drawer"]').exists()).toBe(false)
     expect(document.activeElement).toBe(opener.element)
     w.unmount()
+  })
+
+  it('Esc closes it even when the key lands on the overlay, not in the panel', async () => {
+    const w = mount(Drawer, { props: { open: true, title: 'Warnings' } })
+    await w.get('[data-testid="drawer-overlay"]').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('close')).toHaveLength(1)
   })
 
   it('an overlay click closes it', async () => {

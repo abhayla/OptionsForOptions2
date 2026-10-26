@@ -4,6 +4,7 @@
 <script setup>
 import { nextTick, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import { trapTab } from "./focusTrap.js";
 
 const props = defineProps({
   open: { type: Boolean, required: true },
@@ -31,7 +32,9 @@ function onKey(e) {
   if (e.key === "Escape") {
     e.preventDefault();
     emit("close");
+    return;
   }
+  trapTab(e, dialog.value);
 }
 </script>
 
@@ -40,6 +43,7 @@ function onKey(e) {
     v-if="open"
     class="fixed inset-0 z-50 flex items-center justify-center p-4"
     data-testid="modal-root"
+    @keydown="onKey"
   >
     <div
       class="absolute inset-0 bg-ink/30"
@@ -54,7 +58,6 @@ function onKey(e) {
       tabindex="-1"
       class="relative w-[420px] max-w-full rounded-xl bg-surface p-8 shadow-drawer focus:outline-none"
       data-testid="modal"
-      @keydown="onKey"
     >
       <button
         type="button"
