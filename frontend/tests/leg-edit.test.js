@@ -384,7 +384,7 @@ describe('REQ-077 AC-7: an unpriced leg on the one leg list keeps the ADR-085 me
     await t(w, 'edit-leg').trigger('click')
     await flushPromises()
     expect(calls.map((c) => `${c.method} ${c.url}`).filter((u) => u.includes('/catalogue/'))).toEqual(['GET /catalogue/NIFTY/expiries', 'GET /catalogue/NIFTY/contracts?expiry=2026-10-13'])
-    expect(w.find('h2').text()).toBe('Edit leg')
+    expect(w.find('[data-testid="picker-by-contract"] h2').text()).toBe('Edit leg')
     expect([t(w, 'pick-expiry').element.value, t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value,
       t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['2026-10-13', 'CE', '22800.00', 'SELL', '1'])
   })
@@ -446,7 +446,7 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     await t(w, 'remove-leg').trigger('click')
     await flushPromises()
     expect(all(w, 'leg-row')).toHaveLength(0)
-    expect(w.find('h2').text()).not.toBe('Edit leg')
+    expect(w.find('[data-testid="picker-by-contract"] h2').text()).toBe('Add a leg by contract')
     expect([t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value, t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['', '', 'SELL', '1'])
     const add = t(w, 'add-leg')
     if (add.exists() && !add.element.disabled) await add.trigger('click')

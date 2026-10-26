@@ -2,7 +2,7 @@
 // container first; the assertions stay in the specs, unchanged. A helper that finds its container already open leaves it.
 import type { Locator, Page } from '@playwright/test'
 
-/** The inline add-leg form sits behind Add/Edit once the builder has legs (open by itself on an empty builder). */
+/** W-195: the leg picker is the left slide-in drawer behind Add/Edit (shut by default; Done or a form Add closes it). */
 export async function openAddEdit(page: Page): Promise<void> {
   const toggle = page.getByTestId('add-edit')
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()

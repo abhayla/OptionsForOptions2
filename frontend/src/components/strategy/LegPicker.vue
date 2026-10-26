@@ -27,9 +27,11 @@ import {
   futureReasonText,
   futuresListReasonText,
   instrumentId,
+  itmSides,
   listReasonText,
   lotChoices,
   lotsValid,
+  oiBarPercents,
   offeredStrikes,
   offeredTypes,
   selectedContract,
@@ -40,8 +42,11 @@ const props = defineProps({
   // the Strategy Builder draws the ONE leg list (LegList.vue), so it passes false
   showLegList: { type: Boolean, default: true },
   legs: { type: Array, default: () => [] },
+  // W-195: the Builder keeps the picker mounted inside its closed drawer; the 5 s refresh reads nothing while it is shut
+  active: { type: Boolean, default: true },
 })
-const emit = defineEmits(['update:legs'])
+// `done`: Done added the selection (the Builder closes the drawer, UI-206)
+const emit = defineEmits(['update:legs', 'done'])
 
 const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
 const expiries = ref([])
@@ -173,6 +178,27 @@ async function loadFutures() {
 function refreshOpenTab() {
   return tab.value === 'futures' ? loadFutures() : loadStrikes()
 }
+function tick() {
+  if (props.active) refreshOpenTab()
+}
+
+// W-195 (UI-202, UI-205): the view switch picks which of the server's columns each side shows (S-032/S-033); the Greeks
+// view shows Delta and IV only, since Theta/Vega/Gamma are not in this reply (REQ-084). Settings holds the width and size.
+const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['ltp', 'oi'], greeks: ['delta', 'iv'] })
+const COLUMN_WIDTH = Object.freeze({ delta: '40px', ltp: 'minmax(0,1fr)', oi: 'minmax(0,1fr)', iv: '36px' })
+const view = ref('ltp')
+const settingsOpen = ref(false)
+const columns = computed(() => VIEW_COLUMNS[view.value])
+const sideColumns = (side) => (side === 'ce' ? [...columns.value, 'act'] : ['act', ...[...columns.value].reverse()])
+const gridStyle = computed(() => {
+  const widths = columns.value.map((c) => COLUMN_WIDTH[c])
+  return { gridTemplateColumns: [...widths, '44px', '58px', '44px', ...[...widths].reverse()].join(' ') }
+})
+// the qty sub-row sits under its own side, on the row's second line
+const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / span ${columns.value.length + 1}` : `span ${columns.value.length + 1} / -1` })
+const oiBars = computed(() => oiBarPercents(strikesData.value?.rows))
+const itm = computed(() => itmSides(strikesData.value?.rows))
+const COLUMN_LABEL = Object.freeze({ delta: 'Delta', ltp: 'LTP', oi: 'OI', iv: 'IV' })
 
 // A new underlying, expiry or width is a new list: the old one and its selections go before the new read starts.
 watch([underlying, expiry, width], () => {
@@ -195,7 +221,7 @@ watch(() => props.legs, (now) => { if (editingId.value !== null && !now.some((l)
 
 onMounted(() => {
   loadExpiries()
-  timer = setInterval(refreshOpenTab, PICKER_REFRESH_MS)
+  timer = setInterval(tick, PICKER_REFRESH_MS)
 })
 onBeforeUnmount(() => clearInterval(timer))
 
@@ -304,6 +330,7 @@ async function save() {
       ...pricing,
     }
     emit('update:legs', old ? props.legs.map((l) => (l.id === old.id ? leg : l)) : [...props.legs, leg])
+    emit('done') // a leg added or saved by contract also hands the page back (the Builder closes the drawer)
   } finally {
     busy.value = false
   }
@@ -329,6 +356,7 @@ async function done() {
   picked.value = {} // picks made while the entries are captured belong to the next batch
   cellLots.value = {}
   await addChosen(chosen, underlying.value)
+  emit('done')
 }
 
 /** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
@@ -386,64 +414,52 @@ defineExpose({ startEdit })
 </script>
 
 <template>
-  <section class="mt-4 rounded border border-line bg-surface p-4" data-testid="leg-picker">
-    <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg' }}</h2>
+  <!-- W-195 (ADR-193 UI-200..UI-207, Sensibull S-032..S-038): the body of the Builder's left slide-in drawer. Header
+       (underlying, expiry, Settings), Strikes | Futures tabs with the LTP / OI / Greeks view switch, the dense strike table,
+       the leg-by-contract form (also the Edit / Reprice form), and a footer kept in view with the count, Clear All, Done. -->
+  <section class="flex min-h-full flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
-    <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
-    <form class="mt-2 flex flex-wrap items-end gap-3 text-sm" @submit.prevent>
-      <label class="flex flex-col">Underlying
-        <select data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
-          <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
-        </select>
-      </label>
-      <label class="flex flex-col">Expiry
-        <select data-testid="pick-expiry" :value="expiry" @change="onExpiry($event.target.value)">
-          <option value="">Choose</option>
-          <option v-for="e in expiries" :key="e" :value="e">{{ expiryLabel(e) }}</option>
-        </select>
-      </label>
-      <label class="flex flex-col">Type
-        <select data-testid="pick-type" :value="type" @change="onType($event.target.value)">
-          <option value="">Choose</option>
-          <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
-        </select>
-      </label>
-      <label v-if="type !== 'FUT'" class="flex flex-col">Strike
-        <select v-model="strike" data-testid="pick-strike" :disabled="!strikes.length">
-          <option value="">Choose</option>
-          <option v-for="s in strikes" :key="s" :value="s">{{ s }}</option>
-        </select>
-      </label>
-      <label class="flex flex-col">Buy or sell
-        <select v-model="action" data-testid="pick-action">
-          <option value="BUY">BUY</option>
-          <option value="SELL">SELL</option>
-        </select>
-      </label>
-      <label class="flex flex-col">Lots
-        <input v-model.number="lots" data-testid="pick-lots" inputmode="numeric" class="w-24" />
-      </label>
-      <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">{{ editing ? 'Save leg' : 'Add' }}</button>
-      <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
-    </form>
-    <p v-if="!lotsOk" class="mt-1 text-sm" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
-    <p v-if="contract" class="mt-1 text-sm text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
+    <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
+    <div class="flex flex-wrap items-center gap-2" data-testid="picker-header">
+      <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
+        <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
+      </select>
+      <select class="h-8 w-[120px] rounded border border-line px-1" aria-label="Expiry" data-testid="pick-expiry" :value="expiry" @change="onExpiry($event.target.value)">
+        <option value="">Expiry</option>
+        <option v-for="e in expiries" :key="e" :value="e">{{ expiryLabel(e) }}</option>
+      </select>
+      <span class="relative ml-auto" @keydown.esc.stop="settingsOpen = false">
+        <button type="button" class="h-8 rounded border border-line px-2" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'" data-testid="picker-settings" @click="settingsOpen = !settingsOpen">Settings</button>
+        <span v-show="settingsOpen" role="dialog" aria-label="Picker settings" class="absolute right-0 top-full z-10 mt-1 flex w-[240px] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-menu" data-testid="picker-settings-popover">
+          <label class="flex items-center justify-between gap-2">Strikes each side
+            <select v-model.number="width" class="rounded border border-line px-1" data-testid="pick-width">
+              <option v-for="w in STRIKE_WIDTHS" :key="w" :value="w">{{ w }}</option>
+            </select>
+          </label>
+          <label class="flex items-center justify-between gap-2">Size in
+            <select v-model="lotsMode" class="rounded border border-line px-1" data-testid="pick-lots-mode">
+              <option value="lots">Lots</option>
+              <option value="quantity">Quantity</option>
+            </select>
+          </label>
+        </span>
+      </span>
+    </div>
 
-    <div class="mt-3 text-sm" data-testid="picker-tabs">
-      <div class="flex flex-wrap items-center gap-2" role="tablist">
-        <button type="button" role="tab" data-testid="tab-strikes" :aria-selected="tab === 'strikes'" :class="tab === 'strikes' ? 'font-semibold underline' : ''" @click="tab = 'strikes'">Strikes</button>
-        <button type="button" role="tab" data-testid="tab-futures" :aria-selected="tab === 'futures'" :class="tab === 'futures' ? 'font-semibold underline' : ''" @click="tab = 'futures'">Futures</button>
-        <label v-if="tab === 'strikes'" class="ml-4">Strikes each side
-          <select v-model.number="width" data-testid="pick-width">
-            <option v-for="w in STRIKE_WIDTHS" :key="w" :value="w">{{ w }}</option>
-          </select>
-        </label>
-        <label v-if="tab === 'strikes'">Size in
-          <select v-model="lotsMode" data-testid="pick-lots-mode">
-            <option value="lots">Lots</option>
-            <option value="quantity">Quantity</option>
-          </select>
-        </label>
+    <div data-testid="picker-tabs">
+      <div class="flex flex-wrap items-center gap-4 border-b border-line" role="tablist">
+        <button
+          v-for="tb in [['strikes', 'Strikes'], ['futures', 'Futures']]" :key="tb[0]" type="button" role="tab" class="-mb-px border-b-2 py-2"
+          :class="tab === tb[0] ? 'border-accent font-semibold text-ink' : 'border-transparent text-ink-muted'"
+          :data-testid="`tab-${tb[0]}`" :aria-selected="tab === tb[0]" @click="tab = tb[0]"
+        >{{ tb[1] }}</button>
+        <span v-if="tab === 'strikes'" class="ml-auto flex overflow-hidden rounded border border-line text-xs" role="radiogroup" aria-label="Columns" data-testid="picker-view">
+          <button
+            v-for="vw in [['ltp', 'LTP'], ['oi', 'OI'], ['greeks', 'Greeks']]" :key="vw[0]" type="button" role="radio" class="px-2 py-1"
+            :class="view === vw[0] ? 'bg-accent-soft font-semibold text-accent' : 'text-ink-muted'" :aria-checked="view === vw[0] ? 'true' : 'false'"
+            :data-testid="`picker-view-${vw[0]}`" @click="view = vw[0]"
+          >{{ vw[1] }}</button>
+        </span>
       </div>
 
       <div v-if="tab === 'strikes'" data-testid="strikes-panel">
@@ -454,44 +470,79 @@ defineExpose({ startEdit })
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
+          <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
+          <div class="mt-2 grid items-end gap-x-1 border-b border-line pb-1 text-xs text-ink-muted" :style="gridStyle" data-testid="strike-head">
+            <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
+            <span class="text-center">Strike</span>
+            <span v-for="col in sideColumns('pe')" :key="`pe-${col}`">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
+          </div>
           <div
-            v-for="row in strikesData.rows" :key="row.strike" class="grid grid-cols-3 gap-2 border-b border-line py-1"
-            :class="row.is_atm ? 'bg-amber-100 font-semibold' : ''" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'">
-            <div class="order-2 text-center" data-testid="row-strike">{{ row.strike }}<span v-if="row.is_atm" class="ml-1" data-testid="atm-mark">ATM</span></div>
-            <div v-for="side in ['ce', 'pe']" :key="side" :class="side === 'ce' ? 'order-1' : 'order-3'" :data-testid="`cell-${side}`">
-              <template v-if="row[side]">
-                <span class="mr-2">{{ side.toUpperCase() }} LTP <span data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span></span>
-                <span class="mr-2">OI <span data-testid="cell-oi">{{ shown(row[side].oi) }}</span></span>
-                <span class="mr-2">IV <span data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span></span>
-                <span class="mr-2">Delta <span data-testid="cell-delta">{{ shown(row[side].delta) }}</span></span>
-                <template v-if="choicesFor(row[side]).length">
-                  <button type="button" data-testid="cell-buy" :aria-pressed="picked[row[side].instrument_id] === 'BUY'" :class="picked[row[side].instrument_id] === 'BUY' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'BUY')">Buy</button>
-                  <button type="button" class="ml-1" data-testid="cell-sell" :aria-pressed="picked[row[side].instrument_id] === 'SELL'" :class="picked[row[side].instrument_id] === 'SELL' ? 'font-bold underline' : ''" @click="choose(row[side].instrument_id, 'SELL')">Sell</button>
-                  <select class="ml-1" data-testid="cell-lots" :value="lotsOf(row[side].instrument_id)" @change="setLots(row[side], $event.target.value)">
-                    <option v-for="o in choicesFor(row[side])" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
+            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-1 border-b border-line text-xs num"
+            :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" :style="gridStyle" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'"
+          >
+            <template v-for="side in ['ce', 'pe']" :key="side">
+              <!-- the strike sits between the two sides; each side is `contents` so its columns join the row's grid -->
+              <div
+                v-if="side === 'pe'" class="flex h-7 items-center justify-center bg-surface-muted font-semibold" :class="row.is_atm ? '!bg-accent-soft text-accent' : ''"
+                data-testid="row-strike"
+              >{{ row.strike }}<span v-if="row.is_atm" class="ml-1 text-[10px]" data-testid="atm-mark">ATM</span></div>
+              <div class="contents" :data-testid="`cell-${side}`">
+                <template v-if="row[side]">
+                  <div
+                    v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center px-1"
+                    :class="[side === 'ce' ? 'justify-end' : 'justify-start', itm[ri]?.[side] && col !== 'act' ? 'bg-warn-soft' : '']"
+                  >
+                    <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
+                    <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
+                    <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
+                    <!-- UI-202 OI bar: a drawing width relative to the largest OI on screen; the OI itself is the server's number -->
+                    <span v-else-if="col === 'oi'" class="relative flex h-4 w-full items-center" :class="side === 'ce' ? 'justify-end' : 'justify-start'">
+                      <span
+                        v-if="oiBars[row[side].instrument_id] != null" class="absolute inset-y-0" :class="side === 'ce' ? 'right-0 bg-oi-call' : 'left-0 bg-oi-put'"
+                        :style="{ width: `${oiBars[row[side].instrument_id]}%` }" data-testid="cell-oi-bar"
+                      />
+                      <span class="relative text-[10px] text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
+                    </span>
+                    <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
+                    <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
+                      <button
+                        v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
+                        class="h-5 w-5 rounded text-[11px] font-semibold focus:opacity-100"
+                        :class="picked[row[side].instrument_id] === sd[0]
+                          ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
+                          : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"
+                        :data-testid="sd[0] === 'BUY' ? 'cell-buy' : 'cell-sell'" :aria-pressed="picked[row[side].instrument_id] === sd[0]"
+                        :aria-label="`${sd[2]} ${row.strike} ${side.toUpperCase()}`" :title="`${sd[2]} ${row.strike} ${side.toUpperCase()}`"
+                        @click="choose(row[side].instrument_id, sd[0])"
+                      >{{ sd[1] }}</button>
+                    </span>
+                  </div>
+                  <!-- UI-203 qty sub-row under the chosen side (lots or quantity per Settings); kept in the page so a size can be
+                       chosen first, shown once the side is picked -->
+                  <label
+                    v-if="choicesFor(row[side]).length" v-show="picked[row[side].instrument_id]" class="flex h-8 items-center gap-1 px-1"
+                    :class="side === 'ce' ? 'justify-end' : 'justify-start'" :style="subRowStyle(side)"
+                  >{{ lotsMode === 'quantity' ? 'Qty' : 'Lots' }}
+                    <select class="rounded border border-line px-1" data-testid="cell-lots" :value="lotsOf(row[side].instrument_id)" @change="setLots(row[side], $event.target.value)">
+                      <option v-for="o in choicesFor(row[side])" :key="o.value" :value="o.value">{{ o.label }}</option>
+                    </select>
+                  </label>
                 </template>
-              </template>
-              <span v-else data-testid="cell-none">-</span>
-            </div>
+                <span v-else class="flex h-7 items-center justify-center text-ink-subtle" :style="{ gridColumn: `span ${columns.length + 1}` }" data-testid="cell-none">-</span>
+              </div>
+            </template>
           </div>
         </template>
         <!-- The selection is its own list, whatever the strike list shows (the refresh re-centres the rows): Done adds
              exactly these. -->
-        <ul v-if="pickedCount" class="mt-2" data-testid="selection-list">
+        <ul v-if="pickedCount" class="mt-2 flex flex-col gap-1" data-testid="selection-list">
           <li v-for="item in selection" :key="item.id" class="flex items-center gap-2" data-testid="selection-row" :data-instrument-id="item.id" :data-action="item.action" :data-lots="item.lots">
+            <span class="rounded px-1 text-xs font-semibold" :class="item.action === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell'" data-testid="selection-side">{{ item.action }}</span>
             <span data-testid="selection-name">{{ item.name }}</span>
-            <span data-testid="selection-side">{{ item.action }}</span>
-            <span data-testid="selection-lots">{{ item.lots }} lot</span>
-            <button type="button" class="underline" data-testid="selection-remove" :aria-label="`Remove ${item.name}`" @click="unpick(item.id)">Remove</button>
+            <span class="text-ink-muted" data-testid="selection-lots">{{ item.lots }} lot</span>
+            <button type="button" class="ml-auto text-ink-muted underline" data-testid="selection-remove" :aria-label="`Remove ${item.name}`" @click="unpick(item.id)">Remove</button>
           </li>
         </ul>
-        <div v-if="expiry" class="mt-2 flex items-center gap-3" data-testid="picker-footer">
-          <span data-testid="picker-count">{{ pickedCount }} selected</span>
-          <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
-          <button type="button" data-testid="picker-done" class="rounded border border-line px-3 py-1" :disabled="busy || !pickedCount" @click="done">Done</button>
-          <span v-if="doneError" data-testid="done-error">{{ doneError }}</span>
-        </div>
       </div>
 
       <div v-else data-testid="futures-panel">
@@ -499,18 +550,21 @@ defineExpose({ startEdit })
         <p v-else-if="!futuresData" data-testid="futures-loading">Reading futures...</p>
         <template v-else>
           <p v-if="futuresReason" data-testid="futures-reason">{{ futuresReason }}</p>
-          <ul data-testid="futures-list">
-            <li v-for="f in futuresData.futures" :key="f.instrument_id" data-testid="future-row" :data-expiry="f.expiry">
-              {{ expiryLabel(f.expiry) }} future: LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span>
-              <span v-if="f.ltp_reason" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
-              <button type="button" class="ml-2" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">Buy</button>
-              <button type="button" class="ml-1" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">Sell</button>
+          <!-- UI-204 (S-034): one row per future - expiry, B / S, price right-aligned -->
+          <ul class="mt-2" data-testid="futures-list">
+            <li v-for="f in futuresData.futures" :key="f.instrument_id" class="flex h-8 items-center gap-2 border-b border-line" data-testid="future-row" :data-expiry="f.expiry">
+              <span>{{ expiryLabel(f.expiry) }} future</span>
+              <button type="button" class="h-5 w-5 rounded bg-buy-soft text-[11px] font-semibold text-buy" aria-label="Buy" title="Buy" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">B</button>
+              <button type="button" class="h-5 w-5 rounded bg-sell-soft text-[11px] font-semibold text-sell" aria-label="Sell" title="Sell" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">S</button>
+              <span class="ml-auto num">LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span></span>
+              <span v-if="f.ltp_reason" class="text-ink-muted" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
             </li>
           </ul>
           <p v-if="doneError" data-testid="future-add-error">{{ doneError }}</p>
-          <ul class="mt-2" data-testid="forwards-list">
-            <li v-for="f in futuresData.forwards" :key="f.expiry" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
-              {{ expiryLabel(f.expiry) }} {{ FORWARD_LABEL }}: <span data-testid="forward-value">{{ shown(f.forward) }}</span>
+          <h3 class="mt-3 text-xs font-semibold text-ink-muted">{{ FORWARD_LABEL }}</h3>
+          <ul class="mt-1" data-testid="forwards-list">
+            <li v-for="f in futuresData.forwards" :key="f.expiry" class="flex flex-wrap items-center gap-1 border-b border-line py-1" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
+              {{ expiryLabel(f.expiry) }} {{ FORWARD_LABEL }}: <span class="ml-auto num" data-testid="forward-value">{{ shown(f.forward) }}</span>
               <span v-if="f.source === 'parity'" data-testid="forward-source">(from put-call parity)</span>
               <span v-else-if="f.source === 'spot_fallback'" data-testid="forward-source">({{ f.label ?? 'estimated from spot' }})</span>
               <span v-if="f.forward != null && f.spot_health !== 'available'" data-testid="forward-health">({{ healthSentence(f.spot_health) }})</span>
@@ -519,6 +573,39 @@ defineExpose({ startEdit })
           </ul>
         </template>
       </div>
+    </div>
+
+    <!-- A leg by its contract: the Edit / Reprice form for a leg already in the strategy (the page's Edit opens it), and a
+         second way to add one. The order and wording of its choices are the catalogue's. -->
+    <div class="rounded border border-line p-3" :class="editing ? 'order-first border-accent' : ''" data-testid="picker-by-contract">
+      <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg by contract' }}</h2>
+      <form class="mt-2 flex flex-wrap items-end gap-2" @submit.prevent>
+        <label class="flex flex-col">Type
+          <select class="rounded border border-line px-1" data-testid="pick-type" :value="type" @change="onType($event.target.value)">
+            <option value="">Choose</option>
+            <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </label>
+        <label v-if="type !== 'FUT'" class="flex flex-col">Strike
+          <select v-model="strike" class="rounded border border-line px-1" data-testid="pick-strike" :disabled="!strikes.length">
+            <option value="">Choose</option>
+            <option v-for="s in strikes" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </label>
+        <label class="flex flex-col">Buy or sell
+          <select v-model="action" class="rounded border border-line px-1" data-testid="pick-action">
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+        </label>
+        <label class="flex flex-col">Lots
+          <input v-model.number="lots" class="w-16 rounded border border-line px-1" data-testid="pick-lots" inputmode="numeric" />
+        </label>
+        <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">{{ editing ? 'Save leg' : 'Add' }}</button>
+        <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
+      </form>
+      <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
+      <p v-if="contract" class="mt-1 text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
     </div>
 
     <ul v-if="showLegList && legs.length" class="mt-3 text-sm" data-testid="leg-list">
@@ -541,5 +628,18 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
         <DepthPopup v-if="depthFor === l.id" class="w-full" :instrument-id="l.instrument_id" :title="legName(l)" @close="depthFor = null" />
       </li>
     </ul>
+
+    <!-- UI-206 footer, kept in view at the drawer's bottom edge: the count left; Pick from Option Chain, Clear All and Done
+         right. Done adds every selected contract through the same planned-entry capture; it never places an order. -->
+    <div
+      v-if="tab === 'strikes' && expiry" class="sticky bottom-0 -mx-4 -mb-4 mt-auto flex min-h-16 flex-wrap items-center gap-2 border-t border-line bg-surface px-4 py-2"
+      data-testid="picker-footer"
+    >
+      <span class="font-medium" data-testid="picker-count">{{ pickedCount }} selected</span>
+      <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
+      <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
+      <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>
+      <span v-if="doneError" class="w-full text-error" data-testid="done-error">{{ doneError }}</span>
+    </div>
   </section>
 </template>

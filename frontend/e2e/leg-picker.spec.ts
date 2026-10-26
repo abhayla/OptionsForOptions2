@@ -48,6 +48,7 @@ async function addLeg(page: Page, type: string, strike: string, action: string) 
 test('four picked legs are priced by the real outcome route on the recorded frames', async ({ page }, info) => {
   await seedCatalogue(page)
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'no-draft')
   await expect(page.getByTestId('pick-strike')).toBeVisible()
   await expect(page.getByTestId('pick-expiry')).toContainText('2026-10-13')
@@ -69,6 +70,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
 test('edit changes a leg and remove drops it', async ({ page }) => {
   await seedCatalogue(page)
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
@@ -87,6 +89,7 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
 test('without live data the leg is added with no price and the not-connected wording, no numbers', async ({ page }, info) => {
   await seedCatalogue(page)
   await page.goto(`${PLAIN_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await expect(page.getByTestId('leg-unpriced')).toHaveText('Draft — Live data not connected')
@@ -121,6 +124,7 @@ test('Strikes tab without live data: dashes and the reason, two selected contrac
   await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: STRIKES }))
   await page.route('**/api/leg-picker/depth**', (r) => r.fulfill({ json: DEPTH_NOT_AVAILABLE }))
   await page.goto(`${PLAIN_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await expect(page.getByTestId('strikes-reason')).toHaveText('Live data is not connected, so no prices are shown.')
   await expect(page.getByTestId('strikes-centre')).toContainText('ATM unknown - no live price')

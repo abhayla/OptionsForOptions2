@@ -43,6 +43,7 @@ async function noRawValues(page: Page) {
 test('legs are named by contract, times are IST words, and no raw id or ISO time is on the page', async ({ page }) => {
   await seedCatalogue(page)
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   for (const [strike, action] of [['22800.00', 'SELL'], ['23000.00', 'BUY']]) {
     const rows = page.getByTestId('leg-row')
