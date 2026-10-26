@@ -79,7 +79,8 @@ def test_ac4_one_paisa_short_blocks_with_both_amounts(reply_data: dict) -> None:
     assert verdict.allowed is False
     assert verdict.message is not None
     assert verdict.message.what_happened == (
-        "Zerodha says this strategy needs ₹68,498.85 of margin; ₹68,498.84 is available in your account.")
+        "This strategy needs ₹68,498.85 of margin with the premium up to your limit prices (an estimate); "
+        "₹68,498.84 is available in your account.")
     assert verdict.message.what_is_blocked == "Building the Zerodha basket for this strategy."
     assert verdict.message.code == "MARGIN_201"
 
@@ -111,10 +112,12 @@ def test_ac1_sub_paisa_amounts_never_round_in_the_users_favour() -> None:
     verdict = check_margin(Decimal("100.00"), Decimal("100.001"))
     assert verdict.allowed is False
     assert verdict.message is not None
-    assert "needs ₹100.01 of margin; ₹100.00 is available" in verdict.message.what_happened
+    assert ("needs ₹100.01 of margin with the premium up to your limit prices (an estimate); "
+            "₹100.00 is available") in verdict.message.what_happened
     short = check_margin(Decimal("100.009"), Decimal("100.01"))
     assert short.allowed is False and short.message is not None
-    assert "needs ₹100.01 of margin; ₹100.00 is available" in short.message.what_happened
+    assert ("needs ₹100.01 of margin with the premium up to your limit prices (an estimate); "
+            "₹100.00 is available") in short.message.what_happened
 
 
 @pytest.mark.parametrize("bad", [68498.85, "68498.85", 68498, True, Decimal("NaN"), Decimal("Infinity")])
@@ -139,7 +142,8 @@ def test_ac4_a_negative_balance_always_blocks_and_shows_its_sign() -> None:
     assert verdict.allowed is False and verdict.available == Decimal("-120.5")
     assert verdict.message is not None
     assert verdict.message.what_happened == (
-        "Zerodha says this strategy needs ₹68,498.85 of margin; -₹120.50 is available in your account.")
+        "This strategy needs ₹68,498.85 of margin with the premium up to your limit prices (an estimate); "
+        "-₹120.50 is available in your account.")
     assert check_margin(Decimal("-0.01"), Decimal("0")).allowed is False
     assert check_margin(Decimal("0"), Decimal("0")).allowed is True
 
@@ -209,7 +213,7 @@ def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
     busy_words, plain_words = check_margin(None, None, busy=True).message, check_margin(None, None).message
     assert busy_words is not None and plain_words is not None and busy_words.what_happened != plain_words.what_happened
     verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data, CONDOR))
-    assert verdict.message is not None and verdict.message.what_happened.startswith("Zerodha says")
+    assert verdict.message is not None and verdict.message.what_happened.startswith("This strategy needs")
 
 
 @pytest.mark.parametrize("data", [
@@ -412,7 +416,8 @@ def test_099_the_attack_one_paisa_short_stays_blocked() -> None:
     required = required_from_basket_reply(_reply(total=Decimal("68498.86")), [])
     verdict = check_margin(Decimal("68498.85"), required)
     assert verdict.allowed is False and verdict.message is not None
-    assert "needs ₹68,498.86 of margin; ₹68,498.85 is available" in verdict.message.what_happened
+    assert ("needs ₹68,498.86 of margin with the premium up to your limit prices (an estimate); "
+            "₹68,498.85 is available") in verdict.message.what_happened
 
 
 def test_099_a_float_tail_on_a_buy_legs_premium_uses_the_paisa() -> None:
