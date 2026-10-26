@@ -1,0 +1,9 @@
+# Trigger paths for kit deliver step 2a (ADR-191 (2), owner 2026-10-26): a row whose diff touches one of these goes up
+# as a draft PR, and the checker starts only after that head's App tests run (database + Playwright) is green.
+# Scope = ADR-191 (2): migrations, API reply models, strategy-socket messages. Reply models are defined in the route
+# files and api_models.py, so every route file is a trigger.
+backend/ofo_app/alembic/versions/**    # migrations (row 29: 0025 broke the migration round-trip and pin tests)
+backend/ofo_app/api_models.py          # shared reply models
+backend/ofo_app/routes/**              # route replies (row 27: the expiries reply broke test_pinned_clock)
+backend/ofo_app/*_push.py              # socket push messages (chain, index)
+frontend/src/composables/useStrategyLive.js  # strategy-socket client protocol (run 40083846807: seq echo)
