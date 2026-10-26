@@ -8,7 +8,7 @@
   "where": "chunk 3 session A, rows 27b and 29b DB tests; reset attempt after CI red on PR #540",
   "evidence": "reset_test_catalogue.py dry run: broker_instruments 1085, catalogue_contracts 1085; --yes: backup verified in D:\\Abhay\\scratch\\ofo2-test-db-backups\\20261024T212516Z, then DATABASE ERROR (rolled back, nothing deleted): broker instruments: zerodha row 227713285 of contract 3278525 is never deleted (REQ-054 AC-3). CI run 40132982617: 1 failed (test_pinned_clock.py:140), 3963 passed."
  },
- "fix": "Local DB runs use a throwaway database per run (scripts/orchestrator/db_run_fresh.py exists for this) instead of the shared ofo_test, so a committing test can never poison the next run; a brief that touches a route read by DB tests runs them through the fresh-database runner. Recreating ofo_test itself is an owner-host action (the PostgreSQL also serves IPODhan production).",
+ "fix": "Local DB runs use a throwaway database per run (scripts/orchestrator/db_run_fresh.py exists for this) instead of the shared ofo_test, so a committing test can never poison the next run; a brief that touches a route read by DB tests runs them through the fresh-database runner. Recreating ofo_test itself is an owner-host action (the PostgreSQL also serves IPODhan production). Measured 2026-10-26: db_run_fresh.py ran 3 DB files in 6 min 25 s with 0 failures while ofo_test failed 10 of 138 - prefer db_run_fresh.py for every local DB test; recreating ofo_test needs the owner's OK (VPS next to IPODhan production).",
  "detection": {
   "status": "unguarded",
   "checks": [],
@@ -18,6 +18,15 @@
   "spec/decisions/ADR-048.md"
  ],
  "occurrences": [
-  {"date": "2026-10-25", "where": "chunk 3 session A", "evidence": "1,085 undeletable catalogue rows in ofo_test"}
+  {
+   "date": "2026-10-25",
+   "where": "chunk 3 session A",
+   "evidence": "1,085 undeletable catalogue rows in ofo_test"
+  },
+  {
+   "date": "2026-10-26",
+   "where": "chunk 3 close: ofo_test at alembic 0025 from an earlier draft of row 29's migration (0026's pinned-body check refused the upgrade); after downgrade -1 + upgrade head it is at 0026, but 10 of 138 tests in 4 DB files still failed: 4 advisory-lock statement timeouts (two runs against the shared DB at once) and 4 'Catalogue update refused: would drop 419 of 419 live NIFTY contracts' (stale catalogue rows); reset_test_catalogue.py --yes was refused by the REQ-054 AC-3 'never deleted' trigger",
+   "evidence": "the same 3 files on a fresh throwaway DB (scripts/orchestrator/db_run_fresh.py): 65 passed, 0 failed, 6 min 25 s"
+  }
  ]
 }

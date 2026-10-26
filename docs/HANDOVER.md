@@ -7,7 +7,8 @@
   Owner decision ADR-192 (Save As name fits 20 characters).
 - **PENDING:** #537 F5 Save As build + F2 Execute refusal sentence (small); ADR-191 (3) measured row 3 of 3; the shared
   ofo_test DB is out of step at alembic 0026 (owner OK before any VPS repair).
-- **NEXT:** chunk 4 session B (rows 33-35, market day) - prompt in docs/process/chunk-session-prompts.md; run ci_local
+- **Owner follow-ups (evening):** 6 helper worktrees removed; ofo_test migrated to head (stale catalogue rows remain - use db_run_fresh.py, mechanism due); #537 F2 + F5 fixed; row 26m (Count my open positions) measured, core half-proven live - build NEXT in a fresh session (block "after chunk 3 session B - owner follow-ups").
+- **NEXT:** row 26m (~5 h), then chunk 4 session B (rows 33-35, market day) - prompt in docs/process/chunk-session-prompts.md; run ci_local
   one at a time, --full when the default mode fails in 0.0 s (Startup-Factory #180).
 
 **2026-10-25 — kit 1.12.0 MERGED (PR #546, merge 74230ef6, ADR-187).** From 1.10.1. Merged by merge.py at reviewed

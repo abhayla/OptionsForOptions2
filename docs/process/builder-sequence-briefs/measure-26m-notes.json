@@ -1,0 +1,50 @@
+{
+ "ac_status": [
+  {
+   "ac": "REQ-081 AC-1..4, 7..11",
+   "status": "met on main (rows 26c/26b/26f, PRs #575-#577 per docs/process/builder-sequence-2026-10-22.md:59); out of this measure"
+  },
+  {
+   "ac": "REQ-081 AC-5",
+   "status": "not met: backend/ofo_app/kite_margin.py:44 always =true, kite_margin.py:190 has no mode, outcome_margin.py:151 key (session, orders) has no mode, no per-user settings table on main (alembic head 0026_strategy_deleted_at), MarginLine.vue has no toggle. Split to 26m-db / 26m-b / 26m-f. Different-figure behaviour UNPROVEN until the owner holds a real open position (RD-020; row25-outcome-margin.json has no positions)."
+  },
+  {
+   "ac": "REQ-081 AC-6",
+   "status": "gate half met by construction today (execute.py:558 and checked_basket.py:49,86 use the =true default and never read a setting); Execute review names both figures: not met, built in 26m-b. Wording slip in the AC (the gate is position-aware; the blocking case is the standalone figure lower than the gate's): Class 1 fix in 26m-b."
+  },
+  {
+   "ac": "REQ-138 AC-1/2/3 (row 40, W-168)",
+   "status": "only the include-open-positions key and the per-user table are built here; Settings panel and the other keys stay row 40"
+  }
+ ],
+ "owner_questions": [],
+ "decisions_recorded_as_technical": [
+  "store shape = the generic (user_ref,key)->JSONB table already written in open PR #509, not a second shape; numbered 0027 because main's 0022 is strategy_versions; PR #509 must re-parent its 0022_user_settings (collision) - tell the owner as information",
+  "no-position case keeps today's line and offers no toggle (AC-5 only speaks of at least one open position); a positions failure never produces the with-your-open-positions label",
+  "setting resolved inside margin_answer (one door), so live_push.py and leg_edit.py need no edit"
+ ],
+ "business_check": "No business question left open: AC-5 labels, default on, per-user and AC-6 gate-stays are written. The Execute both-figures wording and the toggle caption are draft catalogue text with the pending-owner-read marker like every other pin. AC-6 wording slip is a Class 1 fix.",
+ "sensibull": {
+  "grep": "grep -rniE \"include.{0,15}(existing|open).{0,10}position|standalone margin|existing positions\" D:/Abhay/Ventures/competitors/sensibull/2026-10-21 --include=*.md | wc -l",
+  "count": 29,
+  "screens": [
+   "241 (positions toggle ON)",
+   "243 (toggle OFF -> Standalone Funds / Standalone Margin, values same because the account had no positions)",
+   "240 (margin tooltip)",
+   "025 (Builder Settings)"
+  ],
+  "files": "catalogue-raw.md:45,170,245,260,302-311; bundle-findings.md:186,345; ARCHITECTURE.md:95,160; api-and-architecture.md:74"
+ },
+ "answer_states": "see 26m-b item Answer states",
+ "not_done": [
+  "No real different-figure proof (needs one real open NIFTY position held by the owner): AC-5 stays PARTIAL after 26m; file an issue with gh_issue.py --stage",
+  "Row 40 Settings panel and other REQ-138 keys",
+  "Re-parenting PR #509's 0022_user_settings migration onto 0027+ (owner of that PR)"
+ ],
+ "file_counts": {
+  "26m-db": 6,
+  "26m-b": 15,
+  "26m-f": 4
+ },
+ "order": "26m-db (migration PR) -> 26m-b -> 26m-f"
+}
