@@ -142,7 +142,6 @@ from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot  # noqa: E402
 from ofo.outcome.service import exercise_stt_line  # noqa: E402
 from ofo.scenario.views import View  # noqa: E402
-from ofo.table import ColumnId  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 REPLAY_CONDOR = (
@@ -201,7 +200,7 @@ def test_every_charges_derived_decimal_has_two_places(replayed):
              *(p[1] for p in out.payoff_points)]
     assert len(money) > len(out.scenario.totals) and all(_is_paise(m) for m in money), money
     for row in out.table.rows:
-        if row.row_id in ("TOTAL", "CHARGES"):
+        if row.row_id == "TOTAL":
             for cell in row.cells.values():
                 if cell.kind.value == "money" and isinstance(cell.value, D):
                     assert _is_paise(cell.value), (row.row_id, cell.value)
@@ -236,20 +235,21 @@ def test_guard_charges_that_wipe_out_the_profit_read_cannot_make_money(replayed)
 
 # --- round 2: a leg the rate table cannot price falls back to ADR-071's phrase and never shows zero charges ----------
 
-def _assert_old_phrase_and_flag(out):
+def _assert_old_phrase_and_flag(out, provider):
     s = out.summary
     assert out.state is OutcomeState.COMPUTED, out.reason
     assert s.charges is None and s.charges_unavailable  # mutant `charges = Decimal(0)` -> charges == 0, flag False: red
     assert s.what_can_i_lose == "At most ₹8,245.25 at expiry, before charges and taxes."
     assert s.what_can_i_make == "At most ₹4,754.75 at expiry, before charges and taxes."
     assert "about ₹" not in s.what_can_i_lose + s.what_can_i_make
-    assert out.scenario.charges is None  # the expiry values are the plain ones: scenario_values got no rates
+    assert out.scenario.charges is None  # the breakdown figure is absent: scenario_values got no rates
+    assert out.scenario.totals == outcome_of(provider, None)[1].scenario.totals  # same curve as with no rates at all
 
 
 def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatch):
     monkeypatch.delitem(rt.SEGMENT_BY_UNDERLYING, "NIFTY")
     _, out = outcome_of(replayed, RATES)
-    _assert_old_phrase_and_flag(out)
+    _assert_old_phrase_and_flag(out, replayed)
 
 
 def test_guard_a_zero_planned_price_leg_falls_back(replayed):
@@ -263,37 +263,46 @@ def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     assert out.scenario.charges is None
 
 
-# --- round 3: the table shows the charges as a row, so legs + charges == TOTAL in every column --------------------
+# --- ADR-167: the table has no charges row; the legs sum to TOTAL in every column, before charges --------------------
 
 CHARGES_ROW = "CHARGES"
-CHARGES_LABEL = "Charges and taxes (estimate)"
 
 
 def _rows(out):
     return {r.row_id: r for r in out.table.rows}
 
 
-def test_table_has_a_charges_row_and_legs_plus_charges_equal_total_in_every_column(replayed):
+def test_table_has_no_charges_row_and_the_legs_sum_to_total_in_every_column(replayed):
     _, out = outcome_of(replayed, RATES)
     rows = _rows(out)
-    assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", CHARGES_ROW, "TOTAL"]  # between legs and TOTAL
-    row = rows[CHARGES_ROW]
-    assert row.cells[ColumnId.LEG].display == CHARGES_LABEL
+    assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", "TOTAL"]  # mutant: re-added row -> red
     levels = out.level_set.levels
     assert len(levels) >= MIN_LEVELS
     for level in levels:
         legs_sum = sum((rows[str(i)].cell(level).value for i in range(1, 5)), D("0"))
-        assert rows[CHARGES_ROW].cell(level).value is not None
-        assert legs_sum + rows[CHARGES_ROW].cell(level).value == rows["TOTAL"].cell(level).value, level  # exact
-        assert rows[CHARGES_ROW].cell(level).value <= 0  # charges only ever cost money
-    # at a level with no bought option in the money the cell is exactly minus the round trip
-    assert out.summary.charges == -rows[CHARGES_ROW].cell(D("22533.25")).value
-    # the money display string is the same one every other money cell uses
-    shown = rows[CHARGES_ROW].cell(D("22533.25")).display
-    assert shown.startswith("-₹") or "₹" in shown
+        assert legs_sum == rows["TOTAL"].cell(level).value, level  # exact; mutant: `- charges` in views.py -> red
 
 
-def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estimated_now(replayed):
+def test_guard_the_total_at_each_breakeven_column_is_zero_before_charges(replayed):
+    _, out = outcome_of(replayed, RATES)
+    total = _rows(out)["TOTAL"]
+    assert out.summary.breakevens
+    for be in out.summary.breakevens:
+        assert total.cell(be).value == 0, be  # today (before the fix) this was minus the charges
+
+
+def test_guard_the_curve_and_totals_equal_the_no_rates_answer_while_max_loss_adds_charges(replayed):
+    _, with_rates = outcome_of(replayed, RATES)
+    _, without = outcome_of(replayed, None)
+    assert with_rates.scenario.totals == without.scenario.totals
+    assert with_rates.payoff_points == without.payoff_points
+    s = with_rates.summary
+    assert s.max_loss == without.summary.max_loss + s.charges  # the sentence figure is not read off the curve
+    assert s.max_profit == without.summary.max_profit - s.charges
+    assert min(with_rates.scenario.totals) == -without.summary.max_loss
+
+
+def test_table_has_no_charges_row_without_rates_and_in_estimated_now(replayed):
     _, none_out = outcome_of(replayed, None)
     assert CHARGES_ROW not in _rows(none_out)
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)

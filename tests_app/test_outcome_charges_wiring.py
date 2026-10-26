@@ -53,6 +53,17 @@ async def test_route_says_including_charges_when_a_rate_set_is_stored(replayed, 
     assert D(s["max_loss"]) == D("8245.25") + D(s["charges"])
 
 
+async def test_route_curve_and_totals_are_before_charges_while_max_loss_adds_them(replayed, monkeypatch):  # noqa: F811 - pytest fixture
+    seed(monkeypatch, None)
+    plain = (await _post(_body(replayed), replayed)).json()
+    seed(monkeypatch, RATES)
+    body = (await _post(_body(replayed), replayed)).json()
+    assert body["payoff"] == plain["payoff"]  # ADR-167 (1): the chart is the engine grid
+    assert body["scenario"]["totals"] == plain["scenario"]["totals"]
+    assert min(D(t) for t in body["scenario"]["totals"]) == -D("8245.25")
+    assert D(body["summary"]["max_loss"]) == D("8245.25") + D(body["summary"]["charges"])  # ADR-167 (3)
+
+
 async def test_route_keeps_the_old_phrase_when_no_rate_set_is_stored(replayed, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, None)
     s = (await _post(_body(replayed), replayed)).json()["summary"]

@@ -1,6 +1,7 @@
 """The two views of the same scenario columns (REQ-034 AC-6; ADR-008 Q33A = C; scenario-calculations.md §4).
 
-- **At Expiry** (default, exact): the engine's §1 expiry P&L per leg and total (:func:`ofo.engine.scenario_grid`).
+- **At Expiry** (default, exact): the engine's §1 expiry P&L per leg and total (:func:`ofo.engine.scenario_grid`), BEFORE charges and exercise STT (ADR-167 (1)). The
+  round-trip charges are carried beside the values (``ScenarioValues.charges``), never inside them.
 - **Estimated Now** (model-based): the engine's estimate (:func:`ofo.engine.model.estimate`), labelled
   as an estimate and carrying its assumptions. A strategy with an option leg that has no IV gets no estimate: the
   view is unavailable with a reason, never a zero.
@@ -20,7 +21,7 @@ from enum import Enum
 from typing import Final, Literal
 
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import exercise_stt_at, round_trip_charges
+from ofo.charges.round_trip import round_trip_charges
 from ofo.engine import scenario_grid
 from ofo.engine.estimate import EstimateAssumptions
 from ofo.engine.model import ModelInputs, estimate, join_labels
@@ -61,7 +62,7 @@ class ScenarioValues:
     data_label: str | None = None
     # data label and model label joined, e.g. "stale since 09:20 IST; estimated from spot" (W-060 round 3)
     output_label: str | None = None
-    # W-075 / ADR-082 (2): the round-trip charges already subtracted from every At Expiry total (None = not applied)
+    # ADR-167 (2): the round-trip charges beside the values (the breakdown figure); never inside a total (None = no rates)
     charges: Decimal | None = None
 
 
@@ -91,12 +92,10 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
     levels = level_set.levels
     if view is View.AT_EXPIRY:
         grid = scenario_grid(inputs.strategy, levels)
-        totals, charges = grid.totals, None
-        if rates is not None:  # ADR-082 (2): round trip once, plus STT on exercise of each bought option in the money
+        charges = None
+        if rates is not None:  # ADR-167 (2): the round trip is carried BESIDE the values, never subtracted from them
             charges = round_trip_charges(inputs.strategy.legs, inputs.underlying, rates)
-            totals = tuple(t - charges - exercise_stt_at(inputs.strategy.legs, level, rates)
-                           for t, level in zip(grid.totals, levels, strict=True))
-        return ScenarioValues(view, LABELS[view], "exact", levels, True, None, totals, grid.leg_rows,
+        return ScenarioValues(view, LABELS[view], "exact", levels, True, None, grid.totals, grid.leg_rows,
                               output_label=inputs.data_label, charges=charges, **spot)
     missing = _missing_iv(inputs)
     if missing:
