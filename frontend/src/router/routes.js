@@ -1,7 +1,7 @@
 // Route table split out of index.js (W-055) so the responsive check can read it in Node without a browser history.
 // Structure adapted from abhayla/algochanakya@bf9faf7:frontend/src/router/index.js (ADR-047): lazy routes, meta flags,
 // catch-all. The route table itself is new: the seven sections (REQ-009), /settings/* and /health-status.
-import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
+import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL, FULL_WIDTH_ROUTES } from './nav.js'
 import { requireOrderPath } from '../lib/orderPath.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
@@ -74,7 +74,7 @@ const settingsRoutes = [
   })),
 ]
 
-export const routes = [
+const routeTable = [
   { path: '/', redirect: '/home' },
   // GC-6 row LANDING (REQ-010): public page, no app shell (meta.public); '/' stays on /home until sign-in (Stage 5).
   { path: '/welcome', name: 'landing', component: () => import('../pages/LandingPage.vue'), meta: { title: 'Welcome', public: true } },
@@ -89,3 +89,5 @@ export const routes = [
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../pages/NotFoundPage.vue'), meta: { title: 'Page not found' } },
 ]
 
+// UI-004 (ADR-193): meta.fullWidth marks the pages that use the full width (builder, option chain); AppLayout reads it.
+export const routes = routeTable.map((r) => (FULL_WIDTH_ROUTES.includes(r.name) ? { ...r, meta: { ...r.meta, fullWidth: true } } : r))
