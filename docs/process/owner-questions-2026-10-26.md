@@ -76,7 +76,7 @@ Options:
 - Stay out (ADR-187 (5) as is). The next records PR that trips a record test turns main red again and blocks every PR
   until someone notices.
 
-Answer: (pending)
+Answer: "Opt in (Recommended)" (owner, question box, 2026-10-26 ~09:00 IST). Recorded as ADR-191 (1); .claude/project/ci-docs-only-tests.txt added.
 
 ## Q4: the step 3 RCA shows classes local app checks would catch; reverse ADR-189 for those triggers only?
 
@@ -108,4 +108,4 @@ Options:
 - Full reversal: every push runs the local app gate (the ~8-minute ADR-188 gate). Not recommended: it was removed for
   its cost, and the RCA shows no red it would catch beyond the targeted set.
 
-Answer: (pending)
+Answer: "Draft PR + CI first (Recommended)" (owner, question box, 2026-10-26 ~09:00 IST). Recorded as ADR-191 (2); runbook Delivery section carries the trigger.

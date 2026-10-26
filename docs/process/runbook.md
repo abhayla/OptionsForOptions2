@@ -34,6 +34,9 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
 - At most 2 rounds; round 2 re-checks only round 1's findings and the fix's files (15 min / 20 calls). After round 2:
   a CRITICAL or MAJOR on Tier A parks the item unmerged; anything else ships with the findings listed (deferred
   issues). Red CI or a failed core proof is never deferred. No automatic independent review.
+- Draft PR first (ADR-191 (2)): a diff that touches a migration, an API reply model or a strategy-socket message is
+  pushed as a draft PR; the checker starts only after that head's App tests run is green. Everything else keeps
+  ADR-189 (CI after review).
 - Mutation tests: Tier A guards only, at most 5 mutants, run by the builder on a scratch copy
   (`scripts/orchestrator/mutation_gate.py`); not a gate.
 - After each item (deliver step 10): record minutes, rounds and the cause of each extra round in
