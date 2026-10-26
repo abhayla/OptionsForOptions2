@@ -594,6 +594,15 @@
             "type": "boolean",
             "title": "Shortfall",
             "default": false
+          },
+          "shortfall_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Reason"
           }
         },
         "additionalProperties": false,
