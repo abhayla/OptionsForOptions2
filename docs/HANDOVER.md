@@ -1,17 +1,14 @@
 # Handover
 
-## NOW (2026-10-26, after kit 1.16.0; full note: docs/process/session-handover-2026-10-26-kit-1.16.0.md)
+## NOW (2026-10-26 ~17:00 IST, after chunk 3 session B; full block: "chunk 3 session B END" in docs/process/session-handover-2026-10-22-builder-sequence.md)
 
-- **DONE:** kit 1.16.0 in force (PR #571; H1 to H5, Startup-Factory issues 172 to 176): ci_local runs the PR test step,
-  records-only PRs run the records test set, a control-byte CI step, generated files accepted when current, deliver
-  step 2a. ADR-191 (1) record tests on records-only PRs (`.claude/project/ci-docs-only-tests.txt`, #570); ADR-191 (2)
-  trigger paths in `.claude/project/ci-trigger-paths.txt` (#572).
-- **PENDING:** ADR-191 (3): measure the next 3 delivered rows with `tools/ci_reds.py` and
-  `tools/measure_tokens.py --budgets` against rows 27, 29, 30 and 31b. Live proof of the records-only short test run
-  still owed (first records-only PR).
-- **NEXT:** chunk 3 session B, row 25 (W-153, REQ-055), then row 26 and the chunk 3 close. A row whose diff touches a
-  trigger path runs `python tools/change_scope.py --base origin/main --triggers`, opens a DRAFT PR, and starts the
-  checker only after App tests are green (deliver step 2a).
+- **DONE:** chunk 3 closed. Row 25 (#574, live margin core proof) and row 26 (#575 ADR-167 curves before charges, #576
+  money figures, #577 screen) merged; reference copy, chunk Tier A review, conformance check, deferred issue #537 F1-F5.
+  Owner decision ADR-192 (Save As name fits 20 characters).
+- **PENDING:** #537 F5 Save As build + F2 Execute refusal sentence (small); ADR-191 (3) measured row 3 of 3; the shared
+  ofo_test DB is out of step at alembic 0026 (owner OK before any VPS repair).
+- **NEXT:** chunk 4 session B (rows 33-35, market day) - prompt in docs/process/chunk-session-prompts.md; run ci_local
+  one at a time, --full when the default mode fails in 0.0 s (Startup-Factory #180).
 
 **2026-10-25 — kit 1.12.0 MERGED (PR #546, merge 74230ef6, ADR-187).** From 1.10.1. Merged by merge.py at reviewed
 sha e8c2af3b; all 7 checks passed. Tier A round 1 (fresh Opus): FAIL, one MAJOR reproduced: the new gate's local-git

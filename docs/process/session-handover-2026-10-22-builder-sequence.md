@@ -1,6 +1,37 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE chunk 4 session A END (sessions c097bcc4 and its restarts), 2026-10-26 ~02:xx IST - START HERE (newest)
+## UPDATE chunk 3 session B END (session 141f1b25), 2026-10-26 ~17:00 IST - START HERE (newest)
+Ran 11:01-~17:00 IST, owner present (Kite login 11:07). Chunk 3 is CLOSED. Process: ADR-189/190/191, kit 1.16.0.
+- **DONE (merged, CI green):** row 25 #574 (REQ-055, W-153; live core proof 11:10:30 IST through POST
+  /api/strategies/outcome: SELL NIFTY26N0322650CE + BUY NIFTY26N0322850CE x65 -> CHECKED, needed 35711.37, available
+  61324.90, no order; record docs/research/kite-proof-2026-10-07/rest-2026-10-26/row25-outcome-margin.json); row 26 as
+  three parts: #575 26c (ADR-167 (1)/(4): curves and scenario values before charges - accepted 2026-10-22, never built),
+  #576 26b (money figures, engine module backend/ofo/engine/money_summary.py), #577 26f (screen, info marks #561).
+  Evidence W-153 AC-3 (fail, MINOR), AC-4; W-154 AC-1..4, 7..11. Both work items in_review, PARTIAL.
+- **Chunk 3 close:** reference copy (RD-001, RD-043, RD-106, RD-109 verified; RD-019, RD-020, RD-021, RD-044, RD-107,
+  RD-112 deferred to #537); chunk Tier A review (Opus, 1 round: no CRITICAL/MAJOR; MINOR Save As vs 20-char clash ->
+  owner decided ADR-192 this session, build item #537 F5); conformance check (ADR-189 rules: R1 followed in-session but
+  round-1 checker dispatches are not ledgered so not provable afterwards; R2 two partial misses - first #574 push without
+  the PR-body step, ci_local green twice while CI's app-tests job went red; R6/R7 done at close); deferred issue #537
+  (sections F1-F5 added); measure_tokens --since 2026-10-24: main sessions 2,774 calls / 1.18B context (~425k per call,
+  target < 250k); agents 168M (Opus) + 442M (Sonnet); 219 of 354 builder agents over their call budget.
+- **Owner decision this session:** ADR-192 (Save As shortens the original name so "<name> copy" fits 20 characters).
+- **Row 30 live half (#560):** ran 11:15 IST - strike moves and max loss pass by hand; 50 edits p95 27,144 ms; the dev
+  DB sits behind the SSH tunnel (SELECT 1 median 96.8 ms), so the run cannot settle AC-1; stays PARKED with next steps on #560.
+- **Kit / tools found today:** Startup-Factory #180 (ci_local narrowed step > ~8 KB fails in Git bash: use --full);
+  local ruff ratchet counts 629 E501 vs CI 632 (check ADDED lines, builder-brief.md); no generator for
+  docs/api/outcome.openapi.json; merge.py refuses an empty-diff merge-only update (merged after proving equal trees);
+  make_brief verify-r2 refuses "door"/"gate" words; mutation_gate scratch copy lacks .env (all in #537 F4).
+- **PENDING / NEXT:** (1) #537 F5 Save As build (Tier B, small) and F2 Execute refusal sentence (Tier A, one line);
+  (2) chunk 4 session B: rows 33-35 + chunk 4 close; (3) #558 row 31 round (merge main first); (4) ADR-191 (3) measured
+  row 3 of 3, then compare with rows 27, 29, 30, 31b; (5) the shared ofo_test DB says alembic 0026 but lacks
+  `deleted_at` - migration tests fail locally (CI green); repairing it is a VPS step next to IPODhan production: owner OK first.
+- **BLOCKED:** none. **PARKED:** #558 (row 31), #560 (row 30 live half), #561 (row 32 marks for rows 37, 38).
+- **Rules learned:** a measure's "AC met" for an AC that names WHOSE figure is shown needs every label read against the
+  figure's source; a fix brief's folded-in MINOR is checked against the ADR text first; run ci_local runs one at a time
+  (two or three in parallel pushed free RAM under 3 GB and the memory guard stopped background jobs).
+
+## UPDATE chunk 4 session A END (sessions c097bcc4 and its restarts), 2026-10-26 ~02:xx IST (older)
 Ran 2026-10-25 13:20 to 2026-10-26 early morning; the Claude process restarted three times (in-flight agents lost
 once: a whole 31b build). Process changed mid-session: kit 1.14.0 + ADR-189 (another session, #555/#556) retired
 gate.py, the ADR-178 tracker and measure_process.py; follow `docs/process/runbook.md` (`python tools/ci_local.py

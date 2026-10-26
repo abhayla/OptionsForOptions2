@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (187)
+## Decisions (188)
 
-- Older decisions: 147 rows, ADR-1..ADR-150 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-151 2026-10-21: SPEC CHANGE to ADR-120 (1). [supersedes ADR-120; refines REQ-034]
+- Older decisions: 148 rows, ADR-1..ADR-151 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-152 2026-10-21: For every user-facing feature triaged in the 2026-10-21 master register, the default is to behave t… [refines ADR-033]
 - ADR-153 2026-10-21: SPEC CHANGE to ADR-009 for stop-loss and conditional exits only. [refines ADR-009; refines ADR-053]
 - ADR-154 2026-10-21: Intent, no spend. [refines ADR-100]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
 - ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
 - ADR-191 2026-10-26: (1) The project opts in to the kit's docs-only CI test list: `.claude/project/ci-docs-only-tests.tx… [amends ADR-187 (5); amends ADR-189]
+- ADR-192 2026-10-26: When Save As pre-fills its name box and "<name> copy" would be longer than 20 characters (ADR-183),… [amends REQ-134]
 
 ## Requirements (131)
 

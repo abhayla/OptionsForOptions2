@@ -3,13 +3,16 @@
   "kind": "COPY",
   "title": "Activity history and restore for a saved strategy: the reference product has none (G-16-2)",
   "reference_behaviour": "Saved strategies have no history, version or restore screen (searched history, version, restore).",
-  "reference_screens": ["screen 118"],
-  "ours": "SPEC CHANGE: an extra of ours. REQ-038 AC-2 and REQ-070 AC-3 keep an activity history with restore (API built, no screen yet); copying would drop it. For the owner's batch.",
+  "reference_screens": [
+    "screen 118"
+  ],
+  "ours": "Activity history with restore is built (ActivityPanel.vue, ADR-019 / ADR-184 cited by the chunk check); the reference has none; marking it a recorded spec change is open - #537 F1",
   "req": "REQ-070",
   "ac": "AC-3",
   "row": 28,
-  "status": "open",
+  "status": "deferred",
   "spec_change": true,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 537
 }

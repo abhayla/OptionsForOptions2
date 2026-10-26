@@ -3,13 +3,17 @@
   "kind": "COPY",
   "title": "Include-existing-positions setting and the Standalone margin label (G-03-2)",
   "reference_behaviour": "A setting chooses whether existing positions count in the funds and margin figures (on by default); with it off the labels change to standalone funds and standalone margin, with a definition tooltip.",
-  "reference_screens": ["screen 241", "screen 243"],
-  "ours": "REQ-081 AC-5 (Count my open positions) and REQ-138 AC-3 (Standalone margin label) not built; the screen does not say whether the figure counts open positions.",
+  "reference_screens": [
+    "screen 241",
+    "screen 243"
+  ],
+  "ours": "REQ-081 AC-5/AC-6 not built: 'Count my open positions' split out of row 26 (needs a per-user setting store and a positions read); #537 F1",
   "req": "REQ-081",
   "ac": "AC-5",
   "row": 26,
-  "status": "open",
+  "status": "deferred",
   "spec_change": false,
   "bug": false,
-  "recorded": "2026-10-23"
+  "recorded": "2026-10-23",
+  "issue": 537
 }

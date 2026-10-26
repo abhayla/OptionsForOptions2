@@ -45,6 +45,27 @@ Format: `### <row/W-id> - <title> (<date>)` then one line each: `minutes: <wall-
 `extra rounds: <cause, one sentence each, or none>`, `fix applied: <what changed in a brief, rule, test or tool, and
 where; or none>`.
 
+### W-153 row 25 - REQ-055 margin check, read part (2026-10-26) - ADR-191 (3) measured row 1 of 3
+- minutes: ~253 (11:01 session start -> 15:14 IST merge of #574); core proof live at 11:10 (owner login 11:07): SELL NIFTY26N0322650CE + BUY NIFTY26N0322850CE x65 -> CHECKED, needed 35711.37, available 61324.90, no order
+- rounds: 2 Opus (round 1 MAJOR, round 2 one MINOR shipped to the chunk 3 deferred issue); 1 fix dispatch
+- extra rounds: round 1 - our ADR-094 figure (Zerodha final.total 6409 + BUY top-up = 13474.50 on the recorded reply) was labelled "Zerodha says" in three texts; the measure (and the orchestrator) accepted "AC-3 met by showing only Zerodha's figure" without reading the labels against the figure's source
+- step 2a: FIRED (backend/ofo_app/routes/outcome.py); the draft PR's App tests went red twice before the checker started (ruff ratchet: in-function imports + long lines; the second committed schema docs/api/outcome.openapi.json not regenerated) - the checker never reviewed a red head, as designed; a third red (5 Execute-gate tests asserting the old sentence) was caught by ci_local before the push
+- fix applied: builder-brief.md names the second schema file and how it is built; builder-brief.md "check your ADDED lines" (finding local-lint-ratchet-counts-below-ci); dispatch prompts now name the ratchet and the guard Tests: line as their own finish steps; finding own-figure-labelled-as-broker-figure; measure briefs: an AC that names WHOSE figure is shown is checked by reading every label against the figure's source
+
+### W-154 row 26 - REQ-081 money summary, parts b and f (2026-10-26) - ADR-191 (3) measured row 2 of 3
+- minutes: ~300 for b + f (measure 11:08; 26b built 11:57; merged #576 ~16:00, #577 ~16:35 IST); 26c separate above
+- rounds: 26b 2 Opus (round 1: 3 MAJOR), 26f 2 Sonnet (round 1 PASS, round 2 for the follow-up after 26b's fix); fix dispatches: 26b 1 (+2 resumes), 26f 1
+- extra rounds: 26b round 1 - ratios shown from figures without charges when charges cannot be priced (AC-4), no exercise-STT line (ADR-167 (4)), 3 surviving mutants; my fix brief then added a MINOR ("items sum to the total") that contradicted ADR-082's rounded-up total - reverted in the same round; 26b's first build also left 4 repo-guard failures (money outside the engine, one-home constant, write allowlist, reflection) because the builder ran only targeted files before its call limit
+- step 2a: FIRED (routes/outcome.py); one CI red before the checker (E501, local ratchet counts below CI); the 26f part did not fire (frontend only)
+- fix applied: dispatch prompts name the guard Tests: line and the ratchet as their own finish steps; a fix brief's MINOR is checked against the ADR text before it is folded in (here ADR-082 line 39); builder-brief "check your ADDED lines"; deferred structural items in #537 F4
+
+### W-154 row 26 part c - ADR-167 curves before charges (2026-10-26)
+- minutes: ~77 (measure dispatched ~11:20 -> 12:37 IST merge of #575); found by the row 26 measure, not planned (finding accepted-decision-without-owning-row)
+- rounds: 1 Opus (PASS, 1 MINOR fixed in row 25) + a delta round 2 on a lint-only commit (PASS)
+- extra rounds: the delta round only because the orchestrator's lint fix landed after the review (ratchet E501 rose on 5 added lines)
+- step 2a: did not fire (no trigger path)
+- fix applied: the kit ci_local default mode cannot run tests above ~8 KB of selected paths on Windows (Startup-Factory #180, finding local-gate-step-argv-over-8k-windows) - used --full
+
 ### W-159 row 31 - REQ-085 Builder warnings and "How this trade works" (2026-10-25/26) - PARKED #558
 - minutes: ~330 working (measure 14:00-14:40; owner question ADR-185 ~14:20-14:50; blocked by the overlap gate until #552 merged ~15:10Z; 31b build x2 - the first lost to a session restart - fix round, two Opus rounds; 31f build + Sonnet check); parked 2026-10-26 ~02:30 IST unmerged (PR #557 draft, branch build/c4-row-31f pushed)
 - rounds: 2 Opus rounds (backend), 1 Sonnet round (frontend, PASS)

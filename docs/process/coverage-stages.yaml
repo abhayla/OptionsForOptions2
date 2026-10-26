@@ -330,6 +330,7 @@ decisions:
   ADR-189: S6.7         # kit 1.14.0 lean delivery: small CLAUDE.md, tracker retired, ci_local, one checker per tier
   ADR-190: S6.7         # kit 1.15.0 taken (ci_reds, measure_tokens --budgets); no saving quoted before 3 measured rows
   ADR-191: S6.7         # record tests on records-only PRs; draft-PR CI before review for migration/reply/socket diffs
+  ADR-192: S6.1         # Save As pre-fill shortens the original name so "<name> copy" fits 20 characters (owner, 2026-10-26)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

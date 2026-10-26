@@ -3,13 +3,15 @@
   "kind": "COPY",
   "title": "One prices-updated stamp on the builder (row 7 gap G-07-1)",
   "reference_behaviour": "The builder shows one line with the time prices were last updated, refreshed automatically every 30 s.",
-  "reference_screens": ["screen 012"],
+  "reference_screens": [
+    "screen 012"
+  ],
   "reference_label": "Prices last updated at 10:35 AM",
-  "ours": "REQ-135 AC-3 not built: stamps exist per leg, per margin line and on the live card, but no single stamp on the builder.",
+  "ours": "REQ-135 AC-3 built: one 'Prices as of' stamp on the builder; per-leg and summary clocks removed",
   "req": "REQ-135",
   "ac": "AC-3",
   "row": 27,
-  "status": "open",
+  "status": "verified",
   "spec_change": false,
   "bug": false,
   "recorded": "2026-10-23"

@@ -1,0 +1,28 @@
+{
+ "id": "own-figure-labelled-as-broker-figure",
+ "scope": "project",
+ "class": "A figure the platform derives from the broker's answer (the broker's number plus a platform rule) is shown under the broker's name, so the user reads our number as the broker's authority. Wider shape: once a value is adjusted, every label that names its source must change with it; a field named after its origin ('Zerodha says') outlives the rule that changed its meaning.",
+ "mechanism": "ADR-094 (2026-10-16) made the margin check need Zerodha's final.total PLUS the premium of every option BUY up to its limit price. The single `needed` figure carries that sum, but three texts call it Zerodha's: the Builder margin label 'Margin (Zerodha): Rs {needed} needed' (MarginLine.vue), the new shortfall line 'Zerodha says these planned orders need {needed}' (row 25), and the Execute refusal 'Zerodha says this strategy needs {required} of margin' (templates.py). Measured 2026-10-26 by the row 25 Opus check on the recorded real reply (docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json): Kite final.total 6409, text 'Zerodha says ... need 13,474.50'.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "row 25 (W-153, REQ-055) Opus check round 1, PR #574",
+  "evidence": "scratchpad v25-attr.py: final.total 6409 vs needed 13474.50 labelled as Zerodha's"
+ },
+ "fix": "Row 25 fix round 1 (build/c3-row-25): the margin answer carries Zerodha's own figure separately (`zerodha_needed`, CHECKED only) and every text names each figure for what it is; the Execute refusal sentence is reworded with its decision unchanged. REQ-055 AC-3: 'The platform's own margin figure is shown as a planning estimate; Zerodha's figure is authoritative.'",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded by the row 25 fix's test pairing each label with its figure on the recorded reply, once merged; update this entry then."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-055.md",
+  "spec/decisions/ADR-094.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "Builder margin line, Builder shortfall line, Execute refusal",
+   "evidence": "3 texts"
+  }
+ ]
+}

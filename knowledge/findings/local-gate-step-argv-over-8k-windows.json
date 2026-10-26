@@ -1,0 +1,29 @@
+{
+ "id": "local-gate-step-argv-over-8k-windows",
+ "scope": "generic",
+ "class": "A local gate that rewrites a CI step (appending the chosen test files to every test call) and hands the whole multi-line script to the shell as ONE command-line argument breaks once the script passes ~8 KB on Windows Git bash: the script is cut, the shell reports a syntax error, and no test runs. Wider shape: a local mirror whose command size grows with the change size works on small changes and fails on exactly the large ones that most need the tests.",
+ "mechanism": "Kit 1.16.0 tools/ci_local.py narrow_pytest + add_junit on the 4-call 'Run tests on pull request' step, run as [bash, '-e', '-c', <text>] with C:/Program Files/Git/usr/bin/bash.EXE. Bisected 2026-10-26: 64 chosen files = 8,176 chars parses (bash -n -c rc 0); 65 files = 8,276 chars -> rc 2 'unexpected end of file'; the raw step and a 20,000-char single-line echo both parse.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "row 26c worktree (build/c3-row-26c), 92 test files chosen for 6 changed files",
+  "evidence": "ci_local step 16 log: '/usr/bin/bash: -c: line 32: syntax error: unexpected end of file', 0.0 s"
+ },
+ "fix": "Kit fix filed: Startup-Factory #180 (run the step from a temp file or stdin, not bash -c). Project workaround until it lands: `python tools/ci_local.py --full --pr-body <body>` (raw step, whole suite) when the default run's step 16 fails in 0.0 s with a bash syntax error.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tools/ci_local.py TOTAL line: the step counts as failed and the run exits non-zero (fails closed)"
+  ],
+  "note": "Not silent: the run is red. The gap is that the default mode cannot run tests for a change that selects more than ~64 test files on Windows."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "row 26c local check",
+   "evidence": "15,539-char step, 92 files"
+  }
+ ]
+}
