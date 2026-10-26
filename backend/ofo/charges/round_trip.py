@@ -11,8 +11,10 @@ rather than show a made-up figure.
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Sequence
-from decimal import ROUND_CEILING, Decimal
+from dataclasses import dataclass
+from decimal import ROUND_CEILING, ROUND_HALF_EVEN, Decimal
 
 from ofo.charges.calculator import ChargeOrder, charges_for_orders, exercise_stt
 from ofo.charges.rates import ChargeRates
@@ -62,6 +64,42 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
         return to_paise_up(charges_for_orders(orders, rates).total)
     except ValueError as exc:
         raise ChargesNotComputable(str(exc)) from exc
+
+
+@dataclass(frozen=True)
+class ChargesBreakdown:
+    """ADR-167 (2): the round-trip charges shown ONCE, by component (Sensibull screen 022). Each component is the sum
+    over the strategy's entry and exit orders rounded half-even to the paisa; ``total`` is :func:`round_trip_charges`
+    (rounded UP once), so the parts can differ from the total by a paisa or two. ``read_on`` is the date of the rates.
+    Never part of a payoff curve or a scenario value."""
+
+    brokerage: Decimal
+    stt: Decimal
+    exchange_transaction: Decimal
+    gst: Decimal
+    stamp: Decimal
+    sebi: Decimal
+    total: Decimal
+    read_on: datetime.date
+
+
+def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRates) -> ChargesBreakdown:
+    """The charges of :func:`round_trip_charges`, split by component; ChargesNotComputable gives no breakdown at all."""
+    # copied from origin/build/W-127-b2-payoff @194cc405 (backend/ofo/charges/round_trip.py), plus read_on
+    total = round_trip_charges(legs, underlying, rates)  # raises ChargesNotComputable for what has no rate
+    segment = _segment(underlying)
+    orders: list[ChargeOrder] = []
+    for leg in legs:
+        entry = "BUY" if leg.action is Action.BUY else "SELL"
+        orders.append(ChargeOrder(segment, entry, leg.quantity, leg.entry_price))
+        orders.append(ChargeOrder(segment, "SELL" if entry == "BUY" else "BUY", leg.quantity, leg.entry_price))
+    parts = charges_for_orders(orders, rates).orders
+
+    def part(name: str) -> Decimal:
+        return sum((getattr(c, name) for c in parts), Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+
+    return ChargesBreakdown(part("brokerage"), part("stt"), part("exchange_transaction"), part("gst"), part("stamp"),
+                            part("sebi"), total, rates.read_on)
 
 
 def is_bought_option(leg: Leg) -> bool:

@@ -642,6 +642,61 @@
         "title": "ChainRowOut",
         "type": "object"
       },
+      "ChargesBreakdownOut": {
+        "additionalProperties": false,
+        "description": "ADR-167 (2): the round trip by component, from the engine (Decimal strings); null on the outcome when unpriced.",
+        "properties": {
+          "brokerage": {
+            "title": "Brokerage",
+            "type": "string"
+          },
+          "exchange_transaction": {
+            "title": "Exchange Transaction",
+            "type": "string"
+          },
+          "gst": {
+            "title": "Gst",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "rates_read_on": {
+            "format": "date",
+            "title": "Rates Read On",
+            "type": "string"
+          },
+          "sebi": {
+            "title": "Sebi",
+            "type": "string"
+          },
+          "stamp": {
+            "title": "Stamp",
+            "type": "string"
+          },
+          "stt": {
+            "title": "Stt",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brokerage",
+          "stt",
+          "exchange_transaction",
+          "gst",
+          "stamp",
+          "sebi",
+          "total",
+          "rates_read_on",
+          "label"
+        ],
+        "title": "ChargesBreakdownOut",
+        "type": "object"
+      },
       "ColumnOut": {
         "additionalProperties": false,
         "properties": {
@@ -1954,6 +2009,71 @@
         "title": "ForwardOut",
         "type": "object"
       },
+      "FundsShareOut": {
+        "additionalProperties": false,
+        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text.",
+        "properties": {
+          "funds": {
+            "title": "Funds",
+            "type": "string"
+          },
+          "max_loss_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Percent"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          },
+          "max_profit_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Percent"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "funds",
+          "read_at",
+          "max_profit_percent",
+          "max_loss_percent",
+          "max_profit_text",
+          "max_loss_text"
+        ],
+        "title": "FundsShareOut",
+        "type": "object"
+      },
       "FutureOut": {
         "additionalProperties": false,
         "properties": {
@@ -2608,6 +2728,76 @@
         "title": "MaskedUserIdOut",
         "type": "object"
       },
+      "NetPremiumOut": {
+        "additionalProperties": false,
+        "description": "REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a\nleg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the\nlegs' quantities differ.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "per_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "get",
+                  "pay"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "amount",
+          "side",
+          "per_unit",
+          "text",
+          "reason"
+        ],
+        "title": "NetPremiumOut",
+        "type": "object"
+      },
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2713,6 +2903,16 @@
               }
             ],
             "title": "Centre Label"
+          },
+          "charges_breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargesBreakdownOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_price_at": {
             "anyOf": [
@@ -5395,6 +5595,16 @@
             "title": "Charges Unavailable",
             "type": "boolean"
           },
+          "funds_share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundsShareOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "intrinsic_value": {
             "anyOf": [
               {
@@ -5447,6 +5657,16 @@
             "title": "Max Profit Unlimited",
             "type": "boolean"
           },
+          "net_premium": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetPremiumOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reward_risk": {
             "anyOf": [
               {
@@ -5474,6 +5694,17 @@
             "title": "Risk Boundaries",
             "type": "array"
           },
+          "risk_reward": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Reward"
+          },
           "time_value": {
             "anyOf": [
               {
@@ -5495,6 +5726,24 @@
               }
             ],
             "title": "Upper Be"
+          },
+          "value_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Label"
+          },
+          "value_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Reason"
           },
           "what_can_i_lose": {
             "title": "What Can I Lose"
