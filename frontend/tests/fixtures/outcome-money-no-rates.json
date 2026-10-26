@@ -86,12 +86,13 @@
  ],
  "margin": {
   "state": "CHECKED",
-  "reason": "Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹671.50 available. Checked at 12:08:52 PM.",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your Zerodha account.",
   "needed": "7065.50",
+  "broker_needed": "6409.00",
   "available": "671.50",
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": true,
-  "shortfall_reason": "Zerodha says these planned orders need ₹7,065.50 of margin; ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+  "shortfall_reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
  },
  "table": {
   "underlying": "NIFTY",
@@ -2751,11 +2752,11 @@
   ],
   "charges": null,
   "charges_unavailable": true,
-  "reward_risk": "0.58",
-  "reward_risk_reason": null,
+  "reward_risk": null,
+  "reward_risk_reason": "the charges could not be priced, so the ratio is not shown",
   "time_value": "-4754.75",
   "intrinsic_value": "0.00",
-  "risk_reward": "1.73",
+  "risk_reward": null,
   "value_label": "value of the options, not P&L",
   "value_reason": null,
   "net_premium": {

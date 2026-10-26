@@ -188,13 +188,48 @@ describe("every state of every figure", () => {
   });
 });
 
+describe("the fixtures are replies of the current backend (26b)", () => {
+  it("with rates: breakdown total 215.10 and the exercise-STT rate and note; without rates: ratios null with the reason", () => {
+    expect(CONDOR.charges_breakdown.total).toBe("215.10");
+    expect(CONDOR.charges_breakdown.exercise_stt_rate).toBe("0.0015");
+    expect(CONDOR.charges_breakdown.exercise_stt_note).toMatch(
+      /^STT on exercise: 0\.15%.*not in this total\.$/,
+    );
+    expect(NO_RATES.charges_breakdown).toBeNull();
+    expect(NO_RATES.summary.reward_risk).toBeNull();
+    expect(NO_RATES.summary.risk_reward).toBeNull();
+    expect(NO_RATES.summary.reward_risk_reason).toBe(
+      "the charges could not be priced, so the ratio is not shown",
+    );
+  });
+
+  it("no rates: both ratios show '-' with the server reason, on either side of the switch", async () => {
+    const c = mount(SummaryCards, { props: cardProps(NO_RATES) });
+    expect(t(c, "reward-risk").text()).toBe("-");
+    expect(t(c, "reward-risk-reason").text()).toBe(
+      `(${NO_RATES.summary.reward_risk_reason})`,
+    );
+    await t(c, "ratio-switch").trigger("click");
+    expect(t(c, "ratio-label").text()).toBe("Risk/Reward:");
+    expect(t(c, "reward-risk").text()).toBe("-");
+    expect(t(c, "reward-risk-reason").text()).toBe(
+      `(${NO_RATES.summary.reward_risk_reason})`,
+    );
+  });
+});
+
 describe("a live update replaces the data", () => {
   it("the switch keeps working and a dropped block disappears (no last value kept)", async () => {
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
     await t(c, "ratio-switch").trigger("click");
     await c.setProps(cardProps(NO_RATES));
     expect(t(c, "ratio-label").text()).toBe("Risk/Reward:");
-    expect(t(c, "reward-risk").text()).toBe(NO_RATES.summary.risk_reward);
+    // 26b: without priced charges both ratios are absent; the flipped side shows '-' and the server reason (never 1/x)
+    expect(NO_RATES.summary.risk_reward).toBeNull();
+    expect(t(c, "reward-risk").text()).toBe("-");
+    expect(t(c, "reward-risk-reason").text()).toBe(
+      `(${NO_RATES.summary.reward_risk_reason})`,
+    );
     expect(t(c, "max-profit-percent").text()).toBe("708% of funds");
     await c.setProps({ ...cardProps(NO_RATES), fundsShare: null });
     expect(t(c, "max-profit-percent").exists()).toBe(false);

@@ -43,6 +43,22 @@ describe("ChargesBreakdown", () => {
     expect(t(w, "charges-panel").exists()).toBe(false);
   });
 
+  it("shows the server's exercise-STT text verbatim, no amount, outside the total, only when the reply carries it", async () => {
+    const w = mount(ChargesBreakdown, { props: { breakdown: B } });
+    await t(w, "charges-action").trigger("click");
+    const line = t(w, "charges-exercise-stt");
+    expect(B.exercise_stt_note).toContain("STT on exercise");
+    expect(line.text()).toBe(B.exercise_stt_note);
+    expect(line.text()).not.toMatch(/Rs|₹\s*\d/);
+    expect(t(w, "charges-total").text()).toBe(`Total Rs ${B.total}`);
+    expect(t(w, "charges-total").element.contains(line.element)).toBe(false);
+    const { exercise_stt_rate, exercise_stt_note, ...without } = B; // eslint-disable-line no-unused-vars
+    const w2 = mount(ChargesBreakdown, { props: { breakdown: without } });
+    await t(w2, "charges-action").trigger("click");
+    expect(t(w2, "charges-exercise-stt").exists()).toBe(false);
+    expect(t(w2, "charges-total").text()).toBe(`Total Rs ${B.total}`);
+  });
+
   it("the action carries the charges mark, with the catalogue text", async () => {
     const w = mount(ChargesBreakdown, { props: { breakdown: B } });
     const hint = w.get('[data-figure="charges"]');

@@ -61,6 +61,14 @@ const ROWS = [
       <p class="mt-2 text-sm font-medium" data-testid="charges-total">
         Total Rs {{ breakdown.total }}
       </p>
+      <!-- ADR-167 (4): the server's exercise-STT sentence (rate and condition, no amount); outside the total, only when sent -->
+      <p
+        v-if="breakdown.exercise_stt_note"
+        class="mt-1 text-xs text-ink-muted"
+        data-testid="charges-exercise-stt"
+      >
+        {{ breakdown.exercise_stt_note }}
+      </p>
       <p class="text-xs text-ink-muted" data-testid="charges-rates-date">
         Rates read on {{ breakdown.rates_read_on }}
       </p>
