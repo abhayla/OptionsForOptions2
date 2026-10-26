@@ -644,7 +644,7 @@
       },
       "ChargesBreakdownOut": {
         "additionalProperties": false,
-        "description": "ADR-167 (2): the round trip by component, from the engine (Decimal strings); null on the outcome when unpriced.",
+        "description": "ADR-167 (2): the round trip by component, from the engine (Decimal strings); null on the outcome if unpriced.",
         "properties": {
           "brokerage": {
             "title": "Brokerage",
