@@ -77,7 +77,6 @@ from ofo.money import HUNDREDTH as _PERCENT_STEP
 
 _TOTAL_PERCENT_STEP = Decimal("0.1")
 TOTAL_ROW_ID = "TOTAL"
-CHARGES_ROW_ID = "CHARGES"  # W-075 round 3: between the legs and TOTAL, only when the At Expiry values include charges
 
 # A futures leg's per-unit Greeks (implementation decision, spec silent): linear payoff, slope 1, no volatility
 # sensitivity. Signed by _position_greeks like every other leg (BUY +1, SELL -1, x quantity).
@@ -442,22 +441,6 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
     return Row(TOTAL_ROW_ID, cells)
 
 
-def _charges_row(level_columns: Sequence[Decimal], scenario: ScenarioValues | None) -> Row | None:
-    """W-075 round 3 (ADR-082 (2), "labelled as an estimate"): the At Expiry TOTAL includes the round-trip charges and
-    any STT on exercise, the leg rows are each leg's own P&L; this row is the difference in every column, so legs +
-    this row = TOTAL exactly. Absent when the charges are not in the values (no rates, a leg the rate table cannot
-    price, Estimated Now), so the table never shows a row of zeros for charges that were not computed."""
-    if (scenario is None or not scenario.available or scenario.charges is None or scenario.totals is None
-            or scenario.leg_rows is None):
-        return None
-    cells: dict[object, Cell] = {cid: _text(None) for cid in ColumnId}
-    label = render_explanation("cell_charges_row_label")
-    cells[ColumnId.LEG] = Cell(label, label, CellKind.TEXT)
-    for i, level in enumerate(level_columns):
-        cells[level] = _money(scenario.totals[i] - sum((row[i] for row in scenario.leg_rows), Decimal(0)))
-    return Row(CHARGES_ROW_ID, cells)
-
-
 def _checked_leg_greeks(inputs: ModelInputs, leg_greeks: Sequence[Greeks | None] | None) -> list[Greeks | None]:
     """The caller's per-unit Greeks as one entry per leg: an allow-list (a Greeks only for an option leg that has an
     IV, else None); anything else is refused."""
@@ -539,9 +522,6 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
         _leg_row(i, leg, inputs, level_columns, scenario, i - 1, statuses[i - 1], supplied[i - 1])
         for i, leg in enumerate(inputs.legs, start=1)
     ]
-    charges_row = _charges_row(level_columns, scenario)
-    if charges_row is not None:
-        rows.append(charges_row)
     rows.append(_total_row(inputs, level_set, scenario, strategy_health, supplied))
     return Table(tuple(columns), tuple(rows), inputs.underlying, inputs.spot_level, inputs.spot_at, inputs.label)
 
