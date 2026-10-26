@@ -1,0 +1,63 @@
+{
+ "what": "Row 25 core proof (W-153, REQ-055): Zerodha basket margin for a real 2-leg NIFTY plan through the product path POST /api/strategies/outcome on the live dev API (ofo_dev, APP_ENV=development, LIVE_MARKET=1), owner Kite session 9 logged in 2026-10-26 11:07 IST. Read-only: no order placed.",
+ "strike_basis": {
+  "NIFTY26OCTFUT": "22669",
+  "read_at": "2026-10-26T05:40:09.028437+00:00",
+  "note": "GET /quote through the Kite door; the index quote NSE:NIFTY 50 is refused by the door's i=EXCHANGE:SYMBOL pattern (space), so the near future placed the strikes"
+ },
+ "leg_prices": {
+  "ltps": {
+   "NIFTY26N0322650CE": "265.9",
+   "NIFTY26N0322850CE": "170"
+  },
+  "read_at": "2026-10-26T05:40:28.701251+00:00"
+ },
+ "request": {
+  "underlying": "NIFTY",
+  "legs": [
+   {
+    "instrument_id": "NSE_FO:53750",
+    "action": "SELL",
+    "lots": 1,
+    "planned_entry": "265.90",
+    "captured_at": "2026-10-26T05:40:37.088378+00:00"
+   },
+   {
+    "instrument_id": "NSE_FO:53796",
+    "action": "BUY",
+    "lots": 1,
+    "planned_entry": "170.00",
+    "captured_at": "2026-10-26T05:40:37.088378+00:00"
+   }
+  ]
+ },
+ "answer_margin": {
+  "state": "CHECKED",
+  "reason": "Margin from Zerodha for these planned orders: \u20b935,711.37 needed, \u20b961,324.90 available. Checked at 11:10:30 AM.",
+  "needed": "35711.37",
+  "available": "61324.90",
+  "checked_at": "2026-10-26T05:40:30.093357Z",
+  "shortfall": false
+ },
+ "answer_legs": [
+  {
+   "action": "SELL",
+   "symbol": "NIFTY26N0322650CE",
+   "instrument_id": "NSE_FO:53750",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "265.90"
+  },
+  {
+   "action": "BUY",
+   "symbol": "NIFTY26N0322850CE",
+   "instrument_id": "NSE_FO:53796",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "170.00"
+  }
+ ],
+ "result": "CHECKED: needed 35711.37 (Zerodha final.total + ADR-094 BUY top-up), available 61324.90, shortfall false, checked_at 2026-10-26T05:40:30Z; the answer's legs equal the request's legs. Shape matches REQ-055 AC-1 (funds + required, Decimal strings)."
+}

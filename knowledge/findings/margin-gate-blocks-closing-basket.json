@@ -8,11 +8,15 @@
   "where": "exit of the real 1-lot test order (ADR-097), issue #321",
   "evidence": "D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/fetch.json margin_raw at 15:06; the owner placed the exit (order 261016170858845, SELL 65 @ 3.10 COMPLETE 15:09:52) from a basket built outside the gate."
  },
- "fix": "Not built yet (#321): treat a final.total below 0 as 0 required, never as a credit to available funds (ADR-094's 'never a credit' rule), with today's reply as the failing test's fixture; sweep every check that validates broker money ranges for the exit case.",
+ "fix": "Built (#321): required_from_basket_reply treats a final.total below 0 as 0 required, never a credit (ADR-094); the real 2026-10-16 exit reply is the core test's fixture. Status re-checked 2026-10-26 (row 25 measure): stale 'not built' text corrected.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No test feeds a closing basket's reply today. The REST recorder (rec_rest.py) recorded entry shapes only; add closing shapes when a position is held."
+  "status": "guarded",
+  "checks": [
+   "tests/execution/test_margin_gate.py::test_321_core_real_exit_reply_needs_zero_margin_and_is_allowed",
+   "tests/execution/test_margin_gate.py::test_321_any_finite_negative_total_is_zero_required",
+   "tests/execution/test_margin_gate.py::test_321_a_negative_total_is_never_a_credit_toward_a_buy_legs_top_up"
+  ],
+  "note": "The recorded closing-basket reply feeds the core test; negative, infinite and NaN totals are parametrised."
  },
  "spec_ref": [
   "spec/decisions/ADR-094.md",
