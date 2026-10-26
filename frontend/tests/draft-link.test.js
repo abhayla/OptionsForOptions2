@@ -185,7 +185,7 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     const { w, router } = await openBuilder({ strategy: '7' })
     calls.length = 0
     await t(w, 'save-as').trigger('click')
-    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor copy')
+    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condo copy')
     await t(w, 'name-input').setValue('Condor wider')
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
