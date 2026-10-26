@@ -68,7 +68,15 @@ async function openBuilder(query) {
 describe('ADR-168: one full builder screen, no level switch', () => {
   it('attack 1: the page shows every API column (Greeks and IV included) and the details block, and no level control', async () => {
     const w = await openBuilder({})
+    // ADR-194: the P&L Table tab opens compact; the full table is one switch away, the same for every user
+    await w.get('[data-testid="tab-pnl"]').trigger('click')
+    expect(w.get('[data-testid="compact-view"]').element.style.display).toBe('')
+    expect(w.get('[data-testid="full-view"]').element.style.display).toBe('none')
+    await w.get('[data-testid="full-table-switch"]').setValue(true)
+    expect(w.get('[data-testid="full-view"]').element.style.display).toBe('')
     expect(w.findAll('[data-testid="col-head"]').length).toBe(real.table.columns.length)
+    expect(w.findAll('[data-testid="col-head"]').map((h) => h.attributes('data-col'))).toEqual(ids(real.table.columns))
+    expect(w.get('[data-testid="full-view"]').find('[data-testid="advanced-details"]').exists()).toBe(true) // Bid/Ask under the full table
     expect(real.table.columns.map((c) => c.id)).toContain('iv')
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(true)
     expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.leg_quotes.length)

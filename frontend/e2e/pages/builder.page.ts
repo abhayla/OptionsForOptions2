@@ -20,6 +20,14 @@ export async function openMoreMenu(page: Page): Promise<void> {
   if (!(await panel.isVisible())) await page.getByTestId('more-menu').click()
 }
 
+/** W-194 (ADR-194): the full REQ-035 strategy table (and its Bid/Ask Details) sits on the chart card's P&L Table tab
+ *  behind the Full table switch; the tab opens compact. */
+export async function openFullTable(page: Page): Promise<void> {
+  await page.getByTestId('tab-pnl').click()
+  const toggle = page.getByTestId('full-table-switch')
+  if (!(await toggle.isChecked())) await toggle.check()
+}
+
 /** The saved list (rows and their Open buttons) lives in the bottom card's Saved tab. */
 export async function openSavedTab(page: Page): Promise<void> {
   await page.getByTestId('tab-saved').click()

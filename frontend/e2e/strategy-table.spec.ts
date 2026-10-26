@@ -6,6 +6,7 @@
 // PREVIEW_DOWN_URL one on a closed port.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openFullTable } from './pages/builder.page'
 import { healthSentence } from '../src/lib/dataHealthText.js'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
@@ -53,6 +54,7 @@ test('every number on the screen equals the API response text for the condor', a
   const { api } = await openCondor(page, request)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
   expect(api.state).toBe('COMPUTED')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
 
   // 1. every rendered table cell is the API's display text, for every row and every visible column
   const visible = api.table.columns.filter((c: { visible: boolean }) => c.visible)
@@ -91,7 +93,9 @@ test('every number on the screen equals the API response text for the condor', a
   await expect(page.getByTestId('sum-start')).toContainText('22,326.85')
   await expect(page.getByTestId('sum-start')).toContainText('22,873.15')
 
-  // 4. the chart's end labels are the API's first and last payoff levels
+  // 4. the chart's end labels are the API's first and last payoff levels (on the chart card's Payoff tab)
+  await page.getByTestId('tab-payoff').click()
+  await expect(page.getByTestId('payoff-chart')).toBeVisible()
   await expect(page.getByTestId('payoff-first')).toHaveText(api.payoff.points[0].level)
   await expect(page.getByTestId('payoff-last')).toHaveText(api.payoff.points[api.payoff.points.length - 1].level)
   await page.screenshot({ path: `screenshots/strategy-computed-${info.project.name}.png`, fullPage: true })
@@ -99,6 +103,7 @@ test('every number on the screen equals the API response text for the condor', a
 
 test('AC-3: left columns are sticky and the current level column is highlighted', async ({ page, request }) => {
   const { api } = await openCondor(page, request)
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   const first3 = api.table.columns.filter((c: { visible: boolean }) => c.visible).slice(0, 3).map((c: { id: string }) => c.id)
   for (const id of first3) {
     const pos = await page.locator(`th[data-col="${id}"]`).evaluate((e) => getComputedStyle(e).position)
@@ -136,6 +141,7 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
 test('AC-5: Bid and Ask are in the Details block for everyone, with the API values', async ({ page, request }, info) => {
   const { api } = await openCondor(page, request)
   expect(api.leg_quotes).toHaveLength(4)
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   const details = page.getByTestId('advanced-details')
   await expect(details).toBeVisible()
   await expect(details).not.toHaveAttribute('open', '') // REQ-034 AC-7: starts closed

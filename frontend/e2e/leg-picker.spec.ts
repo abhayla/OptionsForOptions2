@@ -6,7 +6,7 @@
 //   - PREVIEW_URL (plain API, no provider): planned-entry returns null + not_connected, so the leg is unpriced.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
-import { openAddEdit } from './pages/builder.page'
+import { openAddEdit, openFullTable } from './pages/builder.page'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
@@ -62,6 +62,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
   await expect(page.getByTestId('leg-row')).toHaveCount(4)
   await expect(page.getByTestId('leg-unpriced')).toHaveCount(0)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   await expect(page.getByTestId('strategy-table')).toBeVisible()
   await page.screenshot({ path: `screenshots/leg-picker-priced-${info.project.name}.png`, fullPage: true })
 })

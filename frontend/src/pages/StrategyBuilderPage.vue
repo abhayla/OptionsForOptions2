@@ -18,8 +18,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import StrategyTable from '@/components/strategy/StrategyTable.vue'
-import PayoffChart from '@/components/strategy/PayoffChart.vue'
+import ChartCard from '@/components/strategy/ChartCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
@@ -438,6 +437,10 @@ onBeforeUnmount(() => {
 })
 
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
+// W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
+const chartTab = ref('payoff')
+const chartPayoffView = ref('graph')
+const chartFullTable = ref(false)
 const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
 const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
@@ -549,7 +552,9 @@ const pricesStamp = computed(() => {
 
       <div class="min-w-0 max-[1099px]:order-1" data-testid="builder-right">
         <StrategyHeader v-if="state !== 'no-draft'" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
-        <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
+        <!-- W-194: with numbers on screen the scenario switch and range sit in the chart card header; without them
+             (loading, error, refused...) they stay here, so a pick that led to an error can still be changed back. -->
+        <ScenarioControls v-if="state !== 'no-draft' && !showNumbers" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
 
         <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
           Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
@@ -625,14 +630,26 @@ const pricesStamp = computed(() => {
           </SummaryCards>
           <ProjectionsNote />
 
-          <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
-          <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
-          <StrategyTable
+          <!-- W-194 (ADR-193 Region F, ADR-194): the tabbed chart card. The scenario switch and range sit in its header
+               (they drive the graph and the full table); the full REQ-035 table and its Bid/Ask Details are on the
+               P&L Table tab behind the Full table switch. -->
+          <ChartCard
+            v-model:tab="chartTab"
+            v-model:payoff-view="chartPayoffView"
+            v-model:full-table="chartFullTable"
+            :points="data.payoff.points"
+            :spot="data.spot_level ?? ''"
             :table="data.table"
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
-          />
-          <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
+          >
+            <template #controls>
+              <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
+            </template>
+            <template #details>
+              <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
+            </template>
+          </ChartCard>
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
           <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
           <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />

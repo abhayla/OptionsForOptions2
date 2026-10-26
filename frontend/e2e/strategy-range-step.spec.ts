@@ -5,6 +5,7 @@
 // REPLAY_URL: a preview whose /api proxy points at an API started with APP_ENV=test and OUTCOME_REPLAY=1.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openFullTable } from './pages/builder.page'
 
 useQuietLiveSocket()
 
@@ -58,6 +59,7 @@ test('AC-4: range 22,800-23,600 gives exactly the Admin-step grid, with the live
   expect(levels).toContain(api.spot_level) // AC-2: the live level is shown although 22,800 is above it
   expect([api.scenario.step, api.scenario.start, api.scenario.end]).toEqual(['100', '22800', '23600'])
 
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   // the screen draws exactly those columns, in the API's order, and the TOTAL row shows the API's text for each
   await expect(page.locator('[data-testid="col-head"][data-col="22900"]')).toHaveCount(1)
   const scenarioCols = api.table.columns.filter((c: { is_scenario_level: boolean; visible: boolean }) => c.is_scenario_level && c.visible).map((c: { id: string }) => c.id)

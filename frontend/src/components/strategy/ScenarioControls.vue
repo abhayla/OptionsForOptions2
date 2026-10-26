@@ -42,30 +42,32 @@ const resetRange = () => {
 </script>
 
 <template>
-  <div class="mt-3 rounded border border-line bg-surface p-3 text-sm" data-testid="scenario-controls">
-    <div class="flex flex-wrap items-center gap-4">
-      <div class="flex items-center gap-2" role="group" aria-label="Scenario column">
+  <!-- W-194: restyled for the chart card header (tokens only; Sensibull S-012 puts the expiry/now switch and range above
+       the graph). Same controls, same test ids. -->
+  <div class="text-sm" data-testid="scenario-controls">
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="inline-flex items-center gap-1 rounded-md border border-line p-0.5" role="group" aria-label="Scenario column">
         <button
           v-for="v in VIEWS"
           :key="v.key"
           type="button"
           :data-testid="`view-${v.key}`"
           :aria-pressed="choice.view === v.key"
-          :class="['px-3 py-1.5 font-medium rounded-lg', choice.view === v.key ? 'bg-[#387ed1] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']"
+          :class="['rounded px-3 py-1 font-medium', choice.view === v.key ? 'bg-accent text-surface' : 'text-ink-muted hover:text-ink']"
           @click="set({ view: v.key })"
         >
           {{ v.label }}
         </button>
         <span v-if="estimateNote" data-testid="estimate-note"><Tooltip :text="estimateNote" label="About the price data of the estimate" /></span>
       </div>
-      <label class="flex items-center gap-2">First level
-        <input v-model="start" data-testid="range-start" inputmode="numeric" class="w-24 rounded border border-line px-2 py-1" />
+      <label class="flex items-center gap-1.5 text-ink-muted">From
+        <input v-model="start" data-testid="range-start" inputmode="numeric" aria-label="First level" class="w-20 rounded-md border border-line px-2 py-1 text-ink" />
       </label>
-      <label class="flex items-center gap-2">Last level
-        <input v-model="end" data-testid="range-end" inputmode="numeric" class="w-24 rounded border border-line px-2 py-1" />
+      <label class="flex items-center gap-1.5 text-ink-muted">To
+        <input v-model="end" data-testid="range-end" inputmode="numeric" aria-label="Last level" class="w-20 rounded-md border border-line px-2 py-1 text-ink" />
       </label>
-      <button type="button" data-testid="range-apply" class="rounded-lg bg-gray-100 px-3 py-1.5 font-medium disabled:opacity-50" :disabled="!!rangeError" @click="applyRange">Apply range</button>
-      <button type="button" data-testid="range-reset" class="rounded-lg bg-gray-100 px-3 py-1.5 font-medium" @click="resetRange">Default range</button>
+      <button type="button" data-testid="range-apply" class="rounded-md border border-line px-3 py-1 font-medium text-ink disabled:opacity-50" :disabled="!!rangeError" @click="applyRange">Apply range</button>
+      <button type="button" data-testid="range-reset" class="rounded-md px-2 py-1 font-medium text-accent hover:text-accent-hover" @click="resetRange">Default range</button>
     </div>
     <p v-if="rangeError" class="mt-1 text-ink-muted" data-testid="range-hint">{{ rangeError }}</p>
     <div v-if="choice.view === 'estimated_now' && scenarioLabel" class="mt-2 flex items-center">

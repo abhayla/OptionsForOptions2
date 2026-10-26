@@ -8,6 +8,7 @@
 import { test, expect, type Page, type APIRequestContext, type WebSocketRoute } from '@playwright/test'
 import { findClippedElements, describeClipped } from './clipping-check'
 import { AC5 } from './support/ac5'
+import { openFullTable } from './pages/builder.page'
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
 const CAPTURED_AT = '2026-10-08T09:20:09+05:30'
@@ -74,6 +75,7 @@ test('AC-4: LTP and Unrealized P&L change with the pushes; a socket kill shows t
   // 1. three pushes, each shown exactly as the server sent it: the LTP and P&L cells follow, and they change
   await expect.poll(() => sock.ctl.pushes.length, { timeout: 15000 }).toBeGreaterThanOrEqual(4)
   await expect(builder).toHaveAttribute('data-live', 'live')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   const shownLtp: string[] = []
   const shownPnl: string[] = []
   for (let k = 0; k < 3; k++) {
