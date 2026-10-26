@@ -37,6 +37,10 @@ async function condorDraft(request: APIRequestContext) {
   return { underlying: 'NIFTY', legs: probe.legs.map((l, i) => ({ ...l, planned_entry: out.legs[i].ltp })) }
 }
 
+// the page groups money with Indian separators (groupMoney, REQ-081); the spec applies the same rule to the API text, importing nothing from the app
+const grouped = (t: string) =>
+  t.replace(/(?<![\d.,])(\d{4,})(?![\d,])/g, (w) => `${w.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${w.slice(-3)}`)
+
 function builderUrl(base: string, draft: unknown) {
   const q = new URLSearchParams({ draft: JSON.stringify(draft) })
   return `${base}/strategy/builder?${q.toString()}`
@@ -81,12 +85,16 @@ test('every number on the screen equals the API response text for the condor', a
   expect(api.summary.max_profit).toBe('4539.65')
   expect(api.summary.max_loss).toBe('8460.35')
   expect(api.summary.breakevens).toEqual(['22326.85', '22873.15'])
-  await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit)
-  await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss)
-  await expect(page.getByTestId('breakevens')).toHaveText(api.summary.breakevens.join(', '))
+  await expect(page.getByTestId('max-profit')).toHaveText(grouped(api.summary.max_profit))
+  await expect(page.getByTestId('max-loss')).toHaveText(grouped(api.summary.max_loss))
+  await expect(page.getByTestId('breakevens')).toHaveText(grouped(api.summary.breakevens.join(', ')))
   await expect(page.getByTestId('underlying-spot')).toHaveText(api.spot_level) // W-193: the yellow level card is gone (UI-120)
-  await expect(page.getByTestId('sum-lose')).toHaveText(api.summary.what_can_i_lose)
-  await expect(page.getByTestId('sum-make')).toHaveText(api.summary.what_can_i_make)
+  await expect(page.getByTestId('sum-lose')).toHaveAttribute('data-full', api.summary.what_can_i_lose) // the card shows the first sentence until More (REQ-034 AC-7)
+  if (await page.getByTestId('sum-lose-more').count()) await page.getByTestId('sum-lose-more').click()
+  await expect(page.getByTestId('sum-lose')).toContainText(grouped(api.summary.what_can_i_lose))
+  await expect(page.getByTestId('sum-make')).toHaveAttribute('data-full', api.summary.what_can_i_make) // the card shows the first sentence until More (REQ-034 AC-7)
+  if (await page.getByTestId('sum-make-more').count()) await page.getByTestId('sum-make-more').click()
+  await expect(page.getByTestId('sum-make')).toContainText(grouped(api.summary.what_can_i_make))
   await expect(page.getByTestId('sum-make')).toContainText('4,539.65')
   await expect(page.getByTestId('sum-lose')).toContainText('8,460.35')
   await expect(page.getByTestId('sum-lose')).toContainText('215.10')

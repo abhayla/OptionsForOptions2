@@ -29,13 +29,8 @@ const STEPPERS = [
       class="flex items-center gap-2 pr-3 sm:px-3 sm:first:pl-0"
       :data-testid="`control-${c.id}`"
     >
-      <span class="text-ink-muted"
-        >{{ c.label
-        }}<span v-if="c.id === 'shift' && controls.shiftTotal" data-testid="shift-total">
-          {{ shiftText(controls.shiftTotal) }}</span
-        ></span
-      >
-      <span class="flex gap-1">
+      <span class="text-ink-muted">{{ c.label }}</span>
+      <span class="flex items-center gap-1">
         <button
           type="button"
           class="rounded border border-line px-2"
@@ -47,6 +42,7 @@ const STEPPERS = [
         >
           -
         </button>
+        <span v-if="c.id === 'shift'" class="num min-w-[2ch] text-center" data-testid="shift-total">{{ shiftText(controls.shiftTotal) }}</span>
         <button
           type="button"
           class="rounded border border-line px-2"
