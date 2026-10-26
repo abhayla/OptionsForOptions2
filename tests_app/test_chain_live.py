@@ -159,8 +159,8 @@ class Reader:
     async def __call__(self, underlying: str, expiry: datetime.date) -> ChainCatalogue:
         self.calls.append((underlying, expiry))
         if self.unreadable:
-            return ChainCatalogue((), (), unreadable=True)
-        return ChainCatalogue(tuple(sorted(self.by_expiry)), self.by_expiry.get(expiry, ()))
+            return ChainCatalogue(expiries=(), contracts=(), unreadable=True)
+        return ChainCatalogue(expiries=tuple(sorted(self.by_expiry)), contracts=self.by_expiry.get(expiry, ()))
 
 
 def make_rig(reader: Reader | None = None, provider: FakeProvider | None = None, fanout: FanOut | None = None):
@@ -451,7 +451,7 @@ async def test_no_feed_answers_not_connected_with_no_number():
 
 
 def _catalogue() -> ChainCatalogue:
-    return ChainCatalogue((EXPIRY, NEXT_EXPIRY), CONTRACTS)
+    return ChainCatalogue(expiries=(EXPIRY, NEXT_EXPIRY), contracts=CONTRACTS)
 
 
 async def test_two_holders_and_fallback_answer_not_connected():

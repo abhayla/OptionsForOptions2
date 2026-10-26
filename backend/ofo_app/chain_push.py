@@ -142,7 +142,7 @@ class ChainOut(ApiModel):
     last_price_at: datetime.datetime | None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ChainCatalogue:
     """The stored catalogue's answer for one request: the underlying's pickable expiries and that expiry's options."""
 
@@ -208,8 +208,8 @@ async def stored_chain(underlying: str, expiry: datetime.date) -> ChainCatalogue
             permissions = await _read_permissions(session, options, today)
     except (SQLAlchemyError, OSError, RuntimeError) as exc:  # no database, a refused or lost connection
         log.warning("option chain: the catalogue could not be read: %s", type(exc).__name__)
-        return ChainCatalogue((), (), unreadable=True)
-    return ChainCatalogue(expiries, options, permissions)
+        return ChainCatalogue(expiries=(), contracts=(), unreadable=True)
+    return ChainCatalogue(expiries=expiries, contracts=options, permissions=permissions)
 
 
 def strike_grid(catalogue: ChainCatalogue) -> list[Decimal]:
