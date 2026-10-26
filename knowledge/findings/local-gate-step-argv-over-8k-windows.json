@@ -16,7 +16,9 @@
   ],
   "note": "Not silent: the run is red. The gap is that the default mode cannot run tests for a change that selects more than ~64 test files on Windows."
  },
- "spec_ref": [],
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
  "occurrences": [
   {
    "date": "2026-10-26",

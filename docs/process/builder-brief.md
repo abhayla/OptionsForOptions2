@@ -181,11 +181,18 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
   scripts/generate_openapi.py`) in the same PR: `test_committed_openapi_matches_the_app` fails otherwise. This is the
   one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it). A NEW `ApiModel` class is
   also registered in `tests_app/test_response_door.py` (the pinned set and its count) and that file is run (GC-2g:
-  W-111's four Positions models turned CI's `api` job red).
+  W-111's four Positions models turned CI's `api` job red). A model the outcome route uses ALSO changes the second
+  committed schema `docs/api/outcome.openapi.json` (no generator writes it; `tests_app/test_outcome_route.py` builds
+  it from `outcome.router` alone - regenerate it the same way, indent 2) - row 25 went red on it, 2026-10-26.
 - **A migration's `upgrade()`/`downgrade()` call `op.*` directly** (`scripts/alembic_migration_guard.py`), and a
   migration that changes a pinned function body publishes its own `PINNED_BODIES` (GC-2e W-103: two CI reds).
 - **After merging main into your branch, re-run `python scripts/ruff_ratchet.py`** (E501 rose twice on 2026-10-16 only
   after the merge).
+- **The local ratchet total is not proof: check your ADDED lines** (finding `local-lint-ratchet-counts-below-ci`,
+  2026-10-26: this PC counts 629 E501 where CI holds 632, so row 26b added three lines over 120 characters, read "OK,
+  no rule rose" locally and turned CI red). Before finishing, run ruff on your changed files and require zero findings
+  on the line numbers your diff adds (`git diff -U0 origin/main...HEAD`); keep added lines at 120 characters or less
+  and imports at the top of test files (PLC0415, row 25's red the same day).
 - Type hints on public functions; small modules; no dead code; no print statements.
 
 ## Before you finish

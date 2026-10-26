@@ -1,0 +1,27 @@
+{
+ "id": "local-lint-ratchet-counts-below-ci",
+ "scope": "project",
+ "class": "A count-based lint ratchet run on a developer machine is only as good as its counts matching CI's: when the local count of a rule is lower than CI's for the same tree, a change can add that many new violations, read 'no rule rose' locally, and turn CI red. Wider shape: a ratchet (total must not rise) checked against a baseline taken elsewhere hides new violations up to the local-vs-CI gap; checking the ADDED lines directly has no such gap.",
+ "mechanism": "2026-10-26, main 606ad773 on this Windows PC: `python scripts/ruff_ratchet.py` -> 'E501 fell 632 -> 629' (ruff 0.15.12, the same pin as requirements-dev.txt) while CI holds E501 at the 632 baseline. Row 26b's builder ran the ratchet locally ('OK, no rule rose') and CI's api job failed 'E501 rose 632 -> 633' on run 40286514097; three new lines over 120 chars were on added lines (ruff E501 restricted to the diff's added line numbers found them). Why the local count is 3 lower: unmeasured.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "row 26b, draft PR #576, CI run 40286514097",
+  "evidence": "CI 'ruff ratchet: E501 rose 632 -> 633' vs local 'OK, no rule rose (3809 violations, 95 rules)' at the same code"
+ },
+ "fix": "Brief change (docs/process/builder-brief.md): before finishing, list ruff E501 (and every ratchet rule) on the ADDED lines of the diff and require zero, instead of trusting the local total. Structural option for the deferred issue: make scripts/ruff_ratchet.py also fail on any violation on an added line (diff-scoped), which has no local-vs-CI gap.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "CI's api job still catches the rise (red after push, ~25 min). The local check does not."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-075.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "row 26b",
+   "evidence": "3 added lines > 120 chars passed the local ratchet"
+  }
+ ]
+}
