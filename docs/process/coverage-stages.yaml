@@ -331,6 +331,9 @@ decisions:
   ADR-190: S6.7         # kit 1.15.0 taken (ci_reds, measure_tokens --budgets); no saving quoted before 3 measured rows
   ADR-191: S6.7         # record tests on records-only PRs; draft-PR CI before review for migration/reply/socket diffs
   ADR-192: S6.1         # Save As pre-fill shortens the original name so "<name> copy" fits 20 characters (owner, 2026-10-26)
+  ADR-193: S6.1         # Sensibull layout for every screen the spec has, our brand; builder first (owner, 2026-10-26)
+  ADR-194: S6.1         # builder P&L Table tab opens compact, Full table one switch away (owner, 2026-10-26)
+  ADR-195: S6.1         # with a leg left out: count only, no shape name, Width/Hedge disabled (ADR-152 default, Sensibull 111)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -563,6 +566,11 @@ work_items:
   W-188: S8  # builder sequence row 60: IV and OI history charts (held, display rights)
   W-189: S8  # builder sequence row 61: Strategy price history chart (held, display rights
   W-190: S8  # builder sequence row 62: Events calendar, FII/DII (held, data source)
+  W-191: S6.1  # UI redesign PR-1: design tokens, Inter, Sensibull-style app shell (ADR-193)
+  W-192: S6.1  # UI redesign PR-2a: builder left column (ADR-193, ADR-195)
+  W-193: S6.1  # UI redesign PR-2b: builder summary card (ADR-193)
+  W-194: S6.1  # UI redesign PR-2c: chart card and tables (ADR-193, ADR-194)
+  W-195: S6.1  # UI redesign PR-3: slide-in strike drawer (ADR-193)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
