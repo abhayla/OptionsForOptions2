@@ -10,3 +10,5 @@ ac_fp: "0afcf58e6212"
 commands: "python attack.py; mutation_gate.py"
 ---
 one priced + one unpriced leg -> figures absent with a reason, never a partial sum (mutant M2 killed by the unit tests)
+
+Recorded by the orchestrator from the verifier's returned block.

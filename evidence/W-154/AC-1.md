@@ -11,3 +11,5 @@ commands: "python attack.py; npx vitest run tests/money-summary.test.js"
 ---
 net premium Get 4364.75 per unit 67.15 on the 2026-10-15 condor; a futures leg -> amount absent with 'premium and futures value cannot be added'
 screen shows the server text verbatim ('Get ₹4,754.75' on the replay condor)
+
+Recorded by the orchestrator from the verifier's returned block.

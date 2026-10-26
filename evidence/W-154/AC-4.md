@@ -10,3 +10,5 @@ ac_fp: "7415daeb3be5"
 commands: "python r2.py; mutation_gate.py (N1, M1b killed)"
 ---
 with rates Reward/Risk 0.54 / Risk/Reward 1.86 on the replay condor; no rates or a futures leg -> both absent with 'the charges could not be priced, so the ratio is not shown'; lone futures 'No fixed maximum'
+
+Recorded by the orchestrator from the verifier's returned block.

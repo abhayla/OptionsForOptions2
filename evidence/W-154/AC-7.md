@@ -10,3 +10,5 @@ ac_fp: "963ef5cbfe48"
 commands: "db_run.py ... pytest tests_app/test_response_door.py; npx vitest run (5 files, 67 passed)"
 ---
 every money key is a string in the reply; the browser parses and compares no money (diff grep 0 hits; '0.1+0.2' and 'NaN' print verbatim)
+
+Recorded by the orchestrator from the verifier's returned block.

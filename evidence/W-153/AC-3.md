@@ -13,3 +13,5 @@ round 1 MAJOR fixed: Zerodha's own figure 6409.00 and our ADR-094 estimate 13474
 round 2 MINOR open: the Execute refusal's second sentence 'Zerodha would reject these orders for insufficient margin' (backend/ofo/errors/templates.py:945) states our estimate's verdict as Zerodha's
 
 Shipped under ADR-189 (MINOR after round 2); tracked in issue #537 F2.
+
+Recorded by the orchestrator from the verifier's returned block.

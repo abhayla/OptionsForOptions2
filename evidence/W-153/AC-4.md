@@ -13,3 +13,5 @@ round 1: 264 passed; 5/5 mutants killed; Execute text hash identical to main
 round 2: app 270 passed; 5/5 mutants killed; short Builder plan carries shortfall_reason with needed vs available and the quantity / review / add-funds path; Execute decisions identical to main at equal / 1 paisa short / negative funds
 
 Live core proof 2026-10-26 11:10:30 IST through POST /api/strategies/outcome: needed 35711.37, available 61324.90, CHECKED (docs/research/kite-proof-2026-10-07/rest-2026-10-26/row25-outcome-margin.json).
+
+Recorded by the orchestrator from the verifier's returned block.

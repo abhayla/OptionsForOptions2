@@ -10,3 +10,5 @@ ac_fp: "fbc69caf021e"
 commands: "python attack.py; python r2.py"
 ---
 9% / 18% of funds 50000 from Decimal in the engine; 2.5% -> 3% (ROUND_HALF_UP); under 1% -> percent null with 'less than 1% of funds'
+
+Recorded by the orchestrator from the verifier's returned block.

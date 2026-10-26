@@ -10,3 +10,5 @@ ac_fp: "c4e7d25a0969"
 commands: "python r2.py; mutation_gate.py mutants-r2c/r2d"
 ---
 breakdown total 214.96 (real condor) = round_trip_charges, replay 215.10 = scenario = sentences; six items each within 0.01 of the exact component; rates date and 'estimate'; exercise-STT line from rates.stt_exercise_rate, no amount, not in the total
+
+Recorded by the orchestrator from the verifier's returned block.
