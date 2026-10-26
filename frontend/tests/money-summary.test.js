@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import MoneySummary from "@/components/strategy/MoneySummary.vue";
 import SummaryCards from "@/components/strategy/SummaryCards.vue";
-import { maxLine, istTime } from "@/lib/displayFormat";
+import { maxLine, istTime, groupMoney } from "@/lib/displayFormat";
 import CONDOR from "./fixtures/outcome-money-condor.json";
 import NO_RATES from "./fixtures/outcome-money-no-rates.json";
 
@@ -46,13 +46,13 @@ describe("core: the real reply is printed as sent", () => {
     expect(t(c, "time-value").text()).toBe(s.time_value);
     expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value);
     expect(t(c, "value-label").text()).toBe("value of the options, not P&L");
-    expect(t(c, "max-profit").text()).toBe(s.max_profit);
+    expect(t(c, "max-profit").attributes("data-raw")).toBe(s.max_profit);
     expect(t(c, "max-profit-percent").text()).toBe(
       s.funds_share.max_profit_text,
     );
     expect(t(c, "max-loss-percent").text()).toBe(s.funds_share.max_loss_text);
     expect(t(c, "funds-line").text()).toBe(
-      `Percentages are of Rs ${s.funds_share.funds} available funds, read ${istTime(s.funds_share.read_at)}`,
+      `Percentages are of Rs ${groupMoney(s.funds_share.funds)} available funds, read ${istTime(s.funds_share.read_at)}`,
     );
   });
 
@@ -87,7 +87,7 @@ describe("every state of every figure", () => {
     });
     for (const id of ["max-profit-percent", "max-loss-percent", "funds-line"])
       expect(t(c, id).exists()).toBe(false);
-    expect(t(c, "max-profit").text()).toBe(CONDOR.summary.max_profit);
+    expect(t(c, "max-profit").attributes("data-raw")).toBe(CONDOR.summary.max_profit);
     expect(c.text()).not.toContain("%");
   });
 
@@ -104,7 +104,7 @@ describe("every state of every figure", () => {
         fundsShare: share,
       },
     });
-    expect(t(c, "max-profit").text()).toBe("Unlimited");
+    expect(t(c, "max-profit").attributes("data-raw")).toBe("Unlimited");
     expect(t(c, "max-profit-percent").exists()).toBe(false);
     expect(t(c, "max-loss-percent").text()).toBe(share.max_loss_text);
   });
@@ -285,9 +285,9 @@ describe("W-193: the summary card (Region E)", () => {
       expect(t(c, id).exists(), id).toBe(true);
     expect(t(c, "summary-block-margin").find('[data-testid="margin-slot"]').exists()).toBe(true);
     const s = CONDOR.summary;
-    expect(t(c, "max-profit").text()).toBe(s.max_profit);
-    expect(t(c, "max-loss").text()).toBe(s.max_loss);
-    expect(t(c, "breakevens").text()).toBe(s.breakevens.join(", "));
+    expect(t(c, "max-profit").attributes("data-raw")).toBe(s.max_profit);
+    expect(t(c, "max-loss").attributes('data-raw')).toBe(s.max_loss);
+    expect(t(c, "breakevens").text()).toBe(groupMoney(s.breakevens.join(", ")));
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
     expect(t(c, "time-value").text()).toBe(s.time_value);
     expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value);
@@ -300,7 +300,7 @@ describe("W-193: the summary card (Region E)", () => {
       ["sum-lose", CONDOR.summary.what_can_i_lose],
       ["sum-start", CONDOR.summary.where_do_i_start_losing],
     ]) {
-      expect(t(c, id).text(), id).toBe(text);
+      expect(t(c, id).attributes('data-full') ?? t(c, id).text(), id).toBe(text);
       expect(t(c, id).element.closest('[role="tooltip"]'), id).toBeNull();
       expect(t(c, id).classes(), id).toContain("text-[13px]");
     }

@@ -23,23 +23,23 @@
           <div class="min-w-0">
             <span class="flex items-center text-[13px] text-ink-muted">Max Profit<FigureHint id="max_profit" /></span>
             <div class="mt-1 inline-flex flex-wrap items-baseline gap-1 rounded-md bg-profit-soft px-2 py-1 text-profit">
-              <span class="num text-base font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
+              <span class="num text-base font-semibold" data-testid="max-profit" :data-raw="maxProfit">{{ groupMoney(maxProfit) }}</span>
               <span v-if="fundsShare?.max_profit_text" class="text-xs">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
-            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-make">{{ whatCanIMake }}</p>
+            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-make" :data-full="whatCanIMake">{{ shown('make', whatCanIMake) }}<button v-if="hasMore(whatCanIMake)" type="button" class="ml-1 text-accent underline" :aria-expanded="open.make ? 'true' : 'false'" data-testid="sum-make-more" @click="open.make = !open.make">{{ open.make ? 'Less' : 'More' }}</button></p>
           </div>
           <div class="min-w-0">
             <span class="flex items-center text-[13px] text-ink-muted">Max Loss<FigureHint id="max_loss" /></span>
             <div class="mt-1 inline-flex flex-wrap items-baseline gap-1 rounded-md bg-loss-soft px-2 py-1 text-loss">
-              <span class="num text-base font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
+              <span class="num text-base font-semibold" data-testid="max-loss" :data-raw="maxLoss">{{ groupMoney(maxLoss) }}</span>
               <span v-if="fundsShare?.max_loss_text" class="text-xs">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
-            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-lose">{{ whatCanILose }}</p>
+            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-lose" :data-full="whatCanILose">{{ shown('lose', whatCanILose) }}<button v-if="hasMore(whatCanILose)" type="button" class="ml-1 text-accent underline" :aria-expanded="open.lose ? 'true' : 'false'" data-testid="sum-lose-more" @click="open.lose = !open.lose">{{ open.lose ? 'Less' : 'More' }}</button></p>
           </div>
         </div>
         <!-- REQ-081 AC-10 (Revision 1 M3): the funds the percentages are of, and when Zerodha was read; visible -->
         <p v-if="fundsShare" class="mt-2 min-w-0 break-words text-xs text-ink-muted" data-testid="funds-line">
-          Percentages are of Rs {{ fundsShare.funds }} available funds, read {{ istTime(fundsShare.read_at) }}
+          Percentages are of Rs {{ groupMoney(fundsShare.funds) }} available funds, read {{ istTime(fundsShare.read_at) }}
         </p>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <span class="flex items-center text-[13px] text-ink-muted">Breakeven<FigureHint id="breakeven_expiry" /></span>
@@ -52,7 +52,7 @@
             <button type="button" class="rounded-r-md bg-accent-soft px-2 py-0.5 font-medium text-accent" aria-pressed="true" data-testid="breakeven-expiry">Expiry</button>
           </div>
         </div>
-        <div class="num mt-1 text-sm font-semibold text-ink" data-testid="breakevens">{{ breakevens.length ? breakevens.join(', ') : '-' }}</div>
+        <div class="num mt-1 text-sm font-semibold text-ink" data-testid="breakevens">{{ breakevens.length ? groupMoney(breakevens.join(', ')) : '-' }}</div>
         <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-start">{{ whereIStartLosing }}</p>
       </div>
 
@@ -104,8 +104,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { istTime } from '@/lib/displayFormat'
+import { computed, reactive } from 'vue'
+import { istTime, groupMoney } from '@/lib/displayFormat'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 const props = defineProps({
@@ -126,6 +126,11 @@ const props = defineProps({
 })
 // which of the server's two ratio strings is shown; never a calculation. A model the page owns (review 2), so a recompute
 // keeps the user's 1/x choice; without a v-model it is this card's own state.
+// REQ-034 AC-7: the plain sentence stays visible; only its first sentence shows until "More" (text split, nothing computed)
+const open = reactive({ make: false, lose: false })
+const firstSentence = (t) => /^.*?[.!?](?=\s|$)/s.exec(t ?? '')?.[0] ?? t ?? ''
+const hasMore = (t) => typeof t === 'string' && firstSentence(t).length < t.trim().length
+const shown = (key, t) => (open[key] || !hasMore(t) ? t : firstSentence(t))
 const flipped = defineModel('flipped', { type: Boolean, default: false })
 const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)
 const showValues = computed(() => props.timeValue != null || props.intrinsicValue != null || props.valueReason != null)

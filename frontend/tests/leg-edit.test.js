@@ -805,7 +805,7 @@ describe('W-158 attack 3: the Shift total is the server\'s, shown as text, and e
       if (control === 'step') await all(w, 'strike-plus')[0].trigger('click')
       else await t(w, `${control}-plus`).trigger('click')
       await flushPromises()
-      expect(t(w, 'shift-total').text()).toBe('-')
+      expect(w.find('[data-testid="shift-total"]').exists()).toBe(false) // polish 5: no stray hyphen
       expect(edits().at(-1).body.shift_total).toBe(100) // that click still carried the page's last total; the server resets it
       await clickAndWait(w, 'shift-plus')
       expect('shift_total' in edits().at(-1).body).toBe(false)
@@ -817,7 +817,7 @@ describe('W-158 attack 3: the Shift total is the server\'s, shown as text, and e
     answers['POST /strategies/leg-edit'] = fromRec(rec.read)
     w.findComponent(LegPicker).vm.$emit('update:legs', DRAFT.legs.map((l, i) => ({ ...l, id: `p${i}`, underlying: 'NIFTY' })))
     await flushPromises()
-    expect(t(w, 'shift-total').text()).toBe('-')
+    expect(w.find('[data-testid="shift-total"]').exists()).toBe(false) // polish 5: no stray hyphen
     w.unmount()
   })
   it('a refused move leaves the legs and the total untouched and shows the refusal text', async () => {

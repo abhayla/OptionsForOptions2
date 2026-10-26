@@ -403,8 +403,8 @@ describe("W-193: the builder page summary card", () => {
     const card = t(w, "summary-cards");
     expect(w.findAll('[data-testid="summary-cards"]')).toHaveLength(1);
     expect(card.find('[data-testid="margin"]').exists()).toBe(true);
-    expect(card.find('[data-testid="margin-needed"]').text()).toBe(MARGIN.enough.needed);
-    expect(card.find('[data-testid="margin-available"]').text()).toBe(MARGIN.enough.available);
+    expect(card.find('[data-testid="margin-needed"]').attributes("data-raw")).toBe(MARGIN.enough.needed);
+    expect(card.find('[data-testid="margin-available"]').attributes('data-raw')).toBe(MARGIN.enough.available);
     expect(card.find('[data-testid="max-profit"]').text()).toBe(real.summary.max_profit);
     expect(t(w, "spot-level").exists()).toBe(false);
     // the summary card comes before the chart and the table in the right column

@@ -174,7 +174,7 @@ function setMultiplier(index) {
             <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
             <span :ref="(el) => (menuRoots[i] = el)" class="leg-line2-price relative flex items-center justify-end" @keydown.esc="closeMenu">
               <input
-                v-model="typedText[i]" type="text" inputmode="decimal" class="w-12 rounded border px-1 text-right"
+                v-model="typedText[i]" type="text" inputmode="decimal" class="num w-[8ch] min-w-[8ch] rounded border px-1 text-right"
                 :class="leg.typed === true ? 'border-accent' : 'border-line'" :placeholder="leg.planned_entry ?? ''"
                 :title="leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"
                 :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @keydown.enter="setPrice(i)"

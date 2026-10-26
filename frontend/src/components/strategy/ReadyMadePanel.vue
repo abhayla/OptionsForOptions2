@@ -44,7 +44,8 @@ async function start() {
     const reply = (await api.get(`/catalogue/${underlying.value}/expiries`)).data
     expiries.value = reply?.expiries ?? []
     expiryDays.value = daysByExpiry(reply?.expiry_days)
-    expiry.value = expiries.value[0] ?? ''
+    const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))?.expiry // the draft's own expiry, when it has legs
+    expiry.value = own ?? expiries.value[0] ?? ''
     errorParts.value = null
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS

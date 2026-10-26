@@ -9,6 +9,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import real from './fixtures/outcome-condor.json'
 import MARGIN from './fixtures/outcome-margin-states.json'
+import { groupMoney } from '@/lib/displayFormat'
 
 let apiAnswer = null
 let capabilities = {}
@@ -86,9 +87,9 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
     expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make)
     expect(t(w, 'sum-lose').text()).toBe(real.summary.what_can_i_lose)
     expect(t(w, 'sum-start').text()).toBe(real.summary.where_do_i_start_losing)
-    expect(t(w, 'max-profit').text()).toContain(real.summary.max_profit)
-    expect(t(w, 'max-loss').text()).toContain(real.summary.max_loss)
-    expect(t(w, 'breakevens').text()).toBe(real.summary.breakevens.join(', '))
+    expect(t(w, 'max-profit').attributes('data-raw')).toContain(real.summary.max_profit)
+    expect(t(w, 'max-loss').attributes('data-raw')).toContain(real.summary.max_loss)
+    expect(t(w, 'breakevens').text()).toBe(groupMoney(real.summary.breakevens.join(', ')))
     for (const id of ['summary-cards', 'sum-make', 'sum-lose', 'sum-start', 'strategy-table', 'payoff-chart', 'margin']) {
       expect(t(w, 'advanced-details').find(`[data-testid="${id}"]`).exists()).toBe(false) // none of it hides in the block
     }

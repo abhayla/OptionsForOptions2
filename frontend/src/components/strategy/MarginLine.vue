@@ -13,7 +13,7 @@
 // root that the summary card's grid places under all three blocks (so it is never repeated beside the figures).
 // "Funds needed" is absent: the reply has no such figure yet (REQ-081).
 import { computed } from 'vue'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, groupMoney } from '@/lib/displayFormat'
 import { MARGIN_LINE_HIDDEN_REASON, capabilityOn } from '@/lib/brokerCapabilities'
 import FigureHint from '@/components/common/FigureHint.vue'
 
@@ -50,11 +50,11 @@ const showFigures = computed(() => !(short.value && hasServerMessage.value))
       <dl class="mt-1">
         <div class="flex h-7 items-center justify-between gap-2">
           <dt class="flex items-center text-ink-muted">Margin needed<FigureHint id="margin_needed" /></dt>
-          <dd class="num font-medium text-ink" data-testid="margin-needed">{{ margin.needed }}</dd>
+          <dd class="num font-medium text-ink" data-testid="margin-needed" :data-raw="margin.needed">{{ groupMoney(margin.needed) }}</dd>
         </div>
         <div class="flex h-7 items-center justify-between gap-2">
           <dt class="flex items-center text-ink-muted">Margin available<FigureHint id="margin_available" /></dt>
-          <dd class="num font-medium text-ink" data-testid="margin-available">{{ margin.available }}</dd>
+          <dd class="num font-medium text-ink" data-testid="margin-available" :data-raw="margin.available">{{ groupMoney(margin.available) }}</dd>
         </div>
       </dl>
       <p v-if="short" class="mt-1 text-[13px] font-medium text-loss" data-testid="margin-short-line">Not enough funds for this strategy</p>

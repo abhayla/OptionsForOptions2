@@ -80,7 +80,7 @@ describe('ADR-168: one full builder screen, no level switch', () => {
     expect(real.table.columns.map((c) => c.id)).toContain('iv')
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(true)
     expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.leg_quotes.length)
-    expect(w.find('[data-testid="strategy-header"]').find('button').exists()).toBe(false)
+    expect(w.find('[data-testid="strategy-header"]').exists()).toBe(false) // polish 1: the NIFTY pill is gone
     expect(w.find('[data-testid^="ux-"]').exists()).toBe(false)
     expect(w.find('[data-testid="strategy-builder"]').attributes(LEVEL_ATTR)).toBeUndefined()
     w.unmount()
@@ -95,7 +95,7 @@ describe('ADR-168: one full builder screen, no level switch', () => {
   })
   it('attack 4: no Guided, Standard or Advanced level text in the header or the details heading', async () => {
     const w = await openBuilder({})
-    const header = w.find('[data-testid="strategy-header"]').text()
+    const header = w.find('[data-testid="strategy-builder"]').text()
     const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
     expect(heading).toBe('Details: bid and ask per leg')
     for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {

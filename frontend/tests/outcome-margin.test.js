@@ -72,8 +72,8 @@ describe('outcome margin slot (ADR-099)', () => {
 
   it('W-193 (UI-118): Margin needed and Margin available are the server strings as sent, each with one labelled mark', () => {
     const w = line(STATES.enough)
-    expect(t(w, 'margin-needed').text()).toBe(STATES.enough.needed)
-    expect(t(w, 'margin-available').text()).toBe(STATES.enough.available)
+    expect(t(w, "margin-needed").attributes("data-raw")).toBe(STATES.enough.needed)
+    expect(t(w, 'margin-available').attributes('data-raw')).toBe(STATES.enough.available)
     expect(t(w, 'funds-margins-title').text()).toBe('Funds & Margins')
     expect(t(w, 'margin').attributes('data-short')).toBe('false')
     expect(t(w, 'margin').classes()).not.toContain('border-loss')

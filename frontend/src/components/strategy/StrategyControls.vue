@@ -31,7 +31,7 @@ const STEPPERS = [
     >
       <span class="text-ink-muted"
         >{{ c.label
-        }}<span v-if="c.id === 'shift'" data-testid="shift-total">
+        }}<span v-if="c.id === 'shift' && controls.shiftTotal" data-testid="shift-total">
           {{ shiftText(controls.shiftTotal) }}</span
         ></span
       >

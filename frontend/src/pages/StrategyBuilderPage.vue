@@ -23,13 +23,11 @@ import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
-import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
-import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
@@ -565,7 +563,6 @@ const pricesStamp = computed(() => {
       </div>
 
       <div class="min-w-0 max-[1099px]:order-1" data-testid="builder-right">
-        <StrategyHeader v-if="state !== 'no-draft'" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
         <!-- W-194: with numbers on screen the scenario switch and range sit in the chart card header; without them
              (loading, error, refused...) they stay here, so a pick that led to an error can still be changed back. -->
         <ScenarioControls v-if="state !== 'no-draft' && !showNumbers" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
@@ -668,7 +665,6 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
           <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
-          <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
         </div>
       </div>
     </div>
