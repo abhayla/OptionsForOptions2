@@ -5,6 +5,7 @@
 // As in leg-picker.spec.ts the catalogue GET routes are answered here (the catalogue is empty in the test database).
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit } from './pages/builder.page'
 
 useQuietLiveSocket()
 test.use({ timezoneId: 'America/New_York' }) // a browser-zone formatter would show New York time and fail the match below
@@ -46,6 +47,7 @@ test('legs are named by contract, times are IST words, and no raw id or ISO time
   for (const [strike, action] of [['22800.00', 'SELL'], ['23000.00', 'BUY']]) {
     const rows = page.getByTestId('leg-row')
     const before = await rows.count()
+    await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
     await page.getByTestId('pick-type').selectOption('CE')
     await expect(page.getByTestId('pick-strike')).toBeEnabled()
     await expect(page.getByTestId('pick-strike').locator(`option[value="${strike}"]`)).toBeAttached()

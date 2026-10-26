@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openPriceMenu } from './pages/builder.page'
 
 useQuietLiveSocket()
 
@@ -67,6 +68,7 @@ test('REQ-077 AC-1: typing a price on a leg row sends it as text and the row sho
   const first = page.getByTestId('leg-row').nth(0)
   await expect(first).toBeVisible()
   await first.getByTestId('price-input').fill('81.30')
+  await openPriceMenu(first)
   await first.getByTestId('price-set').click()
   await expect(first.getByTestId('leg-entry')).toHaveText('Your price 81.30')
   expect(sent).toHaveLength(1)

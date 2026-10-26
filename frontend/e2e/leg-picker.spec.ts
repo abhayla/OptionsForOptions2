@@ -6,6 +6,7 @@
 //   - PREVIEW_URL (plain API, no provider): planned-entry returns null + not_connected, so the leg is unpriced.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit } from './pages/builder.page'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
@@ -32,6 +33,7 @@ async function seedCatalogue(page: Page) {
 // The expiry is chosen once by the caller: saving a leg keeps it (and its contracts), so it is not re-selected here.
 async function addLeg(page: Page, type: string, strike: string, action: string) {
   const rows = page.getByTestId('leg-row')
+  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
   await page.getByTestId('pick-type').selectOption(type)
   // wait for the API's strikes: the select is disabled until they arrive

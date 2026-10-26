@@ -15,6 +15,7 @@
 // rules_ref `e2e_w071_save_draft` and stay in ofo_dev so a person can see where they came from.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit, openMoreMenu, openSavedTab } from './pages/builder.page'
 
 test.skip(process.env.E2E_DEV_CATALOGUE !== '1' && process.env.E2E_PINNED_CATALOGUE !== '1',
   'needs live contracts (#237): E2E_PINNED_CATALOGUE=1 in CI (seeded fixture + pinned date) or E2E_DEV_CATALOGUE=1 against ofo_dev')
@@ -46,6 +47,7 @@ async function stubCapture(page: Page) {
 
 async function addLeg(page: Page, type: string, action: string) {
   const rows = page.getByTestId('leg-row')
+  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
   await page.getByTestId('pick-type').selectOption(type)
   await expect(page.getByTestId('pick-strike')).toBeEnabled()
@@ -101,6 +103,7 @@ test('a saved draft reopens from the saved list with identical legs, planned ent
   await page.route('**/api/strategies/planned-entry', (r) => { captures++; r.abort() })
   await page.reload()
   await expect(page.getByTestId('leg-row')).toHaveCount(0)
+  await openSavedTab(page)
   await page.getByTestId(`open-draft-${id}`).click()
   await expect(page.getByTestId('leg-row')).toHaveCount(2)
   const after = await legFields(page)
@@ -165,6 +168,7 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
 
   // AC-3: Rename from the builder changes only the name, with the revision the page loaded (2), and shows the reply's name
+  await openMoreMenu(page)
   await page.getByTestId('rename-open').click()
   await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof')
   await page.getByTestId('name-input').fill('E2E renamed')
@@ -177,6 +181,7 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   const renamedOriginal = '"E2E renamed"'
 
   // AC-2: Save As asks for a name prefilled "<name> copy", creates a second strategy, opens it and leaves the original as saved
+  await openMoreMenu(page)
   await page.getByTestId('save-as').click()
   await expect(page.getByTestId('name-input')).toHaveValue('E2E renamed copy')
   await page.getByTestId('name-input').fill('E2E update copy')

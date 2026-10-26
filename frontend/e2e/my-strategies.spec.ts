@@ -4,6 +4,7 @@
 // E2E_DEV_CATALOGUE=1 on a developer PC). Planned-entry capture is stubbed (no live provider); the list and links are real.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit } from './pages/builder.page'
 
 test.skip(process.env.E2E_DEV_CATALOGUE !== '1' && process.env.E2E_PINNED_CATALOGUE !== '1',
   'needs live contracts (#237): E2E_PINNED_CATALOGUE=1 in CI or E2E_DEV_CATALOGUE=1 against ofo_dev')
@@ -30,6 +31,7 @@ async function stubCapture(page: Page) {
 test('a saved draft is listed after a reload and its Builder and Execute links open for that id', async ({ page }) => {
   await stubCapture(page)
   await page.goto(`${URL}/strategy/builder?rules_ref=${TAG}`)
+  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1)
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
     (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)
