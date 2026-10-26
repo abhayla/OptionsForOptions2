@@ -38,8 +38,8 @@ def _contracts(expiry, base):
     return tuple(out)
 
 
-CATALOGUES = {NEAR: ChainCatalogue((NEAR, NEXT), _contracts(NEAR, 40000)),
-              NEXT: ChainCatalogue((NEAR, NEXT), _contracts(NEXT, 50000))}
+CATALOGUES = {NEAR: ChainCatalogue(expiries=(NEAR, NEXT), contracts=_contracts(NEAR, 40000)),
+              NEXT: ChainCatalogue(expiries=(NEAR, NEXT), contracts=_contracts(NEXT, 50000))}
 
 
 class Reader:
@@ -48,7 +48,7 @@ class Reader:
 
     async def __call__(self, underlying, expiry):
         self.calls.append(expiry)
-        return CATALOGUES.get(expiry, ChainCatalogue((NEAR, NEXT), ()))
+        return CATALOGUES.get(expiry, ChainCatalogue(expiries=(NEAR, NEXT), contracts=()))
 
 
 class Provider:

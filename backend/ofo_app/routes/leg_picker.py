@@ -412,7 +412,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
 
 # ---- the futures read -----------------------------------------------------------------------------------------------
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class FuturesCatalogue:
     """The stored catalogue's answer for one underlying: its option expiries and its listed futures."""
 
@@ -435,9 +435,9 @@ async def stored_futures(underlying: str) -> FuturesCatalogue:
             today = await picker.database_today(session)
             rows = await picker.pickable_contracts(session, underlying, today)
     except (SQLAlchemyError, OSError, RuntimeError):
-        return FuturesCatalogue((), (), unreadable=True)
+        return FuturesCatalogue(option_expiries=(), futures=(), unreadable=True)
     expiries = tuple(sorted({r.expiry for r in rows if r.instrument_type in _SIDES}))
-    return FuturesCatalogue(expiries, tuple(r for r in rows if r.instrument_type == "FUT"))
+    return FuturesCatalogue(option_expiries=expiries, futures=tuple(r for r in rows if r.instrument_type == "FUT"))
 
 
 def _future_reason(quote: NormalizedQuote | None) -> FutureReason | None:

@@ -80,7 +80,7 @@ def cid(strike: str, kind: str, contracts=CONTRACTS) -> str:
 
 
 def catalogue(contracts=CONTRACTS, expiries=(EXPIRY,), **kw) -> ChainCatalogue:
-    return ChainCatalogue(tuple(expiries), tuple(contracts), **kw)
+    return ChainCatalogue(expiries=tuple(expiries), contracts=tuple(contracts), **kw)
 
 
 def quote(instrument_id: str, kind: Instrument | None, strike: D | None, ltp: str, *,  # noqa: PLR0913
@@ -296,9 +296,9 @@ def test_attack_4_a_spot_held_but_not_healthy_is_the_last_known_spot_dated_with_
 
 
 @pytest.mark.parametrize(("cat", "reason"), [
-    (ChainCatalogue((), (), unreadable=True), "CATALOGUE_UNREADABLE"),
-    (ChainCatalogue((), ()), "CATALOGUE_EMPTY"),
-    (ChainCatalogue((NEXT_EXPIRY,), CONTRACTS), "EXPIRY_UNKNOWN")])
+    (ChainCatalogue(expiries=(), contracts=(), unreadable=True), "CATALOGUE_UNREADABLE"),
+    (ChainCatalogue(expiries=(), contracts=()), "CATALOGUE_EMPTY"),
+    (ChainCatalogue(expiries=(NEXT_EXPIRY,), contracts=CONTRACTS), "EXPIRY_UNKNOWN")])
 def test_ac_5_every_catalogue_answer_state_has_its_reason_and_no_rows(cat, reason):
     """AC-5: unreadable, empty, expiry not listed: no rows, the named reason, nothing subscribed."""
     provider, feed = priced_provider()
@@ -384,14 +384,14 @@ def test_ac_5_a_price_the_lease_does_not_hold_is_not_live():
     for c in other:
         provider.quotes[c.instrument_id] = quote(c.instrument_id, Instrument(c.instrument_type), c.strike, "90.00",
                                                  expiry=NEXT_EXPIRY)
-    both = ChainCatalogue((EXPIRY, NEXT_EXPIRY), CONTRACTS + other)
-    out = answer(feed, cat=ChainCatalogue((EXPIRY, NEXT_EXPIRY), other), expiry=NEXT_EXPIRY)
+    both = ChainCatalogue(expiries=(EXPIRY, NEXT_EXPIRY), contracts=CONTRACTS + other)
+    out = answer(feed, cat=ChainCatalogue(expiries=(EXPIRY, NEXT_EXPIRY), contracts=other), expiry=NEXT_EXPIRY)
     assert out.reason is None and all(c.ltp == D("90.00") for c in cells(out))
     provider.vendor_subscribed.clear()  # nothing streams any more: the book still has the old quotes
     leg_picker.LEASE.release()
     # the same read after the lease is gone re-holds; a read that cannot hold anything shows no price
     provider.unknown.update(c.instrument_id for c in both.contracts)
-    out = answer(feed, cat=ChainCatalogue((EXPIRY, NEXT_EXPIRY), other), expiry=NEXT_EXPIRY)
+    out = answer(feed, cat=ChainCatalogue(expiries=(EXPIRY, NEXT_EXPIRY), contracts=other), expiry=NEXT_EXPIRY)
     assert all(c.ltp is None for c in cells(out))
 
 
@@ -531,7 +531,7 @@ FUT = _contract(46000, "FUT", None, FAR_EXPIRY)
 
 
 def futures_catalogue() -> FuturesCatalogue:
-    return FuturesCatalogue((EXPIRY, NEXT_EXPIRY), (FUT,))
+    return FuturesCatalogue(option_expiries=(EXPIRY, NEXT_EXPIRY), futures=(FUT,))
 
 
 def test_ac_6_every_option_expiry_names_its_forward_and_which_one_was_used_and_futures_list_their_ltp():
@@ -657,11 +657,12 @@ def test_ac_6_without_a_spot_or_session_or_catalogue_the_forward_is_null_with_a_
     assert [(f.forward, f.reason) for f in out.forwards] == [(None, "SPOT_MISSING")] * len(out.forwards)
     off = futures_answer(None, "NIFTY", futures_catalogue(), lambda: T0)
     assert off.state == "NOT_LIVE" and off.reason == "NOT_CONNECTED" and off.futures[0].ltp_reason == "NOT_LIVE"
-    assert futures_answer(None, "NIFTY", FuturesCatalogue((), (), unreadable=True), lambda: T0).reason == (
-        "CATALOGUE_UNREADABLE")
-    assert futures_answer(None, "NIFTY", FuturesCatalogue((), ()), lambda: T0).reason == "CATALOGUE_EMPTY"
+    unreadable = FuturesCatalogue(option_expiries=(), futures=(), unreadable=True)
+    assert futures_answer(None, "NIFTY", unreadable, lambda: T0).reason == "CATALOGUE_UNREADABLE"
+    empty = FuturesCatalogue(option_expiries=(), futures=())
+    assert futures_answer(None, "NIFTY", empty, lambda: T0).reason == "CATALOGUE_EMPTY"
     provider.quotes[NIFTY_ID] = quote(NIFTY_ID, None, None, "22533.25")
-    expired = FuturesCatalogue((datetime.date(2026, 10, 7),), ())
+    expired = FuturesCatalogue(option_expiries=(datetime.date(2026, 10, 7),), futures=())
     assert futures_answer(feed, "NIFTY", expired, lambda: T0).forwards[0].reason == "NOT_PRICEABLE"
 
 
@@ -840,13 +841,13 @@ def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_re
     options = tuple(pick(lc) for lc in items if lc.contract.name == "NIFTY"
                     and lc.contract.instrument_type in ("CE", "PE") and lc.contract.expiry == EXPIRY)
     futures = tuple(pick(lc) for lc in items if lc.contract.name == "NIFTY" and lc.contract.instrument_type == "FUT")
-    cat = ChainCatalogue((EXPIRY,), options)
+    cat = ChainCatalogue(expiries=(EXPIRY,), contracts=options)
 
     async def reader(_u, _e):
         return cat
 
     async def futures_reader(_u):
-        return FuturesCatalogue((EXPIRY,), futures)
+        return FuturesCatalogue(option_expiries=(EXPIRY,), futures=futures)
 
     from ofo_app.main import create_app  # noqa: PLC0415 - built per test, no lifespan (no database)
 
