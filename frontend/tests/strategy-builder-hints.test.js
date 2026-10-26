@@ -7,6 +7,8 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import real from "./fixtures/outcome-condor.json";
 import MARGIN from "./fixtures/outcome-margin-states.json";
+import MONEY from "./fixtures/outcome-money-condor.json";
+import MoneySummary from "@/components/strategy/MoneySummary.vue";
 
 let apiAnswer = null;
 let capabilities = {};
@@ -218,12 +220,18 @@ describe("REQ-136 AC-1: marks on the figures that exist today", () => {
     const w = mount(MarginLine, {
       props: { margin: MARGIN.enough, capabilities: ON },
     });
-    expect(hintIds(w)).toEqual(["margin_needed", "margin_available"]);
+    expect(hintIds(w)).toEqual([
+      "margin_needed",
+      "funds_needed",
+      "margin_available",
+    ]);
     expect(t(w, "margin-figures").text()).toMatch(
       /^Margin \(Zerodha\): Rs \S+ needed, Rs \S+ available$/,
     );
     await markOf(w, "margin_needed").trigger("focus");
     expect(textOf(w, "margin_needed").text()).toBe(FIGURES.margin_needed.text);
+    await markOf(w, "funds_needed").trigger("focus");
+    expect(textOf(w, "funds_needed").text()).toBe(FIGURES.funds_needed.text);
   });
 
   it("MarginLine: pending, flag off and a not-checked answer draw no mark", () => {
@@ -296,6 +304,49 @@ async function openBuilder(answer, withDraft = true) {
   await flushPromises();
   return w;
 }
+
+describe("REQ-081 (issue #561): marks on net premium, charges and funds needed", () => {
+  it("net premium and charges marks sit beside their figures and open the catalogue text", async () => {
+    const w = mount(MoneySummary, {
+      props: {
+        netPremium: MONEY.summary.net_premium,
+        charges: MONEY.charges_breakdown,
+      },
+    });
+    expect(hintIds(w)).toEqual(["net_premium", "charges"]);
+    for (const id of ["net_premium", "charges"]) {
+      await markOf(w, id).trigger("focus");
+      expect(textOf(w, id).text(), id).toBe(FIGURES[id].text);
+    }
+  });
+
+  it("an absent net premium or breakdown leaves no orphan mark", () => {
+    const absent = {
+      amount: null,
+      side: null,
+      per_unit: null,
+      text: null,
+      reason: "A futures leg has no premium.",
+    };
+    const w = mount(MoneySummary, {
+      props: { netPremium: absent, charges: null },
+    });
+    expect(hintIds(w)).toEqual([]);
+  });
+
+  it("the page shows the three marks when the figures exist", async () => {
+    const w = await openBuilder({ ...MONEY, margin: MARGIN.enough });
+    const ids = hintIds(w);
+    for (const id of ["net_premium", "charges", "funds_needed"])
+      expect(ids).toContain(id);
+    w.unmount();
+  });
+
+  it("none of the new strings uses return, gain, expected or promise", () => {
+    for (const id of ["net_premium", "charges", "funds_needed"])
+      expect(FIGURES[id].text).not.toMatch(/\b(return|gain|expected|promise)/i);
+  });
+});
 
 describe("REQ-136 AC-3: the standing note under the summary", () => {
   it("is visible as plain text right after the summary cards, with no hover, and is not inside a hint", async () => {

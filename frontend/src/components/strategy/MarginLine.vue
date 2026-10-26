@@ -36,6 +36,7 @@ const shortfallText = computed(() => (typeof props.margin.shortfall_reason === '
           Margin (Zerodha): Rs {{ margin.needed }} needed, Rs {{ margin.available }} available
         </p>
         <FigureHint id="margin_needed" />
+        <FigureHint id="funds_needed" />
         <FigureHint id="margin_available" />
       </div>
       <p v-if="short" class="text-red-700" data-testid="margin-shortfall">{{ shortfallText }}</p>
