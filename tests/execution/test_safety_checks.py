@@ -146,8 +146,8 @@ MUTATIONS = [
     ("dependencies", _ctx(dependencies_satisfied=False), CheckCode.DEPENDENCIES_UNSATISFIED,
      "An order this execution depends on is not in place yet (for example a protective leg)."),
     ("margin-short", _ctx(margin_available=D("48210.74")), CheckCode.MARGIN_INSUFFICIENT,
-     "Available margin ₹48,210.74 is less than the estimated ₹48,210.75 this strategy needs. Zerodha's figure is "
-     "final. No order has been submitted."),
+     "Available margin ₹48,210.74 is less than the estimated ₹48,210.75 this strategy needs. "
+     "No order has been submitted."),
     ("margin-unknown", _ctx(margin_available=None), CheckCode.MARGIN_INSUFFICIENT,
      "We could not confirm your available margin with Zerodha. Execution is paused."),
     ("reconciliation", _ctx(reconciliation_blocked_strategy_ids=frozenset({"S-1"})), CheckCode.RECONCILIATION_MISMATCH,
