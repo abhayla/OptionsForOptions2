@@ -2,42 +2,50 @@
      close "x" top right, the `actions` slot as a full-width pair at the bottom (secondary left, primary right).
      Esc, the "x" and an overlay click emit `close`; focus moves into the dialog and returns on close. -->
 <script setup>
-import { nextTick, ref, watch } from 'vue'
-import Icon from './Icon.vue'
+import { nextTick, ref, watch } from "vue";
+import Icon from "./Icon.vue";
 
 const props = defineProps({
   open: { type: Boolean, required: true },
   title: { type: String, required: true },
-})
-const emit = defineEmits(['close'])
-const dialog = ref(null)
-let returnTo = null
+});
+const emit = defineEmits(["close"]);
+const dialog = ref(null);
+let returnTo = null;
 
 watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
-      returnTo = document.activeElement
-      await nextTick()
-      dialog.value?.focus()
-    } else if (returnTo && typeof returnTo.focus === 'function') {
-      returnTo.focus()
-      returnTo = null
+      returnTo = document.activeElement;
+      await nextTick();
+      dialog.value?.focus();
+    } else if (returnTo && typeof returnTo.focus === "function") {
+      returnTo.focus();
+      returnTo = null;
     }
   },
   { immediate: true },
-)
+);
 function onKey(e) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    emit('close')
+  if (e.key === "Escape") {
+    e.preventDefault();
+    emit("close");
   }
 }
 </script>
 
 <template>
-  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="modal-root">
-    <div class="absolute inset-0 bg-ink/30" data-testid="modal-overlay" @click="emit('close')" />
+  <div
+    v-if="open"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    data-testid="modal-root"
+  >
+    <div
+      class="absolute inset-0 bg-ink/30"
+      data-testid="modal-overlay"
+      @click="emit('close')"
+    />
     <div
       ref="dialog"
       role="dialog"
@@ -57,9 +65,17 @@ function onKey(e) {
       >
         <Icon name="close" :size="18" />
       </button>
-      <h2 class="pr-8 text-xl font-semibold text-ink" data-testid="modal-title">{{ title }}</h2>
+      <h2 class="pr-8 text-xl font-semibold text-ink" data-testid="modal-title">
+        {{ title }}
+      </h2>
       <div class="mt-4 text-sm text-ink"><slot /></div>
-      <div v-if="$slots.actions" class="mt-6 grid grid-cols-2 gap-3" data-testid="modal-actions"><slot name="actions" /></div>
+      <div
+        v-if="$slots.actions"
+        class="mt-6 grid grid-cols-2 gap-3"
+        data-testid="modal-actions"
+      >
+        <slot name="actions" />
+      </div>
     </div>
   </div>
 </template>

@@ -138,6 +138,11 @@ describe('menu keyboard and hover (UI-002)', () => {
     vi.advanceTimersByTime(60)
     await flushPromises()
     expect(w.get('[data-testid="nav-menu"]').attributes('data-section')).toBe('learn')
+    // the click that follows a hover-open keeps the menu open; a second click closes it
+    await w.get('[data-testid="nav-menu-toggle-learn"]').trigger('click')
+    expect(w.find('[data-testid="nav-menu"]').exists()).toBe(true)
+    await w.get('[data-testid="nav-menu-toggle-learn"]').trigger('click')
+    expect(w.find('[data-testid="nav-menu"]').exists()).toBe(false)
     w.unmount()
   })
 })

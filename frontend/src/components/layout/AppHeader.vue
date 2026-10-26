@@ -39,6 +39,8 @@ const panel = ref(null)
 const toggles = {}
 const sectionItems = {}
 let hoverTimer = null
+// true while the open menu was opened by a mouse hover: the click that usually follows must not close it again
+let openedByHover = false
 
 const pageTitle = computed(() => route.meta?.title ?? '')
 const activeSection = computed(() => route.meta?.section ?? null)
@@ -78,8 +80,9 @@ function placeMenu(key) {
   const max = Math.max(8, head.clientWidth - SMALL_MENU_WIDTH - 8)
   menuLeft.value = Math.min(Math.max(8, left), max)
 }
-function openMenu(key) {
+function openMenu(key, byHover = false) {
   clearHover()
+  openedByHover = byHover
   menuOpen.value = false
   placeMenu(key)
   openKey.value = key
@@ -91,7 +94,8 @@ function closeMenu(focusTrigger = false) {
   if (focusTrigger && key) toggles[key]?.focus()
 }
 function toggleMenu(key) {
-  if (openKey.value === key) closeMenu()
+  if (openKey.value === key && openedByHover) openedByHover = false
+  else if (openKey.value === key) closeMenu()
   else openMenu(key)
 }
 // A keyboard press (Enter/Space gives a click with detail 0) also moves focus to the first item; a mouse click does not.
@@ -146,7 +150,7 @@ function onSectionEnter(e, key) {
   if (e.pointerType !== 'mouse') return
   clearHover()
   if (openKey.value === key) return
-  hoverTimer = setTimeout(() => openMenu(key), HOVER_DELAY_MS)
+  hoverTimer = setTimeout(() => openMenu(key, true), HOVER_DELAY_MS)
 }
 function onSectionLeave(e) {
   if (e.pointerType !== 'mouse') return

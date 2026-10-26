@@ -2,28 +2,39 @@
      "Payoff Graph"); `underline` = 14 px/500 text, active tab accent text + 2 px underline (S-012 "Payoff Table").
      role="tablist"; arrow keys, Home and End move the selection; only the selected tab is in the Tab order. -->
 <script setup>
-import { ref } from 'vue'
+import { ref } from "vue";
 
 const props = defineProps({
   tabs: { type: Array, required: true }, // [{ key, label }]
   modelValue: { type: String, required: true },
-  variant: { type: String, default: 'underline', validator: (v) => ['segmented', 'underline'].includes(v) },
-  label: { type: String, default: '' },
-})
-const emit = defineEmits(['update:modelValue'])
-const buttons = ref([])
+  variant: {
+    type: String,
+    default: "underline",
+    validator: (v) => ["segmented", "underline"].includes(v),
+  },
+  label: { type: String, default: "" },
+});
+const emit = defineEmits(["update:modelValue"]);
+const buttons = ref([]);
 
 function select(i) {
-  const n = props.tabs.length
-  const tab = props.tabs[(i + n) % n]
-  emit('update:modelValue', tab.key)
-  buttons.value[(i + n) % n]?.focus()
+  const n = props.tabs.length;
+  const tab = props.tabs[(i + n) % n];
+  emit("update:modelValue", tab.key);
+  buttons.value[(i + n) % n]?.focus();
 }
 function onKey(e, i) {
-  const moves = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: props.tabs.length - 1 }
+  const moves = {
+    ArrowRight: i + 1,
+    ArrowDown: i + 1,
+    ArrowLeft: i - 1,
+    ArrowUp: i - 1,
+    Home: 0,
+    End: props.tabs.length - 1,
+  };
   if (e.key in moves) {
-    e.preventDefault()
-    select(moves[e.key])
+    e.preventDefault();
+    select(moves[e.key]);
   }
 }
 </script>
@@ -32,7 +43,11 @@ function onKey(e, i) {
   <div
     role="tablist"
     :aria-label="label || undefined"
-    :class="variant === 'segmented' ? 'inline-flex h-9 rounded-full border border-line bg-surface p-0.5' : 'flex gap-6 border-b border-line'"
+    :class="
+      variant === 'segmented'
+        ? 'inline-flex h-9 rounded-full border border-line bg-surface p-0.5'
+        : 'flex gap-6 border-b border-line'
+    "
     :data-variant="variant"
     data-testid="tabs"
   >
@@ -46,8 +61,18 @@ function onKey(e, i) {
       :tabindex="t.key === modelValue ? 0 : -1"
       :class="
         variant === 'segmented'
-          ? ['rounded-full px-4 text-sm font-medium', t.key === modelValue ? 'bg-accent text-surface' : 'text-ink-muted hover:text-ink']
-          : ['-mb-px border-b-2 pb-2 text-sm font-medium', t.key === modelValue ? 'border-accent text-accent' : 'border-transparent text-ink-muted hover:text-ink']
+          ? [
+              'rounded-full px-4 text-sm font-medium',
+              t.key === modelValue
+                ? 'bg-accent text-surface'
+                : 'text-ink-muted hover:text-ink',
+            ]
+          : [
+              '-mb-px border-b-2 pb-2 text-sm font-medium',
+              t.key === modelValue
+                ? 'border-accent text-accent'
+                : 'border-transparent text-ink-muted hover:text-ink',
+            ]
       "
       :data-testid="`tab-${t.key}`"
       @click="emit('update:modelValue', t.key)"
