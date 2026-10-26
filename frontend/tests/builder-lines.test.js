@@ -50,7 +50,7 @@ describe('Save Draft bar', () => {
   })
 
   // W-192 (ADR-193 UI-108, UI-112): Save in the action row, Save As / Rename in the "..." menu, the list in the Saved tab
-  it('UI-112: the Saved tab shows the 10 first rows of the server list, narrowed by a text search on name or underlying', async () => {
+  it('UI-112: the Saved tab shows 10 rows of the server list, narrowed by a text search on name or underlying', async () => {
     const rows = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Plan ${i + 1}`, underlying: i === 11 ? 'SENSEX' : 'NIFTY', updated_at: '2026-10-15T06:29:59Z' }))
     answers['GET /strategies'] = { strategies: rows }
     const w = mount(SaveDraftBar, { props: { legs: [] }, attachTo: document.body })
@@ -63,6 +63,30 @@ describe('Save Draft bar', () => {
     expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12, SENSEX, updated 15 Oct 2026, 11:59:59 IST'])
     await t(w, 'saved-search').setValue('no such plan')
     expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches.')
+    w.unmount()
+  })
+
+  // CI #581 (strategy-save-draft.spec.ts): the server lists by id ASCENDING; with more than 10 stored, the tab showed the 10 OLDEST
+  // and a just-saved draft had no Open button. UI-112: the 10 MOST RECENT, newest first.
+  it('UI-112: the Saved tab shows the 10 most recent by updated time, newest first, so a just-saved draft is at the top', async () => {
+    const at = (min) => `2026-10-15T06:${String(min).padStart(2, '0')}:00Z`
+    const rows = Array.from({ length: 16 }, (_, i) => ({ id: i + 1, name: `Plan ${i + 1}`, underlying: 'NIFTY', updated_at: at(i + 10) }))
+    rows[0].updated_at = at(59) // the OLDEST id was edited last: recency is updated time, not id
+    answers['GET /strategies'] = { strategies: rows }
+    answers['POST /strategies'] = { id: 17, revision: 1, name: 'New Strategy' }
+    const w = mount(SaveDraftBar, { props: { legs: [LEG] }, attachTo: document.body })
+    await flushPromises()
+    await t(w, 'tab-saved').trigger('click')
+    const ids = () => w.findAll('[data-testid="saved-draft-row"]').map((r) => r.find('button[data-testid^="open-draft-"]').attributes('data-testid'))
+    expect(ids()).toEqual(['open-draft-1', ...[16, 15, 14, 13, 12, 11, 10, 9, 8].map((i) => `open-draft-${i}`)])
+    // Save: the list re-reads and the new draft (id 17, newest) is the first row with its Open button
+    answers['GET /strategies'] = { strategies: [...rows, { id: 17, name: 'New Strategy', underlying: 'NIFTY', updated_at: '2026-10-15T07:00:00Z' }] }
+    await t(w, 'save-draft').trigger('click')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(ids()[0]).toBe('open-draft-17')
+    expect(t(w, 'open-draft-17').exists()).toBe(true)
+    expect(ids()).toHaveLength(10)
     w.unmount()
   })
 

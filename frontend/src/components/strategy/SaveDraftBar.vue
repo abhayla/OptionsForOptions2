@@ -39,7 +39,9 @@ const errorParts = ref(null)
 const asking = ref(null) // null | 'save' | 'save-as': the name field is open for that action
 const nameText = ref('')
 // W-192 (ADR-193 UI-108, UI-111..UI-114): the action row's "..." menu and the bottom tabs card. The Saved tab lists the 10
-// newest rows of the same GET /api/strategies list (server order), narrowed by a plain text match on name or underlying.
+// most recent rows (UI-112) of the GET /api/strategies list, narrowed by a plain text match on name or underlying. The server lists
+// by id ASCENDING, so the tab sorts by updated_at, newest first (ties: higher id first) before cutting at 10; taking the first 10
+// in server order showed the 10 OLDEST and hid a just-saved draft (CI #581, strategy-save-draft.spec.ts).
 const menuOpen = ref(false)
 const menuRoot = ref(null)
 const menuButton = ref(null)
@@ -57,7 +59,12 @@ const search = ref('')
 const recentDrafts = computed(() => {
   const q = search.value.trim().toLowerCase()
   const hit = (d) => !q || `${strategyLabel(d, `Draft ${d.id}`)} ${d.underlying ?? ''}`.toLowerCase().includes(q)
-  return drafts.value.filter(hit).slice(0, SAVED_TAB_ROWS)
+  const at = (d) => {
+    const ms = Date.parse(d.updated_at)
+    return Number.isFinite(ms) ? ms : -Infinity // an unreadable time sorts last, never first
+  }
+  const newestFirst = (a, b) => (at(b) - at(a)) || (b.id - a.id)
+  return drafts.value.filter(hit).slice().sort(newestFirst).slice(0, SAVED_TAB_ROWS)
 })
 const menuDo = (fn) => {
   closeMenu()
