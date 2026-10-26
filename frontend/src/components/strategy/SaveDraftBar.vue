@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
+import EmptyState from '@/components/states/EmptyState.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
@@ -278,7 +279,8 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
     <div class="mt-4 rounded-lg border border-line bg-surface p-3 text-sm" data-testid="builder-tabs" :data-tab="tab">
       <Tabs v-model="tab" :tabs="BUILDER_TABS" label="Strategy sources" />
       <div v-show="tab === 'ready-made'" class="mt-3" data-testid="tab-panel-ready-made"><slot name="ready-made" /></div>
-      <div v-show="tab === 'positions'" class="mt-3 py-6 text-center text-ink-muted" data-testid="tab-panel-positions">Coming soon: analyse your broker positions here.</div>
+      <!-- UI-113 / UI-114: the shared EmptyState (PR-1); no broker is named -->
+      <div v-show="tab === 'positions'" class="mt-3" data-testid="tab-panel-positions"><EmptyState icon="briefcase" title="Coming soon: Positions" message="Open positions you hold will appear here, to analyse in the Builder." /></div>
       <div v-show="tab === 'saved'" class="mt-3" data-testid="tab-panel-saved">
         <input v-model="search" type="search" class="h-10 w-full rounded border border-line px-2" placeholder="Search name or underlying" aria-label="Search name or underlying" data-testid="saved-search" />
         <h2 class="sr-only">Saved drafts</h2>
@@ -293,7 +295,7 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
         <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
         <a href="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</a>
       </div>
-      <div v-show="tab === 'tracked'" class="mt-3 py-6 text-center text-ink-muted" data-testid="tab-panel-tracked"><slot name="tracked">Strategies you track appear in My Strategies.</slot></div>
+      <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked"><EmptyState icon="pulse" title="No tracked strategies here" message="Strategies you track appear in My Strategies." /></slot></div>
     </div>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>

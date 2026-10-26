@@ -43,6 +43,21 @@ describe("ChargesBreakdown", () => {
     expect(t(w, "charges-panel").exists()).toBe(false);
   });
 
+  it("W-192 UI-107 (screen 022): opens inside the shared Modal with the total above the rows and the label and rates date after them; the Modal's close shuts it", async () => {
+    const w = mount(ChargesBreakdown, { props: { breakdown: B } });
+    await t(w, "charges-action").trigger("click");
+    const modal = t(w, "modal");
+    expect(modal.attributes("role")).toBe("dialog");
+    expect(t(w, "modal-title").text()).toBe("Charges and taxes");
+    expect(modal.element.contains(t(w, "charges-panel").element)).toBe(true);
+    const order = ["charges-total", "charges-brokerage", "charges-sebi", "charges-label", "charges-rates-date"].map((id) => t(w, id).element);
+    for (let i = 1; i < order.length; i++)
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await t(w, "modal-close").trigger("click");
+    expect(t(w, "charges-panel").exists()).toBe(false);
+    expect(t(w, "charges-action").attributes("aria-expanded")).toBe("false");
+  });
+
   it("shows the server's exercise-STT text verbatim, no amount, outside the total, only when the reply carries it", async () => {
     const w = mount(ChargesBreakdown, { props: { breakdown: B } });
     await t(w, "charges-action").trigger("click");

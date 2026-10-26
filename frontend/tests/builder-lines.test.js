@@ -66,6 +66,19 @@ describe('Save Draft bar', () => {
     w.unmount()
   })
 
+  it('UI-113 / UI-114: the Positions and Tracked tabs show the shared EmptyState with their sentence and name no broker', async () => {
+    answers['GET /strategies'] = { strategies: [] }
+    const w = mount(SaveDraftBar, { props: { legs: [] } })
+    await flushPromises()
+    const pos = t(w, 'tab-panel-positions')
+    const trk = t(w, 'tab-panel-tracked')
+    expect(pos.find('[data-testid="empty-state"]').exists()).toBe(true)
+    expect(trk.find('[data-testid="empty-state"]').exists()).toBe(true)
+    expect(pos.get('[data-testid="empty-state-message"]').text()).toBe('Open positions you hold will appear here, to analyse in the Builder.')
+    expect(trk.get('[data-testid="empty-state-message"]').text()).toBe('Strategies you track appear in My Strategies.')
+    for (const p of [pos, trk]) expect(p.text()).not.toMatch(/zerodha|kite|upstox|dhan|angel|broker/i)
+  })
+
   it('UI-108: Save is in the action row; Save As and Rename open from the "..." menu for an open strategy', async () => {
     const w = mount(SaveDraftBar, { props: { legs: [LEG], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body })
     await flushPromises()

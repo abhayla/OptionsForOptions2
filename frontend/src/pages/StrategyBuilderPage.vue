@@ -33,8 +33,10 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
+import { UNDERLYINGS } from '@/lib/underlyings'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
+import Drawer from '@/components/common/Drawer.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -399,11 +401,16 @@ const focusPicker = () => {
   pickerOpen.value = true
   document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
 }
-// "..." menu items: History opens the existing activity panel; Start tracking goes to the existing tracking block (right column)
+// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
+// existing tracking block (right column)
+const historyOpen = ref(false)
 const showHistory = () => {
-  const toggle = document.querySelector('[data-testid="activity-toggle"]')
-  toggle?.scrollIntoView?.()
-  toggle?.click()
+  historyOpen.value = true
+}
+// a restore from the drawer opens that configuration through the one open path and closes the drawer
+const restoreFromHistory = (legsIn, id, revision, name) => {
+  historyOpen.value = false
+  openSaved(legsIn, id, revision, name)
 }
 const goToTracking = () => document.querySelector('[data-testid="tracking-panel"]')?.scrollIntoView?.()
 // AC-4: Execute stays disabled, with its reason, until the latest outcome and edit reply has arrived
@@ -421,6 +428,7 @@ onBeforeUnmount(() => {
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
 const fromEntries = computed(() => state.value === 'from-entries')
+const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
@@ -468,7 +476,11 @@ const pricesStamp = computed(() => {
         <!-- Region A (UI-100, UI-103): the underlying and the outcome reply's spot level; day change omitted until REQ-139 sends it -->
         <div class="flex h-12 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm" data-testid="underlying-bar">
           <span class="flex items-center gap-2">
-            <span class="font-semibold" data-testid="underlying-name">{{ headerUnderlying || '-' }}</span>
+            <span v-if="headerUnderlying" class="font-semibold" data-testid="underlying-name">{{ headerUnderlying }}</span>
+            <!-- an empty builder chooses its underlying here (Region A owns it; the Ready-made tab reads it) -->
+            <select v-else v-model="pickUnderlying" class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="underlying-select">
+              <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
+            </select>
             <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || undefined">{{ data?.spot_level ?? NO_LIVE_LEVEL }}</span>
           </span>
           <span class="relative">
@@ -507,9 +519,11 @@ const pricesStamp = computed(() => {
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
             <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
           </template>
-          <template #ready-made><ReadyMadePanel :legs="legs" @update:legs="setLegs" /></template>
+          <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
         </SaveDraftBar>
-        <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
+        <Drawer :open="historyOpen && !!openStrategy" title="History" side="right" @close="historyOpen = false">
+          <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
+        </Drawer>
 
         <!-- Region D (UI-150): the one prices stamp and the reconnecting line -->
         <div class="text-xs text-ink-muted max-[1099px]:order-3" data-testid="stamp-line">
