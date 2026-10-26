@@ -390,6 +390,11 @@ describe('ADR-192: the Save As pre-fill is the cut original plus " copy", at mos
   it('a cut that ends in a space drops the space', () => {
     expect(saveAsName('abcdefghijklmn opq')).toBe('abcdefghijklmn copy') // cut at 15 leaves a trailing space
   })
+  it('counts and cuts by characters (code points), never splitting a surrogate pair', () => {
+    expect(saveAsName('NIFTY Oct cond🚀 more')).toBe('NIFTY Oct cond🚀 copy') // 15 characters kept, the emoji whole
+    expect(saveAsName('Iron fly 🚀🚀🚀🚀🚀🚀')).toBe('Iron fly 🚀🚀🚀🚀🚀🚀 copy') // 15 characters: not cut
+    expect(Array.from(saveAsName('NIFTY Oct cond🚀 more')).length).toBeLessThanOrEqual(20)
+  })
   it('no name gives the default name plus the suffix', () => {
     expect(saveAsName(null)).toBe(`${STRATEGY_NAME_DEFAULT} copy`)
     expect(saveAsName(undefined)).toBe('New Strategy copy')
