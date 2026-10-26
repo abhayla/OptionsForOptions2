@@ -1,5 +1,6 @@
 """ADR-099: Zerodha's margin on the outcome answer, from the REAL recorded 2026-10-16 basket reply (NIFTY long strangle,
-Zerodha final 6409, required 7065.50 after the ADR-094 top-up) through a fake transport. No network, no database.
+Zerodha final 6409, required 7065.50 after the ADR-094 top-up; REQ-055 AC-3: the two are named apart) through a fake
+transport. No network, no database.
 
 The reviewer's checklist, one test each: Decimal end to end and a 2-decimal string out; the cache key is the plan (a
 tick or a re-captured time never refetches, a changed quantity / price / side refetches exactly once), per user and
@@ -108,6 +109,16 @@ def source(transport, session=OWNER_SESSION, **kw) -> OutcomeMargin:
     return OutcomeMargin(holder, open_client, clock=lambda: CHECKED_AT, **kw)
 
 
+def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account") -> str:
+    """The catalogue sentence: Zerodha's own figure as Zerodha's, ours as an estimate (REQ-055 AC-3)."""
+    return (f"Zerodha's own margin figure is {theirs}. With the premium up to your limit prices, about {ours} is "
+            f"needed (an estimate); {have} is available in {where}.")
+
+
+def _short_line(theirs: str, ours: str, have: str) -> str:
+    return _own_line(theirs, ours, have, "your account") + " " + SHORT_WAYS
+
+
 # ---- the core proof -----------------------------------------------------------------------------------------------
 
 async def test_core_needed_is_the_recorded_required_total_and_available_the_funds() -> None:
@@ -117,8 +128,7 @@ async def test_core_needed_is_the_recorded_required_total_and_available_the_fund
     assert m.needed == Decimal("7065.50") and type(m.needed) is Decimal and str(m.needed) == "7065.50"
     assert m.available == Decimal("671.50") and type(m.available) is Decimal and str(m.available) == "671.50"
     assert m.checked_at == CHECKED_AT and m.shortfall is True  # 671.50 < 7065.50
-    assert str(m.reason) == ("Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹671.50 available. "
-                             "Checked at 12:08:52 PM.")
+    assert (str(m.broker_needed), str(m.reason)) == ("6409.00", _own_line("₹6,409.00", "₹7,065.50", "₹671.50"))
     sent = json.loads(next(b for _m, url, b in t.calls if "/margins/basket" in url))
     assert sent == json.loads(json.dumps(STRANGLE["request"]))  # exactly the recorded request, built from the plan
 
@@ -211,7 +221,7 @@ async def test_an_unknown_session_is_read_but_never_cached() -> None:
     ("68498.85000000001", "68498.85", ("68498.86", "68498.85"), True),  # Kite's float noise errs on the safe side
 ])
 def test_shortfall_compares_the_figures_shown(needed, available, shown, short) -> None:
-    m = outcome_margin.margin_checked(Decimal(needed), Decimal(available), CHECKED_AT)
+    m = outcome_margin.margin_checked(Decimal(needed), Decimal(available), CHECKED_AT, Decimal(needed))
     assert (str(m.needed), str(m.available)) == shown and m.shortfall is short
 
 
@@ -254,9 +264,10 @@ async def test_099_kites_float_noise_is_not_a_shortfall_on_the_screen() -> None:
 
 
 def test_enough_funds_is_no_shortfall() -> None:
-    m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT)
+    m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT, Decimal("6409"))
     assert m.shortfall is False and str(m.available) == "7065.50"
-    assert outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.49"), CHECKED_AT).shortfall is True
+    short = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.49"), CHECKED_AT, Decimal("6409"))
+    assert short.shortfall is True
 
 
 async def test_no_stored_token_is_the_login_text() -> None:
@@ -419,3 +430,222 @@ async def test_route_busy_margin_read_shows_the_zerodha_busy_text_and_no_figure(
     out = resp.json()
     assert out["state"] == "COMPUTED" and out["margin"]["state"] == "UNREADABLE" and out["margin"]["needed"] is None
     assert out["margin"]["reason"] == ZERODHA_BUSY_TEXT
+
+
+# ---- REQ-055 AC-4: the shortfall line from the server, and every answer state of the two Zerodha reads ----
+
+SHORT_WAYS = "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+NO_FIGURE_BLOCK = {"needed": None, "broker_needed": None, "available": None, "checked_at": None, "shortfall": False,
+                   "shortfall_reason": None}
+
+
+def _funds(net) -> str:
+    return json.dumps({"status": "success", "data": {"equity": {"enabled": True, "net": net}}})
+
+
+def _basket(mutate=None) -> str:
+    reply = json.loads(BASKET_TEXT)
+    if mutate is not None:
+        mutate(reply["data"])
+    return json.dumps(reply)
+
+
+def replies(funds_text: str | None = None, basket_text: str | None = None):
+    """A transport answering the two reads with the given texts (default: the recorded ones)."""
+    def transport(_method, url, _headers, _body):
+        return HTTPStatus.OK, ((funds_text or FUNDS_TEXT) if url.endswith("/user/margins")
+                               else (basket_text or BASKET_TEXT))
+    return transport
+
+
+def test_shortfall_reason_carries_both_figures_to_the_paisa_only_when_short() -> None:
+    equal = outcome_margin.margin_checked(Decimal("100.00"), Decimal("100.00"), CHECKED_AT, Decimal("90"))
+    assert equal.shortfall is False and equal.shortfall_reason is None
+    paisa = outcome_margin.margin_checked(Decimal("100.00"), Decimal("99.99"), CHECKED_AT, Decimal("90"))
+    assert paisa.shortfall is True
+    assert str(paisa.shortfall_reason) == _short_line("₹90.00", "₹100.00", "₹99.99")
+
+
+async def test_the_execute_gate_and_the_builder_line_share_one_ways_forward_sentence() -> None:
+    from ofo.errors import CATALOGUE  # noqa: PLC0415
+
+    assert CATALOGUE["margin_basket_insufficient"].next_action == SHORT_WAYS
+    m = await margin_answer(source(Transport()), CTX, plan())
+    assert str(m.shortfall_reason).endswith(SHORT_WAYS)
+
+
+async def test_enough_funds_has_no_shortfall_reason() -> None:
+    m = await margin_answer(source(replies(funds_text=_funds(12500.0))), CTX, plan())
+    assert m.state == "CHECKED" and m.shortfall is False and m.shortfall_reason is None
+
+
+async def test_funds_one_paisa_short_of_the_recorded_total_is_a_shortfall_with_the_line() -> None:
+    m = await margin_answer(source(replies(funds_text=_funds(7065.49))), CTX, plan())
+    assert (str(m.needed), str(m.available), m.shortfall) == ("7065.50", "7065.49", True)
+    assert str(m.shortfall_reason) == _short_line("₹6,409.00", "₹7,065.50", "₹7,065.49")
+
+
+async def test_negative_funds_are_checked_and_short() -> None:
+    m = await margin_answer(source(replies(funds_text=_funds(-120.5))), CTX, plan())
+    assert m.state == "CHECKED" and str(m.available) == "-120.50" and m.shortfall is True
+    assert m.shortfall_reason is not None
+
+
+async def test_closing_basket_needs_nothing_and_is_not_short() -> None:
+    def closing(data):
+        data["final"]["total"] = -214.5
+        for row in data["orders"]:
+            row["total"] = 0
+    both_sell = [PlannedOrderIn(CE_ID, "SELL", 1, Decimal("45.55")), PlannedOrderIn(PE_ID, "SELL", 1, Decimal("63.15"))]
+    m = await margin_answer(source(replies(basket_text=_basket(closing))), CTX, both_sell)
+    assert m.state == "CHECKED" and str(m.needed) == "0.00" and m.shortfall is False and m.shortfall_reason is None
+
+
+def _shorter(d):
+    d["orders"] = d["orders"][:1]
+
+
+def _longer(d):
+    d["orders"] = [*d["orders"], d["orders"][0]]
+
+
+def _reordered(d):
+    d["orders"] = list(reversed(d["orders"]))
+
+
+def _no_orders(d):
+    d.pop("orders")
+
+
+def _no_total(d):
+    d["final"].pop("total")
+
+
+@pytest.mark.parametrize("mutate", [_shorter, _longer, _reordered], ids=["shorter", "longer", "reordered"])
+async def test_ambiguous_basket_reply_shows_could_not_be_read_and_not_zerodhas_total(mutate) -> None:
+    m = await margin_answer(source(replies(basket_text=_basket(mutate))), CTX, plan())
+    assert m.state == "UNREADABLE" and m.needed is None and m.available is None and m.shortfall_reason is None
+    assert str(m.reason) == "Margin from Zerodha could not be read just now, so no margin figure is shown."
+
+
+@pytest.mark.parametrize(("funds", "basket"), [
+    (json.dumps({"status": "success", "data": {"commodity": {"net": 1}}}), None),  # no equity block
+    (None, _basket(_no_orders)),  # no orders list
+    (None, _basket(_no_total)),  # no final.total
+], ids=["no-equity", "no-orders", "no-total"])
+async def test_empty_reads_are_unreadable_with_no_figure(funds, basket) -> None:
+    m = await margin_answer(source(replies(funds, basket)), CTX, plan())
+    assert m.state == "UNREADABLE" and m.needed is None and m.available is None
+
+
+# the route body, per Zerodha failure: needed, available and shortfall_reason are all null, never a made-up figure
+ROUTE_STATES = [
+    ("kite_margin_token", lambda: Transport(status=403), "NOT_AVAILABLE_YET"),
+    ("kite_margin_busy", lambda: Transport(status=429), "UNREADABLE"),
+    ("kite_margin_refused", lambda: Transport(status=400), "UNREADABLE"),
+    ("kite_margin_unavailable", lambda: Transport(status=500), "UNREADABLE"),
+    ("kite_margin_no_figure", lambda: replies(funds_text='{"status": "success", "data": {}}'), "UNREADABLE"),
+    ("ambiguous", lambda: replies(basket_text=_basket(_shorter)), "UNREADABLE"),
+]
+
+
+@pytest.mark.parametrize(("code", "make", "state"), ROUTE_STATES, ids=[r[0] for r in ROUTE_STATES])
+async def test_route_every_failed_read_has_null_figures_and_no_shortfall_reason(replayed, monkeypatch, code, make,
+                                                                                state) -> None:
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    [resp] = await _post(_body(replayed), replayed, source(make()))
+    out = resp.json()
+    assert out["state"] == "COMPUTED" and out["margin"]["state"] == state, code
+    assert {k: out["margin"][k] for k in NO_FIGURE_BLOCK} == NO_FIGURE_BLOCK, code
+
+
+async def test_route_timeout_and_unreadable_token_store_have_null_figures(replayed, monkeypatch) -> None:
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    slow = source(Transport(delay=0.3), limits=MarginLimits(timeout=0.05))
+
+    async def broken_store():
+        raise OSError("token store unreadable")
+
+    broken = OutcomeMargin(lambda: OWNER_SESSION, broken_store, clock=lambda: CHECKED_AT)
+    for src in (slow, broken):
+        [resp] = await _post(_body(replayed), replayed, src)
+        margin = resp.json()["margin"]
+        assert margin["state"] == "UNREADABLE"
+        assert {k: margin[k] for k in NO_FIGURE_BLOCK} == NO_FIGURE_BLOCK
+    await asyncio.sleep(0.4)
+
+
+async def test_route_no_basket_has_null_figures_and_makes_no_kite_call(replayed) -> None:
+    t = Transport()
+    ctx = SimpleNamespace(provider=SimpleNamespace(instrument_master=lambda: [CE, PE]))
+    src = source(t)
+    m = await margin_answer(src, ctx, [PlannedOrderIn("NSE_FO:1", "BUY", 1, Decimal("1"))])
+    assert m.state == "NO_BASKET" and t.calls == []
+    assert (m.needed, m.available, m.checked_at, m.shortfall, m.shortfall_reason) == (None, None, None, False, None)
+
+
+async def test_route_shortfall_reason_is_the_catalogue_line_only_when_short(replayed, monkeypatch) -> None:
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    [short] = await _post(_body(replayed), replayed, source(Transport()))
+    margin = short.json()["margin"]
+    assert margin["shortfall"] is True
+    assert margin["shortfall_reason"] == _short_line("₹6,409.00", "₹7,065.50", "₹671.50")
+    assert margin["broker_needed"] == "6409.00" and margin["needed"] == "7065.50"  # money strings, never numbers
+    [enough] = await _post(_body(replayed), replayed, source(replies(funds_text=_funds(12500.0))))
+    assert enough.json()["margin"]["shortfall"] is False and enough.json()["margin"]["shortfall_reason"] is None
+
+
+# ---- REQ-055 AC-3: Zerodha's own figure and the ADR-094 figure are named apart --------------------------------------
+
+def _no_premium_in_the_reply(data) -> None:
+    """The recorded reply with the buy legs' premium taken out of Zerodha's figure, so the ADR-094 top-up is large:
+    Zerodha's final.total stays 6409, the figure the check needs becomes 13474.50 (the Opus checker's case)."""
+    for row in data["orders"]:
+        if row.get("transaction_type") == "BUY" or "option_premium" in row:
+            row["option_premium"] = 0
+
+
+ZERODHA_OWN = "Zerodha's own margin figure is ₹6,409.00"
+
+
+async def test_core_zerodhas_own_figure_and_ours_are_labelled_apart() -> None:
+    m = await margin_answer(source(replies(basket_text=_basket(_no_premium_in_the_reply))), CTX, plan())
+    assert (str(m.broker_needed), str(m.needed), m.shortfall) == ("6409.00", "13474.50", True)
+    for text in (str(m.reason), str(m.shortfall_reason)):
+        assert "Zerodha says these planned orders need" not in text
+        assert ZERODHA_OWN in text  # Zerodha's figure, named as Zerodha's
+        assert "₹13,474.50" in text and "estimate" in text
+        # the only place Zerodha's name sits next to a figure is its own 6,409.00
+        assert text.replace(ZERODHA_OWN, "").count("Zerodha says") == 0
+        assert "Zerodha needs ₹13,474.50" not in text
+
+
+def test_execute_refusal_does_not_call_our_figure_zerodhas_and_decides_as_before() -> None:
+    from ofo.execution.margin_gate import check_margin  # noqa: PLC0415
+
+    blocked = check_margin(Decimal("671.50"), Decimal("13474.50"))
+    assert blocked.allowed is False  # the decision: ours versus available, unchanged
+    assert check_margin(Decimal("13474.50"), Decimal("13474.50")).allowed is True
+    said = str(blocked.message.what_happened)
+    assert "₹13,474.50" in said and "₹671.50" in said and "Zerodha says" not in said
+
+
+@pytest.mark.parametrize("mutate", [None, _no_premium_in_the_reply])
+async def test_zerodha_figure_is_carried_only_when_checked(mutate) -> None:
+    ok = await margin_answer(source(replies(basket_text=_basket(mutate))), CTX, plan())
+    assert ok.state == "CHECKED" and str(ok.broker_needed) == "6409.00"
+    for gone in (await margin_answer(source(Transport(), session=None), CTX, plan()),
+                 await margin_answer(source(Transport()), CTX, [PlannedOrderIn("no-such-id", "BUY", 1, Decimal(1))]),
+                 await margin_answer(source(Transport(status=HTTPStatus.INTERNAL_SERVER_ERROR)), CTX, plan())):
+        assert gone.broker_needed is None
+
+
+async def test_closing_basket_shows_zerodha_zero() -> None:
+    def closing(data):
+        data["final"]["total"] = -214.5
+        for row in data["orders"]:
+            row["total"] = 0
+    both_sell = [PlannedOrderIn(CE_ID, "SELL", 1, Decimal("45.55")), PlannedOrderIn(PE_ID, "SELL", 1, Decimal("63.15"))]
+    m = await margin_answer(source(replies(basket_text=_basket(closing))), CTX, both_sell)
+    assert (str(m.broker_needed), str(m.needed)) == ("0.00", "0.00")
+    assert "Zerodha's own margin figure is ₹0.00" in str(m.reason)

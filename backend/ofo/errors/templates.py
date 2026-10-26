@@ -194,6 +194,10 @@ _RECONNECT = "Reconnect your Zerodha account from the account page, then try aga
 #: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
 #: `ofo.broker.rate_limit.KiteBusy` raises it).
 ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
+# REQ-055 AC-4: the ways forward when funds are below the margin; one home for the Execute gate and the Builder.
+MARGIN_SHORTFALL_NEXT_ACTION: str = (
+    "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+)
 _NO_ALTERNATIVE = " No nearby listed strike is available to offer."
 _ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
 _PICK_OR_REMOVE = "Pick one of the strikes shown for this leg yourself, or remove the leg, then check again."
@@ -931,14 +935,16 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
 )
 
 # --- W-081 (REQ-055 AC-1/AC-4): the margin check before the Kite basket is built (ofo.execution.margin_gate). Both
-# figures are Zerodha's (`available` from the funds read, `required` from the basket margin's final total); amounts
-# print with the engine's rupee formatter. New: awaiting the owner's read.
+# figures: `available` is Zerodha's (funds read), `required` is OURS (Zerodha's basket final total plus the ADR-094
+# BUY top-up; REQ-055 AC-3: never worded as Zerodha's); amounts print with the engine's rupee formatter. New:
+# awaiting the owner's read.
 _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("margin_basket_insufficient", _MG, 201,
-          "Zerodha says this strategy needs {required} of margin; {available} is available in your account.",
+          "This strategy needs {required} of margin with the premium up to your limit prices (an estimate); "
+          "{available} is available in your account.",
           "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
           "Building the Zerodha basket for this strategy.",
-          "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again.",
+          MARGIN_SHORTFALL_NEXT_ACTION,
           {"available": DisplayRupees, "required": DisplayRupees}),
 )
 

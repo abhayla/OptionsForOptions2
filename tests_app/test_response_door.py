@@ -12,18 +12,21 @@ resolve their annotations from the real objects.
 import enum
 import json
 import re
+from decimal import Decimal
 from typing import Annotated, Literal
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import AliasGenerator, ConfigDict, Field
+from pydantic import AliasGenerator, ConfigDict, Field, ValidationError
 
 from ofo.errors import render
+from ofo.errors.explanations import render_explanation
 from ofo_app import api_models
 from ofo_app.api_models import CatalogueText, Identifier
 from ofo_app.basket_post import BasketPost
 from ofo_app.main import create_app
 from ofo_app.routes import broker
+from ofo_app.routes.outcome import MarginOut
 
 SENTENCE = "Your funds were moved and the order was cancelled."
 ALIAS = "you_should_buy_now"  # a snake_case alias is a valid-looking key: it must still never reach the bytes
@@ -1748,3 +1751,23 @@ def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for
     assert _through_boundary(app) == _wire(_door("closed"))
     response = _client(create_app()).get(PATH)
     assert response.status_code == 200 and response.content == GOLDEN_REFUSAL
+
+
+def test_margin_shortfall_reason_is_catalogue_text_and_a_free_string_is_refused() -> None:
+    """REQ-055 AC-4: MarginOut.shortfall_reason is a catalogue line; a typed-in sentence is refused at the door."""
+    line = render_explanation("outcome_margin_short", broker_needed=Decimal("6409.00"), needed=Decimal("7065.50"),
+                              available=Decimal("671.50"))
+    base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
+    ok = MarginOut(**base, shortfall=True, shortfall_reason=line)
+    assert json.loads(api_models.emit(ok))["shortfall_reason"] == str(line)
+    assert json.loads(api_models.emit(MarginOut(**base)))["shortfall_reason"] is None
+    with pytest.raises(ValidationError, match="never a plain string"):
+        MarginOut(**base, shortfall=True, shortfall_reason=str(line))
+
+
+def test_margin_broker_needed_is_a_money_string_and_never_a_number() -> None:
+    """REQ-055 AC-3: Zerodha's own figure rides next to ours as a money string (two decimals), absent by default."""
+    base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
+    body = json.loads(api_models.emit(MarginOut(**base, needed=Decimal("7065.50"), broker_needed=Decimal("6409.00"))))
+    assert (body["broker_needed"], body["needed"]) == ("6409.00", "7065.50")
+    assert json.loads(api_models.emit(MarginOut(**base)))["broker_needed"] is None

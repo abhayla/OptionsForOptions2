@@ -108,7 +108,7 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
   it('AC-1: the margin line shows the answer figures when the capability allows it', async () => {
     const w = await openBuilder(WITH_MARGIN, MARGIN_ON)
     expect(t(w, 'margin').attributes('data-margin-state')).toBe('CHECKED')
-    expect(t(w, 'margin-figures').text()).toBe(`Margin (Zerodha): Rs ${MARGIN.enough.needed} needed, Rs ${MARGIN.enough.available} available`)
+    expect(t(w, 'margin-figures').text()).toBe(MARGIN.enough.reason) // the server's own text, never relabelled
     expect(t(w, 'margin-checked-at').exists()).toBe(true)
     w.unmount()
   })

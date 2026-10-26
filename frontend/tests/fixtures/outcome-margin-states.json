@@ -1,17 +1,39 @@
 {
- "_source": "backend MarginOut of ofo.outcome.service margin_checked / MARGIN / margin_unreadable (ADR-099); 7065.50 = the recorded 2026-10-16 strangle basket's required total, 671.50 = ADR-099's real case",
+ "_source": "backend MarginOut of ofo.outcome.service margin_checked / MARGIN / margin_unreadable (ADR-099); 7065.50 = the recorded 2026-10-16 strangle basket's required total (ours, ADR-094), 6409.00 = Zerodha's own final.total of that reply, 671.50 = ADR-099's real case",
  "shortfall": {
   "state": "CHECKED",
-  "reason": "Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹671.50 available. Checked at 12:08:52 PM.",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your Zerodha account.",
   "needed": "7065.50",
+  "broker_needed": "6409.00",
   "available": "671.50",
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": true
  },
+ "short": {
+  "state": "CHECKED",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your Zerodha account.",
+  "needed": "7065.50",
+  "broker_needed": "6409.00",
+  "available": "671.50",
+  "checked_at": "2026-10-16T06:38:52Z",
+  "shortfall": true,
+  "shortfall_reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+ },
+ "string_trap": {
+  "state": "CHECKED",
+  "reason": "Zerodha's own margin figure is ₹8.00. With the premium up to your limit prices, about ₹9.00 is needed (an estimate); ₹10.00 is available in your Zerodha account.",
+  "needed": "9.00",
+  "broker_needed": "8.00",
+  "available": "10.00",
+  "checked_at": "2026-10-16T06:38:52Z",
+  "shortfall": true,
+  "shortfall_reason": "The server decided this one."
+ },
  "enough": {
   "state": "CHECKED",
-  "reason": "Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹12,500.00 available. Checked at 12:08:52 PM.",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹12,500.00 is available in your Zerodha account.",
   "needed": "7065.50",
+  "broker_needed": "6409.00",
   "available": "12500.00",
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": false
@@ -22,7 +44,8 @@
   "needed": null,
   "available": null,
   "checked_at": null,
-  "shortfall": false
+  "shortfall": false,
+  "broker_needed": null
  },
  "unreadable": {
   "state": "UNREADABLE",
@@ -30,6 +53,15 @@
   "needed": null,
   "available": null,
   "checked_at": null,
-  "shortfall": false
+  "shortfall": false,
+  "broker_needed": null
+ },
+ "old_reply": {
+  "state": "CHECKED",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your Zerodha account.",
+  "needed": "7065.50",
+  "available": "671.50",
+  "checked_at": "2026-10-16T06:38:52Z",
+  "shortfall": true
  }
 }
