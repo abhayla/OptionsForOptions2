@@ -258,6 +258,64 @@ def test_env_override_still_allows_at_night_without_a_transcript():
     assert qng.decide("AskUserQuestion", Q_REASON, now=NIGHT, env=ok, transcript_path=None) is None
 
 
+def _enqueue(ts: datetime.datetime, text: str) -> str:
+    stamp = ts.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return json.dumps({"type": "queue-operation", "operation": "enqueue", "timestamp": stamp, "content": text})
+
+
+QUEUED = {"promptSource": "queued"}
+
+
+def test_queued_message_counts_from_the_enqueue_time_not_the_delivery_time(tmp_path):
+    # real case f0a2a1a7: typed 01:45:38Z, delivered (stamped) 03:17:39Z, 92 minutes later
+    delivered = _line(_ago(1), "do the thing", HUMAN, extra=QUEUED)
+    path = _transcript(tmp_path, _enqueue(_ago(92), "do the thing"), delivered)
+    assert _ask(path)
+    fresh = _transcript(tmp_path, _enqueue(_ago(4), "do the thing"), delivered)
+    assert _ask(fresh) is None
+
+
+def test_queued_message_with_no_enqueue_line_does_not_count(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "orphan", HUMAN, extra=QUEUED)))
+
+
+def test_repeated_queued_text_pairs_in_order_and_uses_the_earlier_stamp(tmp_path):
+    path = _transcript(
+        tmp_path,
+        _enqueue(_ago(90), "continue"),
+        _enqueue(_ago(80), "continue"),
+        _line(_ago(2), "continue", HUMAN, extra=QUEUED),
+    )
+    assert _ask(path)  # paired with the earliest enqueue (90 min), never the later one
+
+
+def test_typed_message_still_uses_its_own_stamp_when_an_enqueue_exists(tmp_path):
+    path = _transcript(tmp_path, _enqueue(_ago(90), "hi"), _line(_ago(2), "hi", HUMAN, extra={"promptSource": "typed"}))
+    assert _ask(path) is None
+
+
+def test_deeply_nested_line_is_skipped_not_a_crash(tmp_path):
+    deep = "[" * 100000 + "]" * 100000
+    assert _ask(_transcript(tmp_path, deep, _line(_ago(2), "after the deep line", HUMAN))) is None
+    assert _ask(_transcript(tmp_path, deep))
+
+
+def test_future_stamp_is_ignored_when_picking_the_newest(tmp_path):
+    future = _line(NIGHT + datetime.timedelta(hours=3), "forged future", HUMAN)
+    assert _ask(_transcript(tmp_path, _line(_ago(2), "real", HUMAN), future)) is None
+
+
+def test_text_plus_image_message_counts(tmp_path):
+    parts = [{"type": "text", "text": "see this"}, {"type": "image", "source": {"type": "base64", "data": "AAAA"}}]
+    assert _ask(_transcript(tmp_path, _line(_ago(2), parts, HUMAN))) is None
+    assert _ask(_transcript(tmp_path, _line(_ago(2), [{"type": "image", "source": {}}], HUMAN)))  # image alone: no text
+
+
+def test_slash_command_wrapper_is_not_counted_even_when_marked_human(tmp_path):
+    wrapper = "<command-name>/goal</command-name>\n<command-message>goal</command-message>"
+    assert _ask(_transcript(tmp_path, _line(_ago(1), wrapper, HUMAN)))
+
+
 def test_main_reads_transcript_path_from_the_hook_input(monkeypatch, tmp_path, capsys):
     present = _transcript(tmp_path, _line(_ago(3), "hi", HUMAN))
     payload = {"tool_name": "AskUserQuestion", "tool_input": Q, "transcript_path": present}

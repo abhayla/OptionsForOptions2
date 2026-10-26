@@ -9,10 +9,12 @@ a missing helper or an unreadable input allows (fail open, run-discipline E1).
 
 Owner present (2026-10-26): at night the question is ALSO allowed when the owner typed a real message in the last
 OWNER_PRESENT_MINUTES (10). The signal is the session transcript (`transcript_path` in the hook's stdin JSON): the
-newest `type: user` entry that is the person's own text, i.e. `origin.kind == "human"`, text content (a string or
-`text` parts, no `tool_result`), not `isMeta`, and not injected text (`<system-reminder>`, `<task-notification>`,
-`<command-name>`, `<local-command`, `Stop hook feedback`, `[Request interrupted`,
-`SYSTEM NOTIFICATION - NOT USER INPUT`). Its `timestamp` (UTC, `...Z`) must be within the window, not in the future.
+newest `type: user` entry that is the person's own text, i.e. `origin.kind == "human"`, text content (a string, or
+`text` and `image` parts, no `tool_result`), not `isMeta`, and not injected text (`<system-reminder>`,
+`<task-notification>`, `<command-name>`, `<local-command`, `Stop hook feedback`, `[Request interrupted`,
+`SYSTEM NOTIFICATION - NOT USER INPUT`). Slash-command wrappers (`<command-name>`) are NOT counted: filtered on
+purpose (real ones carry no human origin anyway). The time used is when the owner typed (queued messages: the enqueue
+line, see `owner_last_seen`), within the window and not in the future.
 FAIL CLOSED here, unlike the rest of the hook: a missing transcript_path, a missing or unreadable file, a bad
 timestamp or no genuine message all mean "owner away" and the question is refused. Unreadable lines are skipped; the
 rest still count.
@@ -82,9 +84,9 @@ def _human_text(entry: dict) -> str | None:
         return None
     content = (entry.get("message") or {}).get("content")
     if isinstance(content, list):
-        if any(not isinstance(p, dict) or p.get("type") != "text" for p in content):
-            return None  # a tool_result (or any non-text part) is not the person typing
-        content = "\n".join(str(p.get("text", "")) for p in content)
+        if any(not isinstance(p, dict) or p.get("type") not in ("text", "image") for p in content):
+            return None  # a tool_result (or any other part) is not the person typing; text + image is
+        content = "\n".join(str(p.get("text", "")) for p in content if p.get("type") == "text")
     if not isinstance(content, str):
         return None
     head = content.lstrip().lower()
@@ -93,22 +95,58 @@ def _human_text(entry: dict) -> str | None:
     return content
 
 
-def owner_last_seen(transcript_path: str | None) -> datetime.datetime | None:
-    """Timestamp of the newest genuine owner message; None on any doubt (missing, unreadable, none)."""
+def _enqueue_stamp(entry: dict) -> tuple[str, datetime.datetime] | None:
+    """(text, time the owner typed it) of a `queue-operation` enqueue line, else None."""
+    if entry.get("type") != "queue-operation" or entry.get("operation") != "enqueue":
+        return None
+    text = entry.get("content")
+    if not isinstance(text, str):
+        return None
+    return text.strip(), datetime.datetime.fromisoformat(str(entry["timestamp"]))
+
+
+def _typed_stamp(entry: object, pending: dict[str, list[datetime.datetime]]) -> datetime.datetime | None:
+    """When the owner typed this transcript entry, or None if it is not a genuine owner message (may raise)."""
+    if not isinstance(entry, dict):
+        return None
+    queued = _enqueue_stamp(entry)
+    if queued is not None:
+        pending.setdefault(queued[0], []).append(queued[1])
+        return None
+    text = _human_text(entry)
+    if text is None:
+        return None
+    stamp = datetime.datetime.fromisoformat(str(entry["timestamp"]))
+    if entry.get("promptSource") != "queued":
+        return stamp
+    waiting = pending.get(text.strip())
+    if not waiting:
+        return None  # typed at an unknown earlier time: never trust the delivery stamp
+    return min(stamp, waiting.pop(0))
+
+
+def owner_last_seen(transcript_path: str | None, now: datetime.datetime | None = None) -> datetime.datetime | None:
+    """When the owner last TYPED a genuine message; None on any doubt (missing, unreadable, none).
+
+    A message typed while the agent was busy is stamped on DELIVERY, not when typed (real case: enqueued 01:45:38Z,
+    delivered 03:17:39Z). Such an entry (`promptSource: queued`) is paired with the `queue-operation` enqueue line that
+    has the same text, first in first out, and the enqueue time is used. No match: the entry is skipped. Stamps later
+    than `now` + FUTURE_SKEW are ignored. A bad line (even RecursionError) is skipped, the rest still count.
+    """
     if not transcript_path:
         return None
     newest: datetime.datetime | None = None
+    pending: dict[str, list[datetime.datetime]] = {}
     try:
         with open(transcript_path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 try:
-                    entry = json.loads(line)
-                    if not isinstance(entry, dict) or _human_text(entry) is None:
-                        continue
-                    stamp = datetime.datetime.fromisoformat(str(entry["timestamp"]))
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    continue  # one bad line never hides the others
-                if stamp.tzinfo is not None and (newest is None or stamp > newest):
+                    stamp = _typed_stamp(json.loads(line), pending)
+                except Exception:  # noqa: BLE001, S112 - one bad line never hides the others
+                    continue
+                if stamp is None or stamp.tzinfo is None or (now is not None and stamp - now > FUTURE_SKEW):
+                    continue
+                if newest is None or stamp > newest:
                     newest = stamp
     except OSError:
         return None
@@ -116,11 +154,10 @@ def owner_last_seen(transcript_path: str | None) -> datetime.datetime | None:
 
 
 def owner_present(now: datetime.datetime, transcript_path: str | None) -> bool:
-    seen = owner_last_seen(transcript_path)
+    seen = owner_last_seen(transcript_path, now)
     if seen is None:
         return False
-    age = now - seen
-    return -FUTURE_SKEW <= age <= datetime.timedelta(minutes=OWNER_PRESENT_MINUTES)
+    return now - seen <= datetime.timedelta(minutes=OWNER_PRESENT_MINUTES)
 
 
 def decide(
