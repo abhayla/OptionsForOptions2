@@ -231,9 +231,9 @@ def test_replay_condor_without_rates_has_no_ratio_and_with_rates_keeps_054_186(r
     _d, priced = outcome_of(replayed, RATES)
     p = priced.summary
     assert (p.reward_risk, p.risk_reward, p.reward_risk_reason) == (D("0.54"), D("1.86"), None)
-    # hand: 4539.66 / 8460.34 = 0.5366 -> 0.54 ; inverse 1.8636 -> 1.86
-    # these replay prices give shown charges 215.09 (items summed; the old ceiling of the exact total said 215.10)
-    assert (p.max_profit, p.max_loss) == (D("4754.75") - D("215.09"), D("8245.25") + D("215.09"))
+    # hand: 4539.65 / 8460.35 = 0.5366 -> 0.54 ; inverse 1.8636 -> 1.86
+    # these replay prices give the exact round trip rounded UP, 215.10 (ADR-082 line 39)
+    assert (p.max_profit, p.max_loss) == (D("4754.75") - D("215.10"), D("8245.25") + D("215.10"))
 
 
 def test_ratio_is_never_taken_from_the_figures_before_charges(replayed):
@@ -276,10 +276,11 @@ def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):
     _d, out = outcome_of(replayed, RATES)
     body = outcome_to_dict(out)
     b = body["charges_breakdown"]
-    shown = sum((D(b[k]) for k in ("brokerage", "stt", "exchange_transaction", "sebi", "stamp", "gst")), D(0))
-    assert shown == D(b["total"]) == out.summary.charges == D("215.09")
-    assert "about ₹215.09 of" in out.summary.what_can_i_lose and "about ₹215.09 of" in out.summary.what_can_i_make
-    assert D(body["summary"]["max_loss"]) == D("8245.25") + shown
+    items = sum((D(b[k]) for k in ("brokerage", "stt", "exchange_transaction", "sebi", "stamp", "gst")), D(0))
+    assert D(b["total"]) == out.summary.charges == D("215.10")  # exact sum rounded UP; items may differ by paise
+    assert abs(items - D(b["total"])) <= 2 * D("0.01")
+    assert "about ₹215.10 of" in out.summary.what_can_i_lose and "about ₹215.10 of" in out.summary.what_can_i_make
+    assert D(body["summary"]["max_loss"]) == D("8245.25") + D(b["total"])
 
 
 def test_the_breakdown_names_exercise_stt_with_rate_and_condition_but_no_figure(replayed):
@@ -288,4 +289,4 @@ def test_the_breakdown_names_exercise_stt_with_rate_and_condition_but_no_figure(
     assert b["exercise_stt_rate"] == "0.0015"
     assert b["exercise_stt_note"] == ("STT on exercise: 0.15% of the value of a bought option that finishes in the "
                                       "money. It depends on where the index settles, so it is not in this total.")
-    assert "exercise_stt_amount" not in b and b["total"] == "215.09"
+    assert "exercise_stt_amount" not in b and b["total"] == "215.10"

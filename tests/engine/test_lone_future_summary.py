@@ -92,5 +92,7 @@ def test_a_bounded_strategy_reads_its_ratio_from_the_summary_maximums_row_26b():
     assert s.max_profit_unlimited is False and s.max_loss_unlimited is False
     assert (s.max_profit, s.max_loss) == (Decimal("4754.75"), Decimal("8245.25"))  # no rates here: before charges
     # 4754.75 / 8245.25 = 0.5766 and 8245.25 / 4754.75 = 1.7341 (hand division), two decimals
-    assert (s.reward_risk, s.risk_reward, s.reward_risk_reason) == (Decimal("0.58"), Decimal("1.73"), None)
+    # AC-4: both maximums must include charges; with no rate table they cannot, so no ratio and the reason
+    assert (s.reward_risk, s.risk_reward) == (None, None)
+    assert s.reward_risk_reason == "the charges could not be priced, so the ratio is not shown"
     assert s.time_value is not None and s.intrinsic_value is not None

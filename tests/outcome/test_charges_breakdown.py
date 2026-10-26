@@ -31,18 +31,14 @@ def _parts(b):
     return b.brokerage + b.stt + b.exchange_transaction + b.sebi + b.stamp + b.gst
 
 
-def test_shown_items_sum_exactly_to_the_shown_total():
-    """MINOR (a): one figure, no Rs 0.01-0.02 gap; the exact round trip is within two paise of it (never far off)."""
+def test_total_is_the_one_exact_round_up_figure_and_each_item_is_within_a_paisa():
+    """ADR-082 line 39: total = exact sum rounded UP = round_trip_charges = the scenario block's figure."""
     b = round_trip_breakdown(legs(), "NIFTY", RATES)
-    assert _parts(b) == b.total == HAND_PAISE
-    assert abs(b.total - round_trip_charges(legs(), "NIFTY", RATES)) <= 2 * ONE_PAISE
-
-
-def test_a_case_that_differed_before_now_sums():
-    """Hand: one sold CE 100.37 x 65 -> parts rounded each half-even differ from the exact total rounded up."""
-    one = (Leg(Action.SELL, Instrument.CE, D("23000"), EXPIRY, Q, D("100.37")),)
-    b = round_trip_breakdown(one, "NIFTY", RATES)
-    assert _parts(b) == b.total
+    assert b.total == round_trip_charges(legs(), "NIFTY", RATES) == HAND_PAISE
+    exact = {"brokerage": D("160"), "stt": D("16.550625"), "exchange_transaction": D("7.84058275"),
+             "sebi": D("0.0220675"), "stamp": D("0.3310125"), "gst": D("30.215277045")}  # test_charges_in_sentences
+    for name, value in exact.items():
+        assert abs(getattr(b, name) - value) <= ONE_PAISE, name
 
 
 def test_exercise_stt_line_has_the_rate_and_no_amount_when_a_bought_option_is_held():
