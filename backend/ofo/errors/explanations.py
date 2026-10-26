@@ -23,7 +23,7 @@ from types import MappingProxyType
 from ofo import wording as _wording
 
 from ofo.errors.slots import SlotType, _require_exact
-from ofo.errors.templates import ZERODHA_BUSY_TEXT
+from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
@@ -968,9 +968,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Margin from Zerodha is not shown yet; it needs your Kite login."),
     # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
     ExplanationTemplate("outcome_margin_checked", "values_seen",
-                        "Margin from Zerodha for these planned orders: {needed} needed, {available} available. "
-                        "Checked at {time}.",
-                        {"needed": Rupees, "available": Rupees, "time": ClockSeconds}),
+                        "Zerodha's own margin figure is {broker_needed}. With the premium up to your limit prices, "
+                        "about {needed} is needed (an estimate); {available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
+    # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
+    ExplanationTemplate("outcome_margin_short", "values_seen",
+                        "Zerodha's own margin figure is {broker_needed}. With the premium up to your limit prices, "
+                        "about {needed} is needed (an estimate); {available} is available in your account. "
+                        + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
@@ -1050,7 +1056,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
-    ExplanationTemplate("cell_charges_row_label", "values_seen", "Charges and taxes (estimate)"),
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),

@@ -5311,6 +5311,17 @@
             ],
             "title": "Available"
           },
+          "broker_needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed"
+          },
           "checked_at": {
             "anyOf": [
               {
@@ -5341,6 +5352,15 @@
             "default": false,
             "title": "Shortfall",
             "type": "boolean"
+          },
+          "shortfall_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Reason"
           },
           "state": {
             "enum": [

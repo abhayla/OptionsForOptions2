@@ -77,7 +77,7 @@ export const FIGURES = {
   },
   margin_needed: {
     label: "Margin needed",
-    text: "The margin your broker quotes for the planned orders, as at the time shown next to it. It comes from the broker, not from this app's own calculation.",
+    text: "The margin needed for the planned orders: your broker's own figure, plus the premium of the buy legs up to your limit prices. The text beside it names the broker's figure and ours apart; ours is an estimate.",
     source: `REQ-136 AC-1 (margin needed) and the margin-line requirement (margin labels); ${NOT_IN_STUDY}`,
   },
   margin_available: {
