@@ -421,7 +421,7 @@ async def test_route_busy_margin_read_shows_the_zerodha_busy_text_and_no_figure(
     assert out["margin"]["reason"] == ZERODHA_BUSY_TEXT
 
 
-# ---- REQ-055 AC-4: the shortfall line from the server, and every answer state of the two Zerodha reads -----------------
+# ---- REQ-055 AC-4: the shortfall line from the server, and every answer state of the two Zerodha reads ----
 
 SHORT_WAYS = "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
 NO_FIGURE_BLOCK = {"needed": None, "available": None, "checked_at": None, "shortfall": False, "shortfall_reason": None}

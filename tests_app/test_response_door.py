@@ -12,18 +12,21 @@ resolve their annotations from the real objects.
 import enum
 import json
 import re
+from decimal import Decimal
 from typing import Annotated, Literal
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import AliasGenerator, ConfigDict, Field
+from pydantic import AliasGenerator, ConfigDict, Field, ValidationError
 
 from ofo.errors import render
+from ofo.errors.explanations import render_explanation
 from ofo_app import api_models
 from ofo_app.api_models import CatalogueText, Identifier
 from ofo_app.basket_post import BasketPost
 from ofo_app.main import create_app
 from ofo_app.routes import broker
+from ofo_app.routes.outcome import MarginOut
 
 SENTENCE = "Your funds were moved and the order was cancelled."
 ALIAS = "you_should_buy_now"  # a snake_case alias is a valid-looking key: it must still never reach the bytes
@@ -1755,13 +1758,6 @@ def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for
 
 def test_margin_shortfall_reason_is_catalogue_text_and_a_free_string_is_refused() -> None:
     """REQ-055 AC-4: MarginOut.shortfall_reason is a catalogue line; a typed-in sentence is refused at the door."""
-    from decimal import Decimal
-
-    from pydantic import ValidationError
-
-    from ofo.errors.explanations import render_explanation
-    from ofo_app.routes.outcome import MarginOut
-
     line = render_explanation("outcome_margin_short", needed=Decimal("7065.50"), available=Decimal("671.50"))
     base = {"state": "CHECKED", "reason": render_explanation("outcome_margin_pending")}
     ok = MarginOut(**base, shortfall=True, shortfall_reason=line)
