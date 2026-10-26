@@ -7,12 +7,13 @@
      edit and the page draws the server's reply; nothing is computed here (ADR-008). The Lots / Quantity choice is the page's
      (Settings popover, UI-103). -->
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
-import { contractName, expiryWithDays, istTime } from '@/lib/displayFormat'
+import { useOutsideClose } from '@/composables/useOutsideClose'
+import { contractName, expiryWithDays, istClock, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN,
@@ -40,6 +41,16 @@ const confirmingClear = ref(false) // REQ-135 AC-1: the 'Remove all N legs?' que
 const typedText = ref({}) // the text in each row's price field, by index: sent as typed, never parsed here
 const depthFor = ref(null) // the leg whose depth popover is open
 const menuFor = ref(null) // the leg whose price menu (capture time, Set price, Reset) is open
+const menuRoots = {} // price-menu wrapper and trigger button by leg index (focus returns to the trigger on close)
+const menuButtons = {}
+async function closeMenu() {
+  const i = menuFor.value
+  if (i === null) return
+  menuFor.value = null
+  await nextTick()
+  menuButtons[i]?.focus?.()
+}
+useOutsideClose(() => menuFor.value !== null, () => menuRoots[menuFor.value], closeMenu)
 
 const gridColumns = `${LEG_ROW_COLUMNS.slice(0, 3).map((w) => `${w}px`).join(' ')} minmax(${LEG_ROW_COLUMNS[3]}px, 1fr) ${LEG_ROW_COLUMNS.slice(4).map((w) => `${w}px`).join(' ')}`
 const cardPadding = { paddingLeft: `${LEG_CARD_PADDING_PX}px`, paddingRight: `${LEG_CARD_PADDING_PX}px` }
@@ -56,8 +67,10 @@ const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id])
 // Revision 1 (REQ-077 AC-1, AC-6, AC-7): a second line only when something must stay visible
 // a leg without both a planned entry and its capture time keeps the not-connected label (REQ-077 AC-5)
 const unpriced = (l) => !(l.planned_entry != null && l.captured_at != null)
-const needsSecondLine = (l, i) => l.typed === true || !!moved(l) || unpriced(l) || !!l.block || (props.errorParts && props.errorIndex === i)
+const needsSecondLine = (l, i) => l.included === false || l.typed === true || !!moved(l) || unpriced(l) || !!l.block || (props.errorParts && props.errorIndex === i)
 const entryLabel = (l) => (l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_LABEL)
+// REQ-077 AC-1: a captured price (not typed, not moved) shows its capture time as a small caption under the price
+const showsCaption = (l) => l.typed !== true && !moved(l) && !unpriced(l)
 const capturedText = (l) => `${l.typed === true ? 'typed' : 'captured'} ${istTime(l.captured_at)}`
 
 function confirmClear() {
@@ -67,11 +80,11 @@ function confirmClear() {
 function setPrice(index) {
   const text = typedText.value[index]
   if (typeof text === 'string' && text.trim() !== '') emit('edit', { control: 'price', index, price: text.trim() })
-  menuFor.value = null
+  closeMenu()
 }
 function resetLeg(index) {
   typedText.value = { ...typedText.value, [index]: '' }
-  menuFor.value = null
+  closeMenu()
   emit('edit', { control: 'reset_leg', index })
 }
 function resetPrices() {
@@ -85,7 +98,7 @@ function setMultiplier(index) {
 </script>
 
 <template>
-  <div class="rounded-lg border border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
+  <div class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
     <div class="flex h-12 items-center justify-between border-b border-line" :style="cardPadding" data-testid="strategy-card-header">
       <p role="heading" aria-level="2" class="truncate text-base font-semibold" data-testid="strategy-card-name">{{ strategyName || 'New Strategy' }}</p>
       <span v-if="legs.length" class="flex items-center gap-2">
@@ -113,10 +126,10 @@ function setMultiplier(index) {
     <template v-else>
       <div class="flex h-8 items-center justify-between" :style="cardPadding">
         <p class="flex min-w-0 items-center gap-2 text-ink-muted" data-testid="leg-edit-header">
-          <input
-            type="checkbox" disabled :checked="tickState === 'all'" :indeterminate="tickState === 'some'" :data-state="tickState"
-            :aria-label="`${selectedCount} of ${legs.length} legs ticked; tick or untick each leg below`" data-testid="tick-all-state"
-          />
+          <span
+            role="img" class="inline-flex w-4 justify-center" :data-state="tickState" data-testid="tick-all-state"
+            :aria-label="`${tickState === 'all' ? 'All' : tickState === 'some' ? 'Some' : 'None'} legs selected: ${selectedCount} of ${legs.length}`"
+          ><Icon :name="tickState === 'none' ? 'close' : tickState === 'some' ? 'more' : 'check'" :size="14" /></span>
           <span class="truncate">{{ selectedCount }} selected<span v-if="shown" data-testid="shape-name"> - {{ shown }}</span></span>
           <span v-if="updating" class="ml-1" data-testid="numbers-updating">Updating the numbers...</span>
         </p>
@@ -128,7 +141,7 @@ function setMultiplier(index) {
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
       <div class="grid items-center whitespace-nowrap text-xs text-ink-muted" :style="{ ...cardPadding, gridTemplateColumns: gridColumns }" aria-hidden="true" data-testid="leg-table-head">
-        <span></span><span>B/S</span><span>Expiry</span><span class="text-center">Strike</span><span>Type</span><span>Lots</span><span class="text-right">Price</span><span></span><span></span><span></span>
+        <span></span><span>B/S</span><span>Expiry</span><span class="text-center">Strike</span><span>Type</span><span>Lots</span><span class="text-right" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}</span><span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
         <li
@@ -153,7 +166,7 @@ function setMultiplier(index) {
             <span :class="`tag tag-${(leg.instrument_type ?? '').toLowerCase()}`" data-testid="leg-type">{{ leg.instrument_type }}</span>
             <span v-if="legUnit === 'quantity'" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
             <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
-            <span class="relative flex items-center justify-end">
+            <span :ref="(el) => (menuRoots[i] = el)" class="relative flex items-center justify-end" @keydown.esc="closeMenu">
               <input
                 v-model="typedText[i]" type="text" inputmode="decimal" class="w-12 rounded border px-1 text-right"
                 :class="leg.typed === true ? 'border-accent' : 'border-line'" :placeholder="leg.planned_entry ?? ''"
@@ -161,12 +174,12 @@ function setMultiplier(index) {
                 :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @keydown.enter="setPrice(i)"
               />
               <button
-                type="button" class="px-0.5" aria-haspopup="menu" :aria-expanded="menuFor === i ? 'true' : 'false'" :aria-label="`Price options for leg ${i + 1}`"
-                data-testid="price-menu" @click="menuFor = menuFor === i ? null : i" @keydown.esc="menuFor = null"
+                :ref="(el) => (menuButtons[i] = el)" type="button" class="px-0.5" aria-haspopup="menu" :aria-expanded="menuFor === i ? 'true' : 'false'" :aria-label="`Price options for leg ${i + 1}`"
+                data-testid="price-menu" @click="menuFor === i ? closeMenu() : (menuFor = i)"
               ><Icon name="chevron" :size="12" /></button>
               <span
                 v-show="menuFor === i" role="menu" class="absolute right-0 top-full z-20 mt-1 w-56 whitespace-normal rounded border border-line bg-surface p-2 text-left shadow"
-                data-testid="price-menu-panel" @keydown.esc="menuFor = null"
+                data-testid="price-menu-panel"
               >
                 <span v-if="leg.planned_entry != null && leg.captured_at != null" class="block text-ink-muted" data-testid="leg-captured">{{ capturedText(leg) }}</span>
                 <button type="button" role="menuitem" class="block text-accent" data-testid="price-set" @click="setPrice(i)">Set price</button>
@@ -180,10 +193,13 @@ function setMultiplier(index) {
             <button type="button" data-testid="edit-leg" :aria-label="`Edit ${legName(leg)}`" title="Edit" @click="emit('edit-leg', i)"><Icon name="pencil" :size="14" /></button>
             <button type="button" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" title="Remove" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
           </div>
+          <div v-if="showsCaption(leg)" class="grid text-xs text-ink-muted" :style="{ gridTemplateColumns: gridColumns }" data-testid="leg-caption-line">
+            <span class="text-right" style="grid-column: 7" data-testid="leg-caption" :title="`${capturedText(leg)} (${istTime(leg.captured_at)})`">{{ istClock(leg.captured_at) }}</span>
+          </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
-          <span v-if="leg.included === false" class="sr-only" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
+            <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
             <span v-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
             <span v-if="moved(leg)" class="mr-2" data-testid="price-moved">{{ moved(leg) }}</span>
             <template v-if="unpriced(leg)">

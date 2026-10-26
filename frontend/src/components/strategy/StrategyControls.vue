@@ -20,12 +20,8 @@ const STEPPERS = [
 </script>
 
 <template>
-  <div
-    class="flex flex-nowrap items-center divide-x divide-line whitespace-nowrap"
-    data-testid="strategy-controls"
-    role="group"
-    aria-label="Strike Controls"
-  >
+  <div data-testid="strategy-controls" role="group" aria-label="Strike Controls">
+  <div class="flex flex-nowrap items-center divide-x divide-line whitespace-nowrap">
     <span class="sr-only">Strike Controls</span>
     <div
       v-for="c in STEPPERS"
@@ -75,5 +71,14 @@ const STEPPERS = [
         >{{ controls.reasons[c.id] }}</span
       >
     </div>
+  </div>
+  <p
+    v-for="c in STEPPERS.filter((x) => !controls[x.id])"
+    :key="c.id"
+    class="mt-1 whitespace-normal text-xs text-ink-muted"
+    :data-testid="`${c.id}-reason-visible`"
+  >
+    {{ c.label }}: {{ controls.reasons[c.id] }}
+  </p>
   </div>
 </template>

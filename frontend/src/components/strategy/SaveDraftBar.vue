@@ -7,7 +7,8 @@
      re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -40,6 +41,15 @@ const nameText = ref('')
 // W-192 (ADR-193 UI-108, UI-111..UI-114): the action row's "..." menu and the bottom tabs card. The Saved tab lists the 10
 // newest rows of the same GET /api/strategies list (server order), narrowed by a plain text match on name or underlying.
 const menuOpen = ref(false)
+const menuRoot = ref(null)
+const menuButton = ref(null)
+async function closeMenu() {
+  if (!menuOpen.value) return
+  menuOpen.value = false
+  await nextTick()
+  menuButton.value?.focus?.()
+}
+useOutsideClose(() => menuOpen.value, () => menuRoot.value, closeMenu)
 const BUILDER_TABS = [{ key: 'ready-made', label: 'Ready-made' }, { key: 'positions', label: 'Positions' }, { key: 'saved', label: 'Saved' }, { key: 'tracked', label: 'Tracked' }]
 const SAVED_TAB_ROWS = 10
 const tab = ref('ready-made')
@@ -50,7 +60,7 @@ const recentDrafts = computed(() => {
   return drafts.value.filter(hit).slice(0, SAVED_TAB_ROWS)
 })
 const menuDo = (fn) => {
-  menuOpen.value = false
+  closeMenu()
   fn()
 }
 
@@ -236,29 +246,30 @@ onMounted(refresh)
 
 <template>
   <section data-testid="save-draft-bar">
-    <div class="flex h-12 items-center gap-2 text-sm" data-testid="action-row">
+    <div class="-mt-4 flex h-12 items-center gap-2 rounded-b-lg border border-line bg-surface px-3 text-sm" data-testid="action-row">
       <slot name="add-edit" />
       <button
 type="button" data-testid="save-draft" class="rounded bg-accent px-3 py-1 font-medium text-white disabled:opacity-50"
               :disabled="!canSave" @click="save">Save</button>
-      <span class="relative">
+      <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button
-type="button" class="rounded border border-line px-2 py-1" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
-                aria-label="More actions" data-testid="more-menu" @click="menuOpen = !menuOpen" @keydown.esc="menuOpen = false"><Icon name="more" :size="16" /></button>
-        <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel" @keydown.esc="menuOpen = false">
+ref="menuButton" type="button" class="rounded border border-line px-2 py-1" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
+                aria-label="More actions" data-testid="more-menu" @click="menuOpen ? closeMenu() : (menuOpen = true)"><Icon name="more" :size="16" /></button>
+        <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button
 v-if="current" type="button" role="menuitem" data-testid="save-as"
                   :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>
           <button
 v-if="current" type="button" role="menuitem" data-testid="rename-open"
                   :disabled="busy" @click="menuDo(renameOpen)">Rename</button>
-          <slot name="menu" :close="() => (menuOpen = false)" />
+          <slot name="menu" :close="closeMenu" />
         </span>
       </span>
       <span v-if="current" class="ml-auto truncate text-ink-muted" data-testid="current-name">{{ strategyLabel(current, `Draft ${current.id}`) }}</span>
       <span v-if="savedId" class="truncate" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>
+    <slot name="after-actions" />
     <form v-if="asking" class="mt-2 text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
       <label class="block font-medium" for="strategy-name">{{ asking === 'save-as' ? 'Save As' : asking === 'rename' ? 'Rename' : 'Save New Strategy' }}: Strategy Name</label>
       <input
@@ -293,7 +304,7 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
           </li>
         </ul>
         <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
-        <a href="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</a>
+        <router-link to="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</router-link>
       </div>
       <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked"><EmptyState icon="pulse" title="No tracked strategies here" message="Strategies you track appear in My Strategies." /></slot></div>
     </div>

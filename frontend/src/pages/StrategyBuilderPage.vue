@@ -13,8 +13,9 @@
      them). Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
@@ -389,6 +390,15 @@ const picker = ref(null)
 // PR-3 drawer replaces it. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover (UI-103).
 const pickerOpen = ref(legs.value.length === 0)
 const settingsOpen = ref(false)
+const settingsRoot = ref(null)
+const settingsButton = ref(null)
+async function closeSettings() {
+  if (!settingsOpen.value) return
+  settingsOpen.value = false
+  await nextTick()
+  settingsButton.value?.focus?.()
+}
+useOutsideClose(() => settingsOpen.value, () => settingsRoot.value, closeSettings)
 const legUnit = ref('lots')
 // Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
 const openInPicker = (i) => {
@@ -397,8 +407,9 @@ const openInPicker = (i) => {
   pickerOpen.value = true
   picker.value?.startEdit(leg)
 }
-const focusPicker = () => {
+const focusPicker = async () => {
   pickerOpen.value = true
+  await nextTick()
   document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
 }
 // "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
@@ -483,12 +494,12 @@ const pricesStamp = computed(() => {
             </select>
             <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || undefined">{{ data?.spot_level ?? NO_LIVE_LEVEL }}</span>
           </span>
-          <span class="relative">
+          <span ref="settingsRoot" class="relative" @keydown.esc="closeSettings">
             <button
-              type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
-              data-testid="builder-settings" @click="settingsOpen = !settingsOpen" @keydown.esc="settingsOpen = false"
+              ref="settingsButton" type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
+              data-testid="builder-settings" @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
             ><Icon name="gear" :size="14" />Settings</button>
-            <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover" @keydown.esc="settingsOpen = false">
+            <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover">
               <label class="flex items-center justify-between gap-2">Show legs as
                 <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
                   <option value="lots">Lots</option>
@@ -510,7 +521,6 @@ const pricesStamp = computed(() => {
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <div v-show="pickerOpen" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" /></div>
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="rounded border border-line px-3 py-1" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
@@ -518,6 +528,9 @@ const pricesStamp = computed(() => {
           <template #menu="{ close }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
             <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
+          </template>
+          <template #after-actions>
+            <div v-show="pickerOpen" class="mt-4" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" /></div>
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
         </SaveDraftBar>
