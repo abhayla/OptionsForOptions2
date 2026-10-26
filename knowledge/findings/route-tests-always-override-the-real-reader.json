@@ -1,0 +1,32 @@
+{
+ "id": "route-tests-always-override-the-real-reader",
+ "scope": "generic",
+ "class": "A route reads its data through an injected dependency (a reader, loader or store), and every test of that route replaces the dependency with a fake; the real implementation the product calls is never run by any test, so a defect inside it (a wrong argument, a wrong field, a swallowed error) leaves every route test green while every real request fails. Wider shape: any seam that exists for testability becomes a blind spot when no test crosses it with the real thing on the other side.",
+ "mechanism": "backend/ofo_app/chain_push.py stored_chain built ChainCatalogue(expiries, options, permissions) positionally; the dataclass's 3rd field is the bool `unreadable`, so the permission dict landed there (truthy) and `permissions` stayed empty. Every real read of /api/leg-picker/strikes, the option chain and the ready-made route answered CATALOGUE_UNREADABLE with rows []. All tests of the three routes overrode the reader: tests_app/test_leg_picker_routes.py (get_picker_reader x3), test_ready_made_route.py, test_chain_live.py, test_market_closed_answers.py (get_chain_reader); grep found no test calling stored_chain or stored_futures. Introduced by 36c30be4 (2026-10-20) and live for 6 days with the suite green.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "owner's builder walkthrough on main 24775939 (docs/process/walkthrough-2026-10-26.md issue I-4), dev DB ofo_dev, closing prices",
+  "evidence": "GET /api/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27 -> 200 {reason: CATALOGUE_UNREADABLE, rows: []} while /api/catalogue/NIFTY/contracts?expiry=2026-10-27 listed the contracts and the same reads run standalone returned 289 contracts / 288 permissions; after the fix (fix/chain-catalogue-reader 762230e5 + 8056e152) the strikes route on ofo_dev returned 21 rows, spot 22753.20, 22800 CE ltp 234.90."
+ },
+ "fix": "Instance: both catalogue dataclasses kw_only=True (a positional build is a TypeError) and every construction keyword. Class: a real-reader test per reader with no dependency override (stored_chain, stored_futures) plus a route test that overrides only feed and clock. Sweep 2026-10-26 of every dependency the app tests override (grep dependency_overrides in tests_app: get_kite_session 19, get_db 17, get_market_context 16, get_execute_clock 11, get_quote_reader 9, get_answer_clock 7, load_charge_rates 6, get_picker_reader 3, get_futures_reader 2, get_chain_reader 4 files): the real LiveDepthQuotes (test_execute_route.py) and load_charge_rates (test_outcome_charges_wiring.py, test_db_pool_core_proof.py) are run by tests; the two catalogue readers were the only readers with no real-reader test. Proposed mechanism (not built): a repo-scan test that lists every FastAPI dependency a route declares whose name says reader/loader/store and fails when no test calls its real target unoverridden.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "tests_app/test_stored_chain_real.py"
+  ],
+  "note": "The new tests guard these two readers only (mutation-checked: unreadable=permissions -> 2 failed; permissions={} -> 1 failed; stored_futures unreadable=bool(rows) -> 1 failed; FUT rows dropped -> 2 failed). A NEW reader added with only fake-reader tests is not caught by anything: the class stays unguarded until the proposed repo-scan test exists."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-080.md",
+  "spec/requirements/REQ-029.md",
+  "spec/requirements/REQ-030.md",
+  "spec/decisions/ADR-132.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "leg picker strikes, option chain and ready-made routes (stored_chain), futures tab (stored_futures, no defect but no real test)",
+   "evidence": "see first_seen; Opus checker 2026-10-26 planted a stored_futures fault and 55/55 tests still passed before round 2"
+  }
+ ]
+}
