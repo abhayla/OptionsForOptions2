@@ -463,9 +463,9 @@ async def test_a_stopped_phase_status_reads_the_feed_as_not_connected(world):
 def test_an_oversized_frame_is_malformed():
     """The frame size cap: one byte over MAX_FRAME_BYTES is refused, the cap itself is accepted."""
     at = T0
-    over = feed_bus.encode_message("x", "frame", at, b"" * (feed_bus.MAX_FRAME_BYTES + 1))
+    over = feed_bus.encode_message("x", "frame", at, b"\x01" * (feed_bus.MAX_FRAME_BYTES + 1))
     assert feed_bus.decode_message("x", over) == (None, "malformed")
-    exact = feed_bus.encode_message("x", "frame", at, b"" * feed_bus.MAX_FRAME_BYTES)
+    exact = feed_bus.encode_message("x", "frame", at, b"\x01" * feed_bus.MAX_FRAME_BYTES)
     assert feed_bus.decode_message("x", exact)[0] is not None
 
 

@@ -31,6 +31,9 @@ Delivers exactly one work item: intake, build, check, evidence, trace check, PR,
    (Tier B, 75 turns) or `builder` (Tier A, 100 turns). `maxTurns` is the hard stop and the budget hook refuses a Budget
    line above 80% of it. It writes code and one test per acceptance criterion in `tests_required`, never writes
    `evidence/` files and never marks a status verified or reviewed.
+2a. **Heavy CI first** - run `python tools/change_scope.py --base <base> --triggers`. When it prints any path
+   or `UNKNOWN`, open a draft pull request right after the builder and start the checker only once the project's heavy
+   CI is green on that head; a red run goes back to the builder first (a fix round).
 3. **Checker (Tier B and A)** - one checker, the `verifier` agent (fresh context, read-only; Sonnet for B, Opus for A),
    reviews the diff, re-runs the test commands and returns one evidence block per AC with the lines
    `requirement: <REQ-id>` and `ac_fp: "<hex>"` from `python tools/ac_fp.py <REQ-id> <AC-id> --yaml`. It replaces
