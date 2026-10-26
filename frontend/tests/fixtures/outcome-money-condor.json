@@ -86,7 +86,7 @@
  ],
  "margin": {
   "state": "CHECKED",
-  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium up to your limit prices, about ₹7,065.50 is needed (an estimate); ₹50,000.00 is available in your Zerodha account.",
+  "reason": "Zerodha's own margin figure is ₹6,409.00. With the premium at your planned entry prices, about ₹7,065.50 is needed (an estimate); ₹50,000.00 is available in your Zerodha account.",
   "needed": "7065.50",
   "broker_needed": "6409.00",
   "available": "50000.00",
