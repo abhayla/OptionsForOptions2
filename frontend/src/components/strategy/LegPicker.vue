@@ -31,7 +31,6 @@ import {
   listReasonText,
   lotChoices,
   lotsValid,
-  oiBarPercents,
   offeredStrikes,
   offeredTypes,
   selectedContract,
@@ -196,7 +195,6 @@ const gridStyle = computed(() => {
 })
 // the qty sub-row sits under its own side, on the row's second line
 const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / span ${columns.value.length + 1}` : `span ${columns.value.length + 1} / -1` })
-const oiBars = computed(() => oiBarPercents(strikesData.value?.rows))
 const itm = computed(() => itmSides(strikesData.value?.rows))
 const COLUMN_LABEL = Object.freeze({ delta: 'Delta', ltp: 'LTP', oi: 'OI', iv: 'IV' })
 
@@ -216,6 +214,14 @@ watch(underlying, () => {
   if (tab.value === 'futures') loadFutures()
 })
 watch(tab, refreshOpenTab)
+// W-195 review 4: the drawer opening is the moment the user looks, so the open tab's prices are read again then (the
+// 5 s tick reads nothing while it is shut, so they may be minutes old)
+// (C) a catalogue read that failed earlier is tried again on open, so the error at the top of the drawer is current
+watch(() => props.active, (on) => {
+  if (!on) return
+  if (!expiries.value.length && editingId.value === null) loadExpiries()
+  refreshOpenTab()
+})
 // a leg removed by the page (the one list lives outside this component) while it is being edited leaves no stale form
 watch(() => props.legs, (now) => { if (editingId.value !== null && !now.some((l) => l.id === editingId.value)) resetForm() })
 
@@ -410,7 +416,12 @@ async function addFuture(f, side) {
 
 const legName = (l) => contractName(l)
 // the Builder's one leg list (LegList.vue) opens the same edit form through this, as the picker's own Edit did
-defineExpose({ startEdit })
+/** W-195 review 7: "Pick from Option Chain" opens the picker on the Strikes tab (Add leg keeps the tab the user left). */
+function showStrikes() {
+  if (editingId.value !== null) resetForm()
+  tab.value = 'strikes'
+}
+defineExpose({ startEdit, showStrikes })
 </script>
 
 <template>
@@ -495,14 +506,8 @@ defineExpose({ startEdit })
                     <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
                     <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
                     <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
-                    <!-- UI-202 OI bar: a drawing width relative to the largest OI on screen; the OI itself is the server's number -->
-                    <span v-else-if="col === 'oi'" class="relative flex h-4 w-full items-center" :class="side === 'ce' ? 'justify-end' : 'justify-start'">
-                      <span
-                        v-if="oiBars[row[side].instrument_id] != null" class="absolute inset-y-0" :class="side === 'ce' ? 'right-0 bg-oi-call' : 'left-0 bg-oi-put'"
-                        :style="{ width: `${oiBars[row[side].instrument_id]}%` }" data-testid="cell-oi-bar"
-                      />
-                      <span class="relative text-[10px] text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
-                    </span>
+                    <!-- UI-202: the OI as the server sent it; no bar (a bar width would be a browser calculation, ADR-008) -->
+                    <span v-else-if="col === 'oi'" class="text-[10px] text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
                     <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button

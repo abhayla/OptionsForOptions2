@@ -169,20 +169,37 @@ export function contractByInstrumentId(contracts, id) {
   return contracts.find((c) => instrumentId(c.exchange_segment, c.exchange_token) === id) ?? null
 }
 
-/** W-195 (UI-202): the OI bar's display scale - each cell's OI as a percent of the largest OI in the rows on screen,
- *  keyed by instrument id. A drawing width only, never shown as a figure and never a money number (ADR-008); the OI
- *  itself is shown as the server sent it. A missing or non-integer OI draws no bar. */
-export function oiBarPercents(rows) {
-  const cells = (rows ?? []).flatMap((r) => [r?.ce, r?.pe]).filter((c) => c && Number.isInteger(c.oi))
-  const largest = cells.reduce((m, c) => (c.oi > m ? c.oi : m), 0)
-  const out = {}
-  if (largest > 0) for (const c of cells) out[c.instrument_id] = (c.oi * 100) / largest
-  return out
+// A plain decimal strike string ("22500.00"); anything else is not compared (FUT rows carry none).
+const STRIKE_TEXT = /^(\d+)(?:\.(\d+))?$/
+/** -1, 0 or 1: the order of two plain decimal strike strings, read digit by digit (no number is parsed, ADR-008).
+ *  null when either is not a plain decimal string. */
+export function compareStrikeText(a, b) {
+  const ma = STRIKE_TEXT.exec(String(a ?? ''))
+  const mb = STRIKE_TEXT.exec(String(b ?? ''))
+  if (!ma || !mb) return null
+  const ia = ma[1].replace(/^0+(?=\d)/, '')
+  const ib = mb[1].replace(/^0+(?=\d)/, '')
+  if (ia.length !== ib.length) return ia.length < ib.length ? -1 : 1
+  const fa = (ma[2] ?? '').replace(/0+$/, '')
+  const fb = (mb[2] ?? '').replace(/0+$/, '')
+  const width = fa.length > fb.length ? fa.length : fb.length
+  const ka = ia + fa.padEnd(width, '0')
+  const kb = ib + fb.padEnd(width, '0')
+  return ka === kb ? 0 : ka < kb ? -1 : 1
 }
 
-/** W-195 (UI-202): which half of each row is in the money, read from the server's ATM flag and the ascending row order
- *  only (calls below the ATM row, puts above it). No ATM row (no live spot) shades nothing: never guessed. */
+/** True only when every row's strike is a plain decimal string and each is strictly above the one before. */
+export function strikesAscending(rows) {
+  const list = rows ?? []
+  for (let i = 1; i < list.length; i++) if (compareStrikeText(list[i - 1]?.strike, list[i]?.strike) !== -1) return false
+  return list.every((r) => compareStrikeText(r?.strike, r?.strike) === 0)
+}
+
+/** W-195 (UI-202): which half of each row is in the money, read from the server's ATM flag and the row order (calls
+ *  below the ATM row, puts above it). The order is used only after the strikes are checked to ascend; a reply in any
+ *  other order, or with no ATM row (no live spot), shades nothing: never guessed. */
 export function itmSides(rows) {
-  const atm = (rows ?? []).findIndex((r) => r.is_atm)
-  return (rows ?? []).map((_, i) => ({ ce: atm >= 0 && i < atm, pe: atm >= 0 && i > atm }))
+  const list = rows ?? []
+  const atm = strikesAscending(list) ? list.findIndex((r) => r.is_atm) : -1
+  return list.map((_, i) => ({ ce: atm >= 0 && i < atm, pe: atm >= 0 && i > atm }))
 }

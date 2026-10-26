@@ -2,7 +2,7 @@
      close "x" top right, the `actions` slot as a full-width pair at the bottom (secondary left, primary right).
      Esc, the "x" and an overlay click emit `close`; focus moves into the dialog and returns on close. -->
 <script setup>
-import { nextTick, ref, watch } from "vue";
+import { inject, nextTick, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import { trapTab } from "./focusTrap.js";
 
@@ -10,6 +10,11 @@ const props = defineProps({
   open: { type: Boolean, required: true },
   title: { type: String, required: true },
 });
+// W-195 review 1: the root is teleported to <body>, so a sticky or transformed ancestor (the Builder's left column)
+// can never trap it under another stacking context; attributes go to the root element, not the teleport.
+defineOptions({ inheritAttrs: false });
+// Unit tests render in place (tests/setup.js provides false): a stubbed Teleport would remount the content on every render.
+const teleportOn = inject("dialog-teleport", true);
 const emit = defineEmits(["close"]);
 const dialog = ref(null);
 let returnTo = null;
@@ -39,46 +44,49 @@ function onKey(e) {
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4"
-    data-testid="modal-root"
-    @keydown="onKey"
-  >
+  <Teleport to="body" :disabled="!teleportOn">
     <div
-      class="absolute inset-0 bg-ink/30"
-      data-testid="modal-overlay"
-      @click="emit('close')"
-    />
-    <div
-      ref="dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="title"
-      tabindex="-1"
-      class="relative w-[420px] max-w-full rounded-xl bg-surface p-8 shadow-drawer focus:outline-none"
-      data-testid="modal"
+      v-if="open"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      data-testid="modal-root"
+      v-bind="$attrs"
+      @keydown="onKey"
     >
-      <button
-        type="button"
-        class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted hover:text-ink"
-        aria-label="Close"
-        data-testid="modal-close"
-        @click="emit('close')"
-      >
-        <Icon name="close" :size="18" />
-      </button>
-      <h2 class="pr-8 text-xl font-semibold text-ink" data-testid="modal-title">
-        {{ title }}
-      </h2>
-      <div class="mt-4 text-sm text-ink"><slot /></div>
       <div
-        v-if="$slots.actions"
-        class="mt-6 grid grid-cols-2 gap-3"
-        data-testid="modal-actions"
+        class="absolute inset-0 bg-ink/30"
+        data-testid="modal-overlay"
+        @click="emit('close')"
+      />
+      <div
+        ref="dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+        tabindex="-1"
+        class="relative w-[420px] max-w-full rounded-xl bg-surface p-8 shadow-drawer focus:outline-none"
+        data-testid="modal"
       >
-        <slot name="actions" />
+        <button
+          type="button"
+          class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted hover:text-ink"
+          aria-label="Close"
+          data-testid="modal-close"
+          @click="emit('close')"
+        >
+          <Icon name="close" :size="18" />
+        </button>
+        <h2 class="pr-8 text-xl font-semibold text-ink" data-testid="modal-title">
+          {{ title }}
+        </h2>
+        <div class="mt-4 text-sm text-ink"><slot /></div>
+        <div
+          v-if="$slots.actions"
+          class="mt-6 grid grid-cols-2 gap-3"
+          data-testid="modal-actions"
+        >
+          <slot name="actions" />
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>

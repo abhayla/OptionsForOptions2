@@ -132,6 +132,9 @@ async function load() {
   const fallback = socketDropped
   const sentKey = inputsKey()
   // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
+  // Review 2: numbers already on screen stay mounted (marked updating) while the new answer is worked out, so the
+  // scenario switch keeps focus, the page does not jump and the chart is not rebuilt.
+  keepNumbers.value = showNumbers.value
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
@@ -410,6 +413,11 @@ const openInPicker = (i) => {
 const focusPicker = () => {
   pickerOpen.value = true
 }
+// W-195 review 7: "Pick from Option Chain" is not a second Add leg: it opens the drawer on the Strikes tab
+const pickFromChain = () => {
+  picker.value?.showStrikes()
+  pickerOpen.value = true
+}
 // "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
 // existing tracking block (right column)
 const historyOpen = ref(false)
@@ -439,7 +447,13 @@ const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level car
 const chartTab = ref('payoff')
 const chartPayoffView = ref('graph')
 const chartFullTable = ref(false)
-const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
+// Review 2: true while a reload runs over numbers that were on screen when it started (load() sets it); any other state
+// change draws its own block, so this only matters during 'loading'.
+const keepNumbers = ref(false)
+const showNumbers = computed(() => (['computed', 'stale', 'from-entries'].includes(state.value) || (state.value === 'loading' && keepNumbers.value)) && !!data.value?.table)
+const keptWhileLoading = computed(() => state.value === 'loading' && showNumbers.value)
+// Review 2: the summary card's Reward/Risk or Risk/Reward choice, owned here so a recompute never resets it
+const ratioFlipped = ref(false)
 const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
@@ -518,7 +532,7 @@ const pricesStamp = computed(() => {
         <LegList
           :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
-          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
+          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
@@ -556,7 +570,8 @@ const pricesStamp = computed(() => {
              (loading, error, refused...) they stay here, so a pick that led to an error can still be changed back. -->
         <ScenarioControls v-if="state !== 'no-draft' && !showNumbers" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
 
-        <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
+        <p v-if="state === 'loading' && keptWhileLoading" class="sr-only" data-testid="state-loading" data-kept="true">Working out the outcome...</p>
+        <p v-else-if="state === 'loading'" class="mt-4" data-testid="state-loading">
           Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
         </p>
 
@@ -594,7 +609,7 @@ const pricesStamp = computed(() => {
           <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
 
-        <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
+        <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
           <!-- UI study Region E: the data-health strip at the top of the summary. W-193 (I-9): the data label (for example
                "estimated from spot") is no longer a bare floating line: it is named here as the price data label (ADR-061:
                never silent) and is also the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
@@ -609,6 +624,7 @@ const pricesStamp = computed(() => {
           </div>
 
           <SummaryCards
+            v-model:flipped="ratioFlipped"
             class="mt-4"
             :max-profit="maxProfit"
             :max-loss="maxLoss"

@@ -67,7 +67,8 @@ describe('W-192 review fixes: left-column labels are visible text, not a tooltip
     expect(t(w, 'price-head').text()).toBe('Planned entry')
     const caps = all(w, 'leg-caption')
     expect(caps).toHaveLength(3)
-    expect(caps[0].text()).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    // combined check G (REQ-077 AC-1): "captured <time>", with the date when the capture is not today
+    expect(caps[0].text()).toMatch(/^captured (\d{2}:\d{2}:\d{2}|\d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}:\d{2} IST)$/)
     expect(caps[0].element.closest('[data-testid="leg-caption-line"]').classList.contains('text-xs')).toBe(true)
     expect(row(w, 1).find('[data-testid="leg-caption"]').exists()).toBe(false)
     expect(row(w, 1).find('[data-testid="leg-typed-line"]').text()).toContain(YOUR_PRICE_LABEL)

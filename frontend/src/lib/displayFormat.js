@@ -103,6 +103,17 @@ export function istClock(iso) {
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
 }
 
+/** Review 3 (REQ-077 AC-1): a captured price's caption. "captured 10:35:12" when the capture is on today's India date,
+ *  else "captured 21 Oct 2026, 10:35:12 IST"; null when the time is missing or unreadable. `now` is only the clock used to
+ *  name today (an ISO instant; the browser clock when omitted): no number is computed from it. */
+export function capturedCaption(iso, now = new Date().toISOString()) {
+  const t = istTime(iso)
+  if (t === TIME_UNAVAILABLE) return null
+  const today = istTime(now)
+  const day = (x) => x.slice(0, x.indexOf(','))
+  return day(t) === day(today) ? `captured ${t.slice(-12, -4)}` : `captured ${t}`
+}
+
 /** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
  *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
 export function maxLine(summary, side) {

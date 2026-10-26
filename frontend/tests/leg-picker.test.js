@@ -1033,16 +1033,12 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
   })
 
-  it('UI-202: OI bars are widths relative to the largest OI on screen; the OI shown is the server number; no OI draws no bar', async () => {
+  it('UI-202 (combined check A): the OI shown is the server number and no bar is drawn (a bar width would be browser maths, ADR-008)', async () => {
     const w = mountPicker()
     await flushPromises()
     await openStrikes(w)
-    const bar = (strike, side) => sideOf(w, strike, side).find('[data-testid="cell-oi-bar"]')
-    // 22550 PE carries the largest OI (4022200): full width; 22500 CE 3218475 / 4022200 = 80.0186...%
-    expect(bar('22550.00', 'pe').attributes('style')).toBe('width: 100%;')
-    expect(bar('22500.00', 'ce').attributes('style')).toMatch(/^width: 80\.01/)
     expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('3218475')
-    expect(bar('22450.00', 'ce').exists()).toBe(false)
+    expect(w.findAll('[data-testid="cell-oi-bar"]')).toHaveLength(0)
   })
 
   it('UI-202: ITM halves are shaded from the server ATM flag only (calls below ATM, puts above); no ATM row shades nothing', async () => {

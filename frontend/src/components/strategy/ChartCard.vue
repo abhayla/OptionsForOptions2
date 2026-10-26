@@ -11,9 +11,10 @@
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
 <script setup>
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import Card from '@/components/common/Card.vue'
 import Tabs from '@/components/common/Tabs.vue'
+import { panelId, tabId } from '@/components/common/tabIds.js'
 import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import PayoffChart from './PayoffChart.vue'
@@ -39,6 +40,11 @@ const PAYOFF_VIEWS = [
   { key: 'table', label: 'Table' },
 ]
 // The view choice is a model the page owns, so a recompute (which remounts the numbers block) keeps the user's tab.
+// Review 6: the prefixes that link the view tabs and the Payoff sub-tabs to their panels
+const uid = useId()
+const VIEW = `chart-${uid}`
+const SUB = `payoff-${uid}`
+const link = (prefix, key) => ({ id: panelId(prefix, key), 'aria-labelledby': tabId(prefix, key) })
 const tab = defineModel('tab', { type: String, default: 'payoff' })
 const payoffView = defineModel('payoffView', { type: String, default: 'graph' })
 const fullTable = defineModel('fullTable', { type: Boolean, default: false }) // ADR-194 (1): the compact view is the default
@@ -55,17 +61,17 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
 <template>
   <Card class="mt-4" flush data-testid="chart-card">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-      <Tabs v-model="tab" :tabs="TABS" variant="segmented" label="Chart views" />
+      <Tabs v-model="tab" :tabs="TABS" variant="segmented" label="Chart views" :id-prefix="VIEW" />
       <slot name="controls" />
     </div>
 
     <!-- Payoff -->
-    <div v-show="tab === 'payoff'" role="tabpanel" aria-label="Payoff" class="p-4" data-testid="panel-payoff">
-      <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" class="mb-3" />
-      <div v-show="payoffView === 'graph'" data-testid="payoff-graph">
+    <div v-show="tab === 'payoff'" role="tabpanel" v-bind="link(VIEW, 'payoff')" class="p-4" data-testid="panel-payoff">
+      <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" class="mb-3" :id-prefix="SUB" />
+      <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
         <PayoffChart :points="points" :spot="spot" />
       </div>
-      <div v-show="payoffView === 'table'" data-testid="payoff-table">
+      <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <table v-if="levels" class="w-full text-sm">
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
@@ -91,7 +97,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
     </div>
 
     <!-- P&L Table (ADR-194) -->
-    <div v-show="tab === 'pnl'" role="tabpanel" aria-label="P&L Table" class="p-4" data-testid="panel-pnl">
+    <div v-show="tab === 'pnl'" role="tabpanel" v-bind="link(VIEW, 'pnl')" class="p-4" data-testid="panel-pnl">
       <div class="mb-3 flex items-center justify-end">
         <label class="flex items-center gap-2 text-sm text-ink-muted">
           <input v-model="fullTable" type="checkbox" role="switch" :aria-checked="fullTable ? 'true' : 'false'" data-testid="full-table-switch" />
@@ -137,7 +143,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
     </div>
 
     <!-- Greeks -->
-    <div v-show="tab === 'greeks'" role="tabpanel" aria-label="Greeks" class="p-4" data-testid="panel-greeks">
+    <div v-show="tab === 'greeks'" role="tabpanel" v-bind="link(VIEW, 'greeks')" class="p-4" data-testid="panel-greeks">
       <table v-if="greeks" class="w-full text-sm" data-testid="greeks-table">
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
@@ -163,7 +169,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
     </div>
 
     <!-- Strategy chart (REQ-091 held for display rights) -->
-    <div v-show="tab === 'strategy-chart'" role="tabpanel" aria-label="Strategy chart" class="p-4" data-testid="panel-strategy-chart">
+    <div v-show="tab === 'strategy-chart'" role="tabpanel" v-bind="link(VIEW, 'strategy-chart')" class="p-4" data-testid="panel-strategy-chart">
       <EmptyState message="The strategy chart is coming soon." data-testid="strategy-chart-empty" />
     </div>
   </Card>

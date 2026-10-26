@@ -79,6 +79,9 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
   await expect(page.getByTestId('pick-strike')).toHaveValue('22800.00')
   await page.getByTestId('pick-strike').selectOption('23000.00')
   await page.getByTestId('add-leg').click()
+  // the edit is done when the picker hands the page back (after the new contract's planned entry is captured, which the
+  // replay API answered in 4.5 s in the failing run): only then is the row's contract read
+  await expect(page.getByTestId('leg-picker-panel')).toBeHidden({ timeout: 15_000 })
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
   await expect(page.getByTestId('leg-row')).toContainText('NIFTY 13 Oct 23000 CE')
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', /computed|stale/)

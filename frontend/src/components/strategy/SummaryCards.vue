@@ -104,7 +104,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { istTime } from '@/lib/displayFormat'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
@@ -124,7 +124,9 @@ const props = defineProps({
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless Zerodha's funds were read)
 })
-const flipped = ref(false) // which of the server's two ratio strings is shown; never a calculation
+// which of the server's two ratio strings is shown; never a calculation. A model the page owns (review 2), so a recompute
+// keeps the user's 1/x choice; without a v-model it is this card's own state.
+const flipped = defineModel('flipped', { type: Boolean, default: false })
 const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)
 const showValues = computed(() => props.timeValue != null || props.intrinsicValue != null || props.valueReason != null)
 </script>

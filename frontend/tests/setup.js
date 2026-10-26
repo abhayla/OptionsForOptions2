@@ -27,6 +27,11 @@ beforeEach(() => {
   localStorageMock.clear.mockClear()
 })
 
+// W-195 review 1: Drawer and Modal teleport to <body>; unit tests render them in place (a wrapper's find still reaches
+// them; a Teleport stub would remount their content on every render). tests/builder-combined-fixes.test.js provides
+// true to prove the move.
+config.global.provide = { ...config.global.provide, 'dialog-teleport': false }
+
 config.global.mocks = {
   $t: (msg) => msg,
 }

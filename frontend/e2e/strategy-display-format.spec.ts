@@ -77,8 +77,11 @@ test('legs are named by contract, times are IST words, and no raw id or ISO time
 test('a catalogue error in the leg picker shows all four parts under their labels', async ({ page }) => {
   await page.route('**/api/catalogue/NIFTY/expiries', (r) => r.fulfill({ status: 404, json: PARTS }))
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  // W-195: the picker is the left drawer; asking to add a leg opens it and its catalogue error is the first thing in it
+  await page.getByTestId('no-legs-add').click()
   const err = page.getByTestId('picker-error')
   await expect(err).toBeVisible()
+  await expect(err).toBeInViewport()
   await expect(err.getByTestId('picker-error-what')).toHaveText(PARTS.what_happened)
   await expect(err).toContainText(`What this means: ${PARTS.impact}`)
   await expect(err).toContainText(`What is blocked: ${PARTS.what_is_blocked}`)

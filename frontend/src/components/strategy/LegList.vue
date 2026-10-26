@@ -13,7 +13,7 @@ import Icon from '@/components/common/Icon.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
 import { useOutsideClose } from '@/composables/useOutsideClose'
-import { contractName, expiryWithDays, istClock, istTime } from '@/lib/displayFormat'
+import { capturedCaption, contractName, expiryWithDays, istTime } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN,
@@ -53,6 +53,9 @@ async function closeMenu() {
 useOutsideClose(() => menuFor.value !== null, () => menuRoots[menuFor.value], closeMenu)
 
 const gridColumns = `${LEG_ROW_COLUMNS.slice(0, 3).map((w) => `${w}px`).join(' ')} minmax(${LEG_ROW_COLUMNS[3]}px, 1fr) ${LEG_ROW_COLUMNS.slice(4).map((w) => `${w}px`).join(' ')}`
+// Review B (ADR-165 (7)): below 640 px a leg row is two lines (contract on line 1; price, depth, edit, remove on line 2),
+// so the table fits a 390 px phone. The desktop columns are a CSS variable the phone class replaces.
+const gridStyle = { '--leg-cols': gridColumns }
 const cardPadding = { paddingLeft: `${LEG_CARD_PADDING_PX}px`, paddingRight: `${LEG_CARD_PADDING_PX}px` }
 const selectedCount = computed(() => props.legs.filter((l) => l.included !== false).length)
 const someLeftOut = computed(() => anyUnticked(props.legs))
@@ -72,6 +75,9 @@ const entryLabel = (l) => (l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_L
 // REQ-077 AC-1: a captured price (not typed, not moved) shows its capture time as a small caption under the price
 const showsCaption = (l) => l.typed !== true && !moved(l) && !unpriced(l)
 const capturedText = (l) => `${l.typed === true ? 'typed' : 'captured'} ${istTime(l.captured_at)}`
+// Review 3 (REQ-077 AC-1): the caption names the capture and carries the date unless it is today (India time), so a draft
+// reopened from yesterday never reads as a price taken today
+const caption = (l) => capturedCaption(l.captured_at)
 
 function confirmClear() {
   confirmingClear.value = false
@@ -140,7 +146,7 @@ function setMultiplier(index) {
       <ErrorMessage v-if="errorParts && errorIndex === null" class="mx-3 mb-2" :parts="errorParts" compact prefix="edit-error" data-testid="edit-error" />
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
-      <div class="grid items-center whitespace-nowrap text-xs text-ink-muted" :style="{ ...cardPadding, gridTemplateColumns: gridColumns }" aria-hidden="true" data-testid="leg-table-head">
+      <div class="leg-grid grid items-center whitespace-nowrap text-xs text-ink-muted max-[639px]:hidden" :style="{ ...cardPadding, ...gridStyle }" aria-hidden="true" data-testid="leg-table-head">
         <span></span><span>B/S</span><span>Expiry</span><span class="text-center">Strike</span><span>Type</span><span>Lots</span><span class="text-right" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}</span><span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
@@ -150,7 +156,7 @@ function setMultiplier(index) {
           :data-testid="'leg-row'" :data-index="i" :data-included="leg.included === false ? 'false' : 'true'"
           :data-instrument-id="leg.instrument_id" :data-action="leg.action" :data-lots="leg.lots" :data-entry="leg.planned_entry ?? ''"
           :data-captured="leg.captured_at ?? ''" :data-strike="leg.strike ?? ''" :data-type="leg.instrument_type" :data-expiry="leg.expiry">
-          <div class="grid h-7 flex-nowrap items-center whitespace-nowrap" :style="{ gridTemplateColumns: gridColumns }" data-testid="leg-row-line">
+          <div class="leg-grid leg-phone grid h-7 flex-nowrap items-center whitespace-nowrap max-[639px]:h-auto max-[639px]:gap-y-1" :style="gridStyle" data-testid="leg-row-line">
             <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
             <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" class="w-6 text-center" :title="leg.action">{{ leg.action === 'BUY' ? 'B' : 'S' }}<span class="sr-only">{{ leg.action }}</span></span>
             <span class="overflow-hidden text-xs" :title="expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
@@ -166,7 +172,7 @@ function setMultiplier(index) {
             <span :class="`tag tag-${(leg.instrument_type ?? '').toLowerCase()}`" data-testid="leg-type">{{ leg.instrument_type }}</span>
             <span v-if="legUnit === 'quantity'" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
             <span v-else data-testid="leg-lots">{{ leg.lots }} lot</span>
-            <span :ref="(el) => (menuRoots[i] = el)" class="relative flex items-center justify-end" @keydown.esc="closeMenu">
+            <span :ref="(el) => (menuRoots[i] = el)" class="leg-line2-price relative flex items-center justify-end" @keydown.esc="closeMenu">
               <input
                 v-model="typedText[i]" type="text" inputmode="decimal" class="w-12 rounded border px-1 text-right"
                 :class="leg.typed === true ? 'border-accent' : 'border-line'" :placeholder="leg.planned_entry ?? ''"
@@ -178,7 +184,7 @@ function setMultiplier(index) {
                 data-testid="price-menu" @click="menuFor === i ? closeMenu() : (menuFor = i)"
               ><Icon name="chevron" :size="12" /></button>
               <span
-                v-show="menuFor === i" role="menu" class="absolute right-0 top-full z-20 mt-1 w-56 whitespace-normal rounded border border-line bg-surface p-2 text-left shadow"
+                v-show="menuFor === i" role="menu" class="absolute right-0 top-full z-20 mt-1 w-56 max-[639px]:left-0 max-[639px]:right-auto whitespace-normal rounded border border-line bg-surface p-2 text-left shadow"
                 data-testid="price-menu-panel"
               >
                 <span v-if="leg.planned_entry != null && leg.captured_at != null" class="block text-ink-muted" data-testid="leg-captured">{{ capturedText(leg) }}</span>
@@ -186,15 +192,15 @@ function setMultiplier(index) {
                 <button type="button" role="menuitem" class="block text-accent" data-testid="reset-leg" @click="resetLeg(i)">Reset</button>
               </span>
             </span>
-            <span class="relative">
+            <span class="leg-line2 relative">
               <button type="button" data-testid="depth-icon" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i"><Icon name="table" :size="14" /></button>
               <DepthPopup v-if="depthFor === i" class="absolute right-0 top-full z-20" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
             </span>
-            <button type="button" data-testid="edit-leg" :aria-label="`Edit ${legName(leg)}`" title="Edit" @click="emit('edit-leg', i)"><Icon name="pencil" :size="14" /></button>
-            <button type="button" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" title="Remove" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
+            <button type="button" class="leg-line2" data-testid="edit-leg" :aria-label="`Edit ${legName(leg)}`" title="Edit" @click="emit('edit-leg', i)"><Icon name="pencil" :size="14" /></button>
+            <button type="button" class="leg-line2" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" title="Remove" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
           </div>
-          <div v-if="showsCaption(leg)" class="grid text-xs text-ink-muted" :style="{ gridTemplateColumns: gridColumns }" data-testid="leg-caption-line">
-            <span class="text-right" style="grid-column: 7" data-testid="leg-caption" :title="`${capturedText(leg)} (${istTime(leg.captured_at)})`">{{ istClock(leg.captured_at) }}</span>
+          <div v-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
+            <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
@@ -230,3 +236,24 @@ function setMultiplier(index) {
     </template>
   </div>
 </template>
+
+<style scoped>
+.leg-grid {
+  grid-template-columns: var(--leg-cols);
+}
+/* Review B: the phone layout. Line 1 = tick, B/S, expiry, strike, type, lots; line 2 = the price field and menu under
+   the contract, then depth, edit and remove under the type and lots columns. */
+@media (max-width: 639px) {
+  .leg-grid {
+    grid-template-columns: 22px 26px minmax(0, 1fr) auto 34px 44px;
+  }
+  .leg-phone > .leg-line2-price {
+    grid-row: 2;
+    grid-column: 1 / 4;
+    justify-content: flex-start;
+  }
+  .leg-phone > .leg-line2 {
+    grid-row: 2;
+  }
+}
+</style>

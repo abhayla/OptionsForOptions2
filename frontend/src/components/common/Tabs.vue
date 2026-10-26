@@ -2,7 +2,8 @@
      "Payoff Graph"); `underline` = 14 px/500 text, active tab accent text + 2 px underline (S-012 "Payoff Table").
      role="tablist"; arrow keys, Home and End move the selection; only the selected tab is in the Tab order. -->
 <script setup>
-import { ref } from "vue";
+import { ref, useId } from "vue";
+import { panelId, tabId } from "./tabIds.js";
 
 const props = defineProps({
   tabs: { type: Array, required: true }, // [{ key, label }]
@@ -13,7 +14,11 @@ const props = defineProps({
     validator: (v) => ["segmented", "underline"].includes(v),
   },
   label: { type: String, default: "" },
+  // Review 6: each tab names the panel it controls (aria-controls) and each panel names its tab (aria-labelledby) through
+  // tabId / panelId(idPrefix, key); a page with its own panels passes the prefix it uses for them.
+  idPrefix: { type: String, default: "" },
 });
+const prefix = props.idPrefix || `tabs-${useId()}`;
 const emit = defineEmits(["update:modelValue"]);
 const buttons = ref([]);
 
@@ -53,10 +58,12 @@ function onKey(e, i) {
   >
     <button
       v-for="(t, i) in tabs"
+      :id="tabId(prefix, t.key)"
       :key="t.key"
       ref="buttons"
       type="button"
       role="tab"
+      :aria-controls="panelId(prefix, t.key)"
       :aria-selected="t.key === modelValue ? 'true' : 'false'"
       :tabindex="t.key === modelValue ? 0 : -1"
       :class="
