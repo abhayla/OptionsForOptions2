@@ -1,0 +1,28 @@
+{
+ "id": "accepted-decision-without-owning-row",
+ "scope": "project",
+ "class": "A decision row that CHANGES existing behaviour (a SPEC CHANGE) is accepted and cited by requirements, but no builder-sequence row or work item names the code change it needs, so the code keeps the old behaviour indefinitely while the spec says otherwise. Wider shape: citing a decision in a requirement's spec_refs is not the same as scheduling it; a decision that edits shipped behaviour needs its own build item.",
+ "mechanism": "ADR-167 (accepted 2026-10-22) says every Builder payoff curve and scenario value is shown before charges and taxes; on main b9b9c426 (2026-10-26) backend/ofo/scenario/views.py:97 still computes `totals = tuple(t - charges - exercise_stt_at(...))`, so the At Expiry curve and column are net of charges. ADR-167 is cited by 21 requirements' spec_refs (grep -l ADR-167 spec/requirements) and by no builder-sequence row; found only because the row 26 measure (REQ-081) read the decision against the code.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "chunk 3 session B, row 26 measure (W-154, REQ-081)",
+  "evidence": "backend/ofo/scenario/views.py:64 and :97 on main b9b9c426; spec/decisions/ADR-167.md decision (1) and (4)"
+ },
+ "fix": "Instance: row 26 part c (build/c3-row-26c) removes the charges from the curves and the CHARGES table row, keeping charges in the max-profit/max-loss sentences (ADR-167 (3)). Class: unmeasured how many other accepted decisions since ADR-150 have code that contradicts them (41 accepted ADR-15x..19x files; only ADR-167 checked) - recorded in the chunk 3 deferred issue.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check maps an accepted decision that changes behaviour to a build row or a test pinning the new behaviour. Candidate: a decision row with `changes:` naming earlier behaviour must list a work item or row, checked by a records test."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-167.md",
+  "spec/requirements/REQ-081.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "ADR-167 (1) vs scenario/views.py:97",
+   "evidence": "4 days accepted, code unchanged"
+  }
+ ]
+}
