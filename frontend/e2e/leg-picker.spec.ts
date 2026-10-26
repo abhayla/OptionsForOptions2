@@ -42,7 +42,10 @@ async function addLeg(page: Page, type: string, strike: string, action: string) 
   await page.getByTestId('pick-strike').selectOption(strike)
   await page.getByTestId('pick-action').selectOption(action)
   await page.getByTestId('add-leg').click()
-  await expect(rows).toHaveCount(before + 1) // the capture has finished and the form is free for the next leg
+  // the capture has finished and the form is free for the next leg. 15 s, as in the edit test below: CI #581's trace showed the 4th
+  // planned-entry request still unanswered 6 s after it was sent, queued behind a 5.2 s outcome reply on the replay API (late, not
+  // lost: tests/leg-picker.test.js "legs added quickly in sequence are all kept" pins that every leg is kept)
+  await expect(rows).toHaveCount(before + 1, { timeout: 15_000 })
 }
 
 test('four picked legs are priced by the real outcome route on the recorded frames', async ({ page }, info) => {

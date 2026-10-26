@@ -318,6 +318,47 @@ describe('a late async reply never overwrites newer user state', () => {
   })
 })
 
+// CI #581 (leg-picker.spec.ts:48, desktop-1280): four legs added one after another ended with three for 5 s. The trace shows the 4th
+// planned-entry request queued behind a 5.2 s outcome reply on the replay API: late, not lost. This pins the product half: legs
+// added in quick sequence, each capture answering while the previous add's outcome and shape read are still in flight, and those
+// stale replies (a 3-leg shape read among them) landing AFTER the next leg: every leg is kept.
+describe('legs added quickly in sequence are all kept', () => {
+  it('four adds, each capture answering before the previous outcome and shape read, end with four legs', async () => {
+    const held = [] // every outcome / leg-edit reply, released only at the end, oldest LAST
+    const captures = []
+    const ALL = [entry(44595, '41.10'), entry(44604, '55.20'), entry(44624, '104.65'), entry(44632, '61.30')]
+    answers['POST /strategies/planned-entry'] = () => new Promise((res) => captures.push(() => res({ data: { entries: ALL } })))
+    answers['POST /strategies/outcome'] = () => new Promise((res) => held.push(() => res({ data: OUTCOME_NOT_CONNECTED })))
+    answers['POST /strategies/leg-edit'] = (body) => new Promise((res) => held.push(() => res({ data: {
+      seq: body.seq, shape_name: null, // a shape read for the legs it was SENT with: applied late, it would drop the newer legs
+      legs: body.legs.map((l) => ({ ...l, instrument_id: l.instrument_id, action: l.action, lots: l.lots, included: true })),
+    } })))
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    const legsAdded = [['CE', '22800.00', 'SELL'], ['CE', '23000.00', 'BUY'], ['PE', '22400.00', 'SELL'], ['PE', '22200.00', 'BUY']]
+    for (const [i, [type, strike, action]] of legsAdded.entries()) {
+      if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') await t(w, 'add-edit').trigger('click')
+      await pick(w, { type, strike, action })
+      await t(w, 'add-leg').trigger('click')
+      await flushPromises()
+      captures.shift()() // this leg's capture answers while every earlier outcome / shape read is still unanswered
+      await flushPromises()
+      expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(i + 1)
+    }
+    // the race is real: a shape read went out after the 2nd, 3rd and 4th adds, and an outcome after every add
+    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4])
+    expect(calls.filter((c) => c.url === '/strategies/outcome').length).toBeGreaterThanOrEqual(4)
+    while (held.length) held.pop()() // the stale replies land newest first, the oldest last
+    await flushPromises()
+    const rows = w.findAll('[data-testid="leg-row"]')
+    expect(rows).toHaveLength(4)
+    expect(rows.map((r) => r.attributes('data-instrument-id'))).toEqual([44624, 44632, 44604, 44595].map((k) => instrumentId('NSE_FO', k)))
+  })
+})
+
 describe('buildDraft: the body the outcome API takes', () => {
   const priced = { underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT, symbol: 'x' }
   const unpriced = { ...priced, instrument_id: 'NSE_FO:44632', planned_entry: null, captured_at: null }
