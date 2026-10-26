@@ -308,10 +308,12 @@ async def test_a_lone_future_summary_body_carries_the_ac4_answers(action, unlimi
 
 
 async def test_a_bounded_strategy_summary_carries_the_money_figures_as_strings(replayed):
-    """A bounded strategy reads a ratio (REQ-081 AC-4) and its time and intrinsic value (AC-3) as money strings."""
+    """No rate table on this route: no ratio, since REQ-081 AC-4 wants both maximums including charges; the time and
+    intrinsic value (AC-3) stay money strings."""
     s = (await _post(_body(replayed), replayed)).json()["summary"]
-    assert s["reward_risk_reason"] is None
-    assert all(isinstance(s[k], str) for k in ("reward_risk", "risk_reward", "time_value", "intrinsic_value"))
+    assert (s["reward_risk"], s["risk_reward"]) == (None, None)
+    assert s["reward_risk_reason"] == "the charges could not be priced, so the ratio is not shown"
+    assert all(isinstance(s[k], str) for k in ("time_value", "intrinsic_value"))
 
 
 async def test_every_outcome_leg_carries_days_to_expiry_counted_from_the_answers_ist_date(replayed):

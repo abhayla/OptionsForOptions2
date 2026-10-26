@@ -19,6 +19,7 @@ from ofo.engine import Strategy, strategy_metrics
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import EXPLANATIONS
 from ofo.outcome import money
+from ofo.outcome.serialize import outcome_to_dict
 from ofo.table import ColumnId
 from test_charges_in_sentences import (
     EXPIRY,
@@ -272,7 +273,6 @@ def test_whole_percent_rounds_half_up():
 
 
 def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):
-    from ofo.outcome.serialize import outcome_to_dict
     _d, out = outcome_of(replayed, RATES)
     body = outcome_to_dict(out)
     b = body["charges_breakdown"]
@@ -283,7 +283,6 @@ def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):
 
 
 def test_the_breakdown_names_exercise_stt_with_rate_and_condition_but_no_figure(replayed):
-    from ofo.outcome.serialize import outcome_to_dict
     _d, out = outcome_of(replayed, RATES)
     b = outcome_to_dict(out)["charges_breakdown"]
     assert b["exercise_stt_rate"] == "0.0015"
