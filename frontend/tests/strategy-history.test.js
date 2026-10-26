@@ -241,10 +241,12 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     const w = mount(SaveDraftBar, { props: { legs: [], current: null } })
     await flushPromises()
     const rows = w.findAll('[data-testid="saved-draft-row"]')
-    expect(rows[0].find('[data-testid="delete-5"]').exists()).toBe(true)
-    for (const [i, id] of [[1, 6], [2, 7]]) {
-      expect(rows[i].find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
-      expect(rows[i].get('[data-testid="delete-refused"]').text()).toBe(DELETE_REFUSED_TEXT)
+    const rowOf = (id) => rows.find((r) => r.text().includes(`S${id}`))
+    expect(rowOf(5).find('[data-testid="delete-5"]').exists()).toBe(true)
+    for (const id of [6, 7]) {
+      const row = rowOf(id)
+      expect(row.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
+      expect(row.get('[data-testid="delete-refused"]').text()).toBe(DELETE_REFUSED_TEXT)
     }
   })
 
