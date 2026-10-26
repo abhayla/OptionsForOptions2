@@ -98,6 +98,33 @@ describe('top bar sections (REQ-009 statement, AC-1..AC-7)', () => {
   })
 })
 
+describe('menu focus and aria-current (review round 2)', () => {
+  it('an open menu closes when focus moves to another section control, but not into its own items', async () => {
+    const { w } = await mountAt('/home')
+    const toggle = w.get('[data-testid="nav-menu-toggle-orders"]')
+    await toggle.trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="nav-menu"]').exists()).toBe(true)
+    const item = w.get('[data-testid="nav-menu-item"]').element
+    await toggle.trigger('focusout', { relatedTarget: item })
+    expect(w.find('[data-testid="nav-menu"]').exists()).toBe(true)
+    await toggle.trigger('focusout', { relatedTarget: w.get('[data-testid="nav-alerts"]').element })
+    await flushPromises()
+    expect(w.find('[data-testid="nav-menu"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('links carry aria-current="page" only on their own page; never "true"', async () => {
+    const { w } = await mountAt('/home')
+    expect(w.get('[data-testid="nav-home"]').attributes('aria-current')).toBe('page')
+    expect(w.get('[data-testid="nav-orders"]').attributes('aria-current')).toBeUndefined()
+    w.unmount()
+    const again = await mountAt('/strategies/my-strategies')
+    expect(again.w.get('[data-testid="nav-strategies"]').attributes('aria-current')).not.toBe('true')
+    again.w.unmount()
+  })
+})
+
 describe('menu keyboard and hover (UI-002)', () => {
   it('ArrowDown on the menu button opens it and focuses the first item; arrows move; Esc closes and returns focus', async () => {
     const { w } = await mountAt('/home')
@@ -152,7 +179,7 @@ describe('active section, breadcrumb and page width (UI-001, UI-004)', () => {
     const { w } = await mountAt('/market/option-chain')
     const link = w.get('[data-testid="nav-market"]')
     expect(link.classes()).toContain('text-accent')
-    expect(link.attributes('aria-current')).toBe('true')
+    expect(link.attributes('aria-current')).toBeUndefined() // the section link is not the current page (review round 2)
     expect(w.findAll('[data-testid="nav-active-bar"]')).toHaveLength(1)
     expect(w.get('[data-testid="nav-active-bar"]').classes()).toContain('h-[3px]')
     expect(w.get('[data-testid="breadcrumb-title"]').text()).toBe('Option Chain')

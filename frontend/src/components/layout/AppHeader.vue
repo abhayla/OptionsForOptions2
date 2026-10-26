@@ -157,6 +157,14 @@ function onSectionLeave(e) {
   clearHover()
   if (openKey.value) hoverTimer = setTimeout(() => closeMenu(), HOVER_DELAY_MS)
 }
+// A menu opened by click stays open only while focus is on its toggle or inside it; focus moving to any other control closes it.
+function onHeaderFocusout(e) {
+  const key = openKey.value
+  const next = e.relatedTarget
+  if (!key || !next) return
+  if (panel.value?.contains(next) || toggles[key]?.contains(next)) return
+  closeMenu()
+}
 function onPanelEnter(e) {
   if (e.pointerType === 'mouse') clearHover()
 }
@@ -198,7 +206,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <header ref="header" class="sticky top-0 z-30 h-14 border-b border-line bg-surface" data-testid="app-header">
+  <header ref="header" class="sticky top-0 z-30 h-14 border-b border-line bg-surface" data-testid="app-header" @focusout="onHeaderFocusout">
     <div class="flex h-full items-stretch gap-4 px-4">
       <div class="flex min-w-0 shrink-0 items-center gap-2">
         <router-link to="/home" class="flex items-center gap-2 text-[15px] font-semibold text-ink" data-testid="brand">
@@ -225,7 +233,6 @@ onBeforeUnmount(() => {
               :to="`/${s.key}`"
               class="flex items-center pl-3 text-[15px] leading-5 font-medium"
               :class="activeSection === s.key ? 'text-accent' : 'text-ink hover:text-accent'"
-              :aria-current="activeSection === s.key ? 'true' : undefined"
               :data-testid="`nav-${s.key}`"
               @click="closeMenu()"
               >{{ s.label }}</router-link

@@ -1,7 +1,7 @@
 /* Tailwind 4 with this project's tokens (ADR-049, ADR-193 / UI study a.2): light theme, neutral surfaces, 1px dividers,
    ONE accent (cobalt). Every colour the app uses lives here and nowhere else (UI-006).
    ADR-049: the four strategy-health colours stay reserved for health. --profit / --loss colour only P&L numbers and
-   payoff lines, never a status; --warn is warning text only. */
+   payoff lines, never a status; --warn is warning text only; --error / --error-soft colour error messages only. */
 @import 'tailwindcss';
 
 @theme {
@@ -22,6 +22,9 @@
   --color-profit-soft: #e7f6ee;
   --color-loss: #d14343;
   --color-loss-soft: #fceded;
+  /* error messages only; not a health or P&L colour */
+  --color-error: #b42318;
+  --color-error-soft: #fef3f2;
   --color-warn: #a15c00;
   --color-warn-soft: #fff5e0;
   /* chips */

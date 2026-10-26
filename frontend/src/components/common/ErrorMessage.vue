@@ -2,7 +2,7 @@
      (or the neutral fallback); nothing else from the server is ever shown. W-072 (ADR-086): `compact` is the smaller form
      used inside the leg picker and the Save Draft bar - it still shows all four parts under their labels. `prefix` names the
      inner test ids (`<prefix>-what`, `-impact`, `-blocked`, `-next`) so two messages on one page do not collide.
-     ADR-193 UI-020: a card with a 4 px loss-colour left border on the soft loss fill, the parts as 13 px label:value lines;
+     ADR-193 UI-020: a card with a 4 px error-colour left border on the soft error fill, the parts as 13 px label:value lines;
      compact keeps all four parts with 110 px labels and wrapping text. Never a toast. -->
 <script setup>
 defineProps({
@@ -15,7 +15,7 @@ defineProps({
 <template>
   <div
     role="alert"
-    :class="compact ? 'rounded-md border-l-4 border-loss bg-loss-soft p-2 text-[13px]' : 'rounded-md border-l-4 border-loss bg-loss-soft p-4 text-sm'"
+    :class="compact ? 'rounded-md border-l-4 border-error bg-error-soft p-2 text-[13px]' : 'rounded-md border-l-4 border-error bg-error-soft p-4 text-sm'"
     data-testid="error-message"
   >
     <p class="font-semibold text-ink" :data-testid="`${prefix}-what`">{{ parts.what_happened }}</p>

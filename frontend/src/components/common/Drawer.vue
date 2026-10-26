@@ -5,6 +5,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 import Icon from "./Icon.vue";
+import { focusables, trapTab } from "./focusTrap.js";
 
 const props = defineProps({
   open: { type: Boolean, required: true },
@@ -20,35 +21,14 @@ const emit = defineEmits(["close"]);
 const panel = ref(null);
 let returnTo = null;
 
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-function focusables() {
-  return panel.value ? [...panel.value.querySelectorAll(FOCUSABLE)] : [];
-}
 function onKey(e) {
+  trapTab(e, panel.value);
+}
+// Esc closes from anywhere inside the drawer root, including the overlay.
+function onRootKey(e) {
   if (e.key === "Escape") {
     e.preventDefault();
     emit("close");
-    return;
-  }
-  if (e.key !== "Tab") return;
-  const list = focusables();
-  if (!list.length) {
-    e.preventDefault();
-    panel.value?.focus();
-    return;
-  }
-  const first = list[0];
-  const last = list[list.length - 1];
-  if (
-    e.shiftKey &&
-    (document.activeElement === first || document.activeElement === panel.value)
-  ) {
-    e.preventDefault();
-    last.focus();
-  } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault();
-    first.focus();
   }
 }
 watch(
@@ -57,7 +37,7 @@ watch(
     if (isOpen) {
       returnTo = document.activeElement;
       await nextTick();
-      (focusables()[0] ?? panel.value)?.focus();
+      (focusables(panel.value)[0] ?? panel.value)?.focus();
     } else if (returnTo && typeof returnTo.focus === "function") {
       returnTo.focus();
       returnTo = null;
@@ -75,6 +55,7 @@ onBeforeUnmount(() => {
     v-if="open"
     class="fixed inset-x-0 top-14 bottom-0 z-50"
     data-testid="drawer-root"
+    @keydown="onRootKey"
   >
     <div
       class="absolute inset-0 bg-ink/30"
