@@ -372,7 +372,7 @@ class MarginOut(ApiModel):
     available: Money | None = None  # Zerodha's available funds, to the paisa
     checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
     shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)
-    shortfall_reason: CatalogueText | None = None  # REQ-055 AC-4: set only when CHECKED and short, with both ways forward
+    shortfall_reason: CatalogueText | None = None  # REQ-055 AC-4: only when CHECKED and short, with the ways forward
 
 
 class LegOut(ApiModel):

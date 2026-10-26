@@ -194,8 +194,10 @@ _RECONNECT = "Reconnect your Zerodha account from the account page, then try aga
 #: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
 #: `ofo.broker.rate_limit.KiteBusy` raises it).
 ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
-# REQ-055 AC-4: the ways forward when the funds are below the margin; one home for the Execute gate and the Builder line.
-MARGIN_SHORTFALL_NEXT_ACTION: str = "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+# REQ-055 AC-4: the ways forward when funds are below the margin; one home for the Execute gate and the Builder.
+MARGIN_SHORTFALL_NEXT_ACTION: str = (
+    "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+)
 _NO_ALTERNATIVE = " No nearby listed strike is available to offer."
 _ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
 _PICK_OR_REMOVE = "Pick one of the strikes shown for this leg yourself, or remove the leg, then check again."
