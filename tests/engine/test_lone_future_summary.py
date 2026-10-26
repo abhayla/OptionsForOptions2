@@ -72,7 +72,7 @@ def test_lone_sell_future_mirrors_it(futures_provider):
     assert str(s.time_value) == PAISE_ZERO and str(s.intrinsic_value) == PAISE_ZERO
 
 
-def test_an_unlimited_option_strategy_has_no_ratio_and_no_time_or_intrinsic_value():
+def test_an_unlimited_option_strategy_has_no_ratio_but_its_time_and_intrinsic_value():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
@@ -80,15 +80,19 @@ def test_an_unlimited_option_strategy_has_no_ratio_and_no_time_or_intrinsic_valu
     s = summary_of(provider, [(CALL_ID, Action.BUY, entry)])  # a long call: profit unlimited
     assert s.max_profit_unlimited is True
     assert s.reward_risk is None and s.reward_risk_reason == NO_FIXED_MAXIMUM
-    assert s.time_value is None and s.intrinsic_value is None
+    assert s.time_value + s.intrinsic_value == entry * 65  # REQ-081 AC-3 (row 26b): premium paid = intrinsic + time
 
 
-def test_a_bounded_strategy_builds_no_ratio_here_row_26_owns_it():
+def test_a_bounded_strategy_reads_its_ratio_from_the_summary_maximums_row_26b():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     legs = [(iid, action, provider.book.get(iid, VALUATION).ltp) for iid, action in CONDOR]
     s = summary_of(provider, legs)
     assert s.max_profit_unlimited is False and s.max_loss_unlimited is False
-    assert s.reward_risk is None and s.reward_risk_reason is None
-    assert s.time_value is None and s.intrinsic_value is None
+    assert (s.max_profit, s.max_loss) == (Decimal("4754.75"), Decimal("8245.25"))  # no rates here: before charges
+    # 4754.75 / 8245.25 = 0.5766 and 8245.25 / 4754.75 = 1.7341 (hand division), two decimals
+    # AC-4: both maximums must include charges; with no rate table they cannot, so no ratio and the reason
+    assert (s.reward_risk, s.risk_reward) == (None, None)
+    assert s.reward_risk_reason == "the charges could not be priced, so the ratio is not shown"
+    assert s.time_value is not None and s.intrinsic_value is not None

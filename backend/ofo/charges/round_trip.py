@@ -11,8 +11,10 @@ rather than show a made-up figure.
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Sequence
-from decimal import ROUND_CEILING, Decimal
+from dataclasses import dataclass
+from decimal import ROUND_CEILING, ROUND_HALF_EVEN, Decimal
 
 from ofo.charges.calculator import ChargeOrder, charges_for_orders, exercise_stt
 from ofo.charges.rates import ChargeRates
@@ -62,6 +64,49 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
         return to_paise_up(charges_for_orders(orders, rates).total)
     except ValueError as exc:
         raise ChargesNotComputable(str(exc)) from exc
+
+
+@dataclass(frozen=True)
+class ChargesBreakdown:
+    """ADR-167 (2): the round-trip charges shown ONCE, by component (Sensibull screen 022). Each component is the sum
+    over the strategy's entry and exit orders rounded half-even to the paisa; ``total`` is :func:`round_trip_charges`
+    (rounded UP once, ADR-082 line 39), the one figure the sentences, ratios and scenario block use; the parts can
+    differ from it by a paisa or two. ``read_on`` is the date of the
+    rates. ``exercise_stt_rate`` is the STT-on-exercise rate when the strategy holds a bought option (ADR-167 (4)),
+    else None; it carries NO amount (that depends on the settlement level) and is not part of ``total``.
+    Never part of a payoff curve or a scenario value."""
+
+    brokerage: Decimal
+    stt: Decimal
+    exchange_transaction: Decimal
+    gst: Decimal
+    stamp: Decimal
+    sebi: Decimal
+    total: Decimal
+    read_on: datetime.date
+    exercise_stt_rate: Decimal | None = None
+
+
+def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRates) -> ChargesBreakdown:
+    """The charges of :func:`round_trip_charges`, split by component; ChargesNotComputable gives no breakdown at all."""
+    # copied from origin/build/W-127-b2-payoff @194cc405 (backend/ofo/charges/round_trip.py), plus read_on
+    total = round_trip_charges(legs, underlying, rates)  # raises ChargesNotComputable for what has no rate
+    segment = _segment(underlying)
+    orders: list[ChargeOrder] = []
+    for leg in legs:
+        entry = "BUY" if leg.action is Action.BUY else "SELL"
+        orders.append(ChargeOrder(segment, entry, leg.quantity, leg.entry_price))
+        orders.append(ChargeOrder(segment, "SELL" if entry == "BUY" else "BUY", leg.quantity, leg.entry_price))
+    parts = charges_for_orders(orders, rates).orders
+
+    def paise(amounts: Sequence[Decimal]) -> Decimal:
+        return sum(amounts, Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+
+    shown = (paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
+             paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
+             paise([c.stamp for c in parts]), paise([c.sebi for c in parts]))
+    return ChargesBreakdown(*shown, total, rates.read_on,
+                            rates.stt_exercise_rate if holds_bought_option(legs) else None)
 
 
 def is_bought_option(leg: Leg) -> bool:

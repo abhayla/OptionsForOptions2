@@ -77,7 +77,7 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     out = resp.json()
     assert set(out) == {"state", "underlying", "status_label", "reason", "output_label", "valuation",
                         "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
-                        "table", "scenario", "payoff", "summary", "leg_quotes"}
+                        "table", "scenario", "payoff", "summary", "leg_quotes", "charges_breakdown"}
     assert (out["state"], out["underlying"]) == ("COMPUTED", "NIFTY")
     assert out["spot_level"] == "22533.25"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET" and isinstance(out["margin"]["reason"], str)
@@ -307,10 +307,13 @@ async def test_a_lone_future_summary_body_carries_the_ac4_answers(action, unlimi
     _no_floats(out)
 
 
-async def test_a_bounded_strategy_summary_carries_the_new_keys_as_null(replayed):
-    """A strategy that is not a lone futures leg keeps the AC-4 keys present and null (row 26 owns its ratio)."""
+async def test_a_bounded_strategy_summary_carries_the_money_figures_as_strings(replayed):
+    """No rate table on this route: no ratio, since REQ-081 AC-4 wants both maximums including charges; the time and
+    intrinsic value (AC-3) stay money strings."""
     s = (await _post(_body(replayed), replayed)).json()["summary"]
-    assert (s["reward_risk"], s["reward_risk_reason"], s["time_value"], s["intrinsic_value"]) == (None,) * 4
+    assert (s["reward_risk"], s["risk_reward"]) == (None, None)
+    assert s["reward_risk_reason"] == "the charges could not be priced, so the ratio is not shown"
+    assert all(isinstance(s[k], str) for k in ("time_value", "intrinsic_value"))
 
 
 async def test_every_outcome_leg_carries_days_to_expiry_counted_from_the_answers_ist_date(replayed):
