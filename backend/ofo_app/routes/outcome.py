@@ -377,6 +377,8 @@ class ChargesBreakdownOut(ApiModel):
     total: Money
     rates_read_on: datetime.date
     label: CatalogueText
+    exercise_stt_rate: Money | None = None  # ADR-167 (4): only with a bought option; rate and condition, no amount
+    exercise_stt_note: CatalogueText | None = None
 
 
 class SummaryOut(ApiModel):
@@ -410,7 +412,8 @@ class MarginOut(ApiModel):
     """ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."""
     state: Literal["NOT_AVAILABLE_YET", "CHECKED", "UNREADABLE", "NO_BASKET"]
     reason: CatalogueText
-    needed: Money | None = None  # Zerodha's basket figure + the ADR-094 top-up, to the paisa
+    needed: Money | None = None  # OUR figure: Zerodha's basket figure + the ADR-094 top-up, to the paisa
+    broker_needed: Money | None = None  # Zerodha's own final.total (0 for a closing basket); only when CHECKED
     available: Money | None = None  # Zerodha's available funds, to the paisa
     checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
     shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)

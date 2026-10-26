@@ -1,6 +1,7 @@
 <script setup>
-// ADR-099: Zerodha's margin for the planned orders, in the outcome screen's margin slot. Display only: the amounts are
-// the API's own strings and the shortfall flag is the server's Decimal comparison; the browser never reads, parses or
+// ADR-099: the margin for the planned orders, in the outcome screen's margin slot. Display only: the figures are in the
+// server's own text (REQ-055 AC-3: Zerodha's figure and ours are named apart there, never relabelled in the browser)
+// and the shortfall flag is the server's Decimal comparison; the browser never reads, parses or
 // compares money (ADR-008). Without figures (no Kite login, Zerodha could not be read, a leg not listed) the answer's
 // catalogue text is shown as it is. The Checked-at time uses the one ADR-088 formatter.
 // REQ-117 (W-132): the line asks the flag `basket_margin_quote`. `capabilities` is the server's flag body: null while
@@ -18,7 +19,7 @@ const props = defineProps({
 const pending = computed(() => props.capabilities === null)
 const quoteOn = computed(() => capabilityOn(props.capabilities, 'basket_margin_quote'))
 const checked = computed(() => props.margin.state === 'CHECKED' && typeof props.margin.needed === 'string'
-  && typeof props.margin.available === 'string' && typeof props.margin.checked_at === 'string')
+  && typeof props.margin.available === 'string' && typeof props.margin.reason === 'string' && typeof props.margin.checked_at === 'string')
 const short = computed(() => checked.value && props.margin.shortfall === true)
 // REQ-055 AC-4: the server's own line (both figures and the ways forward), shown as it is; an older answer without
 // the field keeps the plain line, so a cached answer still shows the shortfall.
@@ -33,7 +34,7 @@ const shortfallText = computed(() => (typeof props.margin.shortfall_reason === '
     <template v-else-if="checked">
       <div class="flex flex-wrap items-center">
         <p :class="short ? 'text-red-700 font-medium' : 'text-ink-muted'" data-testid="margin-figures">
-          Margin (Zerodha): Rs {{ margin.needed }} needed, Rs {{ margin.available }} available
+          {{ margin.reason }}
         </p>
         <FigureHint id="margin_needed" />
         <FigureHint id="funds_needed" />

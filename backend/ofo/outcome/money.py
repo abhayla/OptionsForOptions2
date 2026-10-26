@@ -84,9 +84,11 @@ class RewardRisk:
     reason: ExplanationText | None
 
 
-def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True) -> RewardRisk:
+def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True,
+                charges_priced: bool = True) -> RewardRisk:
     """Both maximums come from the Summary (already including charges, ADR-082); ``None`` = Unlimited. Absent with a
-    reason when either side is Unlimited, the loss is 0, there is no profit, or the legs are on different expiries."""
+    reason when either side is Unlimited, the loss is 0, there is no profit, or the legs are on different expiries.
+    ``charges_priced`` False (no rate set, a futures leg): no ratio from figures without charges (REQ-081 AC-4)."""
     if not single_expiry:
         return RewardRisk(None, None, render_explanation("money_reward_risk_multi_expiry"))
     if max_profit is None or max_loss is None:
@@ -95,14 +97,16 @@ def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True) -
         return RewardRisk(None, None, render_explanation("money_reward_risk_zero_loss"))
     if max_profit <= 0:
         return RewardRisk(None, None, render_explanation("summary_make_none"))
+    if not charges_priced:
+        return RewardRisk(None, None, render_explanation("money_reward_risk_no_charges"))
     ratio, inverse = engine.reward_risk_ratios(max_profit, max_loss)
     return RewardRisk(ratio, inverse, None)
 
 
 @dataclass(frozen=True)
 class FundsShare:
-    """ADR-164: each maximum as a whole percent of the available funds Zerodha reported, with that figure and when it was
-    read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue wording."""
+    """ADR-164: each maximum as a whole percent of the available funds Zerodha reported, with that figure and when it
+    was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue wording."""
 
     funds: Any
     read_at: Any
@@ -113,11 +117,13 @@ class FundsShare:
 
 
 def _share(amount: Any, funds: Any) -> tuple[Any, ExplanationText | None]:
+    """(whole percent, text). The whole percent is rounded ROUND_HALF_UP (2.5% -> 3%); a share under 1% sends percent
+    None with the "less than 1% of funds" text, never "0"."""
     if amount is None or amount < 0:
         return None, None
     raw = engine.percent_of_funds(amount, funds)
-    if 0 < raw < 1:  # the whole percent would read 0 or 1 for it: a catalogue sentence says so
-        return engine.whole_percent(engine.ZERO_MONEY), render_explanation("money_funds_percent_small")
+    if 0 < raw < 1:  # the whole percent would read 0 or 1 for it: percent stays null, a catalogue sentence says so
+        return None, render_explanation("money_funds_percent_small")
     whole = engine.whole_percent(raw)
     return whole, render_explanation("money_funds_percent", pct=whole)
 

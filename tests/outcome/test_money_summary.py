@@ -19,6 +19,7 @@ from ofo.engine import Strategy, strategy_metrics
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import EXPLANATIONS
 from ofo.outcome import money
+from ofo.outcome.serialize import outcome_to_dict
 from ofo.table import ColumnId
 from test_charges_in_sentences import (
     EXPIRY,
@@ -214,3 +215,78 @@ def test_with_funds_sets_the_share_on_a_summary():
 def test_catalogue_wording_has_none_of_the_advice_words():
     texts = [t.text.lower() for tid, t in EXPLANATIONS.items() if tid.startswith("money_")]
     assert texts and not [w for t in texts for w in ("return", "gain", "expected", "promise") if w in t]
+
+
+# --- row 26b fix 1: ratios only with charges (REQ-081 AC-4), killing mutants M1 / M1b ---------------------------------
+
+NO_CHARGES_REASON = "the charges could not be priced, so the ratio is not shown"
+
+
+def test_replay_condor_without_rates_has_no_ratio_and_with_rates_keeps_054_186(replayed):
+    """Core: the same replay condor, rates absent -> None + reason (was 0.58 / 1.73); rates present -> 0.54 / 1.86."""
+    _d, bare = outcome_of(replayed, None)
+    s = bare.summary
+    assert (s.reward_risk, s.risk_reward, s.reward_risk_reason) == (None, None, NO_CHARGES_REASON)
+    assert s.charges is None and s.charges_unavailable
+    _d, priced = outcome_of(replayed, RATES)
+    p = priced.summary
+    assert (p.reward_risk, p.risk_reward, p.reward_risk_reason) == (D("0.54"), D("1.86"), None)
+    # hand: 4539.65 / 8460.35 = 0.5366 -> 0.54 ; inverse 1.8636 -> 1.86
+    # these replay prices give the exact round trip rounded UP, 215.10 (ADR-082 line 39)
+    assert (p.max_profit, p.max_loss) == (D("4754.75") - D("215.10"), D("8245.25") + D("215.10"))
+
+
+def test_ratio_is_never_taken_from_the_figures_before_charges(replayed):
+    _d, priced = outcome_of(replayed, RATES)
+    before = money.reward_risk(D("4754.75"), D("8245.25"))
+    assert (before.reward_risk, before.risk_reward) == (D("0.58"), D("1.73"))
+    assert priced.summary.reward_risk != before.reward_risk and priced.summary.risk_reward != before.risk_reward
+
+
+# --- M2 / M5 and the shares (attack 4, 5) ----------------------------------------------------------------------
+
+
+def test_one_priced_and_one_unpriced_leg_gives_no_partial_value_split():
+    priced = leg(Action.BUY, Instrument.CE, "22900", "150.00", ltp="150.00")
+    unpriced = leg(Action.SELL, Instrument.PE, "23000", "90.00")  # no live price
+    v = money.time_and_intrinsic((priced, unpriced), D("22976.85"))
+    assert (v.intrinsic, v.time, v.label) == (None, None, None)
+    assert v.reason == "a live price is missing for at least one leg or for the index"
+
+
+def test_time_value_uses_the_live_price_not_the_planned_entry():
+    bought = leg(Action.BUY, Instrument.CE, "22900", "150.00", ltp="180.00")  # planned 150, live 180
+    v = money.time_and_intrinsic((bought,), D("22976.85"))
+    # per unit: intrinsic 22976.85 - 22900 = 76.85, time 180 - 76.85 = 103.15 (planned 150 would give 73.15); x 65
+    assert (v.intrinsic, v.time) == (D("4995.25"), D("6704.75"))
+
+
+def test_a_share_under_one_percent_sends_percent_null_with_the_text():
+    f = money.funds_share(D("100"), D("200"), FakeMargin())  # 0.2% and 0.4% of 50000
+    assert (f.max_profit_percent, f.max_loss_percent) == (None, None)
+    assert f.max_profit_text == f.max_loss_text == "less than 1% of funds"
+
+
+def test_whole_percent_rounds_half_up():
+    f = money.funds_share(D("1250"), D("4250"), FakeMargin())  # 2.5% -> 3 and 8.5% -> 9 (half-even would give 2 and 8)
+    assert (f.max_profit_percent, f.max_loss_percent) == (D("3"), D("9"))
+
+
+def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):
+    _d, out = outcome_of(replayed, RATES)
+    body = outcome_to_dict(out)
+    b = body["charges_breakdown"]
+    items = sum((D(b[k]) for k in ("brokerage", "stt", "exchange_transaction", "sebi", "stamp", "gst")), D(0))
+    assert D(b["total"]) == out.summary.charges == D("215.10")  # exact sum rounded UP; items may differ by paise
+    assert abs(items - D(b["total"])) <= 2 * D("0.01")
+    assert "about ₹215.10 of" in out.summary.what_can_i_lose and "about ₹215.10 of" in out.summary.what_can_i_make
+    assert D(body["summary"]["max_loss"]) == D("8245.25") + D(b["total"])
+
+
+def test_the_breakdown_names_exercise_stt_with_rate_and_condition_but_no_figure(replayed):
+    _d, out = outcome_of(replayed, RATES)
+    b = outcome_to_dict(out)["charges_breakdown"]
+    assert b["exercise_stt_rate"] == "0.0015"
+    assert b["exercise_stt_note"] == ("STT on exercise: 0.15% of the value of a bought option that finishes in the "
+                                      "money. It depends on where the index settles, so it is not in this total.")
+    assert "exercise_stt_amount" not in b and b["total"] == "215.10"

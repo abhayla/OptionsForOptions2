@@ -654,6 +654,26 @@
             "title": "Exchange Transaction",
             "type": "string"
           },
+          "exercise_stt_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Note"
+          },
+          "exercise_stt_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Stt Rate"
+          },
           "gst": {
             "title": "Gst",
             "type": "string"
@@ -5510,6 +5530,17 @@
               }
             ],
             "title": "Available"
+          },
+          "broker_needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed"
           },
           "checked_at": {
             "anyOf": [

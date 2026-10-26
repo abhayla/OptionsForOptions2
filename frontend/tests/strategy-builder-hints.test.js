@@ -226,7 +226,7 @@ describe("REQ-136 AC-1: marks on the figures that exist today", () => {
       "margin_available",
     ]);
     expect(t(w, "margin-figures").text()).toMatch(
-      /^Margin \(Zerodha\): Rs \S+ needed, Rs \S+ available$/,
+      /^Zerodha's own margin figure is \S+ With the premium up to your limit prices, about \S+ is needed \(an estimate\); \S+ is available in your Zerodha account\.$/,
     );
     await markOf(w, "margin_needed").trigger("focus");
     expect(textOf(w, "margin_needed").text()).toBe(FIGURES.margin_needed.text);

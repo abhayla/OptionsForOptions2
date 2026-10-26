@@ -70,7 +70,10 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
 class ChargesBreakdown:
     """ADR-167 (2): the round-trip charges shown ONCE, by component (Sensibull screen 022). Each component is the sum
     over the strategy's entry and exit orders rounded half-even to the paisa; ``total`` is :func:`round_trip_charges`
-    (rounded UP once), so the parts can differ from the total by a paisa or two. ``read_on`` is the date of the rates.
+    (rounded UP once, ADR-082 line 39), the one figure the sentences, ratios and scenario block use; the parts can
+    differ from it by a paisa or two. ``read_on`` is the date of the
+    rates. ``exercise_stt_rate`` is the STT-on-exercise rate when the strategy holds a bought option (ADR-167 (4)),
+    else None; it carries NO amount (that depends on the settlement level) and is not part of ``total``.
     Never part of a payoff curve or a scenario value."""
 
     brokerage: Decimal
@@ -81,6 +84,7 @@ class ChargesBreakdown:
     sebi: Decimal
     total: Decimal
     read_on: datetime.date
+    exercise_stt_rate: Decimal | None = None
 
 
 def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRates) -> ChargesBreakdown:
@@ -98,10 +102,11 @@ def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRate
     def paise(amounts: Sequence[Decimal]) -> Decimal:
         return sum(amounts, Decimal("0")).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
-    return ChargesBreakdown(
-        paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
-        paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
-        paise([c.stamp for c in parts]), paise([c.sebi for c in parts]), total, rates.read_on)
+    shown = (paise([c.brokerage for c in parts]), paise([c.stt for c in parts]),
+             paise([c.exchange_transaction for c in parts]), paise([c.gst for c in parts]),
+             paise([c.stamp for c in parts]), paise([c.sebi for c in parts]))
+    return ChargesBreakdown(*shown, total, rates.read_on,
+                            rates.stt_exercise_rate if holds_bought_option(legs) else None)
 
 
 def is_bought_option(leg: Leg) -> bool:

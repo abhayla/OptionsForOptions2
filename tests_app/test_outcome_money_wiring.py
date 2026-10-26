@@ -70,10 +70,12 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     assert (share["funds"], share["max_profit_percent"], share["max_loss_percent"]) == ("671.50", "708", "1228")
     assert (share["max_profit_text"], share["max_loss_text"]) == (PROFIT_TEXT, LOSS_TEXT)
     assert share["read_at"] is not None and CHECKED_AT.isoformat().replace("+00:00", "") in share["read_at"]
-    assert (s["reward_risk"], s["risk_reward"]) == ("0.58", "1.73")
+    # no rate table on this route: the charges cannot be priced, so there is no ratio (REQ-081 AC-4), never 0.58/1.73
+    assert (s["reward_risk"], s["risk_reward"]) == (None, None)
+    assert s["reward_risk_reason"] == "the charges could not be priced, so the ratio is not shown"
     net = s["net_premium"]
     assert isinstance(net["amount"], str) and net["side"] in ("get", "pay") and net["reason"] is None
-    assert all(isinstance(s[k], str) for k in ("time_value", "intrinsic_value", "reward_risk", "risk_reward"))
+    assert all(isinstance(s[k], str) for k in ("time_value", "intrinsic_value"))
     assert out["charges_breakdown"] is None or isinstance(out["charges_breakdown"]["total"], str)
     _no_float(out)
 

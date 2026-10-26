@@ -27,11 +27,29 @@ def test_components_equal_the_hand_arithmetic():
     assert b.total == HAND_PAISE and b.read_on == RATES.read_on
 
 
-def test_total_is_the_rounded_up_round_trip_and_parts_are_within_a_paisa_or_two():
+def _parts(b):
+    return b.brokerage + b.stt + b.exchange_transaction + b.sebi + b.stamp + b.gst
+
+
+def test_total_is_the_one_exact_round_up_figure_and_each_item_is_within_a_paisa():
+    """ADR-082 line 39: total = exact sum rounded UP = round_trip_charges = the scenario block's figure."""
     b = round_trip_breakdown(legs(), "NIFTY", RATES)
-    assert b.total == round_trip_charges(legs(), "NIFTY", RATES)
-    parts = b.brokerage + b.stt + b.exchange_transaction + b.sebi + b.stamp + b.gst
-    assert abs(parts - b.total) <= 2 * ONE_PAISE
+    assert b.total == round_trip_charges(legs(), "NIFTY", RATES) == HAND_PAISE
+    exact = {"brokerage": D("160"), "stt": D("16.550625"), "exchange_transaction": D("7.84058275"),
+             "sebi": D("0.0220675"), "stamp": D("0.3310125"), "gst": D("30.215277045")}  # test_charges_in_sentences
+    for name, value in exact.items():
+        assert abs(getattr(b, name) - value) <= ONE_PAISE, name
+
+
+def test_exercise_stt_line_has_the_rate_and_no_amount_when_a_bought_option_is_held():
+    b = round_trip_breakdown(legs(), "NIFTY", RATES)  # the condor holds two bought options
+    assert b.exercise_stt_rate == RATES.stt_exercise_rate == D("0.0015")
+    assert b.total == HAND_PAISE  # the line is not part of the total
+
+
+def test_no_exercise_stt_line_without_a_bought_option():
+    sold = tuple(x for x in legs() if x.action is Action.SELL)
+    assert round_trip_breakdown(sold, "NIFTY", RATES).exercise_stt_rate is None
 
 
 def test_a_futures_leg_gives_no_breakdown_not_a_partial_one():

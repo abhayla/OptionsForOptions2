@@ -29,7 +29,8 @@ def _t(value: datetime.datetime | None) -> str | None:
 
 def _margin(out: Outcome) -> dict[str, Any]:
     m = out.margin
-    return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "available": _s(m.available),
+    return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "broker_needed": _s(m.broker_needed),
+            "available": _s(m.available),
             "checked_at": _t(m.checked_at), "shortfall": m.shortfall,
             "shortfall_reason": m.shortfall_reason}
 
@@ -42,7 +43,10 @@ def _breakdown(b: Any) -> dict[str, Any] | None:
         return None
     return {"brokerage": _s(b.brokerage), "stt": _s(b.stt), "exchange_transaction": _s(b.exchange_transaction),
             "gst": _s(b.gst), "stamp": _s(b.stamp), "sebi": _s(b.sebi), "total": _s(b.total),
-            "rates_read_on": b.read_on.isoformat(), "label": render_explanation("money_charges_label")}
+            "rates_read_on": b.read_on.isoformat(), "label": render_explanation("money_charges_label"),
+            "exercise_stt_rate": _s(b.exercise_stt_rate),
+            "exercise_stt_note": None if b.exercise_stt_rate is None else render_explanation(
+                "money_charges_exercise_stt", pct=(b.exercise_stt_rate * 100).normalize())}
 
 
 def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
