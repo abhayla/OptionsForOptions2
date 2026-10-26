@@ -53,7 +53,8 @@ async def test_route_says_including_charges_when_a_rate_set_is_stored(replayed, 
     assert D(s["max_loss"]) == D("8245.25") + D(s["charges"])
 
 
-async def test_route_curve_and_totals_are_before_charges_while_max_loss_adds_them(replayed, monkeypatch):  # noqa: F811 - pytest fixture
+async def test_route_curve_and_totals_are_before_charges_while_max_loss_adds_them(
+        replayed, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, None)
     plain = (await _post(_body(replayed), replayed)).json()
     seed(monkeypatch, RATES)

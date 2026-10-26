@@ -1,7 +1,7 @@
 """The two views of the same scenario columns (REQ-034 AC-6; ADR-008 Q33A = C; scenario-calculations.md §4).
 
-- **At Expiry** (default, exact): the engine's §1 expiry P&L per leg and total (:func:`ofo.engine.scenario_grid`), BEFORE charges and exercise STT (ADR-167 (1)). The
-  round-trip charges are carried beside the values (``ScenarioValues.charges``), never inside them.
+- **At Expiry** (default, exact): the engine's §1 expiry P&L per leg and total (:func:`ofo.engine.scenario_grid`),
+  BEFORE charges and exercise STT (ADR-167 (1)). The round-trip charges are carried beside the values (``ScenarioValues.charges``), never inside them.
 - **Estimated Now** (model-based): the engine's estimate (:func:`ofo.engine.model.estimate`), labelled
   as an estimate and carrying its assumptions. A strategy with an option leg that has no IV gets no estimate: the
   view is unavailable with a reason, never a zero.
@@ -62,7 +62,7 @@ class ScenarioValues:
     data_label: str | None = None
     # data label and model label joined, e.g. "stale since 09:20 IST; estimated from spot" (W-060 round 3)
     output_label: str | None = None
-    # ADR-167 (2): the round-trip charges beside the values (the breakdown figure); never inside a total (None = no rates)
+    # ADR-167 (2): the round-trip charges beside the values (the breakdown); never inside a total (None = no rates)
     charges: Decimal | None = None
 
 

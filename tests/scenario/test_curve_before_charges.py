@@ -79,4 +79,5 @@ def test_guard_every_view_and_rate_pair_over_the_golden_condor_equals_the_engine
             assert v.charges is None  # Estimated Now never reads the rates
     by_level = dict(zip(ls.levels, scenario_values(ls, golden, View.AT_EXPIRY, rates=rates).totals, strict=True))
     assert by_level[D("23047")] == D("6825")  # hand figure, before charges
-    assert by_level[D("22000")] == D("-8175") and by_level[D("24000")] == D("-8175")  # bought option ITM: no exercise STT
+    # bought option ITM: no exercise STT
+    assert by_level[D("22000")] == D("-8175") and by_level[D("24000")] == D("-8175")

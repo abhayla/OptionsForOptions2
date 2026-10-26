@@ -1,6 +1,7 @@
 """REQ-081 AC-4 / ADR-167 (W-154, supersedes the values half of ADR-082 (2) / W-075): the At Expiry scenario values are
 before charges and before STT on exercise; the round trip is carried beside them (``charges``). Estimated Now and the
-per-leg rows are not touched. Exercise STT (BUY 22800 PE at 22,000: 90; BUY 23600 CE at 24,000: 45) stays out of the curve.
+per-leg rows are not touched. Exercise STT (BUY 22800 PE at 22,000: 90; BUY 23600 CE at 24,000: 45) stays out of
+the curve.
 
 Hand figures for the §6 condor (BUY 22800 PE 42.50, SELL 23000 PE 86.00, SELL 23400 CE 91.50, BUY 23600 CE 44.00, 75
 units): premium 19,800 each side; brokerage 160 + STT 29.7 + exchange 14.06988 + SEBI 0.0396 + stamp 0.594 + GST
