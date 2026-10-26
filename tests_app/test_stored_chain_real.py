@@ -22,6 +22,8 @@ from ofo_app.catalogue_store import apply_update
 from ofo_app.chain_push import ChainCatalogue, stored_chain
 from ofo_app.routes import leg_picker, outcome
 from sqlalchemy.exc import OperationalError
+from test_catalogue_store import _fixture as _futures_fixture
+from test_catalogue_store import _sym
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import AS_OF, EXPIRY, _fixture_rows
 
@@ -61,6 +63,28 @@ async def test_the_real_reader_returns_a_readable_catalogue_with_permissions(app
             await trans.rollback()
 
 
+def _rows_with_a_future():
+    """The recorded 2026-10-08 list has no futures; the 2026-10-02 list's NIFTY future is added, same loader."""
+    future = [c for c in _futures_fixture() if _sym(c) == "NIFTY26OCTFUT"]
+    assert len(future) == 1
+    return _fixture_rows() + future
+
+
+async def test_the_real_futures_reader_lists_the_stored_future(app_engine, monkeypatch):
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF)
+            _wired(monkeypatch, conn)
+            catalogue = await leg_picker.stored_futures("NIFTY")
+            assert catalogue.unreadable is False
+            assert catalogue.option_expiries and EXPIRY in catalogue.option_expiries
+            assert [(f.instrument_type, f.expiry, f.symbol) for f in catalogue.futures] == [
+                ("FUT", datetime.date(2026, 10, 27), "NIFTY26OCTFUT")]
+        finally:
+            await trans.rollback()
+
+
 async def test_a_database_error_is_unreadable_with_no_rows(monkeypatch):
     def boom():
         raise OperationalError("select", {}, OSError("refused"))
@@ -87,6 +111,25 @@ async def test_the_strikes_route_lists_strikes_through_the_real_reader(app_engin
             assert got.status_code == HTTP_OK, got.text
             body = got.json()
             assert body["reason"] != "CATALOGUE_UNREADABLE" and body["rows"], body
+        finally:
+            await trans.rollback()
+
+
+async def test_the_futures_route_lists_the_future_through_the_real_reader(app_engine, monkeypatch):
+    from ofo_app.main import create_app  # noqa: PLC0415 - built per test, no lifespan
+
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF)
+            _wired(monkeypatch, conn)
+            app = create_app()
+            app.dependency_overrides[leg_picker.get_feed] = lambda: None  # NOT get_futures_reader: the reader is real
+            app.dependency_overrides[outcome.get_answer_clock] = lambda: (lambda: CLOCK)
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+                got = await client.get(leg_picker.FUTURES_PATH, params={"underlying": "NIFTY"})
+            assert got.status_code == HTTP_OK, got.text
+            assert [f["expiry"] for f in got.json()["futures"]] == ["2026-10-27"], got.text
         finally:
             await trans.rollback()
 
