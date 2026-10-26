@@ -21,12 +21,12 @@ const STEPPERS = [
 
 <template>
   <div data-testid="strategy-controls" role="group" aria-label="Strike Controls">
-  <div class="flex flex-nowrap items-center divide-x divide-line whitespace-nowrap">
+  <div class="flex flex-wrap items-center gap-y-2 whitespace-nowrap sm:flex-nowrap sm:divide-x sm:divide-line">
     <span class="sr-only">Strike Controls</span>
     <div
       v-for="c in STEPPERS"
       :key="c.id"
-      class="flex items-center gap-2 px-3 first:pl-0"
+      class="flex items-center gap-2 pr-3 sm:px-3 sm:first:pl-0"
       :data-testid="`control-${c.id}`"
     >
       <span class="text-ink-muted"
