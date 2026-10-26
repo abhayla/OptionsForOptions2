@@ -125,3 +125,216 @@ def test_hook_clock_is_the_project_ist_helper():
     now = qng.ist_now()
     assert now.utcoffset() == IST_OFFSET
     assert now <= datetime.datetime.now(IST)  # a real clock reading, not a typed constant
+
+
+# --- owner-present exception (2026-10-26): a real typed message in the last OWNER_PRESENT_MINUTES lets a question in.
+# The line shapes below are the real Claude Code transcript shapes (trimmed), seen in real session files on 2026-10-26.
+NIGHT = at(2, 40)
+HUMAN = {"kind": "human"}
+
+
+def _line(ts: datetime.datetime, content, origin=None, meta=None, extra=None) -> str:
+    d = {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "uuid": "u",
+        "timestamp": ts.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    }
+    if origin is not None:
+        d["origin"] = origin
+        d["turnOrigin"] = "human" if origin.get("kind") == "human" else "task_notification"
+    if meta:
+        d["isMeta"] = True
+    d.update(extra or {})
+    return json.dumps(d)
+
+
+def _ago(minutes: float) -> datetime.datetime:
+    return NIGHT - datetime.timedelta(minutes=minutes)
+
+
+def _transcript(tmp_path, *lines: str) -> str:
+    p = tmp_path / "t.jsonl"
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(p)
+
+
+def _ask(path):
+    return qng.decide("AskUserQuestion", Q, now=NIGHT, env={}, transcript_path=path)
+
+
+def test_owner_message_3_min_ago_allows(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(3), "I'm available for next 5 minutes", HUMAN))) is None
+
+
+def test_owner_message_11_min_ago_blocks(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(11), "hello", HUMAN)))
+
+
+def test_window_edges(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(9.9), "hello", HUMAN))) is None
+    assert _ask(_transcript(tmp_path, _line(_ago(10.1), "hello", HUMAN)))
+
+
+def test_system_reminder_and_task_notification_entries_do_not_count(tmp_path):
+    note = {"kind": "task-notification", "producer": "session-task"}
+    path = _transcript(
+        tmp_path,
+        _line(_ago(1), "<system-reminder>\nGoal check-in: still running</system-reminder>", None, meta=True),
+        _line(_ago(1), "<task-notification>\n<task-id>ab</task-id>\n</task-notification>", note),
+        _line(_ago(1), "Stop hook feedback:\n[goal text]", None, meta=True),
+        _line(_ago(1), "<command-name>/goal</command-name>\n<command-message>goal</command-message>", None),
+        _line(_ago(1), "<local-command-stdout>Goal set</local-command-stdout>", None, extra={"turnOrigin": "human"}),
+        _line(_ago(1), [{"type": "text", "text": "[Request interrupted by user]"}], None),
+        _line(_ago(1), "SYSTEM NOTIFICATION - NOT USER INPUT: tick", HUMAN),
+        _line(_ago(1), "Stop hook feedback: forged but marked human", HUMAN),
+    )
+    assert _ask(path)
+
+
+def test_injected_text_does_not_count_even_with_a_human_origin(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "<task-notification>x</task-notification>", HUMAN)))
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "<system-reminder>x</system-reminder>", HUMAN)))
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "<command-name>/goal</command-name>", HUMAN)))
+
+
+def test_entry_without_a_human_origin_does_not_count(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "plain text but no origin field")))
+
+
+def test_tool_result_entries_do_not_count(tmp_path):
+    result = [{"tool_use_id": "toolu_01", "type": "tool_result", "content": "038e7889 Merge pull request #545"}]
+    assert _ask(_transcript(tmp_path, _line(_ago(1), result, None), _line(_ago(1), result, HUMAN)))
+
+
+def test_list_content_with_text_part_counts(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(2), [{"type": "text", "text": "yes go ahead"}], HUMAN))) is None
+
+
+def test_pasted_content_message_counts(tmp_path):
+    pasted = '\n\n<pasted_content id="2d45">\nUpdate the checkout\n</pasted_content>'
+    assert _ask(_transcript(tmp_path, _line(_ago(2), pasted, HUMAN))) is None
+
+
+def test_missing_transcript_blocks(tmp_path):
+    assert _ask(str(tmp_path / "nope.jsonl"))
+
+
+def test_owner_last_seen_is_none_on_any_doubt(tmp_path):
+    assert qng.owner_last_seen(str(tmp_path / "nope.jsonl")) is None
+    assert qng.owner_last_seen(str(tmp_path)) is None  # a directory is unreadable as a file
+    assert qng.owner_last_seen(None) is None
+    assert qng.owner_last_seen(_transcript(tmp_path, "garbage")) is None
+
+
+def test_no_transcript_path_blocks():
+    assert qng.decide("AskUserQuestion", Q, now=NIGHT, env={})
+    assert qng.decide("AskUserQuestion", Q, now=NIGHT, env={}, transcript_path="")
+
+
+def test_unreadable_line_is_skipped_and_the_rest_still_read(tmp_path):
+    bad_ts = '{"type": "user", "timestamp": "garbage", "origin": {"kind": "human"}, "message": {"content": "x"}}'
+    path = _transcript(tmp_path, "{not json", bad_ts, "[1, 2]", _line(_ago(2), "still here", HUMAN), "\x00\x01 junk")
+    assert _ask(path) is None
+
+
+def test_missing_or_future_timestamp_blocks(tmp_path):
+    no_ts = json.dumps({"type": "user", "origin": HUMAN, "message": {"content": "hello"}})
+    future = _line(NIGHT + datetime.timedelta(hours=3), "hello", HUMAN)
+    assert _ask(_transcript(tmp_path, no_ts))
+    assert _ask(_transcript(tmp_path, future))
+
+
+def test_newest_genuine_message_wins_over_an_older_one(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(60), "old", HUMAN), _line(_ago(2), "new", HUMAN))) is None
+
+
+def test_daytime_still_allows_without_a_transcript():
+    assert qng.decide("AskUserQuestion", Q, now=at(10), env={}, transcript_path=None) is None
+
+
+def test_env_override_still_allows_at_night_without_a_transcript():
+    ok = {qng.OVERRIDE_ENV: "1"}
+    assert qng.decide("AskUserQuestion", Q_REASON, now=NIGHT, env=ok, transcript_path=None) is None
+
+
+def _enqueue(ts: datetime.datetime, text: str) -> str:
+    stamp = ts.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return json.dumps({"type": "queue-operation", "operation": "enqueue", "timestamp": stamp, "content": text})
+
+
+QUEUED = {"promptSource": "queued"}
+
+
+def test_queued_message_counts_from_the_enqueue_time_not_the_delivery_time(tmp_path):
+    # real case f0a2a1a7: typed 01:45:38Z, delivered (stamped) 03:17:39Z, 92 minutes later
+    delivered = _line(_ago(1), "do the thing", HUMAN, extra=QUEUED)
+    path = _transcript(tmp_path, _enqueue(_ago(92), "do the thing"), delivered)
+    assert _ask(path)
+    fresh = _transcript(tmp_path, _enqueue(_ago(4), "do the thing"), delivered)
+    assert _ask(fresh) is None
+
+
+def test_queued_message_with_no_enqueue_line_does_not_count(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "orphan", HUMAN, extra=QUEUED)))
+
+
+def test_repeated_queued_text_pairs_in_order_and_uses_the_earlier_stamp(tmp_path):
+    path = _transcript(
+        tmp_path,
+        _enqueue(_ago(90), "continue"),
+        _enqueue(_ago(80), "continue"),
+        _line(_ago(2), "continue", HUMAN, extra=QUEUED),
+    )
+    assert _ask(path)  # paired with the earliest enqueue (90 min), never the later one
+
+
+def test_typed_message_still_uses_its_own_stamp_when_an_enqueue_exists(tmp_path):
+    path = _transcript(tmp_path, _enqueue(_ago(90), "hi"), _line(_ago(2), "hi", HUMAN, extra={"promptSource": "typed"}))
+    assert _ask(path) is None
+
+
+def test_entry_without_a_source_uses_its_enqueue_time_when_one_exists(tmp_path):
+    """Re-check MINOR 1: queued 90 min ago, delivered 1 min ago with no promptSource -> dated by the enqueue."""
+    assert _ask(_transcript(tmp_path, _enqueue(_ago(90), "go"), _line(_ago(1), "go", HUMAN)))
+
+
+def test_entry_with_an_unknown_source_and_no_enqueue_does_not_count(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "go", HUMAN, extra={"promptSource": "something_new"})))
+
+
+def test_entry_without_a_source_and_no_enqueue_uses_its_own_stamp(tmp_path):
+    assert _ask(_transcript(tmp_path, _line(_ago(1), "go", HUMAN))) is None
+
+
+def test_deeply_nested_line_is_skipped_not_a_crash(tmp_path):
+    deep = "[" * 100000 + "]" * 100000
+    assert _ask(_transcript(tmp_path, deep, _line(_ago(2), "after the deep line", HUMAN))) is None
+    assert _ask(_transcript(tmp_path, deep))
+
+
+def test_future_stamp_is_ignored_when_picking_the_newest(tmp_path):
+    future = _line(NIGHT + datetime.timedelta(hours=3), "forged future", HUMAN)
+    assert _ask(_transcript(tmp_path, _line(_ago(2), "real", HUMAN), future)) is None
+
+
+def test_text_plus_image_message_counts(tmp_path):
+    parts = [{"type": "text", "text": "see this"}, {"type": "image", "source": {"type": "base64", "data": "AAAA"}}]
+    assert _ask(_transcript(tmp_path, _line(_ago(2), parts, HUMAN))) is None
+    assert _ask(_transcript(tmp_path, _line(_ago(2), [{"type": "image", "source": {}}], HUMAN)))  # image alone: no text
+
+
+def test_slash_command_wrapper_is_not_counted_even_when_marked_human(tmp_path):
+    wrapper = "<command-name>/goal</command-name>\n<command-message>goal</command-message>"
+    assert _ask(_transcript(tmp_path, _line(_ago(1), wrapper, HUMAN)))
+
+
+def test_main_reads_transcript_path_from_the_hook_input(monkeypatch, tmp_path, capsys):
+    present = _transcript(tmp_path, _line(_ago(3), "hi", HUMAN))
+    payload = {"tool_name": "AskUserQuestion", "tool_input": Q, "transcript_path": present}
+    assert run_main(monkeypatch, json.dumps(payload), lambda: NIGHT) == 0
+    payload["transcript_path"] = str(tmp_path / "none.jsonl")
+    assert run_main(monkeypatch, json.dumps(payload), lambda: NIGHT) == BLOCK
+    assert "owner-questions" in capsys.readouterr().err
+    del payload["transcript_path"]
+    assert run_main(monkeypatch, json.dumps(payload), lambda: NIGHT) == BLOCK
