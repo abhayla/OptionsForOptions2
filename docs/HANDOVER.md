@@ -1,6 +1,14 @@
 # Handover
 
-## NOW (2026-10-26 ~17:00 IST, after chunk 3 session B; full block: "chunk 3 session B END" in docs/process/session-handover-2026-10-22-builder-sequence.md)
+## NOW (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
+
+- **DONE:** GC-B1. Docs #585 (ADR-196, ADR-197, contracts GC-B1..B17, gap list) and #589 (REQ-141 approved, six gap rows
+  measured live); batch #590 merged with CI green (#582 items 3 / 7 / 8, #583 I-1 / I-6 / I-12, row 33 chain values,
+  the pre-push gate, one fix round, the leg-picker flake fixed at its cause). Core proof live 11:48 IST.
+- **PENDING:** deferred #586 (mixed-expiry 500), #587 (pre-push gate gaps), #588 (chain moneyness filter on spot drop).
+- **NEXT:** GC-B2 (edit speed p95 <= 1,000 ms; Width / Hedge values), a market-hours contract, in a fresh session.
+
+## EARLIER: (2026-10-26 ~17:00 IST, after chunk 3 session B; full block: "chunk 3 session B END" in docs/process/session-handover-2026-10-22-builder-sequence.md)
 
 - **DONE:** chunk 3 closed. Row 25 (#574, live margin core proof) and row 26 (#575 ADR-167 curves before charges, #576
   money figures, #577 screen) merged; reference copy, chunk Tier A review, conformance check, deferred issue #537 F1-F5.
