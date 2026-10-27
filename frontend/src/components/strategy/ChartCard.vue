@@ -25,6 +25,7 @@ import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekRows, payoffLevelRows
 const props = defineProps({
   points: { type: Array, default: () => [] },
   spot: { type: String, default: '' },
+  view: { type: String, default: '' }, // the reply's payoff.view (G-051: names the tooltip's curve)
   table: { type: Object, required: true },
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
@@ -53,6 +54,8 @@ const fullTable = defineModel('fullTable', { type: Boolean, default: false }) //
 const compact = computed(() => compactRows(props.table))
 const greeks = computed(() => greekRows(props.table))
 const levels = computed(() => payoffLevelRows(props.table))
+// G-051: the chart's tooltip shows, per level, the same display string as the Table row (one reply feeds both).
+const pnlByLevel = computed(() => (levels.value ? Object.fromEntries(levels.value.map((r) => [r.id, r.pnl])) : null))
 
 const chipKind = (side) => (side === 'BUY' ? 'buy' : side === 'SELL' ? 'sell' : 'state')
 const chipLabel = (side) => (side === 'BUY' ? 'B' : side === 'SELL' ? 'S' : side ?? '')
@@ -70,7 +73,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
     <div v-show="tab === 'payoff'" role="tabpanel" v-bind="link(VIEW, 'payoff')" class="p-4" data-testid="panel-payoff">
       <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" class="mb-3" :id-prefix="SUB" />
       <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
-        <PayoffChart :points="points" :spot="spot" />
+        <PayoffChart :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <table v-if="levels" class="w-full text-sm">
