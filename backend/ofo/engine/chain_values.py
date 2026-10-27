@@ -16,6 +16,10 @@ Money is ``Decimal`` end to end (ADR-008); the browser only draws the strings.
   vendor's numbers: the contract's implied volatility from the engine's one IV price (``iv_price``, ADR-172: the mid
   when both sides are live and not crossed, else the LTP - the same number the outcome leg shows), then
   ``bs_greeks``. Any refusal gives no Greeks.
+- Row 33 (REQ-029 AC-2/AC-3): :func:`chain_model` is the same calculation with its answer state said: the forward's
+  basis (``PARITY``, or ``SPOT_FALLBACK`` - ADR-061's "estimated from spot", never silent) or why there are no Greeks
+  at all (``SPOT_REFUSED``: no live, healthy spot; ``FORWARD_UNAVAILABLE``: the forward is refused, e.g. at or after
+  the expiry close). :func:`chain_greeks` is its map only, so the chain and the leg picker share one calculator.
 """
 from __future__ import annotations
 
@@ -23,15 +27,19 @@ import datetime
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from ofo.engine.legs import Instrument
 from ofo.engine.model import expiry_model, greeks, implied_vol, iv_price
-from ofo.marketdata.forward import ForwardUnavailable, parity_forward
+from ofo.marketdata.forward import PARITY, ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH, PAISE
+from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import SpotRefused, spot_reading
 
 _HUNDRED = Decimal(100)
+#: a spot of this health is refused by the forward (ADR-061): no Greeks, said as SPOT_REFUSED
+_SPOT_REFUSED_HEALTH = frozenset({DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE})
 
 
 @dataclass(frozen=True)
@@ -90,23 +98,53 @@ def in_the_money(kind: str, strike: Decimal, spot: Decimal | None) -> bool | Non
     return strike < spot if kind == "CE" else strike > spot
 
 
-def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
-                 valuation: datetime.datetime, rate: Decimal) -> Mapping[str, ChainGreeks]:
-    """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility. Empty when
-    the spot or the expiry's forward is refused; a contract the model refuses is simply left out."""
+GreeksBasis = Literal["PARITY", "SPOT_FALLBACK"]
+GreeksMissing = Literal["SPOT_REFUSED", "FORWARD_UNAVAILABLE"]
+
+
+@dataclass(frozen=True)
+class ChainModel:
+    """The engine's values of one expiry's chain with the answer state: ``greeks`` (instrument_id -> values; a contract
+    the model refuses is absent), and exactly one of ``basis`` (what the forward rests on) or ``missing`` (why none)."""
+
+    greeks: Mapping[str, ChainGreeks]
+    basis: GreeksBasis | None
+    missing: GreeksMissing | None
+
+
+def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
+                valuation: datetime.datetime, rate: Decimal) -> ChainModel:
+    """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility, with the
+    forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused."""
     quotes = list(chain)
     try:
-        em = expiry_model(spot_reading(spot_quote), parity_forward(quotes, spot_quote, expiry, valuation, rate))
-    except (SpotRefused, ForwardUnavailable, ValueError, ArithmeticError):
-        return {}
+        reading = spot_reading(spot_quote)
+    except (SpotRefused, ValueError):
+        return ChainModel({}, None, "SPOT_REFUSED")
+    if reading.health in _SPOT_REFUSED_HEALTH:  # the forward's own spot gate, named as a spot problem
+        return ChainModel({}, None, "SPOT_REFUSED")
+    try:
+        em = expiry_model(reading, parity_forward(quotes, spot_quote, expiry, valuation, rate))
+    except (ForwardUnavailable, ValueError, ArithmeticError):
+        return ChainModel({}, None, "FORWARD_UNAVAILABLE")
     out: dict[str, ChainGreeks] = {}
     for q in quotes:
         if q.instrument_type not in (Instrument.CE, Instrument.PE) or q.strike is None or not is_live_price(q.ltp):
             continue
+        price = iv_price(q)
+        if price is None:
+            continue
         try:
-            vol = implied_vol(em, q.instrument_type, iv_price(q), q.strike).iv
+            vol = implied_vol(em, q.instrument_type, price, q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
         except (ValueError, ArithmeticError):
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega)
-    return out
+    return ChainModel(out, "PARITY" if em.source == PARITY else "SPOT_FALLBACK", None)
+
+
+def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
+                 valuation: datetime.datetime, rate: Decimal) -> Mapping[str, ChainGreeks]:
+    """instrument_id -> engine Greeks (the map of :func:`chain_model`). Empty when the spot or the expiry's forward is
+    refused; a contract the model refuses is simply left out."""
+    return chain_model(chain, spot_quote, expiry, valuation, rate).greeks
