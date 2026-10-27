@@ -76,7 +76,7 @@ describe('REQ-079 AC-2: the list by market view with an expiry picker', () => {
   it('shows the panel with the expiry picker and loads the chosen template for the chosen expiry', async () => {
     const w = await panel()
     expect(w.find('[data-testid="ready-made"]').exists()).toBe(true)
-    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['2026-10-27', '2026-11-03'])
+    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['27 Oct', '3 Nov']) // REQ-148 AC-2: never raw ISO, even with no day count
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await flushPromises()
     expect(posts).toEqual([['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }]])
@@ -199,7 +199,7 @@ describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the opt
   it('expiry day shows Today (0 days); a null day count shows the date alone', async () => {
     expiryReply = { expiry_days: [{ expiry: '2026-10-27', days: 0 }, { expiry: '2026-11-03', days: null }] }
     const w = await panel()
-    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '2026-11-03'])
+    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '3 Nov'])
   })
 })
 
