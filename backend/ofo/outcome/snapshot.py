@@ -27,6 +27,7 @@ from ofo.engine.black_scholes import DAYS_IN_YEAR
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import Contract, ListedContract
+from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
@@ -61,6 +62,10 @@ class MarketSnapshot:
     #: REQ-106 AC-1 / REQ-027 (Q254): each read expiry's chain quotes, kept so the outcome finds the ATM strike (nearest
     #: that expiry's forward) and solves its CE and PE IV for the expected move; read at the same instant as the rest.
     chains: Mapping[datetime.date, tuple[NormalizedQuote, ...]] = field(default_factory=dict)
+    #: ADR-200 / ADR-119: the market is closed at ``valuation`` by the provider's own market-state answer
+    #: (``feed_health.market_closed_for``, the one every quote health reads). Then a STALE quote is the last close
+    #: held from the session (priced for planning, labelled by the market-closed banner), never a live price.
+    market_closed: bool = False
 
 
 #: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
@@ -156,4 +161,5 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
         if t is not None:
             ended[iid] = t
     return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended,
-                          {expiry: tuple(chain) for expiry, chain in chains.items()})
+                          {expiry: tuple(chain) for expiry, chain in chains.items()},
+                          market_closed=market_closed_for(provider, valuation))

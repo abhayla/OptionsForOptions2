@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import DayStatsReason, NotSupported
-from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable, priced
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
@@ -278,14 +278,21 @@ FUTURES_LEASE = WindowLease()  # the listed futures: the same fan-out and socket
 
 # ---- the strikes read -----------------------------------------------------------------------------------------------
 
-_priced = priced  # the one rule lives beside is_live_price (ofo.marketdata.quote)
+def _priced(quote: NormalizedQuote | None, closed: bool = False) -> bool:
+    """The one 'a quote's price counts' rule (``ofo.marketdata.quote.priced``: live and above 0); outside market hours
+    (``closed``, the one market-state answer) also the last close the feed holds (ADR-200 (1): the strike drawer uses
+    it; ``ofo.marketdata.quote.planning_price_usable``). Never an order rule."""
+    if not closed:
+        return priced(quote)
+    return planning_price_usable(quote, market_closed=True) and quote is not None and is_live_price(quote.ltp)
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None) -> PickerCellOut:
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None,
+          closed: bool = False) -> PickerCellOut:
     if quote is None:
         return PickerCellOut(instrument_id=contract.instrument_id, lot_size=contract.lot_size, ltp=None, oi=None,
                              iv_percent=None, delta=None, health="unavailable", at=None)
-    priced = _priced(quote)
+    priced = _priced(quote, closed)
     return PickerCellOut(
         instrument_id=contract.instrument_id, lot_size=contract.lot_size,
         ltp=quote.ltp.quantize(PAISE) if priced and quote.ltp is not None else None,
@@ -381,8 +388,9 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
+    closed = market_state(ctx, answered_at).closed
     head = {"underlying": underlying, "expiry": expiry, "width": width, "answered_at": answered_at,
-            "market_closed": market_state(ctx, answered_at).closed}
+            "market_closed": closed}
     state: Literal["LIVE", "NOT_LIVE"] = "NOT_LIVE" if ctx is None else "LIVE"
     missing = _catalogue_reason(catalogue, expiry)
     if missing is not None:
@@ -395,10 +403,11 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     quotes = {} if feed is None else _held_quotes(feed, (viewer, underlying, expiry, width), contracts)
     if centre.kind == "MIDDLE_STRIKE":
         quotes = {}  # AC-5: without a spot every price cell is '-' with the reason
-    usable = [q for q in quotes.values() if _priced(q)]
+    usable = [q for q in quotes.values() if _priced(q, closed)]
     greeks = {} if ctx is None or not usable else chain_greeks(
         usable, spot_quote if centre.kind == "LIVE_SPOT" else None, expiry, answered_at, ctx.rate)
-    cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id)) for c in contracts}
+    cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id), closed)
+               for c in contracts}
     rows = []
     for strike in sorted({c.strike for c in contracts}):
         sides = {c.instrument_type: cell_of[c.instrument_id] for c in contracts if c.strike == strike}
@@ -440,11 +449,12 @@ async def stored_futures(underlying: str) -> FuturesCatalogue:
     return FuturesCatalogue(option_expiries=expiries, futures=tuple(r for r in rows if r.instrument_type == "FUT"))
 
 
-def _future_reason(quote: NormalizedQuote | None) -> FutureReason | None:
-    """Why a held future has no price now: no tick yet, a feed that is not healthy, or a zero price (ADR-015)."""
+def _future_reason(quote: NormalizedQuote | None, closed: bool = False) -> FutureReason | None:
+    """Why a held future has no price now: no tick yet, a feed that is not healthy, or a zero price (ADR-015). Outside
+    market hours (``closed``) the last close held is a price (ADR-200 (1), ``planning_price_usable``)."""
     if quote is None:
         return "NO_QUOTE"
-    if quote.health is not DataHealth.AVAILABLE:
+    if not planning_price_usable(quote, market_closed=closed):
         return "FEED_STALE"
     return None if is_live_price(quote.ltp) else "NO_QUOTE"
 
@@ -462,7 +472,7 @@ def _future_ltp(ctx: MarketContext | None, underlying: str, contract: PickableCo
         quote = ctx.provider.futures_quote(underlying, contract.expiry)
     except NotSupported:  # a provider that offers no futures quote at all
         return FutureOut(**head, ltp=None, health=None, ltp_reason="NOT_OFFERED")
-    reason = _future_reason(quote)
+    reason = _future_reason(quote, market_state(ctx, ctx.clock()).closed)
     if quote is None or quote.ltp is None or reason is not None:
         return FutureOut(**head, ltp=None, health=None if quote is None else quote.health.value, ltp_reason=reason)
     return FutureOut(**head, ltp=quote.ltp.quantize(PAISE), health=quote.health.value, ltp_reason=None)
