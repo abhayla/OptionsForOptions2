@@ -4,7 +4,8 @@ S is the full 40-character sha of the commit the reviewer or verifier passed (ki
 without it and merges only a head that review covers). It is checked before anything runs.
 Take a committed branch from push to merged in one command:
   1. close-keyword check (pr_close_check.py) on the body and the branch's commit messages - before any push
-  2. git push -u origin <branch>
+  2. check the pre-push marker (prepush.py passed on this exact HEAD; --skip-prepush REASON bypasses, reason printed),
+     then git push -u origin <branch>. Only this first push is gated: the BEHIND-update push is covered by CI.
   3. gh pr create, or reuse the open PR for the branch
   4. the kit's merge gate (merge_when_green.py --reviewed-sha S), foreground, never reimplemented here
      - if the PR is BEHIND main (or the merge is refused for that reason): gh pr update-branch, or merge
@@ -28,6 +29,7 @@ import tempfile
 import time
 from datetime import datetime
 
+import prepush
 from gate_env import no_graft_env
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -52,10 +54,19 @@ class Stop(Exception):
     """The landing stopped; the message says why."""
 
 
-class Env:
-    """Everything a test replaces: the command runner, the clock, the sleep, the temp folder, the dry-run flag."""
+def real_marker_check(worktree):
+    """True when prepush.py passed on exactly this worktree's HEAD (the marker names the sha)."""
+    sha = prepush.head_sha(worktree)
+    return bool(sha) and prepush.has_marker(worktree, sha)
 
-    def __init__(self, runner=real_runner, dry_run=False, now=None, sleep=time.sleep, tmp_dir=None):
+
+class Env:
+    """Everything a test replaces: the command runner, the clock, the sleep, the temp folder, the dry-run flag,
+    and marker_check(worktree) -> bool (the pre-push marker lookup)."""
+
+    def __init__(self, runner=real_runner, dry_run=False, now=None, sleep=time.sleep, tmp_dir=None,  # noqa: PLR0913
+                 marker_check=real_marker_check):
+        self.marker_check = marker_check
         self.runner = runner
         self.dry_run = dry_run
         self.now = now
@@ -75,7 +86,8 @@ def failed_jobs(text):
 
 
 class Lander:
-    def __init__(self, worktree, title, body_file, env, branch=None, reviewed_sha=""):  # noqa: PLR0913
+    def __init__(self, worktree, title, body_file, env, branch=None, reviewed_sha="", skip_prepush=""):  # noqa: PLR0913
+        self.skip_prepush = skip_prepush
         self.worktree = worktree
         self.given_branch = branch
         self.reviewed_sha = reviewed_sha
@@ -115,7 +127,23 @@ class Lander:
         if rc != 0:
             raise Stop("before push: closing-reference check failed\n" + text.strip())
 
+    def prepush_check(self):
+        """The first push needs the marker prepush.py writes on an all-pass run of this exact HEAD."""
+        if self.skip_prepush:
+            print(f"pre-push check skipped (--skip-prepush): {self.skip_prepush}")
+            return
+        if self.env.marker_check(self.worktree):
+            return
+        message = ("HEAD has no passing pre-push run. Run: python scripts/orchestrator/prepush.py --repo "
+                   f"{self.worktree} (finding local-ci-mirror-runs-a-subset), or pass --skip-prepush REASON; "
+                   "nothing was pushed")
+        if self.env.dry_run:
+            print("dry run: would stop here: " + message)
+            return
+        raise Stop(message)
+
     def push(self):
+        self.prepush_check()
         target = f"HEAD:refs/heads/{self.branch}" if self.given_branch else self.branch
         rc, text = self.git("push", "-u", "origin", target)
         if rc != 0 and ("non-fast-forward" in text or "fetch first" in text):
@@ -224,10 +252,10 @@ class Lander:
         print(f"MERGED PR #{self.pr} at {stamp}")
 
 
-def land(worktree, title, body_file, env=None, branch=None, reviewed_sha=""):  # noqa: PLR0913
+def land(worktree, title, body_file, env=None, branch=None, reviewed_sha="", skip_prepush=""):  # noqa: PLR0913
     """Return 0 when merged, 1 when stopped."""
     try:
-        Lander(worktree, title, body_file, env or Env(), branch, reviewed_sha).land()
+        Lander(worktree, title, body_file, env or Env(), branch, reviewed_sha, skip_prepush).land()
     except Stop as stop:
         print("STOPPED: " + str(stop))
         return 1
@@ -263,13 +291,18 @@ def main(argv=None):
     ap.add_argument("--reviewed-sha", required=True, help="full 40-character sha of the reviewed commit")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--branch", help="branch name to push; required on a detached HEAD (CI checkouts)")
+    ap.add_argument("--skip-prepush", metavar="REASON", default=None,
+                    help="push without the pre-push marker; a non-empty reason is required and printed")
     a = ap.parse_args(argv)
+    if a.skip_prepush is not None and not a.skip_prepush.strip():
+        print("--skip-prepush needs a non-empty reason")
+        return 2
     a.worktree = resolve_worktree(a.worktree)
     if not os.path.isdir(a.worktree) or not os.path.isfile(a.body_file):
         print("worktree or body file not found")
         return 2
     env = Env(runner=DryRunner(a.worktree), dry_run=True) if a.dry_run else Env()
-    return land(a.worktree, a.title, a.body_file, env, a.branch, a.reviewed_sha)
+    return land(a.worktree, a.title, a.body_file, env, a.branch, a.reviewed_sha, a.skip_prepush or "")
 
 
 if __name__ == "__main__":
