@@ -72,7 +72,15 @@ const contract = computed(() => selectedContract(contracts.value, type.value, st
 const lotsOk = computed(() => typeof lots.value === 'number' && lotsValid(String(lots.value)))
 const canSave = computed(() => !busy.value && lotsOk.value && (contract.value !== null || (editing.value !== null && !type.value && underlying.value === editing.value.underlying)))
 
-async function loadExpiries() {
+/** G-070 (REQ-150 AC-4, S-032): the drawer opens on the strategy's own expiry if its legs carry one the list offers, else
+ *  the first (nearest) listed one. An empty or unreadable list chooses nothing. */
+function openingExpiry() {
+  const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))
+  return own ? own.expiry : (expiries.value[0] ?? '')
+}
+
+// `preselect` is false for startEdit, which chooses the edited leg's own expiry itself
+async function loadExpiries(preselect = true) {
   const mine = ++seq
   expiries.value = []
   contracts.value = []
@@ -85,6 +93,10 @@ async function loadExpiries() {
     expiries.value = res.data.expiries
     expiryDays.value = daysByExpiry(res.data.expiry_days)
     errorParts.value = null
+    if (preselect) {
+      expiry.value = openingExpiry()
+      await loadContracts()
+    }
     return true
   } catch (e) {
     if (mine === seq) errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -184,14 +196,15 @@ function tick() {
 // W-195 (UI-202, UI-205): the view switch picks which of the server's columns each side shows (S-032/S-033); the Greeks
 // view shows Delta and IV only, since Theta/Vega/Gamma are not in this reply (REQ-084). Settings holds the width and size.
 const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['ltp', 'oi'], greeks: ['delta', 'iv'] })
-const COLUMN_WIDTH = Object.freeze({ delta: '40px', ltp: 'minmax(0,1fr)', oi: 'minmax(0,1fr)', iv: '36px' })
+const COLUMN_WIDTH = Object.freeze({ delta: '42px', ltp: 'minmax(0,1fr)', oi: '50px', iv: '34px' })
+const ACT_WIDTH = '36px'
 const view = ref('ltp')
 const settingsOpen = ref(false)
 const columns = computed(() => VIEW_COLUMNS[view.value])
 const sideColumns = (side) => (side === 'ce' ? [...columns.value, 'act'] : ['act', ...[...columns.value].reverse()])
 const gridStyle = computed(() => {
   const widths = columns.value.map((c) => COLUMN_WIDTH[c])
-  return { gridTemplateColumns: [...widths, '44px', '58px', '44px', ...[...widths].reverse()].join(' ') }
+  return { gridTemplateColumns: [...widths, ACT_WIDTH, '56px', ACT_WIDTH, ...[...widths].reverse()].join(' ') }
 })
 // the qty sub-row sits under its own side, on the row's second line
 const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / span ${columns.value.length + 1}` : `span ${columns.value.length + 1} / -1` })
@@ -278,7 +291,7 @@ async function startEdit(leg) {
   action.value = leg.action
   lots.value = leg.lots
   underlying.value = leg.underlying
-  if (!(await loadExpiries()) || editingId.value !== leg.id) return // cancelled or switched meanwhile
+  if (!(await loadExpiries(false)) || editingId.value !== leg.id) return // cancelled or switched meanwhile
   if (leg.expiry && expiries.value.includes(leg.expiry)) {
     expiry.value = leg.expiry
     if ((await loadContracts()) && editingId.value === leg.id) {
@@ -482,13 +495,13 @@ defineExpose({ startEdit, showStrikes })
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
-          <div class="mt-2 grid items-end gap-x-1 border-b border-line pb-1 text-xs text-ink-muted" :style="gridStyle" data-testid="strike-head">
+          <div class="mt-2 grid items-end gap-x-0.5 border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
             <span class="text-center">Strike</span>
             <span v-for="col in sideColumns('pe')" :key="`pe-${col}`">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
           </div>
           <div
-            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-1 border-b border-line text-xs num"
+            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-0.5 border-b border-line text-[11px] tabular-nums num"
             :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" :style="gridStyle" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'"
           >
             <template v-for="side in ['ce', 'pe']" :key="side">
@@ -500,19 +513,19 @@ defineExpose({ startEdit, showStrikes })
               <div class="contents" :data-testid="`cell-${side}`">
                 <template v-if="row[side]">
                   <div
-                    v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center px-1"
+                    v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center px-0.5"
                     :class="[side === 'ce' ? 'justify-end' : 'justify-start', itm[ri]?.[side] && col !== 'act' ? 'bg-warn-soft' : '']"
                   >
                     <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
                     <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
                     <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
                     <!-- UI-202: the OI as the server sent it; no bar (a bar width would be a browser calculation, ADR-008) -->
-                    <span v-else-if="col === 'oi'" class="text-[10px] text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
+                    <span v-else-if="col === 'oi'" class="text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
                     <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
                         v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
-                        class="h-5 w-5 rounded text-[11px] font-semibold focus:opacity-100"
+                        class="h-4 w-4 rounded text-[10px] font-semibold focus:opacity-100"
                         :class="picked[row[side].instrument_id] === sd[0]
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
                           : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"

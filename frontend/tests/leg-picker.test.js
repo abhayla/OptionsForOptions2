@@ -93,7 +93,7 @@ describe('only offered contracts are selectable', () => {
     await flushPromises()
     expect(options(w, 'pick-underlying')).toEqual(['NIFTY', 'SENSEX'])
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
-    expect(calls.map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries'])
+    expect(calls.filter((x) => x.url.startsWith('/catalogue/')).map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries', '/catalogue/NIFTY/contracts?expiry=2026-10-13']) // G-070: opens on the nearest expiry
     await t(w, 'pick-expiry').setValue('2026-10-13')
     await flushPromises()
     expect(calls.filter((x) => x.url.startsWith('/catalogue/')).at(-1).url).toBe('/catalogue/NIFTY/contracts?expiry=2026-10-13') // the picker's own strikes read follows it
@@ -112,7 +112,7 @@ describe('only offered contracts are selectable', () => {
     await t(w, 'pick-underlying').setValue('SENSEX')
     await flushPromises()
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-15'])
-    expect(t(w, 'pick-expiry').element.value).toBe('')
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-15') // G-070: the new underlying's nearest expiry
     expect(options(w, 'pick-type')).toEqual([])
     expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
   })
@@ -1274,5 +1274,49 @@ describe('#582 item 7/8: the strike drawer list scrolls above its footer; strike
     const w = await openWith(['22450.00', '22450.50'])
     expect(w.findAll('[data-testid="row-strike"]').map((e) => e.text().replace('ATM', ''))).toEqual(['22450', '22450.5'])
     expect(w.find('[data-testid="strike-row"]').attributes('data-strike')).toBe('22450.00')
+  })
+})
+
+// GC-BM G-070 (REQ-150 AC-4, Sensibull S-032): the drawer opens on an expiry with its strikes listed.
+describe('G-070: the drawer opens on the nearest expiry with its strikes', () => {
+  const LIVE = (e) => ({ state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: e })
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes'))
+  beforeEach(() => {
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-13')] = LIVE('2026-10-13')
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = LIVE('2026-10-27')
+  })
+
+  it('no legs: the first listed expiry is chosen and its strikes are read once', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-13')
+    expect(t(w, 'strikes-choose-expiry').exists()).toBe(false)
+    expect(strikeReads().map((x) => x.url)).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'])
+  })
+
+  it('a leg on the later expiry: the drawer opens on that expiry, not the nearest', async () => {
+    const leg = { id: 1, underlying: 'NIFTY', expiry: '2026-10-27', instrument_type: 'FUT', strike: null, action: 'BUY', lots: 1, instrument_id: 'NSE_FO:48704' }
+    const w = mountPicker([leg])
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+    expect(strikeReads().map((x) => x.url)).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+
+  it('no expiry can be read: the reason shows, no strikes are requested', async () => {
+    const parts = { what_happened: 'a', impact: 'b', what_is_blocked: 'c', next_action: 'd' }
+    answers['GET /catalogue/NIFTY/expiries'] = Object.assign(new Error('x'), { parts, status: 422 })
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'picker-error').text()).toContain('a')
+    expect(t(w, 'pick-expiry').element.value).toBe('')
+    expect(strikeReads()).toEqual([])
+  })
+
+  it('an empty expiry list: nothing chosen, no strikes requested', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: [] }
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('')
+    expect(strikeReads()).toEqual([])
   })
 })
