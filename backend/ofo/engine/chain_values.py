@@ -30,7 +30,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from ofo.engine.legs import Instrument
-from ofo.engine.model import expiry_model, greeks, implied_vol, iv_price
+from ofo.engine.model import data_label, expiry_model, greeks, greeks_unrounded, implied_vol, iv_price
+from ofo.errors.explanations import ExplanationText
 from ofo.marketdata.forward import PARITY, ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH, PAISE
@@ -60,6 +61,8 @@ class ChainGreeks:
     gamma: Decimal
     theta: Decimal
     vega: Decimal
+    #: the unrounded gamma, set only when the 4 dp gamma reads 0.0000 but the real one is not zero (deep OTM ~0.00001)
+    gamma_exact: Decimal | None = None
 
 
 def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal | None, lot_size: int) -> CellValues:
@@ -121,6 +124,8 @@ class ChainModel:
     greeks: Mapping[str, ChainGreeks]
     basis: GreeksBasis | None
     missing: GreeksMissing | None
+    #: REQ-072 AC-2: "stale since HH:MM IST" / "delayed, as of HH:MM IST" when the spot is STALE / DELAYED, else None
+    label: ExplanationText | None = None
 
 
 def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
@@ -149,10 +154,12 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
         try:
             vol = implied_vol(em, q.instrument_type, price, q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
+            exact = greeks_unrounded(em, q.instrument_type, q.strike, vol).gamma if g.gamma == 0 else None
         except (ValueError, ArithmeticError):
             continue
-        out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega)
-    return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None)
+        out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega,
+                                           exact if exact is not None and exact > 0 else None)
+    return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None, data_label(reading))
 
 
 def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,

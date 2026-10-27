@@ -29,6 +29,17 @@ export const GREEKS_MISSING_LINES = {
   FORWARD_UNAVAILABLE: 'IV and Greeks are not shown: the expiry forward could not be derived.',
 }
 
+/** The columns the engine computes from the spot (IV and the four Greeks): the ones that carry the stale label. */
+export const GREEK_KEYS = ['iv', 'delta', 'gamma', 'theta', 'vega']
+
+/** REQ-072 AC-2: the label of one column, taken as the server sent it ("stale since 09:20 IST", "delayed, as of 09:20
+ *  IST"). Only the IV and Greek columns carry it, and only when the server sent one (a live spot sends none). Never
+ *  built or timed here (ADR-008). */
+export function greeksStaleLabel(view, key) {
+  const label = view?.greeks_label
+  return GREEK_KEYS.includes(key) && typeof label === 'string' ? label : ''
+}
+
 /** The server's row.moneyness is read on the calls' side: ITM calls are OTM puts. */
 export const MONEYNESS = [['ALL', 'All strikes'], ['ITM', 'ITM calls / OTM puts'], ['ATM', 'ATM'], ['OTM', 'OTM calls / ITM puts']]
 

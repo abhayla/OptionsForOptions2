@@ -21,7 +21,7 @@ import api from '@/services/api'
 import { healthSentence, missingCode, missingReason } from '@/lib/dataHealthText'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { NOT_LIVE_LABEL, STRIKES_EACH_SIDE, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, anyServerFilter, fieldsFor, filterParams, filterRows } from '@/lib/chainDisplay'
+import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -124,7 +124,13 @@ const view = computed(() => shown())
 const cellsOf = (v) => (v ? v.rows.flatMap((r) => [r.ce, r.pe]).filter(Boolean) : [])
 const anyUnavailable = computed(() => cellsOf(view.value).some((c) => !isPermitted(c)))
 watch(view, (v) => selection.syncPermissions(cellsOf(v)), { immediate: true })
-const rowsMissing = computed(() => (view.value?.rows_missing ? ROWS_MISSING_LABELS[view.value.rows_missing] : ''))
+// The spot dropped out of a window we hold: the option rows stay and this line says what is missing (never "no strikes match").
+const SPOT_MISSING_ROWS_KEPT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
+const rowsMissing = computed(() => {
+  const code = view.value?.rows_missing
+  if (!code) return ''
+  return code === 'SPOT_MISSING' && view.value.rows.length ? SPOT_MISSING_ROWS_KEPT : ROWS_MISSING_LABELS[code]
+})
 const days = computed(() => (expiry.value ? daysLeft(expiry.value) : null))
 const spotTime = computed(() => {
   const at = (view.value ?? null)?.spot_at ?? null
@@ -138,6 +144,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
 const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
 const nothingMatches = computed(() => !!view.value && !view.value.rows_missing && view.value.state === 'LIVE'
   && !shownRows.value.length && (anyServerFilter(filters.value) || filters.value.moneyness !== 'ALL'))
+const staleLine = computed(() => greeksStaleLabel(view.value, 'iv'))
 const greeksLine = computed(() => GREEKS_MISSING_LINES[view.value?.greeks_missing] ?? GREEKS_BASIS_LINES[view.value?.greeks_basis] ?? '')
 const resetFilters = () => (filters.value = { ...NO_FILTERS })
 </script>
@@ -208,6 +215,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
 
     <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
     <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
+    <p v-if="staleLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-stale-line">IV and Greeks: {{ staleLine }}.</p>
     <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">
       <table class="min-w-full text-sm" data-testid="chain-table">
         <thead>
@@ -244,11 +252,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
                 </p>
               </template>
             </td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key" :title="missingReason(row.ce, key)" :data-reason="missingCode(row.ce, key)">
+            <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span>
             </td>
             <td class="px-2 py-1 text-center" data-testid="strike">{{ row.strike }}</td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right" :data-testid="'pe-' + key" :title="missingReason(row.pe, key)" :data-reason="missingCode(row.pe, key)">
+            <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">

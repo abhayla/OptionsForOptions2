@@ -131,3 +131,22 @@ def test_row_moneyness_is_the_calls_side_against_the_atm_strike(strike, atm, exp
     """REQ-029 AC-9: below ATM = ITM calls, the ATM strike itself = ATM (2 vs 2.00 equal), above = OTM; one paisa off
     either side is not ATM."""
     assert moneyness(D(strike), D(atm)) == expected
+
+
+@pytest.mark.parametrize(("health", "text"), [(DataHealth.STALE, "stale since 09:20 IST"),
+                                              (DataHealth.DELAYED, "delayed, as of 09:20 IST"),
+                                              (DataHealth.AVAILABLE, None)])
+def test_round2_a_stale_or_delayed_spot_keeps_the_greeks_and_labels_them_a_live_one_does_not(health, text):
+    """REQ-072 AC-2: STALE / DELAYED -> Greeks computed and the model carries the engine's label; AVAILABLE -> none."""
+    model = _model(spot=_spot(health=health))
+    assert set(model.greeks) == {CE_ID, PE_ID}
+    assert (None if model.label is None else str(model.label)) == text
+
+
+def test_round2_a_real_tiny_gamma_keeps_its_exact_value_when_four_decimals_would_read_zero():
+    """Deep OTM call at 0.05: the 4 dp gamma is 0.0000 but the real one is not zero, so gamma_exact carries it; an
+    ordinary gamma (the ATM CE) has none."""
+    far = _quote("NSE_FO:44700", Instrument.CE, "23500", "0.05")
+    model = _model([*REAL, far])
+    assert model.greeks[far.instrument_id].gamma == 0 and model.greeks[far.instrument_id].gamma_exact > 0
+    assert model.greeks[CE_ID].gamma > 0 and model.greeks[CE_ID].gamma_exact is None

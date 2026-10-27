@@ -1,6 +1,6 @@
 // Row 33 attack 5 (REQ-029 AC-2/AC-3, ADR-168): the column set is one for every user; Details adds AC-3's fields.
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FIELDS, DETAIL_FIELDS, anyServerFilter, fieldsFor, filterParams, filterRows } from '@/lib/chainDisplay'
+import { DEFAULT_FIELDS, DETAIL_FIELDS, GREEK_KEYS, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 
 const labels = (fields) => fields.map(([, label]) => label)
 
@@ -37,5 +37,25 @@ describe('chain filters (no browser maths, ADR-008)', () => {
       .toEqual({ min_oi: '2000', min_ltp: '12.50', bid_and_ask: true })
     expect(anyServerFilter({ moneyness: 'ITM' })).toBe(false)
     expect(anyServerFilter({ minVolume: '5' })).toBe(true)
+  })
+})
+
+describe('stale and delayed spot label (REQ-072 AC-2, round 2)', () => {
+  const stale = { greeks_label: 'stale since 09:20 IST' }
+  const delayed = { greeks_label: 'delayed, as of 09:20 IST' }
+  it('every IV and Greek column carries the server\'s label exactly as sent, STALE and DELAYED alike', () => {
+    for (const key of GREEK_KEYS) {
+      expect(greeksStaleLabel(stale, key)).toBe('stale since 09:20 IST')
+      expect(greeksStaleLabel(delayed, key)).toBe('delayed, as of 09:20 IST')
+    }
+    expect(GREEK_KEYS).toEqual(['iv', 'delta', 'gamma', 'theta', 'vega'])
+  })
+  it('a live spot (no label), a missing view and the non-Greek columns carry none', () => {
+    for (const key of GREEK_KEYS) {
+      expect(greeksStaleLabel({ greeks_label: null }, key)).toBe('')
+      expect(greeksStaleLabel({}, key)).toBe('')
+      expect(greeksStaleLabel(null, key)).toBe('')
+    }
+    for (const key of ['ltp', 'oi', 'volume', 'bid']) expect(greeksStaleLabel(stale, key)).toBe('')
   })
 })

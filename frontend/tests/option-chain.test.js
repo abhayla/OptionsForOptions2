@@ -387,4 +387,48 @@ describe('Option Chain screen', () => {
     await flushPromises()
     expect(w.find('[data-testid="greeks-line"]').text()).toMatch(/forward could not be derived/)
   })
+
+  it('round 2: the spot dropped out with a filter on: the kept rows show with the reason, never "No strikes match"', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    await w.find('[data-testid="filter-min-ltp"]').setValue('50')
+    await flushPromises()
+    const kept = answer('120.50', { spot: null, atm_strike: null, spot_health: 'unavailable', rows_missing: 'SPOT_MISSING', greeks_basis: null, greeks_missing: 'SPOT_REFUSED' })
+    kept.rows = kept.rows.map((r) => ({ ...r, moneyness: null, ce: { ...r.ce, iv: null, delta: null, gamma: null, theta: null, vega: null }, pe: { ...r.pe, iv: null, delta: null, gamma: null, theta: null, vega: null } }))
+    sock().serverPush({ ...kept, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="filtered-empty"]').exists()).toBe(false)
+    expect(w.find('[data-testid="rows-missing"]').text()).toMatch(/underlying price is missing/)
+    expect(w.find('[data-testid="rows-missing"]').text()).toMatch(/option prices are shown/)
+    expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+    expect(w.find('[data-testid="greeks-line"]').text()).toMatch(/underlying price is not usable/)
+    // and with no rows at all (a window never picked) the reason is still the one shown, not "No strikes match"
+    sock().serverPush({ ...kept, rows: [], expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="filtered-empty"]').exists()).toBe(false)
+    expect(w.find('[data-testid="rows-missing"]').exists()).toBe(true)
+  })
+
+  it('round 2: a STALE or DELAYED spot labels every Greek column from the server field; a live one shows no label', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    await w.find('[data-testid="details-toggle"]').setValue(true)
+    sock().serverPush({ ...answer('120.50', { spot_health: 'stale', greeks_basis: 'SPOT_FALLBACK', greeks_label: 'stale since 09:20 IST' }), expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="greeks-stale-line"]').text()).toMatch(/stale since 09:20 IST/)
+    for (const key of ['iv', 'delta', 'gamma', 'theta', 'vega']) {
+      for (const side of ['ce', 'pe']) {
+        const cells = w.findAll(`[data-testid="${side}-${key}"]`)
+        expect(cells).toHaveLength(3)
+        for (const c of cells) expect(c.attributes('data-stale')).toBe('stale since 09:20 IST')
+      }
+    }
+    expect(w.find('[data-testid="ce-ltp"]').attributes('data-stale')).toBeUndefined()
+    sock().serverPush({ ...answer('121.50', { greeks_basis: 'SPOT_FALLBACK', greeks_label: null }), expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false)
+    expect(w.find('[data-testid="ce-iv"]').attributes('data-stale')).toBeUndefined()
+  })
 })

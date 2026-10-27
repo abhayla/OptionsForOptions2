@@ -59,7 +59,15 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from ofo.engine.chain_values import ChainModel, GreeksBasis, GreeksMissing, Moneyness, chain_model, moneyness
+from ofo.engine.chain_values import (
+    ChainGreeks,
+    ChainModel,
+    GreeksBasis,
+    GreeksMissing,
+    Moneyness,
+    chain_model,
+    moneyness,
+)
 from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
@@ -68,7 +76,7 @@ from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
@@ -148,7 +156,9 @@ class ChainCellOut(ApiModel):
 
 class ChainRowOut(ApiModel):
     strike: Money
-    moneyness: Moneyness  # the calls' side against atm_strike (REQ-029 AC-9): the screen filters by this word
+    #: the calls' side against atm_strike (REQ-029 AC-9): the screen filters by this word; None while the spot is
+    #: missing (no ATM, so no moneyness is claimed)
+    moneyness: Moneyness | None
     ce: ChainCellOut | None  # None: the catalogue lists no call at this strike
     pe: ChainCellOut | None  # None: the catalogue lists no put at this strike
 
@@ -173,6 +183,8 @@ class ChainOut(ApiModel):
     greeks_basis: GreeksBasis | None
     #: why no cell has IV or Greeks (None when the engine ran); NOT_CONNECTED and rowless answers carry neither
     greeks_missing: GreeksMissing | None
+    #: REQ-072 AC-2: "stale since HH:MM IST" / "delayed, as of HH:MM IST" when the Greeks rest on a STALE / DELAYED spot
+    greeks_label: CatalogueText | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -328,13 +340,21 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
 _NO_GREEKS: dict[str, Decimal | None] = dict.fromkeys(("iv", "delta", "gamma", "theta", "vega"))
 
 
+def _gamma_shown(g: ChainGreeks) -> Decimal:
+    """Gamma at the usual 4 decimals; a real gamma that rounds to 0.0000 (a deep OTM ~0.00001) keeps 2 significant
+    digits instead, so the screen never shows a false zero."""
+    if g.gamma == 0 and g.gamma_exact is not None:
+        return g.gamma_exact.quantize(Decimal(1).scaleb(g.gamma_exact.adjusted() - 1))
+    return g.gamma.quantize(GREEK_STEP)
+
+
 def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instrument_id: str) -> dict[str, Any]:
     """The cell's engine values as shown: all None unless its own quote is priced now and the engine gave values."""
     g = None if model is None or not priced(quote) else model.greeks.get(instrument_id)
     if g is None:
         return dict(_NO_GREEKS)
     return {"iv": (g.iv * _PERCENT).quantize(PAISE), "delta": g.delta.quantize(GREEK_STEP),
-            "gamma": g.gamma.quantize(GREEK_STEP), "theta": g.theta.quantize(GREEK_STEP),
+            "gamma": _gamma_shown(g), "theta": g.theta.quantize(GREEK_STEP),
             "vega": g.vega.quantize(GREEK_STEP)}
 
 
@@ -384,7 +404,7 @@ def model_of(ctx: MarketContext, req: ChainRequest, valuation: datetime.datetime
 
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
-          unknown: frozenset[str], model: ChainModel, atm: Decimal) -> list[ChainRowOut]:
+          unknown: frozenset[str], model: ChainModel, atm: Decimal | None) -> list[ChainRowOut]:
     quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
@@ -394,7 +414,7 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
     for strike in window:
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
-        out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=moneyness(strike, atm),
+        out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=None if atm is None else moneyness(strike, atm),
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
                                                                 model),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
@@ -418,13 +438,14 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
                         atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at,
                         market_closed=state.closed, last_price_at=state.last_price_at, greeks_basis=None,
-                        greeks_missing=None)
+                        greeks_missing=None, greeks_label=None)
     spot = live_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
-    missing = _rows_missing(catalogue, req.expiry, window)
-    if missing is not None or window is None:
+    catalogue_missing = _rows_missing(catalogue, req.expiry, window)
+    missing = catalogue_missing or ("SPOT_MISSING" if spot is None else None)  # a held window keeps its rows without it
+    if catalogue_missing is not None or window is None:
         model = None
-    elif model is None:
+    elif model is None or spot is None:  # no live spot: the saved Greeks are never shown, the engine says why
         model = model_of(ctx, req, answered_at)
     return ChainOut(
         state="LIVE", underlying=req.underlying, expiry=req.expiry,
@@ -433,15 +454,22 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
-        rows=[] if model is None or window is None or spot is None else _rows(
-            ctx, req, catalogue, window, slow, unknown, model, atm_strike(grid, spot)),
+        rows=[] if model is None or window is None else _rows(
+            ctx, req, catalogue, window, slow, unknown, model, None if spot is None else atm_strike(grid, spot)),
         answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at,
-        greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing)
+        greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing,
+        greeks_label=None if model is None else model.label)
 
 
 def _shown_state(body: ChainOut) -> tuple:
     """What the screen shows (never ``answered_at``, which moves on every read)."""
     return body.model_dump_json(exclude={"answered_at"}),
+
+
+def _spot_state(ctx: MarketContext, underlying: str) -> tuple[str | None, bool]:
+    """The engine's spot input state: the index quote's health word (None: no quote) and whether it has a live price."""
+    quote = _spot_quote(ctx, underlying)
+    return (None if quote is None else quote.health.value), (quote is not None and is_live_price(quote.ltp))
 
 
 def _ignore(_quote: Any) -> None:
@@ -476,6 +504,7 @@ class ChainPush:
         self._last_slow: float | None = None
         self._model: ChainModel | None = None  # the engine values as last shown, refreshed with OI
         self._model_ids: frozenset[str] = frozenset()  # the priced contracts that model was computed over
+        self._model_spot: tuple | None = None  # the spot's (health, live price?) that model was computed under
         self.pushes = 0
         self.model_runs = 0  # engine runs on this socket: at most one per slow refresh or window change
 
@@ -592,9 +621,13 @@ class ChainPush:
             for i, q in quotes.items():
                 self._slow.setdefault(i, (q.oi, q.oi_change))
         priced_ids = frozenset(i for i, q in quotes.items() if priced(q))
-        if due or self._model is None or not priced_ids <= self._model_ids:  # a contract new to the window: at once
+        spot_now = _spot_state(ctx, req.underlying)
+        # a contract new to the window, or a change of the spot's health: at once (never a 5 s-old Greek off a spot that
+        # has since gone unhealthy, ``forward.py``: an unhealthy spot is never used in a calculation)
+        if due or self._model is None or not priced_ids <= self._model_ids or spot_now != self._model_spot:
             self._model = model_of(ctx, req, ctx.clock())
             self._model_ids = priced_ids
+            self._model_spot = spot_now
             self.model_runs += 1
         return self._slow
 

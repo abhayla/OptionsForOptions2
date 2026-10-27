@@ -50,6 +50,7 @@ WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
 UNSUPPORTED = render("gate_underlying_unsupported", symbol="BANKNIFTY").as_dict()
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
+FOUR_DP = 4
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
 
@@ -242,7 +243,7 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
                                     "rows_missing", "rows", "answered_at", "market_closed", "last_price_at",
-                                    "greeks_basis", "greeks_missing"}
+                                    "greeks_basis", "greeks_missing", "greeks_label"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
@@ -944,3 +945,119 @@ def test_ac9_rest_read_applies_the_same_filters_and_refuses_bad_ones():
     for bad in ({"min_oi": "-1"}, {"min_ltp": "-0.05"}, {"min_ltp": "nan"}, {"min_volume": "x"}):
         refused = client.get("/api/market/chain", params={**query, **bad})
         assert refused.status_code == HTTP_UNPROCESSABLE, (bad, refused.text)
+
+
+# ---- chain round 2 (Tier A): the index price drops out; spot-derived values follow the spot's health ----------------
+
+async def test_r2_core_a_spot_drop_keeps_the_option_rows_and_says_why_moneyness_and_greeks_are_missing():
+    """Core proof: a live window with option rows, then an index tick with LTP 0. Before the fix the answer was LIVE
+    with 0 rows, rows_missing None and the saved SPOT_FALLBACK basis. Now the rows stay (moneyness empty, no ATM),
+    the reason is SPOT_MISSING, no cell carries a Greek and no basis is sent."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    assert channel.sent[-1]["greeks_basis"] == "SPOT_FALLBACK" and len(channel.sent[-1]["rows"]) == FIVE
+    provider.tick(index_quote("0"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    body = channel.sent[-1]
+    assert len(body["rows"]) == FIVE and body["rows_missing"] == "SPOT_MISSING"
+    assert (body["spot"], body["atm_strike"], body["greeks_basis"]) == (None, None, None)
+    assert body["greeks_missing"] == "SPOT_REFUSED"
+    assert {r["moneyness"] for r in body["rows"]} == {None}
+    assert all(r[s][k] is None for r in body["rows"] for s in ("ce", "pe") for k in GREEK_KEYS)
+    assert all(r[s]["ltp"] is not None for r in body["rows"] for s in ("ce", "pe"))
+
+
+async def test_r2_the_spot_coming_back_restores_moneyness_and_greeks():
+    """Answer state 'back to live': after the drop, a live spot gives moneyness, the basis and the Greeks again."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    provider.tick(index_quote("0"))
+    mono.now += 1.0
+    await settle()
+    provider.tick(index_quote("25162.30"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    body = channel.sent[-1]
+    assert body["rows_missing"] is None and body["greeks_basis"] == "SPOT_FALLBACK" and body["greeks_missing"] is None
+    assert [r["moneyness"] for r in body["rows"]] == ["ITM", "ITM", "ATM", "OTM", "OTM"]
+    assert body["rows"][2]["ce"]["iv"] is not None
+
+
+async def test_r2_a_spot_health_change_recomputes_the_greeks_in_the_same_push_not_after_five_seconds():
+    """Attack 2: LIVE -> UNHEALTHY -> LIVE. The fake clock moves 1 s each time (inside OI_REFRESH_SECONDS): the push
+    each change already shows the new state; the saved Greeks never outlive the spot's health."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    assert channel.sent[-1]["rows"][2]["ce"]["iv"] is not None
+    provider.tick(index_quote("25162.30", health=DataHealth.UNHEALTHY))
+    mono.now += 1.0
+    await settle()
+    unhealthy = channel.sent[-1]
+    assert (unhealthy["greeks_missing"], unhealthy["greeks_basis"]) == ("SPOT_REFUSED", None)
+    assert unhealthy["rows"][2]["ce"]["iv"] is None
+    provider.tick(index_quote("25162.30"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    back = channel.sent[-1]
+    assert (back["greeks_missing"], back["greeks_basis"]) == (None, "SPOT_FALLBACK")
+    assert back["rows"][2]["ce"]["iv"] is not None
+
+
+@pytest.mark.parametrize(("health", "word"), [(DataHealth.STALE, "stale since 09:20 IST"),
+                                              (DataHealth.DELAYED, "delayed, as of 09:20 IST")])
+async def test_r2_stale_or_delayed_spot_gives_greeks_with_the_server_label_and_a_live_spot_none(health, word):
+    """Attack 3 (server half): STALE / DELAYED -> Greeks computed and the answer carries the engine's label (REQ-072
+    AC-2); AVAILABLE -> no label."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30", health=health))
+    tick_window(provider)
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert body["greeks_label"] == word and body["rows"][2]["ce"]["iv"] is not None
+    provider2, _f, channel2, _m, push2 = make_rig()
+    provider2.tick(index_quote("25162.30"))
+    tick_window(provider2)
+    task2 = await start(push2, channel2)
+    await close(channel2, task2)
+    assert channel2.sent[0]["greeks_label"] is None
+
+
+async def test_r2_a_tiny_real_gamma_never_prints_as_zero_and_an_ordinary_gamma_keeps_four_decimals():
+    """Attack 4: a deep OTM call (25400 CE at 0.05) has a real gamma near 0.00001; it keeps significant digits. The ATM
+    gamma still prints at 4 decimals."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25250", "CE"), "0.05"))
+    task = await start(push, channel)
+    await close(channel, task)
+    rows = {r["strike"]: r for r in channel.sent[0]["rows"]}
+    far, atm = rows["25250.00"]["ce"]["gamma"], rows["25150.00"]["ce"]["gamma"]
+    assert far is not None and Decimal(far) > 0 and far != "0.0000"
+    assert len(atm.split(".")[1]) == FOUR_DP and Decimal(atm) > 0
+
+
+def test_r2_gamma_shown_pure():
+    """The formatter alone: 0.0123 -> 4 dp as before; exact 0.0000114 behind a 0.0000 -> 2 significant digits; a true
+    zero stays 0.0000."""
+    zero = Decimal("0.0000")
+    shown = chain_push._gamma_shown
+    one = Decimal(1)
+
+    def text(gamma: Decimal, exact: Decimal | None = None) -> str:
+        return format(shown(chain_push.ChainGreeks(one, one, gamma, one, one, exact)), "f")
+
+    assert text(Decimal("0.0123")) == "0.0123"
+    assert text(zero, Decimal("0.0000114")) == "0.000011"
+    assert text(zero) == "0.0000"
