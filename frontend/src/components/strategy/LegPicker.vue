@@ -196,8 +196,8 @@ function tick() {
 // W-195 (UI-202, UI-205): the view switch picks which of the server's columns each side shows (S-032/S-033); the Greeks
 // view shows Delta and IV only, since Theta/Vega/Gamma are not in this reply (REQ-084). Settings holds the width and size.
 const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['ltp', 'oi'], greeks: ['delta', 'iv'] })
-const COLUMN_WIDTH = Object.freeze({ delta: '42px', ltp: 'minmax(0,1fr)', oi: '50px', iv: '34px' })
-const ACT_WIDTH = '36px'
+const COLUMN_WIDTH = Object.freeze({ delta: '42px', ltp: 'minmax(0,1fr)', oi: '58px', iv: '32px' })
+const ACT_WIDTH = '30px'
 const view = ref('ltp')
 const settingsOpen = ref(false)
 const columns = computed(() => VIEW_COLUMNS[view.value])
@@ -525,7 +525,7 @@ defineExpose({ startEdit, showStrikes })
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
                         v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
-                        class="h-4 w-4 rounded text-[10px] font-semibold focus:opacity-100"
+                        class="h-4 w-3.5 rounded text-[10px] font-semibold focus:opacity-100"
                         :class="picked[row[side].instrument_id] === sd[0]
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
                           : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"
