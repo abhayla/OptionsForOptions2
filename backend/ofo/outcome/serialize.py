@@ -114,7 +114,11 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "totals": None if v.totals is None else [_s(x) for x in v.totals],
             "step": _s(ls.step), "start": _s(ls.start), "end": _s(ls.end), "customised": ls.customised,
         }
-        payoff = {"view": v.view.value, "points": [{"level": _s(lvl), "pnl": _s(p)} for lvl, p in out.payoff_points]}
+        # GC-BM F-8: a graph point can be a strike that is no table column, so each point carries its own display
+        # text (the table cells' rupee format), and the browser never formats or computes a money value (ADR-008)
+        payoff = {"view": v.view.value, "points": [
+            {"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
+            for lvl, p in out.payoff_points]}
     if out.summary is not None:
         s = out.summary
         summary = {

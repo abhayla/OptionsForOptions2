@@ -337,6 +337,7 @@ class ScenarioOut(ApiModel):
 class PointOut(ApiModel):
     level: Money
     pnl: Money
+    display: str  # GC-BM F-8: the point's rupee text, in the table cells' format ("₹6,366.75", "−₹3,383.25")
 
 
 class PayoffOut(ApiModel):

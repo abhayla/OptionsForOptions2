@@ -11,14 +11,14 @@ and quantity). Hand-computed: net credit (166.00 + 101.05 - 110.00 - 59.10) = 97
 """
 from decimal import Decimal
 
-import pytest
-
 import ofo.scenario.views as views_module
+import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider_with_futures, replay
 from ofo.engine.legs import Action
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, from_entries, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.scenario.levels import RangeOverride
 from ofo.scenario.views import View
 from ofo.table import TOTAL_ROW_ID
 from outcome.test_same_engine import RATE, VALUATION
@@ -86,7 +86,14 @@ def test_core_condor_strikes_are_graph_points_with_the_engine_values(market):
     for level, pnl in out.payoff_points:  # every graph point is the engine's exact value
         assert pnl == _formula(level), level
     sent = outcome_to_dict(out)["payoff"]["points"]  # the reply carries them as exact strings
-    assert {"level": "22650", "pnl": "6366.75"} in sent and {"level": "22950", "pnl": "6366.75"} in sent
+    assert {"level": "22650", "pnl": "6366.75", "display": "₹6,366.75"} in sent
+    assert {"level": "22950", "pnl": "6366.75", "display": "₹6,366.75"} in sent
+    assert {"level": "22500", "pnl": "-3383.25", "display": "−₹3,383.25"} in sent
+    total = next(r for r in out.table.rows if r.row_id == TOTAL_ROW_ID)
+    for p in sent:  # a point on a table column shows exactly the table cell's text
+        lvl = Decimal(p["level"])
+        if lvl in out.level_set.levels:
+            assert p["display"] == total.cell(lvl).display, lvl
 
 
 def test_strike_levels_never_become_scenario_table_columns(market):
@@ -124,7 +131,8 @@ def test_one_engine_computation_still_feeds_table_and_graph(market, monkeypatch)
 def test_a_strike_on_the_grid_is_not_duplicated(market):
     """Attack 2: 23000 is a grid level already; it appears once."""
     provider, _ = market
-    out = _outcome(provider, [(CALL_23000, Action.BUY, Decimal("81.30")), (CONDOR[2][0], Action.SELL, Decimal("101.05"))])
+    legs = [(CALL_23000, Action.BUY, Decimal("81.30")), (CONDOR[2][0], Action.SELL, Decimal("101.05"))]
+    out = _outcome(provider, legs)
     levels = [lvl for lvl, _ in out.payoff_points]
     assert len(levels) == len(set(levels))
     assert levels.count(Decimal("23000")) == 1 and Decimal("22950") in levels
@@ -161,8 +169,6 @@ def test_mixed_expiry_still_has_no_at_expiry_curve(market):
 
 
 def test_a_user_range_keeps_only_the_strikes_inside_it(market):
-    from ofo.scenario.levels import RangeOverride
-
     provider, _ = market
     out = _outcome(provider, _condor_legs(), override=RangeOverride(Decimal("22600"), Decimal("23000")))
     levels = {lvl for lvl, _ in out.payoff_points}
