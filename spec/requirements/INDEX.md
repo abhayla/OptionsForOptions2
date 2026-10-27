@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 132; sections: 19
+Requirements: 145; sections: 19
 
 ## Accounts and identity (5)
 
@@ -191,7 +191,7 @@ Requirements: 132; sections: 19
 |---|---|---|---|
 | REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | Approved |
 
-## Strategy building (17)
+## Strategy building (30)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -212,6 +212,19 @@ Requirements: 132; sections: 19
 | REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | Approved |
 | REQ-135 | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited | feature | Approved |
 | REQ-138 | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L | feature | Approved |
+| REQ-142 | The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs placed first - beside Margin needed and Margin available | feature | Approved |
+| REQ-143 | A chart toggle Add Booked P&L adds the booked P&L of closed legs of a tracked strategy to the payoff curve (not in this phase) | feature | Approved |
+| REQ-144 | The payoff chart shows a Projected profit or Projected loss badge, the engine's P&L at the what-if target level and date | feature | Approved |
+| REQ-145 | The builder Greeks tab has a Decay column, and IV is shown as a percent with two decimals | feature | Approved |
+| REQ-146 | The P&L Table Full table view adds per-leg Target P&L and Target Price columns when a what-if target is set, and shows contract dates as 3 Nov | feature | Approved |
+| REQ-147 | The builder shows target-day futures prices, the forward price of each expiry in the strategy at the what-if target level and date | feature | Approved |
+| REQ-148 | Calendar and mixed-expiry strategies work in the builder, each leg shows its own expiry, and figures that cannot be computed say why | feature | Approved |
+| REQ-149 | Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sideways scroll | polish | Approved |
+| REQ-150 | Strike drawer Greeks view - call delta, IV, put delta, theta, vega and gamma per strike, and the drawer opens on the nearest expiry | feature | Approved |
+| REQ-151 | Strikes are shown without trailing zeros - 22300, not 22300.00 | polish | Approved |
+| REQ-152 | Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on per-unit prices | polish | Approved |
+| REQ-153 | Breakeven percent from spot beside each breakeven, for Expiry and Target | feature | Approved |
+| REQ-154 | An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or cleared | feature | Approved |
 
 ## Strategy lifecycle (8)
 

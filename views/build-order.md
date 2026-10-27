@@ -105,9 +105,22 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-138 | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L | feature | normal | waiting: on REQ-076, REQ-081, REQ-083, REQ-089 |
 | REQ-139 | The builder header shows the underlying's spot with the day's change and percent and the day's open, high, low and previous close | feature | normal | waiting: on REQ-049 |
 | REQ-140 | For a strategy already being tracked, the builder summary shows the profit still possible and the loss still possible from now first, with the original maximums below | feature | normal | waiting: on REQ-081, REQ-109 |
+| REQ-142 | The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs placed first - beside Margin needed and Margin available | feature | normal | waiting: on REQ-055, REQ-081, REQ-136 |
+| REQ-143 | A chart toggle Add Booked P&L adds the booked P&L of closed legs of a tracked strategy to the payoff curve (not in this phase) | feature | normal | waiting: on REQ-089, REQ-109, REQ-140 |
+| REQ-144 | The payoff chart shows a Projected profit or Projected loss badge, the engine's P&L at the what-if target level and date | feature | normal | waiting: on REQ-081, REQ-083, REQ-084, REQ-136 |
+| REQ-145 | The builder Greeks tab has a Decay column, and IV is shown as a percent with two decimals | feature | normal | waiting: on REQ-084 |
+| REQ-146 | The P&L Table Full table view adds per-leg Target P&L and Target Price columns when a what-if target is set, and shows contract dates as 3 Nov | feature | normal | waiting: on REQ-035, REQ-084 |
+| REQ-147 | The builder shows target-day futures prices, the forward price of each expiry in the strategy at the what-if target level and date | feature | normal | waiting: on REQ-080, REQ-084 |
+| REQ-148 | Calendar and mixed-expiry strategies work in the builder, each leg shows its own expiry, and figures that cannot be computed say why | feature | normal | waiting: on REQ-076, REQ-078, REQ-083 |
+| REQ-150 | Strike drawer Greeks view - call delta, IV, put delta, theta, vega and gamma per strike, and the drawer opens on the nearest expiry | feature | normal | waiting: on REQ-080, REQ-084 |
+| REQ-153 | Breakeven percent from spot beside each breakeven, for Expiry and Target | feature | normal | waiting: on REQ-081, REQ-084, REQ-139 |
+| REQ-154 | An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or cleared | feature | normal | waiting: on REQ-038, REQ-077, REQ-138 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
 | REQ-111 | The user can keep private notes on a strategy | polish | normal | waiting: on REQ-038 |
+| REQ-149 | Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sideways scroll | polish | normal | waiting: on REQ-004, REQ-009 |
+| REQ-151 | Strikes are shown without trailing zeros - 22300, not 22300.00 | polish | normal | waiting: on REQ-029, REQ-076, REQ-080 |
+| REQ-152 | Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on per-unit prices | polish | normal | waiting: on REQ-081, REQ-142 |
 
 ## Recorded, not approved to build
 
