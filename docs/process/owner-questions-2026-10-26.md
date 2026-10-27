@@ -109,3 +109,18 @@ Options:
   its cost, and the RCA shows no red it would catch beyond the targeted set.
 
 Answer: "Draft PR + CI first (Recommended)" (owner, question box, 2026-10-26 ~09:00 IST). Recorded as ADR-191 (2); runbook Delivery section carries the trigger.
+
+## Q-UI-1 (~23:55 IST): builder redesign checkpoint - what next?
+Business call: the owner set this checkpoint ("Builder only, then show me") to decide whether the other screens get the
+same treatment. Spec basis: ADR-193 (1), (3), (4). State: PR #581 open (CI running); the redesigned builder is open at
+127.0.0.1:4183/strategy/builder; the numbers match the walkthrough; 6 polish issues (stray NIFTY button, clipped price
+digits, no thousands commas, tall Max Loss block, "Shift-" hyphen / Ready-made expiry / old level line).
+1. **Merge, polish, then screens (recommended)** - merge #581 on green, fix the 6 polish issues as one small PR, then
+   PR-4..6 for the other screens (build first, check once). Why: builder usable and correct; rest of app still old.
+2. Merge, polish, then resume the walkthrough (26 requirements left) before other screens.
+3. Change the builder first (owner says what).
+Meanwhile (needed under 1 and 2): the 6 polish fixes are built locally, not pushed; #581 is not merged without the answer.
+
+**Answered 2026-10-27 ~08:15 IST: "Builder first".** #581 merged (558b1ff5); then the #582 small defects, the live
+walkthrough re-check (#583), then builder rows 33-38 and 40-42; the other screens (PR-4..6) after that. Process answer,
+so no decision row (spec-first R4); recorded in the 2026-10-27 handover.

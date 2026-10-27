@@ -414,7 +414,6 @@ issues:
   "#403": 4b  # Local pytest dies at random on Windows: EgressRefused from platform.platform() in pytest-metadata
   "#404": 4a  # Evidence passes REQ-048 AC-1/AC-5, REQ-049 AC-4, REQ-052 AC-1 parked by GC-2f
   "#405": 4b  # W-108 attribution parked after review round 2: open plans count 0 held (and W-111 stacked on it)
-  "#409": 4a  # History-not-shown scan misses aliased import_module, __import__ fromlist and 'intraday' (W-112 verifier MINORs)
   "#411": 4b  # Positions pending row: 'listed above' line shows with no other holder; pending-row e2e is a mock (W-111 review MINORs)
   "#422": 4b  # Freeze check accepts any type for the stored limit; Evaluation.as_of has no timezone check (PR #420 review MINORs)
   "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
@@ -461,6 +460,8 @@ issues:
   "#558": 4a  # Row 31 (REQ-085 warnings) PARKED: Builder vs Execute disagree on futures expiry (Tier A round 2 MAJOR)
   "#560": 4a  # Row 30 (REQ-078) PARKED remainder: AC-1 live half (owner's live session, 50 edits p95 <= 1,000 ms)
   "#561": 4a  # Row 32 (REQ-136) PARKED remainder: AC-1 info marks for 5 figures (rows 26, 37, 38)
+  "#582": S6.1  # Builder redesign: deferred items (5 s leg edit, flaky picker tests, separators, select-all, permissions, chain link)
+  "#583": S6.1  # Builder walkthrough 2026-10-26: open items I-1, I-2, I-5, I-6, I-12 (re-check live)
 
 # Work items whose status is not done.
 work_items:
