@@ -42,7 +42,7 @@ test('a + sends one edit and the row shows the reply; the tick labels a leg; the
   await expect(page.getByTestId('leg-row').nth(0)).toBeVisible()
 
   await page.getByTestId('leg-row').nth(0).getByTestId('strike-plus').click()
-  await expect(page.getByTestId('leg-row').nth(0).getByTestId('leg-strike')).toHaveText('22850.00')
+  await expect(page.getByTestId('leg-row').nth(0).getByTestId('leg-strike')).toHaveText('22850')
   expect(sent).toHaveLength(1)
   expect(sent[0].edit).toEqual({ control: 'step', index: 0, direction: 1 })
   await expect(page.getByTestId('shape-name')).toContainText('Custom Strategy')
@@ -93,7 +93,7 @@ test('REQ-078 AC-3/AC-6: Shift + sends only control and direction; the four stri
   await expect(page.getByTestId('shift-total')).toHaveText('-')
   await page.getByTestId('shift-plus').click()
   await expect(page.getByTestId('shift-total')).toHaveText('+50')
-  await expect(page.getByTestId('leg-strike')).toHaveText(rec.shift_plus1.legs.map((l: any) => l.strike))
+  await expect(page.getByTestId('leg-strike')).toHaveText(rec.shift_plus1.legs.map((l: any) => String(l.strike).replace(/\.0+$/, '')))
   expect(sent).toHaveLength(1)
   expect(sent[0].edit).toEqual({ control: 'shift', direction: 1 })
 })

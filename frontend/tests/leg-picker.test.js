@@ -1137,8 +1137,8 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await flushPromises()
     await openStrikes(w)
     const ce = sideOf(w, '22500.00', 'ce')
-    expect(ce.find('[data-testid="cell-buy"]').attributes('aria-label')).toBe('Buy 22500.00 CE')
-    expect(ce.find('[data-testid="cell-sell"]').attributes('aria-label')).toBe('Sell 22500.00 CE')
+    expect(ce.find('[data-testid="cell-buy"]').attributes('aria-label')).toBe('Buy 22500 CE')
+    expect(ce.find('[data-testid="cell-sell"]').attributes('aria-label')).toBe('Sell 22500 CE')
     const qty = () => ce.find('[data-testid="cell-lots"]').element.closest('label')
     expect(qty().style.display).toBe('none')
     await ce.find('[data-testid="cell-buy"]').trigger('click')
@@ -1180,5 +1180,47 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await drawer().find('[data-testid="drawer-close"]').trigger('click')
     expect(drawer().element.parentElement.style.display).toBe('none')
     w.unmount()
+  })
+})
+
+describe('#582 item 7/8: the strike drawer list scrolls above its footer; strikes print as whole numbers', () => {
+  const stackOf = (n) => Array.from({ length: n }, (_, i) => `${20000 + i * 50}.00`)
+  const grid = (strikes) => ({
+    ...strikesAnswer(),
+    atm_strike: strikes[0] ?? null,
+    rows: strikes.map((strike, i) => ({ strike, is_atm: i === 0, ce: cell(i, 'ce'), pe: cell(i, 'pe') })),
+  })
+  async function openWith(strikes) {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = grid(strikes)
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    return w
+  }
+
+  it.each([0, 21, 60])('with %i strikes the list is the scroll area and the footer sits after it', async (n) => {
+    const w = await openWith(stackOf(n))
+    const panel = t(w, 'strikes-panel')
+    expect(panel.classes()).toEqual(expect.arrayContaining(['overflow-y-auto', 'flex-1', 'min-h-0']))
+    const footer = t(w, 'picker-footer')
+    expect(footer.classes()).toContain('shrink-0')
+    expect(footer.classes()).not.toContain('sticky')
+    const tabs = t(w, 'picker-tabs')
+    expect(tabs.classes()).toEqual(expect.arrayContaining(['flex-1', 'min-h-0', 'flex-col']))
+    expect(panel.element.parentElement).toBe(tabs.element)
+    const root = t(w, 'leg-picker')
+    const kids = [...root.element.children]
+    expect(kids.indexOf(tabs.element)).toBeGreaterThanOrEqual(0)
+    expect(kids.indexOf(tabs.element)).toBeLessThan(kids.indexOf(footer.element))
+    expect(root.classes()).toEqual(expect.arrayContaining(['h-full', 'min-h-0', 'flex-col']))
+    expect(panel.element.contains(footer.element)).toBe(false)
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(n)
+  })
+
+  it('prints each strike as a whole number in the row and keeps a real fraction', async () => {
+    const w = await openWith(['22450.00', '22450.50'])
+    expect(w.findAll('[data-testid="row-strike"]').map((e) => e.text().replace('ATM', ''))).toEqual(['22450', '22450.5'])
+    expect(w.find('[data-testid="strike-row"]').attributes('data-strike')).toBe('22450.00')
   })
 })
