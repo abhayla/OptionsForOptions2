@@ -32,6 +32,11 @@
    "date": "2026-10-16",
    "where": "GC-2a, PR #327 after merging main (commit e34ede1)",
    "evidence": "CI api job refused it in 35 s: 'ruff ratchet: E501 rose 632 -> 633' (run 38937916294). atool.py --no-tests had passed every step it runs: it mirrored ci.yml and the guard tests but not the app-tests.yml api job's ruff ratchet or migration guard. Fixed structurally the same turn: atool.py now runs scripts/alembic_migration_guard.py and scripts/ruff_ratchet.py; re-run on e34ede1 -> 'scripts/ruff_ratchet.py rc 1' (red), on f8c19e8 -> OK."
+  },
+  {
+   "date": "2026-10-26",
+   "where": "UI redesign PR #581 (ui/builder-redesign), first CI run",
+   "evidence": "Local final pass ran the full unit suite (1092), lint, build, repo guards (954) and 15 e2e specs, but not scripts/ruff_ratchet.py or scripts/orchestrator/coverage.py --check (both on the runbook's 'Before a push' list, neither in tools/ci_local.py). CI went red on `api` (ruff ratchet: E501 rose - two margin strings at 121 chars) and `coverage` (8 ids with no stage: ADR-193..195, W-191..195); both checks then ran locally in seconds and passed after a 2-line fix. Separately, ci_local ran tests_app files under the kit pytest.ini (no asyncio) and reported 53 false failures on PR #580 (kit harvest Startup-Factory #186). Mitigation recorded in auto-memory build-first-check-once-at-end: the single final pass includes the runbook's pre-push list."
   }
  ]
 }
