@@ -103,6 +103,7 @@ onBeforeUnmount(() => {
   deleteFlow.dispose()
 })
 
+const hasLegs = computed(() => canSaveLegs(props.legs)) // no legs: the "..." button is disabled, never an empty menu
 const canSave = computed(() => !busy.value && canSaveLegs(props.legs))
 
 async function refresh() {
@@ -175,9 +176,9 @@ async function undoSave() {
 }
 
 function saveAs() {
-  if (!canSave.value || !props.current) return
+  if (!canSave.value) return
   asking.value = 'save-as'
-  nameText.value = saveAsName(props.current.name)
+  nameText.value = saveAsName(props.current?.name) // an unsaved strategy has no name: the default plus the suffix (ADR-192)
 }
 
 function renameOpen() {
@@ -261,10 +262,13 @@ type="button" data-testid="save-draft" class="rounded bg-accent px-3 py-1 font-m
       <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button
 ref="menuButton" type="button" class="rounded border border-line px-2 py-1" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
-                aria-label="More actions" data-testid="more-menu" @click="menuOpen ? closeMenu() : (menuOpen = true)"><Icon name="more" :size="16" /></button>
+                aria-label="More actions" data-testid="more-menu" :disabled="!hasLegs" @click="menuOpen ? closeMenu() : (menuOpen = true)"><Icon name="more" :size="16" /></button>
         <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button
-v-if="current" type="button" role="menuitem" data-testid="save-as"
+v-if="hasLegs" type="button" role="menuitem" data-testid="menu-save"
+                  :disabled="!canSave" @click="menuDo(save)">Save</button>
+          <button
+v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
                   :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>
           <button
 v-if="current" type="button" role="menuitem" data-testid="rename-open"

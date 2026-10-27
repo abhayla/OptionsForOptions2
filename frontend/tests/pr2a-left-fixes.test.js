@@ -123,7 +123,7 @@ describe('W-192 review fixes: a closed menu returns focus to its trigger; an out
   })
 
   it('more menu: item chosen, Esc and an outside click each close it and focus the trigger', async () => {
-    const w = mount(SaveDraftBar, { props: { legs: [], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body, global: { stubs: { RouterLink: true } } })
+    const w = mount(SaveDraftBar, { props: { legs: [{ contract_id: 5, lot_size: 65, action: 'SELL', lots: 1 }], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body, global: { stubs: { RouterLink: true } } })
     await flushPromises()
     const trigger = t(w, 'more-menu')
     const check = () => {

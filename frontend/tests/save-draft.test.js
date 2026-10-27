@@ -403,8 +403,7 @@ describe('ADR-192: the Save As pre-fill is the cut original plus " copy", at mos
 
 describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never sends the original', () => {
   const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
-  it('Save As is offered only for a saved strategy and prefills "<name> copy" without the API quotes', async () => {
-    expect(t(await bar(), 'save-as').exists()).toBe(false)
+  it('Save As prefills "<name> copy" without the API quotes', async () => {
     const w = await bar({ current })
     await t(w, 'save-as').trigger('click')
     expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condo copy') // ADR-192: 20 characters, cut from the end
@@ -434,6 +433,82 @@ describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never send
     await flushPromises()
     expect(w.emitted('open')).toBeUndefined()
     expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+  })
+})
+
+describe('G-024: the "..." menu lists only the items that apply, never an empty menu', () => {
+  const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
+  const items = (w) => w.findAll('[role="menuitem"]').map((b) => b.attributes('data-testid'))
+  const FOUR = [leg({ id: 1 }), leg({ id: 2, contract_id: 11 }), leg({ id: 3, contract_id: 12 }), leg({ id: 4, contract_id: 13 })]
+  it('attack 1: an empty builder has the button disabled and no menu item', async () => {
+    const w = await bar({ legs: [] })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeDefined()
+    expect(items(w)).toEqual([])
+  })
+  it('attack 2: an unsaved 4-leg strategy shows Save and Save As only; Save As asks the ADR-192 pre-fill and POSTs once', async () => {
+    answers['POST /strategies'] = STRATEGY_OUT(9, 'Four legs', 1)
+    const w = await bar({ legs: FOUR })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    expect(items(w)).toEqual(['menu-save', 'save-as'])
+    await t(w, 'more-menu').trigger('click')
+    await t(w, 'save-as').trigger('click')
+    expect(t(w, 'name-form').attributes('data-mode')).toBe('save-as')
+    expect(t(w, 'name-input').element.value).toBe(saveAsName(undefined))
+    await t(w, 'name-input').setValue('Four legs')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.url}`)).toEqual(['POST /strategies'])
+    expect(w.emitted('open')[0].slice(1, 3)).toEqual([9, 1])
+  })
+  it('a saved strategy shows Save, Save As and Rename; menu Save sends the PUT with the loaded revision', async () => {
+    answers['PUT /strategies/7'] = STRATEGY_OUT(7, 'NIFTY Oct condor', 4)
+    const w = await bar({ legs: FOUR, current })
+    expect(items(w)).toEqual(['menu-save', 'save-as', 'rename-open'])
+    await t(w, 'menu-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'PUT').body.expected_revision).toBe(3)
+  })
+  it('attack 3: Save As on a saved strategy makes a NEW id; the original id is never written', async () => {
+    answers['POST /strategies'] = STRATEGY_OUT(8, 'Copy', 1)
+    const w = await bar({ legs: FOUR, current })
+    await t(w, 'save-as').trigger('click')
+    await t(w, 'name-input').setValue('Copy')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.url}`)).toEqual(['POST /strategies'])
+    expect(w.emitted('open')[0].slice(1, 4)).toEqual([8, 1, quoted('Copy')])
+  })
+  it('attack 4: Rename sends only the name on the same id; empty and 21-character names are refused with the API text', async () => {
+    const LONG = { what_happened: 'That name is too long', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters.' }
+    answers['PATCH /strategies/7/name'] = (body) => (body.name.length > 20 || body.name === '' ? Promise.reject({ status: 422, parts: body.name === '' ? EMPTY_NAME : LONG }) : Promise.resolve({ data: { id: 7, name: quoted(body.name), revision: 3 } }))
+    const w = await bar({ legs: FOUR, current })
+    await t(w, 'rename-open').trigger('click')
+    await t(w, 'name-input').setValue('')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+    await t(w, 'name-input').setValue('x'.repeat(21))
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(t(w, 'save-error-what').text()).toBe(LONG.what_happened)
+    expect(w.emitted('renamed')).toBeUndefined()
+    await t(w, 'name-input').setValue('Renamed')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('renamed')).toEqual([[7, quoted('Renamed')]])
+    expect(calls.filter((c) => c.method === 'POST' || c.method === 'PUT')).toEqual([])
+  })
+  it('attack 5: Escape closes the menu and choosing an item closes it', async () => {
+    const w = mount(SaveDraftBar, { props: { legs: FOUR, current }, attachTo: document.body })
+    await flushPromises()
+    await t(w, 'more-menu').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(true)
+    await t(w, 'more-menu-panel').trigger('keydown', { key: 'Escape' })
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    await t(w, 'more-menu').trigger('click')
+    await t(w, 'rename-open').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    w.unmount()
   })
 })
 

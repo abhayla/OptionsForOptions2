@@ -113,7 +113,8 @@ describe('REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved 
     const { w } = await openBuilder({ draft: JSON.stringify(DRAFT_LINK) })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     expect(calls.some((c) => c.url === '/strategies/7')).toBe(false)
-    expect(t(w, 'save-as').exists()).toBe(false)
+    expect(t(w, 'save-as').exists()).toBe(false) // a ?draft= leg names no contract yet (canSaveLegs false): no menu item, button disabled (G-024)
+    expect(t(w, 'rename-open').exists()).toBe(false)
     w.unmount()
   })
   it('not found (the catalogue message): shown, the screen is kept, nothing is guessed', async () => {
