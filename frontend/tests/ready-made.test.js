@@ -155,8 +155,14 @@ describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (R
     }
     const w = await panel()
     await w.get('[data-testid="rm-strangle-100"]').trigger('click')
-    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    // The cards are :disabled while a load is busy, and a click on a disabled element does nothing, so the second click would
+    // never reach the guard. Lift the attribute on the DOM node (a click that got through) so the second load really starts.
+    const second = w.get('[data-testid="rm-template-bull_call_spread"]')
+    expect(second.attributes('disabled')).toBeDefined()
+    second.element.removeAttribute('disabled')
+    await second.trigger('click')
     await flushPromises()
+    expect(n).toBe(2) // both loads were requested: the guard, not a disabled card, is what drops the older reply
     release({ data: ANSWER })
     await flushPromises()
     expect(w.emitted('update:legs').length).toBe(1)
