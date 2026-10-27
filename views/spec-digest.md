@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (193)
+## Decisions (194)
 
-- Older decisions: 153 rows, ADR-1..ADR-156 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-157 2026-10-21: SPEC CHANGE to ADR-001. [refines ADR-001]
+- Older decisions: 154 rows, ADR-1..ADR-157 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
 - ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
 - ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138;…]
@@ -47,8 +46,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
 - ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
 - ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
+- ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
 
-## Requirements (132)
+## Requirements (145)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -182,6 +182,19 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-139 [Approved]: The builder header shows the underlying's spot with the day's change and percent and the day's open, high, lo…
 - REQ-140 [Approved]: For a strategy already being tracked, the builder summary shows the profit still possible and the loss still…
 - REQ-141 [Approved]: The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a dr…
+- REQ-142 [Approved]: The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs pla…
+- REQ-143 [Approved]: A chart toggle Add Booked P&L adds the booked P&L of closed legs of a tracked strategy to the payoff curve (n…
+- REQ-144 [Approved]: The payoff chart shows a Projected profit or Projected loss badge, the engine's P&L at the what-if target lev…
+- REQ-145 [Approved]: The builder Greeks tab has a Decay column, and IV is shown as a percent with two decimals
+- REQ-146 [Approved]: The P&L Table Full table view adds per-leg Target P&L and Target Price columns when a what-if target is set,…
+- REQ-147 [Approved]: The builder shows target-day futures prices, the forward price of each expiry in the strategy at the what-if…
+- REQ-148 [Approved]: Calendar and mixed-expiry strategies work in the builder, each leg shows its own expiry, and figures that can…
+- REQ-149 [Approved]: Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sidewa…
+- REQ-150 [Approved]: Strike drawer Greeks view - call delta, IV, put delta, theta, vega and gamma per strike, and the drawer opens…
+- REQ-151 [Approved]: Strikes are shown without trailing zeros - 22300, not 22300.00
+- REQ-152 [Approved]: Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on pe…
+- REQ-153 [Approved]: Breakeven percent from spot beside each breakeven, for Expiry and Target
+- REQ-154 [Approved]: An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or…
 
 ## Spec sections (230)
 
