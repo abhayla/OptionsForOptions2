@@ -112,7 +112,16 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
 | F-13 | (review round 1, Tier B) | MINOR 1-4 above | functional (1, 3); efficiency (4); test gap (2) | see review line in step 9 | `25297a6d` `ecc34f7f` `e4f86b82` (each red first; guard mutation turns the stale-reply test red) | unit: full vitest 1187/1187 after the merge; live re-check in walk 3 |
 | F-14 | (review note, checked) | SENSEX straddle (29 Oct 73600 CE/PE) -> Add/Edit: drawer `underlying=NIFTY disabled=true expiry=2026-10-27`, NIFTY strikes 22250/22300 listed - a pick would add a NIFTY leg to a SENSEX strategy (18:00, f14-sensex.png) | functional | LegPicker.vue:50 sets the underlying once at mount; :68 locks it while legs exist (same class as F-12: state decided at mount) | `e6fb17fb` (2 red, 5 new tests; pageUnderlying prop from the page) | PASS (closing prices): SENSEX straddle -> drawer SENSEX, 2026-10-29, 21 rows from 72600; full vitest 1196/1196 |
 | F-15 | (Tier A review MINOR 2) | The ADR-008 no-client-maths scan skips PayoffChart.vue and PnLCell.vue entirely | detection gap | whole-file exception instead of named lines | `106178ba` (both files scanned line by line, 21 named uses each with a reason, each must appear exactly once; mutations `Number(point.pnl) * 2`, `p.pnl.toFixed(2)`, `pnl / 2` and a marked-but-unlisted line all fail the scan) | PASS: full vitest 1196/1196 |
+| F-16 | (owner question) | After the close on an expiry day every default expiry is the expired one (ready-made, drawer, ?template=) | functional (owner decision ADR-199: roll to next) | default chosen in the browser by list position; server will send `default_expiry` from the market calendar | building (build/gcbm-f1) | owed |
+| F-17 | (owner, ADR-200) | Outside market hours the real app shows no prices at all (index "unavailable", legs "Draft - Live data not connected", no summary/chart; 15:58 IST) while REQ-105 AC-4 / REQ-114 AC-7 say the last close is shown labelled | functional (approved requirement not met) | to be measured: the closed-market state makes every quote unhealthy for pricing | building | owed: core proof on the real app, no launcher |
 | F-10 | U-12 | Mixed expiry, At Expiry: the chart kept the previous condor curve, no reason (16:28, u12-chart-expiry.png) | functional | PayoffChart returned early on an empty point list before destroying the old chart | G-065 round 2 `0cc230e4`; live re-check 16:34 shows the ADR-143 line (f10-after.png) | PASS (closing prices) |
+
+### Extra checks outside the U-list (closing prices, 2026-10-27 18:00-18:14 IST)
+- SENSEX condor: 73200/73400 PE, 73800/74000 CE on 29 Oct, entries 277.80/352.55/301.00/224.40, net Rs 3,027 = 151.35 x 20, max loss 1,214.95, breakevens 73,248.65 / 73,951.35 (hand-checked); strike step +100; hover works. PASS.
+- Undo after Clear all: 4 legs and the same max profit back. PASS. Save after an edit: PUT /strategies/39, same id, no name prompt (REQ-134 AC-2). PASS.
+- History: lists "removed leg BUY 22550 PE 2026-11-03 x65; added leg BUY 22600 PE ..." with Restore. PASS (raw ISO date -> owner visual list).
+- Start tracking (menu): scrolls to the tracking panel's own "Start tracking" button (two steps by design); not pressed. PASS.
+- ?template=iron_condor (the Learn link path): load 200 + capture 200; after the close it lands on the expired expiry -> owner decision ADR-199 (roll to next), built as F-16.
 
 ## Visual differences for the owner (not fixed here)
 
@@ -132,6 +141,7 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
 | U-23 | IV as a raw fraction "0.176762" | "17.7" (S-015) | G-0xx IV format |
 | U-25 | Saved list rows lack the first-leg summary and tracked state | REQ-134 AC-4, S-118 | missing piece |
 | U-1 | /favicon.ico 404 | - | none |
+| (extra) | History entries print the expiry raw ("2026-11-03") | - | none |
 | U-3 | After a card click the builder shows "No legs yet" for 2-5 s (cards greyed, no loading text) while F-1 captures prices | legs appear at once (S-011) | none; time it live |
 | after close | Ready-made, drawer and the ?template= link default to today's expiry after 15:30 on expiry day, so the legs cannot be priced (?template=iron_condor at 18:07: load 200, capture 200, 4 legs on 27 Oct, "not connected"); drawer prices "-" for strikes not held | unmeasured | OWNER QUESTION: should the default roll to the next expiry after the close on expiry day? spec silent (REQ-135 AC-2 only names "Today (0 days)") |
 
@@ -146,6 +156,9 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
   PARTIAL naming it. A parked F-row is never counted as passed.
 - Market closed: steps 2-8 may build against the recorded replay, labelled as replay; the live walks are still owed
   and run first in the next market session. The contract does not close on replay walks alone.
+- AMENDED 2026-10-27 ~18:17 IST by the owner (ADR-200 (5)): a walk on the REAL app outside market hours, priced from
+  the last close and labelled "Market closed. Prices are from <time>." (F-17), counts as the live proof. A walk through
+  the walkthrough launcher that pretends the market is open does NOT count (walks 1 and 2 used it).
 - Never run the full pass while the app servers are up (3.8 GB free killed the app on 2026-10-27).
 
 ## Stop condition
