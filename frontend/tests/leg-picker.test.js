@@ -554,6 +554,25 @@ describe('a draft reopened without planned entries asks for a reprice', () => {
   })
 })
 
+// #583 I-12: a FUTURES leg saved without a planned entry goes through the same Reprice -> Save leg capture as an option.
+describe('a futures leg without a planned entry captures on Reprice then Save leg', () => {
+  const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:48704', contract_id: 3, symbol: 'NIFTY26OCTFUT', expiry: '2026-10-27', instrument_type: 'FUT', strike: null, lot_size: 65, action: 'BUY', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
+  it('sends the planned-entry request for the future and stores its LTP', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [entry(48704, '22800.00')] }
+    const w = mountPicker(legs)
+    await flushPromises()
+    expect(t(w, 'leg-reprice-prompt').exists()).toBe(true)
+    await t(w, 'reprice-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    const posts = calls.filter((x) => x.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(posts[0].body).toEqual({ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] })
+    expect(w.props('legs')[0]).toMatchObject({ planned_entry: '22800.00', captured_at: AT, reason_code: null, instrument_type: 'FUT' })
+  })
+})
+
 // ---- W-147 / REQ-080: the Strikes and Futures tabs, multi-select Done, the Lots/Quantity setting. ----
 // The strikes answer is the shape of backend/ofo_app/routes/leg_picker.py StrikesOut, built from the SAME recorded NIFTY
 // 2026-10-08 09:20:09 IST values as tests_app/test_leg_picker_routes.py: spot 22,533.25, grid 22450..22600 step 50 (ATM 22550),
