@@ -468,6 +468,7 @@ issues:
   "#586": S6.4  # Builder: a mixed-expiry leg makes leg-edit and outcome answer 500 (G-065, ADR-143)
   "#587": S6.4  # Pre-push gate: vitest related misses disk-reading tests (N1), plus N3-N5 minors from the round-2 review
   "#588": S6.4  # Chain: moneyness filter empties the table when the spot drops (N2, REQ-072 AC-2)
+  "#592": S6.4  # G-069 phone width: no Sensibull phone study, so no verdict; our top bar is clipped at 390 px (GC-B1 item 6 PARKED)
 
 # Work items whose status is not done.
 work_items:
