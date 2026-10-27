@@ -175,6 +175,15 @@ describe('G-051 core: the tooltip shows the engine point at the nearest sent lev
     expect(tip(w).exists()).toBe(false)
     w.unmount()
   })
+
+  it('a new reply drops the hover: no tooltip until the user hovers the new answer', async () => {
+    const w = card()
+    await hover(w, 22300)
+    expect(tip(w).exists()).toBe(true)
+    await w.setProps({ points: real.payoff.points.map((p) => ({ ...p })) }) // the next answer for an edited strategy
+    expect(tip(w).exists()).toBe(false)
+    w.unmount()
+  })
 })
 
 // The Payoff Table shows the column label ('22,300', 'CURRENT 22,533.25', '0-P&L 22,400'); its level text ends with it.
