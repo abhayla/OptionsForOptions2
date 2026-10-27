@@ -881,3 +881,66 @@ async def test_standing_d_no_live_feed_and_spot_missing_carry_no_greeks_and_no_b
                                   ChainCatalogue(expiries=(EXPIRY,), contracts=CONTRACTS), None, live=False,
                                   now=Clock(T0))
     assert (out.state, out.greeks_basis, out.greeks_missing, out.rows) == ("NOT_CONNECTED", None, None, [])
+
+
+
+# ---- row 33: REQ-029 AC-9 filters (server side) and the per-row moneyness ------------------------------------------
+# Window 25050..25250 around ATM 25150 (spot 25162.30). tick_window gives OI 1000 / volume 500 everywhere, CE LTP
+# 100.50 + k and PE 200.25 + k; each test then changes one cell by hand.
+
+def _filtered_rig():
+    provider, feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    provider.tick(option_quote(cid("25100", "PE"), "201.25", bid="201.00", ask="201.50"))
+    return provider, feed, channel, mono, push
+
+
+async def test_ac9_each_row_carries_its_moneyness_from_the_server_atm():
+    """AC-9: the server marks each row on the calls' side against atm_strike; the screen filters by the word only."""
+    _provider, _feed, channel, _mono, push = _filtered_rig()
+    task = await start(push, channel)
+    await close(channel, task)
+    assert [r["moneyness"] for r in channel.sent[0]["rows"]] == ["ITM", "ITM", "ATM", "OTM", "OTM"]
+
+
+@pytest.mark.parametrize(("extra", "strikes"), [
+    ({}, ["25050.00", "25100.00", "25150.00", "25200.00", "25250.00"]),
+    ({"min_oi": 2000}, ["25200.00"]),
+    ({"min_volume": 501}, []),
+    ({"min_ltp": "203.00"}, ["25200.00", "25250.00"]),
+    ({"bid_and_ask": True}, ["25100.00"]),
+    ({"min_oi": 2000, "bid_and_ask": True}, []),
+])
+async def test_ac9_socket_filters_narrow_the_rows_only_never_a_value_or_the_subscription(extra, strikes):
+    """AC-9 / attack 6: a row stays when either side meets each filter; the kept rows' values are unchanged and the
+    subscription is the whole window whatever the filters."""
+    provider, _feed, channel, _mono, push = _filtered_rig()
+    task = await start(push, channel, {**request(), **extra})
+    held = set(provider.vendor_subscribed)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert [r["strike"] for r in body["rows"]] == strikes
+    assert body["rows_missing"] is None
+    if "25200.00" in strikes:
+        row = next(r for r in body["rows"] if r["strike"] == "25200.00")
+        assert (row["ce"]["ltp"], row["ce"]["oi"]) == ("103.50", 5000)
+    window = {cid(str(k), s) for k in WINDOW_2 for s in ("CE", "PE")}
+    assert window <= held
+
+
+def test_ac9_rest_read_applies_the_same_filters_and_refuses_bad_ones():
+    """AC-9: the first-paint REST read takes the same filters; a negative or non-number minimum is refused (422)."""
+    provider = FakeProvider()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    client = _app_client(MarketContext(provider, Clock(T0), Decimal("0.065")), Reader())
+    query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2}
+    ok = client.get("/api/market/chain", params={**query, "min_oi": "2000"})
+    assert ok.status_code == HTTP_OK, ok.text
+    assert [(r["strike"], r["moneyness"]) for r in ok.json()["rows"]] == [("25200.00", "OTM")]
+    for bad in ({"min_oi": "-1"}, {"min_ltp": "-0.05"}, {"min_ltp": "nan"}, {"min_volume": "x"}):
+        refused = client.get("/api/market/chain", params={**query, **bad})
+        assert refused.status_code == HTTP_UNPROCESSABLE, (bad, refused.text)

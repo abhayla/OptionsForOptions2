@@ -98,6 +98,17 @@ def in_the_money(kind: str, strike: Decimal, spot: Decimal | None) -> bool | Non
     return strike < spot if kind == "CE" else strike > spot
 
 
+#: REQ-029 AC-9 (row 33): a chain row's place against the ATM strike, read on the calls' side (puts: the opposite)
+Moneyness = Literal["ITM", "ATM", "OTM"]
+
+
+def moneyness(strike: Decimal, atm: Decimal) -> Moneyness:
+    """The calls' side: a strike below the ATM strike is in the money, the ATM strike is ATM, above it is out."""
+    if strike < atm:
+        return "ITM"
+    return "ATM" if strike == atm else "OTM"
+
+
 GreeksBasis = Literal["PARITY", "SPOT_FALLBACK"]
 GreeksMissing = Literal["SPOT_REFUSED", "FORWARD_UNAVAILABLE"]
 

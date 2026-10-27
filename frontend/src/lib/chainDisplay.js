@@ -1,8 +1,8 @@
 // Row 33 (REQ-029 AC-2/AC-3/AC-9; ADR-056, ADR-168): which chain columns are shown and which rows pass the filters.
 // One set for every user: there is no Guided/Standard/Advanced level (ADR-168 (4)); the Details toggle is the only
 // switch. Column key/label pairs taken from PR #509's frontend/src/lib/chainDisplay.js, without its level switch.
-// Display only: every value is the server's string (IV and Greeks come from the engine, ADR-008); the filters compare
-// those strings as numbers to HIDE rows, never change a number, never touch the selection.
+// No price, strike, OI or volume maths here (ADR-008): the server marks each row's moneyness and applies the numeric
+// filters (they travel as request fields); the browser only matches a word and passes the user's typed text on.
 
 /** REQ-029 AC-2: the default columns per side, IV included for every user. */
 export const DEFAULT_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume'], ['iv', 'IV']]
@@ -20,7 +20,7 @@ export function fieldsFor(details) {
 /** REQ-029 AC-9 strike range: strikes either side of ATM the server is asked for (chain_push.MAX_STRIKES_EACH_SIDE). */
 export const STRIKE_RANGES = [5, 10, 15]
 
-/** The line under the table naming what the engine's IV and Greeks rest on, or why there are none (ADR-061). */
+/** The line naming what the engine's IV and Greeks rest on, or why there are none (ADR-061: never silent). */
 export const GREEKS_BASIS_LINES = {
   SPOT_FALLBACK: 'IV and Greeks: estimated from spot (the forward could not be derived from the chain).',
 }
@@ -29,40 +29,27 @@ export const GREEKS_MISSING_LINES = {
   FORWARD_UNAVAILABLE: 'IV and Greeks are not shown: the expiry forward could not be derived.',
 }
 
-/** ITM/ATM/OTM is read from the calls' side against the server's ATM strike: calls below ATM are ITM (their puts OTM). */
+/** The server's row.moneyness is read on the calls' side: ITM calls are OTM puts. */
 export const MONEYNESS = [['ALL', 'All strikes'], ['ITM', 'ITM calls / OTM puts'], ['ATM', 'ATM'], ['OTM', 'OTM calls / ITM puts']]
 
 export const NO_FILTERS = Object.freeze({ moneyness: 'ALL', minOi: '', minVolume: '', minLtp: '', bidAndAsk: false })
 
-const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v))
-const atLeast = (value, min) => num(min) === null || (num(value) !== null && num(value) >= num(min))
-const sides = (row) => [row.ce, row.pe].filter(Boolean)
-
-function moneynessOf(row, atm) {
-  if (atm === null || atm === undefined) return null
-  const d = Number(row.strike) - Number(atm)
-  return d === 0 ? 'ATM' : d < 0 ? 'ITM' : 'OTM'
+/** The rows to show: the server's rows, in order, matched on the server's moneyness word. Never a changed value. */
+export function filterRows(rows, moneyness) {
+  return moneyness === 'ALL' ? [...(rows ?? [])] : (rows ?? []).filter((r) => r.moneyness === moneyness)
 }
 
-/** True when the row passes every filter. A numeric filter passes when EITHER side of the row meets it (a row is one
- *  strike: hiding it for one side's thin market would hide the other side too). With no ATM (no live spot) the
- *  moneyness filter cannot be read, so it hides nothing. */
-export function rowPasses(row, filters, atm) {
+/** The request fields for the server-side filters: only the ones set, the user's text passed on as typed. */
+export function filterParams(filters) {
   const f = { ...NO_FILTERS, ...filters }
-  if (f.moneyness !== 'ALL') {
-    const m = moneynessOf(row, atm)
-    if (m !== null && m !== f.moneyness) return false
-  }
-  const cells = sides(row)
-  const any = (test) => cells.some(test)
-  if (!any((c) => atLeast(c.oi, f.minOi))) return false
-  if (!any((c) => atLeast(c.volume, f.minVolume))) return false
-  if (!any((c) => atLeast(c.ltp, f.minLtp))) return false
-  if (f.bidAndAsk && !any((c) => num(c.bid) !== null && num(c.ask) !== null)) return false
-  return true
+  const out = {}
+  const text = (v) => (v === null || v === undefined ? '' : String(v).trim())
+  if (text(f.minOi)) out.min_oi = text(f.minOi)
+  if (text(f.minVolume)) out.min_volume = text(f.minVolume)
+  if (text(f.minLtp)) out.min_ltp = text(f.minLtp)
+  if (f.bidAndAsk) out.bid_and_ask = true
+  return out
 }
 
-/** The rows to show: the server's rows, in order, filtered. Never a new row, never a changed value. */
-export function filterRows(rows, filters, atm) {
-  return (rows ?? []).filter((r) => rowPasses(r, filters, atm))
-}
+/** True when any server-side filter is on (an empty answer then means "nothing matches", not "no data"). */
+export const anyServerFilter = (filters) => Object.keys(filterParams(filters)).length > 0

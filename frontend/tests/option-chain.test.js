@@ -33,7 +33,8 @@ class FakeSocket {
 
 const EXPIRY = '2026-10-27'
 const cell = (id, ltp, oi = '1000', volume = '50') => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi, oi_change: null, volume, health: 'available', at: '2026-10-19T10:00:00+05:30', permitted: true, unavailable_reason: null, iv: '12.34', delta: '0.5012', gamma: '0.0011', theta: '-12.3456', vega: '10.1234' })
-const row = (strike, ltpCe, ltpPe) => ({ strike, ce: cell(`NFO:${strike}CE`, ltpCe), pe: cell(`NFO:${strike}PE`, ltpPe) })
+const MONEYNESS_OF = { '24450.00': 'ITM', '24500.00': 'ATM', '24550.00': 'OTM' } // the server's mark, ATM 24500
+const row = (strike, ltpCe, ltpPe) => ({ strike, moneyness: MONEYNESS_OF[strike], ce: cell(`NFO:${strike}CE`, ltpCe), pe: cell(`NFO:${strike}PE`, ltpPe) })
 const answer = (ltpCe = '120.50', over = {}) => ({
   state: 'LIVE', underlying: 'NIFTY', expiry: EXPIRY, spot: '24510.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available',
   atm_strike: '24500.00', rows_missing: null, rows: [row('24450.00', '150.00', '80.00'), row('24500.00', ltpCe, '95.25'), row('24550.00', '90.00', '120.00')],
@@ -343,7 +344,7 @@ describe('Option Chain screen', () => {
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 5 })
   })
 
-  it('attack 6: every filter narrows the shown rows only; a filtered-out ticked contract stays in Selected Legs', async () => {
+  it('attack 6: filters narrow the shown rows only; numeric ones go to the server; a filtered-out ticked contract stays', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
@@ -355,14 +356,24 @@ describe('Option Chain screen', () => {
     await w.find('[data-testid="filter-moneyness"]').setValue('OTM')
     expect(cellsOf(w, 'strike')).toEqual(['24550.00'])
     expect(cellsOf(w, 'ce-ltp')).toEqual(['90.00'])
-    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450.00')
+    const sentBefore = sock().sent.length
     await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
+    await flushPromises()
+    expect(sock().sent.length).toBe(sentBefore + 1)
+    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15, min_ltp: '1000' })
+    sock().serverPush({ ...answer(), expiry: '2026-10-20', rows: [] })
+    await flushPromises()
     expect(cellsOf(w, 'strike')).toEqual([])
     expect(w.find('[data-testid="filtered-empty"]').exists()).toBe(true)
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     await w.find('[data-testid="filter-reset"]').trigger('click')
+    await flushPromises()
+    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
+    sock().serverPush({ ...answer(), expiry: '2026-10-20' })
+    await flushPromises()
     expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
   })
 
   it('row 33: the IV basis or the reason for no IV is said on the screen (ADR-061, never silent)', async () => {

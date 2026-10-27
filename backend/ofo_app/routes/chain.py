@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import time
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -80,10 +81,15 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
         strikes_each_side: Annotated[int, Query(ge=1, le=MAX_STRIKES_EACH_SIDE)] = MAX_STRIKES_EACH_SIDE,
+        min_oi: Annotated[int | None, Query(ge=0)] = None,
+        min_volume: Annotated[int | None, Query(ge=0)] = None,
+        min_ltp: Annotated[Decimal | None, Query(ge=0, allow_inf_nan=False)] = None,
+        bid_and_ask: Annotated[bool, Query()] = False,
         fallback: Annotated[bool, Query(description="true when the screen's own chain socket is down (ADR-077): the "
                                                     "answer is then not live whoever else subscribes")] = False,
 ) -> ChainOut:
-    req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side)
+    req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side, min_oi=min_oi,
+                       min_volume=min_volume, min_ltp=min_ltp, bid_and_ask=bid_and_ask)
     return chain_read(ctx, streaming, req, await reader(underlying, expiry), fallback=fallback, now=now)
 
 

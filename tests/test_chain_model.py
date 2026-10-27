@@ -21,7 +21,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from ofo.engine.chain_values import ChainModel, chain_greeks, chain_model
+from ofo.engine.chain_values import ChainModel, chain_greeks, chain_model, moneyness
 from ofo.engine.legs import Instrument
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
@@ -121,3 +121,13 @@ def test_attack_2_three_strikes_with_both_sides_quoted_use_the_parity_forward():
     model = _model(rows)
     assert (model.basis, model.missing) == ("PARITY", None)
     assert set(model.greeks) == {q.instrument_id for q in rows}
+
+
+@pytest.mark.parametrize(("strike", "atm", "expected"), [
+    ("22500", "22550", "ITM"), ("22549.95", "22550", "ITM"), ("22550", "22550.00", "ATM"),
+    ("22550.05", "22550", "OTM"), ("22600", "22550", "OTM"),
+])
+def test_row_moneyness_is_the_calls_side_against_the_atm_strike(strike, atm, expected):
+    """REQ-029 AC-9: below ATM = ITM calls, the ATM strike itself = ATM (2 vs 2.00 equal), above = OTM; one paisa off
+    either side is not ATM."""
+    assert moneyness(D(strike), D(atm)) == expected

@@ -21,7 +21,7 @@ import api from '@/services/api'
 import { healthSentence, missingCode, missingReason } from '@/lib/dataHealthText'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { NOT_LIVE_LABEL, STRIKES_EACH_SIDE, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, fieldsFor, filterRows } from '@/lib/chainDisplay'
+import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, anyServerFilter, fieldsFor, filterParams, filterRows } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -70,11 +70,13 @@ watch(underlying, () => {
   loadExpiries()
 }, { flush: 'sync' })
 watch(expiry, (value) => {
-  if (value) follow(chainRequest(underlying.value, value, strikesEachSide.value))
+  if (value) follow(chainRequest(underlying.value, value, strikesEachSide.value, filterParams(filters.value)))
   else clear()
 }, { flush: 'sync' })
-watch(strikesEachSide, (n) => {
-  if (expiry.value) follow(chainRequest(underlying.value, expiry.value, n))
+// The strike range and the numeric filters are request fields (the server applies them, ADR-008): a change re-asks.
+const serverKey = computed(() => JSON.stringify([strikesEachSide.value, filterParams(filters.value)]))
+watch(serverKey, () => {
+  if (expiry.value) follow(chainRequest(underlying.value, expiry.value, strikesEachSide.value, filterParams(filters.value)))
 })
 
 const router = useRouter()
@@ -133,7 +135,9 @@ const spotTime = computed(() => {
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
 const healthWord = (cell) => (cell && cell.health && cell.health !== 'available' ? cell.health : '')
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
-const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value, view.value.atm_strike) : []))
+const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
+const nothingMatches = computed(() => !!view.value && !view.value.rows_missing && view.value.state === 'LIVE'
+  && !shownRows.value.length && (anyServerFilter(filters.value) || filters.value.moneyness !== 'ALL'))
 const greeksLine = computed(() => GREEKS_MISSING_LINES[view.value?.greeks_missing] ?? GREEKS_BASIS_LINES[view.value?.greeks_basis] ?? '')
 const resetFilters = () => (filters.value = { ...NO_FILTERS })
 </script>
@@ -179,9 +183,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
           <option v-for="[code, label] in MONEYNESS" :key="code" :value="code">{{ label }}</option>
         </select>
       </label>
-      <label>Min OI <input v-model="filters.minOi" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-oi" /></label>
-      <label>Min volume <input v-model="filters.minVolume" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-volume" /></label>
-      <label>Min premium <input v-model="filters.minLtp" type="number" min="0" step="0.05" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-ltp" /></label>
+      <label>Min OI <input v-model.lazy="filters.minOi" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-oi" /></label>
+      <label>Min volume <input v-model.lazy="filters.minVolume" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-volume" /></label>
+      <label>Min premium <input v-model.lazy="filters.minLtp" type="number" min="0" step="0.05" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-ltp" /></label>
       <label><input v-model="filters.bidAndAsk" type="checkbox" data-testid="filter-bid-ask" /> Has bid and ask</label>
       <label><input v-model="details" type="checkbox" data-testid="details-toggle" /> Details</label>
       <button type="button" class="rounded border border-line px-2 text-xs" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
@@ -202,7 +206,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <button type="button" class="rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
-    <p v-if="view && view.rows.length && !shownRows.length" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
+    <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
     <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
     <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">
       <table class="min-w-full text-sm" data-testid="chain-table">

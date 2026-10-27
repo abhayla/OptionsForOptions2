@@ -35,6 +35,12 @@ window (a re-centre) is computed at once. A cell shows them only while its own q
 forward rests on (``greeks_basis``: PARITY / SPOT_FALLBACK, ADR-061 "estimated from spot", never silent) or why
 there are no Greeks (``greeks_missing``: SPOT_REFUSED / FORWARD_UNAVAILABLE).
 
+REQ-029 AC-9 (row 33): each row carries its ``moneyness`` (the calls' side against ``atm_strike``: ITM below, ATM,
+OTM above; its puts are the opposite), so the screen filters by a word and never compares prices (ADR-008). The
+numeric filters (``min_oi``, ``min_volume``, ``min_ltp``, ``bid_and_ask``) are request fields applied HERE to the rows
+only: a row stays when EITHER side meets each one. They never change the window, the subscription, a value or the
+engine's inputs.
+
 Liveness is this connection's own: LIVE only while THIS push holds its subscription (finding
 liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of
 the answer, so a quote that went stale is never shown as available (REQ-049 AC-2; no new staleness rule here: finding
@@ -53,13 +59,13 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
-from ofo.engine.chain_values import ChainModel, GreeksBasis, GreeksMissing, chain_model
+from ofo.engine.chain_values import ChainModel, GreeksBasis, GreeksMissing, Moneyness, chain_model, moneyness
 from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
@@ -111,6 +117,11 @@ class ChainRequest(BaseModel):
     underlying: Underlying
     expiry: datetime.date
     strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
+    #: REQ-029 AC-9 display filters (row 33): None / False = off; a row stays when either side meets each
+    min_oi: int | None = Field(default=None, ge=0)
+    min_volume: int | None = Field(default=None, ge=0)
+    min_ltp: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)  # the premium minimum, rupees
+    bid_and_ask: StrictBool = False
 
 
 class ChainCellOut(ApiModel):
@@ -137,6 +148,7 @@ class ChainCellOut(ApiModel):
 
 class ChainRowOut(ApiModel):
     strike: Money
+    moneyness: Moneyness  # the calls' side against atm_strike (REQ-029 AC-9): the screen filters by this word
     ce: ChainCellOut | None  # None: the catalogue lists no call at this strike
     pe: ChainCellOut | None  # None: the catalogue lists no put at this strike
 
@@ -341,6 +353,24 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowV
                         **_greek_fields(quote, model, contract.instrument_id))
 
 
+def _meets(cell: ChainCellOut | None, req: ChainRequest) -> tuple[bool, bool, bool, bool]:
+    """(OI, volume, premium, bid-and-ask) filters met by one side; a missing value never meets a set minimum."""
+    if cell is None:
+        return False, False, False, False
+
+    def at_least(value: Decimal | int | None, minimum: Decimal | int | None) -> bool:
+        return minimum is None or (value is not None and value >= minimum)
+
+    return (at_least(cell.oi, req.min_oi), at_least(cell.volume, req.min_volume), at_least(cell.ltp, req.min_ltp),
+            not req.bid_and_ask or (cell.bid is not None and cell.ask is not None))
+
+
+def row_passes(row: ChainRowOut, req: ChainRequest) -> bool:
+    """REQ-029 AC-9: the row stays when, for EACH filter, its call or its put meets it."""
+    ce, pe = _meets(row.ce, req), _meets(row.pe, req)
+    return all(c or p for c, p in zip(ce, pe, strict=True))
+
+
 def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
     return {q.instrument_id: q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)}
 
@@ -354,7 +384,7 @@ def model_of(ctx: MarketContext, req: ChainRequest, valuation: datetime.datetime
 
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
-          unknown: frozenset[str], model: ChainModel) -> list[ChainRowOut]:
+          unknown: frozenset[str], model: ChainModel, atm: Decimal) -> list[ChainRowOut]:
     quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
@@ -364,12 +394,12 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
     for strike in window:
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
-        out.append(ChainRowOut(strike=strike.quantize(PAISE),
+        out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=moneyness(strike, atm),
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
                                                                 model),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
                                                                 model)))
-    return out
+    return [r for r in out if row_passes(r, req)]
 
 
 def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
@@ -403,7 +433,8 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
-        rows=[] if model is None or window is None else _rows(ctx, req, catalogue, window, slow, unknown, model),
+        rows=[] if model is None or window is None or spot is None else _rows(
+            ctx, req, catalogue, window, slow, unknown, model, atm_strike(grid, spot)),
         answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at,
         greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing)
 
