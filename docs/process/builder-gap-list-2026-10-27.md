@@ -42,8 +42,8 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-013 | S-107 | B. Card header | "New Strategy", "Clear New Trades" | "New Strategy", "Clear all" (gap-builder-condor.png) | matches | REQ-135 AC-1 | - |
 | G-014 | S-107 | B. Selection row | "4 selected - Short Iron Condor", Reset Prices | "4 selected - Short Iron Condor", Reset Prices (gap-builder-condor.png) | matches | REQ-076, REQ-077 | - |
 | G-015 | S-107 | B. Leg row | One 36 px row: tick, B/S, expiry box, - strike +, CE/PE, lots box, price, depth, bin | Tick, B/S chip, expiry as text "3 Nov (7 days)", strike "22300.00" (two decimals), "H" mark, PE chip, "1 lot" + chevron, price box, depth, extra pencil, bin; every leg has a second line "Price has moved since ..." so rows are about 53 px (gap-builder-condor.png) | differs | REQ-076, REQ-077 AC-6 (second line kept by UI study Revision 1); decimals: none | rows 20, 21; new (strike decimals) |
-| G-016 | S-102 | B. Per-leg expiry dropdown | List of all expiries with days | Not opened today | unmeasured | REQ-076 | - |
-| G-017 | S-111 | B. Untick a leg | "3 selected", numbers recompute, button becomes "Trade 3" | Not exercised today (Revision 1 / I-10 decides the label) | unmeasured | REQ-076 AC-6, ADR-152 | - |
+| G-016 | S-102 | B. Per-leg expiry dropdown | List of all expiries with days | A plain label "3 Nov (7 days)" per leg, not a dropdown; the drawer's expiry list runs "Today (0 days)", "3 Nov (7 days)", "9 Nov (13 days)", "17 Nov (21 days)" (gcb1-G-016.png, 11:37 IST) | differs | REQ-076 | GC-B3 |
+| G-017 | S-111 | B. Untick a leg | "3 selected", numbers recompute, button becomes "Trade 3" | Unticking leg 4: "4 selected" -> "3 selected", max profit 4,983.09 -> 14,054.14, max loss 1,516.91 -> "Unlimited" (gcb1-G-017.png, 11:37 IST); no "Trade N" button, which is out under ADR-165 (see G-023) | matches | REQ-076 AC-6, ADR-152 | - |
 | G-018 | S-107..S-110 | B. Shift / Width / Hedge | Shows "Shift -", "Width 400", "Hedge 200" | "Shift - - +", "Width - +", "Hedge - +": no Width or Hedge value between the buttons on a short iron condor (gap-builder-condor.png; snapshot 09:46:35 lists only the buttons) | differs | REQ-078 | row 30 |
 | G-019 | catalogue 012 ("recompute live") | B. Edit speed | Numbers recompute on each edit | Leg edits 1,804-2,482 ms, about 2.0 s typical (walkthrough 2026-10-27, REQ-078 AC-1 FAIL) | differs | REQ-078 AC-1 (p95 1,000 ms) | row 30, #560 |
 | G-020 | S-103, S-231 | B. Multiplier | Dropdown 1..N | "Multiplier [1 v]" (gap-builder-condor.png) | matches | REQ-076 | - |
@@ -91,11 +91,11 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-062 | S-013 | G. Target day futures prices | Future price per expiry on the target day | None | missing | REQ-084 | row 37 |
 | G-063 | S-013 | G. Standard deviation table | 1SD 448.8 pts 2% -> range; 2SD 897.5 3.9% | None | missing | REQ-137 | row 38 |
 | G-064 | S-234 | Warnings / Insights drawer | "Insights" link opens "Your warnings" chips | No warnings link on the hedged iron condor; an unhedged case was not built today | unmeasured | REQ-085 | row 31, #558 (parked) |
-| G-065 | S-104 | Calendar / mixed expiry | Label "2 selected", Width/Hedge disabled, expiry line curved | Not built today | unmeasured | REQ-076, REQ-078 | - |
+| G-065 | S-104 | Calendar / mixed expiry | Label "2 selected", Width/Hedge disabled, expiry line curved | Leg 4 moved to 9 Nov: leg-edit and outcome answer 500 ("ERR-AF82B977"), summary and chart gone, the leg shows raw "2026-11-09", header still "4 selected"; Width / Hedge disabled (gcb1-G-065.png, 11:38 IST; issue #586) | differs | REQ-076, REQ-078 | GC-B3, #586 |
 | G-066 | S-233 | Futures leg | Buy Future loads with margin, Max Profit/Loss Unlimited | Known: a future added from the Futures tab gets no planned entry and every number disappears (walkthrough 2026-10-27 I-12 FAIL) | differs | REQ-080 AC-9 | #583 (I-12) |
 | G-067 | catalogue 010-039 | Layout: editor stays in view | Left column scrolls on its own while the chart scrolls | Left column stayed in view while the right column scrolled to the P&L table (gap-builder-pnl-table.png) | matches | UI study b.1 | - |
 | G-068 | none | Unsaved strategy after a reload | Not studied | After a reload the 4-leg unsaved strategy was gone: "No draft strategy is open" (evaluate 09:50:46) | unmeasured (Sensibull side not studied) | none - needs a requirement | new |
-| G-069 | catalogue pass 3 ("phone width not done") | Phone width 390 px | Not studied | No sideways scroll (scrollWidth 390); the top bar shows only Home and Strategies, Positions..Learn are cut off (gap-builder-390.png) | unmeasured (Sensibull side not studied) | REQ-009 | new |
+| G-069 | catalogue pass 3 ("phone width not done") | Phone width 390 px | Not studied | scrollWidth 390 (no sideways scroll); visible: logo, Home, Strategies, bell, You; Positions clipped, Market / Orders / Learn off-screen (gcb1-G-069.png, 11:38 IST) | unmeasured (Sensibull's phone layout was never studied) | REQ-009 | GC-B5 |
 
 ## 2. Strike drawer (Add/Edit)
 
@@ -108,13 +108,13 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-074 | S-032 | Strike table columns | Delta / Call LTP / Call OI bar / Strike / IV / Put OI bar / Put LTP / Delta | Call Delta / Call LTP / Call OI / Call IV / Strike / Put IV / Put OI / Put LTP / Put Delta; OI as raw numbers ("1764750"), no bars; two IV columns; strikes "22300.00" (gap-drawer-strikes-3nov.png) | differs | REQ-080 AC-2, UI study UI-202 | row 19; new |
 | G-075 | S-032 | Table fits the drawer | Every value in its own column | Values run together ("0.8211613.50" = delta + LTP; "1068275" over the next cell) and Put LTP is cut ("225.0") in the 520 px drawer (gap-drawer-strikes-3nov.png) | differs | REQ-080 | new (walkthrough 2026-10-27 display list) |
 | G-076 | S-032 | ITM / ATM marks | ITM halves shaded, ATM strike highlighted | ITM halves shaded cream, ATM row highlighted with an "ATM" tag (gap-drawer-strikes-3nov.png) | matches | REQ-080 | - |
-| G-077 | S-032, S-033 | LTP / OI / Greeks views | Three column sets | "LTP / OI / Greeks" switch present; OI and Greeks views not opened today (gap-drawer-strikes.png) | matches (views' content unmeasured) | REQ-080, REQ-084 (theta, vega, gamma) | row 19, row 37 |
+| G-077 | S-032, S-033 | LTP / OI / Greeks views | Three column sets | OI view: Call LTP, Call OI, Strike, Put OI, Put LTP (ATM 327.15, 63765, 22750, 73515, 251.60); Greeks view: Call Delta, Call IV, Strike, Put IV, Put Delta (ATM 0.5472, 16.77, 22750, 16.80, -0.4533); no theta, vega or gamma (gcb1-G-077-oi.png, gcb1-G-077-greeks.png, 11:39 IST) | differs (Greeks view lacks theta / vega / gamma; OI view not compared, S-033 OI not opened) | REQ-080, REQ-084 (theta, vega, gamma) | row 19, row 37; GC-B11 |
 | G-078 | S-032 | Pick B / S per strike | B / S on row hover, Qty row under a picked side | B / S on hover; after a pick a "Lots [1 v]" row appears under that strike (gap-drawer-4picks.png) | matches | REQ-080 AC-3/AC-4 | - |
 | G-079 | S-032 | Footer | "2 legs selected", Clear All, Done | "4 selected", "Pick from Option Chain", Clear All, Done; the footer covers the last table row (23200 shows under it) (gap-drawer-strikes-3nov.png, gap-drawer-4picks.png) | differs | REQ-080 | new |
 | G-080 | S-032 | Extra blocks in the drawer | Only the strike table | A picked-legs list with "Remove" links and the old "Add a leg by contract" form (Type, Strike, Buy or sell, Lots, Add) inside the drawer (gap-drawer-4picks.png) | differs | UI study UI-110, UI-206 | new |
 | G-081 | S-032 | "Show Editor" edge tab | Tab on the drawer edge collapses it to see the builder | None seen (gap-drawer-strikes.png) | missing | UI study UI-200 | new |
 | G-082 | S-034 | Futures tab | Real and synthetic futures per expiry with B / S | Futures tab present; the future it adds gets no planned entry (walkthrough I-12) | differs | REQ-080 AC-6, AC-9 | #583 (I-12) |
-| G-083 | S-035 | Drawer settings | Lots / Qty, Multiply by lot size | "Settings" button present; not opened today | unmeasured | REQ-080, REQ-138 | - |
+| G-083 | S-035 | Drawer settings | Lots / Qty, Multiply by lot size | Settings offers "Strikes each side" 10 / 20 / 30 / 40 and "Size in" Lots / Quantity; no "Multiply by Lot Size" toggle (gcb1-G-083.png, 11:39 IST) | differs | REQ-080, REQ-138 | GC-B11 |
 | G-084 | none (Sensibull shows no such mark) | Contract Zerodha will not accept | - | The strikes reply has no Zerodha permission field, so B / S cannot be disabled in the drawer | differs | REQ-030 AC-16 | #582 item 5 |
 | G-101 | none (UI study UI-207, catalogue failure texts) | Failure states inside the table area | Compact failure text from the reply inside the strike table area (UI-020) | Not seen today: no failure was triggered in the walk (row added 2026-10-27 by the plan review, MINOR 8) | unmeasured | REQ-080, UI study UI-207 | new |
 
@@ -150,15 +150,16 @@ Draft Portfolios 084-092, 118, 220-224; OI pages 140-144, 214; IV chart 151; opt
 
 | Screen | Rows | matches | differs | missing | n-a | unmeasured |
 |---|---|---|---|---|---|---|
-| Builder (G-001..G-069) | 69 | 14 | 31 | 17 | 0 | 7 |
-| Strike drawer (G-070..G-084, G-101) | 16 | 3 | 8 | 3 | 0 | 2 |
+| Builder (G-001..G-069) | 69 | 15 | 33 | 17 | 0 | 4 |
+| Strike drawer (G-070..G-084, G-101) | 16 | 2 | 10 | 3 | 0 | 1 |
 | Option Chain (G-085..G-100) | 16 | 0 | 6 | 7 | 1 | 2 |
-| **Total** | **101** | **17** | **45** | **27** | **1** | **11** |
+| **Total** | **101** | **17** | **49** | **27** | **1** | **7** |
 
-Counted by a script over the verdict cell of each G-row (first word). G-077 counts as matches (its OI and Greeks views
-were not opened); G-098 counts as missing against our own REQ-031. The eleven "unmeasured" rows (G-016, G-017, G-029,
-G-064, G-065, G-068, G-069, G-083, G-088, G-097, G-101) say why in the row. G-101 was added on 2026-10-27 (plan
-review: UI-207 had no row); G-016, G-017, G-065, G-069, G-077 and G-083 are measured live in GC-B1 item 6.
+Counted by a script over the verdict cell of each G-row (first word). G-098 counts as missing against our own REQ-031.
+Measured live in GC-B1 item 6 (2026-10-27 11:37-11:39 IST, main's code, owner's Kite session; screenshots
+`.playwright-mcp/gcb1-*.png`): G-016 differs, G-017 matches, G-065 differs (a 500, issue #586), G-069 still
+unmeasured (Sensibull's phone layout was never studied), G-077 differs (it had been counted "matches" unopened), G-083
+differs. The seven rows still "unmeasured" (G-029, G-064, G-068, G-069, G-088, G-097, G-101) say why in the row.
 
 ## Ten biggest gaps by user impact
 
