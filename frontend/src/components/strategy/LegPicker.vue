@@ -68,6 +68,7 @@ let seq = 0 // the newest catalogue request wins; an older answer arriving late 
 const editing = computed(() => props.legs.find((l) => l.id === editingId.value) ?? null)
 // Locked while any leg exists, also while editing the only one: a leg's contract belongs to its underlying.
 const underlyingLocked = computed(() => props.legs.length > 0)
+const serverDefault = ref('') // ADR-199 (4): the expiries reply's default_expiry; '' = the reply carried none (older server)
 const types = computed(() => offeredTypes(contracts.value))
 const strikes = computed(() => offeredStrikes(contracts.value, type.value))
 const contract = computed(() => selectedContract(contracts.value, type.value, strike.value))
@@ -75,16 +76,17 @@ const lotsOk = computed(() => typeof lots.value === 'number' && lotsValid(String
 const canSave = computed(() => !busy.value && lotsOk.value && (contract.value !== null || (editing.value !== null && !type.value && underlying.value === editing.value.underlying)))
 
 /** G-070 (REQ-150 AC-4, S-032): the drawer opens on the strategy's own expiry if its legs carry one the list offers, else
- *  the first (nearest) listed one. An empty or unreadable list chooses nothing. */
+ *  the server's default (ADR-199: not today's expiry after the close), else the first listed one. An empty or unreadable list chooses nothing. */
 function openingExpiry() {
   const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))
-  return own ? own.expiry : (expiries.value[0] ?? '')
+  return own ? own.expiry : (expiries.value.includes(serverDefault.value) ? serverDefault.value : (expiries.value[0] ?? ''))
 }
 
 // `preselect` is false for startEdit, which chooses the edited leg's own expiry itself
 async function loadExpiries(preselect = true) {
   const mine = ++seq
   expiries.value = []
+  serverDefault.value = ''
   contracts.value = []
   expiry.value = ''
   type.value = ''
@@ -93,6 +95,7 @@ async function loadExpiries(preselect = true) {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== seq) return false
     expiries.value = res.data.expiries
+    serverDefault.value = res.data.default_expiry ?? ''
     expiryDays.value = daysByExpiry(res.data.expiry_days)
     errorParts.value = null
     // F-13: a shut drawer reads no strikes or contracts; the opening watcher picks the expiry and reads them on open

@@ -1925,6 +1925,18 @@
       "ExpiriesOut": {
         "additionalProperties": false,
         "properties": {
+          "default_expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Expiry"
+          },
           "expiries": {
             "items": {
               "format": "date",
