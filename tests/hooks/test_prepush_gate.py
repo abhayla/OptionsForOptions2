@@ -168,13 +168,68 @@ def test_relative_cd_and_dash_C_compose_with_the_hook_cwd(repo, tmp_path):
 def test_fail_open_on_unusable_shapes(tmp_path, repo):
     not_a_repo = tmp_path / "plain"
     not_a_repo.mkdir()
-    assert check("git push origin HEAD", not_a_repo) is None  # git failure
-    assert check("git push origin HEAD", tmp_path / "does-not-exist") is None
+    assert check("git push origin HEAD", not_a_repo) is None  # an existing folder, git failure
     assert pg.decide("Bash", {"command": 5}, str(repo)) is None
     assert pg.decide("Bash", {"command": ""}, str(repo)) is None
     assert pg.decide("Bash", {}, str(repo)) is None
     assert pg.decide("Edit", {"command": "git push"}, str(repo)) is None
     assert pg.decide("Bash", {"command": "git push " + "x" * 200_000}, str(repo)) is None
+
+
+WIN_PATH = "D:\\Abhay\\Ventures\\OptionsForOptions2-batch1"  # review F1's exact input path
+
+
+def win(path):
+    """The repo path written the Windows way, with backslashes (what the review's attack used)."""
+    return str(path).replace("/", "\\")
+
+
+@pytest.mark.parametrize("shape", ['cd "{d}" && git push -u origin HEAD', 'git -C "{d}" push -u origin HEAD',
+                                   'cd "{d}"; git push origin HEAD', 'bash -c \'cd "{d}" && git push\''])
+def test_quoted_windows_path_resolves_to_the_real_folder(repo, tmp_path, shape):
+    # review F1: the scanner used to drop every backslash inside "..." -> a missing folder -> fail open
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    command = shape.format(d=win(repo))
+    assert REFUSED_WORD in check(command, other)
+    mark(repo)
+    assert check(command, other) is None  # the marker of THAT folder is found: the path resolved, not just blocked
+
+
+@pytest.mark.parametrize("shape", ['cd "{d}" && git push -u origin HEAD', 'git -C "{d}" push -u origin HEAD',
+                                   "cd {d} && git push", "git -C {d} push origin HEAD"])
+def test_a_push_folder_that_does_not_exist_is_refused(repo, tmp_path, shape):
+    missing = tmp_path / "no-such-folder"
+    reason = check(shape.format(d=missing.as_posix()), repo)
+    assert reason and REFUSED_WORD in reason and "does not exist" in reason
+    mark(repo)  # a marker in the hook cwd must not rescue a push from elsewhere
+    assert REFUSED_WORD in check(shape.format(d=missing.as_posix()), repo)
+
+
+def test_the_review_input_blocks_when_its_folder_is_absent_or_unmarked(tmp_path):
+    reason = check(f'cd "{WIN_PATH}" && git push -u origin HEAD', tmp_path)
+    assert reason and REFUSED_WORD in reason  # absent here: does not exist; present: no marker unless prepush passed
+
+
+def test_a_hook_cwd_that_does_not_exist_is_refused(tmp_path):
+    assert REFUSED_WORD in check("git push origin HEAD", tmp_path / "does-not-exist")
+
+
+def test_tilde_is_expanded(repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(repo.parent))
+    monkeypatch.setenv("USERPROFILE", str(repo.parent))
+    mark(repo)
+    assert check(f"cd ~/{repo.name} && git push origin HEAD", tmp_path) is None
+
+
+def test_double_quote_backslash_rule_in_the_shared_scanner():
+    import gate_before_commit as g
+
+    steps, unterminated = g._scan('echo "D:\\Abhay\\x" "a\\"b" "c\\$d" "e\\\\f" "g\\`h" "i\\\nj"')
+    assert not unterminated
+    assert steps[0][0] == ["echo", "D:\\Abhay\\x", 'a"b', "c$d", "e\\f", "g`h", "ij"]
+    ps_steps, _ = g._scan('echo "D:\\Abhay\\x"', True)  # PowerShell: backslash is never an escape
+    assert ps_steps[0][0] == ["echo", "D:\\Abhay\\x"]
 
 
 def test_a_missing_prepush_module_allows(repo, monkeypatch):

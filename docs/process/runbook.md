@@ -70,8 +70,12 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
 
 ## Before a push
 One command, the whole list on a committed, clean tree: `python scripts/orchestrator/prepush.py` (`--full` after a
-large merge). It runs ci_local, the ruff ratchet, the coverage check and the alembic guard, and writes the marker that
-`git push` and `land.py` require for that exact HEAD (an amend needs a new run). Bypass, with a reason:
+large merge). It runs ci_local, the ruff ratchet, the coverage check and the alembic guard, plus, when the change
+touches `frontend/`, `npm run lint`, vitest (the changed files' tests; all with `--full`) and `npm run build` in
+`frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). It writes the marker that `git push` and
+`land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
+move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/ (an amend needs a new run). A push
+whose folder the gate cannot find is refused. Bypass, with a reason:
 `PREPUSH_GATE_ALLOW=<reason> git push ...` or `land.py --skip-prepush <reason>`.
 Underneath, `python tools/ci_local.py` (`--full` after a large
 merge) mirrors the kit's `ci.yml` only; `app-tests.yml` (tests_app, frontend lint/unit/e2e, ruff ratchet) runs in

@@ -31,6 +31,7 @@ PREFIX = {"time", "command", "exec", "nohup", "sudo", "builtin", "nice"}
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "}", "(", ")", "fi", "done", "esac"}
 ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 HEREDOC_DELIM = re.compile(r"""(['"]?)([^\s'";&|<>]+)\1""")
+DQ_ESCAPABLE = frozenset('$`"\\\n')  # the only characters a backslash escapes inside "..." (POSIX)
 GIT_ARG_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"}
 SET_NAMES = {"pipefail", "errexit", "nounset", "xtrace", "noglob", "noclobber", "allexport"}
 Step = tuple[list[str], str]
@@ -117,8 +118,14 @@ def _scan(cmd: str, ps: bool = False) -> tuple[list[Step], bool]:
                     start = j
                     j += 1
                     continue
-                if not ps and d == "\\" and j + 1 < n:
+                if not ps and d == "\\" and j + 1 < n and cmd[j + 1] in DQ_ESCAPABLE:
+                    # POSIX: inside "..." a backslash escapes only $ ` " \ and newline; any other is literal
+                    # (so "D:\Abhay\x" keeps its backslashes; review F1, 2026-10-27)
                     buf.append(cmd[start:j])
+                    if cmd[j + 1] == "\n":
+                        j += 2
+                        start = j
+                        continue
                     j += 1
                     start = j
                 j += 1

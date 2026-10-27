@@ -14,11 +14,18 @@ Allowed without a marker: --dry-run / -n, --delete / -d, only `:branch` refspecs
 containing PREPUSH_GATE_ALLOW=<non-empty reason>.
 A marker is for one sha: an amended or new commit has none, and `prepush.py && git push` in ONE command is refused
 (the marker does not exist when the hook looks): run prepush.py first, push in the next command.
-Fails open (exit 0) on every error: unreadable input, git failure, missing prepush module, unknown shape.
+Fails CLOSED when a push step's folder does not exist (git cannot push from there, so refusing costs nothing; a
+mangled path must not let a push through: review F1, quoted `cd "D:\\..."`). Inside double quotes a backslash is
+literal unless it precedes $ ` " \\ or a newline (POSIX). `~` is expanded; `$VAR` / `$(...)` folders are not, so
+they block.
+Fails open (exit 0) on every other error: unreadable input, git failure in an existing folder that is not a
+repository, missing prepush module, unknown shape.
 
 Known bypasses (out of scope, not chased): `gh api` / REST ref updates, a git alias or wrapper script that pushes,
 editing or copying the marker by hand (a marker must still name its own sha), an abbreviated long option
-(--dry), a push of a ref other than HEAD (the check is on the HEAD of the directory), a push from a non-Claude shell.
+(--dry), a push of a ref other than HEAD or `--all` (the check is on the HEAD of the directory), a push from a
+non-Claude shell, a `cd` into a folder named by a variable that happens to resolve literally to another existing repo
+(variables are not expanded; a missing folder blocks).
 """
 from __future__ import annotations
 
@@ -39,6 +46,9 @@ SHORT_ALLOW = {"n", "d"}  # -n dry run, -d delete
 MESSAGE = ("BLOCKED by prepush_gate: commit {short} has no passing pre-push run. Run: python "
            "scripts/orchestrator/prepush.py (finding local-ci-mirror-runs-a-subset). Bypass with a reason: "
            "PREPUSH_GATE_ALLOW=<reason>.")
+MISSING = ("BLOCKED by prepush_gate: the push folder {directory} does not exist (this hook could not resolve where "
+           "the push runs). Push after a plain `cd <dir>` or with `git -C <dir>`, or bypass with a reason: "
+           "PREPUSH_GATE_ALLOW=<reason>.")
 
 
 def _native(path: str) -> str:
@@ -50,7 +60,7 @@ def _native(path: str) -> str:
 
 
 def _join(base: str, path: str) -> str:
-    return os.path.abspath(os.path.join(base, _native(path)))
+    return os.path.abspath(os.path.join(base, os.path.expanduser(_native(path))))
 
 
 def _cd_target(words: list[str]) -> str | None:
@@ -144,9 +154,13 @@ def _judge_push(words: list[str], current: str) -> str | None:
     directory = current
     for d in found[0]:
         directory = _join(directory, d)
+    if not os.path.isdir(directory):
+        # fail CLOSED: git cannot push from a missing folder, so refusing costs nothing, while a wrong guess (a
+        # quoted Windows path the scanner mangled, review F1) would let an unmarked push through
+        return MISSING.format(directory=directory)
     sha = _head_sha(directory)
     if sha is None:
-        return None  # not a repository / git failed: fail open
+        return None  # an existing folder that is not a repository / git failed: fail open
     if ORCH_DIR not in sys.path:
         sys.path.insert(0, ORCH_DIR)
     try:

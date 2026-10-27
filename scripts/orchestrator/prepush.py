@@ -7,11 +7,25 @@ Runs, in order, every step even when an earlier one fails (so one run shows ever
 (the last three are checks app-tests.yml / coverage.yml run in CI that ci_local does not mirror: finding
 local-ci-mirror-runs-a-subset). Why the split: kit defect Startup-Factory #186, any changed non-.py file makes
 ci_local run the full suite incl. tests_app (egress allow-list leak, DB tests that must not run on this host).
-Each step's output goes to a log file outside the repo; one line per step.
+When the change since the merge base with origin/main touches frontend/ (or that diff cannot be read: fail closed),
+three more steps run in frontend/, as app-tests.yml does in CI: frontend_lint (npm run lint), frontend_unit (npx vitest
+related --run <changed src/tests files>; every test file with --full or when a deletion / non-src file changed) and
+frontend_build (npm run build). A missing frontend/node_modules or tool is a FAIL with the reason, never a skip
+(orchestrator finding 1, 2026-10-27: a marker was written over 37 red vitest tests).
+Each step's output goes to a log file outside the repo; one line per step. A step that times out
+(STEP_TIMEOUT_S) or cannot start is a FAIL. The child environment never carries TEST_DATABASE_URL,
+TEST_ADMIN_DATABASE_URL or ALEMBIC_DATABASE_URL (this host's PostgreSQL serves production; DB tests are CI's).
 
-Marker: when every step passed AND the tracked tree is clean, <git-common-dir>/ofo-prepush/<full HEAD sha>.json is
-written. scripts/hooks/prepush_gate.py refuses `git push` without the marker for the pushed HEAD, and land.py checks it
-before its first push. A dirty tree still runs the checks but writes no marker (the result would not describe a commit).
+Marker: written to <git-common-dir>/ofo-prepush/<full HEAD sha>.json only when every step passed AND the tracked tree
+was clean at the start and at the end AND HEAD is the same sha at the end as at the start AND no untracked,
+not-ignored file sits under backend/, tests*/, scripts/ or frontend/src/ (CI sees only the committed tree; such
+files are named in the refusal). scripts/hooks/prepush_gate.py refuses `git push` without the marker for the pushed
+HEAD, and land.py checks it before its first push. A dirty tree still runs the checks but writes no marker (the result
+would not describe a commit).
+Known gaps (not chased): Playwright e2e is CI's only; `vitest related` trusts vitest's import graph (a test that
+reaches a changed file only at run time, e.g. a dynamic import by computed name, is not picked: use --full); an
+untracked file that .gitignore hides is not counted; a change outside backend/, tests*/, scripts/, frontend/src/ left
+untracked is not counted.
 Exit 0 only when every step passed. Every external command goes through an injected runner(cmd, cwd, log_path) -> rc.
 """
 from __future__ import annotations
@@ -20,6 +34,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +97,30 @@ def select_app_tests(repo: str) -> tuple[int, list[str], str]:
     return r.returncode, files, out.strip()
 
 
+FRONTEND = "frontend"
+FRONTEND_TEST_DIRS = ("src/", "tests/")  # a change elsewhere in frontend/ (config, package.json) runs every test file
+
+
+def frontend_changes(repo: str, base: str = "origin/main") -> list[str] | None:
+    """frontend/ paths (relative to frontend/) changed since the merge base with origin/main, as
+    [path] for an added/modified file and ["*"] when any frontend change needs every test file (a deletion, a rename,
+    a non-src change). [] = no frontend change. None = the diff could not be read (callers fail closed: run it all)."""
+    rc, mb = _git(repo, "merge-base", base, "HEAD")
+    if rc != 0 or not mb:
+        return None
+    rc, out = _git(repo, "diff", "--name-status", "--no-renames", mb, "HEAD", "--", FRONTEND)
+    if rc != 0:
+        return None
+    picked: list[str] = []
+    for line in out.splitlines():
+        status, _, path = line.partition("\t")
+        rel = path.replace("\\", "/")[len(FRONTEND) + 1:]
+        if not status.startswith(("A", "M")) or not rel.startswith(FRONTEND_TEST_DIRS):
+            return ["*"]
+        picked.append(rel)
+    return picked
+
+
 def _note(log_path: str, text: str) -> None:
     with open(log_path, "w", encoding="utf-8") as handle:
         handle.write(text + "\n")
@@ -91,12 +130,34 @@ class Plan:
     """The steps in run order; each step method takes its log path and returns a return code. A step that needs no
     command writes its reason to its log."""
 
-    def __init__(self, repo, full, runner, log_dir, select_domain, select_app):  # noqa: PLR0913
+    def __init__(self, repo, full, runner, log_dir, select_domain, select_app,  # noqa: PLR0913
+                 frontend=(), which=shutil.which):
         self.repo, self.full, self.runner, self.log_dir = repo, full, runner, log_dir
         self.select_domain, self.select_app = select_domain, select_app
+        self.frontend, self.which = frontend, which  # frontend: frontend_changes() result
 
     def run(self, *cmd, log):
         return self.runner(list(cmd), self.repo, log)
+
+    def front(self, tool, args, log):
+        """One frontend step in frontend/. Missing node_modules or tool = FAIL with the reason, never a skip."""
+        cwd = os.path.join(self.repo, FRONTEND)
+        if not os.path.isdir(os.path.join(cwd, "node_modules")):
+            _note(log, f"FAIL: {cwd}/node_modules is missing (run npm ci in frontend/); a frontend change cannot be "
+                       "checked without it")
+            return 1
+        exe = self.which(tool)
+        if not exe:
+            _note(log, f"FAIL: {tool} not found on PATH")
+            return 1
+        return self.runner([exe, *args], cwd, log)
+
+    def frontend_unit(self, log):
+        changed = self.frontend
+        if self.full or changed is None or "*" in changed:
+            return self.front("npx", ["vitest", "run"], log)
+        # the tests whose import graph reaches a changed file (orchestrator finding 3: every test that mounts it)
+        return self.front("npx", ["vitest", "related", "--run", *changed], log)
 
     def ci_checks(self, log):
         try:
@@ -135,17 +196,44 @@ class Plan:
 
     def steps(self):
         py = sys.executable
-        return [("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
-                ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
-                ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
-                ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
+        steps = [("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
+                 ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
+                 ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
+                 ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
+        if self.frontend != []:  # None (diff unreadable) runs them too: fail closed
+            steps += [("frontend_lint", lambda log: self.front("npm", ["run", "lint"], log)),
+                      ("frontend_unit", self.frontend_unit),
+                      ("frontend_build", lambda log: self.front("npm", ["run", "build"], log))]
+        return steps
+
+
+DB_ENV = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL")
+STEP_TIMEOUT_S = 3600
+TIMEOUT_RC = 124
+
+
+def child_env(environ=None) -> dict:
+    """The parent environment minus every DB URL, always (review F4): this host's PostgreSQL also serves production,
+    so the selected DB tests must skip here even when the run sits under db_run.py; CI runs them."""
+    env = dict(os.environ if environ is None else environ)
+    for key in DB_ENV:
+        env.pop(key, None)
+    return env
 
 
 def real_runner(cmd, cwd, log_path):
-    # the plain environment: gate_env.no_graft_env() would leak GIT_GRAFT_FILE into pytest and break
+    # otherwise the plain environment: gate_env.no_graft_env() would leak GIT_GRAFT_FILE into pytest and break
     # tests/orchestrator/test_gate_env.py (the graft test needs git to honour grafts)
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
-        return subprocess.run(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, check=False).returncode  # noqa: S603
+        try:
+            return subprocess.run(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, check=False,  # noqa: S603
+                                  env=child_env(), timeout=STEP_TIMEOUT_S).returncode
+        except subprocess.TimeoutExpired:
+            log.write(f"\nFAIL: timed out after {STEP_TIMEOUT_S}s\n")
+            return TIMEOUT_RC
+        except OSError as exc:  # the tool could not start: a FAIL, never a pass
+            log.write(f"\nFAIL: could not start {cmd[0]}: {exc!r}\n")
+            return 1
 
 
 def _git(repo, *args):
@@ -186,6 +274,19 @@ def tree_is_clean(repo) -> bool:
     return rc == 0 and out == ""
 
 
+UNTRACKED_SOURCE = ("backend/", "tests", "scripts/", "frontend/src/")  # "tests" = tests/, tests_app/, tests_*
+
+
+def untracked_source(repo) -> list[str] | None:
+    """Untracked, not-ignored files where code lives (review F2: CI checks the committed tree only, so a committed
+    file importing a never-added module passes here and fails in CI). Junk elsewhere (pid.txt at the root) is
+    ignored. None = git failed (callers treat it as not clean)."""
+    rc, out = _git(repo, "ls-files", "--others", "--exclude-standard")
+    if rc != 0:
+        return None
+    return [p for p in out.splitlines() if p.replace("\\", "/").startswith(UNTRACKED_SOURCE)]
+
+
 def write_marker(repo, sha, results) -> str:
     path = marker_path(repo, sha)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -199,15 +300,21 @@ def write_marker(repo, sha, results) -> str:
 
 
 def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
-            select_domain=None, select_app=None) -> int:
+            select_domain=None, select_app=None, select_frontend=None, which=shutil.which) -> int:
     select_domain = select_domain or select_domain_tests
     select_app = select_app or select_app_tests
+    select_frontend = select_frontend or frontend_changes
     repo = os.path.abspath(repo)
     log_dir = log_dir or tempfile.mkdtemp(prefix="prepush-")
     os.makedirs(log_dir, exist_ok=True)
     sha = head_sha(repo)
+    clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
+    try:
+        frontend = select_frontend(repo)
+    except Exception:  # noqa: BLE001 - cannot tell: fail closed, run every frontend step
+        frontend = None
     results = []
-    for name, step in Plan(repo, full, runner, log_dir, select_domain, select_app).steps():
+    for name, step in Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which).steps():
         log_path = os.path.join(log_dir, f"{name}.log")
         t0 = clock()
         rc = step(log_path)
@@ -216,10 +323,21 @@ def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monot
         print(f"{'PASS' if rc == 0 else 'FAIL'} {name} {seconds}s {log_path}")
     ok = all(rc == 0 for _, rc, _, _ in results)
     note = "marker not written"
+    untracked = untracked_source(repo) if ok else []
     if ok and sha is None:
         note += " (no HEAD sha)"
+    elif ok and not clean_at_start:
+        note += " (tracked tree was dirty when the run started: commit or stash, then run again)"
+    elif ok and (end_sha := head_sha(repo)) != sha:
+        note += f" (HEAD moved during the run: started on {(sha or '?')[:7]}, now {(end_sha or '?')[:7]}; run again)"
     elif ok and not tree_is_clean(repo):
         note += " (tracked tree is dirty: commit or stash, then run again)"
+    elif ok and untracked is None:
+        note += " (could not list untracked files)"
+    elif ok and untracked:
+        note += (" (untracked source files CI will not see: " + ", ".join(untracked[:10])
+                 + (f" and {len(untracked) - 10} more" if len(untracked) > 10 else "")  # noqa: PLR2004
+                 + "; add or remove them, then run again)")
     elif ok:
         note = "marker " + write_marker(repo, sha, results)
     else:
@@ -232,7 +350,7 @@ def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monot
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--full", action="store_true", help="run all of tests/ as the domain tests")
+    ap.add_argument("--full", action="store_true", help="run all of tests/ as the domain tests, and every vitest file")
     ap.add_argument("--repo", default=ROOT, help="the checkout to check (default: this one)")
     a = ap.parse_args(argv)
     if not os.path.isdir(a.repo):
