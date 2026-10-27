@@ -15,6 +15,20 @@ for what the product does); each is written the turn it is given.
 | Q3 | Option chain: full Sensibull layout? | **Not asked: settled** by Q2 / Q2a ("same as Sensibull", builder and chain related) and ADR-193 (1): the chain gets the Sensibull layout (UI study b.3, UI-210..UI-214) in this goal, with rows 33-35. | 2026-10-27 |
 | Q4 | When does the owner review? | **Not asked: settled** by the owner's standing rule (memory plan-review-then-approval): the gap list is the plan; independent review; one owner approval; then build first, check once at the end. | 2026-10-27 |
 
+## Include / exclude for this phase (owner, ~10:20 IST: "It is focused only on strategy builder. Ask me questions what to include and exclude")
+
+| # | Question | Answer | Recorded |
+|---|---|---|---|
+| P1 | Option Chain SCREEN in this phase, or only the builder's strike drawer and its link? | **Chain screen too**: rows 33-35 and the Sensibull chain layout (UI-210..UI-214) are in this phase (ADR-196 stands). Recommendation was "drawer + link only". | 2026-10-27 |
+| P2 | Separate Sensibull screens that feed the builder (Strategy Wizard 070-075, Easy Options 080-087, Draft Portfolios 084-092 / 220-224, OI pages 140-144 / 214, IV chart 151, options/straddle charts 146-147): in this phase? | **None this phase**: all four groups move to the next phase, order chosen then. This phase = builder screen + strike drawer + option chain. ADR-196 (1) amended the same turn. | 2026-10-27 |
+| P3 | Sensibull's "Add Booked P&L" toggle (catalogue line 46, setting screen 025) = row 39, REQ-089: in this phase? | **In this phase**: row 39 is built (a typed booked amount with a note, on its own labelled line, added to the payoff). Recommendation was "out, comes with real fills". ADR-196 (4) amended. | 2026-10-27 |
+| P4 | BANKNIFTY and FINNIFTY in the builder and chain this phase (row 46, REQ-090 AC-1, REQ-001 AC-1)? | **All four in**: row 46 is built in this phase (values from the exchange files; a weekly-only shape refused on a monthly-only underlying). Already Approved in the spec: no spec change. | 2026-10-27 |
+| P5 | Sensibull's builder price chart with OI profile (screen 027; REQ-107, held for display rights): in this phase? | **Placeholder now**: the builder shows Sensibull's chart button and a "Coming soon: price chart" card (UI-021); the chart and the IV percentile figure are built after the owner confirms display rights and the chart licence. ADR-196 (4) amended. | 2026-10-27 |
+
+Not asked, settled by the spec or this morning's list: the strike drawer's Straddles / Strangles tabs (UI-201, REQ-079
+quick picks) are in; the builder info panel (rows 41-42, REQ-139 / REQ-106) is in; India VIX under REQ-106 needs
+REQ-072 AC-1's "two index rows" wording extended (a spec wording fix, done with row 42).
+
 ## The goal, as understood (>95%)
 Make the Strategy Builder, its strike drawer and the Option Chain fully functional and laid out like Sensibull: every
 Sensibull feature that lives in or feeds those screens, plus our own requirements on top, in our brand and ADR-003
