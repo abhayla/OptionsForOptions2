@@ -76,9 +76,9 @@ describe('F-8: one continuous payoff line, kinks at the sent strikes', () => {
 
   it('segment colours: profit, loss, a 0.00 run on neither line, a crossing as a gradient (pure helper)', () => {
     const pts = ['-65.00', '0.00', '0.00', '120.00', '-10.00'].map((pnl, i) => ({ level: String(i), pnl }))
-    const c = segmentColour(pointSigns(pts), COLOURS)
     const grad = { addColorStop: () => {} }
-    const fakeChart = { chartArea: AREA, scales: { y: { getPixelForValue: () => 100 } }, ctx: { createLinearGradient: () => grad } }
+    const fakeChart = {}
+    const c = segmentColour(pointSigns(pts), COLOURS, (ch) => (ch === fakeChart ? grad : null))
     const seg = (a) => c({ p0DataIndex: a, p1DataIndex: a + 1, chart: fakeChart })
     expect(seg(0)).toBe('red')
     expect(seg(1)).toBe('grey')
