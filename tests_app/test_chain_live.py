@@ -50,6 +50,7 @@ WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
 UNSUPPORTED = render("gate_underlying_unsupported", symbol="BANKNIFTY").as_dict()
 ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
+FOUR_DP = 4
 HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
 
@@ -221,13 +222,14 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     atm_row = second["rows"][2]
     assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
-                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown"}
+                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown",
+                             "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
 async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():
-    """AC-2/AC-4: each cell carries exactly LTP, bid/ask, Change, OI (+ change), Volume (plus id, health, time), no IV
-    or Greeks; the feed has no previous close, so change is null on every cell, never computed from anything else."""
+    """AC-2/AC-3/AC-4: each cell carries exactly LTP, bid/ask, Change, OI (+ change), Volume, the engine's IV and
+    Greeks (row 33) plus id, health, time; the feed has no previous close, so change is null on every cell."""
     provider, _feed, channel, _mono, push = make_rig()
     provider.tick(index_quote("25162.30"))
     tick_window(provider)
@@ -236,10 +238,12 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
     assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
                                                         "oi_change", "volume", "health", "at", "permitted",
-                                                        "unavailable_reason"})}
+                                                        "unavailable_reason", "iv", "delta", "gamma", "theta",
+                                                        "vega"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
-                                    "rows_missing", "rows", "answered_at", "market_closed", "last_price_at"}
+                                    "rows_missing", "rows", "answered_at", "market_closed", "last_price_at",
+                                    "greeks_basis", "greeks_missing", "greeks_label"}
 
 
 async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
@@ -327,7 +331,8 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
                                                 "volume": None, "health": "unavailable", "at": None,
-                                                    "permitted": False, "unavailable_reason": "unknown"}
+                                                    "permitted": False, "unavailable_reason": "unknown",
+                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -501,7 +506,8 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
                    "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
-                   "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying"}
+                   "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying",
+                   "ofo.engine.chain_values"}  # row 33: the engine's IV/Greeks maths only
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 
@@ -764,3 +770,294 @@ async def test_invalid_messages_with_no_data_change_get_at_most_one_error_every_
     assert sent == [ERROR] * len(error_times)
     assert 1 <= len(error_times) <= 20 // ERROR_REPLY_SECONDS  # at most 4 in 20 s, never 20
     assert all(b - a >= ERROR_REPLY_SECONDS for a, b in itertools.pairwise(error_times))
+
+
+# ---- row 33: the engine's IV and Greeks on the chain (REQ-029 AC-2/AC-3/AC-4) --------------------------------------
+# Inputs by hand: spot 25162.30, window 25050..25250 (tick_window: CE 100.50 + k, PE 200.25 + k). The 25050 CE at
+# 100.50 is below its intrinsic 112.30, so the engine refuses it (a dash); every other cell is above intrinsic.
+GREEK_KEYS = ("iv", "delta", "gamma", "theta", "vega")
+
+
+def _numbers(node, path="") -> list[str]:
+    """Every JSON number in a pushed body (ints are only counts: oi, oi_change, volume)."""
+    if isinstance(node, dict):
+        return [p for k, v in node.items() for p in _numbers(v, f"{path}.{k}")]
+    if isinstance(node, list):
+        return [p for i, v in enumerate(node) for p in _numbers(v, f"{path}[{i}]")]
+    return [path] if isinstance(node, (int, float)) and not isinstance(node, bool) else []
+
+
+async def test_attack_3_pushed_iv_and_greeks_are_engine_strings_and_no_money_or_greek_is_a_json_number():
+    """Attack 3: every priced cell carries IV and the four Greeks as strings; the refused 25050 CE (below intrinsic)
+    is null, never 0; the only JSON numbers are the integer counts; the basis says the spot fallback (no bid/ask)."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert (body["greeks_basis"], body["greeks_missing"]) == ("SPOT_FALLBACK", None)
+    cells = {row[s]["instrument_id"]: row[s] for row in body["rows"] for s in ("ce", "pe")}
+    refused = cells.pop(cid("25050", "CE"))
+    assert [refused[k] for k in GREEK_KEYS] == [None] * 5
+    for cell in cells.values():
+        assert all(isinstance(cell[k], str) for k in GREEK_KEYS), cell
+        assert Decimal(cell["iv"]) > 0 and cell["iv"] == f"{Decimal(cell['iv']):.2f}"
+    assert Decimal(cells[cid("25150", "CE")]["delta"]) > 0 > Decimal(cells[cid("25150", "PE")]["delta"])
+    assert {p.rsplit(".", 1)[-1] for p in _numbers(body)} <= {"oi", "volume"}
+
+
+async def test_attack_3_ltp_streams_every_second_while_iv_refreshes_at_most_every_oi_refresh_seconds():
+    """Attack 3 / standing item (a): LTP changes push every second with the new fields on; the engine runs once at the
+    start and again only when OI_REFRESH_SECONDS have passed (never per tick), and OI holds in between."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    runs_at_start = push.model_runs
+    for offset in (1, 2, 3, 4):
+        tick_window(provider, ltp_offset=offset)
+        provider.tick(option_quote(cid("25150", "CE"), f"{102 + offset}.50", oi=1000 + offset))
+        mono.now += 1.0
+        await settle()
+    runs_inside = push.model_runs
+    pushes_inside = len(channel.sent)
+    mono.now += 1.0  # 5 s since the first refresh
+    tick_window(provider, ltp_offset=9)
+    await settle()
+    await close(channel, task)
+    assert (runs_at_start, runs_inside, push.model_runs) == (ONE, ONE, TWO)
+    assert pushes_inside == FIVE  # the first push and one per second for 4 seconds
+    assert [m["rows"][2]["ce"]["oi"] for m in channel.sent[:FIVE]] == [1000] * FIVE
+    assert all(m["rows"][2]["ce"]["iv"] is not None for m in channel.sent)
+
+
+async def test_attack_3_a_new_window_contract_gets_its_iv_at_once_not_after_the_refresh():
+    """Standing item (a): a re-centre brings contracts the last model never saw: the engine runs at once for them."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    runs = push.model_runs
+    provider.tick(option_quote(cid("25300", "CE"), "40.00"))  # outside the window: not shown
+    provider.tick(index_quote("25310.00"))
+    for strike, ltp in (("25300", "60.00"), ("25350", "35.00"), ("25400", "20.00")):
+        provider.tick(option_quote(cid(strike, "CE"), ltp))
+    mono.now += 5.0
+    await settle(10)
+    await close(channel, task)
+    assert push.model_runs > runs
+    last = {row["strike"]: row for row in channel.sent[-1]["rows"]}
+    assert last["25300.00"]["ce"]["iv"] is not None
+
+
+@pytest.mark.parametrize(("state", "spot_health", "cell_health", "missing"), [
+    ("live with LTP", DataHealth.AVAILABLE, DataHealth.AVAILABLE, None),
+    ("cell stale (not priced)", DataHealth.AVAILABLE, DataHealth.STALE, None),
+    ("spot unhealthy: forward refused", DataHealth.UNHEALTHY, DataHealth.AVAILABLE, "SPOT_REFUSED"),
+])
+async def test_standing_d_each_answer_state_gives_a_value_or_a_dash(state, spot_health, cell_health, missing):
+    """Standing item (d): per answer state the ATM CE's IV is a value only when its own quote is priced and the spot
+    is usable; otherwise a dash, with the chain-level reason when the engine could not run at all."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30", health=spot_health))
+    tick_window(provider, health=cell_health)
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    iv = body["rows"][2]["ce"]["iv"]
+    assert body["greeks_missing"] == missing, state
+    assert (iv is not None) == (missing is None and cell_health is DataHealth.AVAILABLE), state
+
+
+async def test_standing_d_no_live_feed_and_spot_missing_carry_no_greeks_and_no_basis():
+    """Standing item (d): NOT_CONNECTED and a spot-missing answer have no rows, no basis, no reason."""
+    _provider, _feed, channel, _mono, push = make_rig()
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert (body["rows"], body["rows_missing"], body["greeks_basis"], body["greeks_missing"]) == (
+        [], "SPOT_MISSING", None, None)
+    out = chain_push.chain_answer(None, ChainRequest(underlying="NIFTY", expiry=EXPIRY),
+                                  ChainCatalogue(expiries=(EXPIRY,), contracts=CONTRACTS), None, live=False,
+                                  now=Clock(T0))
+    assert (out.state, out.greeks_basis, out.greeks_missing, out.rows) == ("NOT_CONNECTED", None, None, [])
+
+
+
+# ---- row 33: REQ-029 AC-9 filters (server side) and the per-row moneyness ------------------------------------------
+# Window 25050..25250 around ATM 25150 (spot 25162.30). tick_window gives OI 1000 / volume 500 everywhere, CE LTP
+# 100.50 + k and PE 200.25 + k; each test then changes one cell by hand.
+
+def _filtered_rig():
+    provider, feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    provider.tick(option_quote(cid("25100", "PE"), "201.25", bid="201.00", ask="201.50"))
+    return provider, feed, channel, mono, push
+
+
+async def test_ac9_each_row_carries_its_moneyness_from_the_server_atm():
+    """AC-9: the server marks each row on the calls' side against atm_strike; the screen filters by the word only."""
+    _provider, _feed, channel, _mono, push = _filtered_rig()
+    task = await start(push, channel)
+    await close(channel, task)
+    assert [r["moneyness"] for r in channel.sent[0]["rows"]] == ["ITM", "ITM", "ATM", "OTM", "OTM"]
+
+
+@pytest.mark.parametrize(("extra", "strikes"), [
+    ({}, ["25050.00", "25100.00", "25150.00", "25200.00", "25250.00"]),
+    ({"min_oi": 2000}, ["25200.00"]),
+    ({"min_volume": 501}, []),
+    ({"min_ltp": "203.00"}, ["25200.00", "25250.00"]),
+    ({"bid_and_ask": True}, ["25100.00"]),
+    ({"min_oi": 2000, "bid_and_ask": True}, []),
+])
+async def test_ac9_socket_filters_narrow_the_rows_only_never_a_value_or_the_subscription(extra, strikes):
+    """AC-9 / attack 6: a row stays when either side meets each filter; the kept rows' values are unchanged and the
+    subscription is the whole window whatever the filters."""
+    provider, _feed, channel, _mono, push = _filtered_rig()
+    task = await start(push, channel, {**request(), **extra})
+    held = set(provider.vendor_subscribed)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert [r["strike"] for r in body["rows"]] == strikes
+    assert body["rows_missing"] is None
+    if "25200.00" in strikes:
+        row = next(r for r in body["rows"] if r["strike"] == "25200.00")
+        assert (row["ce"]["ltp"], row["ce"]["oi"]) == ("103.50", 5000)
+    window = {cid(str(k), s) for k in WINDOW_2 for s in ("CE", "PE")}
+    assert window <= held
+
+
+def test_ac9_rest_read_applies_the_same_filters_and_refuses_bad_ones():
+    """AC-9: the first-paint REST read takes the same filters; a negative or non-number minimum is refused (422)."""
+    provider = FakeProvider()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    client = _app_client(MarketContext(provider, Clock(T0), Decimal("0.065")), Reader())
+    query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2}
+    ok = client.get("/api/market/chain", params={**query, "min_oi": "2000"})
+    assert ok.status_code == HTTP_OK, ok.text
+    assert [(r["strike"], r["moneyness"]) for r in ok.json()["rows"]] == [("25200.00", "OTM")]
+    for bad in ({"min_oi": "-1"}, {"min_ltp": "-0.05"}, {"min_ltp": "nan"}, {"min_volume": "x"}):
+        refused = client.get("/api/market/chain", params={**query, **bad})
+        assert refused.status_code == HTTP_UNPROCESSABLE, (bad, refused.text)
+
+
+# ---- chain round 2 (Tier A): the index price drops out; spot-derived values follow the spot's health ----------------
+
+async def test_r2_core_a_spot_drop_keeps_the_option_rows_and_says_why_moneyness_and_greeks_are_missing():
+    """Core proof: a live window with option rows, then an index tick with LTP 0. Before the fix the answer was LIVE
+    with 0 rows, rows_missing None and the saved SPOT_FALLBACK basis. Now the rows stay (moneyness empty, no ATM),
+    the reason is SPOT_MISSING, no cell carries a Greek and no basis is sent."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    assert channel.sent[-1]["greeks_basis"] == "SPOT_FALLBACK" and len(channel.sent[-1]["rows"]) == FIVE
+    provider.tick(index_quote("0"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    body = channel.sent[-1]
+    assert len(body["rows"]) == FIVE and body["rows_missing"] == "SPOT_MISSING"
+    assert (body["spot"], body["atm_strike"], body["greeks_basis"]) == (None, None, None)
+    assert body["greeks_missing"] == "SPOT_REFUSED"
+    assert {r["moneyness"] for r in body["rows"]} == {None}
+    assert all(r[s][k] is None for r in body["rows"] for s in ("ce", "pe") for k in GREEK_KEYS)
+    assert all(r[s]["ltp"] is not None for r in body["rows"] for s in ("ce", "pe"))
+
+
+async def test_r2_the_spot_coming_back_restores_moneyness_and_greeks():
+    """Answer state 'back to live': after the drop, a live spot gives moneyness, the basis and the Greeks again."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    provider.tick(index_quote("0"))
+    mono.now += 1.0
+    await settle()
+    provider.tick(index_quote("25162.30"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    body = channel.sent[-1]
+    assert body["rows_missing"] is None and body["greeks_basis"] == "SPOT_FALLBACK" and body["greeks_missing"] is None
+    assert [r["moneyness"] for r in body["rows"]] == ["ITM", "ITM", "ATM", "OTM", "OTM"]
+    assert body["rows"][2]["ce"]["iv"] is not None
+
+
+async def test_r2_a_spot_health_change_recomputes_the_greeks_in_the_same_push_not_after_five_seconds():
+    """Attack 2: LIVE -> UNHEALTHY -> LIVE. The fake clock moves 1 s each time (inside OI_REFRESH_SECONDS): the push
+    each change already shows the new state; the saved Greeks never outlive the spot's health."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel)
+    assert channel.sent[-1]["rows"][2]["ce"]["iv"] is not None
+    provider.tick(index_quote("25162.30", health=DataHealth.UNHEALTHY))
+    mono.now += 1.0
+    await settle()
+    unhealthy = channel.sent[-1]
+    assert (unhealthy["greeks_missing"], unhealthy["greeks_basis"]) == ("SPOT_REFUSED", None)
+    assert unhealthy["rows"][2]["ce"]["iv"] is None
+    provider.tick(index_quote("25162.30"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    back = channel.sent[-1]
+    assert (back["greeks_missing"], back["greeks_basis"]) == (None, "SPOT_FALLBACK")
+    assert back["rows"][2]["ce"]["iv"] is not None
+
+
+@pytest.mark.parametrize(("health", "word"), [(DataHealth.STALE, "stale since 09:20 IST"),
+                                              (DataHealth.DELAYED, "delayed, as of 09:20 IST")])
+async def test_r2_stale_or_delayed_spot_gives_greeks_with_the_server_label_and_a_live_spot_none(health, word):
+    """Attack 3 (server half): STALE / DELAYED -> Greeks computed and the answer carries the engine's label (REQ-072
+    AC-2); AVAILABLE -> no label."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30", health=health))
+    tick_window(provider)
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert body["greeks_label"] == word and body["rows"][2]["ce"]["iv"] is not None
+    provider2, _f, channel2, _m, push2 = make_rig()
+    provider2.tick(index_quote("25162.30"))
+    tick_window(provider2)
+    task2 = await start(push2, channel2)
+    await close(channel2, task2)
+    assert channel2.sent[0]["greeks_label"] is None
+
+
+async def test_r2_a_tiny_real_gamma_never_prints_as_zero_and_an_ordinary_gamma_keeps_four_decimals():
+    """Attack 4: a deep OTM call (25400 CE at 0.05) has a real gamma near 0.00001; it keeps significant digits. The ATM
+    gamma still prints at 4 decimals."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    provider.tick(option_quote(cid("25250", "CE"), "0.05"))
+    task = await start(push, channel)
+    await close(channel, task)
+    rows = {r["strike"]: r for r in channel.sent[0]["rows"]}
+    far, atm = rows["25250.00"]["ce"]["gamma"], rows["25150.00"]["ce"]["gamma"]
+    assert far is not None and Decimal(far) > 0 and far != "0.0000"
+    assert len(atm.split(".")[1]) == FOUR_DP and Decimal(atm) > 0
+
+
+def test_r2_gamma_shown_pure():
+    """The formatter alone: 0.0123 -> 4 dp as before; exact 0.0000114 behind a 0.0000 -> 2 significant digits; a true
+    zero stays 0.0000."""
+    zero = Decimal("0.0000")
+    shown = chain_push._gamma_shown
+    one = Decimal(1)
+
+    def text(gamma: Decimal, exact: Decimal | None = None) -> str:
+        return format(shown(chain_push.ChainGreeks(one, one, gamma, one, one, exact)), "f")
+
+    assert text(Decimal("0.0123")) == "0.0123"
+    assert text(zero, Decimal("0.0000114")) == "0.000011"
+    assert text(zero) == "0.0000"

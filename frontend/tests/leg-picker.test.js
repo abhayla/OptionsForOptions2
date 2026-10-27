@@ -4,8 +4,8 @@
 // apart, strike a string or null for FUT, lot_size an int) and routes/planned_entry.py (planned_entry string + captured_at
 // + source, or null + reason_code). Tokens and symbols are the recorded NIFTY 13-Oct-2026 contracts of the outcome fixture
 // (44595/44604/44624/44632) and the instruments slice (FUT 48704). No price here is computed or defaulted by the page.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
@@ -44,6 +44,19 @@ const entry = (token, price) => ({
   source: price ? 'ltp' : null, reason_code: price ? null : 'not_connected',
 })
 const OUTCOME_NOT_CONNECTED = { state: 'NOT_CONNECTED', status_label: NOT_CONNECTED_LABEL, legs: [], underlying: 'NIFTY' }
+
+// #582 item 2: every mounted picker starts its 5 s refresh (PICKER_REFRESH_MS). Left mounted on real timers, the pickers
+// of earlier tests kept polling into `calls` once this file ran past 5 s under the full-suite load (49 reads in one
+// 5.6 s window, measured 2026-10-27), so a later test saw requests it never made. Two guarantees, for every test here:
+// each wrapper is unmounted after its test (its interval cleared), and setInterval is fake, so a picker's refresh runs
+// only when a test advances the clock. A test that needs every timer fake still calls vi.useFakeTimers() itself.
+enableAutoUnmount(afterEach)
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 beforeEach(() => {
   calls.length = 0
@@ -554,6 +567,25 @@ describe('a draft reopened without planned entries asks for a reprice', () => {
   })
 })
 
+// #583 I-12: a FUTURES leg saved without a planned entry goes through the same Reprice -> Save leg capture as an option.
+describe('a futures leg without a planned entry captures on Reprice then Save leg', () => {
+  const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:48704', contract_id: 3, symbol: 'NIFTY26OCTFUT', expiry: '2026-10-27', instrument_type: 'FUT', strike: null, lot_size: 65, action: 'BUY', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
+  it('sends the planned-entry request for the future and stores its LTP', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [entry(48704, '22800.00')] }
+    const w = mountPicker(legs)
+    await flushPromises()
+    expect(t(w, 'leg-reprice-prompt').exists()).toBe(true)
+    await t(w, 'reprice-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    const posts = calls.filter((x) => x.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(posts[0].body).toEqual({ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] })
+    expect(w.props('legs')[0]).toMatchObject({ planned_entry: '22800.00', captured_at: AT, reason_code: null, instrument_type: 'FUT' })
+  })
+})
+
 // ---- W-147 / REQ-080: the Strikes and Futures tabs, multi-select Done, the Lots/Quantity setting. ----
 // The strikes answer is the shape of backend/ofo_app/routes/leg_picker.py StrikesOut, built from the SAME recorded NIFTY
 // 2026-10-08 09:20:09 IST values as tests_app/test_leg_picker_routes.py: spot 22,533.25, grid 22450..22600 step 50 (ATM 22550),
@@ -872,6 +904,42 @@ describe('REQ-080 strikes tab (W-147)', () => {
     await w.vm.done() // the function itself, not only the disabled button, refuses an empty selection
     expect(w.emitted('update:legs')).toBeUndefined()
     expect(calls.slice(before)).toEqual([])
+    // the clock moved explicitly past one refresh: the only request is that refresh's read, never a POST from Done
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(calls.slice(before).map((x) => `${x.method} ${x.url}`)).toEqual([STRIKES_URL()])
+    expect(w.emitted('update:legs')).toBeUndefined()
+  })
+
+  // standing item (d): the reply states for an expiry switch; each one leaves the NEW expiry's list (or its error) on screen
+  async function switchWithOldPending() {
+    let releaseOld
+    answers[STRIKES_URL()] = () => new Promise((res) => { releaseOld = () => res({ data: strikesAnswer() }) })
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w) // the 13 Oct read is now in flight
+    await openStrikes(w, '2026-10-27')
+    return { w, releaseOld }
+  }
+  const at27 = () => strikesAnswer({ expiry: '2026-10-27', rows: [{ strike: '23000.00', is_atm: true, ce: null, pe: null }] })
+
+  it('an expiry switch: the new expiry\'s reply shows its strikes, and a late reply for the old expiry never replaces them', async () => {
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = at27()
+    const { w, releaseOld } = await switchWithOldPending()
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(['23000.00'])
+    releaseOld()
+    await flushPromises()
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(['23000.00'])
+    expect(t(w, 'strikes-error').exists()).toBe(false)
+  })
+
+  it('an expiry switch: a failed reply for the new expiry shows the error, and a late old reply does not fill the list', async () => {
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = new Error('down')
+    const { w, releaseOld } = await switchWithOldPending()
+    expect(t(w, 'strikes-error').exists()).toBe(true)
+    releaseOld()
+    await flushPromises()
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+    expect(t(w, 'strikes-error').exists()).toBe(true)
   })
 
   it('ADR-015: when a refresh fails the earlier list and prices are removed, never kept on screen as current', async () => {
@@ -1038,9 +1106,12 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
     await flushPromises()
     expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['Today (0 days)', '27 Oct (14 days)'])
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
+    const before = calls.length
     await t(w, 'pick-expiry').setValue('2026-10-27')
     await flushPromises()
-    expect(calls.filter((c) => c.url.includes('expiry=')).every((c) => c.url.includes('expiry=2026-10-27'))).toBe(true) // the ISO date, never the label
+    const named = calls.slice(before).filter((c) => c.url.includes('expiry='))
+    expect(named.length).toBeGreaterThan(0)
+    expect(named.every((c) => c.url.includes('expiry=2026-10-27'))).toBe(true) // the ISO date, never the label
   })
 
   it('a reply with no day count shows the date as sent', async () => {
@@ -1118,8 +1189,8 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await flushPromises()
     await openStrikes(w)
     const ce = sideOf(w, '22500.00', 'ce')
-    expect(ce.find('[data-testid="cell-buy"]').attributes('aria-label')).toBe('Buy 22500.00 CE')
-    expect(ce.find('[data-testid="cell-sell"]').attributes('aria-label')).toBe('Sell 22500.00 CE')
+    expect(ce.find('[data-testid="cell-buy"]').attributes('aria-label')).toBe('Buy 22500 CE')
+    expect(ce.find('[data-testid="cell-sell"]').attributes('aria-label')).toBe('Sell 22500 CE')
     const qty = () => ce.find('[data-testid="cell-lots"]').element.closest('label')
     expect(qty().style.display).toBe('none')
     await ce.find('[data-testid="cell-buy"]').trigger('click')
@@ -1161,5 +1232,47 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await drawer().find('[data-testid="drawer-close"]').trigger('click')
     expect(drawer().element.parentElement.style.display).toBe('none')
     w.unmount()
+  })
+})
+
+describe('#582 item 7/8: the strike drawer list scrolls above its footer; strikes print as whole numbers', () => {
+  const stackOf = (n) => Array.from({ length: n }, (_, i) => `${20000 + i * 50}.00`)
+  const grid = (strikes) => ({
+    ...strikesAnswer(),
+    atm_strike: strikes[0] ?? null,
+    rows: strikes.map((strike, i) => ({ strike, is_atm: i === 0, ce: cell(i, 'ce'), pe: cell(i, 'pe') })),
+  })
+  async function openWith(strikes) {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = grid(strikes)
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    return w
+  }
+
+  it.each([0, 21, 60])('with %i strikes the list is the scroll area and the footer sits after it', async (n) => {
+    const w = await openWith(stackOf(n))
+    const panel = t(w, 'strikes-panel')
+    expect(panel.classes()).toEqual(expect.arrayContaining(['overflow-y-auto', 'flex-1', 'min-h-0']))
+    const footer = t(w, 'picker-footer')
+    expect(footer.classes()).toContain('shrink-0')
+    expect(footer.classes()).not.toContain('sticky')
+    const tabs = t(w, 'picker-tabs')
+    expect(tabs.classes()).toEqual(expect.arrayContaining(['flex-1', 'min-h-0', 'flex-col']))
+    expect(panel.element.parentElement).toBe(tabs.element)
+    const root = t(w, 'leg-picker')
+    const kids = [...root.element.children]
+    expect(kids.indexOf(tabs.element)).toBeGreaterThanOrEqual(0)
+    expect(kids.indexOf(tabs.element)).toBeLessThan(kids.indexOf(footer.element))
+    expect(root.classes()).toEqual(expect.arrayContaining(['h-full', 'min-h-0', 'flex-col']))
+    expect(panel.element.contains(footer.element)).toBe(false)
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(n)
+  })
+
+  it('prints each strike as a whole number in the row and keeps a real fraction', async () => {
+    const w = await openWith(['22450.00', '22450.50'])
+    expect(w.findAll('[data-testid="row-strike"]').map((e) => e.text().replace('ATM', ''))).toEqual(['22450', '22450.5'])
+    expect(w.find('[data-testid="strike-row"]').attributes('data-strike')).toBe('22450.00')
   })
 })

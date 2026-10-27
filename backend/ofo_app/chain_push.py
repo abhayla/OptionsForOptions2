@@ -4,9 +4,9 @@
 # strike, CE/PE sides; the ATM pick ``min(strikes, key=abs(strike - spot))``, line 391) and
 # backend/app/api/routes/optionchain.py (one chain answer for one underlying and expiry). Changed for this project:
 # strikes and contracts come from the stored catalogue only (never from the feed or a computed step), money is Decimal
-# and leaves as a 2-decimal string, the platform-wide snapshot/EOD fallbacks, IV and Greeks are dropped (IV is
-# Advanced-only and engine-owned: REQ-029 AC-2, ADR-008/056), and the push is a per-connection class on the ONE shared
-# fan-out (ADR-068), like ``live_push.StrategyPush``.
+# and leaves as a 2-decimal string, the platform-wide snapshot/EOD fallbacks and the vendor's IV and Greeks are
+# dropped (IV and Greeks are the engine's own, shown to every user: REQ-029 AC-2/AC-3, ADR-008/056/168), and the
+# push is a per-connection class on the ONE shared fan-out (ADR-068), like ``live_push.StrategyPush``.
 
 One :class:`ChainPush` serves one browser connection of the read-only chain socket. The client sends a
 :class:`ChainRequest` ``{underlying, expiry, strikes_each_side}``. The push reads that expiry's contracts from the
@@ -25,8 +25,21 @@ the provider does not know (KeyError) makes only THAT cell unavailable; the rest
 Everything is released when the connection ends, on every exit path.
 
 REQ-029 AC-4: LTP and bid/ask stream at the push rate (a 0 bid or ask reads null, F-29); OI and OI change are refreshed
-at most every ``OI_REFRESH_SECONDS``. IV is NOT carried: it needs the one calculation engine (ADR-008), so IV's lower
-frequency is the remaining part of AC-4.
+at most every ``OI_REFRESH_SECONDS``. IV and the Greeks (row 33, REQ-029 AC-2/AC-3) come from the ONE engine
+(``ofo.engine.chain_values.chain_model``, the leg picker's calculator, ADR-008/056/063/172) at the live spot with the
+expiry's forward, as strings: IV in percent (2 decimals), delta/gamma/theta/vega per unit (4 decimals). On the socket
+they are recomputed with OI, at most every ``OI_REFRESH_SECONDS`` (AC-4: "OI and IV update at a lower frequency"),
+so the engine runs at most once per slow refresh on the expiry's priced quotes, never per tick; a contract new to the
+window (a re-centre) is computed at once. A cell shows them only while its own quote is priced (AVAILABLE, LTP above
+0); otherwise, and whenever the engine refuses the cell, each is null (a dash), never 0. The answer names what the
+forward rests on (``greeks_basis``: PARITY / SPOT_FALLBACK, ADR-061 "estimated from spot", never silent) or why
+there are no Greeks (``greeks_missing``: SPOT_REFUSED / FORWARD_UNAVAILABLE).
+
+REQ-029 AC-9 (row 33): each row carries its ``moneyness`` (the calls' side against ``atm_strike``: ITM below, ATM,
+OTM above; its puts are the opposite), so the screen filters by a word and never compares prices (ADR-008). The
+numeric filters (``min_oi``, ``min_volume``, ``min_ltp``, ``bid_and_ask``) are request fields applied HERE to the rows
+only: a row stays when EITHER side meets each one. They never change the window, the subscription, a value or the
+engine's inputs.
 
 Liveness is this connection's own: LIVE only while THIS push holds its subscription (finding
 liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of
@@ -46,15 +59,24 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Literal
 
+from ofo.engine.chain_values import (
+    ChainGreeks,
+    ChainModel,
+    GreeksBasis,
+    GreeksMissing,
+    Moneyness,
+    chain_model,
+    moneyness,
+)
 from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
-from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
@@ -74,6 +96,9 @@ RECENTRE_SECONDS = OI_REFRESH_SECONDS
 #: data push needs (a pending push takes the one gate first). 5 s is the orchestrator's technical decision.
 ERROR_REPLY_SECONDS = 5.0
 _SIDES = ("CE", "PE")
+#: IV leaves in percent with 2 decimals, each Greek per unit with the engine's 4 (the leg picker's steps)
+_PERCENT = Decimal(100)
+GREEK_STEP = Decimal("0.0001")
 #: (oi, oi_change) as last shown, per contract id
 SlowValues = dict[str, tuple[int | None, int | None]]
 
@@ -100,6 +125,11 @@ class ChainRequest(BaseModel):
     underlying: Underlying
     expiry: datetime.date
     strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
+    #: REQ-029 AC-9 display filters (row 33): None / False = off; a row stays when either side meets each
+    min_oi: int | None = Field(default=None, ge=0)
+    min_volume: int | None = Field(default=None, ge=0)
+    min_ltp: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)  # the premium minimum, rupees
+    bid_and_ask: StrictBool = False
 
 
 class ChainCellOut(ApiModel):
@@ -116,10 +146,19 @@ class ChainCellOut(ApiModel):
     #: REQ-030 AC-16: True only when Zerodha's eligibility says this contract is tradable now (fail closed)
     permitted: bool
     unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
+    #: REQ-029 AC-2/AC-3: the engine's values (never the vendor's); None = a dash: no priced quote or engine refusal
+    iv: Money | None  # implied volatility in percent, 2 decimals
+    delta: Money | None  # per unit, 4 decimals
+    gamma: Money | None
+    theta: Money | None  # per calendar day
+    vega: Money | None  # per 1 volatility point
 
 
 class ChainRowOut(ApiModel):
     strike: Money
+    #: the calls' side against atm_strike (REQ-029 AC-9): the screen filters by this word; None while the spot is
+    #: missing (no ATM, so no moneyness is claimed)
+    moneyness: Moneyness | None
     ce: ChainCellOut | None  # None: the catalogue lists no call at this strike
     pe: ChainCellOut | None  # None: the catalogue lists no put at this strike
 
@@ -140,6 +179,12 @@ class ChainOut(ApiModel):
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
+    #: what the engine's forward rests on (ADR-061: SPOT_FALLBACK is "estimated from spot"); None when no Greeks
+    greeks_basis: GreeksBasis | None
+    #: why no cell has IV or Greeks (None when the engine ran); NOT_CONNECTED and rowless answers carry neither
+    greeks_missing: GreeksMissing | None
+    #: REQ-072 AC-2: "stale since HH:MM IST" / "delayed, as of HH:MM IST" when the Greeks rest on a STALE / DELAYED spot
+    greeks_label: CatalogueText | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -292,27 +337,74 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
     return False, value if value in _PERMISSIONS else "unknown"  # type: ignore[return-value]
 
 
+_NO_GREEKS: dict[str, Decimal | None] = dict.fromkeys(("iv", "delta", "gamma", "theta", "vega"))
+
+
+def _gamma_shown(g: ChainGreeks) -> Decimal:
+    """Gamma at the usual 4 decimals; a real gamma that rounds to 0.0000 (a deep OTM ~0.00001) keeps 2 significant
+    digits instead, so the screen never shows a false zero."""
+    if g.gamma == 0 and g.gamma_exact is not None:
+        return g.gamma_exact.quantize(Decimal(1).scaleb(g.gamma_exact.adjusted() - 1))
+    return g.gamma.quantize(GREEK_STEP)
+
+
+def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instrument_id: str) -> dict[str, Any]:
+    """The cell's engine values as shown: all None unless its own quote is priced now and the engine gave values."""
+    g = None if model is None or not priced(quote) else model.greeks.get(instrument_id)
+    if g is None:
+        return dict(_NO_GREEKS)
+    return {"iv": (g.iv * _PERCENT).quantize(PAISE), "delta": g.delta.quantize(GREEK_STEP),
+            "gamma": _gamma_shown(g), "theta": g.theta.quantize(GREEK_STEP),
+            "vega": g.vega.quantize(GREEK_STEP)}
+
+
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,
-          catalogue: ChainCatalogue) -> ChainCellOut:
+          catalogue: ChainCatalogue, model: ChainModel | None) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
                             oi_change=None, volume=None, health="unavailable", at=None, permitted=permitted,
-                            unavailable_reason=reason)
+                            unavailable_reason=reason, **_NO_GREEKS)
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
-                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason)
+                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason,
+                        **_greek_fields(quote, model, contract.instrument_id))
+
+
+def _meets(cell: ChainCellOut | None, req: ChainRequest) -> tuple[bool, bool, bool, bool]:
+    """(OI, volume, premium, bid-and-ask) filters met by one side; a missing value never meets a set minimum."""
+    if cell is None:
+        return False, False, False, False
+
+    def at_least(value: Decimal | int | None, minimum: Decimal | int | None) -> bool:
+        return minimum is None or (value is not None and value >= minimum)
+
+    return (at_least(cell.oi, req.min_oi), at_least(cell.volume, req.min_volume), at_least(cell.ltp, req.min_ltp),
+            not req.bid_and_ask or (cell.bid is not None and cell.ask is not None))
+
+
+def row_passes(row: ChainRowOut, req: ChainRequest) -> bool:
+    """REQ-029 AC-9: the row stays when, for EACH filter, its call or its put meets it."""
+    ce, pe = _meets(row.ce, req), _meets(row.pe, req)
+    return all(c or p for c, p in zip(ce, pe, strict=True))
 
 
 def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
     return {q.instrument_id: q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)}
 
 
+def model_of(ctx: MarketContext, req: ChainRequest, valuation: datetime.datetime) -> ChainModel:
+    """The engine's IV and Greeks of the expiry's priced quotes at the live spot (the leg picker's inputs: priced quotes
+    only, the index's own quote, ``ctx.rate``), with the forward's basis or why there are none."""
+    usable = [q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry) if priced(q)]
+    return chain_model(usable, _spot_quote(ctx, req.underlying), req.expiry, valuation, ctx.rate)
+
+
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
-          unknown: frozenset[str]) -> list[ChainRowOut]:
+          unknown: frozenset[str], model: ChainModel, atm: Decimal | None) -> list[ChainRowOut]:
     quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
@@ -322,20 +414,22 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
     for strike in window:
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
-        out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue),
-                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue)))
-    return out
+        out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=None if atm is None else moneyness(strike, atm),
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
+                                                                model),
+                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
+                                                                model)))
+    return [r for r in out if row_passes(r, req)]
 
 
 def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
                  window: tuple[Decimal, ...] | None, *, live: bool,
                  now: Callable[[], datetime.datetime], slow: SlowValues | None = None,
-                 unknown: frozenset[str] = frozenset()) -> ChainOut:
+                 unknown: frozenset[str] = frozenset(), model: ChainModel | None = None) -> ChainOut:
     """The ONE answer behind the REST read and the socket push. Not live (no feed, the page's own socket is down, or
     this connection holds nothing): NOT_CONNECTED, no rows, no number; only the spot's last value time is kept.
     ``slow``: the OI values the socket last showed (None: as the quotes give them); ``unknown``: contracts the provider
-    does not know, shown unavailable."""
+    does not know, shown unavailable; ``model``: the engine values the socket last computed (None: computed now)."""
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
     state = market_state(ctx, answered_at)
@@ -343,10 +437,16 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         return ChainOut(state="NOT_CONNECTED", underlying=req.underlying, expiry=req.expiry, spot=None,
                         spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
                         atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at,
-                        market_closed=state.closed, last_price_at=state.last_price_at)
+                        market_closed=state.closed, last_price_at=state.last_price_at, greeks_basis=None,
+                        greeks_missing=None, greeks_label=None)
     spot = live_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
-    missing = _rows_missing(catalogue, req.expiry, window)
+    catalogue_missing = _rows_missing(catalogue, req.expiry, window)
+    missing = catalogue_missing or ("SPOT_MISSING" if spot is None else None)  # a held window keeps its rows without it
+    if catalogue_missing is not None or window is None:
+        model = None
+    elif model is None or spot is None:  # no live spot: the saved Greeks are never shown, the engine says why
+        model = model_of(ctx, req, answered_at)
     return ChainOut(
         state="LIVE", underlying=req.underlying, expiry=req.expiry,
         spot=None if spot is None else spot.quantize(PAISE),
@@ -354,13 +454,22 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
-        rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
-        answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at)
+        rows=[] if model is None or window is None else _rows(
+            ctx, req, catalogue, window, slow, unknown, model, None if spot is None else atm_strike(grid, spot)),
+        answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at,
+        greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing,
+        greeks_label=None if model is None else model.label)
 
 
 def _shown_state(body: ChainOut) -> tuple:
     """What the screen shows (never ``answered_at``, which moves on every read)."""
     return body.model_dump_json(exclude={"answered_at"}),
+
+
+def _spot_state(ctx: MarketContext, underlying: str) -> tuple[str | None, bool]:
+    """The engine's spot input state: the index quote's health word (None: no quote) and whether it has a live price."""
+    quote = _spot_quote(ctx, underlying)
+    return (None if quote is None else quote.health.value), (quote is not None and is_live_price(quote.ltp))
 
 
 def _ignore(_quote: Any) -> None:
@@ -393,7 +502,11 @@ class ChainPush:
         self._unknown: set[str] = set()  # contracts of the request the provider does not know: shown unavailable
         self._slow: SlowValues = {}
         self._last_slow: float | None = None
+        self._model: ChainModel | None = None  # the engine values as last shown, refreshed with OI
+        self._model_ids: frozenset[str] = frozenset()  # the priced contracts that model was computed over
+        self._model_spot: tuple | None = None  # the spot's (health, live price?) that model was computed under
         self.pushes = 0
+        self.model_runs = 0  # engine runs on this socket: at most one per slow refresh or window change
 
     @property
     def _ctx(self) -> MarketContext | None:
@@ -500,12 +613,22 @@ class ChainPush:
             return self._slow
         since = self._since(self._last_slow)
         quotes = window_quotes(ctx, req)
-        if since is None or since >= OI_REFRESH_SECONDS:
+        due = since is None or since >= OI_REFRESH_SECONDS
+        if due:
             self._slow = {i: (q.oi, q.oi_change) for i, q in quotes.items()}
             self._last_slow = self._monotonic()
         else:
             for i, q in quotes.items():
                 self._slow.setdefault(i, (q.oi, q.oi_change))
+        priced_ids = frozenset(i for i, q in quotes.items() if priced(q))
+        spot_now = _spot_state(ctx, req.underlying)
+        # a contract new to the window, or a change of the spot's health: at once (never a 5 s-old Greek off a spot that
+        # has since gone unhealthy, ``forward.py``: an unhealthy spot is never used in a calculation)
+        if due or self._model is None or not priced_ids <= self._model_ids or spot_now != self._model_spot:
+            self._model = model_of(ctx, req, ctx.clock())
+            self._model_ids = priced_ids
+            self._model_spot = spot_now
+            self.model_runs += 1
         return self._slow
 
     def _error_may_go(self) -> bool:
@@ -526,8 +649,9 @@ class ChainPush:
             return
         if self._req is not None and self._catalogue is not None:
             live = self._handle is not None
+            slow = self._slow_values() if live else None
             body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
-                                slow=self._slow_values() if live else None, unknown=frozenset(self._unknown))
+                                slow=slow, unknown=frozenset(self._unknown), model=self._model if live else None)
             shown = _shown_state(body)
             if shown != self._shown:  # something the screen shows changed: the push wins the slot
                 await self._emit(body)

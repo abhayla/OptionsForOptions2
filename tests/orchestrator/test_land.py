@@ -54,12 +54,75 @@ class Fake:
         return [c for c in self.calls if all(w in " ".join(c) for w in words)]
 
 
-def run(fake, tmp_path, capsys, reviewed_sha=SHA):
+def run(fake, tmp_path, capsys, reviewed_sha=SHA, **opts):
+    """opts: marker (default True: the pre-push marker exists), skip_prepush (default: no skip)."""
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
-    env = land.Env(runner=fake, sleep=lambda s: None, tmp_dir=str(tmp_path))
-    rc = land.land("wt", "title", str(body), env, reviewed_sha=reviewed_sha)
+    marker = opts.get("marker", True)
+    env = land.Env(runner=fake, sleep=lambda s: None, tmp_dir=str(tmp_path), marker_check=lambda wt: marker)
+    rc = land.land("wt", "title", str(body), env, reviewed_sha=reviewed_sha, skip_prepush=opts.get("skip_prepush", ""))
     return rc, capsys.readouterr().out
+
+
+def test_no_pre_push_marker_stops_before_any_push(tmp_path, capsys):
+    fake = Fake([(0, "merged")])
+    rc, out = run(fake, tmp_path, capsys, marker=False)
+    assert rc == 1
+    assert not fake.ran("git", "push")
+    assert not fake.ran("gh", "pr")
+    assert "python scripts/orchestrator/prepush.py" in out
+    assert "--skip-prepush REASON" in out
+    assert "nothing was pushed" in out
+
+
+def test_marker_present_pushes(tmp_path, capsys):
+    fake = Fake([(0, "merged")])
+    rc, _ = run(fake, tmp_path, capsys, marker=True)
+    assert rc == 0
+    assert fake.ran("git", "push", "-u", "origin", "feat/x")
+
+
+def test_skip_prepush_with_a_reason_proceeds_and_prints_it(tmp_path, capsys):
+    fake = Fake([(0, "merged")])
+    rc, out = run(fake, tmp_path, capsys, marker=False, skip_prepush="docs-only, owner said so")
+    assert rc == 0
+    assert fake.ran("git", "push", "-u", "origin", "feat/x")
+    assert "skipped (--skip-prepush): docs-only, owner said so" in out
+
+
+def test_skip_prepush_without_a_reason_is_refused(tmp_path, capsys):
+    repo, body = make_repo(tmp_path)
+    for reason in ("", "   "):
+        rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--reviewed-sha", SHA, "--dry-run",
+                        "--skip-prepush", reason])
+        assert rc == TWICE  # exit 2: bad input
+        assert "non-empty reason" in capsys.readouterr().out
+
+
+def test_the_behind_update_push_is_not_gated(tmp_path, capsys):
+    """Only the first push needs the marker; the fallback push after merging origin/main is covered by CI."""
+    checks = []
+    fake = Fake([(1, "x"), (0, "merged")], state="BEHIND", update_rc=1)
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+
+    def marker(wt):
+        checks.append(wt)
+        return True
+
+    env = land.Env(runner=fake, sleep=lambda s: None, tmp_dir=str(tmp_path), marker_check=marker)
+    assert land.land("wt", "title", str(body), env, reviewed_sha=SHA) == 0
+    assert len(fake.ran("git", "push", "origin", "feat/x")) == TWICE  # first push + fallback push
+    assert checks == ["wt"]  # looked up once, for the first push only
+
+
+def test_dry_run_prints_the_missing_marker_and_does_not_fail(tmp_path, capsys):
+    repo, body = make_repo(tmp_path)
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--reviewed-sha", SHA, "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "would stop here" in out
+    assert "prepush.py" in out
 
 
 def test_the_gate_gets_the_reviewed_sha(tmp_path, capsys):

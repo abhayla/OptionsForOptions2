@@ -58,7 +58,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await page.getByTestId('pick-type').selectOption('CE')
   // only the two offered CE strikes are choices
-  await expect(page.getByTestId('pick-strike').locator('option:not([value=""])')).toHaveText(['22800.00', '23000.00'])
+  await expect(page.getByTestId('pick-strike').locator('option:not([value=""])')).toHaveText(['22800', '23000']) // #582 item 7: a strike prints without ".00"; the option VALUE stays '22800.00'
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await addLeg(page, 'CE', '23000.00', 'BUY')
   await addLeg(page, 'PE', '22400.00', 'SELL')

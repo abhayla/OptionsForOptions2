@@ -82,11 +82,11 @@
           <div v-if="showValues" data-testid="value-split">
             <div class="flex min-h-7 items-center justify-between gap-2">
               <dt class="flex items-center text-ink-muted">Time value<FigureHint v-if="timeValue != null" id="time_value" /></dt>
-              <dd class="num font-medium text-ink" data-testid="time-value">{{ timeValue ?? '-' }}</dd>
+              <dd class="num font-medium text-ink" data-testid="time-value">{{ groupMoney(timeValue) ?? '-' }}</dd>
             </div>
             <div class="flex min-h-7 items-center justify-between gap-2">
               <dt class="flex items-center text-ink-muted">Intrinsic value<FigureHint v-if="intrinsicValue != null" id="intrinsic_value" /></dt>
-              <dd class="num font-medium text-ink" data-testid="intrinsic-value">{{ intrinsicValue ?? '-' }}</dd>
+              <dd class="num font-medium text-ink" data-testid="intrinsic-value">{{ groupMoney(intrinsicValue) ?? '-' }}</dd>
             </div>
             <p v-if="valueLabel" class="text-xs text-ink-muted" data-testid="value-label">{{ valueLabel }}</p>
             <p v-if="valueReason" class="text-xs text-ink-muted" data-testid="value-reason">{{ valueReason }}</p>

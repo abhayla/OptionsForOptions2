@@ -34,18 +34,24 @@ import LegList from '@/components/strategy/LegList.vue'
 import { EXECUTE_WAITS_FOR_LATEST } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 legFacts = (id) => { const l = real.legs.find((x) => x.instrument_id === id); return { instrument: l.instrument, strike: l.strike, expiry: l.expiry } }
+import { INDEX_LIVE_PATH } from '@/composables/useIndexLive'
 import { BASE_DELAY_MS, FAST_ATTEMPTS, LIVE_PATH, MAX_DELAY_MS, backoffDelay, createLiveSocket, isCurrentVersion, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
-  static all = []
+  static all = [] // the strategy socket(s) only
+  static index = [] // the builder header's read-only index socket (/api/market/indices/live): its own URL, its own list
   constructor(url) {
     this.url = url
     this.sent = []
     this.readyState = 0
     this.closed = false
-    FakeSocket.all.push(this)
+    this.isIndex = String(url).endsWith(INDEX_LIVE_PATH)
+    ;(this.isIndex ? FakeSocket.index : FakeSocket.all).push(this)
   }
   send(text) {
+    // a frame the server could not parse fails the test loudly; the index socket sends nothing at all
+    if (this.isIndex) throw new Error(`the index socket must send nothing, it sent ${String(text)}`)
+    JSON.parse(text)
     this.sent.push(text)
   }
   close() {
@@ -83,6 +89,7 @@ function rig() {
 
 beforeEach(() => {
   FakeSocket.all = []
+  FakeSocket.index = []
   vi.useFakeTimers()
   vi.spyOn(Math, 'random').mockReturnValue(0) // no spread here: the spread has its own tests (reconnect-forever.test.js)
 })
@@ -403,11 +410,34 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     w.unmount()
   })
 
+  it('ADR-168 attack 2: the builder opens ONE same-origin index socket, separate from the strategy socket, and it sends nothing', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    expect(FakeSocket.index).toHaveLength(1)
+    expect(FakeSocket.all).toHaveLength(1)
+    expect(FakeSocket.index[0].url).toMatch(/^wss?:\/\/[^/]+\/api\/market\/indices\/live$/)
+    FakeSocket.index[0].serverOpen()
+    FakeSocket.all[0].serverOpen()
+    expect(FakeSocket.index[0].sent).toEqual([])
+    expect(() => JSON.parse(FakeSocket.all[0].sent[0])).not.toThrow()
+    w.unmount()
+  })
+
+  it('attack 5: a fake socket given a non-JSON frame throws instead of ignoring it', () => {
+    const strategy = new FakeSocket('ws://app.test/api/strategies/live')
+    expect(() => strategy.send('undefined')).toThrow()
+    const index = new FakeSocket(`ws://app.test${INDEX_LIVE_PATH}`)
+    expect(() => index.send('{}')).toThrow(/send nothing/)
+    FakeSocket.all = []
+    FakeSocket.index = []
+  })
+
   it('REQ-077 AC-9: a draft with one priced leg and one unpriced leg sends no outcome request, opens no socket, shows the unpriced state', async () => {
     apiAnswer = COMPUTED
     vi.stubGlobal('WebSocket', FakeSocket)
     apiCalls.length = 0
     FakeSocket.all.length = 0
+    FakeSocket.index.length = 0
     const partly = { ...DRAFT, legs: [DRAFT.legs[0], { ...DRAFT.legs[1], planned_entry: null, captured_at: null }] }
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(partly) } })
@@ -535,6 +565,7 @@ describe('W-073 round 2: the draft link is canonicalized once at the page bounda
   async function openLink(d) {
     vi.stubGlobal('WebSocket', FakeSocket)
     FakeSocket.all = []
+    FakeSocket.index = []
     apiCalls.length = 0
     readCalls.length = 0
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
@@ -590,6 +621,7 @@ describe('W-148 (REQ-076 AC-3, AC-6): the live push still matches after a leg ed
     vi.stubGlobal('WebSocket', FakeSocket)
     apiCalls.length = 0
     FakeSocket.all = []
+    FakeSocket.index = []
     const readLegs = replyLegs.map((l) => ({ ...l, included: true })) // the read on load changes no tick
     apiAnswer = (body) => Promise.resolve({ data: body?.edit?.control === 'read' ? { legs: readLegs, shape_name: null, outcome: null }
       : body?.edit ? { legs: replyLegs, shape_name: null, outcome: THREE } : COMPUTED })

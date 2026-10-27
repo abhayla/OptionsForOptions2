@@ -362,6 +362,28 @@
             ],
             "title": "Change"
           },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "gamma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gamma"
+          },
           "health": {
             "anyOf": [
               {
@@ -384,6 +406,17 @@
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "type": "string"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
           },
           "ltp": {
             "anyOf": [
@@ -422,6 +455,17 @@
             "title": "Permitted",
             "type": "boolean"
           },
+          "theta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theta"
+          },
           "unavailable_reason": {
             "anyOf": [
               {
@@ -437,6 +481,17 @@
               }
             ],
             "title": "Unavailable Reason"
+          },
+          "vega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vega"
           },
           "volume": {
             "anyOf": [
@@ -462,7 +517,12 @@
           "health",
           "at",
           "permitted",
-          "unavailable_reason"
+          "unavailable_reason",
+          "iv",
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
         ],
         "title": "ChainCellOut",
         "type": "object"
@@ -490,6 +550,45 @@
             "format": "date",
             "title": "Expiry",
             "type": "string"
+          },
+          "greeks_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PARITY",
+                  "SPOT_FALLBACK"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Basis"
+          },
+          "greeks_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Label"
+          },
+          "greeks_missing": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SPOT_REFUSED",
+                  "FORWARD_UNAVAILABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Missing"
           },
           "last_price_at": {
             "anyOf": [
@@ -601,7 +700,9 @@
           "rows",
           "answered_at",
           "market_closed",
-          "last_price_at"
+          "last_price_at",
+          "greeks_basis",
+          "greeks_missing"
         ],
         "title": "ChainOut",
         "type": "object"
@@ -618,6 +719,22 @@
                 "type": "null"
               }
             ]
+          },
+          "moneyness": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ITM",
+                  "ATM",
+                  "OTM"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneyness"
           },
           "pe": {
             "anyOf": [
@@ -636,6 +753,7 @@
         },
         "required": [
           "strike",
+          "moneyness",
           "ce",
           "pe"
         ],
@@ -6541,6 +6659,71 @@
               "minimum": 1,
               "title": "Strikes Each Side",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_oi",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Oi"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_volume",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Volume"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_ltp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Ltp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bid_and_ask",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Bid And Ask",
+              "type": "boolean"
             }
           },
           {

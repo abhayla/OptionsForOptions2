@@ -149,6 +149,10 @@
           },
           {
             "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/prepush_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          },
+          {
+            "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/issue_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           },
           {

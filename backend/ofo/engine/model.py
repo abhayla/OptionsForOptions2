@@ -244,6 +244,15 @@ def greeks(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal, lev
     return ModelGreeks(g, s, e.dividend_yield, e.level, e.spot_at, e.label)
 
 
+def greeks_unrounded(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal) -> Greeks:
+    """Per-unit UNROUNDED engine Greeks at the live spot with the expiry's q: for a display that must not read a real
+    ~0.00001 gamma as 0.0000 (the 4 dp of :func:`greeks` is a display step). Never aggregated, only shown."""
+    e = _require_expiry(em)
+    f = e.forward
+    return _bs.bs_greeks_unrounded(kind, e.level, strike, f.years, f.rate, vol, days_in_year=f.days_in_year,
+                                   dividend_yield=e.dividend_yield)
+
+
 def iv_price(q: NormalizedQuote) -> Decimal | None:
     """ADR-172: THE price an implied volatility is solved from, for every caller (the outcome leg, the ATM pair, the
     leg picker's chain): the bid-ask mid when both sides are live and the ask is at or above the bid, else the LTP
