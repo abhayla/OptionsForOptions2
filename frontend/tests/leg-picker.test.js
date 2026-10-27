@@ -1216,7 +1216,9 @@ describe('#582 item 7/8: the strike drawer list scrolls above its footer; strike
     expect(root.classes()).toEqual(expect.arrayContaining(['h-full', 'min-h-0', 'flex-col']))
     expect(panel.element.contains(footer.element)).toBe(false)
     expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(n)
-  })
+    // 60 rows x two sides is jsdom's heaviest mount here (about 0.6 s alone, over the 5 s default when all 70 files run at once):
+    // the time limit is the only thing given; every assertion above is unchanged
+  }, 30000)
 
   it('prints each strike as a whole number in the row and keeps a real fraction', async () => {
     const w = await openWith(['22450.00', '22450.50'])
