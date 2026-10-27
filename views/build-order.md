@@ -78,6 +78,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-070 | Builder history and restore | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
 | REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | normal | waiting: on REQ-028, REQ-035 |
+| REQ-141 | The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing | feature | high | waiting: on REQ-076, REQ-077 |
 | REQ-078 | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server | feature | normal | waiting: on REQ-076 |
 | REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | normal | waiting: on REQ-028, REQ-076 |
 | REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | normal | waiting: on REQ-035 |

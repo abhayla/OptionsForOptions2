@@ -77,3 +77,39 @@ The owner stopped the walkthrough: the UI does not look like Sensibull. ADR-193 
 layout for every screen the spec has, our brand; UI study + builder redesign FIRST, folding in I-4 and I-7..I-11; the
 walkthrough then RESUMES on the redesigned screen from REQ-077, and its issues are fixed after it.
 Checked so far: REQ-080 (9 ACs), REQ-076 (10 ACs), REQ-077 AC-2 part. Not yet: the other 25 claimed requirements.
+
+## RESUMED 2026-10-27, live prices (09:00-09:26 IST)
+Setup: API `127.0.0.1:8765` on main 2e1134d5 (APP_ENV=development, LIVE_MARKET=1, ofo_dev via `dev_run.py`, no
+overrides); screen on vite 5173 (`OFO_API_TARGET=http://127.0.0.1:8765`); owner Kite login 08:58 IST (private window),
+`/api/broker/status` account_connection connected. Screen driven by the orchestrator in its own browser at 1536 px. The
+builder has no Execute button, so no order path was reachable.
+
+### Price-dependent criteria
+| REQ / AC | Verdict | What was seen |
+|---|---|---|
+| REQ-077 AC-1 | PASS | Typed 200 on SELL 3 Nov 22800 CE: "Your price 200.00". |
+| REQ-077 AC-2 | PASS (minor) | 0, -5, "abc", 208.32 each refused: "the price must be a positive multiple of Rs 0.05"; previous 208.25 kept. Minor: the refused text stays in the box. |
+| REQ-077 AC-3 | PASS | With 200.00: max profit 16,863.25 = (200 + 208.25 - 62 - 82.60) x 65 = 17,137.25 - 274.00 charges. |
+| REQ-077 AC-5 | PASS | Reset Prices re-captured all 4 legs at one time (09:18:33), cleared "Your price" with a note; net 16,971.50 = (189.85 + 215.10 - 59.50 - 84.35) x 65. |
+| REQ-077 AC-6 | PASS (minor) | "Price has moved since 27 Oct 2026, 09:17:17 IST: planned 198.30, now 199.3" on every leg. Minor: "now" drops trailing zeros. |
+| REQ-081 money summary | PASS | Iron condor 22300/22700/22800/23200 PE/PE/CE/CE, 1 lot: net premium 17,026.75; max profit 16,753.01 = net - 273.74 charges; max loss 9,246.99 = 400 x 65 - 17,026.75 + 273.74; breakevens 22,438.05 / 23,061.95; reward/risk 1.81. |
+| REQ-055 margin | PASS | Zerodha's own margin 68,163.54 / 68,142.61 shown with the time; available 409.00; "Not enough funds" message. |
+| REQ-034 Estimated Now | PASS (minor) | Curve peaks near -273 (the charges) at spot, as expected just after entry. Minor: the x-axis reads "Index level at expiry" on the Estimated Now view; two sets of range numbers under the axis. |
+| REQ-078 AC-1 live half (#560) | FAIL | 10 strike +/- edits on live data: leg-edit 1,804-2,482 ms each (about 2.0 s typical) vs p95 <= 1,000 ms. Caveat: the database is over the SSH tunnel to the VPS, which adds latency per edit; unmeasured on the production host. |
+| REQ-029 (row 33 core) | PASS | Chain socket, NIFTY 27 Oct, 30 s from 09:15:04: 28 pushes, 28 distinct price snapshots, 42 contracts priced, ATM re-centred 22700 -> 22650 as spot fell 22696.60 -> 22670.40. |
+
+### #583 items re-checked live
+| Item | Verdict | What was seen |
+|---|---|---|
+| I-1 (REQ-079 ready-made) | FAIL, cause found | 09:23:37, empty builder, drawer closed 35 s, no other holder: load-template 503 "The NIFTY index value is missing or out of date." `ready_made.py:96-102` reads the index without subscribing it; it works only while another socket or lease holds the index. Finding `live-read-without-own-subscription`. |
+| I-6 (REQ-080 AC-6 spot) | PARTIAL, cause found | In the drawer, forwards now show (the strikes lease holds the index). On an empty builder the header shows no spot, and `/api/leg-picker/futures` alone answers SPOT_MISSING on every read (09:24:27-34): its lease holds the futures, not the index. Same finding. |
+| I-12 (REQ-080 AC-9 futures leg) | FAIL | 09:25:15: the Futures tab shows 23 Nov LTP 22,800.00, but the BUY 23 Nov future leg gets no planned entry; the strategy shows "Draft - Live data not connected ... No numbers are shown". Reprice (09:25:41) sends no planned-entry request at all (only catalogue and futures reads). Cause not yet read in code. |
+| I-13 (retracted) | NOT A DEFECT | First logged at 09:16 as "the strike drawer never subscribes": wrong. A first read of a window answers null prices because its lease starts on that read; the 9 Nov drawer (held by no one else) filled with live prices within seconds (09:21). Recorded so nobody re-finds it. |
+
+### Display issues seen (minor, no verdict change)
+- Drawer columns run together ("0.8067590.00" = delta 0.8067 + LTP 590.00; "1248260 67.00"), like I-11.
+- Header spot "22697.1" and breakevens "22,438.9, 23,061.1" drop trailing zeros; the sentence below says "22,438.90".
+- Time value and Intrinsic value print without separators (#582 item 3, fixed on the local branch ui/fix-582-drawer-strikes-commas).
+
+Not yet walked: the remaining claimed requirements that do not need moving prices (REQ-119, REQ-133, REQ-135, REQ-070,
+REQ-134, REQ-035 and the rest); they can run on any day.
