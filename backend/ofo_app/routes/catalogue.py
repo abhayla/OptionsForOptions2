@@ -16,6 +16,7 @@ import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from ofo.market_calendar import MarketStatus, market_status
 from ofo.timeutil import IST, SESSION_CLOSE, days_to_expiry
 
 from ofo_app import catalogue_picker as picker
@@ -60,13 +61,25 @@ async def get_today(db: Any = Depends(get_db)) -> datetime.date:
     return await picker.database_today(db)
 
 
+def _todays_expiry_spent(now: datetime.datetime) -> bool:
+    """Whether an expiry dated today can no longer trade at ``now`` (IST). Answer states: OPEN -> no; closed hours ->
+    only from the close (before the open it is still today's); weekend or holiday -> yes (nothing trades today); no
+    calendar for the year -> the plain 15:30 test, as before."""
+    status = market_status(now)
+    if status is MarketStatus.OPEN:
+        return False
+    if status in (MarketStatus.CLOSED_WEEKEND, MarketStatus.CLOSED_HOLIDAY):
+        return True
+    return now.time() >= SESSION_CLOSE
+
+
 @router.get("/api/catalogue/{underlying}/expiries", response_model=ExpiriesOut)
 async def expiries(underlying: str, db: Any = Depends(get_db),
                    today: datetime.date = Depends(get_today)) -> ExpiriesOut:
     require_supported(underlying)
     listed = await picker.pickable_expiries(db, underlying, today)
     now = (await picker.judging_instant(db, today)).astimezone(IST)
-    closed = now.date() == today and now.time() >= SESSION_CLOSE  # ADR-199 (1): today's expiry is spent after 15:30 IST
+    closed = now.date() == today and _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
     usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
         "underlying": underlying, "expiries": listed, "default_expiry": usable[0] if usable else None,

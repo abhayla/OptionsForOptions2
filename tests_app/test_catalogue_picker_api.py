@@ -21,6 +21,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from ofo.execution.context import DataHealth
+from ofo.marketdata.provider import ProviderStatus
 from ofo_app.catalogue_picker import database_today, pickable_contracts, pickable_expiries
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 
@@ -246,22 +248,26 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
 IST_TZ = timezone(timedelta(hours=5, minutes=30))
 
 
-async def _default_for(monkeypatch: pytest.MonkeyPatch, today: date, hour: int, listed: list[date], name="NIFTY"):
-    """ADR-199 (4): the reply's `default_expiry` for a pinned instant (never the wall clock) and a given list."""
+async def _default_at(monkeypatch: pytest.MonkeyPatch, today: date, at: dt, listed: list[date], name="NIFTY"):
+    """ADR-199 (4): the reply's body for a pinned instant (never the wall clock) and a given list."""
     from ofo_app.routes import catalogue
 
     async def pickable(_db, _underlying, _today):
         return listed
 
     async def instant(_db, _today):
-        return dt(_today.year, _today.month, _today.day, hour, 0, tzinfo=IST_TZ)
+        return at
 
     monkeypatch.setattr(catalogue.picker, "pickable_expiries", pickable)
     monkeypatch.setattr(catalogue.picker, "judging_instant", instant)
     async with await _picker_client(None, today) as ac:
         resp = await ac.get(f"/api/catalogue/{name}/expiries")
-    assert resp.status_code == 200
+    assert (resp.status_code, resp.json().get("underlying")) == (200, name)
     return resp.json()
+
+
+async def _default_for(monkeypatch: pytest.MonkeyPatch, today: date, hour: int, listed: list[date], name="NIFTY"):
+    return await _default_at(monkeypatch, today, dt(today.year, today.month, today.day, hour, 0, tzinfo=IST_TZ), listed, name)
 
 
 EXPIRY_DAY = date(2026, 10, 27)  # a Tuesday, a NIFTY expiry
@@ -280,6 +286,21 @@ async def test_default_expiry_is_today_while_open_and_next_after_the_close_on_an
 async def test_default_expiry_after_close_on_a_non_expiry_day_is_the_first_listed(monkeypatch) -> None:
     body = await _default_for(monkeypatch, date(2026, 10, 28), 18, [date(2026, 11, 3), date(2026, 11, 10)])
     assert body["default_expiry"] == "2026-11-03"
+
+
+@pytest.mark.parametrize(("at", "expected"), [
+    (dt(2026, 10, 27, 15, 29, 59, tzinfo=IST_TZ), "2026-10-27"),  # the last second of the session: still today
+    (dt(2026, 10, 27, 15, 30, 0, tzinfo=IST_TZ), "2026-11-03"),  # the close: spent
+    (dt(2026, 10, 27, 8, 0, 0, tzinfo=IST_TZ), "2026-10-27"),  # before the open: still today
+])
+async def test_default_expiry_boundaries_come_from_the_market_calendar(monkeypatch, at: dt, expected: str) -> None:
+    assert (await _default_at(monkeypatch, EXPIRY_DAY, at, LISTED))["default_expiry"] == expected
+
+
+async def test_default_expiry_on_a_saturday_is_the_next_one(monkeypatch) -> None:
+    saturday = date(2026, 10, 31)  # nothing trades: a listed date of today is never the default
+    at = dt(2026, 10, 31, 10, 0, tzinfo=IST_TZ)
+    assert (await _default_at(monkeypatch, saturday, at, [saturday, date(2026, 11, 3)]))["default_expiry"] == "2026-11-03"
 
 
 async def test_default_expiry_is_null_for_an_empty_list_or_only_todays_expiry(monkeypatch) -> None:
@@ -411,20 +432,18 @@ async def test_without_a_provider_every_leg_is_null_never_a_default() -> None:
 
 
 async def test_a_disconnected_provider_gives_no_price(replay_ctx) -> None:
-    from types import SimpleNamespace
-
     from ofo_app.routes.outcome import MarketContext
 
     class Down:
-        def status(self):
-            return SimpleNamespace(connected=False)
+        def status(self):  # the real provider's status type, so a field the route reads (F-17) cannot be missing
+            return ProviderStatus(DataHealth.UNAVAILABLE, connected=False, session_ended=True)
 
         def __getattr__(self, name):
             raise AssertionError(f"a disconnected provider must not be read ({name})")
 
     ctx = MarketContext(Down(), replay_ctx.clock, replay_ctx.rate)
     status, body = await _capture({"underlying": "NIFTY", "instrument_ids": [LIVE_ID]}, ctx)
-    assert status == 200 and body["entries"][0]["reason_code"] == "not_connected"
+    assert (status, body["entries"][0]["reason_code"]) == (200, "not_connected")
     assert body["entries"][0]["planned_entry"] is None
 
 
