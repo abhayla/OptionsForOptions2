@@ -1,0 +1,29 @@
+{
+ "id": "live-read-without-own-subscription",
+ "scope": "generic",
+ "class": "A request needs a live value (an index level, a futures price) from a shared streaming feed but never subscribes that value itself: it reads whatever the feed currently holds, so it works only while some other screen or socket happens to hold the same instrument, and fails for the user who opens that feature on its own. Tests and walkthroughs pass whenever another holder is present (a chain socket, a picker lease, a strategy socket), which hides the gap. Wider shape: any read of a shared, demand-driven cache is correct only for keys the reader itself puts on demand.",
+ "mechanism": "backend/ofo_app/routes/ready_made.py:96-102 `_spot` reads `live_spot(ctx, underlying)` and `ctx.provider.underlying_quote(underlying)` with no subscription of its own. The NIFTY index is held only by the chain socket, the leg picker's 30 s window lease or the strategy socket of a builder that already has legs. On an empty builder with the strike drawer closed, nothing holds the index, so load-template and quick-pick refuse SPOT_MISSING (503) at any time of day, and the builder header shows no spot (walkthrough I-1, I-6). The futures list has the same shape for the index only: its lease holds the futures (prices arrive from the second read) but not the index, so every read answers SPOT_MISSING and no forward is shown (walkthrough I-6). Measured caveat: a FIRST read of any leased window answers with null prices (the lease starts on that read); that is expected and is not this class.",
+ "first_seen": {
+  "date": "2026-10-27",
+  "where": "Live builder walkthrough, API on main 2e1134d5 (127.0.0.1:8765, ofo_dev, owner Kite session), screen on vite 5173",
+  "evidence": "09:23:37 IST, market open, empty builder, drawer closed for 35 s (picker lease ended), no chain socket: POST /api/strategies/load-template (Bull Call Spread) -> 503, screen 'The NIFTY index value is missing or out of date.' Control: 09:16-09:22 with a chain socket on 3 Nov held by a script, or with legs on the builder, the header showed NIFTY 22697.1 / 22693.2 and forwards were computed. 09:24:27-09:24:34, four reads of /api/leg-picker/futures?underlying=NIFTY 2 s apart: read 1 all three futures NO_QUOTE (lease starting), reads 2-4 priced (27 Oct 22711.20 / 22710.00, 23 Nov 22836.30, 29 Dec 22990.00), reason SPOT_MISSING and spot null on all four."
+ },
+ "fix": "Proposed, not built: the ready-made / quick-pick routes and the builder header take their own short lease on the index (reuse the leg picker's WindowLease, ADR-077 one shared fan-out) and wait a bounded time for the first quote before refusing; the futures read adds the index to its lease. A test must run each route with NO other holder present.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test runs these routes with no other holder on the fan-out; the route tests override the reader or seed the provider directly (compare finding route-tests-always-override-the-real-reader). Discrimination of the proposed check is unmeasured until it is built."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-077.md",
+  "spec/requirements/REQ-079.md",
+  "spec/requirements/REQ-080.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-27",
+   "where": "Live builder walkthrough I-1, I-6 (issue #583)",
+   "evidence": "As first_seen. Also 2026-10-26 evening (market closed): the same items were first logged as I-1 and I-6 without the cause."
+  }
+ ]
+}

@@ -138,6 +138,7 @@ requirements:
   REQ-138: S6.1   # builder sequence (ADR-168), provisional
   REQ-139: S6.1   # builder sequence (ADR-168), provisional
   REQ-140: S6.4   # builder sequence (ADR-168), provisional
+  REQ-141: S6.4   # builder phase GC-B16/B17 (ADR-196 (4)), Draft
 
 decisions:
   ADR-001: all
@@ -334,6 +335,8 @@ decisions:
   ADR-193: S6.1         # Sensibull layout for every screen the spec has, our brand; builder first (owner, 2026-10-26)
   ADR-194: S6.1         # builder P&L Table tab opens compact, Full table one switch away (owner, 2026-10-26)
   ADR-195: S6.1         # with a leg left out: count only, no shape name, Width/Hedge disabled (ADR-152 default, Sensibull 111)
+  ADR-196: S6.1         # builder + chain take every Sensibull builder/chain feature, our rules on top, indices only (owner, 2026-10-27)
+  ADR-197: S6.1         # after hours the builder works from the last close, all numbers, under the ADR-177 banner (owner, 2026-10-27)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

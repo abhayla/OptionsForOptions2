@@ -4,11 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (191)
+## Decisions (193)
 
-- Older decisions: 151 rows, ADR-1..ADR-154 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-155 2026-10-21: SPEC CHANGE to ADR-027. [refines ADR-027]
-- ADR-156 2026-10-21: Following ADR-152, these six user-facing features are specified now as Sensibull has them, and none… [refines ADR-055; refines REQ-063]
+- Older decisions: 153 rows, ADR-1..ADR-156 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-157 2026-10-21: SPEC CHANGE to ADR-001. [refines ADR-001]
 - ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
 - ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
@@ -47,8 +45,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-193 2026-10-26: (1) Scope: every screen the spec already has (Strategy Builder and its leg picker, option chain, po… [refines ADR-152; extends ADR-173 from behaviour t…]
 - ADR-194 2026-10-26: In the Strategy Builder's P&L Table tab: (1) the default view is a compact per-leg table like Sensi… [amends REQ-035 AC-1 and AC-7; refines ADR-008 sec…]
 - ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
+- ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
+- ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
 
-## Requirements (131)
+## Requirements (132)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -181,6 +181,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-138 [Approved]: Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart…
 - REQ-139 [Approved]: The builder header shows the underlying's spot with the day's change and percent and the day's open, high, lo…
 - REQ-140 [Approved]: For a strategy already being tracked, the builder summary shows the profit still possible and the loss still…
+- REQ-141 [Draft]: The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a dr…
 
 ## Spec sections (230)
 
