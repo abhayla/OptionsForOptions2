@@ -142,11 +142,10 @@ class Plan:
 
 
 def real_runner(cmd, cwd, log_path):
-    from gate_env import no_graft_env  # noqa: PLC0415 - grafts off for every child, like land.py
-
+    # the plain environment: gate_env.no_graft_env() would leak GIT_GRAFT_FILE into pytest and break
+    # tests/orchestrator/test_gate_env.py (the graft test needs git to honour grafts)
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
-        return subprocess.run(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, check=False,  # noqa: S603
-                              env=no_graft_env()).returncode
+        return subprocess.run(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, check=False).returncode  # noqa: S603
 
 
 def _git(repo, *args):
