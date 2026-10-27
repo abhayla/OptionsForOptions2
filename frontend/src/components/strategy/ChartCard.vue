@@ -19,6 +19,7 @@ import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import PayoffChart from './PayoffChart.vue'
 import StrategyTable from './StrategyTable.vue'
+import { strikeLabel } from '@/lib/displayFormat'
 import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekRows, payoffLevelRows, signOf } from '@/lib/chartCard'
 
 const props = defineProps({
@@ -120,7 +121,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                   <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
                   <span>{{ r.parts.quantity }}</span>
                   <span>{{ r.parts.expiry }}</span>
-                  <span>{{ r.parts.strike }}</span>
+                  <span>{{ strikeLabel(r.parts.strike) }}</span>
                   <Chip kind="opt" :label="r.parts.instrument" />
                 </span>
               </td>
@@ -157,7 +158,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
               <span v-if="r.isTotal">Total</span>
               <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
-                <span>{{ r.parts.strike }}</span>
+                <span>{{ strikeLabel(r.parts.strike) }}</span>
                 <Chip kind="opt" :label="r.parts.instrument" />
               </span>
             </td>

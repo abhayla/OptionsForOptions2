@@ -13,7 +13,7 @@ import Icon from '@/components/common/Icon.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
 import { useOutsideClose } from '@/composables/useOutsideClose'
-import { capturedCaption, contractName, expiryWithDays, istTime } from '@/lib/displayFormat'
+import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN,
@@ -163,7 +163,7 @@ function setMultiplier(index) {
             <span class="flex items-center justify-center gap-1 overflow-hidden">
               <template v-if="canStep(leg)">
                 <button type="button" class="rounded border border-line px-1 leading-4" aria-label="Previous strike" data-testid="strike-minus" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
-                <span data-testid="leg-strike">{{ leg.strike }}</span>
+                <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span>
                 <button type="button" class="rounded border border-line px-1 leading-4" aria-label="Next strike" data-testid="strike-plus" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
               </template>
               <span v-else class="text-ink-muted" aria-label="No strike for a futures leg">-</span>

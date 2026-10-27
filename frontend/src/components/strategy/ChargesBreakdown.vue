@@ -6,6 +6,7 @@
 import { ref } from "vue";
 import FigureHint from "@/components/common/FigureHint.vue";
 import Modal from "@/components/common/Modal.vue";
+import { groupMoney } from "@/lib/displayFormat";
 
 defineProps({
   breakdown: { type: Object, required: true }, // charges_breakdown as sent; the parent draws nothing when it is null
@@ -47,7 +48,7 @@ const ROWS = [
         <p
           class="text-lg font-semibold text-ink"
           data-testid="charges-total"
-        >Total Rs {{ breakdown.total }}</p>
+        >Total Rs {{ groupMoney(breakdown.total) }}</p>
         <dl class="mt-3 divide-y divide-line border-y border-line text-sm">
           <div
             v-for="row in ROWS"
@@ -56,7 +57,7 @@ const ROWS = [
             :data-testid="'charges-' + row.key"
           >
             <dt class="text-ink-muted">{{ row.label }}</dt>
-            <dd class="tabular-nums">Rs {{ breakdown[row.key] }}</dd>
+            <dd class="tabular-nums">Rs {{ groupMoney(breakdown[row.key]) }}</dd>
           </div>
         </dl>
         <!-- ADR-167 (4): the server's exercise-STT sentence (rate and condition, no amount); outside the total, only when sent -->

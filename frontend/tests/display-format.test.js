@@ -1,7 +1,7 @@
 // W-072 / REQ-039 AC-3 under ADR-086: the one contract-name formatter and the one India-time formatter.
 // Run once with TZ=America/New_York as well: the output must not move with the machine's zone.
 import { describe, it, expect } from 'vitest'
-import { CONTRACT_UNAVAILABLE, TIME_UNAVAILABLE, contractName, istTime, nameFromPool } from '@/lib/displayFormat'
+import { CONTRACT_UNAVAILABLE, TIME_UNAVAILABLE, contractName, istTime, nameFromPool, strikeLabel, groupMoney } from '@/lib/displayFormat'
 
 const ce = { underlying: 'NIFTY', expiry: '2026-10-19', strike: '23200.00', instrument_type: 'CE', instrument_id: 'NSE_FO:47171', symbol: 'NIFTY26O1923200CE' }
 
@@ -14,7 +14,7 @@ describe('contractName', () => {
     expect(contractName(ce)).not.toContain('NIFTY26O')
   })
   it('keeps a real fraction of a strike and drops only a zero fraction', () => {
-    expect(contractName({ ...ce, strike: '23212.50' })).toBe('NIFTY 19 Oct 23212.50 CE')
+    expect(contractName({ ...ce, strike: '23212.50' })).toBe('NIFTY 19 Oct 23212.5 CE')
     expect(contractName({ ...ce, strike: '23200' })).toBe('NIFTY 19 Oct 23200 CE')
   })
   it('a PE and a FUT (no strike)', () => {
@@ -77,5 +77,30 @@ describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts not
     expect(expiryWithDays(null, 3)).toBe('')
     expect(daysByExpiry([{ expiry: '2026-10-27', days: 6 }, { days: 1 }])).toEqual({ '2026-10-27': 6 })
     expect(daysByExpiry(undefined)).toEqual({})
+  })
+})
+
+describe('strikeLabel (#582 item 8: strikes print as Sensibull prints them)', () => {
+  it("drops a whole-number strike's decimals and keeps a real fraction", () => {
+    expect(strikeLabel('22150.00')).toBe('22150')
+    expect(strikeLabel('22150.50')).toBe('22150.5')
+    expect(strikeLabel('22150.25')).toBe('22150.25')
+    expect(strikeLabel('22150')).toBe('22150')
+  })
+  it('returns empty, null and non-numeric input unchanged', () => {
+    expect(strikeLabel('')).toBe('')
+    expect(strikeLabel(null)).toBe(null)
+    expect(strikeLabel(undefined)).toBe(undefined)
+    expect(strikeLabel('abc')).toBe('abc')
+    expect(strikeLabel('-')).toBe('-')
+  })
+})
+
+describe('groupMoney edge cases (#582 item 3)', () => {
+  it('groups a negative figure, leaves an empty string and null alone', () => {
+    expect(groupMoney('-12345.60')).toBe('-12,345.60')
+    expect(groupMoney('12345.60')).toBe('12,345.60')
+    expect(groupMoney('')).toBe('')
+    expect(groupMoney(null)).toBe(null)
   })
 })
