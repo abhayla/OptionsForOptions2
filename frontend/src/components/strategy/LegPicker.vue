@@ -43,6 +43,8 @@ const props = defineProps({
   legs: { type: Array, default: () => [] },
   // W-195: the Builder keeps the picker mounted inside its closed drawer; the 5 s refresh reads nothing while it is shut
   active: { type: Boolean, default: true },
+  // GC-BM F-14: the page's chosen underlying, used when the strategy has no legs; '' = no opinion (keep the current one)
+  pageUnderlying: { type: String, default: '' },
 })
 // `done`: Done added the selection (the Builder closes the drawer, UI-206)
 const emit = defineEmits(['update:legs', 'done'])
@@ -233,6 +235,17 @@ watch(tab, refreshOpenTab)
 // (C) a catalogue read that failed earlier is tried again on open, so the error at the top of the drawer is current
 watch(() => props.active, (on) => {
   if (!on) return
+  // F-14: the underlying is the strategy's, decided when the drawer opens (the picker was mounted before the legs or the
+  // header choice existed). A different one reloads its expiries; that load picks the opening expiry and reads the strikes.
+  if (editingId.value === null) {
+    const target = props.legs[0]?.underlying || props.pageUnderlying || underlying.value
+    if (target !== underlying.value) {
+      underlying.value = target
+      loadExpiries()
+      if (tab.value === 'futures') loadFutures()
+      return
+    }
+  }
   if (!expiries.value.length && editingId.value === null) loadExpiries()
   // F-12: the opening expiry is chosen when the drawer opens, from the legs as they are NOW (they may have changed since
   // mount). A different expiry is shown and its strikes are read by the expiry watcher: that one read is this open's read.
