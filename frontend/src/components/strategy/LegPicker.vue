@@ -10,7 +10,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
-import { contractName, daysByExpiry, expiryWithDays, istTime } from '@/lib/displayFormat'
+import { contractName, daysByExpiry, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
 import {
   DEFAULT_STRIKE_WIDTH,
@@ -428,7 +428,7 @@ defineExpose({ startEdit, showStrikes })
   <!-- W-195 (ADR-193 UI-200..UI-207, Sensibull S-032..S-038): the body of the Builder's left slide-in drawer. Header
        (underlying, expiry, Settings), Strikes | Futures tabs with the LTP / OI / Greeks view switch, the dense strike table,
        the leg-by-contract form (also the Edit / Reprice form), and a footer kept in view with the count, Clear All, Done. -->
-  <section class="flex min-h-full flex-col gap-3 text-sm" data-testid="leg-picker">
+  <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
     <div class="flex flex-wrap items-center gap-2" data-testid="picker-header">
@@ -457,8 +457,8 @@ defineExpose({ startEdit, showStrikes })
       </span>
     </div>
 
-    <div data-testid="picker-tabs">
-      <div class="flex flex-wrap items-center gap-4 border-b border-line" role="tablist">
+    <div class="flex min-h-0 flex-1 flex-col" data-testid="picker-tabs">
+      <div class="flex shrink-0 flex-wrap items-center gap-4 border-b border-line" role="tablist">
         <button
           v-for="tb in [['strikes', 'Strikes'], ['futures', 'Futures']]" :key="tb[0]" type="button" role="tab" class="-mb-px border-b-2 py-2"
           :class="tab === tb[0] ? 'border-accent font-semibold text-ink' : 'border-transparent text-ink-muted'"
@@ -473,7 +473,7 @@ defineExpose({ startEdit, showStrikes })
         </span>
       </div>
 
-      <div v-if="tab === 'strikes'" data-testid="strikes-panel">
+      <div v-if="tab === 'strikes'" class="min-h-0 flex-1 overflow-y-auto" data-testid="strikes-panel">
         <p v-if="!expiry" data-testid="strikes-choose-expiry">Choose an expiry to see its strikes.</p>
         <p v-else-if="strikesFailed" data-testid="strikes-error">The strikes could not be read right now.</p>
         <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
@@ -496,7 +496,7 @@ defineExpose({ startEdit, showStrikes })
               <div
                 v-if="side === 'pe'" class="flex h-7 items-center justify-center bg-surface-muted font-semibold" :class="row.is_atm ? '!bg-accent-soft text-accent' : ''"
                 data-testid="row-strike"
-              >{{ row.strike }}<span v-if="row.is_atm" class="ml-1 text-[10px]" data-testid="atm-mark">ATM</span></div>
+              >{{ strikeLabel(row.strike) }}<span v-if="row.is_atm" class="ml-1 text-[10px]" data-testid="atm-mark">ATM</span></div>
               <div class="contents" :data-testid="`cell-${side}`">
                 <template v-if="row[side]">
                   <div
@@ -517,7 +517,7 @@ defineExpose({ startEdit, showStrikes })
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
                           : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"
                         :data-testid="sd[0] === 'BUY' ? 'cell-buy' : 'cell-sell'" :aria-pressed="picked[row[side].instrument_id] === sd[0]"
-                        :aria-label="`${sd[2]} ${row.strike} ${side.toUpperCase()}`" :title="`${sd[2]} ${row.strike} ${side.toUpperCase()}`"
+                        :aria-label="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`" :title="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`"
                         @click="choose(row[side].instrument_id, sd[0])"
                       >{{ sd[1] }}</button>
                     </span>
@@ -594,7 +594,7 @@ defineExpose({ startEdit, showStrikes })
         <label v-if="type !== 'FUT'" class="flex flex-col">Strike
           <select v-model="strike" class="rounded border border-line px-1" data-testid="pick-strike" :disabled="!strikes.length">
             <option value="">Choose</option>
-            <option v-for="s in strikes" :key="s" :value="s">{{ s }}</option>
+            <option v-for="s in strikes" :key="s" :value="s">{{ strikeLabel(s) }}</option>
           </select>
         </label>
         <label class="flex flex-col">Buy or sell
@@ -637,7 +637,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
     <!-- UI-206 footer, kept in view at the drawer's bottom edge: the count left; Pick from Option Chain, Clear All and Done
          right. Done adds every selected contract through the same planned-entry capture; it never places an order. -->
     <div
-      v-if="tab === 'strikes' && expiry" class="sticky bottom-0 -mx-4 -mb-4 mt-auto flex min-h-16 flex-wrap items-center gap-2 border-t border-line bg-surface px-4 py-2"
+      v-if="tab === 'strikes' && expiry" class="-mx-4 -mb-4 flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-t border-line bg-surface px-4 py-2"
       data-testid="picker-footer"
     >
       <span class="font-medium" data-testid="picker-count">{{ pickedCount }} selected</span>

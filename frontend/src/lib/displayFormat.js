@@ -16,11 +16,19 @@ function expiryText(expiry) {
   return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}` : null
 }
 
-/** '23200.00' -> '23200'; a strike with a real fraction keeps it ('23212.50'). Text only, no number is computed. */
+/** '23200.00' -> '23200'; a strike with a real fraction keeps it, minus trailing zeros ('23212.50' -> '23212.5'). Text only,
+ *  no number is computed. Null when the text is not a plain decimal. */
 function strikeText(strike) {
   const m = /^(\d+)(?:\.(\d*))?$/.exec(String(strike ?? '').trim())
   if (!m) return null
-  return /^0*$/.test(m[2] ?? '') ? m[1] : `${m[1]}.${m[2]}`
+  const fraction = (m[2] ?? '').replace(/0+$/, '')
+  return fraction ? `${m[1]}.${fraction}` : m[1]
+}
+
+/** The one home of the strike-label rule (#582 item 8; Sensibull screen 032 prints integers): '22150.00' -> '22150',
+ *  '22150.50' -> '22150.5'. Empty, null or non-numeric text comes back unchanged. */
+export function strikeLabel(text) {
+  return strikeText(text) ?? text
 }
 
 /** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser

@@ -3,6 +3,7 @@
 // backend/ofo_app/routes/leg_edit.py; the outcome is the recorded condor outcome (tests/fixtures/outcome-condor.json), whose
 // strikes and entries are the recorded values. Adapted from this repo's branch build/W-126-a1-leg-rows (REQ-076 parts only).
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { strikeLabel } from '@/lib/displayFormat'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -102,7 +103,7 @@ describe('Core: a + on an option leg sends one leg-edit request and the page is 
     expect(edits()).toHaveLength(1)
     expect(edits()[0].body.edit).toEqual({ control: 'step', index: 0, direction: 1 })
     expect(edits()[0].body.legs.map((l) => l.instrument_id)).toEqual(real.legs.map((l) => l.instrument_id))
-    expect(all(w, 'leg-strike')[0].text()).toBe('22850.00')
+    expect(all(w, 'leg-strike')[0].text()).toBe('22850')
     expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
     expect(t(w, 'output-label').text()).toBe('REPLY LABEL')
   })
@@ -725,7 +726,7 @@ describe('W-158 core: Shift + sends the control and direction; the page draws th
     expect(body.edit).toEqual({ control: 'shift', direction: 1 })
     expect(Object.keys(body).filter((k) => !['underlying', 'edit', 'legs', 'seq', 'view'].includes(k))).toEqual([]) // no shift_total yet: none had come back
     expect(body.legs.map((l) => l.planned_entry)).toEqual(real.legs.map((l) => l.planned_entry)) // the legs as they were, nothing moved by the browser
-    expect(all(w, 'leg-strike').map((e) => e.text())).toEqual(rec.shift_plus1.legs.map((l) => l.strike))
+    expect(all(w, 'leg-strike').map((e) => e.text())).toEqual(rec.shift_plus1.legs.map((l) => strikeLabel(l.strike)))
     expect(t(w, 'shift-total').text()).toBe('+50')
     answers['POST /strategies/leg-edit'] = SHIFTED_TWICE
     await clickAndWait(w, 'shift-plus')
