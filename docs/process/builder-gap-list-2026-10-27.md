@@ -95,7 +95,7 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-066 | S-233 | Futures leg | Buy Future loads with margin, Max Profit/Loss Unlimited | Known: a future added from the Futures tab gets no planned entry and every number disappears (walkthrough 2026-10-27 I-12 FAIL) | differs | REQ-080 AC-9 | #583 (I-12) |
 | G-067 | catalogue 010-039 | Layout: editor stays in view | Left column scrolls on its own while the chart scrolls | Left column stayed in view while the right column scrolled to the P&L table (gap-builder-pnl-table.png) | matches | UI study b.1 | - |
 | G-068 | none | Unsaved strategy after a reload | Not studied | After a reload the 4-leg unsaved strategy was gone: "No draft strategy is open" (evaluate 09:50:46) | unmeasured (Sensibull side not studied) | none - needs a requirement | new |
-| G-069 | catalogue pass 3 ("phone width not done") | Phone width 390 px | Not studied | scrollWidth 390 (no sideways scroll); visible: logo, Home, Strategies, bell, You; Positions clipped, Market / Orders / Learn off-screen (gcb1-G-069.png, 11:38 IST) | unmeasured (Sensibull's phone layout was never studied) | REQ-009 | GC-B5 |
+| G-069 | catalogue pass 3; study screenshot 250 (phone 390, added 2026-10-27) | Phone width 390 px | Dedicated phone layout: bottom tab bar (Home, Analyse, Positions, Watchlist), builder split into tabs Editor / Summary / Payoff / P&L / Greeks / Strategy Chart, compact legs "1 X 27 Oct 22700 CE", no sideways scroll (scrollWidth 390) (study 250, 14:11 IST) | scrollWidth 390 (no sideways scroll); visible: logo, Home, Strategies, bell, You; Positions clipped, Market / Orders / Learn off-screen (gcb1-G-069.png, 11:38 IST) | differs | REQ-009 | GC-B5 |
 
 ## 2. Strike drawer (Add/Edit)
 
@@ -150,16 +150,16 @@ Draft Portfolios 084-092, 118, 220-224; OI pages 140-144, 214; IV chart 151; opt
 
 | Screen | Rows | matches | differs | missing | n-a | unmeasured |
 |---|---|---|---|---|---|---|
-| Builder (G-001..G-069) | 69 | 15 | 33 | 17 | 0 | 4 |
+| Builder (G-001..G-069) | 69 | 15 | 34 | 17 | 0 | 3 |
 | Strike drawer (G-070..G-084, G-101) | 16 | 2 | 10 | 3 | 0 | 1 |
 | Option Chain (G-085..G-100) | 16 | 0 | 6 | 7 | 1 | 2 |
-| **Total** | **101** | **17** | **49** | **27** | **1** | **7** |
+| **Total** | **101** | **17** | **50** | **27** | **1** | **6** |
 
 Counted by a script over the verdict cell of each G-row (first word). G-098 counts as missing against our own REQ-031.
 Measured live in GC-B1 item 6 (2026-10-27 11:37-11:39 IST, main's code, owner's Kite session; screenshots
-`.playwright-mcp/gcb1-*.png`): G-016 differs, G-017 matches, G-065 differs (a 500, issue #586), G-069 still
-unmeasured (Sensibull's phone layout was never studied), G-077 differs (it had been counted "matches" unopened), G-083
-differs. The seven rows still "unmeasured" (G-029, G-064, G-068, G-069, G-088, G-097, G-101) say why in the row.
+`.playwright-mcp/gcb1-*.png`): G-016 differs, G-017 matches, G-065 differs (a 500, issue #586), G-069 differs
+(Sensibull has a dedicated phone layout, captured 14:11 IST as study screenshot 250; ours squeezes the desktop one), G-077 differs (it had been counted "matches" unopened), G-083
+differs. The six rows still "unmeasured" (G-029, G-064, G-068, G-088, G-097, G-101) say why in the row.
 
 ## Ten biggest gaps by user impact
 
