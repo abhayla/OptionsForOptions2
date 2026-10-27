@@ -553,7 +553,7 @@ const pricesStamp = computed(() => {
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->
         <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist @close="pickerOpen = false">
-          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" @update:legs="setLegs" @done="pickerOpen = false" /></div>
+          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" @done="pickerOpen = false" /></div>
         </Drawer>
         <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
           <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />

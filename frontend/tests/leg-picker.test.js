@@ -1431,3 +1431,78 @@ describe('F-12: the drawer opens on the strategy expiry every time it is opened'
     expect(reads('/leg-picker/strikes')).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
   })
 })
+
+// GC-BM F-14: the drawer works on the STRATEGY's underlying, decided when it opens (not at mount)
+describe('F-14: the drawer opens on the strategy underlying', () => {
+  const OCT29 = '2026-10-29'
+  const sxLeg = (id) => ({ id, underlying: 'SENSEX', expiry: OCT29, instrument_type: 'CE', strike: '73600.00', action: 'SELL', lots: 1, instrument_id: `BSE_FO:${id}` })
+  const nfLeg = (id) => ({ id, underlying: 'NIFTY', expiry: '2026-10-27', instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 1, instrument_id: `NSE_FO:${id}` })
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
+  const sxStrikes = `/leg-picker/strikes?underlying=SENSEX&expiry=${OCT29}&width=10`
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', '2026-11-03'] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-27'] = { underlying: 'NIFTY', contracts: [] }
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-27' }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [OCT29, '2026-11-05'] }
+    answers[`GET /catalogue/SENSEX/contracts?expiry=${OCT29}`] = { underlying: 'SENSEX', contracts: [] }
+    answers[`GET ${sxStrikes}`] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: OCT29 }
+  })
+  async function shut(extra = {}) {
+    const w = mount(LegPicker, { props: { legs: [], active: false, ...extra, 'onUpdate:legs': (v) => w.setProps({ legs: v }) } })
+    await flushPromises()
+    return w
+  }
+  const open = async (w) => { await w.setProps({ active: true }); await flushPromises() }
+
+  it('1: mounted empty (NIFTY), SENSEX legs arrive, opened: SENSEX, 29 Oct, SENSEX strikes read once, select locked', async () => {
+    const w = await shut()
+    await w.setProps({ legs: [sxLeg(1), sxLeg(2)] })
+    calls.length = 0
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-underlying').element.disabled).toBe(true)
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+    expect(strikeReads()).toEqual([sxStrikes])
+  })
+
+  it('2: no legs, page underlying SENSEX, opened: SENSEX and its nearest expiry', async () => {
+    const w = await shut()
+    await w.setProps({ pageUnderlying: 'SENSEX' })
+    calls.length = 0
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+    expect(strikeReads()).toEqual([sxStrikes])
+  })
+
+  it('3: SENSEX legs cleared, page back to NIFTY, opened: NIFTY', async () => {
+    const w = await shut({ pageUnderlying: 'SENSEX' })
+    await w.setProps({ legs: [sxLeg(1)] })
+    await open(w)
+    await w.setProps({ active: false })
+    await w.setProps({ legs: [], pageUnderlying: 'NIFTY' })
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
+    expect(t(w, 'pick-underlying').element.disabled).toBe(false)
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+  })
+
+  it('4: Edit of a SENSEX leg shows SENSEX and the leg expiry', async () => {
+    const w = await shut()
+    await w.setProps({ legs: [sxLeg(1)] })
+    await open(w)
+    await w.vm.startEdit(sxLeg(1))
+    await flushPromises()
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+  })
+
+  it('5: a shut picker reads no strikes; NIFTY legs on a NIFTY mount read NIFTY once on open', async () => {
+    calls.length = 0
+    const w = await shut({ legs: [nfLeg(1)] })
+    expect(strikeReads()).toEqual([])
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
+    expect(strikeReads()).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+})
