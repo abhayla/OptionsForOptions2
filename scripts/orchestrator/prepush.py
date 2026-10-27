@@ -328,8 +328,8 @@ def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monot
         note += " (no HEAD sha)"
     elif ok and not clean_at_start:
         note += " (tracked tree was dirty when the run started: commit or stash, then run again)"
-    elif ok and head_sha(repo) != sha:
-        note += f" (HEAD moved during the run: started on {sha[:7]}, now {(head_sha(repo) or '?')[:7]}; run again)"
+    elif ok and (end_sha := head_sha(repo)) != sha:
+        note += f" (HEAD moved during the run: started on {(sha or '?')[:7]}, now {(end_sha or '?')[:7]}; run again)"
     elif ok and not tree_is_clean(repo):
         note += " (tracked tree is dirty: commit or stash, then run again)"
     elif ok and untracked is None:
