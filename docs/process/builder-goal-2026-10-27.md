@@ -25,6 +25,17 @@ for what the product does); each is written the turn it is given.
 | P4 | BANKNIFTY and FINNIFTY in the builder and chain this phase (row 46, REQ-090 AC-1, REQ-001 AC-1)? | **All four in**: row 46 is built in this phase (values from the exchange files; a weekly-only shape refused on a monthly-only underlying). Already Approved in the spec: no spec change. | 2026-10-27 |
 | P5 | Sensibull's builder price chart with OI profile (screen 027; REQ-107, held for display rights): in this phase? | **Placeholder now**: the builder shows Sensibull's chart button and a "Coming soon: price chart" card (UI-021); the chart and the IV percentile figure are built after the owner confirms display rights and the chart licence. ADR-196 (4) amended. | 2026-10-27 |
 
+| P6 | CORRECTION of P3: P3's question named "Add Booked P&L" but described Sensibull's typed "Manual P/L" (screens 010, 112-114, 242; REQ-089). Sensibull's real "Add Booked P&L" (screen 012) is a chart toggle adding the P&L of CLOSED legs of a tracked strategy. In this phase? | **Out this phase**: comes with tracking / positions. P3's "in" stands for the typed Manual P/L (REQ-089, row 39). | 2026-10-27 |
+
+| P7 | Share (Sensibull "..." > Share > social networks / Copy Link; REQ-086, row 44): in this phase? | **Out this phase**: waits for sign-in (multi-user) and a compliance check of public posting. The "..." menu gets Save / Save As / Rename working (REQ-134) in this phase. | 2026-10-27 |
+
+| P8 | Builder Positions tab: list the user's Zerodha positions and load ticked legs into the builder (Sensibull catalogue line 122; REQ-104, REQ-044, REQ-061)? | **In, read-only**: REQ-104 import + grouping into a strategy + load into the builder, never attached without the user, no orders (ADR-165). New builder-sequence rows needed (about 2-3). ADR-196 (4) amended. | 2026-10-27 |
+| P9 | The builder's 4th bottom tab (Sensibull "Drafts"; ours "Tracked", REQ-109 row 53; row 54 REQ-140 profit/loss left) | **Keep Tracked, prove it**: the Tracked tab stays; row 53's live proof runs in this phase; row 54 comes with tracking / positions later. | 2026-10-27 |
+
+Applied without a question (settled): POP (REQ-082) and ready-made shapes (REQ-079) are held by Q211, which the owner
+decided on 2026-09-29 is "not a blocker for building": built and shown in development, switched on in production after
+the compliance review. The Strategy chart (REQ-091, held for display rights) follows P5: a placeholder card.
+
 Not asked, settled by the spec or this morning's list: the strike drawer's Straddles / Strangles tabs (UI-201, REQ-079
 quick picks) are in; the builder info panel (rows 41-42, REQ-139 / REQ-106) is in; India VIX under REQ-106 needs
 REQ-072 AC-1's "two index rows" wording extended (a spec wording fix, done with row 42).
