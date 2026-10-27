@@ -686,7 +686,7 @@ describe('REQ-135 AC-2: the leg row shows the server\'s days to expiry', () => {
     const reply = { ...STEPPED, legs: [replyLeg(real.legs[0], { days_to_expiry: 6 }), replyLeg(real.legs[1], { days_to_expiry: 0 }), replyLeg(real.legs[2]), replyLeg(real.legs[3], { days_to_expiry: null })] }
     expect(applyEditReply(prev, reply).map((l) => l.days_to_expiry)).toEqual([6, 0, null, null])
     const w = mount(LegList, { props: { legs: applyEditReply(prev, reply) } })
-    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(['13 Oct (6 days)', 'Today (0 days)', '2026-10-13', '2026-10-13'])
+    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(['13 Oct (6 days)', 'Today (0 days)', '13 Oct', '13 Oct']) // REQ-148 AC-2: no count -> the date alone, never raw ISO
     w.unmount()
   })
 

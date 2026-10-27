@@ -656,6 +656,7 @@ const pricesStamp = computed(() => {
             v-model:full-table="chartFullTable"
             :points="data.payoff.points"
             :view="data.payoff.view ?? ''"
+            :unavailable-reason="data.scenario && !data.scenario.available ? data.scenario.unavailable_reason : null"
             :spot="data.spot_level ?? ''"
             :table="data.table"
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"

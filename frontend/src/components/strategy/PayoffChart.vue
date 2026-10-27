@@ -22,6 +22,7 @@
       <span class="flex items-center gap-1"><span class="inline-block h-0.5 w-3 bg-loss"></span> Loss</span>
       <span v-if="spot" class="flex items-center gap-1" data-testid="payoff-legend-spot"><span class="inline-block w-3 border-t border-dashed border-ink-muted"></span> Spot {{ spot }}</span>
     </div>
+    <p v-if="!points.length && unavailableReason" class="mb-2 text-sm text-ink-muted" data-testid="payoff-unavailable">{{ unavailableReason }}</p>
     <div
       ref="plot"
       class="relative h-64 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -74,6 +75,7 @@ const props = defineProps({
   spot: { type: String, default: '' }, // the reply's spot_level text, as sent ('' = no spot line)
   view: { type: String, default: '' }, // the reply's payoff.view: which curve the points are ('' = unknown: no P&L line)
   pnlText: { type: Object, default: null }, // { [level]: the reply's display string for that level } (the table's)
+  unavailableReason: { type: String, default: null }, // the reply's scenario.unavailable_reason when it has no curve
 })
 
 // The reply's view decides the line's label; a view with no label here shows no line rather than a guessed one.
@@ -130,8 +132,11 @@ const spotLine = {
 }
 
 const createChart = () => {
-  if (!chartCanvas.value || !props.points.length) return
+  // G-065 round 2 (REQ-148 AC-6): the previous reply's curve goes FIRST, so a reply with no curve for its view (At
+  // Expiry on legs of two expiries) never leaves the old line on screen
   if (chartInstance) chartInstance.destroy()
+  chartInstance = null
+  if (!chartCanvas.value || !props.points.length) return
 
   const ctx = chartCanvas.value.getContext ? chartCanvas.value.getContext('2d') : null
   const { profitData, lossData } = splitPnlData(props.points)

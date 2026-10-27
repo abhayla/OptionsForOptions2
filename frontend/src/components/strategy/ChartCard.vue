@@ -29,6 +29,7 @@ const props = defineProps({
   table: { type: Object, required: true },
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
+  unavailableReason: { type: String, default: null }, // the reply's reason when the selected view has no curve
 })
 
 const TABS = [
@@ -73,7 +74,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
     <div v-show="tab === 'payoff'" role="tabpanel" v-bind="link(VIEW, 'payoff')" class="p-4" data-testid="panel-payoff">
       <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" class="mb-3" :id-prefix="SUB" />
       <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
-        <PayoffChart :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" />
+        <PayoffChart :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason" />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <table v-if="levels" class="w-full text-sm">
