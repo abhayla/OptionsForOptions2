@@ -25,15 +25,17 @@ export function isChainAnswer(msg) {
 }
 
 /** The request body for the socket and the REST read. */
-export function chainRequest(underlying, expiry) {
-  return { underlying, expiry, strikes_each_side: STRIKES_EACH_SIDE }
+export function chainRequest(underlying, expiry, strikesEachSide = STRIKES_EACH_SIDE, filters = {}) {
+  // row 33: the REQ-029 AC-9 filter fields (min_oi, min_volume, min_ltp, bid_and_ask) ride along, applied by the server
+  const n = strikesEachSide > STRIKES_EACH_SIDE ? STRIKES_EACH_SIDE : strikesEachSide
+  return { underlying, expiry, strikes_each_side: n, ...filters }
 }
 
 const sameRequest = (msg, req) => !!req && msg.underlying === req.underlying && msg.expiry === req.expiry
 
 async function readAnswer(req, fallback) {
   try {
-    const params = { underlying: req.underlying, expiry: req.expiry, strikes_each_side: req.strikes_each_side }
+    const params = { ...req } // the same fields the socket gets, filters included (row 33)
     if (fallback) params.fallback = true
     const { data } = await api.get(CHAIN_REST_PATH, { params })
     return isChainAnswer(data) && sameRequest(data, req) ? data : null
