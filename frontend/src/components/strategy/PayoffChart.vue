@@ -70,6 +70,21 @@ import Chart from 'chart.js/auto'
 import { pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney } from '@/lib/displayFormat'
 
+// GC-BM F-11: the pixel half of the zero-crossing colour (ADR-008 drawing exception): red below the pixel row of 0,
+// green above it, one gradient across the segment that changes sign. Null when the chart has no drawable area.
+function crossingGradient(chart, colours) {
+  const area = chart?.chartArea
+  const y0 = chart?.scales?.y?.getPixelForValue?.(0)
+  if (!chart?.ctx?.createLinearGradient || !area || !(area.bottom > area.top) || !Number.isFinite(y0)) return null
+  const at = Math.max(0, Math.min(1, (y0 - area.top) / (area.bottom - area.top)))
+  const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom)
+  g.addColorStop(0, colours.profit)
+  g.addColorStop(at, colours.profit)
+  g.addColorStop(at, colours.loss)
+  g.addColorStop(1, colours.loss)
+  return g
+}
+
 const props = defineProps({
   points: { type: Array, default: () => [] }, // [{ level: '22500', pnl: '1234.50' }] as the API sent them
   spot: { type: String, default: '' }, // the reply's spot_level text, as sent ('' = no spot line)
@@ -150,7 +165,7 @@ const createChart = () => {
         {
           label: 'P&L', data: lineData(props.points), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0,
           spanGaps: false, borderColor: colours.profit,
-          segment: { borderColor: segmentColour(pointSigns(props.points), colours) },
+          segment: { borderColor: segmentColour(pointSigns(props.points), colours, (chart) => crossingGradient(chart, colours)) },
           fill: { target: 'origin', above: token('--color-profit-soft'), below: token('--color-loss-soft') },
         },
       ],
