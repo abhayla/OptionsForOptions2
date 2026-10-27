@@ -41,7 +41,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
-from ofo.marketdata.provider import DayStatsReason, NotSupported
+from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable, priced
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
@@ -182,6 +182,9 @@ class DepthOut(ApiModel):
     last_trade_at: datetime.datetime | None
     day_stats_reason: DayStatsReason | None  # why the four day values and the time are null (None when they are given)
     read_at: datetime.datetime  # when the server read the depth
+    #: ADR-200 (1)/(2): outside market hours the held last depth and day values (read-only), shown under the one
+    #: market-closed banner; never an order input (Execute reads ``latest_depth``, live only)
+    market_closed: bool = False
 
 
 # ---- the window lease -----------------------------------------------------------------------------------------------
@@ -296,7 +299,7 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: Cha
     return PickerCellOut(
         instrument_id=contract.instrument_id, lot_size=contract.lot_size,
         ltp=quote.ltp.quantize(PAISE) if priced and quote.ltp is not None else None,
-        oi=quote.oi if quote.health is DataHealth.AVAILABLE else None,
+        oi=quote.oi if priced else None,  # live, or after the close the last close held (ADR-200 (1))
         iv_percent=None if greeks is None or not priced else (greeks.iv * _PERCENT).quantize(PAISE),
         delta=None if greeks is None or not priced else greeks.delta.quantize(_DELTA_STEP),
         health=quote.health.value, at=quote.timestamp)
@@ -330,10 +333,10 @@ def _window_contracts(catalogue: ChainCatalogue, window: tuple[Decimal, ...]) ->
     return sorted(chosen, key=lambda c: (c.strike, _SIDES.index(c.instrument_type)))
 
 
-def _list_reason(centre: Centre, cells: list[PickerCellOut]) -> ListReason | None:
+def _list_reason(centre: Centre, cells: list[PickerCellOut], closed: bool = False) -> ListReason | None:
     if centre == "MIDDLE_STRIKE":
         return "SPOT_MISSING"
-    if centre == "LAST_KNOWN_SPOT":
+    if centre == "LAST_KNOWN_SPOT" and not closed:  # after the close the last close is the price (ADR-200 (1))
         return "FEED_STALE"
     unpriced = [c for c in cells if c.ltp is None]
     if len(unpriced) == len(cells):
@@ -404,8 +407,11 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     if centre.kind == "MIDDLE_STRIKE":
         quotes = {}  # AC-5: without a spot every price cell is '-' with the reason
     usable = [q for q in quotes.values() if _priced(q, closed)]
-    greeks = {} if ctx is None or not usable else chain_greeks(
-        usable, spot_quote if centre.kind == "LIVE_SPOT" else None, expiry, answered_at, ctx.rate)
+    # the engine's spot: a live index; after the close (ADR-200 (1)) the index's last close held, labelled by the
+    # banner (``market_closed``), never live; in hours a stale index gives no IV or delta (unchanged)
+    engine_spot = (spot_quote if centre.kind == "LIVE_SPOT"
+                   or (closed and planning_price_usable(spot_quote, market_closed=True)) else None)
+    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, ctx.rate)
     cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id), closed)
                for c in contracts}
     rows = []
@@ -413,7 +419,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
         sides = {c.instrument_type: cell_of[c.instrument_id] for c in contracts if c.strike == strike}
         rows.append(PickerRowOut(strike=strike.quantize(PAISE), is_atm=strike == centre.atm, ce=sides.get("CE"),
                                  pe=sides.get("PE")))
-    reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()))
+    reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)
@@ -548,26 +554,8 @@ def _paise(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
-def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) -> DepthOut:
-    """One contract's depth. Every answer state: no feed or session ended (NO_SESSION), the feed not healthy
-    (FEED_STALE), nobody streams the contract (NOT_STREAMING), no full packet yet or a provider without depth
-    (NO_DEPTH_RECEIVED: a quote-only packet is not "no liquidity"), both sides empty (DEPTH_EMPTY), levels (AVAILABLE).
-    The day values come from the provider's own ``latest_day_stats`` (an interface method, never a lookup that may
-    fail open); when it has none, they are null WITH its reason (``day_stats_reason``), the depth still shown.
-    A zero-priced or zero-quantity level never reaches here (``depth_from_levels`` drops it)."""
-    if feed is None:
-        return _not_available(instrument_id, "NO_SESSION", now())
-    ctx = feed.ctx
-    read_at = ctx.clock()
-    blocker = _depth_blocker(feed, instrument_id)
-    if blocker is not None:
-        return _not_available(instrument_id, blocker, read_at)
-    depth = ctx.provider.latest_depth(instrument_id, read_at)
-    if depth is None:
-        return _not_available(instrument_id, "NO_DEPTH_RECEIVED", read_at)
-    if not depth.bids and not depth.asks:
-        return _not_available(instrument_id, "DEPTH_EMPTY", read_at)
-    day = ctx.provider.latest_day_stats(instrument_id, read_at)
+def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime.datetime, *,
+               market_closed: bool = False) -> DepthOut:
     stats = day.stats
     last_trade = None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
         stats.last_trade_ts, IST)
@@ -579,7 +567,48 @@ def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) ->
         day_high=None if stats is None else _paise(stats.day_high),
         day_low=None if stats is None else _paise(stats.day_low),
         prev_close=None if stats is None else _paise(stats.prev_close),
-        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at)
+        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at, market_closed=market_closed)
+
+
+def _held_after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime) -> DepthOut | None:
+    """ADR-200 (1)/(2), REQ-080 AC-7 (read-only): outside market hours the popup shows the last depth snapshot and day
+    values held for the contract, with ``market_closed`` true (the screen's one banner, never "not fresh"). None in
+    market hours, or when the provider holds nothing sound: the live rules below then answer as before."""
+    if not market_state(feed.ctx, read_at).closed or feed.ctx.provider.status().session_ended:
+        return None
+    if feed.fanout.subscriber_count(instrument_id) == 0:
+        return None
+    held = feed.ctx.provider.depth_after_close(instrument_id, read_at)  # the interface method (base: None)
+    if held is None or held[0] is None or (not held[0].bids and not held[0].asks):
+        return None
+    depth, stats = held
+    day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
+    return _depth_out(instrument_id, depth, day, read_at, market_closed=True)
+
+
+def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) -> DepthOut:
+    """One contract's depth. Every answer state: no feed or session ended (NO_SESSION), the feed not healthy
+    (FEED_STALE), nobody streams the contract (NOT_STREAMING), no full packet yet or a provider without depth
+    (NO_DEPTH_RECEIVED: a quote-only packet is not "no liquidity"), both sides empty (DEPTH_EMPTY), levels (AVAILABLE).
+    The day values come from the provider's own ``latest_day_stats`` (an interface method, never a lookup that may
+    fail open); when it has none, they are null WITH its reason (``day_stats_reason``), the depth still shown.
+    A zero-priced or zero-quantity level never reaches here (``depth_from_levels`` drops it)."""
+    if feed is None:
+        return _not_available(instrument_id, "NO_SESSION", now())
+    ctx = feed.ctx
+    read_at = ctx.clock()
+    held = _held_after_close(feed, instrument_id, read_at)
+    if held is not None:
+        return held
+    blocker = _depth_blocker(feed, instrument_id)
+    if blocker is not None:
+        return _not_available(instrument_id, blocker, read_at)
+    depth = ctx.provider.latest_depth(instrument_id, read_at)
+    if depth is None:
+        return _not_available(instrument_id, "NO_DEPTH_RECEIVED", read_at)
+    if not depth.bids and not depth.asks:
+        return _not_available(instrument_id, "DEPTH_EMPTY", read_at)
+    return _depth_out(instrument_id, depth, ctx.provider.latest_day_stats(instrument_id, read_at), read_at)
 
 
 # ---- routes ---------------------------------------------------------------------------------------------------------

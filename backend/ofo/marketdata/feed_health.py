@@ -287,6 +287,19 @@ class QuoteBook:
         quote = with_feed_health(e.quote, self.feed.health(now))
         return e.depth if quote.health is DataHealth.AVAILABLE else None
 
+    def depth_after_close(self, instrument_id: str,
+                          now: datetime.datetime) -> tuple[Depth | None, DayStats | None] | None:
+        """READ-ONLY display (REQ-080 AC-7, ADR-200 (1)): outside market hours, the last full frame's depth and day
+        values held for a sound quote (``quote.planning_price_usable``), or None (market open, not held, or the quote
+        not sound). NEVER an order input: the Execute price reads ``latest_depth``, which stays AVAILABLE-only."""
+        from ofo.marketdata.quote import planning_price_usable  # noqa: PLC0415 - one rule, read where it is used
+        e = self._entries.get(instrument_id)
+        if e is None or not self.feed.market_closed(now):
+            return None
+        if not planning_price_usable(with_feed_health(e.quote, self.feed.health(now)), market_closed=True):
+            return None
+        return e.depth, e.day_stats
+
     def latest_day_stats(self, instrument_id: str, now: datetime.datetime) -> DayStatsAnswer:
         """The day values of the instrument's latest packet, or the reason there are none: not held (never seen,
         removed or parked), the quote is not AVAILABLE (the feed's health, as for depth), or the latest packet was an

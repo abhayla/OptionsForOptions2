@@ -140,6 +140,9 @@ class FakeProvider:
     def latest_depth(self, instrument_id: str, now=None) -> Depth | None:
         return self.depths.get(instrument_id)
 
+    def depth_after_close(self, instrument_id: str, now=None):  # the interface default: nothing held (fail closed)
+        return None
+
     def latest_day_stats(self, instrument_id: str, now=None) -> DayStatsAnswer:
         if not self.stats_offered:
             return DayStatsAnswer.unavailable(NOT_OFFERED)

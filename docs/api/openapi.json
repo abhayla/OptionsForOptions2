@@ -1286,6 +1286,11 @@
             ],
             "title": "Last Trade At"
           },
+          "market_closed": {
+            "default": false,
+            "title": "Market Closed",
+            "type": "boolean"
+          },
           "prev_close": {
             "anyOf": [
               {
