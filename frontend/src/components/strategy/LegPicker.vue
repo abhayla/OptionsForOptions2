@@ -233,6 +233,15 @@ watch(tab, refreshOpenTab)
 watch(() => props.active, (on) => {
   if (!on) return
   if (!expiries.value.length && editingId.value === null) loadExpiries()
+  // F-12: the opening expiry is chosen when the drawer opens, from the legs as they are NOW (they may have changed since
+  // mount). A different expiry is shown and its strikes are read by the expiry watcher: that one read is this open's read.
+  else if (editingId.value === null && expiries.value.length) {
+    const target = openingExpiry()
+    if (target && target !== expiry.value) {
+      onExpiry(target)
+      return
+    }
+  }
   refreshOpenTab()
 })
 // a leg removed by the page (the one list lives outside this component) while it is being edited leaves no stale form

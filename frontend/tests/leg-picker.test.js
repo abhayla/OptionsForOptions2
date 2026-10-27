@@ -1320,3 +1320,78 @@ describe('G-070: the drawer opens on the nearest expiry with its strikes', () =>
     expect(strikeReads()).toEqual([])
   })
 })
+
+// GC-BM F-12 (G-070 round 2): the opening state is decided when the drawer OPENS, not at mount. The real page order: the
+// picker mounts shut with no legs, the legs arrive later, then the drawer opens.
+describe('F-12: the drawer opens on the strategy expiry every time it is opened', () => {
+  const NOV3 = '2026-11-03'
+  const NOV9 = '2026-11-09'
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
+  const leg = (id, expiry) => ({ id, underlying: 'NIFTY', expiry, instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 1, instrument_id: `NSE_FO:${id}` })
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', NOV3, NOV9] }
+    for (const e of ['2026-10-27', NOV3, NOV9]) {
+      answers[`GET /catalogue/NIFTY/contracts?expiry=${e}`] = { underlying: 'NIFTY', contracts: [] }
+      answers[`GET /leg-picker/strikes?underlying=NIFTY&expiry=${e}&width=10`] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: e }
+    }
+  })
+  async function shutPicker() {
+    const w = mount(LegPicker, { props: { legs: [], active: false, 'onUpdate:legs': (v) => w.setProps({ legs: v }) } })
+    await flushPromises()
+    return w
+  }
+  const open = async (w) => { await w.setProps({ active: true }); await flushPromises() }
+  const close = async (w) => { await w.setProps({ active: false }); await flushPromises() }
+  const shown = (w) => t(w, 'pick-expiry').element.value
+
+  it('1: mounted with no legs, then legs on 3 Nov, then opened: 3 Nov, its strikes read once', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3), leg(2, NOV3)] })
+    calls.length = 0
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+    expect(strikeReads()).toEqual([`/leg-picker/strikes?underlying=NIFTY&expiry=${NOV3}&width=10`])
+  })
+
+  it('2: a hand pick of 9 Nov is kept while open and gone on the next open (3 Nov again)', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    await open(w)
+    await t(w, 'pick-expiry').setValue(NOV9)
+    await flushPromises()
+    expect(shown(w)).toBe(NOV9)
+    await close(w)
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+  })
+
+  it('3: legs cleared, then opened: the nearest expiry', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    await open(w)
+    await close(w)
+    await w.setProps({ legs: [] })
+    await open(w)
+    expect(shown(w)).toBe('2026-10-27')
+  })
+
+  it('4: Edit of a 9 Nov leg shows 9 Nov', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3), leg(2, NOV9)] })
+    await open(w)
+    await w.vm.startEdit(leg(2, NOV9))
+    await flushPromises()
+    expect(shown(w)).toBe(NOV9)
+  })
+
+  it('5: the underlying switched while shut, then opened: that underlying nearest expiry', async () => {
+    const w = await shutPicker()
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: ['2026-10-29', '2026-11-05'] }
+    answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-29'] = { underlying: 'SENSEX', contracts: [] }
+    answers['GET /leg-picker/strikes?underlying=SENSEX&expiry=2026-10-29&width=10'] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: '2026-10-29' }
+    await t(w, 'pick-underlying').setValue('SENSEX')
+    await flushPromises()
+    await open(w)
+    expect(shown(w)).toBe('2026-10-29')
+  })
+})
