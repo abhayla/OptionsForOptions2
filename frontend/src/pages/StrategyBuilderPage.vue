@@ -49,6 +49,7 @@ import { istClock, istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
+import { NOT_LIVE_LABEL as INDEX_NOT_LIVE, headerLevel, useIndexAnswer } from '@/composables/useIndexLive'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
 const route = useRoute()
@@ -320,6 +321,7 @@ function undoClear() {
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
+  index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
   load()
   syncLive()
   readShape()
@@ -440,6 +442,8 @@ onBeforeUnmount(() => {
   clearTimeout(undoTimer)
 })
 
+const index = useIndexAnswer()
+const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 // W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
 const chartTab = ref('payoff')
@@ -507,7 +511,7 @@ const pricesStamp = computed(() => {
             <select v-else v-model="pickUnderlying" class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="underlying-select">
               <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
             </select>
-            <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || undefined">{{ data?.spot_level ?? NO_LIVE_LEVEL }}</span>
+            <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || (indexLevel === null && index.notLive() ? INDEX_NOT_LIVE : undefined)">{{ indexLevel ?? NO_LIVE_LEVEL }}</span>
           </span>
           <span ref="settingsRoot" class="relative" @keydown.esc="closeSettings">
             <button
