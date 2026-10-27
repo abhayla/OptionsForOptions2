@@ -37,6 +37,11 @@
    "date": "2026-10-26",
    "where": "UI redesign PR #581 (ui/builder-redesign), first CI run",
    "evidence": "Local final pass ran the full unit suite (1092), lint, build, repo guards (954) and 15 e2e specs, but not scripts/ruff_ratchet.py or scripts/orchestrator/coverage.py --check (both on the runbook's 'Before a push' list, neither in tools/ci_local.py). CI went red on `api` (ruff ratchet: E501 rose - two margin strings at 121 chars) and `coverage` (8 ids with no stage: ADR-193..195, W-191..195); both checks then ran locally in seconds and passed after a 2-line fix. Separately, ci_local ran tests_app files under the kit pytest.ini (no asyncio) and reported 53 false failures on PR #580 (kit harvest Startup-Factory #186). Mitigation recorded in auto-memory build-first-check-once-at-end: the single final pass includes the runbook's pre-push list."
+  },
+  {
+   "date": "2026-10-27",
+   "where": "GC-B1 batch PR #590 (commit b7b0eb3b), CI runs 40465262213 / 40465262010, after prepush.py --full TOTAL PASS on the same tree",
+   "evidence": "CI red on three things the local gate does not run: (1) api job 'docs/api/openapi.json is stale' (tests_app/test_openapi_drift.py; it passes locally only after regeneration, and the gate never regenerates or checks generated API files); (2) frontend job Playwright e2e/leg-picker.spec.ts:61 expected '22800.00' after #582 item 7 printed strikes without '.00' (prepush runs no Playwright); (3) lint-and-test: 4 new gate tests built Windows paths that do not exist on the Linux runner. Mechanism wanted: prepush runs scripts/generate_openapi.py --check (or the drift test) and the Playwright specs that cover changed pages; a test that builds a platform path is marked for its platform. Recorded in #587."
   }
  ]
 }
