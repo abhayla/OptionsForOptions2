@@ -6,7 +6,11 @@
   expiry, from the server's chain socket. Every value is shown as the server gave it (a string); the ATM row is the
   server's `atm_strike`; Change shows "-" (the feed carries no previous close, F-47). No order placement, selection or
   import here (REQ-029 AC-6; REQ-030 is a later item). Adapted for layout only from abhayla/algochanakya@bf9faf7
-  frontend/src/views/OptionChainView.vue (legacy-reuse row 144: no local ATM fallback, strike logic in the backend). -->
+  frontend/src/views/OptionChainView.vue (legacy-reuse row 144: no local ATM fallback, strike logic in the backend).
+  Row 33 (REQ-029 AC-2/AC-3/AC-9): IV is a default column and a Details toggle adds Bid, Ask, OI Change and the Greeks,
+  the same for every user (ADR-168: no UX level); all are the server's engine strings (ADR-008). The filters (strike
+  range sent to the server; ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
+  never a number, never the selection (lib/chainDisplay.js). -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -16,9 +20,8 @@ import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason } from '@/lib/dataHealthText'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-
-const SIDE_FIELDS = [['ltp', 'LTP'], ['change', 'Change'], ['oi', 'OI'], ['volume', 'Volume']]
+import { NOT_LIVE_LABEL, STRIKES_EACH_SIDE, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
+import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, fieldsFor, filterRows } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -38,6 +41,10 @@ const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
 const { answer, status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
+const details = ref(false) // REQ-029 AC-3: off = AC-2's default columns
+const strikesEachSide = ref(STRIKES_EACH_SIDE)
+const filters = ref({ ...NO_FILTERS })
+const SIDE_FIELDS = computed(() => fieldsFor(details.value))
 
 async function loadExpiries() {
   const mine = ++expirySeq
@@ -63,9 +70,12 @@ watch(underlying, () => {
   loadExpiries()
 }, { flush: 'sync' })
 watch(expiry, (value) => {
-  if (value) follow(chainRequest(underlying.value, value))
+  if (value) follow(chainRequest(underlying.value, value, strikesEachSide.value))
   else clear()
 }, { flush: 'sync' })
+watch(strikesEachSide, (n) => {
+  if (expiry.value) follow(chainRequest(underlying.value, expiry.value, n))
+})
 
 const router = useRouter()
 const selection = useChainSelection()
@@ -123,6 +133,9 @@ const spotTime = computed(() => {
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
 const healthWord = (cell) => (cell && cell.health && cell.health !== 'available' ? cell.health : '')
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
+const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value, view.value.atm_strike) : []))
+const greeksLine = computed(() => GREEKS_MISSING_LINES[view.value?.greeks_missing] ?? GREEKS_BASIS_LINES[view.value?.greeks_basis] ?? '')
+const resetFilters = () => (filters.value = { ...NO_FILTERS })
 </script>
 
 <template>
@@ -153,6 +166,27 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
     </div>
 
+    <div class="mt-3 flex flex-wrap items-end gap-3 text-sm" data-testid="chain-filters">
+      <label>
+        Strikes each side
+        <select v-model.number="strikesEachSide" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="filter-strike-range">
+          <option v-for="n in STRIKE_RANGES" :key="n" :value="n">{{ n }}</option>
+        </select>
+      </label>
+      <label>
+        Moneyness
+        <select v-model="filters.moneyness" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="filter-moneyness">
+          <option v-for="[code, label] in MONEYNESS" :key="code" :value="code">{{ label }}</option>
+        </select>
+      </label>
+      <label>Min OI <input v-model="filters.minOi" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-oi" /></label>
+      <label>Min volume <input v-model="filters.minVolume" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-volume" /></label>
+      <label>Min premium <input v-model="filters.minLtp" type="number" min="0" step="0.05" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-ltp" /></label>
+      <label><input v-model="filters.bidAndAsk" type="checkbox" data-testid="filter-bid-ask" /> Has bid and ask</label>
+      <label><input v-model="details" type="checkbox" data-testid="details-toggle" /> Details</label>
+      <button type="button" class="rounded border border-line px-2 text-xs" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
+    </div>
+
     <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
     <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
 
@@ -168,6 +202,8 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       <button type="button" class="rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
+    <p v-if="view && view.rows.length && !shownRows.length" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
+    <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
     <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">
       <table class="min-w-full text-sm" data-testid="chain-table">
         <thead>
@@ -188,7 +224,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
         </thead>
         <tbody>
           <tr
-            v-for="row in view.rows"
+            v-for="row in shownRows"
             :key="row.strike"
             :class="{ 'bg-accent-soft font-semibold': isAtm(row) }"
             :data-atm="isAtm(row) ? 'true' : 'false'"

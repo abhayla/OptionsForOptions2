@@ -222,7 +222,7 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
                              "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown",
-                             "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}  # stale: not priced, so a dash
+                             "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
@@ -331,7 +331,7 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
                                                 "volume": None, "health": "unavailable", "at": None,
                                                     "permitted": False, "unavailable_reason": "unknown",
-                                                    "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -870,8 +870,8 @@ async def test_standing_d_each_answer_state_gives_a_value_or_a_dash(state, spot_
 
 
 async def test_standing_d_no_live_feed_and_spot_missing_carry_no_greeks_and_no_basis():
-    """Standing item (d): NOT_CONNECTED and a spot-missing answer have no rows, no basis, no reason (rows_missing says)."""
-    provider, _feed, channel, _mono, push = make_rig()
+    """Standing item (d): NOT_CONNECTED and a spot-missing answer have no rows, no basis, no reason."""
+    _provider, _feed, channel, _mono, push = make_rig()
     task = await start(push, channel)
     await close(channel, task)
     body = channel.sent[0]

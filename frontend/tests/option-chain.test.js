@@ -32,7 +32,7 @@ class FakeSocket {
 }
 
 const EXPIRY = '2026-10-27'
-const cell = (id, ltp, oi = '1000', volume = '50') => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi, oi_change: null, volume, health: 'available', at: '2026-10-19T10:00:00+05:30', permitted: true, unavailable_reason: null })
+const cell = (id, ltp, oi = '1000', volume = '50') => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi, oi_change: null, volume, health: 'available', at: '2026-10-19T10:00:00+05:30', permitted: true, unavailable_reason: null, iv: '12.34', delta: '0.5012', gamma: '0.0011', theta: '-12.3456', vega: '10.1234' })
 const row = (strike, ltpCe, ltpPe) => ({ strike, ce: cell(`NFO:${strike}CE`, ltpCe), pe: cell(`NFO:${strike}PE`, ltpPe) })
 const answer = (ltpCe = '120.50', over = {}) => ({
   state: 'LIVE', underlying: 'NIFTY', expiry: EXPIRY, spot: '24510.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available',
@@ -78,20 +78,21 @@ describe('Option Chain screen', () => {
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
     const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
-    expect(tds).toEqual(['120.50', '-', '1000', '50', '24500.00', '95.25', '-', '1000', '50'])
+    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500.00', '95.25', '-', '1000', '50', '12.34'])
     expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
   })
 
-  it('AC-2: four default columns per side (LTP, Change, OI, Volume), Change is "-", no IV column', async () => {
+  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change is "-"', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
     const cols = w.find('[data-testid="chain-columns"]').findAll('th').map((t) => t.text()).filter(Boolean)
-    expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'Strike', 'LTP', 'Change', 'OI', 'Volume'])
-    expect(cols.join(' ')).not.toMatch(/IV|Delta|Bid|Ask/)
+    expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'IV', 'Strike', 'LTP', 'Change', 'OI', 'Volume', 'IV'])
+    expect(cols.join(' ')).not.toMatch(/Delta|Bid|Ask/)
+    expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34'])
     expect(cellsOf(w, 'ce-change')).toEqual(['-', '-', '-'])
     expect(cellsOf(w, 'pe-change')).toEqual(['-', '-', '-'])
   })
@@ -128,7 +129,7 @@ describe('Option Chain screen', () => {
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
     // REQ-030 AC-2: the only buttons are the per-cell Buy / Sell choices of a leg for import (ADR-002: never an order)
-    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Refresh', 'Sell'])
+    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Clear filters', 'Refresh', 'Sell']) // row 33: Clear filters only resets the display filters
     expect(w.findAll('a')).toHaveLength(0)
     expect(w.text()).not.toMatch(/\b(order|execute|place)\b/i)
     const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')
@@ -318,5 +319,61 @@ describe('Option Chain screen', () => {
     expect(w.find('[data-testid="not-live"]').exists()).toBe(false)
     expect(w.find('[data-testid="chain-waiting"]').exists()).toBe(true)
     expect(w.text()).not.toContain('44.00')
+  })
+
+  it('AC-3 (row 33, attack 5): Details adds Bid, Ask, OI Change and the Greeks as the server sent them', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    sock().serverPush({ ...answer(), expiry: '2026-10-20' })
+    await flushPromises()
+    await w.find('[data-testid="details-toggle"]').setValue(true)
+    const cols = w.find('[data-testid="chain-columns"]').findAll('th').map((t) => t.text()).filter(Boolean)
+    expect(cols.slice(0, 12)).toEqual(['LTP', 'Change', 'OI', 'Volume', 'IV', 'Bid', 'Ask', 'OI Change', 'Delta', 'Gamma', 'Theta', 'Vega'])
+    expect(cellsOf(w, 'ce-theta')).toEqual(['-12.3456', '-12.3456', '-12.3456'])
+    expect(cellsOf(w, 'ce-bid')).toEqual(['-', '-', '-'])
+  })
+
+  it('row 33: a strike range change sends one new request with that strike count (server cap 15)', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    await w.find('[data-testid="filter-strike-range"]').setValue('5')
+    await flushPromises()
+    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 5 })
+  })
+
+  it('attack 6: every filter narrows the shown rows only; a filtered-out ticked contract stays in Selected Legs', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    sock().serverPush({ ...answer(), expiry: '2026-10-20' })
+    await flushPromises()
+    await w.findAll('[data-testid="select-ce"]').at(0).setValue(true)
+    await flushPromises()
+    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
+    await w.find('[data-testid="filter-moneyness"]').setValue('OTM')
+    expect(cellsOf(w, 'strike')).toEqual(['24550.00'])
+    expect(cellsOf(w, 'ce-ltp')).toEqual(['90.00'])
+    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
+    expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450.00')
+    await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
+    expect(cellsOf(w, 'strike')).toEqual([])
+    expect(w.find('[data-testid="filtered-empty"]').exists()).toBe(true)
+    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
+    await w.find('[data-testid="filter-reset"]').trigger('click')
+    expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+  })
+
+  it('row 33: the IV basis or the reason for no IV is said on the screen (ADR-061, never silent)', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    sock().serverPush({ ...answer('120.50', { greeks_basis: 'SPOT_FALLBACK', greeks_missing: null }), expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="greeks-line"]').text()).toMatch(/estimated from spot/)
+    sock().serverPush({ ...answer('121.50', { greeks_basis: null, greeks_missing: 'FORWARD_UNAVAILABLE' }), expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.find('[data-testid="greeks-line"]').text()).toMatch(/forward could not be derived/)
   })
 })

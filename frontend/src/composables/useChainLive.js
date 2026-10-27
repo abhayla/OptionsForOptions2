@@ -25,8 +25,8 @@ export function isChainAnswer(msg) {
 }
 
 /** The request body for the socket and the REST read. */
-export function chainRequest(underlying, expiry) {
-  return { underlying, expiry, strikes_each_side: STRIKES_EACH_SIDE }
+export function chainRequest(underlying, expiry, strikesEachSide = STRIKES_EACH_SIDE) {
+  return { underlying, expiry, strikes_each_side: Math.min(strikesEachSide, STRIKES_EACH_SIDE) }
 }
 
 const sameRequest = (msg, req) => !!req && msg.underlying === req.underlying && msg.expiry === req.expiry
