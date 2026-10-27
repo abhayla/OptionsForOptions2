@@ -43,8 +43,8 @@ describe("core: the real reply is printed as sent", () => {
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
     expect(s.reward_risk).toBe("0.54");
-    expect(t(c, "time-value").text()).toBe(s.time_value);
-    expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value);
+    expect(t(c, "time-value").text()).toBe(groupMoney(s.time_value));
+    expect(t(c, "intrinsic-value").text()).toBe(groupMoney(s.intrinsic_value));
     expect(t(c, "value-label").text()).toBe("value of the options, not P&L");
     expect(t(c, "max-profit").attributes("data-raw")).toBe(s.max_profit);
     expect(t(c, "max-profit-percent").text()).toBe(
@@ -289,8 +289,8 @@ describe("W-193: the summary card (Region E)", () => {
     expect(t(c, "max-loss").attributes('data-raw')).toBe(s.max_loss);
     expect(t(c, "breakevens").text()).toBe(groupMoney(s.breakevens.join(", ")));
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
-    expect(t(c, "time-value").text()).toBe(s.time_value);
-    expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value);
+    expect(t(c, "time-value").text()).toBe(groupMoney(s.time_value));
+    expect(t(c, "intrinsic-value").text()).toBe(groupMoney(s.intrinsic_value));
   });
 
   it("Revision 1 M1 (REQ-034 AC-7): the three plain sentences stay VISIBLE under their figures, outside any tooltip", () => {
@@ -356,5 +356,13 @@ describe("W-193: the summary card (Region E)", () => {
     const c = full(CONDOR);
     const sent = JSON.stringify(CONDOR);
     for (const n of c.text().match(/\d[\d,]*\.\d+/g) ?? []) expect(sent, n).toContain(n);
+  });
+});
+
+describe('#582 item 3: Time value and Intrinsic value are grouped like the other figures', () => {
+  it('prints the server text with Indian grouping, a negative one too', () => {
+    const c = mount(SummaryCards, { props: { ...cardProps(CONDOR), timeValue: '12345.60', intrinsicValue: '-1234567.50' } });
+    expect(t(c, "time-value").text()).toBe("12,345.60");
+    expect(t(c, "intrinsic-value").text()).toBe("-12,34,567.50");
   });
 });
