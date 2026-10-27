@@ -1,8 +1,8 @@
 # Session handover: GC-B1 (builder phase), 2026-10-27 ~11:15-14:00 IST
 
-Contract: `docs/process/goal-contracts-builder-phase-2026-10-27.md`, GC-B1. Result: **PARTIAL** (corrected 2026-10-27 ~14:10 after the
-goal check): items 1-5 merged with CI green; item 6 PARTIAL, G-069 PARKED (#592); and the contract's one-push rule was
-broken (see "Contract breaches"). **NEXT = GC-B2.**
+Contract: `docs/process/goal-contracts-builder-phase-2026-10-27.md`, GC-B1. Result: every item merged with CI green or measured (item 6
+completed 14:11 IST: G-069 differs, #592 closed), BUT the contract's one-push rule was broken (see "Contract
+breaches"); that cannot be undone. **NEXT = GC-B2.**
 
 ## DONE
 - **Step 0 (docs):** the plan review (fresh Opus, REVISE 3 MAJOR / 5 MINOR) applied to the contract file: Positions
@@ -46,8 +46,9 @@ broken (see "Contract breaches"). **NEXT = GC-B2.**
 - None.
 
 ## PARKED
-- **G-069** (phone width): no Sensibull phone study exists, so the row has no verdict (#592, label `parked`; GC-B5
-  owns it). Our side was measured: no sideways scroll, but the top bar clips Positions..Learn at 390 px.
+- None from GC-B1 now. G-069 was parked at 14:05 (#592) and un-parked at 14:11: Sensibull's builder at 390 x 844
+  (logged out) has a dedicated phone layout (bottom tab bar, builder tabs, compact legs; private study screenshot 250),
+  so G-069 = differs, owned by GC-B5.
 - Row 31 stays PARKED (#558), GC-B4.
 
 ## Contract breaches (stated, not hidden)

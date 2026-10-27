@@ -2,7 +2,8 @@
 
 ## NOW (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
 
-- **PARTIAL:** GC-B1 (G-069 PARKED #592; two pushes and one gate skip broke the one-push rule). Docs #585 (ADR-196, ADR-197, contracts GC-B1..B17, gap list) and #589 (REQ-141 approved, six gap rows
+- **GC-B1:** every item merged or measured (G-069 verdict 14:11, #592 closed), but two pushes and one gate skip broke
+  the contract's one-push rule. Docs #585 (ADR-196, ADR-197, contracts GC-B1..B17, gap list) and #589 (REQ-141 approved, six gap rows
   measured live); batch #590 merged with CI green (#582 items 3 / 7 / 8, #583 I-1 / I-6 / I-12, row 33 chain values,
   the pre-push gate, one fix round, the leg-picker flake fixed at its cause). Core proof live 11:48 IST.
 - **PENDING:** deferred #586 (mixed-expiry 500), #587 (pre-push gate gaps), #588 (chain moneyness filter on spot drop).
