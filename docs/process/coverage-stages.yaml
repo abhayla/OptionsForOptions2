@@ -351,6 +351,8 @@ decisions:
   ADR-196: S6.1         # builder + chain take every Sensibull builder/chain feature, our rules on top, indices only (owner, 2026-10-27)
   ADR-197: S6.1         # after hours the builder works from the last close, all numbers, under the ADR-177 banner (owner, 2026-10-27)
   ADR-198: S6.1         # 13 builder features approved as REQ-142..154, Indian grouping, server-kept drafts (owner, 2026-10-27)
+  ADR-199: S6.1         # after the close on an expiry day the builder default expiry rolls to the next one (owner, 2026-10-27)
+  ADR-200: S6.1         # ADR-197 built now; "last close" = LTP at the close, its own time; real-app closing-price walks prove GC-BM (owner)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
