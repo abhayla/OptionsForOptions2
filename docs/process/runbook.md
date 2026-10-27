@@ -69,8 +69,12 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
   coverage check).
 
 ## Before a push
-One command, the checks plus the tests the change can break: `python tools/ci_local.py` (`--full` after a large
-merge). It mirrors the kit's `ci.yml` only; `app-tests.yml` (tests_app, frontend lint/unit/e2e, ruff ratchet) runs in
+One command, the whole list on a committed, clean tree: `python scripts/orchestrator/prepush.py` (`--full` after a
+large merge). It runs ci_local, the ruff ratchet, the coverage check and the alembic guard, and writes the marker that
+`git push` and `land.py` require for that exact HEAD (an amend needs a new run). Bypass, with a reason:
+`PREPUSH_GATE_ALLOW=<reason> git push ...` or `land.py --skip-prepush <reason>`.
+Underneath, `python tools/ci_local.py` (`--full` after a large
+merge) mirrors the kit's `ci.yml` only; `app-tests.yml` (tests_app, frontend lint/unit/e2e, ruff ratchet) runs in
 CI. Add, when relevant: `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/pr_close_check.py --pr N`;
 `python scripts/orchestrator/coverage.py . --check`; a migration or DB store runs its own test file (below); a
 regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fix, push again.
