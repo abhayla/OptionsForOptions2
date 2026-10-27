@@ -524,3 +524,35 @@ describe('REQ-134: the saved list in the bar shows the name, and the old text wh
     expect(condor.find('i').exists()).toBe(false)
   })
 })
+
+describe('GC-BM F-13: the "..." menu item shows by its own condition, never disables the whole menu', () => {
+  const current = { id: 35, revision: 2, name: quoted('NIFTY Oct condor') }
+  const NOT_LIVE = [leg({ lot_size: null })] // the saveDraft.js:129 shape of a leg that is not live
+  const slotMenu = { slots: { menu: '<button role="menuitem" data-testid="menu-activity">History</button>' } }
+  async function barWith(props, options = {}) {
+    answers['GET /strategies'] = { strategies: [] }
+    const w = mount(SaveDraftBar, { props: { rulesRef: '', ...props }, ...options })
+    await flushPromises()
+    return w
+  }
+  it('attack 1: a saved strategy with a not-live leg keeps the menu: Rename and History listed, Save / Save As hidden', async () => {
+    const w = await barWith({ legs: NOT_LIVE, current }, slotMenu)
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    await t(w, 'more-menu').trigger('click')
+    expect(t(w, 'rename-open').exists()).toBe(true)
+    expect(t(w, 'menu-activity').exists()).toBe(true)
+    expect(t(w, 'menu-save').exists()).toBe(false)
+    expect(t(w, 'save-as').exists()).toBe(false)
+  })
+  it('attack 2: no legs and no saved strategy: the button is disabled and no menu item exists', async () => {
+    const w = await barWith({ legs: [], current: null })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeDefined()
+    expect(['rename-open', 'menu-save', 'save-as'].filter((id) => t(w, id).exists())).toEqual([])
+  })
+  it('an unsaved strategy with live legs still lists Save and Save As but no Rename', async () => {
+    const w = await barWith({ legs: LEGS, current: null })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'menu-save').exists() && t(w, 'save-as').exists()).toBe(true)
+    expect(t(w, 'rename-open').exists()).toBe(false)
+  })
+})

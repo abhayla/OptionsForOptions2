@@ -93,7 +93,8 @@ async function loadExpiries(preselect = true) {
     expiries.value = res.data.expiries
     expiryDays.value = daysByExpiry(res.data.expiry_days)
     errorParts.value = null
-    if (preselect) {
+    // F-13: a shut drawer reads no strikes or contracts; the opening watcher picks the expiry and reads them on open
+    if (preselect && props.active) {
       expiry.value = openingExpiry()
       await loadContracts()
     }
@@ -218,13 +219,13 @@ watch([underlying, expiry, width], () => {
   strikesFailed.value = false
   picked.value = {}
   cellLots.value = {}
-  if (tab.value === 'strikes') loadStrikes()
+  if (tab.value === 'strikes' && props.active) loadStrikes()
 })
 watch(underlying, () => {
   fuSeq++
   futuresData.value = null
   futuresFailed.value = false
-  if (tab.value === 'futures') loadFutures()
+  if (tab.value === 'futures' && props.active) loadFutures()
 })
 watch(tab, refreshOpenTab)
 // W-195 review 4: the drawer opening is the moment the user looks, so the open tab's prices are read again then (the
@@ -238,7 +239,8 @@ watch(() => props.active, (on) => {
   else if (editingId.value === null && expiries.value.length) {
     const target = openingExpiry()
     if (target && target !== expiry.value) {
-      onExpiry(target)
+      onExpiry(target) // on the Strikes tab the expiry watcher reads the strikes: that is this open's read
+      if (tab.value === 'futures') loadFutures() // the watcher reads nothing on the Futures tab, so this open reads its prices
       return
     }
   }

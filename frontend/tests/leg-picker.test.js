@@ -1394,4 +1394,40 @@ describe('F-12: the drawer opens on the strategy expiry every time it is opened'
     await open(w)
     expect(shown(w)).toBe('2026-10-29')
   })
+
+  // GC-BM F-13 items 3 and 4
+  const reads = (prefix) => calls.filter((x) => x.url.startsWith(prefix)).map((x) => x.url)
+  it('F-13 attack 5: page load with the drawer shut reads no strikes and no contracts; opening reads strikes once', async () => {
+    calls.length = 0
+    const w = await shutPicker()
+    expect(reads('/leg-picker/strikes')).toEqual([])
+    expect(reads('/catalogue/NIFTY/contracts')).toEqual([])
+    await open(w)
+    expect(reads('/leg-picker/strikes')).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+    expect(shown(w)).toBe('2026-10-27')
+  })
+
+  it('F-13 attack 4: Futures tab, drawer shut, legs move to another expiry, reopened: futures prices are read once on open', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = await shutPicker()
+    await open(w)
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    await close(w)
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    calls.length = 0
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+    expect(reads('/leg-picker/futures')).toEqual(['/leg-picker/futures?underlying=NIFTY'])
+    expect(reads('/leg-picker/strikes')).toEqual([])
+  })
+
+  it('F-13: opened on the Strikes tab with the expiry unchanged, strikes are read once on every open', async () => {
+    const w = await shutPicker()
+    await open(w)
+    await close(w)
+    calls.length = 0
+    await open(w)
+    expect(reads('/leg-picker/strikes')).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
 })
