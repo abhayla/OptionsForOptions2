@@ -119,3 +119,13 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const notLive = () => (answer.value !== null && !isLive()) || failed.value
   return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed }
 }
+
+/**
+ * The builder header's level (finding live-read-without-own-subscription): the outcome reply's own spot level when the
+ * builder has legs, else the index value the page's own index socket shows (`shown` is useIndexAnswer's shownValue), else
+ * null: the page prints its dash (never a typed or centred number).
+ */
+export function headerLevel(spotLevel, shown) {
+  if (typeof spotLevel === 'string' && spotLevel) return spotLevel
+  return typeof shown === 'string' && shown && shown !== VALUE_UNAVAILABLE ? shown : null
+}

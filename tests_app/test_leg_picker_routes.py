@@ -603,7 +603,7 @@ def test_the_futures_lease_is_per_viewer_too_and_ends_with_the_last_viewer():
     for viewer in ("a", "b"):
         futures_answer(feed, "NIFTY", futures_catalogue(), lambda: T0, viewer=viewer)
     assert feed.fanout.subscriber_count(FUT.instrument_id) == TWO_LEASES
-    assert provider.subscribe_calls.count([FUT.instrument_id]) == 1
+    assert sum(FUT.instrument_id in call for call in provider.subscribe_calls) == 1  # the future rides with the index
     leg_picker.FUTURES_LEASE.release(("a", "NIFTY", "futures"))
     assert FUT.instrument_id in provider.vendor_subscribed
     leg_picker.FUTURES_LEASE.release(("b", "NIFTY", "futures"))

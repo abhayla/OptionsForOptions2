@@ -8,8 +8,10 @@ and no order is touched. With the switch off both routes refuse with the held re
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import itertools
+import time
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -34,9 +36,12 @@ from pydantic import ConfigDict
 
 from ofo_app import held_switches
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
-from ofo_app.chain_push import ChainCatalogue, ChainReader, live_spot
+from ofo_app.chain_push import ChainCatalogue, ChainReader, index_id_of, live_spot
 from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.live_push import LiveFeed
+from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.chain import get_chain_reader
+from ofo_app.routes.leg_picker import WindowLease, get_feed
 from ofo_app.routes.outcome import MarketContext, get_market_context
 from ofo_app.routes.strategies import StrategyRefused
 from ofo_app.underlying import Underlying
@@ -51,6 +56,16 @@ _MESSAGE = {
     Refusal.DISTANCE_NOT_OFFERED: "ready_made_distance_invalid",
 }
 _UNUSABLE_SPOT = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
+#: The routes' own hold on the index (finding live-read-without-own-subscription): a WindowLease like the picker's,
+#: one per viewer and underlying, ended LEASE_SECONDS (30 s) after the last read. The same ONE shared fan-out: no second
+#: vendor connection. Known bypass: with no live feed (None) nothing is held and the old context read answers.
+INDEX_LEASE = WindowLease()
+SPOT_WAIT_SECONDS = 3.0  # the most a request waits for the first index frame before refusing SPOT_MISSING
+SPOT_POLL_SECONDS = 0.1
+
+
+def _now() -> float:
+    return time.monotonic()
 
 
 def require_platform_strikes() -> None:
@@ -102,6 +117,26 @@ def _spot(ctx: MarketContext | None, underlying: str) -> tuple[Decimal | None, b
     return value, quote is not None and quote.health not in _UNUSABLE_SPOT
 
 
+async def _hold_and_read(feed: LiveFeed | None, ctx: MarketContext | None, underlying: str,
+                         viewer: str) -> tuple[Decimal | None, bool]:
+    """Take the request's own short lease on the index, then read the spot, waiting at most ``SPOT_WAIT_SECONDS``
+    (polling every ``SPOT_POLL_SECONDS``, never a busy loop) for the first frame. Answer states: usable -> placed; present but
+    stale -> returned at once (SPOT_STALE); absent after the wait -> (None, False) (SPOT_MISSING); the provider refuses
+    the index (unknown instrument / error) -> the lease holds nothing, no wait."""
+    if feed is not None and ctx is not None:
+        index_id = index_id_of(ctx, underlying)
+        if index_id is not None:
+            INDEX_LEASE.hold(feed, (viewer, underlying, "ready-made"), [index_id])
+            if not INDEX_LEASE.ids_of((viewer, underlying, "ready-made")):
+                return _spot(ctx, underlying)
+    deadline = _now() + (SPOT_WAIT_SECONDS if feed is not None else 0.0)
+    while True:
+        spot, fresh = _spot(ctx, underlying)
+        if spot is not None or _now() >= deadline:
+            return spot, fresh
+        await asyncio.sleep(SPOT_POLL_SECONDS)
+
+
 def _gap(strikes: set[Decimal]) -> Decimal:
     ordered = sorted(strikes)
     gaps = [b - a for a, b in itertools.pairwise(ordered)]
@@ -141,12 +176,14 @@ async def load_template(
         body: LoadTemplateIn,
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
+        feed: Annotated[LiveFeed | None, Depends(get_feed)],
+        viewer: Annotated[str, Depends(current_user_ref)],
 ) -> ReadyMadeOut:
     template = next((t for t in load_templates() if t.id == body.template_id), None)
     if template is None:
         raise StrategyRefused("user_input_request_invalid")
     try:
-        spot, fresh = _spot(ctx, body.underlying)
+        spot, fresh = await _hold_and_read(feed, ctx, body.underlying, viewer)
         near = await reader(body.underlying, body.expiry)
         if near.unreadable or body.expiry not in near.expiries:
             raise PlacementRefused(Refusal.EXPIRY_MISSING)
@@ -166,9 +203,11 @@ async def quick_pick(
         body: QuickPickIn,
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
+        feed: Annotated[LiveFeed | None, Depends(get_feed)],
+        viewer: Annotated[str, Depends(current_user_ref)],
 ) -> ReadyMadeOut:
     try:
-        spot, fresh = _spot(ctx, body.underlying)
+        spot, fresh = await _hold_and_read(feed, ctx, body.underlying, viewer)
         catalogue = await reader(body.underlying, body.expiry)
         if catalogue.unreadable or body.expiry not in catalogue.expiries:
             raise PlacementRefused(Refusal.EXPIRY_MISSING)

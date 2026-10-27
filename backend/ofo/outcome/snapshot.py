@@ -26,9 +26,9 @@ from decimal import Decimal
 from ofo.engine.black_scholes import DAYS_IN_YEAR
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
-from ofo.instruments.models import ListedContract
+from ofo.instruments.models import Contract, ListedContract
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
-from ofo.marketdata.provider import MarketDataProvider, ProviderStatus
+from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.timeutil import EXPIRY_CLOSE
@@ -95,6 +95,20 @@ def _expired(expiry: datetime.date, clock: datetime.datetime) -> bool:
     return expiry < clock.date() or datetime.datetime.combine(expiry, EXPIRY_CLOSE) <= clock
 
 
+def _leg_quote(provider: MarketDataProvider, underlying: str, instrument_id: str, contract: Contract,
+               chain: list[NormalizedQuote]) -> NormalizedQuote | None:
+    """A leg's own quote: an option's from its expiry's chain; a FUTURE's from ``futures_quote`` (the chain holds CE and
+    PE only, so a future was never found there and was never priced: finding live-read-without-own-subscription, I-12).
+    A provider with no futures quote, or one that answers another instrument, gives no quote (never a stand-in)."""
+    if contract.instrument_type == Instrument.FUT.value:
+        try:
+            quote = provider.futures_quote(underlying, contract.expiry)
+        except NotSupported:
+            return None
+        return quote if quote is not None and quote.instrument_id == instrument_id else None
+    return next((q for q in chain if q.instrument_id == instrument_id), None)
+
+
 def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],  # noqa: PLR0913
                   valuation: datetime.datetime, rate: Decimal, shared: FeedScope | None = None) -> MarketSnapshot:
     """Read every input the outcome needs from ``provider`` in one pass (one status, one spot, one chain/expiry).
@@ -124,7 +138,7 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
             continue
         if c.expiry not in chains:
             chains[c.expiry] = provider.option_chain_snapshot(underlying, c.expiry)
-        quote = next((q for q in chains[c.expiry] if q.instrument_id == iid), None)
+        quote = _leg_quote(provider, underlying, iid, c, chains[c.expiry])
         legs[iid] = LegMarket(iid, lc, quote)
     instant = snapshot_instant(valuation, [spot, *(q for chain in chains.values() for q in chain)])
     forwards: dict[datetime.date, ExpiryForward] = {}

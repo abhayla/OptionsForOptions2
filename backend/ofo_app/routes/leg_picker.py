@@ -489,13 +489,16 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
                    viewer: str = V1_OWNER_REF) -> FuturesOut:
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
+    streamed: frozenset[str] = frozenset()
+    if feed is not None and (catalogue.futures or catalogue.option_expiries):
+        # the listed futures ride the shared fan-out like an option leg, and so does the index: the spot and the
+        # forwards need it and no other screen may hold it (finding live-read-without-own-subscription)
+        key = (viewer, underlying, "futures")
+        index_id = index_id_of(feed.ctx, underlying)
+        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures] + ([index_id] if index_id else []))
+        streamed = FUTURES_LEASE.ids_of(key)
     spot_quote = None if ctx is None else _index_quote(ctx, underlying)
     spot = None if spot_quote is None or not is_live_price(spot_quote.ltp) else spot_quote.ltp
-    streamed: frozenset[str] = frozenset()
-    if feed is not None and catalogue.futures:  # the listed futures ride the shared fan-out like an option leg
-        key = (viewer, underlying, "futures")
-        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures])
-        streamed = FUTURES_LEASE.ids_of(key)
     reason: Literal["CATALOGUE_UNREADABLE", "CATALOGUE_EMPTY", "NOT_CONNECTED", "SPOT_MISSING"] | None
     if catalogue.unreadable:
         reason = "CATALOGUE_UNREADABLE"
