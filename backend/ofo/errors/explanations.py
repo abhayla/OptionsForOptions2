@@ -1029,6 +1029,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
+    # G-065 (REQ-148 AC-4/AC-6, ADR-143 (1), REQ-083 AC-3): legs on more than one expiry have no exact at-expiry payoff;
+    # the worst-case line is ADR-143's own words, also the At Expiry chart's reason
+    ExplanationTemplate("mixed_expiry_worst_case", "values_seen",
+                        "Worst case: the loss for this strategy can't be estimated."),
+    ExplanationTemplate("summary_make_mixed_expiry", "values_seen",
+                        "The most this strategy can make can't be estimated: its legs are on more than one expiry."),
+    ExplanationTemplate("summary_start_mixed_expiry", "values_seen",
+                        "Where losses start can't be estimated: the legs are on more than one expiry."),
     ExplanationTemplate("summary_reward_risk_none", "values_seen", "No fixed maximum"),
     # REQ-081 (W-154): the money summary. No return, gain, expected or promise wording (ADR-003, ADR-164).
     ExplanationTemplate("money_premium_get", "values_seen", "Get {amount}", {"amount": Rupees}),

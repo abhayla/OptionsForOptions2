@@ -5,6 +5,7 @@ NOT_AVAILABLE_YET, risk), every money/points value is a JSON string, and with no
 from __future__ import annotations
 
 import datetime
+import itertools
 import json
 import pathlib
 import sys
@@ -354,3 +355,95 @@ async def test_last_price_at_is_null_before_the_first_frame_and_an_aware_time_af
     fresh, _clock, _items = new_provider()  # connected to nothing: no frame has arrived
     before = outcome_response(req, MarketContext(fresh, lambda: VALUATION, RATE)).model_dump(mode="json")
     assert before["last_price_at"] is None
+
+
+# ---- G-065 (REQ-148, issue #586): legs on more than one expiry, futures legs included -----------------------------
+
+WORST_CASE = "Worst case: the loss for this strategy can't be estimated."  # ADR-143 (1), REQ-148 AC-4
+LATER = datetime.date(2026, 10, 19)  # the replay's second NIFTY weekly; the condor sits on 13 Oct
+HTTP_OK = 200
+MIN_CURVE_POINTS = 3  # a curve needs at least three points to show its step changing
+
+
+def _twin(iid, expiry):
+    """The same type and strike as ``iid`` on ``expiry``, from the replay's own listed contracts."""
+    items = new_provider()[2]
+    c = next(x.contract for x in items if f"{x.contract.exchange_segment}:{x.contract.exchange_token}" == iid)
+    return next(f"{x.contract.exchange_segment}:{x.contract.exchange_token}" for x in items
+                if x.contract.name == "NIFTY" and x.contract.expiry == expiry
+                and x.contract.instrument_type == c.instrument_type and x.contract.strike == c.strike)
+
+
+def _legs_body(provider, rows, view="at_expiry"):
+    """``rows`` = (instrument_id, action, planned entry or None = the replay's LTP at the valuation)."""
+    legs = [{"instrument_id": iid, "action": action, "lots": 1,
+             "planned_entry": entry or f"{provider.book.get(iid, VALUATION).ltp:f}",
+             "captured_at": VALUATION.isoformat()} for iid, action, entry in rows]
+    return {"underlying": "NIFTY", "legs": legs, "view": view}
+
+
+def _mixed_condor():
+    rows = [(iid, action, None) for iid, action in CONDOR]
+    rows[3] = (_twin(CONDOR[3][0], LATER), CONDOR[3][1], None)
+    return rows
+
+
+def _assert_no_single_maximum(s):
+    assert s["max_loss"] is None and s["max_loss_unlimited"] is False and s["what_can_i_lose"] == WORST_CASE
+    assert s["max_profit"] is None and s["breakevens"] == [] and s["risk_boundaries"] == []
+    assert (s["lower_be"], s["upper_be"]) == (None, None)
+
+
+@pytest.mark.parametrize("view", ["at_expiry", "estimated_now"])
+async def test_g065_core_a_condor_with_leg_4_on_a_later_expiry_answers_with_no_single_maximum(replayed, view):
+    """REQ-148 AC-4/AC-6 (core): it was HTTP 500 (MultiExpiryError from build_level_set's strategy_metrics). Now 200:
+    the summary is there with no single maximum and the ADR-143 line, the legs keep their own expiries."""
+    resp = await _post(_legs_body(replayed, _mixed_condor(), view), replayed)
+    assert resp.status_code == HTTP_OK, resp.text
+    out = resp.json()
+    assert out["state"] == "COMPUTED" and out["summary"] is not None and out["table"] is not None
+    _assert_no_single_maximum(out["summary"])
+    assert [leg["expiry"] for leg in out["legs"]] == ["2026-10-13"] * 3 + ["2026-10-19"]
+    assert [leg["days_to_expiry"] for leg in out["legs"]] == [5, 5, 5, 11]
+    _no_floats(out)
+
+
+async def test_g065_at_expiry_on_mixed_expiries_carries_the_reason_estimated_now_draws_the_engines_curve(replayed):
+    """REQ-083 AC-3 / RD-088: no exact at-expiry curve exists for legs on two expiries, so At Expiry is unavailable
+    with the reason (never intrinsic values passed off as a curve); Estimated Now is the engine's curve."""
+    at = (await _post(_legs_body(replayed, _mixed_condor()), replayed)).json()
+    assert at["scenario"]["available"] is False and at["scenario"]["unavailable_reason"] == WORST_CASE
+    assert at["payoff"]["points"] == []
+    est = (await _post(_legs_body(replayed, _mixed_condor(), "estimated_now"), replayed)).json()
+    assert est["scenario"]["available"] is True and len(est["payoff"]["points"]) == len(est["scenario"]["levels"]) > 1
+    assert [p["pnl"] for p in est["payoff"]["points"]] == est["scenario"]["totals"]
+
+
+async def test_g065_a_pure_calendar_answers_and_its_estimated_curve_is_curved(replayed):
+    """Attack 2: SELL 13 Oct CE + BUY 19 Oct CE at one strike. 200; the estimated curve is curved (its step changes
+    from level to level), so it is not the straight-line at-expiry shape."""
+    near = CONDOR[0][0]  # a 13 Oct CE of the condor
+    rows = [(near, "SELL", None), (_twin(near, LATER), "BUY", None)]
+    resp = await _post(_legs_body(replayed, rows, "estimated_now"), replayed)
+    assert resp.status_code == HTTP_OK, resp.text
+    out = resp.json()
+    _assert_no_single_maximum(out["summary"])
+    pnl = [Decimal(p["pnl"]) for p in out["payoff"]["points"]]
+    assert len(pnl) >= MIN_CURVE_POINTS
+    assert len({b - a for a, b in itertools.pairwise(pnl)}) >= MIN_CURVE_POINTS - 1  # the step changes: a curve
+
+
+async def test_g065_options_on_one_expiry_plus_a_later_future_answer_with_no_single_maximum():
+    """Coordinator 16:09 IST (ERR-EBE20DBE): option legs on one expiry plus a BUY future on a later expiry was HTTP 500.
+    Now 200 with no single maximum; the future's own expiry is never used to fabricate an at-expiry payoff."""
+    provider, futures = provider_with_nifty_futures()
+    c = futures[2].contract  # NIFTY 23 Nov 2026 futures
+    rows = [(iid, action, None) for iid, action in CONDOR] + [
+        (f"{c.exchange_segment}:{c.exchange_token}", "BUY", "24000")]
+    for view in ("at_expiry", "estimated_now"):
+        resp = await _post(_legs_body(provider, rows, view), provider)
+        assert resp.status_code == HTTP_OK, resp.text
+        out = resp.json()
+        _assert_no_single_maximum(out["summary"])
+        assert out["legs"][4]["expiry"] == "2026-11-23"
+    assert (await _post(_legs_body(provider, rows), provider)).json()["scenario"]["available"] is False

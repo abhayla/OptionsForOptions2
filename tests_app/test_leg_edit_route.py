@@ -858,3 +858,102 @@ def test_ac_4_width_never_goes_below_zero_through_the_route():
     status, reply = move("width", -1, straddle)
     assert status == HTTP_UNPROCESSABLE and "cannot go below 0" in str(reply) and "legs" not in reply
     assert strikes(move("width", 1, straddle)[1]) == [22950, 23050]
+
+
+# ---- G-065 (REQ-148): a strategy whose legs carry more than one expiry --------------------------------------------
+
+NEAR = datetime.date(2026, 9, 29)  # the fixture's other NIFTY weekly; legs 1-3 sit here, leg 4 on EXPIRY (6 Oct)
+MIXED_TODAY = datetime.date(2026, 9, 25)
+NEAR_KEY = {(c.instrument_type, int(c.strike)): i for i, c in BY_ID.items()
+            if c.name == "NIFTY" and c.expiry == NEAR and c.instrument_type in ("CE", "PE")}
+
+
+def mixed_legs(spec=START, later=frozenset({3})):
+    """The golden condor with the legs in ``later`` on 6 Oct and the rest on 29 Sep (the live G-065 case)."""
+    return [{"instrument_id": (BY_KEY if n in later else NEAR_KEY)[(t, k)], "action": a, "lots": 1, "base_lots": 1,
+             "planned_entry": p, "captured_at": STAMP.isoformat()} for n, (a, t, k, p) in enumerate(spec)]
+
+
+def test_g065_core_a_condor_with_leg_4_on_a_later_expiry_answers_200_with_the_outcome_and_no_max_loss():
+    """REQ-148 AC-4/AC-6 (core, G-065): leg 4 moved to the later expiry used to answer HTTP 500; now 200, the outcome
+    present (summary and chart), and the worst case left empty with its reason rather than a made-up number."""
+    status, reply = post({"legs": mixed_legs(), "edit": {"control": "read"}}, today=MIXED_TODAY)
+    assert status == HTTP_OK, reply
+    assert [leg["expiry"] for leg in reply["legs"]] == ["2026-09-29"] * 3 + ["2026-10-06"]
+    assert [leg["days_to_expiry"] for leg in reply["legs"]] == [4, 4, 4, 11]
+
+
+REPLAY_VALUATION = datetime.datetime(2026, 10, 8, 3, 50, 9, tzinfo=datetime.UTC)  # 09:20:09 IST, the outcome tests'
+REPLAY_CONDOR = (("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY"), ("NSE_FO:44604", "SELL"), ("NSE_FO:44595", "BUY"))
+
+
+@pytest.mark.parametrize("view", ["at_expiry", "estimated_now"])
+def test_g065_core_live_leg_4_on_19_oct_answers_200_with_the_outcome_and_no_single_maximum(view):
+    """REQ-148 AC-4/AC-6 on the leg-edit route with live market data (the recorded 2026-10-08 replay): the 13 Oct
+    condor with leg 4 on 19 Oct was HTTP 500 (MultiExpiryError); now the outcome is COMPUTED, no single maximum, the
+    ADR-143 line; At Expiry carries the reason, Estimated Now the engine's curve."""
+    import sys  # noqa: PLC0415 - the replay helpers live under tests/
+    sys.path.insert(0, str(ROOT / "tests"))
+    from marketdata._kite_fixture import INSTRUMENTS, all_instrument_ids, new_provider, replay  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
+
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    cat = Catalogue()
+    cat.load(parse_instruments_csv(INSTRUMENTS))
+    by_id = {f"{e.contract.exchange_segment}:{e.contract.exchange_token}": e.contract for e in cat.all_entries()}
+    far = by_id[REPLAY_CONDOR[3][0]]
+    later = next(i for i, c in by_id.items() if c.name == "NIFTY" and c.expiry == datetime.date(2026, 10, 19)
+                 and c.instrument_type == far.instrument_type and c.strike == far.strike)
+    ids = [iid for iid, _ in REPLAY_CONDOR[:3]] + [later]
+    body = [{"instrument_id": iid, "action": action, "lots": 1, "base_lots": 1,
+             "planned_entry": f"{provider.book.get(iid, REPLAY_VALUATION).ltp:f}",
+             "captured_at": REPLAY_VALUATION.isoformat()} for iid, (_, action) in zip(ids, REPLAY_CONDOR, strict=True)]
+    ctx = MarketContext(provider, lambda: REPLAY_VALUATION, Decimal("0.065"))
+    status, reply = post({"legs": body, "edit": {"control": "read"}, "view": view}, cat=cat,
+                         today=datetime.date(2026, 10, 8), ctx=ctx, stored=all_stored)
+    assert status == HTTP_OK, reply
+    out = reply["outcome"]
+    assert out["state"] == "COMPUTED" and out["summary"] is not None and out["table"] is not None
+    s = out["summary"]
+    assert (s["max_loss"], s["max_loss_unlimited"], s["max_profit"]) == (None, False, None)
+    assert s["what_can_i_lose"] == WORST_CASE and s["breakevens"] == []
+    if view == "at_expiry":
+        assert out["scenario"]["available"] is False and out["scenario"]["unavailable_reason"] == WORST_CASE
+        assert out["payoff"]["points"] == []  # no at-expiry curve is made up for two expiries
+    else:
+        assert out["scenario"]["available"] is True and len(out["payoff"]["points"]) > 1
+    assert [(leg["expiry"], leg["days_to_expiry"]) for leg in reply["legs"]] == [("2026-10-13", 5)] * 3 + [
+        ("2026-10-19", 11)]
+    assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
+
+
+WORST_CASE = "Worst case: the loss for this strategy can't be estimated."  # ADR-143 (1), REQ-148 AC-4
+ONE_EXPIRY = "Width and Hedge need one expiry."  # REQ-148 AC-3
+
+
+def test_g065_ac_3_mixed_expiries_turn_width_and_hedge_off_with_the_one_expiry_reason_and_shift_stays():
+    """REQ-148 AC-3: the read answers Width and Hedge off with the exact reason; the server refuses both moves whatever
+    the browser sends; Shift still moves every leg by one step and answers 200."""
+    status, reply = post({"legs": mixed_legs(), "edit": {"control": "read"}}, today=MIXED_TODAY)
+    assert status == HTTP_OK
+    assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
+    assert reply["control_reasons"]["shift"] is None
+    assert reply["control_reasons"]["width"]["what_happened"] == ONE_EXPIRY
+    assert reply["control_reasons"]["hedge"]["what_happened"] == ONE_EXPIRY
+    for control in ("width", "hedge"):
+        status, refused = post({"legs": mixed_legs(), "edit": {"control": control, "direction": 1}},
+                               today=MIXED_TODAY, capture=priced(), stored=all_stored)
+        assert status == HTTP_UNPROCESSABLE and ONE_EXPIRY in str(refused)
+    status, shifted = post({"legs": mixed_legs(), "edit": {"control": "shift", "direction": 1}}, today=MIXED_TODAY,
+                           capture=priced(), stored=all_stored)
+    assert status == HTTP_OK, shifted
+    assert strikes(shifted) == [22850, 23050, 23450, 23650]
+    assert [leg["expiry"] for leg in shifted["legs"]] == ["2026-09-29"] * 3 + ["2026-10-06"]
+
+
+def test_g065_a_single_expiry_condor_keeps_its_width_and_hedge():
+    """The same condor on one expiry: Width and Hedge stay on (the mixed-expiry rule does not reach it)."""
+    status, reply = post({"legs": mixed_legs(later=frozenset()), "edit": {"control": "read"}}, today=MIXED_TODAY)
+    assert status == HTTP_OK and reply["controls"] == {"shift": True, "width": True, "hedge": True}

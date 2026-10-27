@@ -90,6 +90,11 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         raise ValueError("level_set was built on a different spot reading (time or health differs)")
     spot = dict(spot_level=inputs.spot_level, spot_at=inputs.spot_at, data_label=inputs.data_label)
     levels = level_set.levels
+    if view is View.AT_EXPIRY and not inputs.strategy.is_single_expiry:
+        # G-065 (REQ-083 AC-3, RD-088, ADR-143): legs on more than one expiry have no exact at-expiry P&L (a later leg
+        # still holds time value on the first expiry), so the view is unavailable with the reason, never intrinsic sums
+        return ScenarioValues(view, LABELS[view], "exact", levels, False, render_explanation("mixed_expiry_worst_case"),
+                              None, None, output_label=inputs.data_label, **spot)
     if view is View.AT_EXPIRY:
         grid = scenario_grid(inputs.strategy, levels)
         charges = None
