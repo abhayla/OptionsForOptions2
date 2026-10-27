@@ -124,7 +124,8 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
     if reading.health in _SPOT_REFUSED_HEALTH:  # the forward's own spot gate, named as a spot problem
         return ChainModel({}, None, "SPOT_REFUSED")
     try:
-        em = expiry_model(reading, parity_forward(quotes, spot_quote, expiry, valuation, rate))
+        fwd = parity_forward(quotes, spot_quote, expiry, valuation, rate)
+        em = expiry_model(reading, fwd)
     except (ForwardUnavailable, ValueError, ArithmeticError):
         return ChainModel({}, None, "FORWARD_UNAVAILABLE")
     out: dict[str, ChainGreeks] = {}
@@ -140,7 +141,7 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
         except (ValueError, ArithmeticError):
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega)
-    return ChainModel(out, "PARITY" if em.source == PARITY else "SPOT_FALLBACK", None)
+    return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None)
 
 
 def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
