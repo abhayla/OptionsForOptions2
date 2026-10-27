@@ -22,6 +22,10 @@ not-ignored file sits under backend/, tests*/, scripts/ or frontend/src/ (CI see
 files are named in the refusal). scripts/hooks/prepush_gate.py refuses `git push` without the marker for the pushed
 HEAD, and land.py checks it before its first push. A dirty tree still runs the checks but writes no marker (the result
 would not describe a commit).
+Known gaps (not chased): Playwright e2e is CI's only; `vitest related` trusts vitest's import graph (a test that
+reaches a changed file only at run time, e.g. a dynamic import by computed name, is not picked: use --full); an
+untracked file that .gitignore hides is not counted; a change outside backend/, tests*/, scripts/, frontend/src/ left
+untracked is not counted.
 Exit 0 only when every step passed. Every external command goes through an injected runner(cmd, cwd, log_path) -> rc.
 """
 from __future__ import annotations

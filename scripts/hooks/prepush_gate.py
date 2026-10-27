@@ -23,7 +23,9 @@ repository, missing prepush module, unknown shape.
 
 Known bypasses (out of scope, not chased): `gh api` / REST ref updates, a git alias or wrapper script that pushes,
 editing or copying the marker by hand (a marker must still name its own sha), an abbreviated long option
-(--dry), a push of a ref other than HEAD (the check is on the HEAD of the directory), a push from a non-Claude shell.
+(--dry), a push of a ref other than HEAD or `--all` (the check is on the HEAD of the directory), a push from a
+non-Claude shell, a `cd` into a folder named by a variable that happens to resolve literally to another existing repo
+(variables are not expanded; a missing folder blocks).
 """
 from __future__ import annotations
 
