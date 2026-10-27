@@ -184,6 +184,7 @@ def win(path):
     return str(path).replace("/", "\\")
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="a backslash path names a folder only on Windows, where the hook runs")
 @pytest.mark.parametrize("shape", ['cd "{d}" && git push -u origin HEAD', 'git -C "{d}" push -u origin HEAD',
                                    'cd "{d}"; git push origin HEAD', 'bash -c \'cd "{d}" && git push\''])
 def test_quoted_windows_path_resolves_to_the_real_folder(repo, tmp_path, shape):
