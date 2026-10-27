@@ -10,13 +10,16 @@ Spec: scenario-calculations.md §4 (Q33B = E, Q33C, Q33D = C, Q213; ADR-042). Ev
 3. **Inserted columns (Q33D = C).** The exact current level (CURRENT) and every breakeven inside the range
    (ZERO_PNL) are added at their price positions. A level that is already a grid column gets the flag instead of a
    second column. The current level is always present, even when a user range excludes it (AC-2).
-4. **Breakeven summary (Q213).** Lower BE / Upper BE are reported alongside; a missing one is ``None`` (shown "—").
+4. **Graph levels (GC-BM F-8, REQ-083 AC-7).** The payoff GRAPH also takes every option leg's strike inside the range
+   (:func:`graph_level_set`) so its line has its kinks exactly at the strikes; the scenario TABLE keeps the columns of
+   point 3 only.
+5. **Breakeven summary (Q213).** Lower BE / Upper BE are reported alongside; a missing one is ``None`` (shown "—").
 
 Breakevens, max loss and every P&L come from the engine (:func:`ofo.engine.strategy_metrics`), never re-derived.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from enum import Enum
@@ -37,6 +40,7 @@ class ColumnKind(Enum):
     GRID = "grid"
     CURRENT = "current"
     ZERO_PNL = "zero_pnl"
+    STRIKE = "strike"  # GC-BM F-8: graph-only (graph_level_set); never a scenario-table column (Q33D = C)
 
 
 @dataclass(frozen=True)
@@ -263,3 +267,19 @@ def build_level_set(
         risk_boundaries=risk_boundaries,
         expected_move_points=move,
     )
+
+
+def graph_level_set(level_set: LevelSet, inputs: ModelInputs) -> LevelSet:
+    """The payoff GRAPH's levels (GC-BM F-8): ``level_set``'s columns plus every option leg's strike inside
+    ``start..end``, marked ``STRIKE``. A strike that is already a column only gains the flag, so no level appears twice;
+    a futures leg has no strike and adds nothing. The scenario table never uses this set (Q33D = C)."""
+    if not isinstance(level_set, LevelSet):
+        raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
+    if not isinstance(inputs, ModelInputs):
+        raise ValueError(f"inputs must be a ModelInputs (ofo.engine.model.model_inputs), got {inputs!r}")
+    kinds: dict[Decimal, set[ColumnKind]] = {c.level: set(c.kinds) for c in level_set.columns}
+    for leg in inputs.strategy.legs:
+        if leg.is_option and level_set.start <= leg.strike <= level_set.end:
+            kinds.setdefault(leg.strike, set()).add(ColumnKind.STRIKE)
+    columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
+    return replace(level_set, columns=columns)

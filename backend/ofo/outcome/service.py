@@ -6,7 +6,9 @@ ADR-008 (one engine, exact Decimal); ADR-061 (each expiry's forward; spot for CU
 entry with its capture time; the not-live labels).
 
 AC-8 by construction: :func:`build_outcome` computes the scenario values ONCE (``scenario_values``) and both the table
-(``build_table``) and the payoff points are taken from that one ``ScenarioValues``; nothing here prices a level.
+(``build_table``) and the payoff points are taken from that one ``ScenarioValues``; nothing here prices a level. The one
+computation runs over the GRAPH's levels (the table's columns plus every strike in range, GC-BM F-8); the table takes
+its own columns from it (``on_levels``), so the strikes are graph points and never scenario-table columns (Q33D = C).
 
 Answer states (run-discipline B4 (d)), each with its label or refusal:
 
@@ -48,9 +50,17 @@ from ofo.outcome import money
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.scenario.levels import ColumnKind, ExpectedMove, LevelColumn, LevelSet, RangeOverride, build_level_set
+from ofo.scenario.levels import (
+    ColumnKind,
+    ExpectedMove,
+    LevelColumn,
+    LevelSet,
+    RangeOverride,
+    build_level_set,
+    graph_level_set,
+)
 from ofo.scenario.spot import spot_reading
-from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, scenario_values
+from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
@@ -512,6 +522,14 @@ def _centre_of(strikes) -> Decimal:
     return ordered[(len(ordered) - 1) // 2]
 
 
+def _graph_points(graph: ScenarioValues) -> tuple[tuple[Decimal, Decimal], ...]:
+    """The payoff graph's points: the engine's values at the graph levels (the table's columns plus every strike in
+    range, GC-BM F-8), so the drawn line has its kinks at the strikes; none when the view is unavailable."""
+    if not graph.available or graph.totals is None:
+        return ()
+    return tuple(zip(graph.levels, graph.totals, strict=True))
+
+
 def _no_current(level_set: LevelSet) -> LevelSet:
     """The centre is not a market price: no column of the grid is marked CURRENT."""
     cols = []
@@ -565,7 +583,9 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     breakdown = _charges_breakdown(model, definition.underlying, rates)
     charges = None if breakdown is None else breakdown.total
     # the ONE computation: always the At Expiry view; Estimated Now needs live prices and is never computed here
-    values = scenario_values(level_set, model, View.AT_EXPIRY, rates=None if charges is None else rates)
+    graph = scenario_values(graph_level_set(level_set, model), model, View.AT_EXPIRY,
+                            rates=None if charges is None else rates)
+    values = on_levels(graph, level_set)  # the table's columns (Q33D = C); the graph keeps the strikes (F-8)
     shown = values
     if view is View.ESTIMATED_NOW:
         shown = ScenarioValues(view, LABELS[view], "estimate", values.levels, False,
@@ -573,7 +593,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
                                spot_level=values.spot_level, spot_at=values.spot_at)
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
-    points = tuple(zip(shown.levels, shown.totals)) if shown.available and shown.totals is not None else ()
+    points = _graph_points(graph) if shown.available else ()
     dropped = None if snapshot is None else _not_live_label(snapshot)
     if dropped is NOT_CONNECTED_LABEL:  # no quote was ever held: nothing dropped, no last update to name
         dropped = None
@@ -695,10 +715,11 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     breakdown = _charges_breakdown(model, definition.underlying, rates)
     charges = None if breakdown is None else breakdown.total
     # the ONE computation (AC-8)
-    values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
+    graph = scenario_values(graph_level_set(level_set, model), model, view, rates=None if charges is None else rates)
+    values = on_levels(graph, level_set)  # the table's columns (Q33D = C); the graph keeps the strikes (F-8)
     table = build_table(model, level_set=level_set, scenario=values,
                         leg_greeks=_shared_leg_greeks(model, snapshot, shared))
-    points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
+    points = _graph_points(graph)
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
     # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).
     return Outcome(

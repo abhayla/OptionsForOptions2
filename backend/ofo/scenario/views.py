@@ -15,7 +15,7 @@ from __future__ import annotations
 from ofo.errors.explanations import SCENARIO_VIEW_LABEL_TEXT, render_explanation
 
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
 from typing import Final, Literal
@@ -126,3 +126,26 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         output_label=join_labels(inputs.data_label, model_label),
         **spot,
     )
+
+
+def on_levels(values: ScenarioValues, level_set: LevelSet) -> ScenarioValues:
+    """``values`` (computed ONCE over the payoff graph's levels, GC-BM F-8) cut down to ``level_set``'s columns: the
+    scenario table's values are the same engine numbers at its own levels, never a second computation (REQ-034 AC-8).
+    Every column of ``level_set`` must be one of ``values.levels`` (the graph set is a superset)."""
+    if not isinstance(values, ScenarioValues):
+        raise ValueError(f"values must be a ScenarioValues, got {values!r}")
+    position = {level: i for i, level in enumerate(values.levels)}
+    wanted = level_set.levels
+    missing = [level for level in wanted if level not in position]
+    if missing:
+        raise ValueError(f"the computed values have no value at levels {missing}")
+    picks = [position[level] for level in wanted]
+    if picks == list(range(len(values.levels))):
+        return values
+
+    def cut(row):
+        return None if row is None else tuple(row[i] for i in picks)
+
+    return replace(values, levels=wanted, totals=cut(values.totals),
+                   leg_rows=None if values.leg_rows is None else tuple(cut(row) for row in values.leg_rows),
+                   estimated_levels=cut(values.estimated_levels))
