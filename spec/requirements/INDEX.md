@@ -46,7 +46,7 @@ Requirements: 132; sections: 19
 | REQ-104 | The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user | feature | Approved |
 | REQ-117 | The broker adapter declares named capability flags, and features ask the flag, never the broker's name | foundation | Approved |
 | REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | Approved |
-| REQ-141 | The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing | feature | Draft |
+| REQ-141 | The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing | feature | Approved |
 
 ## Calculations and outcome (11)
 

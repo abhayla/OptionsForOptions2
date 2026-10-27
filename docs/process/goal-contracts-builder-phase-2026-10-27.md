@@ -5,16 +5,16 @@
 **Phase scope (ADR-196 (4), owner answers P1-P9):**
 1. Build the Strategy Builder, its strike drawer and the Option Chain screen, laid out like Sensibull, with our rules on top.
 2. Four indices (NIFTY, BANKNIFTY, FINNIFTY, SENSEX), no stocks, no order placing (ADR-157, ADR-165).
-3. In: Manual P/L (REQ-089, row 39), BANKNIFTY / FINNIFTY (row 46), a Positions tab that is ANALYSE ONLY (P10, new REQ-141, Draft until the owner approves it), the after-hours builder from the last close (ADR-197, #583 I-5), and the Tracked tab's live proof (row 53).
+3. In: Manual P/L (REQ-089, row 39), BANKNIFTY / FINNIFTY (row 46), a Positions tab that is ANALYSE ONLY (P10, REQ-141, approved 2026-10-27), the after-hours builder from the last close (ADR-197, #583 I-5), and the Tracked tab's live proof (row 53).
 4. Placeholder only: the price chart (screen 027) and the strategy chart (REQ-091), each as a "Coming soon" card.
 5. Out: the separate feeding screens (Wizard, Easy Options, Draft Portfolios, OI pages, IV chart, straddle charts), the "Add Booked P&L" chart toggle, Share.
 
-**Plan:** 17 short contracts (GC-B1 .. GC-B17), one fresh session each, about 2 rows each. **34 row units** in total,
+**Plan:** 17 short contracts (GC-B1 .. GC-B17), one fresh session each, about 2 rows each. **34.5 row units** in total,
 covering all 78 in-scope gap rows (G-ids; G-101 added 2026-10-27 for UI-207). Each gap row sits in exactly one item; the check is the script in the
 evidence section.
 
-**Estimate:** 34 rows x 3.5 h = 119 h, plus 25% for review rounds = **about 149 h, or 18.6 working days at 8 h**.
-With the add-ons (migrations, guard changes, owner answers on new REQs, handovers) it comes to **about 178 h, or 22.3
+**Estimate:** 34.5 rows x 3.5 h = 121 h, plus 25% for review rounds = **about 151 h, or 18.9 working days at 8 h**.
+With the add-ons (migrations, guard changes, owner answers on new REQs, handovers) it comes to **about 180 h, or 22.5
 working days**. Several parts are unmeasured (section 4).
 
 **First three contracts:**
@@ -117,8 +117,10 @@ name, and both read back from the saved list.
 | 2. Saved list: a legs line ("NIFTY26OCT22500PE and 3 more"), rename and delete on hover; test rows gone (#583 I-2) | G-028 | row 29, REQ-134, #583 | B | The live list read back next to Sensibull S-117 / S-218 | Not started |
 | 3. Funds Needed row in the summary (#537) | G-038 | row 26, REQ-081 | A | A live 4-leg plan's Funds Needed read back against Zerodha's margin reply | Not started |
 | 4. #582 item 2 (flaky leg-picker timer tests) and item 4 (the select-all tick needs a server batch edit) | none (#582 items) | REQ-076 | B | Item 2: 5 full Vitest runs green. Item 4: select-all sends one batch edit and the numbers recompute once | Not started |
+| 5. Measured in GC-B1: a per-leg expiry dropdown with days (G-016), and a mixed-expiry strategy that answers instead of a 500, labelled "2 selected" style, with the curved line (G-065, issue #586, ADR-143) | G-016, G-065 | REQ-076, REQ-078, ADR-143, #586 | A | Live: change one leg of a 4-leg condor to the next expiry; the summary answers per ADR-143 and the leg shows "9 Nov (13 days)" | Not started |
 
-Rows: 2.0. Budget: 525 min wall-clock, 375 tool calls. Stop: as section 1. **Next: GC-B4.**
+Rows: 2.5 (item 5 added by GC-B1's measurement). Budget: 660 min wall-clock, 470 tool calls. Stop: as section 1.
+**Next: GC-B4.**
 
 ### GC-B4: warnings (row 31, parked) and number format rules
 
@@ -144,7 +146,7 @@ the change, and record both.
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. L-1 builder layout (ADR-193): the empty builder (one "Build a new custom strategy" button and the three right-column placeholders), summary card height, Zoom In / Out instead of From / To, target and date controls only under the chart tabs that use them, and the prices stamp with a Refresh button against the live stream (or a recorded decision that it differs on purpose) | G-006, G-027, G-043, G-053, G-059 | new row L-1, ADR-193, UI study UI-110 / UI-116 | B | Screenshots at 1536 px next to Sensibull S-010 / S-012 / S-107; heights read back | Not started |
+| 1. L-1 builder layout (ADR-193): the empty builder (one "Build a new custom strategy" button and the three right-column placeholders), summary card height, Zoom In / Out instead of From / To, target and date controls only under the chart tabs that use them, and the prices stamp with a Refresh button against the live stream (or a recorded decision that it differs on purpose); phone width (G-069: study Sensibull's phone layout first, then compare; our top bar cuts Positions..Learn at 390 px) | G-006, G-027, G-043, G-053, G-059, G-069 | new row L-1, ADR-193, UI study UI-110 / UI-116 | B | Screenshots at 1536 px next to Sensibull S-010 / S-012 / S-107; heights read back | Not started |
 | 2. Placeholders: the chart icon opens a "Coming soon: price chart" card (UI-021); the Strategy chart tab shows a "Coming soon" card | G-004, G-058 | REQ-107 (held), REQ-091 (held), rows 60, 61 | B | Both cards seen on the running app | Not started |
 
 Rows: 2.0. Budget: 525 min wall-clock, 375 tool calls. Stop: as section 1. **Next: GC-B6.**
@@ -232,7 +234,7 @@ value per cell, next to Sensibull S-032.
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. L-2 drawer layout (ADR-193): opening state, header (underlying with change, using row 41), one IV column and OI bars, columns that fit, footer and the last row clear of it, the picked-legs list and the old contract form removed, a "Show Editor" edge tab, and the failure states inside the table area (UI-207) | G-070, G-071, G-074, G-075, G-079, G-080, G-081, G-101 | new row L-2, ADR-193, REQ-080, UI study UI-200 / UI-202 / UI-206 | B | The core proof, plus a 1536 px screenshot next to S-032 | Not started |
+| 1. L-2 drawer layout (ADR-193): opening state, header (underlying with change, using row 41), one IV column and OI bars, columns that fit, footer and the last row clear of it, the picked-legs list and the old contract form removed, a "Show Editor" edge tab, the failure states inside the table area (UI-207), theta / vega / gamma in the Greeks view (G-077) and a "Multiply by Lot Size" setting (G-083), both measured in GC-B1 | G-070, G-071, G-074, G-075, G-077, G-079, G-080, G-081, G-083, G-101 | new row L-2, ADR-193, REQ-080, UI study UI-200 / UI-202 / UI-206 | B | The core proof, plus a 1536 px screenshot next to S-032 | Not started |
 | 2. The strikes reply carries Zerodha's permission, so the drawer disables B / S for contracts Zerodha has not confirmed (#582 item 5) | G-084 | REQ-030 AC-16 | A | A real recorded contract without permission shows B / S disabled; the execution gate still refuses it | Not started |
 
 Rows: 2.0. Budget: 615 min wall-clock, 425 tool calls (with the item-2 guard change). Stop: as section 1. **Next: GC-B12.**
@@ -297,8 +299,8 @@ Rows: 1.0. Budget: 355 min wall-clock, 250 tool calls (with the guard change). S
 ### GC-B16: Positions tab list (REQ-141), and the after-hours builder (ADR-197)
 
 Re-sized 2026-10-27 for P10 (analyse only, ADR-196 (4)): REQ-104's attach, grouping and reconcile (AC-2 / AC-3,
-REQ-060, REQ-061) are out of this phase, so the old P-1 / P-2 items are replaced by REQ-141 (Draft; owner approval
-asked in GC-B1). No code before REQ-141 is Approved.
+REQ-060, REQ-061) are out of this phase, so the old P-1 / P-2 items are replaced by REQ-141 (Approved by the owner
+2026-10-27 in GC-B1).
 
 **Core:** the Positions tab reads the owner's Zerodha positions fresh and lists them with average price and read time
 (REQ-141 AC-1).
@@ -307,7 +309,7 @@ Kite's positions page (quantity, product, average price per row). No order or wr
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. P-1: Positions tab lists Zerodha positions, analyse only, with every answer state (stated, empty, failed, no session, not supported, two products) | G-029 | new row P-1, REQ-141 AC-1 / AC-2 / AC-4 | A | The core proof, plus each answer state shown by a test built from a real recorded reply | Not started (REQ-141 Draft) |
+| 1. P-1: Positions tab lists Zerodha positions, analyse only, with every answer state (stated, empty, failed, no session, not supported, two products) | G-029 | new row P-1, REQ-141 AC-1 / AC-2 / AC-4 | A | The core proof, plus each answer state shown by a test built from a real recorded reply | Not started (REQ-141 Approved) |
 | 2. A-1: after hours the builder works from the last close (ADR-197, #583 I-5): entries captured from the close and labelled "Close, <date>, 15:30 IST", every number from closing prices and closing-price IV, the ADR-177 banner, a leg with no close stays "Draft - no price" with the reason. REQ-077 AC-9 is rewritten to ADR-197 in the same PR | none (#583 I-5; no gap row, the walk ran in market hours) | new row A-1, ADR-197, REQ-077 AC-9, REQ-016 AC-1 | A | After 15:30 IST: a 4-leg strategy built on the running app, each entry's close read back against Kite's quote close, and Estimated Now checked by hand from the closing IV | Not started |
 
 Rows: 2.0. Owner needed: Kite login in market hours (item 1) and once after 15:30 (item 2). Budget: 615 min
@@ -322,7 +324,7 @@ read back that no strategy row and no audit event was written.
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. P-3: load ticked positions into the builder as an analyse-only draft | none (P-3 has no gap row) | new row P-3, REQ-141 AC-3 / AC-4 | A | The core proof | Not started (REQ-141 Draft) |
+| 1. P-3: load ticked positions into the builder as an analyse-only draft | none (P-3 has no gap row) | new row P-3, REQ-141 AC-3 / AC-4 | A | The core proof | Not started (REQ-141 Approved) |
 | 2. Row 53: the Tracked tab's live proof (P9) | G-030 | row 53, REQ-109 | A | Paper P&L since save read back against a hand calculation on live prices | Not started (merged; live proof pending) |
 | 3. Phase close: the whole gap list walked live, every in-scope row re-verdicted "matches" (only the "Out of this phase" rows are named exclusions; a parked row leaves the phase PARTIAL), and edits at 1,000 ms p95 re-measured (ADR-196 (3)); a handover for the next phase | (all) | ADR-196 (3) | B | A fresh Sonnet checker re-walks a sample of 20 rows and the timing; a re-verdicted copy of the gap list with the screenshot names | Not started |
 
@@ -349,7 +351,7 @@ Stop: as section 1, plus the phase handover. **Next: the next phase (owner choos
 | N-2 | An unsaved strategy survives a page reload | REQ to write first | G-068 | GC-B10 |
 | N-3 | Breakeven percent from spot beside each breakeven | REQ to write first (UI-116 waits on a server field) | percent half of G-033 | GC-B10 |
 | N-4 | REQ-072 AC-1 wording extended to India VIX (today: "two index rows only (NIFTY 50, SENSEX)") | REQ-072 (existing; a wording change) | part of G-003 | GC-B9, with row 42 |
-| P-1 | Positions tab: list Zerodha positions, analyse only | REQ-141 AC-1, AC-2, AC-4 (Draft, owner approval asked) | G-029 | GC-B16 |
+| P-1 | Positions tab: list Zerodha positions, analyse only | REQ-141 AC-1, AC-2, AC-4 (Approved 2026-10-27) | G-029 | GC-B16 |
 | P-3 | Load ticked positions into the builder as an analyse-only draft | REQ-141 AC-3, AC-4 | none | GC-B17 |
 | A-1 | After hours the builder works from the last close | ADR-197; REQ-077 AC-9 rewritten in the same PR | none (#583 I-5) | GC-B16 |
 
@@ -368,7 +370,7 @@ rounds, so the extra 25% asked for here works as a buffer on top, not as the rev
 |---|---|---|---|---|
 | GC-B1 | 2.0 | 7.0 | 8.75 | 1.09 |
 | GC-B2 | 2.0 | 7.0 | 8.75 | 1.09 |
-| GC-B3 | 2.0 | 7.0 | 8.75 | 1.09 |
+| GC-B3 | 2.5 | 8.75 | 10.94 | 1.37 |
 | GC-B4 | 2.0 | 7.0 | 8.75 | 1.09 |
 | GC-B5 | 2.0 | 7.0 | 8.75 | 1.09 |
 | GC-B6 | 2.0 | 7.0 | 8.75 | 1.09 |
@@ -383,7 +385,7 @@ rounds, so the extra 25% asked for here works as a buffer on top, not as the rev
 | GC-B15 | 1.0 | 3.5 | 4.38 | 0.55 |
 | GC-B16 | 2.0 | 7.0 | 8.75 | 1.09 |
 | GC-B17 | 2.5 | 8.75 | 10.94 | 1.37 |
-| **Total** | **34.0** | **119.0** | **148.75** | **18.6** |
+| **Total** | **34.5** | **120.75** | **150.94** | **18.9** |
 
 Add-ons (memory note, plus the plan review's MINOR 5):
 - Likely migrations: rows 39 and 40. That is +1.5 h each, 3 h (P-2 is gone with P10).
@@ -391,7 +393,8 @@ Add-ons (memory note, plus the plan review's MINOR 5):
 - Owner answers on new or changed spec text: N-1, N-2, N-3, N-4, REQ-141, REQ-030 AC-13. That is +1 h each, 6 h.
 - Handovers: 17 x 0.5 h = 8.5 h.
 
-These come to 23.5 h, or 29.4 h with the 25%. **The total with add-ons is about 178 h, or 22.3 working days.** Each
+These come to 23.5 h, or 29.4 h with the 25%. **The total with add-ons is about 180 h, or 22.5 working days**
+(GC-B3 grew by 0.5 row when GC-B1 measured G-016 / G-065). Each
 contract's budget line is its own estimate plus its add-ons (it was 420 minutes for every 2-row contract, below the
 8.75 h estimate; fixed 2026-10-27).
 

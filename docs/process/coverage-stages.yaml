@@ -465,6 +465,9 @@ issues:
   "#561": 4a  # Row 32 (REQ-136) PARKED remainder: AC-1 info marks for 5 figures (rows 26, 37, 38)
   "#582": S6.1  # Builder redesign: deferred items (5 s leg edit, flaky picker tests, separators, select-all, permissions, chain link)
   "#583": S6.1  # Builder walkthrough 2026-10-26: open items I-1, I-2, I-5, I-6, I-12 (re-check live)
+  "#586": S6.4  # Builder: a mixed-expiry leg makes leg-edit and outcome answer 500 (G-065, ADR-143)
+  "#587": S6.4  # Pre-push gate: vitest related misses disk-reading tests (N1), plus N3-N5 minors from the round-2 review
+  "#588": S6.4  # Chain: moneyness filter empties the table when the spot drops (N2, REQ-072 AC-2)
 
 # Work items whose status is not done.
 work_items:
