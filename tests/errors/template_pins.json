@@ -1638,5 +1638,21 @@
   "explanation:money_charges_exercise_stt": {
     "sha256": "13e217a34c653fab6be78fe9fe9701a0d1f2d842cd3e8cca3c5f02deadaaef57",
     "reviewed": "pending owner read"
+  },
+  "leg_edit_width_hedge_one_expiry": {
+    "sha256": "63c54cee22f19468fb348bd56abb206ddc4311f78bba7c985ed88693b07f4df7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:mixed_expiry_worst_case": {
+    "sha256": "2908cea3d62bc8e05394d09f768a21f4a84a8376476380280c8ad0a71c2fa179",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_make_mixed_expiry": {
+    "sha256": "742ebf63433daaf0981c22c586158787658e330ec6081579bab5d1441df5e1c2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_start_mixed_expiry": {
+    "sha256": "d819f4fb49d3fbc5c7536ed7f0dee9e0448489d152729e37d99deb27ab34938b",
+    "reviewed": "pending owner read"
   }
 }

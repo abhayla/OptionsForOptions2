@@ -394,8 +394,9 @@ def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
 
 def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bool):
     """REQ-078 AC-2/AC-10: ``{control: template id of the reason it is off, or None}`` for shift, width and hedge.
-    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
-    shape does not allow the control (Custom Strategy: Shift only). The same answer gates the moves in
+    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, when the legs are on more
+    than one expiry (Width and Hedge), or when the matched shape does not allow the control (Custom Strategy: Shift
+    only). The same answer gates the moves in
     :func:`apply_edit`, so the browser's word is never trusted."""
     off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
     if not current:
@@ -405,6 +406,8 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     elif len(legs) < MIN_SHAPE_LEGS:  # each control says its own reason (REQ-078 AC-2)
         off = {"shift": "leg_edit_shift_needs_option_leg", "width": "leg_edit_width_needs_two_legs",
                "hedge": "leg_edit_hedge_needs_two_legs"}
+    elif len({x.leg.expiry for x in legs}) > 1:  # REQ-148 AC-3: a calendar or diagonal; Shift stays available
+        off["width"] = off["hedge"] = "leg_edit_width_hedge_one_expiry"
     else:
         if template is None or not template.width_adjustable:
             off["width"] = "leg_edit_width_not_applicable"

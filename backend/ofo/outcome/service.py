@@ -342,8 +342,30 @@ def _charges_breakdown(model: ModelInputs, underlying: str, rates: ChargeRates |
         return None
 
 
-def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,  # noqa: PLR0913
+def _metrics_of(strategy) -> StrategyMetrics | None:
+    """The engine's exact at-expiry metrics; None for legs on more than one expiry (futures legs included), which have
+    no exact at-expiry payoff (G-065, ADR-143 (1)): no maximum, breakeven or loss region is made up for them."""
+    return strategy_metrics(strategy) if strategy.is_single_expiry else None
+
+
+def _mixed_expiry_summary(level_set: LevelSet, inputs: ModelInputs, charges: Decimal | None,
+                          charges_unavailable: bool, spot: Decimal | None) -> Summary:
+    """REQ-148 AC-4/AC-6: no single maximum, the ADR-143 worst-case line, the figures that do not need an exact
+    at-expiry payoff (net premium, time and intrinsic value) kept; the ratio says why it is absent."""
+    legs = inputs.strategy.legs
+    ratio = money.reward_risk(None, None, single_expiry=False, charges_priced=charges is not None)
+    split = money.time_and_intrinsic(legs, spot)
+    return Summary(render_explanation("mixed_expiry_worst_case"), render_explanation("summary_make_mixed_expiry"),
+                   render_explanation("summary_start_mixed_expiry"), None, None, False, False, (), None, None, (),
+                   charges, charges_unavailable, reward_risk=ratio.reward_risk, reward_risk_reason=ratio.reason,
+                   time_value=split.time, intrinsic_value=split.intrinsic, risk_reward=ratio.risk_reward,
+                   net_premium=money.net_premium(legs), value_label=split.label, value_reason=split.reason)
+
+
+def _summary(metrics: StrategyMetrics | None, level_set: LevelSet, inputs: ModelInputs,  # noqa: PLR0913
              charges: Decimal | None = None, charges_unavailable: bool = False, spot: Decimal | None = None) -> Summary:
+    if metrics is None:
+        return _mixed_expiry_summary(level_set, inputs, charges, charges_unavailable, spot)
     idx = inputs.underlying
     profit_unl, loss_unl = metrics.max_profit is UNLIMITED, metrics.max_loss is UNLIMITED
     max_loss = metrics.max_loss if loss_unl or charges is None else metrics.max_loss + charges  # ADR-082 (2)
@@ -560,7 +582,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation, output_label=FROM_ENTRIES_LABEL,
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,
-        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None),
+        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre))
 
 
@@ -685,6 +707,6 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
-        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None,
+        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown)

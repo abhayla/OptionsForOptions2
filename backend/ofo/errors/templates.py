@@ -1046,6 +1046,10 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_hedge_no_hedge_legs", _UI, 24, "This strategy has no Hedge legs, so Hedge has nothing to move.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or change the strikes yourself.", {}),
+    # G-065 (REQ-148 AC-3): Width and Hedge move legs of one expiry's shape; Shift stays available
+    _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or put every leg on one expiry.", {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES

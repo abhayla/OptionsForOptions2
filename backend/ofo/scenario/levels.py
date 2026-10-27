@@ -202,10 +202,13 @@ def build_level_set(
         raise ValueError(f"expected_move must be an ExpectedMove, got {expected_move!r}")
     spot = require_price(inputs.spot_level, "current level", allow_zero=False)
     strategy = inputs.strategy
-    metrics = strategy_metrics(strategy)  # raises MultiExpiryError: no exact at-expiry payoff to lay out
+    # G-065 (REQ-148 AC-6): legs on more than one expiry have no exact at-expiry payoff, so no breakeven, loss region or
+    # risk boundary exists to lay out; the levels then rest on the spot, the strikes and the expected move only.
+    metrics = strategy_metrics(strategy) if strategy.is_single_expiry else None
+    breakevens = () if metrics is None else metrics.breakevens
     strikes = sorted({leg.strike for leg in strategy.legs if leg.is_option})
     risk_boundaries: tuple[Decimal, ...] = ()
-    if metrics.min_pnl is not UNLIMITED and metrics.max_loss != 0:
+    if metrics is not None and metrics.min_pnl is not UNLIMITED and metrics.max_loss != 0:
         risk_boundaries = tuple(k for k in strikes if strategy.expiry_pnl_at(k) == metrics.min_pnl)
     move = expected_move.points(spot) if expected_move is not None else None
 
@@ -214,7 +217,7 @@ def build_level_set(
         start, end = _check_override(override, config)
         customised = True
     else:
-        keys = [spot, *strikes, *metrics.breakevens, *risk_boundaries]
+        keys = [spot, *strikes, *breakevens, *risk_boundaries]
         if move is not None:
             keys += [spot - move, spot + move]
         centre = (spot / anchor).to_integral_value(rounding=ROUND_HALF_UP) * anchor
@@ -237,12 +240,13 @@ def build_level_set(
         kinds.setdefault(level, set()).add(ColumnKind.GRID)
         level += step
     kinds.setdefault(spot, set()).add(ColumnKind.CURRENT)
-    for be in metrics.breakevens:
+    for be in breakevens:
         if start <= be <= end:
             kinds.setdefault(be, set()).add(ColumnKind.ZERO_PNL)
     # Decimal("23000") and Decimal("23000.00") are equal and hash alike, so an equal level never adds a column.
     columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
-    lower_be, upper_be = _lower_upper(inputs, metrics.loss_regions, metrics.breakevens, step)
+    lower_be, upper_be = (None, None) if metrics is None else _lower_upper(inputs, metrics.loss_regions,
+                                                                           breakevens, step)
     return LevelSet(
         index=config.index,
         current=spot,
@@ -253,7 +257,7 @@ def build_level_set(
         end=end,
         customised=customised,
         columns=columns,
-        breakevens=metrics.breakevens,
+        breakevens=breakevens,
         lower_be=lower_be,
         upper_be=upper_be,
         risk_boundaries=risk_boundaries,
