@@ -1180,13 +1180,17 @@
           "pnl": {
             "type": "string",
             "title": "Pnl"
+          },
+          "display": {
+            "title": "Display"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "level",
-          "pnl"
+          "pnl",
+          "display"
         ],
         "title": "PointOut"
       },

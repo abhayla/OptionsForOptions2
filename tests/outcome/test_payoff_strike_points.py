@@ -14,6 +14,7 @@ from decimal import Decimal
 import ofo.scenario.views as views_module
 import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider_with_futures, replay
+from ofo.engine.display import MINUS
 from ofo.engine.legs import Action
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, from_entries, read_snapshot
@@ -88,7 +89,7 @@ def test_core_condor_strikes_are_graph_points_with_the_engine_values(market):
     sent = outcome_to_dict(out)["payoff"]["points"]  # the reply carries them as exact strings
     assert {"level": "22650", "pnl": "6366.75", "display": "₹6,366.75"} in sent
     assert {"level": "22950", "pnl": "6366.75", "display": "₹6,366.75"} in sent
-    assert {"level": "22500", "pnl": "-3383.25", "display": "−₹3,383.25"} in sent
+    assert {"level": "22500", "pnl": "-3383.25", "display": f"{MINUS}₹3,383.25"} in sent
     total = next(r for r in out.table.rows if r.row_id == TOTAL_ROW_ID)
     for p in sent:  # a point on a table column shows exactly the table cell's text
         lvl = Decimal(p["level"])

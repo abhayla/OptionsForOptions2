@@ -12,10 +12,10 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')), post: (url, body) => Promise.resolve({ data: url === '/strategies/leg-edit' ? readReply(body) : apiAnswer }) } }
 })
-// jsdom has no canvas; the chart's lines are tested through payoffRegions
+// jsdom has no canvas; the chart's line colours are tested through pointSigns / segmentColour (GC-BM F-8)
 vi.mock('chart.js/auto', () => ({ default: class { destroy() {} } }))
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { payoffRegions } from '@/lib/payoffRegions'
+import { pointSigns, segmentColour } from '@/lib/payoffRegions'
 import real from './fixtures/outcome-condor-no-quote.json'
 
 readReply = (body) => ({ legs: body.legs.map((l) => { const r = real.legs.find((x) => x.instrument_id === l.instrument_id)
@@ -56,18 +56,23 @@ describe('item 1: a leg opened from a link is named once the catalogue answer is
   })
 })
 
-describe('item 4: the payoff chart draws each line only over its own region (ADR-072)', () => {
-  it('the real condor payoff: Loss is drawn over the loss regions, not across the 0.00 plateau; Profit nowhere', () => {
+describe('item 4: the payoff line is red only over the loss regions, never across the 0.00 plateau (ADR-072)', () => {
+  const COLOURS = { profit: 'green', loss: 'red', flat: 'grey' }
+  const segments = (points) => {
+    const c = segmentColour(pointSigns(points), COLOURS)
+    return points.slice(1).map((_, i) => c({ p0DataIndex: i, p1DataIndex: i + 1, chart: null }))
+  }
+  it('the real condor payoff: loss segments red, the 0.00 plateau grey, no green anywhere', () => {
     const pnl = real.payoff.points.map((p) => p.pnl)
-    const { loss, profit } = payoffRegions(real.payoff.points)
-    expect(profit.some(Boolean)).toBe(false) // a condor with these quotes has no positive point
-    const interior = pnl.map((v, i) => (v === '0.00' && pnl[i - 1] === '0.00' && pnl[i + 1] === '0.00' ? i : -1)).filter((i) => i >= 0)
-    expect(interior.length).toBeGreaterThan(0)
-    for (const i of interior) expect(loss[i]).toBe(false) // the plateau between the two loss regions is not on the Loss line
-    pnl.forEach((v, i) => { if (v.startsWith('-')) expect(loss[i]).toBe(true) })
+    const seg = segments(real.payoff.points)
+    expect(seg).not.toContain('green') // a condor with these quotes has no positive point
+    const plateau = seg.map((s, i) => (pnl[i] === '0.00' && pnl[i + 1] === '0.00' ? i : -1)).filter((i) => i >= 0)
+    expect(plateau.length).toBeGreaterThan(0)
+    for (const i of plateau) expect(seg[i]).toBe('grey') // the plateau between the two loss regions is not on the Loss line
+    seg.forEach((s, i) => { if (pnl[i].startsWith('-') || pnl[i + 1].startsWith('-')) expect(s).toBe('red') })
   })
-  it('a buy-call payoff: Loss over the flat loss part and the break-even point, Profit from the break-even on', () => {
+  it('a buy-call payoff: red over the flat loss part up to the break-even point, green from the break-even on', () => {
     const pts = ['-65.00', '-65.00', '0.00', '6435.00', '12935.00'].map((pnl, i) => ({ level: String(i), pnl }))
-    expect(payoffRegions(pts)).toEqual({ loss: [true, true, true, false, false], profit: [false, false, true, true, true] })
+    expect(segments(pts)).toEqual(['red', 'red', 'green', 'green'])
   })
 })
