@@ -5,7 +5,7 @@
 **Phase scope (ADR-196 (4), owner answers P1-P9):**
 1. Build the Strategy Builder, its strike drawer and the Option Chain screen, laid out like Sensibull, with our rules on top.
 2. Four indices (NIFTY, BANKNIFTY, FINNIFTY, SENSEX), no stocks, no order placing (ADR-157, ADR-165).
-3. In: Manual P/L (REQ-089, row 39), BANKNIFTY / FINNIFTY (row 46), a Positions tab that is ANALYSE ONLY (P10, new REQ-141, Draft until the owner approves it), the after-hours builder from the last close (ADR-197, #583 I-5), and the Tracked tab's live proof (row 53).
+3. In: Manual P/L (REQ-089, row 39), BANKNIFTY / FINNIFTY (row 46), a Positions tab that is ANALYSE ONLY (P10, REQ-141, approved 2026-10-27), the after-hours builder from the last close (ADR-197, #583 I-5), and the Tracked tab's live proof (row 53).
 4. Placeholder only: the price chart (screen 027) and the strategy chart (REQ-091), each as a "Coming soon" card.
 5. Out: the separate feeding screens (Wizard, Easy Options, Draft Portfolios, OI pages, IV chart, straddle charts), the "Add Booked P&L" chart toggle, Share.
 
@@ -297,8 +297,8 @@ Rows: 1.0. Budget: 355 min wall-clock, 250 tool calls (with the guard change). S
 ### GC-B16: Positions tab list (REQ-141), and the after-hours builder (ADR-197)
 
 Re-sized 2026-10-27 for P10 (analyse only, ADR-196 (4)): REQ-104's attach, grouping and reconcile (AC-2 / AC-3,
-REQ-060, REQ-061) are out of this phase, so the old P-1 / P-2 items are replaced by REQ-141 (Draft; owner approval
-asked in GC-B1). No code before REQ-141 is Approved.
+REQ-060, REQ-061) are out of this phase, so the old P-1 / P-2 items are replaced by REQ-141 (Approved by the owner
+2026-10-27 in GC-B1).
 
 **Core:** the Positions tab reads the owner's Zerodha positions fresh and lists them with average price and read time
 (REQ-141 AC-1).
@@ -307,7 +307,7 @@ Kite's positions page (quantity, product, average price per row). No order or wr
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. P-1: Positions tab lists Zerodha positions, analyse only, with every answer state (stated, empty, failed, no session, not supported, two products) | G-029 | new row P-1, REQ-141 AC-1 / AC-2 / AC-4 | A | The core proof, plus each answer state shown by a test built from a real recorded reply | Not started (REQ-141 Draft) |
+| 1. P-1: Positions tab lists Zerodha positions, analyse only, with every answer state (stated, empty, failed, no session, not supported, two products) | G-029 | new row P-1, REQ-141 AC-1 / AC-2 / AC-4 | A | The core proof, plus each answer state shown by a test built from a real recorded reply | Not started (REQ-141 Approved) |
 | 2. A-1: after hours the builder works from the last close (ADR-197, #583 I-5): entries captured from the close and labelled "Close, <date>, 15:30 IST", every number from closing prices and closing-price IV, the ADR-177 banner, a leg with no close stays "Draft - no price" with the reason. REQ-077 AC-9 is rewritten to ADR-197 in the same PR | none (#583 I-5; no gap row, the walk ran in market hours) | new row A-1, ADR-197, REQ-077 AC-9, REQ-016 AC-1 | A | After 15:30 IST: a 4-leg strategy built on the running app, each entry's close read back against Kite's quote close, and Estimated Now checked by hand from the closing IV | Not started |
 
 Rows: 2.0. Owner needed: Kite login in market hours (item 1) and once after 15:30 (item 2). Budget: 615 min
@@ -322,7 +322,7 @@ read back that no strategy row and no audit event was written.
 
 | Item | Gap ids | REQ / row | Tier | Proof | Status |
 |---|---|---|---|---|---|
-| 1. P-3: load ticked positions into the builder as an analyse-only draft | none (P-3 has no gap row) | new row P-3, REQ-141 AC-3 / AC-4 | A | The core proof | Not started (REQ-141 Draft) |
+| 1. P-3: load ticked positions into the builder as an analyse-only draft | none (P-3 has no gap row) | new row P-3, REQ-141 AC-3 / AC-4 | A | The core proof | Not started (REQ-141 Approved) |
 | 2. Row 53: the Tracked tab's live proof (P9) | G-030 | row 53, REQ-109 | A | Paper P&L since save read back against a hand calculation on live prices | Not started (merged; live proof pending) |
 | 3. Phase close: the whole gap list walked live, every in-scope row re-verdicted "matches" (only the "Out of this phase" rows are named exclusions; a parked row leaves the phase PARTIAL), and edits at 1,000 ms p95 re-measured (ADR-196 (3)); a handover for the next phase | (all) | ADR-196 (3) | B | A fresh Sonnet checker re-walks a sample of 20 rows and the timing; a re-verdicted copy of the gap list with the screenshot names | Not started |
 
@@ -349,7 +349,7 @@ Stop: as section 1, plus the phase handover. **Next: the next phase (owner choos
 | N-2 | An unsaved strategy survives a page reload | REQ to write first | G-068 | GC-B10 |
 | N-3 | Breakeven percent from spot beside each breakeven | REQ to write first (UI-116 waits on a server field) | percent half of G-033 | GC-B10 |
 | N-4 | REQ-072 AC-1 wording extended to India VIX (today: "two index rows only (NIFTY 50, SENSEX)") | REQ-072 (existing; a wording change) | part of G-003 | GC-B9, with row 42 |
-| P-1 | Positions tab: list Zerodha positions, analyse only | REQ-141 AC-1, AC-2, AC-4 (Draft, owner approval asked) | G-029 | GC-B16 |
+| P-1 | Positions tab: list Zerodha positions, analyse only | REQ-141 AC-1, AC-2, AC-4 (Approved 2026-10-27) | G-029 | GC-B16 |
 | P-3 | Load ticked positions into the builder as an analyse-only draft | REQ-141 AC-3, AC-4 | none | GC-B17 |
 | A-1 | After hours the builder works from the last close | ADR-197; REQ-077 AC-9 rewritten in the same PR | none (#583 I-5) | GC-B16 |
 
