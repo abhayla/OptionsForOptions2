@@ -138,6 +138,7 @@ requirements:
   REQ-138: S6.1   # builder sequence (ADR-168), provisional
   REQ-139: S6.1   # builder sequence (ADR-168), provisional
   REQ-140: S6.4   # builder sequence (ADR-168), provisional
+  REQ-141: S6.4   # builder phase GC-B16/B17 (ADR-196 (4)), Draft
 
 decisions:
   ADR-001: all

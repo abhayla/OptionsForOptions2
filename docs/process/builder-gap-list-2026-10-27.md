@@ -116,6 +116,7 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-082 | S-034 | Futures tab | Real and synthetic futures per expiry with B / S | Futures tab present; the future it adds gets no planned entry (walkthrough I-12) | differs | REQ-080 AC-6, AC-9 | #583 (I-12) |
 | G-083 | S-035 | Drawer settings | Lots / Qty, Multiply by lot size | "Settings" button present; not opened today | unmeasured | REQ-080, REQ-138 | - |
 | G-084 | none (Sensibull shows no such mark) | Contract Zerodha will not accept | - | The strikes reply has no Zerodha permission field, so B / S cannot be disabled in the drawer | differs | REQ-030 AC-16 | #582 item 5 |
+| G-101 | none (UI study UI-207, catalogue failure texts) | Failure states inside the table area | Compact failure text from the reply inside the strike table area (UI-020) | Not seen today: no failure was triggered in the walk (row added 2026-10-27 by the plan review, MINOR 8) | unmeasured | REQ-080, UI study UI-207 | new |
 
 ## 3. Option Chain (`/market/option-chain`)
 
@@ -150,13 +151,14 @@ Draft Portfolios 084-092, 118, 220-224; OI pages 140-144, 214; IV chart 151; opt
 | Screen | Rows | matches | differs | missing | n-a | unmeasured |
 |---|---|---|---|---|---|---|
 | Builder (G-001..G-069) | 69 | 14 | 31 | 17 | 0 | 7 |
-| Strike drawer (G-070..G-084) | 15 | 3 | 8 | 3 | 0 | 1 |
+| Strike drawer (G-070..G-084, G-101) | 16 | 3 | 8 | 3 | 0 | 2 |
 | Option Chain (G-085..G-100) | 16 | 0 | 6 | 7 | 1 | 2 |
-| **Total** | **100** | **17** | **45** | **27** | **1** | **10** |
+| **Total** | **101** | **17** | **45** | **27** | **1** | **11** |
 
 Counted by a script over the verdict cell of each G-row (first word). G-077 counts as matches (its OI and Greeks views
-were not opened); G-098 counts as missing against our own REQ-031. The ten "unmeasured" rows (G-016, G-017, G-029,
-G-064, G-065, G-068, G-069, G-083, G-088, G-097) say why in the row.
+were not opened); G-098 counts as missing against our own REQ-031. The eleven "unmeasured" rows (G-016, G-017, G-029,
+G-064, G-065, G-068, G-069, G-083, G-088, G-097, G-101) say why in the row. G-101 was added on 2026-10-27 (plan
+review: UI-207 had no row); G-016, G-017, G-065, G-069, G-077 and G-083 are measured live in GC-B1 item 6.
 
 ## Ten biggest gaps by user impact
 

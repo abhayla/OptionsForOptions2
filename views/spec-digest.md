@@ -48,7 +48,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
 - ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
 
-## Requirements (131)
+## Requirements (132)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -181,6 +181,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-138 [Approved]: Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart…
 - REQ-139 [Approved]: The builder header shows the underlying's spot with the day's change and percent and the day's open, high, lo…
 - REQ-140 [Approved]: For a strategy already being tracked, the builder summary shows the profit still possible and the loss still…
+- REQ-141 [Draft]: The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a dr…
 
 ## Spec sections (230)
 

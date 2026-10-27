@@ -135,3 +135,4 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-130 (Draft): Product analytics and session replay run only for users who opted in, and stay off until the consent design clears
 - REQ-131 (Draft): The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in writing
 - REQ-132 (Draft): Native Android and iOS apps use the same backend and the one engine, and add no rule of their own
+- REQ-141 (Draft): The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing
