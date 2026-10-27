@@ -139,6 +139,19 @@ requirements:
   REQ-139: S6.1   # builder sequence (ADR-168), provisional
   REQ-140: S6.4   # builder sequence (ADR-168), provisional
   REQ-141: S6.4   # builder phase GC-B16/B17 (ADR-196 (4)), Draft
+  REQ-142: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-143: S6.4   # builder documentation audit 2026-10-27 (ADR-198), tracked strategies, out of this phase
+  REQ-144: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-145: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-146: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-147: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-148: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-149: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-150: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-151: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-152: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-153: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
+  REQ-154: S6.1   # builder documentation audit 2026-10-27 (ADR-198)
 
 decisions:
   ADR-001: all
@@ -337,6 +350,7 @@ decisions:
   ADR-195: S6.1         # with a leg left out: count only, no shape name, Width/Hedge disabled (ADR-152 default, Sensibull 111)
   ADR-196: S6.1         # builder + chain take every Sensibull builder/chain feature, our rules on top, indices only (owner, 2026-10-27)
   ADR-197: S6.1         # after hours the builder works from the last close, all numbers, under the ADR-177 banner (owner, 2026-10-27)
+  ADR-198: S6.1         # 13 builder features approved as REQ-142..154, Indian grouping, server-kept drafts (owner, 2026-10-27)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
