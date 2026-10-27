@@ -40,6 +40,7 @@ MAY_IMPORT_FEED_HEALTH = {
     "ofo_app.routes.broker_status": "reads the feed phase constants for the status label",
     "ofo_app.kite_ws": "market_closed_for only: the one market-state answer for the closed-hours reconnect wait (F1)",
     "ofo_app.routes.outcome": "market_closed_for only: the market-state answer the outcome carries (REQ-114 AC-7)",
+    "ofo.outcome.snapshot": "market_closed_for only: the snapshot market_closed every outcome path reads (ADR-200)",
 }
 
 

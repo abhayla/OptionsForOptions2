@@ -34,7 +34,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 
 RATE = Decimal("0.065")
@@ -182,3 +181,101 @@ def test_a_closed_market_quote_is_never_available(at):
     assert quotes and {q.health for q in quotes} == {DataHealth.STALE}
     assert not any(priced(q) for q in quotes)
     assert provider.latest_depth(CONDOR[0][0], at) is None
+
+
+async def test_after_close_the_outcome_names_a_leg_with_no_held_price_and_gives_it_no_default():
+    """ADR-200 (4) through the outcome route: the leg whose price is gone has no LTP and the existing reason."""
+    provider, clock, _last = _replayed()
+    body = _condor(provider, AFTER_CLOSE)
+    gone = CONDOR[0][0]
+    provider.book.remove(gone)
+    clock.now = AFTER_CLOSE
+    async with AsyncClient(transport=ASGITransport(app=_app(provider, clock)), base_url="http://test") as ac:
+        out = (await ac.post("/api/strategies/outcome", json=body)).json()
+    leg = next(x for x in out["legs"] if x["instrument_id"] == gone)
+    assert leg["ltp"] is None and leg["iv"] is None and leg["label"] == "no live quote"
+    assert all(x["ltp"] is not None for x in out["legs"] if x["instrument_id"] != gone)
+
+
+# ---- attack 3: every order path keeps refusing after the close -------------------------------------------------------
+
+@pytest.mark.parametrize("at", [AFTER_CLOSE, SATURDAY])
+def test_after_close_the_execute_market_gate_refuses_with_the_req_056_text(at):
+    """ADR-200 (3) / ADR-119: Execute's market check is the shared calendar; closed -> the gate refuses with the
+    catalogue text, whatever prices the builder shows."""
+    from ofo.errors import render
+    from ofo.market_calendar import is_market_open
+    from ofo_app.routes import execute
+
+    assert execute.market_open is is_market_open
+    assert execute.market_open(at) is False and execute.market_open(IN_HOURS) is True
+    assert render("gate_market_closed").what_happened == "The market is closed. Orders can be placed once it opens."
+
+
+@pytest.mark.parametrize("at", [AFTER_CLOSE, SATURDAY])
+def test_after_close_a_held_last_close_never_reaches_an_execute_order_price(monkeypatch, at):
+    """The Execute price source (``LiveDepthQuotes``, the basket's per-leg price) on the provider that prices the
+    builder after hours: no leg quote at all, so no order or basket can be priced from the last close. In hours the
+    same provider gives one (the recorded frames are full frames), so the refusal is the closed market's."""
+    from ofo.instruments.models import InstrumentId
+    from ofo_app import live_market
+    from ofo_app.routes import execute
+    from ofo_app.routes.outcome import MarketContext
+
+    provider, clock, _last = _replayed()
+    monkeypatch.setattr(live_market, "current_context", lambda: MarketContext(provider, clock, RATE))
+    segment, _, token = CONDOR[0][0].partition(":")
+    leg = InstrumentId(segment, int(token))
+    clock.now = IN_HOURS
+    assert execute.LiveDepthQuotes(lambda: IN_HOURS).leg_quote(leg, "x") is not None
+    clock.now = at
+    assert execute.LiveDepthQuotes(lambda: at).leg_quote(leg, "x") is None
+
+
+# ---- the strike drawer (leg picker strikes and futures cells, ADR-200 (1) "and its strike drawer") ------------------
+
+def _picker(at: datetime.datetime, health):
+    """The leg-picker fakes (tests_app/test_leg_picker_routes.py) with every quote at ``health`` and the feed clock at
+    ``at``: the FakeProvider keeps no FeedState, so the ADR-119 calendar answers (``market_closed_for``)."""
+    import test_leg_picker_routes as lp
+    from ofo.engine.legs import Instrument
+    from ofo.marketdata.fanout import FanOut
+    from ofo_app.live_push import LiveFeed
+    from ofo_app.routes.outcome import MarketContext
+
+    provider, _ = lp.priced_provider(spot_health=health)
+    for (strike, kind), (ltp, oi) in lp.PRICES.items():
+        c = lp.cid(strike, kind)
+        provider.quotes[c] = lp.quote(c, Instrument(kind), Decimal(strike), ltp, oi=oi, health=health)
+    provider.futures[lp.FAR_EXPIRY] = lp.quote(lp.FUT.instrument_id, Instrument.FUT, None, "22611.40",
+                                               expiry=lp.FAR_EXPIRY, health=health)
+    return lp, LiveFeed(MarketContext(provider, lambda: at, RATE), FanOut(provider))
+
+
+@pytest.mark.parametrize(("at", "health", "shown"), [
+    (AFTER_CLOSE, "stale", True),   # the last close held: priced
+    (SATURDAY, "stale", True),      # weekend: the same
+    (IN_HOURS, "stale", False),     # in hours a stale quote is never a price (unchanged)
+    (AFTER_CLOSE, "unhealthy", False),  # an unsound quote never counts, closed or not
+])
+def test_the_strike_drawer_prices_the_last_close_after_hours_only(at, health, shown):
+    from ofo.rules.inputs import DataHealth
+    from ofo_app.routes import leg_picker
+
+    lp, feed = _picker(at, DataHealth(health))
+    try:
+        out = leg_picker.strikes_answer(feed, "NIFTY", lp.EXPIRY, 10, lp.catalogue(), lambda: at)
+        futures = leg_picker.futures_answer(feed, "NIFTY", lp.futures_catalogue(), lambda: at)
+    finally:
+        leg_picker.LEASE.release()
+        leg_picker.FUTURES_LEASE.release()
+    ltps = sorted(c.ltp for c in lp.cells(out) if c.ltp is not None)
+    fut = futures.futures[0]
+    if shown:
+        assert out.market_closed is True
+        assert ltps == [Decimal("145.10"), Decimal("151.30")]
+        assert all(c.health == "stale" for c in lp.cells(out) if c.ltp is not None)  # never shown as live
+        assert (fut.ltp, fut.ltp_reason, fut.health) == (Decimal("22611.40"), None, "stale")
+    else:
+        assert ltps == []
+        assert fut.ltp is None and fut.ltp_reason == "FEED_STALE"

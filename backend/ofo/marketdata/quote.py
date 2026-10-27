@@ -34,6 +34,24 @@ def priced(quote: NormalizedQuote | None) -> bool:
     return quote is not None and quote.health is DataHealth.AVAILABLE and is_live_price(quote.ltp)
 
 
+def planning_price_usable(quote: NormalizedQuote | None, *, market_closed: bool) -> bool:
+    """May ``quote``'s price be used to PLAN (capture an entry, compute the outcome)? Never an order rule: every order,
+    basket and margin-for-order path keeps requiring a live (AVAILABLE) quote (ADR-119, ADR-200 (3)).
+
+    In market hours: only an AVAILABLE quote (a STALE one is an old price, ADR-015). Outside market hours (ADR-119
+    calendar, ``feed_health.market_closed_for``): also the price the feed holds from the session that closed (ADR-200
+    (1), (4)), which the feed health marks STALE whatever frames arrive; it is used only when the quote itself is sound
+    (no validation error, no declared delay) and its time is readable (fail closed, standing item c). An UNAVAILABLE
+    (session ended) or UNHEALTHY quote never counts."""
+    if quote is None:
+        return False
+    if quote.health is DataHealth.AVAILABLE:
+        return True
+    return (market_closed and quote.health is DataHealth.STALE and not quote.validation_errors
+            and quote.source.declared_delay_seconds == 0
+            and isinstance(quote.timestamp, datetime.datetime) and quote.timestamp.utcoffset() is not None)
+
+
 def _require_nonempty(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string, got {value!r}")

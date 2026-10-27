@@ -19,7 +19,7 @@ Answer states (run-discipline B4 (d)), each with its label or refusal:
 - market closed (ADR-119 calendar, ``MarketSnapshot.market_closed``) with the last close held: ``COMPUTED`` from it
   exactly as in hours (ADR-200 (1)); no "stale since" and no "disconnected" text: the answer's ``market_closed`` and
   ``last_price_at`` carry the one market-closed banner (ADR-200 (2), ADR-177). A held quote that is not sound
-  (``planned_entry.planning_price_usable``) is unusable; a contract with no held price stays unpriced (ADR-200 (4)).
+  (``quote.planning_price_usable``) is unusable; a contract with no held price stays unpriced (ADR-200 (4)).
 - spot missing / UNHEALTHY / UNAVAILABLE: ``REFUSED`` (SpotRefused reason).
 - a forward fallback: ``COMPUTED``, labelled "estimated from spot" (ADR-061).
 - a leg quote STALE/DELAYED: its LTP is used and the leg carries "stale since HH:MM IST"; the outcome label lists it.
@@ -31,9 +31,9 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
-from collections.abc import Mapping
 from enum import Enum
 from typing import Final
 
@@ -42,16 +42,24 @@ from ofo.charges.round_trip import ChargesBreakdown, ChargesNotComputable, holds
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, StrategyMetrics, strategy_metrics
-from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model, implied_vol, iv_price, join_labels,
-                             leg_greeks_unrounded, model_inputs)
+from ofo.engine.model import (
+    ModelInputs,
+    SpotRefused,
+    data_label,
+    expiry_model,
+    implied_vol,
+    iv_price,
+    join_labels,
+    leg_greeks_unrounded,
+    model_inputs,
+)
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
 from ofo.marketdata.forward import FALLBACK_LABEL, ForwardUnavailable, spot_fallback_forward
-from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
 from ofo.outcome import money
-from ofo.outcome.planned_entry import planning_price_usable
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -710,10 +718,9 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if problems:
         return _refused(definition, join_explanations(problems, "; "), legs, message)
 
-    if closed and snapshot.spot is not None and not planning_price_usable(snapshot.spot, market_closed=True):
-        return _refused(definition, render_explanation("outcome_spot_unusable", underlying=definition.underlying,
-                                                       health=snapshot.spot.health), legs, message)
     try:
+        if closed and snapshot.spot is not None and not planning_price_usable(snapshot.spot, market_closed=True):
+            raise SpotRefused("a closed market's held index quote is not sound")  # ADR-200 (4): never a default
         spot = spot_reading(snapshot.spot)
         model = model_inputs(StrategyInput(definition.underlying, spot, valuation, snapshot.rate, tuple(inputs)),
                              snapshot.forwards)

@@ -8,7 +8,7 @@ Prices are read only through ``ofo.outcome.read_snapshot`` with the same provide
 (``get_market_context``), so replay mode (APP_ENV=test + OUTCOME_REPLAY=1) works here too. LTP first (a positive value);
 the mid of bid and ask only when the quote carries no LTP; only a quote whose health is AVAILABLE counts as live, and
 outside market hours (ADR-119 calendar) also the last price the feed holds from the session that closed (ADR-200 (1),
-(4): ``ofo.outcome.planned_entry.planning_price_usable``; the order paths never read this rule).
+(4): ``ofo.marketdata.quote.planning_price_usable``; the order paths never read this rule).
 The browser computes nothing: the price is a string from a Decimal, rounded half-up to the 0.01 the outcome route takes.
 """
 
@@ -20,7 +20,6 @@ import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.marketdata.feed_health import market_closed_for
 from ofo.outcome import read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -29,7 +28,14 @@ from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
-from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    feed_scope,
+    get_answer_clock,
+    get_market_context,
+    market_state,
+)
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -82,7 +88,7 @@ def _can_price(ctx: MarketContext | None, at) -> bool:
     status = ctx.provider.status()
     if status.connected:
         return True
-    return not status.session_ended and market_closed_for(ctx.provider, ctx.clock() if at is None else at)
+    return not status.session_ended and market_state(ctx, ctx.clock() if at is None else at).closed
 
 
 def _no_listener(_quote) -> None:  # the route only waits for the book to fill; it needs no pushed quotes
@@ -92,7 +98,7 @@ def _no_listener(_quote) -> None:  # the route only waits for the book to fill; 
 def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
     snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
-    closed = market_closed_for(ctx.provider, valuation)  # the ONE market-state answer (ADR-119), at the read's instant
+    closed = market_state(ctx, valuation).closed  # the ONE market-state answer (ADR-119), at the read's instant
     priced = {i: planned_entry_of(snapshot.legs[i].quote, market_closed=closed)
               for i in ids if snapshot.legs[i].problem is None}
     return valuation, snapshot, priced
