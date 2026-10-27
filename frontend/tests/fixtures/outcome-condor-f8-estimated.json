@@ -1,0 +1,2803 @@
+{
+ "state": "COMPUTED",
+ "underlying": "NIFTY",
+ "status_label": null,
+ "reason": null,
+ "output_label": null,
+ "valuation": "2026-10-08T09:20:09+05:30",
+ "spot_level": "22533.25",
+ "spot_at": "2026-10-08T09:20:09+05:30",
+ "legs": [
+  {
+   "instrument_id": "NSE_FO:44613",
+   "symbol": "NIFTY26O1322500PE",
+   "action": "BUY",
+   "instrument": "PE",
+   "strike": "22500",
+   "expiry": "2026-10-13",
+   "days_to_expiry": 5,
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "110.00",
+   "captured_at": "2026-10-08T09:20:09+05:30",
+   "ltp": "120.95",
+   "iv": "0.126001",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:44619",
+   "symbol": "NIFTY26O1322650PE",
+   "action": "SELL",
+   "instrument": "PE",
+   "strike": "22650",
+   "expiry": "2026-10-13",
+   "days_to_expiry": 5,
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "166.00",
+   "captured_at": "2026-10-08T09:20:09+05:30",
+   "ltp": "202",
+   "iv": "0.123521",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:44630",
+   "symbol": "NIFTY26O1322950CE",
+   "action": "SELL",
+   "instrument": "CE",
+   "strike": "22950",
+   "expiry": "2026-10-13",
+   "days_to_expiry": 5,
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "101.05",
+   "captured_at": "2026-10-08T09:20:09+05:30",
+   "ltp": "17.05",
+   "iv": "0.123382",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:44646",
+   "symbol": "NIFTY26O1323100CE",
+   "action": "BUY",
+   "instrument": "CE",
+   "strike": "23100",
+   "expiry": "2026-10-13",
+   "days_to_expiry": 5,
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "59.10",
+   "captured_at": "2026-10-08T09:20:09+05:30",
+   "ltp": "7.15",
+   "iv": "0.126532",
+   "health": "available",
+   "label": null
+  }
+ ],
+ "margin": {
+  "state": "NOT_AVAILABLE_YET",
+  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login.",
+  "needed": null,
+  "broker_needed": null,
+  "available": null,
+  "checked_at": null,
+  "shortfall": false,
+  "shortfall_reason": null
+ },
+ "table": {
+  "underlying": "NIFTY",
+  "spot_level": "22533.25",
+  "spot_at": "2026-10-08T09:20:09+05:30",
+  "output_label": null,
+  "scenario_heading": [
+   "NIFTY at expiry",
+   "You make/lose"
+  ],
+  "columns": [
+   {
+    "id": "leg",
+    "label": "Leg",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "action",
+    "label": "Action",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "instrument",
+    "label": "Instrument",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "expiry",
+    "label": "Expiry",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "strike",
+    "label": "Strike",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "quantity",
+    "label": "Quantity",
+    "kind": "quantity",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "entry_price",
+    "label": "Entry Price",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "ltp",
+    "label": "LTP",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "entry_value",
+    "label": "Entry Value",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "current_value",
+    "label": "Current Value",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "unrealized_pnl",
+    "label": "Unrealized P&L",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "pnl_percent",
+    "label": "P&L %",
+    "kind": "percent",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "iv",
+    "label": "IV",
+    "kind": "iv",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "delta",
+    "label": "Delta",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "gamma",
+    "label": "Gamma",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "theta",
+    "label": "Theta",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "vega",
+    "label": "Vega",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "21500",
+    "label": "21,500",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "21600",
+    "label": "21,600",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "21700",
+    "label": "21,700",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "21800",
+    "label": "21,800",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "21900",
+    "label": "21,900",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22000",
+    "label": "22,000",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22100",
+    "label": "22,100",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22200",
+    "label": "22,200",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22300",
+    "label": "22,300",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22400",
+    "label": "22,400",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22500",
+    "label": "22,500",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22533.25",
+    "label": "CURRENT 22,533.25",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "CURRENT"
+    ],
+    "visible": true
+   },
+   {
+    "id": "22552.05",
+    "label": "0-P&L 22,552.05",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "0-P&L"
+    ],
+    "visible": true
+   },
+   {
+    "id": "22600",
+    "label": "22,600",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22700",
+    "label": "22,700",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22800",
+    "label": "22,800",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22900",
+    "label": "22,900",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23000",
+    "label": "23,000",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23047.95",
+    "label": "0-P&L 23,047.95",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "0-P&L"
+    ],
+    "visible": true
+   },
+   {
+    "id": "23100",
+    "label": "23,100",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23200",
+    "label": "23,200",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23300",
+    "label": "23,300",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23400",
+    "label": "23,400",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23500",
+    "label": "23,500",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "lower_be",
+    "label": "Lower Breakeven",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "upper_be",
+    "label": "Upper Breakeven",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "status",
+    "label": "Status",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   }
+  ],
+  "rows": [
+   {
+    "row_id": "1",
+    "cells": {
+     "leg": {
+      "value": "1",
+      "display": "1",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "BUY",
+      "display": "BUY",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "PE",
+      "display": "PE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-13",
+      "display": "2026-10-13",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "22500",
+      "display": "22,500",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "110.00",
+      "display": "₹110.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "120.95",
+      "display": "₹120.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "7150.00",
+      "display": "₹7,150.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "7861.75",
+      "display": "₹7,861.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "711.75",
+      "display": "₹711.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "9.95",
+      "display": "9.95%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.126001",
+      "display": "0.126001",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "-30.0523",
+      "display": "-30.0523",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-0.462342617202683",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "0.0757",
+      "display": "0.0757",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0011644571540797741",
+      "vendor": null
+     },
+     "theta": {
+      "value": "-857.7504",
+      "display": "-857.7504",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-13.19616014756622",
+      "vendor": null
+     },
+     "vega": {
+      "value": "697.4137",
+      "display": "697.4137",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "10.729440921251566",
+      "vendor": null
+     },
+     "21500": {
+      "value": "58050.20",
+      "display": "₹58,050.20",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21600": {
+      "value": "51571.65",
+      "display": "₹51,571.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21700": {
+      "value": "45114.55",
+      "display": "₹45,114.55",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21800": {
+      "value": "38703.60",
+      "display": "₹38,703.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21900": {
+      "value": "32383.00",
+      "display": "₹32,383.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22000": {
+      "value": "26221.65",
+      "display": "₹26,221.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "20318.35",
+      "display": "₹20,318.35",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "14797.90",
+      "display": "₹14,797.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "9795.50",
+      "display": "₹9,795.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "5432.70",
+      "display": "₹5,432.70",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "1796.60",
+      "display": "₹1,796.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22533.25": {
+      "value": "755.30",
+      "display": "₹755.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22552.05": {
+      "value": "203.45",
+      "display": "₹203.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "-1083.55",
+      "display": "−₹1,083.55",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "-3241.55",
+      "display": "−₹3,241.55",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-4765.15",
+      "display": "−₹4,765.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "-5775.25",
+      "display": "−₹5,775.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "-6403.15",
+      "display": "−₹6,403.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23047.95": {
+      "value": "-6604.65",
+      "display": "−₹6,604.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "-6768.45",
+      "display": "−₹6,768.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "-6966.70",
+      "display": "−₹6,966.70",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "-7067.45",
+      "display": "−₹7,067.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-7114.90",
+      "display": "−₹7,114.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-7136.35",
+      "display": "−₹7,136.35",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "2",
+    "cells": {
+     "leg": {
+      "value": "2",
+      "display": "2",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "SELL",
+      "display": "SELL",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "PE",
+      "display": "PE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-13",
+      "display": "2026-10-13",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "22650",
+      "display": "22,650",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "166.00",
+      "display": "₹166.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "202",
+      "display": "₹202.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "10790.00",
+      "display": "₹10,790.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "13130",
+      "display": "₹13,130.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "-2340.00",
+      "display": "−₹2,340.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "-21.69",
+      "display": "-21.69%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.123521",
+      "display": "0.123521",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "41.4314",
+      "display": "41.4314",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-0.6374058750651432",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0729",
+      "display": "-0.0729",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.001120776751761894",
+      "vendor": null
+     },
+     "theta": {
+      "value": "802.9459",
+      "display": "802.9459",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-12.353013876593144",
+      "vendor": null
+     },
+     "vega": {
+      "value": "-658.0409",
+      "display": "-658.0409",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "10.123705436738232",
+      "vendor": null
+     },
+     "21500": {
+      "value": "-64143.95",
+      "display": "−₹64,143.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21600": {
+      "value": "-57654.35",
+      "display": "−₹57,654.35",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21700": {
+      "value": "-51169.30",
+      "display": "−₹51,169.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21800": {
+      "value": "-44696.60",
+      "display": "−₹44,696.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21900": {
+      "value": "-38254.45",
+      "display": "−₹38,254.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22000": {
+      "value": "-31873.40",
+      "display": "−₹31,873.40",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "-25609.35",
+      "display": "−₹25,609.35",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-19546.80",
+      "display": "−₹19,546.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-13798.20",
+      "display": "−₹13,798.20",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-8498.75",
+      "display": "−₹8,498.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "-3784.95",
+      "display": "−₹3,784.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22533.25": {
+      "value": "-2367.30",
+      "display": "−₹2,367.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22552.05": {
+      "value": "-1601.60",
+      "display": "−₹1,601.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "232.70",
+      "display": "₹232.70",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "3491.80",
+      "display": "₹3,491.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "5994.30",
+      "display": "₹5,994.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "7805.20",
+      "display": "₹7,805.20",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "9035.65",
+      "display": "₹9,035.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23047.95": {
+      "value": "9458.80",
+      "display": "₹9,458.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "9818.90",
+      "display": "₹9,818.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "10284.95",
+      "display": "₹10,284.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "10543.00",
+      "display": "₹10,543.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "10676.90",
+      "display": "₹10,676.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "10741.90",
+      "display": "₹10,741.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "3",
+    "cells": {
+     "leg": {
+      "value": "3",
+      "display": "3",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "SELL",
+      "display": "SELL",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "CE",
+      "display": "CE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-13",
+      "display": "2026-10-13",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "22950",
+      "display": "22,950",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "101.05",
+      "display": "₹101.05",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "17.05",
+      "display": "₹17.05",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "6568.25",
+      "display": "₹6,568.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "1108.25",
+      "display": "₹1,108.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "5460.00",
+      "display": "₹5,460.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "83.13",
+      "display": "83.13%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.123382",
+      "display": "0.123382",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "-6.9491",
+      "display": "-6.9491",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.10690893836456088",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0359",
+      "display": "-0.0359",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0005519591425841343",
+      "vendor": null
+     },
+     "theta": {
+      "value": "374.2870",
+      "display": "374.2870",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-5.758262194817505",
+      "vendor": null
+     },
+     "vega": {
+      "value": "-323.7067",
+      "display": "-323.7067",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "4.980102995071443",
+      "vendor": null
+     },
+     "21500": {
+      "value": "6568.25",
+      "display": "₹6,568.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21600": {
+      "value": "6568.25",
+      "display": "₹6,568.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21700": {
+      "value": "6567.60",
+      "display": "₹6,567.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21800": {
+      "value": "6566.95",
+      "display": "₹6,566.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21900": {
+      "value": "6563.70",
+      "display": "₹6,563.70",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22000": {
+      "value": "6555.25",
+      "display": "₹6,555.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "6532.50",
+      "display": "₹6,532.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "6477.90",
+      "display": "₹6,477.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "6358.95",
+      "display": "₹6,358.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "6119.10",
+      "display": "₹6,119.10",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "5673.85",
+      "display": "₹5,673.85",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22533.25": {
+      "value": "5461.95",
+      "display": "₹5,461.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22552.05": {
+      "value": "5324.80",
+      "display": "₹5,324.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "4911.40",
+      "display": "₹4,911.40",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "3699.80",
+      "display": "₹3,699.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "1905.80",
+      "display": "₹1,905.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "-578.50",
+      "display": "−₹578.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "-3812.25",
+      "display": "−₹3,812.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23047.95": {
+      "value": "-5630.30",
+      "display": "−₹5,630.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "-7793.50",
+      "display": "−₹7,793.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "-12460.50",
+      "display": "−₹12,460.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "-17704.05",
+      "display": "−₹17,704.05",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-23395.45",
+      "display": "−₹23,395.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-29406.65",
+      "display": "−₹29,406.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "4",
+    "cells": {
+     "leg": {
+      "value": "4",
+      "display": "4",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "BUY",
+      "display": "BUY",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "CE",
+      "display": "CE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-13",
+      "display": "2026-10-13",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "23100",
+      "display": "23,100",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "59.10",
+      "display": "₹59.10",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "7.15",
+      "display": "₹7.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "3841.50",
+      "display": "₹3,841.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "464.75",
+      "display": "₹464.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "-3376.75",
+      "display": "−₹3,376.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "-87.90",
+      "display": "-87.90%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.126532",
+      "display": "0.126532",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "3.2776",
+      "display": "3.2776",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0504252716999806",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "0.0197",
+      "display": "0.0197",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.00030339047538583005",
+      "vendor": null
+     },
+     "theta": {
+      "value": "-216.9752",
+      "display": "-216.9752",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-3.338079590204985",
+      "vendor": null
+     },
+     "vega": {
+      "value": "182.4716",
+      "display": "182.4716",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "2.807255249504322",
+      "vendor": null
+     },
+     "21500": {
+      "value": "-3841.50",
+      "display": "−₹3,841.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21600": {
+      "value": "-3841.50",
+      "display": "−₹3,841.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21700": {
+      "value": "-3841.50",
+      "display": "−₹3,841.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21800": {
+      "value": "-3840.85",
+      "display": "−₹3,840.85",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21900": {
+      "value": "-3840.20",
+      "display": "−₹3,840.20",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22000": {
+      "value": "-3837.60",
+      "display": "−₹3,837.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "-3830.45",
+      "display": "−₹3,830.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-3811.60",
+      "display": "−₹3,811.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-3767.40",
+      "display": "−₹3,767.40",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-3669.90",
+      "display": "−₹3,669.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "-3473.60",
+      "display": "−₹3,473.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22533.25": {
+      "value": "-3374.80",
+      "display": "−₹3,374.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22552.05": {
+      "value": "-3309.80",
+      "display": "−₹3,309.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "-3107.00",
+      "display": "−₹3,107.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "-2473.25",
+      "display": "−₹2,473.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-1453.40",
+      "display": "−₹1,453.40",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "80.60",
+      "display": "₹80.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "2241.85",
+      "display": "₹2,241.85",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23047.95": {
+      "value": "3525.60",
+      "display": "₹3,525.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "5109.65",
+      "display": "₹5,109.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "8711.30",
+      "display": "₹8,711.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "13015.60",
+      "display": "₹13,015.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "17941.30",
+      "display": "₹17,941.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "23376.60",
+      "display": "₹23,376.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "TOTAL",
+    "cells": {
+     "leg": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "6366.75",
+      "display": "₹6,366.75 Cr",
+      "kind": "money",
+      "reason": null,
+      "side": "Cr",
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "5911.75",
+      "display": "₹5,911.75 Cr",
+      "kind": "money",
+      "reason": null,
+      "side": "Cr",
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "455.00",
+      "display": "₹455.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "13.4",
+      "display": "+13.4%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "7.7077",
+      "display": "7.7077",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0133",
+      "display": "-0.0133",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "theta": {
+      "value": "102.5074",
+      "display": "102.5074",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "vega": {
+      "value": "-101.8623",
+      "display": "-101.8623",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21500": {
+      "value": "-3367.00",
+      "display": "−₹3,367.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21600": {
+      "value": "-3355.95",
+      "display": "−₹3,355.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21700": {
+      "value": "-3328.65",
+      "display": "−₹3,328.65",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21800": {
+      "value": "-3266.90",
+      "display": "−₹3,266.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "21900": {
+      "value": "-3147.95",
+      "display": "−₹3,147.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22000": {
+      "value": "-2934.10",
+      "display": "−₹2,934.10",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "-2588.95",
+      "display": "−₹2,588.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-2082.60",
+      "display": "−₹2,082.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-1411.15",
+      "display": "−₹1,411.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-616.85",
+      "display": "−₹616.85",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "211.90",
+      "display": "₹211.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22533.25": {
+      "value": "475.15",
+      "display": "₹475.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22552.05": {
+      "value": "616.85",
+      "display": "₹616.85",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "953.55",
+      "display": "₹953.55",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "1476.80",
+      "display": "₹1,476.80",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "1681.55",
+      "display": "₹1,681.55",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "1532.05",
+      "display": "₹1,532.05",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "1062.10",
+      "display": "₹1,062.10",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23047.95": {
+      "value": "749.45",
+      "display": "₹749.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "366.60",
+      "display": "₹366.60",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "-430.95",
+      "display": "−₹430.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "-1212.90",
+      "display": "−₹1,212.90",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-1892.15",
+      "display": "−₹1,892.15",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-2424.50",
+      "display": "−₹2,424.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": "22552.05",
+      "display": "22,552.05",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": "23047.95",
+      "display": "23,047.95",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "—",
+      "kind": "text",
+      "reason": "no strategy health was given",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   }
+  ]
+ },
+ "scenario": {
+  "view": "estimated_now",
+  "label": "Estimated Now (estimate)",
+  "kind": "estimate",
+  "available": true,
+  "unavailable_reason": null,
+  "output_label": null,
+  "levels": [
+   {
+    "level": "21500",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "21600",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "21700",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "21800",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "21900",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22000",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22100",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22200",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22300",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22400",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22500",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22533.25",
+    "current": true,
+    "zero_pnl": false
+   },
+   {
+    "level": "22552.05",
+    "current": false,
+    "zero_pnl": true
+   },
+   {
+    "level": "22600",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22700",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22800",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22900",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23000",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23047.95",
+    "current": false,
+    "zero_pnl": true
+   },
+   {
+    "level": "23100",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23200",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23300",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23400",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23500",
+    "current": false,
+    "zero_pnl": false
+   }
+  ],
+  "totals": [
+   "-3367.00",
+   "-3355.95",
+   "-3328.65",
+   "-3266.90",
+   "-3147.95",
+   "-2934.10",
+   "-2588.95",
+   "-2082.60",
+   "-1411.15",
+   "-616.85",
+   "211.90",
+   "475.15",
+   "616.85",
+   "953.55",
+   "1476.80",
+   "1681.55",
+   "1532.05",
+   "1062.10",
+   "749.45",
+   "366.60",
+   "-430.95",
+   "-1212.90",
+   "-1892.15",
+   "-2424.50"
+  ],
+  "step": "100",
+  "start": "21500",
+  "end": "23500",
+  "customised": false
+ },
+ "payoff": {
+  "view": "estimated_now",
+  "points": [
+   {
+    "level": "21500",
+    "pnl": "-3367.00",
+    "display": "−₹3,367.00"
+   },
+   {
+    "level": "21600",
+    "pnl": "-3355.95",
+    "display": "−₹3,355.95"
+   },
+   {
+    "level": "21700",
+    "pnl": "-3328.65",
+    "display": "−₹3,328.65"
+   },
+   {
+    "level": "21800",
+    "pnl": "-3266.90",
+    "display": "−₹3,266.90"
+   },
+   {
+    "level": "21900",
+    "pnl": "-3147.95",
+    "display": "−₹3,147.95"
+   },
+   {
+    "level": "22000",
+    "pnl": "-2934.10",
+    "display": "−₹2,934.10"
+   },
+   {
+    "level": "22100",
+    "pnl": "-2588.95",
+    "display": "−₹2,588.95"
+   },
+   {
+    "level": "22200",
+    "pnl": "-2082.60",
+    "display": "−₹2,082.60"
+   },
+   {
+    "level": "22300",
+    "pnl": "-1411.15",
+    "display": "−₹1,411.15"
+   },
+   {
+    "level": "22400",
+    "pnl": "-616.85",
+    "display": "−₹616.85"
+   },
+   {
+    "level": "22500",
+    "pnl": "211.90",
+    "display": "₹211.90"
+   },
+   {
+    "level": "22533.25",
+    "pnl": "475.15",
+    "display": "₹475.15"
+   },
+   {
+    "level": "22552.05",
+    "pnl": "616.85",
+    "display": "₹616.85"
+   },
+   {
+    "level": "22600",
+    "pnl": "953.55",
+    "display": "₹953.55"
+   },
+   {
+    "level": "22650",
+    "pnl": "1249.30",
+    "display": "₹1,249.30"
+   },
+   {
+    "level": "22700",
+    "pnl": "1476.80",
+    "display": "₹1,476.80"
+   },
+   {
+    "level": "22800",
+    "pnl": "1681.55",
+    "display": "₹1,681.55"
+   },
+   {
+    "level": "22900",
+    "pnl": "1532.05",
+    "display": "₹1,532.05"
+   },
+   {
+    "level": "22950",
+    "pnl": "1332.50",
+    "display": "₹1,332.50"
+   },
+   {
+    "level": "23000",
+    "pnl": "1062.10",
+    "display": "₹1,062.10"
+   },
+   {
+    "level": "23047.95",
+    "pnl": "749.45",
+    "display": "₹749.45"
+   },
+   {
+    "level": "23100",
+    "pnl": "366.60",
+    "display": "₹366.60"
+   },
+   {
+    "level": "23200",
+    "pnl": "-430.95",
+    "display": "−₹430.95"
+   },
+   {
+    "level": "23300",
+    "pnl": "-1212.90",
+    "display": "−₹1,212.90"
+   },
+   {
+    "level": "23400",
+    "pnl": "-1892.15",
+    "display": "−₹1,892.15"
+   },
+   {
+    "level": "23500",
+    "pnl": "-2424.50",
+    "display": "−₹2,424.50"
+   }
+  ]
+ },
+ "summary": {
+  "what_can_i_lose": "At most ₹3,383.25 at expiry, before charges and taxes.",
+  "what_can_i_make": "At most ₹6,366.75 at expiry, before charges and taxes.",
+  "where_do_i_start_losing": "If NIFTY ends below 22,552.05 or above 23,047.95 at expiry.",
+  "max_profit": "6366.75",
+  "max_loss": "3383.25",
+  "max_profit_unlimited": false,
+  "max_loss_unlimited": false,
+  "breakevens": [
+   "22552.05",
+   "23047.95"
+  ],
+  "lower_be": "22552.05",
+  "upper_be": "23047.95",
+  "risk_boundaries": [
+   "22500",
+   "23100"
+  ],
+  "charges": null,
+  "charges_unavailable": true,
+  "reward_risk": null,
+  "reward_risk_reason": "the charges could not be priced, so the ratio is not shown",
+  "time_value": "1677.00",
+  "intrinsic_value": "-7588.75",
+  "risk_reward": null,
+  "value_label": "value of the options, not P&L",
+  "value_reason": null,
+  "net_premium": {
+   "amount": "6366.75",
+   "side": "get",
+   "per_unit": "97.95",
+   "text": "Get ₹6,366.75",
+   "reason": null
+  },
+  "funds_share": null
+ },
+ "charges_breakdown": null
+}

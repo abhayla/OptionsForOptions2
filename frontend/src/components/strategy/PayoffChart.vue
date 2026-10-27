@@ -67,7 +67,7 @@
 <script setup>
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
-import { payoffRegions } from '@/lib/payoffRegions'
+import { pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney } from '@/lib/displayFormat'
 
 const props = defineProps({
@@ -90,12 +90,12 @@ const ariaLabel = computed(() => 'Profit and loss at expiry across index levels'
 const token = (name) => (typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '')
 
 // Drawing only: chart.js needs numbers to place a point. Nothing here is displayed.
-// A line has a value only over its own region (issue 297 item 4); elsewhere null, so no segment is drawn at 0.
-const splitPnlData = (points) => {
-  const { loss, profit } = payoffRegions(points)
-  const at = (p, on) => ({ x: Number(p.level), y: on ? Number(p.pnl) : null })
-  return { profitData: points.map((p, i) => at(p, profit[i])), lossData: points.map((p, i) => at(p, loss[i])) }
-}
+// GC-BM F-8 (Sensibull S-012): ONE continuous line through every sent point (no null, so no gap where the P&L
+// changes sign between two sent points, e.g. Estimated Now, which has no 0-P&L level). Each segment is coloured from
+// the signs of its two SENT strings (signOf reads text, no number is compared): profit, loss, or neither for a run at
+// 0.00 (issue 297 item 4: the 0.00 plateau is on neither line). A segment that crosses zero takes a vertical gradient
+// split at the zero pixel, so the part above the axis is green and the part below red; a pixel, never a money value.
+const lineData = (points) => points.map((p) => ({ x: Number(p.level), y: Number(p.pnl) }))
 
 // The spot marker: a dashed vertical line at the reply's spot and a small box with the reply's own spot text.
 const spotLine = {
@@ -139,7 +139,7 @@ const createChart = () => {
   if (!chartCanvas.value || !props.points.length) return
 
   const ctx = chartCanvas.value.getContext ? chartCanvas.value.getContext('2d') : null
-  const { profitData, lossData } = splitPnlData(props.points)
+  const colours = { profit: token('--color-profit'), loss: token('--color-loss'), flat: token('--color-ink-muted') || '#5b6470' }
   const grid = token('--color-line')
 
   chartInstance = new Chart(ctx, {
@@ -147,8 +147,12 @@ const createChart = () => {
     data: {
       labels: props.points.map((p) => p.level),
       datasets: [
-        { label: 'Profit', data: profitData, borderColor: token('--color-profit'), backgroundColor: token('--color-profit-soft'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0, fill: 'origin' },
-        { label: 'Loss', data: lossData, borderColor: token('--color-loss'), backgroundColor: token('--color-loss-soft'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0, fill: 'origin' },
+        {
+          label: 'P&L', data: lineData(props.points), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0,
+          spanGaps: false, borderColor: colours.profit,
+          segment: { borderColor: segmentColour(pointSigns(props.points), colours) },
+          fill: { target: 'origin', above: token('--color-profit-soft'), below: token('--color-loss-soft') },
+        },
       ],
     },
     options: {
@@ -219,8 +223,9 @@ const hovered = computed(() => {
   if (!p) return null
   const pct = pctFromSpot(p.level)
   const label = VIEW_LABELS[props.view]
-  // the table's display string for this level (same reply); else the point's own pnl text, regrouped as text only
-  const pnl = props.pnlText?.[p.level] ?? groupMoney(p.pnl)
+  // the table's display string for this level (same reply); else the point's own display text (a strike level,
+  // GC-BM F-8, is no table column); else its pnl text, regrouped as text only
+  const pnl = props.pnlText?.[p.level] ?? p.display ?? groupMoney(p.pnl)
   return {
     title: `At ${groupMoney(p.level)}${pct ? ` (${pct})` : ''}`,
     lines: label ? [{ view: props.view, label, pnl }] : [],

@@ -3595,6 +3595,9 @@
       "PointOut": {
         "additionalProperties": false,
         "properties": {
+          "display": {
+            "title": "Display"
+          },
           "level": {
             "title": "Level",
             "type": "string"
@@ -3606,7 +3609,8 @@
         },
         "required": [
           "level",
-          "pnl"
+          "pnl",
+          "display"
         ],
         "title": "PointOut",
         "type": "object"
