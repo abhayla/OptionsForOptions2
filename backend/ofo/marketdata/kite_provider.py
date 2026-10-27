@@ -138,6 +138,10 @@ class KiteProvider(MarketDataProvider):
         """ADR-080 (3): the 5-level depth the Execute price walks, or None (see ``QuoteBook.latest_depth``)."""
         return self.book.latest_depth(instrument_id, self._now() if now is None else now)
 
+    def depth_after_close(self, instrument_id: str, now: datetime.datetime | None = None):
+        """READ-ONLY popup (REQ-080 AC-7, ADR-200 (1)): see ``QuoteBook.depth_after_close``; never an order input."""
+        return self.book.depth_after_close(instrument_id, self._now() if now is None else now)
+
     def latest_day_stats(self, instrument_id: str, now: datetime.datetime | None = None) -> DayStatsAnswer:
         """REQ-080 AC-7: open / high / low / previous close / last trade time of the latest packet, or the reason."""
         return self.book.latest_day_stats(instrument_id, self._now() if now is None else now)
