@@ -235,6 +235,77 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])
   })
+  // F-15: the two ALLOWED files are scanned too. A use is allowed only by its exact (trimmed) line, with its reason; any other
+  // line that hits BANNED fails, and a listed line that no longer exists fails (the list cannot go stale or be padded).
+  const L = (line, reason) => ({ line, reason })
+  const NAMED_USES = {
+    [path.join('components', 'strategy', 'PayoffChart.vue')]: [
+      L('const at = Math.max(0, Math.min(1, (y0 - area.top) / (area.bottom - area.top)))', 'pixel clamp in crossingGradient'),
+      L('const lineData = (points) => points.map((p) => ({ x: Number(p.level), y: Number(p.pnl) }))', 'drawing coordinates handed to chart.js'),
+      L('const x = chart.scales.x.getPixelForValue(Number(props.spot))', 'index level to a pixel'),
+      L('const firstLevel = () => Number(props.points[0].level)', 'index level, not money'),
+      L('const lastLevel = () => Number(props.points[props.points.length - 1].level)', 'index level, not money'),
+      L('const lv = Number(p.level)', 'index level, not money'),
+      L('const d = Math.abs(lv - value)', 'nearest index level, not money'),
+      L('const spot = Number(props.spot)', 'pctFromSpot: index level'),
+      L('const pct = ((Number(level) - spot) / spot) * 100', 'pctFromSpot: index level percent, not money'),
+      L('const text = Math.abs(pct).toFixed(1)', 'pctFromSpot: index percent text, not money'),
+      L('ctx.fillRect(x - w / 2, top, w, 16)', 'pixel rectangle of the hover label'),
+      L('ctx.strokeRect(x - w / 2, top, w, 16)', 'pixel rectangle of the hover label'),
+      L('return a.right > a.left ? firstLevel() + ((x - a.left) / (a.right - a.left)) * (lastLevel() - firstLevel()) : firstLevel()', 'pixel to index level, not money'),
+      L('return span ? a.left + ((level - firstLevel()) / span) * (a.right - a.left) : a.left', 'index level to pixel'),
+      L('x: pixelAt(Number(p.level)),', 'index level to a pixel'),
+      L('return Math.max(h.area.left, Math.min(h.x - w / 2, h.area.right - w))', 'pixel clamp of the tooltip'),
+      L('const startIndex = () => nearestIndex(props.spot ? Number(props.spot) : firstLevel())', 'index level, not money'),
+      L("show(Math.max(0, Math.min(props.points.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))", 'array index clamp'),
+    ],
+    [path.join('components', 'strategy', 'PnLCell.vue')]: [
+      L('const v = Number(props.value)', 'colour intensity only; the text is the API display'),
+      L('const i = Math.min(v / (Number(props.maxProfit) || 1), 1)', 'colour intensity only'),
+      L('const i = Math.min(Math.abs(v) / (Math.abs(Number(props.maxLoss)) || 1), 1)', 'colour intensity only'),
+    ],
+  }
+  const stripComments = (t) => t.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, '')
+  const MONEY_MATHS = [...BANNED, /[A-Za-z0-9_)\]]\s*[*/]\s*[A-Za-z0-9_(]/]
+  // returns the violations of one allowed file's text: banned lines not in its list, and listed lines not found exactly once
+  function scanAllowedFile(text, uses) {
+    const listed = new Map(uses.map((u) => [u.line, 0]))
+    const bad = []
+    for (const raw of stripComments(text).split('\n')) {
+      const code = raw.trim()
+      const noStrings = code.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, "''") // a path inside a string is not a division
+      if (!code || !MONEY_MATHS.some((re) => re.test(noStrings))) continue
+      if (listed.has(code)) listed.set(code, listed.get(code) + 1)
+      else bad.push(`unlisted: ${code}`)
+    }
+    for (const [line, n] of listed) if (n !== 1) bad.push(`listed line found ${n} times: ${line}`)
+    return bad
+  }
+  it('F-15: PayoffChart.vue and PnLCell.vue pass the scan with only their named uses', () => {
+    for (const rel of ALLOWED) {
+      expect(NAMED_USES[rel].every((u) => u.reason.length > 5)).toBe(true)
+      expect(scanAllowedFile(fs.readFileSync(path.join(SRC, rel), 'utf8'), NAMED_USES[rel])).toEqual([])
+    }
+  })
+  it('F-15 mutation: a new money expression in PayoffChart.vue fails the scan', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    for (const evil of ['const _x = Number(point.pnl) * 2', 'const _y = p.pnl.toFixed(2)', 'const _z = pnl / 2']) {
+      expect(scanAllowedFile(text + '\n' + evil, NAMED_USES[rel]).length).toBeGreaterThan(0)
+    }
+  })
+  it('F-15 mutation: a marker comment does not exempt a line that is not listed', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    const bad = scanAllowedFile(text + '\nconst _m = Number(p.pnl) * 2 // adr008-allow: drawing', NAMED_USES[rel])
+    expect(bad.some((b) => b.startsWith('unlisted:'))).toBe(true)
+  })
+  it('F-15 mutation: a listed use that is removed or duplicated fails', () => {
+    const rel = path.join('components', 'strategy', 'PnLCell.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    expect(scanAllowedFile(text.replace('const v = Number(props.value)', ''), NAMED_USES[rel]).length).toBeGreaterThan(0)
+    expect(scanAllowedFile(text + '\nconst v = Number(props.value)', NAMED_USES[rel]).length).toBeGreaterThan(0)
+  })
   it('only the two named files may parse an API number, and they exist', () => {
     expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
