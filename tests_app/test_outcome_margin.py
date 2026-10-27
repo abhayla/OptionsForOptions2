@@ -111,7 +111,7 @@ def source(transport, session=OWNER_SESSION, **kw) -> OutcomeMargin:
 
 def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account") -> str:
     """The catalogue sentence: Zerodha's own figure as Zerodha's, ours as an estimate (REQ-055 AC-3)."""
-    return (f"Zerodha's own margin figure is {theirs}. With the premium up to your limit prices, about {ours} is "
+    return (f"Zerodha's own margin figure is {theirs}. With the premium at your planned entry prices, about {ours} is "
             f"needed (an estimate); {have} is available in {where}.")
 
 

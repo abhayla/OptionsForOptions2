@@ -1,6 +1,7 @@
 <!-- REQ-136 (W-160) AC-1/AC-2: an info mark beside a figure's label. The definition is DOM text from the one catalogue
      (lib/figureDefinitions.js), shown on mouse hover, keyboard focus or a tap; Escape or a second tap closes it. No title=
-     attribute (touch screens never show one) and no v-html. An id the catalogue does not hold draws nothing. -->
+     attribute (touch screens never show one) and no v-html. An id the catalogue does not hold draws nothing.
+     ADR-193 UI-017: restyled with tokens (subtle mark, dark tooltip, white 12 px text, max 280 px). -->
 <script setup>
 import { computed, ref } from "vue";
 import { FIGURES } from "@/lib/figureDefinitions";
@@ -56,7 +57,7 @@ const onKey = (e) => {
   >
     <button
       type="button"
-      class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-ink-subtle hover:text-ink focus:outline-none focus:ring-2 focus:ring-accent"
       :aria-label="`What is ${figure.label}?`"
       :aria-expanded="open ? 'true' : 'false'"
       :aria-describedby="open ? panelId : undefined"
@@ -83,7 +84,7 @@ const onKey = (e) => {
       v-if="open"
       :id="panelId"
       role="tooltip"
-      class="absolute left-0 top-full z-20 mt-1 w-64 max-w-[80vw] rounded border border-line bg-white p-2 text-xs font-normal normal-case text-gray-700 shadow"
+      class="absolute left-0 top-full z-20 mt-1 w-64 max-w-[min(280px,80vw)] rounded-md bg-ink-overlay p-2 text-xs font-normal normal-case text-surface"
       data-testid="figure-hint-text"
       >{{ figure.text }}</span
     >

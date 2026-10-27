@@ -1,21 +1,64 @@
-/* Tailwind 4 with this project's tokens (ADR-049): light theme, neutral surfaces, 1px dividers, ONE accent (cobalt).
-   Green/yellow/orange/red are reserved for strategy health (ADR-010) and are not defined as tokens here. */
+/* Tailwind 4 with this project's tokens (ADR-049, ADR-193 / UI study a.2): light theme, neutral surfaces, 1px dividers,
+   ONE accent (cobalt). Every colour the app uses lives here and nowhere else (UI-006).
+   ADR-049: the four strategy-health colours stay reserved for health. --profit / --loss colour only P&L numbers and
+   payoff lines, never a status; --warn is warning text only; --error / --error-soft colour error messages only. */
 @import 'tailwindcss';
 
 @theme {
-  --color-accent: #2f5bff;
-  --color-accent-soft: #eef2ff;
+  /* neutral base */
+  --color-bg: #f4f5f7;
   --color-surface: #ffffff;
   --color-surface-muted: #f6f7f9;
   --color-line: #e3e5e8;
   --color-ink: #1b1f24;
   --color-ink-muted: #5b6470;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-ink-subtle: #8a929c;
+  /* the one accent */
+  --color-accent: #2f5bff;
+  --color-accent-hover: #2449d9;
+  --color-accent-soft: #eef2ff;
+  /* P&L numbers and payoff lines only (never a status) */
+  --color-profit: #178a55;
+  --color-profit-soft: #e7f6ee;
+  --color-loss: #d14343;
+  --color-loss-soft: #fceded;
+  /* error messages only; not a health or P&L colour */
+  --color-error: #b42318;
+  --color-error-soft: #fef3f2;
+  --color-warn: #a15c00;
+  --color-warn-soft: #fff5e0;
+  /* chips */
+  --color-buy: #2f5bff;
+  --color-buy-soft: #eef2ff;
+  --color-sell: #c23b3b;
+  --color-sell-soft: #fceded;
+  --color-opt: #5b6470;
+  --color-opt-soft: #f1f2f4;
+  /* charts and chain */
+  --color-oi-call: #f2c4c4;
+  --color-oi-put: #c7ead6;
+  --color-estimate: #2f5bff;
+  /* the dark tooltip / toast fill (UI-017: #1B1F24 at 95 %) */
+  --color-ink-overlay: rgb(27 31 36 / 0.95);
+
+  /* shadows: menus and drawers only (UI-009) */
+  --shadow-menu: 0 8px 24px rgb(27 31 36 / 0.08);
+  --shadow-drawer: 0 0 24px rgb(27 31 36 / 0.12);
+
+  /* UI-007: Inter, bundled from @fontsource/inter in main.js */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* UI-007: a number in a column uses tabular figures (`tabular-nums` is also Tailwind's own utility). */
+@utility num {
+  font-variant-numeric: tabular-nums;
 }
 
 body {
   margin: 0;
-  background: var(--color-surface-muted);
+  background: var(--color-bg);
   color: var(--color-ink);
+  font-family: var(--font-sans);
   font-size: 14px;
+  line-height: 20px;
 }

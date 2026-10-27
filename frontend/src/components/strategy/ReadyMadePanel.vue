@@ -3,24 +3,28 @@
      greyed). Picking a shape or a quick pick asks the server (POST /strategies/load-template, /strategies/quick-pick);
      strikes are placed on the server, the browser computes nothing. Loading into a builder that has legs asks first
      ("Replace the N legs in the builder?"); legs are never cleared without that answer. Loaded legs carry the server's
-     label until their strike is edited (then the row is replaced and the label goes with it). -->
+     label until their strike is edited (then the row is replaced and the label goes with it).
+     W-192 UI-111 (Sensibull 010, 105): chip filters by market view (selected = accent fill), the expiry select on the right,
+     and a grid of shape cards, 4 per row, each carrying the shape name only (no static payoff-shape table exists, and the
+     browser draws no payoff of its own). The underlying is Region A's (prop), not a select of this tab. -->
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { UNDERLYINGS } from '@/lib/underlyings'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { QUICK_PICK_DISTANCES, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
 
-const props = defineProps({ legs: { type: Array, default: () => [] } })
+const props = defineProps({
+  legs: { type: Array, default: () => [] },
+  underlying: { type: String, default: '' }, // Region A's underlying; the legs' own wins once legs exist
+})
 const emit = defineEmits(['update:legs'])
 
 const on = useHeldFeature('platform_strikes')
 const route = useRoute()
-const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
-const underlyingLocked = computed(() => props.legs.length > 0)
+const underlying = computed(() => props.legs[0]?.underlying || props.underlying || 'NIFTY')
 const templates = ref([])
 const expiries = ref([])
 const expiry = ref('')
@@ -40,7 +44,8 @@ async function start() {
     const reply = (await api.get(`/catalogue/${underlying.value}/expiries`)).data
     expiries.value = reply?.expiries ?? []
     expiryDays.value = daysByExpiry(reply?.expiry_days)
-    expiry.value = expiries.value[0] ?? ''
+    const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))?.expiry // the draft's own expiry, when it has legs
+    expiry.value = own ?? expiries.value[0] ?? ''
     errorParts.value = null
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -70,10 +75,8 @@ const quickPick = (kind, distance) =>
 const replace = () => { const request = pending.value; pending.value = null; run(request) }
 const cancel = () => { pending.value = null }
 
-async function onUnderlying(value) {
-  underlying.value = value
-  await start()
-}
+// a change of Region A's underlying reads that underlying's expiries again
+watch(underlying, () => start())
 
 onMounted(async () => {
   await start()
@@ -84,30 +87,27 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section v-if="on" class="mt-4 rounded border border-line p-3" data-testid="ready-made">
-    <h2 class="text-lg font-semibold">Ready-made shapes</h2>
-    <div class="mt-2 flex flex-wrap items-end gap-3 text-sm">
-      <label>Underlying
-        <select :value="underlying" :disabled="underlyingLocked" class="ml-1 rounded border border-line p-1" data-testid="rm-underlying" @change="onUnderlying($event.target.value)">
-          <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
-        </select>
-      </label>
-      <label>Expiry
-        <select v-model="expiry" class="ml-1 rounded border border-line p-1" data-testid="rm-expiry">
+  <section v-if="on" class="min-w-0" data-testid="ready-made">
+    <h2 class="sr-only">Ready-made shapes</h2>
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <nav class="flex flex-wrap gap-2" aria-label="Market view" data-testid="rm-groups">
+        <button
+          v-for="g in VIEW_GROUPS" :key="g.key" type="button" :data-testid="`rm-group-${g.key}`"
+          :aria-pressed="group === g.key" class="h-8 rounded-full border px-3"
+          :class="group === g.key ? 'border-accent bg-accent font-medium text-surface' : 'border-line text-ink hover:border-accent'"
+          @click="group = g.key">{{ g.title }}</button>
+      </nav>
+      <label class="ml-auto flex items-center gap-1 text-ink-muted">Expiry
+        <select v-model="expiry" class="h-8 rounded border border-line px-1 text-ink" data-testid="rm-expiry">
           <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e]) }}</option>
         </select>
       </label>
     </div>
-
-    <nav class="mt-3 flex gap-1 text-sm" aria-label="Market view" data-testid="rm-groups">
-      <button
-        v-for="g in VIEW_GROUPS" :key="g.key" type="button" :data-testid="`rm-group-${g.key}`"
-        :aria-pressed="group === g.key" class="rounded border border-line px-2 py-1" :class="group === g.key ? 'bg-surface font-semibold' : ''"
-        @click="group = g.key">{{ g.title }}</button>
-    </nav>
-    <ul class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="rm-templates">
-      <li v-for="t in shown" :key="t.id" class="rounded border border-line p-2">
-        <button type="button" class="text-left underline" :disabled="busy || !expiry" :data-testid="`rm-template-${t.id}`" @click="loadTemplate(t.id)">{{ t.name }}</button>
+    <ul class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="rm-templates">
+      <li v-for="t in shown" :key="t.id" class="min-w-0">
+        <button
+          type="button" class="flex h-16 w-full items-center justify-center rounded-lg border border-line bg-surface p-2 text-center text-[13px] leading-4 font-medium text-ink hover:border-accent disabled:opacity-40"
+          :disabled="busy || !expiry" :data-testid="`rm-template-${t.id}`" @click="loadTemplate(t.id)">{{ t.name }}</button>
       </li>
     </ul>
 

@@ -6,6 +6,7 @@
 //   - PREVIEW_URL (plain API, no provider): planned-entry returns null + not_connected, so the leg is unpriced.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit, openFullTable } from './pages/builder.page'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
@@ -32,6 +33,7 @@ async function seedCatalogue(page: Page) {
 // The expiry is chosen once by the caller: saving a leg keeps it (and its contracts), so it is not re-selected here.
 async function addLeg(page: Page, type: string, strike: string, action: string) {
   const rows = page.getByTestId('leg-row')
+  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
   await page.getByTestId('pick-type').selectOption(type)
   // wait for the API's strikes: the select is disabled until they arrive
@@ -40,12 +42,16 @@ async function addLeg(page: Page, type: string, strike: string, action: string) 
   await page.getByTestId('pick-strike').selectOption(strike)
   await page.getByTestId('pick-action').selectOption(action)
   await page.getByTestId('add-leg').click()
-  await expect(rows).toHaveCount(before + 1) // the capture has finished and the form is free for the next leg
+  // the capture has finished and the form is free for the next leg. 15 s, as in the edit test below: CI #581's trace showed the 4th
+  // planned-entry request still unanswered 6 s after it was sent, queued behind a 5.2 s outcome reply on the replay API (late, not
+  // lost: tests/leg-picker.test.js "legs added quickly in sequence are all kept" pins that every leg is kept)
+  await expect(rows).toHaveCount(before + 1, { timeout: 15_000 })
 }
 
 test('four picked legs are priced by the real outcome route on the recorded frames', async ({ page }, info) => {
   await seedCatalogue(page)
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'no-draft')
   await expect(page.getByTestId('pick-strike')).toBeVisible()
   await expect(page.getByTestId('pick-expiry')).toContainText('2026-10-13')
@@ -60,6 +66,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
   await expect(page.getByTestId('leg-row')).toHaveCount(4)
   await expect(page.getByTestId('leg-unpriced')).toHaveCount(0)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   await expect(page.getByTestId('strategy-table')).toBeVisible()
   await page.screenshot({ path: `screenshots/leg-picker-priced-${info.project.name}.png`, fullPage: true })
 })
@@ -67,6 +74,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
 test('edit changes a leg and remove drops it', async ({ page }) => {
   await seedCatalogue(page)
   await page.goto(`${REPLAY_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
@@ -74,6 +82,9 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
   await expect(page.getByTestId('pick-strike')).toHaveValue('22800.00')
   await page.getByTestId('pick-strike').selectOption('23000.00')
   await page.getByTestId('add-leg').click()
+  // the edit is done when the picker hands the page back (after the new contract's planned entry is captured, which the
+  // replay API answered in 4.5 s in the failing run): only then is the row's contract read
+  await expect(page.getByTestId('leg-picker-panel')).toBeHidden({ timeout: 15_000 })
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
   await expect(page.getByTestId('leg-row')).toContainText('NIFTY 13 Oct 23000 CE')
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', /computed|stale/)
@@ -85,6 +96,7 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
 test('without live data the leg is added with no price and the not-connected wording, no numbers', async ({ page }, info) => {
   await seedCatalogue(page)
   await page.goto(`${PLAIN_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await expect(page.getByTestId('leg-unpriced')).toHaveText('Draft — Live data not connected')
@@ -119,6 +131,7 @@ test('Strikes tab without live data: dashes and the reason, two selected contrac
   await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: STRIKES }))
   await page.route('**/api/leg-picker/depth**', (r) => r.fulfill({ json: DEPTH_NOT_AVAILABLE }))
   await page.goto(`${PLAIN_URL}/strategy/builder`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await expect(page.getByTestId('strikes-reason')).toHaveText('Live data is not connected, so no prices are shown.')
   await expect(page.getByTestId('strikes-centre')).toContainText('ATM unknown - no live price')

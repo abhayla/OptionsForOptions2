@@ -17,10 +17,12 @@ import {
 
 const props = defineProps({
   current: { type: Object, required: true }, // { id, revision, name } of the saved strategy on screen
+  // W-192 UI-108: inside the Builder's History drawer the list is open and read on mount; the drawer is the toggle
+  inDrawer: { type: Boolean, default: false },
 });
 const emit = defineEmits(["open"]);
 
-const open = ref(false);
+const open = ref(props.inDrawer);
 const entries = ref(null); // null = not read yet
 const busy = ref(false);
 const errorParts = ref(null);
@@ -38,6 +40,8 @@ function toggle() {
   open.value = !open.value;
   if (open.value) load();
 }
+
+if (props.inDrawer) load();
 
 // A save, a restore or an Undo changes the revision: an open panel is read again (the newest entry is the one just written).
 watch(
@@ -71,10 +75,11 @@ async function restore(entry) {
 
 <template>
   <section
-    class="mt-4 rounded border border-line bg-surface p-4"
+    :class="inDrawer ? '' : 'mt-4 rounded border border-line bg-surface p-4'"
     data-testid="activity-panel"
   >
     <button
+      v-if="!inDrawer"
       type="button"
       class="text-sm font-medium underline"
       data-testid="activity-toggle"

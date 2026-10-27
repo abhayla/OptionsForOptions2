@@ -318,6 +318,47 @@ describe('a late async reply never overwrites newer user state', () => {
   })
 })
 
+// CI #581 (leg-picker.spec.ts:48, desktop-1280): four legs added one after another ended with three for 5 s. The trace shows the 4th
+// planned-entry request queued behind a 5.2 s outcome reply on the replay API: late, not lost. This pins the product half: legs
+// added in quick sequence, each capture answering while the previous add's outcome and shape read are still in flight, and those
+// stale replies (a 3-leg shape read among them) landing AFTER the next leg: every leg is kept.
+describe('legs added quickly in sequence are all kept', () => {
+  it('four adds, each capture answering before the previous outcome and shape read, end with four legs', async () => {
+    const held = [] // every outcome / leg-edit reply, released only at the end, oldest LAST
+    const captures = []
+    const ALL = [entry(44595, '41.10'), entry(44604, '55.20'), entry(44624, '104.65'), entry(44632, '61.30')]
+    answers['POST /strategies/planned-entry'] = () => new Promise((res) => captures.push(() => res({ data: { entries: ALL } })))
+    answers['POST /strategies/outcome'] = () => new Promise((res) => held.push(() => res({ data: OUTCOME_NOT_CONNECTED })))
+    answers['POST /strategies/leg-edit'] = (body) => new Promise((res) => held.push(() => res({ data: {
+      seq: body.seq, shape_name: null, // a shape read for the legs it was SENT with: applied late, it would drop the newer legs
+      legs: body.legs.map((l) => ({ ...l, instrument_id: l.instrument_id, action: l.action, lots: l.lots, included: true })),
+    } })))
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    const legsAdded = [['CE', '22800.00', 'SELL'], ['CE', '23000.00', 'BUY'], ['PE', '22400.00', 'SELL'], ['PE', '22200.00', 'BUY']]
+    for (const [i, [type, strike, action]] of legsAdded.entries()) {
+      if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') await t(w, 'add-edit').trigger('click')
+      await pick(w, { type, strike, action })
+      await t(w, 'add-leg').trigger('click')
+      await flushPromises()
+      captures.shift()() // this leg's capture answers while every earlier outcome / shape read is still unanswered
+      await flushPromises()
+      expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(i + 1)
+    }
+    // the race is real: a shape read went out after the 2nd, 3rd and 4th adds, and an outcome after every add
+    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4])
+    expect(calls.filter((c) => c.url === '/strategies/outcome').length).toBeGreaterThanOrEqual(4)
+    while (held.length) held.pop()() // the stale replies land newest first, the oldest last
+    await flushPromises()
+    const rows = w.findAll('[data-testid="leg-row"]')
+    expect(rows).toHaveLength(4)
+    expect(rows.map((r) => r.attributes('data-instrument-id'))).toEqual([44624, 44632, 44604, 44595].map((k) => instrumentId('NSE_FO', k)))
+  })
+})
+
 describe('buildDraft: the body the outcome API takes', () => {
   const priced = { underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT, symbol: 'x' }
   const unpriced = { ...priced, instrument_id: 'NSE_FO:44632', planned_entry: null, captured_at: null }
@@ -576,7 +617,7 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(t(w, 'tab-futures').exists()).toBe(true)
     expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(GRID)
     expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'false', 'true', 'false'])
-    expect(rowOf(w, '22550.00').classes()).toContain('bg-amber-100')
+    expect(rowOf(w, '22550.00').classes()).toContain('bg-accent-soft')
     expect(rowOf(w, '22550.00').find('[data-testid="atm-mark"]').exists()).toBe(true)
     expect(rowOf(w, '22450.00').find('[data-testid="atm-mark"]').exists()).toBe(false)
     // priced cell: the server's strings, nothing computed
@@ -1022,5 +1063,103 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
     expect(w.find('[data-testid="future-row"]').text()).toContain('27 Oct (14 days) future')
     expect(w.find('[data-testid="future-row"]').attributes('data-expiry')).toBe('2026-10-27')
     expect(w.find('[data-testid="forward-row"]').text()).toContain('27 Oct (14 days)')
+  })
+})
+
+// ---- W-195 (ADR-193 PR-3, UI-200..UI-207): the picker as Sensibull's left slide-in strike drawer. ----
+describe('W-195 strike drawer (UI-200..UI-207)', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+    answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
+  })
+
+  it('UI-202 (combined check A): the OI shown is the server number and no bar is drawn (a bar width would be browser maths, ADR-008)', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('3218475')
+    expect(w.findAll('[data-testid="cell-oi-bar"]')).toHaveLength(0)
+  })
+
+  it('UI-202: ITM halves are shaded from the server ATM flag only (calls below ATM, puts above); no ATM row shades nothing', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const shaded = (strike, side) => sideOf(w, strike, side).findAll('.bg-warn-soft').length > 0
+    expect(GRID.map((s) => [shaded(s, 'ce'), shaded(s, 'pe')])).toEqual([[true, false], [true, false], [false, false], [false, true]])
+    answers[STRIKES_URL()] = strikesAnswer({ centre: 'MIDDLE_STRIKE', spot: null, atm_strike: null, rows: strikesAnswer().rows.map((r) => ({ ...r, is_atm: false })) })
+    const w2 = mountPicker()
+    await flushPromises()
+    await openStrikes(w2)
+    expect(w2.findAll('[data-testid="strike-row"]')).toHaveLength(4)
+    expect(w2.findAll('.bg-warn-soft')).toHaveLength(0)
+  })
+
+  it('UI-202/UI-205: the view switch changes the columns (LTP default, Greeks = Delta and IV); width and size sit in Settings', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-view-ltp').attributes('aria-checked')).toBe('true')
+    expect(t(w, 'strike-head').text()).toBe('Call DeltaCall LTPCall OICall IVStrikePut IVPut OIPut LTPPut Delta')
+    await t(w, 'picker-view-greeks').trigger('click')
+    expect(t(w, 'strike-head').text()).toBe('Call DeltaCall IVStrikePut IVPut Delta')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-ltp"]').exists()).toBe(false)
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-delta"]').text()).toBe('0.5730')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').exists()).toBe(true) // B/S stay in every view
+    await t(w, 'picker-view-oi').trigger('click')
+    expect(t(w, 'strike-head').text()).toBe('Call LTPCall OIStrikePut OIPut LTP')
+    expect(t(w, 'picker-settings-popover').find('[data-testid="pick-width"]').exists()).toBe(true)
+    expect(t(w, 'picker-settings-popover').find('[data-testid="pick-lots-mode"]').exists()).toBe(true)
+  })
+
+  it('UI-203: B and S are named for screen readers and the qty sub-row shows only under a chosen side', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const ce = sideOf(w, '22500.00', 'ce')
+    expect(ce.find('[data-testid="cell-buy"]').attributes('aria-label')).toBe('Buy 22500.00 CE')
+    expect(ce.find('[data-testid="cell-sell"]').attributes('aria-label')).toBe('Sell 22500.00 CE')
+    const qty = () => ce.find('[data-testid="cell-lots"]').element.closest('label')
+    expect(qty().style.display).toBe('none')
+    await ce.find('[data-testid="cell-buy"]').trigger('click')
+    expect(qty().style.display).toBe('')
+    expect(ce.find('[data-testid="cell-buy"]').classes()).toContain('bg-buy')
+  })
+
+  it('UI-206 core: B on a strike then Done adds that leg with its planned entry and emits done (the Builder closes the drawer)', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    expect(t(w, 'picker-footer').find('[data-testid="picker-pick-chain"]').text()).toBe('Pick from Option Chain')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action, l.lots, l.planned_entry])).toEqual([['NSE_FO:44002', 'BUY', 1, '151.30']])
+    expect(w.emitted('done')).toHaveLength(1)
+  })
+
+  it('UI-200: the Builder opens the picker as a LEFT drawer from Add/Edit, Done adds the leg and closes it, the close button shuts it', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { attachTo: document.body, global: { plugins: [router] } })
+    await flushPromises()
+    const drawer = () => w.find('[data-testid="drawer"][data-side="left"]')
+    expect(drawer().find('[data-testid="leg-picker"]').exists()).toBe(true) // mounted while shut, so Edit can open it on a leg
+    expect(drawer().element.parentElement.style.display).toBe('none') // no inline add-leg form in the left column
+    await t(w, 'add-edit').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('')
+    expect(t(w, 'add-edit').attributes('aria-expanded')).toBe('true')
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(drawer().element.parentElement.style.display).toBe('none')
+    expect(w.findComponent(LegPicker).props('legs').map((l) => [l.instrument_id, l.action, l.planned_entry])).toEqual([['NSE_FO:44002', 'BUY', '151.30']])
+    await t(w, 'add-edit').trigger('click')
+    await drawer().find('[data-testid="drawer-close"]').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('none')
+    w.unmount()
   })
 })

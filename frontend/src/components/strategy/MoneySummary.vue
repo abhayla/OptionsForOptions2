@@ -2,6 +2,7 @@
      server's own string (summary.net_premium, charges_breakdown); the browser parses, adds and compares no money (ADR-008).
      An absent net premium is '-' with the server's reason, never 0.00 and never a partial sum. Net premium: screen 012. -->
 <script setup>
+import { groupMoney } from "@/lib/displayFormat";
 import FigureHint from "@/components/common/FigureHint.vue";
 import ChargesBreakdown from "@/components/strategy/ChargesBreakdown.vue";
 
@@ -24,8 +25,8 @@ defineProps({
     >
       <span class="text-gray-500">Net premium: </span>
       <template v-if="netPremium.text">
-        <span class="font-medium" data-testid="net-premium-text">{{
-          netPremium.text
+        <span class="font-medium" data-testid="net-premium-text" :data-raw="netPremium.text">{{
+          groupMoney(netPremium.text)
         }}</span>
         <span
           v-if="netPremium.per_unit"

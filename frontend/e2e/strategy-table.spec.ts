@@ -6,6 +6,7 @@
 // PREVIEW_DOWN_URL one on a closed port.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openFullTable } from './pages/builder.page'
 import { healthSentence } from '../src/lib/dataHealthText.js'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
@@ -36,6 +37,10 @@ async function condorDraft(request: APIRequestContext) {
   return { underlying: 'NIFTY', legs: probe.legs.map((l, i) => ({ ...l, planned_entry: out.legs[i].ltp })) }
 }
 
+// the page groups money with Indian separators (groupMoney, REQ-081); the spec applies the same rule to the API text, importing nothing from the app
+const grouped = (t: string) =>
+  t.replace(/(?<![\d.,])(\d{4,})(?![\d,])/g, (w) => `${w.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${w.slice(-3)}`)
+
 function builderUrl(base: string, draft: unknown) {
   const q = new URLSearchParams({ draft: JSON.stringify(draft) })
   return `${base}/strategy/builder?${q.toString()}`
@@ -53,6 +58,7 @@ test('every number on the screen equals the API response text for the condor', a
   const { api } = await openCondor(page, request)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
   expect(api.state).toBe('COMPUTED')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
 
   // 1. every rendered table cell is the API's display text, for every row and every visible column
   const visible = api.table.columns.filter((c: { visible: boolean }) => c.visible)
@@ -79,19 +85,25 @@ test('every number on the screen equals the API response text for the condor', a
   expect(api.summary.max_profit).toBe('4539.65')
   expect(api.summary.max_loss).toBe('8460.35')
   expect(api.summary.breakevens).toEqual(['22326.85', '22873.15'])
-  await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit)
-  await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss)
-  await expect(page.getByTestId('breakevens')).toHaveText(api.summary.breakevens.join(', '))
-  await expect(page.getByTestId('spot-level')).toHaveText(api.spot_level)
-  await expect(page.getByTestId('sum-lose')).toHaveText(api.summary.what_can_i_lose)
-  await expect(page.getByTestId('sum-make')).toHaveText(api.summary.what_can_i_make)
+  await expect(page.getByTestId('max-profit')).toHaveText(grouped(api.summary.max_profit))
+  await expect(page.getByTestId('max-loss')).toHaveText(grouped(api.summary.max_loss))
+  await expect(page.getByTestId('breakevens')).toHaveText(grouped(api.summary.breakevens.join(', ')))
+  await expect(page.getByTestId('underlying-spot')).toHaveText(api.spot_level) // W-193: the yellow level card is gone (UI-120)
+  await expect(page.getByTestId('sum-lose')).toHaveAttribute('data-full', api.summary.what_can_i_lose) // the card shows the first sentence until More (REQ-034 AC-7)
+  if (await page.getByTestId('sum-lose-more').count()) await page.getByTestId('sum-lose-more').click()
+  await expect(page.getByTestId('sum-lose')).toContainText(grouped(api.summary.what_can_i_lose))
+  await expect(page.getByTestId('sum-make')).toHaveAttribute('data-full', api.summary.what_can_i_make) // the card shows the first sentence until More (REQ-034 AC-7)
+  if (await page.getByTestId('sum-make-more').count()) await page.getByTestId('sum-make-more').click()
+  await expect(page.getByTestId('sum-make')).toContainText(grouped(api.summary.what_can_i_make))
   await expect(page.getByTestId('sum-make')).toContainText('4,539.65')
   await expect(page.getByTestId('sum-lose')).toContainText('8,460.35')
   await expect(page.getByTestId('sum-lose')).toContainText('215.10')
   await expect(page.getByTestId('sum-start')).toContainText('22,326.85')
   await expect(page.getByTestId('sum-start')).toContainText('22,873.15')
 
-  // 4. the chart's end labels are the API's first and last payoff levels
+  // 4. the chart's end labels are the API's first and last payoff levels (on the chart card's Payoff tab)
+  await page.getByTestId('tab-payoff').click()
+  await expect(page.getByTestId('payoff-chart')).toBeVisible()
   await expect(page.getByTestId('payoff-first')).toHaveText(api.payoff.points[0].level)
   await expect(page.getByTestId('payoff-last')).toHaveText(api.payoff.points[api.payoff.points.length - 1].level)
   await page.screenshot({ path: `screenshots/strategy-computed-${info.project.name}.png`, fullPage: true })
@@ -99,6 +111,7 @@ test('every number on the screen equals the API response text for the condor', a
 
 test('AC-3: left columns are sticky and the current level column is highlighted', async ({ page, request }) => {
   const { api } = await openCondor(page, request)
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   const first3 = api.table.columns.filter((c: { visible: boolean }) => c.visible).slice(0, 3).map((c: { id: string }) => c.id)
   for (const id of first3) {
     const pos = await page.locator(`th[data-col="${id}"]`).evaluate((e) => getComputedStyle(e).position)
@@ -136,6 +149,7 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
 test('AC-5: Bid and Ask are in the Details block for everyone, with the API values', async ({ page, request }, info) => {
   const { api } = await openCondor(page, request)
   expect(api.leg_quotes).toHaveLength(4)
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   const details = page.getByTestId('advanced-details')
   await expect(details).toBeVisible()
   await expect(details).not.toHaveAttribute('open', '') // REQ-034 AC-7: starts closed

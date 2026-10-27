@@ -68,11 +68,19 @@ async function openBuilder(query) {
 describe('ADR-168: one full builder screen, no level switch', () => {
   it('attack 1: the page shows every API column (Greeks and IV included) and the details block, and no level control', async () => {
     const w = await openBuilder({})
+    // ADR-194: the P&L Table tab opens compact; the full table is one switch away, the same for every user
+    await w.get('[data-testid="tab-pnl"]').trigger('click')
+    expect(w.get('[data-testid="compact-view"]').element.style.display).toBe('')
+    expect(w.get('[data-testid="full-view"]').element.style.display).toBe('none')
+    await w.get('[data-testid="full-table-switch"]').setValue(true)
+    expect(w.get('[data-testid="full-view"]').element.style.display).toBe('')
     expect(w.findAll('[data-testid="col-head"]').length).toBe(real.table.columns.length)
+    expect(w.findAll('[data-testid="col-head"]').map((h) => h.attributes('data-col'))).toEqual(ids(real.table.columns))
+    expect(w.get('[data-testid="full-view"]').find('[data-testid="advanced-details"]').exists()).toBe(true) // Bid/Ask under the full table
     expect(real.table.columns.map((c) => c.id)).toContain('iv')
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(true)
     expect(w.findAll('[data-testid="adv-bid"]').length).toBe(real.leg_quotes.length)
-    expect(w.find('[data-testid="strategy-header"]').find('button').exists()).toBe(false)
+    expect(w.find('[data-testid="strategy-header"]').exists()).toBe(false) // polish 1: the NIFTY pill is gone
     expect(w.find('[data-testid^="ux-"]').exists()).toBe(false)
     expect(w.find('[data-testid="strategy-builder"]').attributes(LEVEL_ATTR)).toBeUndefined()
     w.unmount()
@@ -87,7 +95,7 @@ describe('ADR-168: one full builder screen, no level switch', () => {
   })
   it('attack 4: no Guided, Standard or Advanced level text in the header or the details heading', async () => {
     const w = await openBuilder({})
-    const header = w.find('[data-testid="strategy-header"]').text()
+    const header = w.find('[data-testid="strategy-builder"]').text()
     const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
     expect(heading).toBe('Details: bid and ask per leg')
     for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
@@ -258,7 +266,7 @@ describe('REQ-077 AC-9: with no live data the page shows At Expiry from the user
     expect(w.find('[data-testid="numbers"]').exists()).toBe(true)
     expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
     expect(w.find('[data-testid="centre-label"]').text()).toContain('22,800')
-    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="underlying-spot"]').text()).toBe('—') // W-193: the level card is gone; the spot is in the underlying bar
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
     expect(w.find('[data-testid="footer-valuation"]').exists()).toBe(false)
     expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)

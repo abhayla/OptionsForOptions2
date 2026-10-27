@@ -4,6 +4,7 @@
      server's `controls` said so, and is disabled with the server's reason otherwise; a click emits only the control and its
      direction. No strike, total or reason is built here (ADR-008; finding browser-infers-a-server-permission). -->
 <script setup>
+import Tooltip from "@/components/common/Tooltip.vue";
 import { shiftText } from "@/lib/legEdit";
 
 defineProps({
@@ -19,26 +20,17 @@ const STEPPERS = [
 </script>
 
 <template>
-  <div
-    class="mt-2 flex flex-wrap items-start gap-4"
-    data-testid="strategy-controls"
-    role="group"
-    aria-label="Strike Controls"
-  >
-    <span class="text-ink-muted">Strike Controls</span>
+  <div data-testid="strategy-controls" role="group" aria-label="Strike Controls">
+  <div class="flex flex-wrap items-center gap-y-2 whitespace-nowrap sm:flex-nowrap sm:divide-x sm:divide-line">
+    <span class="sr-only">Strike Controls</span>
     <div
       v-for="c in STEPPERS"
       :key="c.id"
-      class="flex flex-col"
+      class="flex items-center gap-2 pr-3 sm:px-3 sm:first:pl-0"
       :data-testid="`control-${c.id}`"
     >
-      <span class="text-ink-muted"
-        >{{ c.label
-        }}<span v-if="c.id === 'shift'" data-testid="shift-total">
-          {{ shiftText(controls.shiftTotal) }}</span
-        ></span
-      >
-      <span class="flex gap-1">
+      <span class="text-ink-muted">{{ c.label }}</span>
+      <span class="flex items-center gap-1">
         <button
           type="button"
           class="rounded border border-line px-2"
@@ -50,6 +42,7 @@ const STEPPERS = [
         >
           -
         </button>
+        <span v-if="c.id === 'shift'" class="num min-w-[2ch] text-center" data-testid="shift-total">{{ shiftText(controls.shiftTotal) }}</span>
         <button
           type="button"
           class="rounded border border-line px-2"
@@ -62,12 +55,26 @@ const STEPPERS = [
           +
         </button>
       </span>
+      <Tooltip
+        v-if="!controls[c.id]"
+        :text="controls.reasons[c.id]"
+        :label="`Why ${c.label} is off`"
+      />
       <span
         v-if="!controls[c.id]"
-        class="max-w-xs text-ink-muted"
+        class="sr-only"
         :data-testid="`${c.id}-reason`"
         >{{ controls.reasons[c.id] }}</span
       >
     </div>
+  </div>
+  <p
+    v-for="c in STEPPERS.filter((x) => !controls[x.id])"
+    :key="c.id"
+    class="mt-1 whitespace-normal text-xs text-ink-muted"
+    :data-testid="`${c.id}-reason-visible`"
+  >
+    {{ c.label }}: {{ controls.reasons[c.id] }}
+  </p>
   </div>
 </template>

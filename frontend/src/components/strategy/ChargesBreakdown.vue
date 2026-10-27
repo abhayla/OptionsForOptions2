@@ -5,6 +5,7 @@
 <script setup>
 import { ref } from "vue";
 import FigureHint from "@/components/common/FigureHint.vue";
+import Modal from "@/components/common/Modal.vue";
 
 defineProps({
   breakdown: { type: Object, required: true }, // charges_breakdown as sent; the parent draws nothing when it is null
@@ -35,43 +36,46 @@ const ROWS = [
       </button>
       <FigureHint id="charges" />
     </div>
-    <section
-      v-if="open"
-      id="charges-panel"
-      class="mt-2 rounded border border-line bg-surface p-3 min-w-0 break-words"
-      data-testid="charges-panel"
-    >
-      <h3 class="text-sm font-medium" data-testid="charges-label">
-        Charges and taxes ({{ breakdown.label }})
-      </h3>
-      <p class="text-xs text-ink-muted">
-        Entering and leaving every leg at its planned price. The payoff curves
-        and the table are before these charges.
-      </p>
-      <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <div
-          v-for="row in ROWS"
-          :key="row.key"
-          :data-testid="'charges-' + row.key"
-        >
-          <dt class="text-xs text-ink-muted">{{ row.label }}</dt>
-          <dd>Rs {{ breakdown[row.key] }}</dd>
-        </div>
-      </dl>
-      <p class="mt-2 text-sm font-medium" data-testid="charges-total">
-        Total Rs {{ breakdown.total }}
-      </p>
-      <!-- ADR-167 (4): the server's exercise-STT sentence (rate and condition, no amount); outside the total, only when sent -->
-      <p
-        v-if="breakdown.exercise_stt_note"
-        class="mt-1 text-xs text-ink-muted"
-        data-testid="charges-exercise-stt"
+    <!-- W-192 UI-107 / screen 022: the breakdown opens in the shared Modal - total at top, one row per component, then
+         the server's estimate label and rates date as footnotes. -->
+    <Modal :open="open" title="Charges and taxes" @close="open = false">
+      <section
+        id="charges-panel"
+        class="min-w-0 break-words"
+        data-testid="charges-panel"
       >
-        {{ breakdown.exercise_stt_note }}
-      </p>
-      <p class="text-xs text-ink-muted" data-testid="charges-rates-date">
-        Rates read on {{ breakdown.rates_read_on }}
-      </p>
-    </section>
+        <p
+          class="text-lg font-semibold text-ink"
+          data-testid="charges-total"
+        >Total Rs {{ breakdown.total }}</p>
+        <dl class="mt-3 divide-y divide-line border-y border-line text-sm">
+          <div
+            v-for="row in ROWS"
+            :key="row.key"
+            class="flex items-center justify-between gap-4 py-2"
+            :data-testid="'charges-' + row.key"
+          >
+            <dt class="text-ink-muted">{{ row.label }}</dt>
+            <dd class="tabular-nums">Rs {{ breakdown[row.key] }}</dd>
+          </div>
+        </dl>
+        <!-- ADR-167 (4): the server's exercise-STT sentence (rate and condition, no amount); outside the total, only when sent -->
+        <p
+          v-if="breakdown.exercise_stt_note"
+          class="mt-2 text-xs text-ink-muted"
+          data-testid="charges-exercise-stt"
+        >
+          {{ breakdown.exercise_stt_note }}
+        </p>
+        <p class="mt-3 text-xs text-ink-muted">
+          <span data-testid="charges-label">Charges and taxes ({{ breakdown.label }})</span>: entering and leaving every
+          leg at its planned price. The payoff curves and the table are before
+          these charges.
+        </p>
+        <p class="text-xs text-ink-muted" data-testid="charges-rates-date">
+          Rates read on {{ breakdown.rates_read_on }}
+        </p>
+      </section>
+    </Modal>
   </div>
 </template>

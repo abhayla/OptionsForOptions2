@@ -72,6 +72,15 @@ describe('the history panel (REQ-070 AC-3, AC-5)', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('W-192 UI-108: inside the History drawer it has no toggle, reads the history once on mount and lists it', async () => {
+    answers['GET /strategies/5/history'] = { entries: [entry(1, SUMMARY_1)] }
+    const w = mount(ActivityPanel, { props: { current, inDrawer: true } })
+    await flushPromises()
+    expect(w.find('[data-testid="activity-toggle"]').exists()).toBe(false)
+    expect(calls.filter((c) => c.url === '/strategies/5/history')).toHaveLength(1)
+    expect(w.findAll('[data-testid="activity-entry"]').map((r) => r.attributes('data-seq'))).toEqual(['1'])
+  })
+
   it('lists entries newest first with the server summary text, unchanged', async () => {
     answers['GET /strategies/5/history'] = { entries: [entry(1, SUMMARY_1), entry(2, SUMMARY_2, { contract_id: 2381961 })] }
     answers['GET /strategies/5'] = strategyOut(3)
@@ -232,10 +241,12 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     const w = mount(SaveDraftBar, { props: { legs: [], current: null } })
     await flushPromises()
     const rows = w.findAll('[data-testid="saved-draft-row"]')
-    expect(rows[0].find('[data-testid="delete-5"]').exists()).toBe(true)
-    for (const [i, id] of [[1, 6], [2, 7]]) {
-      expect(rows[i].find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
-      expect(rows[i].get('[data-testid="delete-refused"]').text()).toBe(DELETE_REFUSED_TEXT)
+    const rowOf = (id) => rows.find((r) => r.text().includes(`S${id}`))
+    expect(rowOf(5).find('[data-testid="delete-5"]').exists()).toBe(true)
+    for (const id of [6, 7]) {
+      const row = rowOf(id)
+      expect(row.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
+      expect(row.get('[data-testid="delete-refused"]').text()).toBe(DELETE_REFUSED_TEXT)
     }
   })
 

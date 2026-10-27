@@ -13,7 +13,8 @@ describe('underlyings', () => {
   it('is the same list the leg picker exports', () => {
     expect(FROM_PICKER).toBe(UNDERLYINGS)
   })
-  it.each(['src/pages/OptionChainPage.vue', 'src/components/strategy/ReadyMadePanel.vue'])(
+  // W-192 UI-111: the Ready-made tab's underlying select moved to the Builder's Region A, so the page carries the import
+  it.each(['src/pages/OptionChainPage.vue', 'src/pages/StrategyBuilderPage.vue'])(
     '%s imports the list and does not retype it', (file) => {
       const text = readFileSync(file, 'utf8')
       expect(text).toContain("from '@/lib/underlyings'")

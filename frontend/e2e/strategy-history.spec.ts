@@ -5,6 +5,7 @@
 // the vitest tests and the 28b backend tests; there is no browser path that creates a plan row without sending a basket.
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
+import { openAddEdit, openMoreMenu } from './pages/builder.page'
 
 test.skip(process.env.E2E_DEV_CATALOGUE !== '1' && process.env.E2E_PINNED_CATALOGUE !== '1',
   'needs live contracts (#237): E2E_PINNED_CATALOGUE=1 in CI or E2E_DEV_CATALOGUE=1 against ofo_dev')
@@ -28,6 +29,7 @@ async function stubCapture(page: Page) {
 
 async function addLeg(page: Page, type: string, action: string, strikeIndex: number) {
   const rows = page.getByTestId('leg-row')
+  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
   await page.getByTestId('pick-type').selectOption(type)
   await expect(page.getByTestId('pick-strike')).toBeEnabled()
@@ -44,6 +46,7 @@ async function addLeg(page: Page, type: string, action: string, strikeIndex: num
 async function startAndSave(page: Page, name: string) {
   await stubCapture(page)
   await page.goto(`${URL}/strategy/builder?rules_ref=${TAG}`)
+  await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1)
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
     (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)
@@ -64,7 +67,8 @@ test('save, add a leg, save, open the history, Restore: the two legs come back',
   await page.getByTestId('save-draft').click()
   await expect(page.getByTestId('save-undo')).toBeVisible({ timeout: 20000 }) // REQ-070 AC-4: the save changed the strategy
   await expect(page.getByTestId('activity-body')).toHaveCount(0) // AC-5: closed until opened
-  await page.getByTestId('activity-toggle').click()
+  await openMoreMenu(page)
+  await page.getByTestId('menu-activity').click() // W-192 UI-108: History opens the right drawer, list open
   const entries = page.getByTestId('activity-entry')
   await expect(entries.first()).toBeVisible()
   await entries.first().getByRole('button', { name: 'Restore' }).click()

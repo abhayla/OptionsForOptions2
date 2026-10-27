@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (188)
+## Decisions (191)
 
-- Older decisions: 148 rows, ADR-1..ADR-151 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-152 2026-10-21: For every user-facing feature triaged in the 2026-10-21 master register, the default is to behave t… [refines ADR-033]
-- ADR-153 2026-10-21: SPEC CHANGE to ADR-009 for stop-loss and conditional exits only. [refines ADR-009; refines ADR-053]
-- ADR-154 2026-10-21: Intent, no spend. [refines ADR-100]
+- Older decisions: 151 rows, ADR-1..ADR-154 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-155 2026-10-21: SPEC CHANGE to ADR-027. [refines ADR-027]
 - ADR-156 2026-10-21: Following ADR-152, these six user-facing features are specified now as Sensibull has them, and none… [refines ADR-055; refines REQ-063]
 - ADR-157 2026-10-21: SPEC CHANGE to ADR-001. [refines ADR-001]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
 - ADR-191 2026-10-26: (1) The project opts in to the kit's docs-only CI test list: `.claude/project/ci-docs-only-tests.tx… [amends ADR-187 (5); amends ADR-189]
 - ADR-192 2026-10-26: When Save As pre-fills its name box and "<name> copy" would be longer than 20 characters (ADR-183),… [amends REQ-134]
+- ADR-193 2026-10-26: (1) Scope: every screen the spec already has (Strategy Builder and its leg picker, option chain, po… [refines ADR-152; extends ADR-173 from behaviour t…]
+- ADR-194 2026-10-26: In the Strategy Builder's P&L Table tab: (1) the default view is a compact per-leg table like Sensi… [amends REQ-035 AC-1 and AC-7; refines ADR-008 sec…]
+- ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
 
 ## Requirements (131)
 

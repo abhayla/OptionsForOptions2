@@ -385,7 +385,7 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     expect(state(w)).toBe('from-entries')
     expect(w.find('[data-testid="status-label"]').text()).toBe(AC5)
     expect(w.find('[data-testid="output-label"]').text()).toBe(FROM_YOUR_PRICES)
-    expect(w.find('[data-testid="spot-level"]').text()).toBe('—')
+    expect(w.find('[data-testid="underlying-spot"]').text()).toBe('—') // W-193: the level card is gone; the spot is in the underlying bar
     expect(w.find('[data-testid="advanced-details"]').exists()).toBe(false)
     expect(w.find('[data-testid="state-not-connected"]').exists()).toBe(false)
     w.unmount()
@@ -728,7 +728,9 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     expect(w.text()).not.toContain('LEG-EDIT REPLY (at_expiry)')
     expect(newer.signal.aborted).toBe(false)
-    expect(w.find('[data-testid="numbers"]').exists()).toBe(false) // no numbers drawn while the matching ones are awaited
+    // AC-4 (combined check F): while the matching numbers are awaited the previous block stays mounted, marked updating,
+    // never as current; the leg-edit reply's numbers are not drawn (asserted above)
+    expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('true')
     expect(executeWaits(w)).toBe(true)
     newer.answer(estimatedBody('OUTCOME estimated_now (old legs)', 'NSE_FO:44625'))
     await flushPromises()

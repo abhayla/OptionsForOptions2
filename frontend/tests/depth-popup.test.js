@@ -54,7 +54,11 @@ describe('depth popup content (AC-7)', () => {
     await flushPromises()
     expect(calls).toEqual(['/leg-picker/depth?instrument_id=NSE_FO%3A44002'])
     const rows = w.findAll('[data-testid="depth-level"]').map((r) => r.findAll('td').map((c) => c.text()))
-    expect(rows).toEqual(LEVELS.map(([bp, bq], i) => [String(bq), bp, ASKS[i][0], String(ASKS[i][1])]))
+    // W-192 UI-115: BIDS | QTY | OFFERS | QTY (Sensibull S-024)
+    expect(rows).toEqual(LEVELS.map(([bp, bq], i) => [bp, String(bq), ASKS[i][0], String(ASKS[i][1])]))
+    // I-11: every value is its own padded cell, so bid, ask and quantity never print run together
+    expect(w.findAll('[data-testid="depth-level"] td').every((c) => c.classes().includes('px-3'))).toBe(true)
+    expect(w.findAll('[data-testid="depth-table"] th').map((c) => c.text())).toEqual(['Bids', 'Qty', 'Offers', 'Qty'])
     expect(rows).toHaveLength(5)
     expect([t(w, 'depth-open').text(), t(w, 'depth-high').text(), t(w, 'depth-low').text(), t(w, 'depth-prev-close').text()]).toEqual(['140.00', '158.90', '131.40', '139.20'])
     expect(t(w, 'depth-last-trade').text()).toBe('8 Oct 2026, 09:20:09 IST')

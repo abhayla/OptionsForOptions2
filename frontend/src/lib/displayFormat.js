@@ -103,8 +103,30 @@ export function istClock(iso) {
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
 }
 
+/** Review 3 (REQ-077 AC-1): a captured price's caption. "captured 10:35:12" when the capture is on today's India date,
+ *  else "captured 21 Oct 2026, 10:35:12 IST"; null when the time is missing or unreadable. `now` is only the clock used to
+ *  name today (an ISO instant; the browser clock when omitted): no number is computed from it. */
+export function capturedCaption(iso, now = new Date().toISOString()) {
+  const t = istTime(iso)
+  if (t === TIME_UNAVAILABLE) return null
+  const today = istTime(now)
+  const day = (x) => x.slice(0, x.indexOf(','))
+  return day(t) === day(today) ? `captured ${t.slice(-12, -4)}` : `captured ${t}`
+}
+
 /** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
  *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
 export function maxLine(summary, side) {
   return summary?.[`max_${side}_unlimited`] ? 'Unlimited' : summary?.[`max_${side}`] ?? '-'
+}
+
+/** REQ-081 AC-1 (screens 012, 107): Indian-style thousands separators on the server's money TEXT: '68007.07' ->
+ *  '68,007.07', '-17436.25' -> '-17,436.25', 'Rs 1234567.5' -> 'Rs 12,34,567.5'. Display only: the digits are regrouped as
+ *  text, never read as numbers (ADR-008); text with no 4-or-more-digit whole part comes back as it was. */
+export function groupMoney(text) {
+  if (typeof text !== 'string') return text
+  return text.replace(/(?<![\d.,])(\d{4,})(?![\d,])/g, (whole) => {
+    const rest = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')
+    return `${rest},${whole.slice(-3)}`
+  })
 }

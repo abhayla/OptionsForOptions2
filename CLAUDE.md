@@ -12,6 +12,10 @@ OptionsForOptions2: NIFTY/SENSEX options strategy platform (`spec/vision/vision.
    screen numbers; never copy its images into this public repo). Broker, orders or market data: first
    `D:\Abhay\Ventures\competitors\multi-broker-architecture\2026-10-21\INDEX.md`.
 
+## Commands (rest in the runbook)
+- Pre-push: `python tools/ci_local.py`. Domain test: `python -m pytest tests/<file>.py -k <name>`.
+- DB test, one file only (host serves prod): `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/<file>.py`
+
 ## Hard rules
 - Every order belongs to a strategy; no standalone order entry (ADR-002).
 - One engine owns every P&L/payoff number; money is exact decimal, never float (ADR-008).

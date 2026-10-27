@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { echoSeq } from './support/echoSeq'
+import { openFullTable } from './pages/builder.page'
 
 const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor.json', import.meta.url)), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
@@ -45,6 +46,7 @@ test('AC-2: a dropped live socket reads reconnecting at once, shows no old price
   await page.goto(`/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(DRAFT) })}`)
   const builder = page.getByTestId('strategy-builder')
   await expect(builder).toHaveAttribute('data-live', 'live')
+  await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   await expect(page.getByTestId('strategy-table')).toBeVisible()
   await expect(page.getByTestId('live-reconnecting')).toHaveCount(0)
 

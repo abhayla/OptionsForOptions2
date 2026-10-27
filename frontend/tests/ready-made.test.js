@@ -202,3 +202,34 @@ describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the opt
     expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '2026-11-03'])
   })
 })
+
+describe('W-192 UI-111: the Ready-made tab layout (chips, expiry on the right, 4-per-row cards, Region A underlying)', () => {
+  it('has no underlying select of its own and reads the underlying Region A passes', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }] })
+    router.push('/')
+    await router.isReady()
+    const w = mount(ReadyMadePanel, { props: { legs: [], underlying: 'SENSEX' }, global: { plugins: [router] } })
+    await flushPromises()
+    expect(w.find('[data-testid="rm-underlying"]').exists()).toBe(false)
+    expect(gets).toContain('/catalogue/SENSEX/expiries')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    expect(posts[0]).toEqual(['/strategies/load-template', { underlying: 'SENSEX', template_id: 'bull_call_spread', expiry: '2026-10-27' }])
+    gets.length = 0
+    await w.setProps({ underlying: 'NIFTY' })
+    await flushPromises()
+    expect(gets).toContain('/catalogue/NIFTY/expiries')
+  })
+
+  it('shows the four view chips with the selected one accent-filled, and the shape cards in a 4-per-row grid by name', async () => {
+    const w = await panel()
+    const chips = VIEW_GROUPS.map((g) => w.get(`[data-testid="rm-group-${g.key}"]`))
+    expect(chips.map((c) => c.text())).toEqual(['Bullish', 'Bearish', 'Neutral', 'Other'])
+    expect(chips[0].attributes('aria-pressed')).toBe('true')
+    expect(chips[0].classes()).toContain('bg-accent')
+    expect(chips[1].classes()).not.toContain('bg-accent')
+    await chips[2].trigger('click')
+    expect(w.get('[data-testid="rm-group-neutral"]').classes()).toContain('bg-accent')
+    expect(w.get('[data-testid="rm-templates"]').classes()).toContain('sm:grid-cols-4')
+    expect(w.get('[data-testid="rm-template-iron_condor"]').text()).toBe('Iron Condor')
+  })
+})

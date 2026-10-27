@@ -1,0 +1,166 @@
+// W-194 (ADR-193 Region F, ADR-194; REQ-035 AC-1, AC-2, AC-7 as amended): the builder's tabbed chart card, mounted
+// on a REAL outcome reply (tests/fixtures/outcome-condor.json, NIFTY 13-Oct iron condor). Every expected string is read
+// from that file. Covers: the compact P&L view is the default; the Full table switch shows every AC-2 column in the
+// reply's order; no Total row when the reply sent none (no browser sum); hover snaps to the levels the server sent;
+// the Payoff Table view; the Greeks and Strategy chart empty states.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount } from '@vue/test-utils'
+import real from './fixtures/outcome-condor.json'
+import money from './fixtures/outcome-money-condor.json'
+
+const drawn = vi.hoisted(() => [])
+vi.mock('chart.js/auto', () => ({ default: class { constructor(_ctx, config) { drawn.push(config) } destroy() {} } }))
+import ChartCard from '@/components/strategy/ChartCard.vue'
+import { compactRows, greekRows, payoffLevelRows } from '@/lib/chartCard'
+
+const t = (w, id) => w.find(`[data-testid="${id}"]`)
+const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
+const shown = (w, id) => t(w, id).element.style.display !== 'none'
+const card = (table = real.table, extra = {}) =>
+  mount(ChartCard, { attachTo: document.body, props: { points: real.payoff.points, spot: real.spot_level, table, ...extra } })
+const AC2_ORDER = ['leg', 'action', 'instrument', 'expiry', 'strike', 'quantity', 'entry_price', 'ltp', 'entry_value', 'current_value',
+  'unrealized_pnl', 'pnl_percent', 'iv', 'delta', 'gamma', 'theta', 'vega']
+const withoutTotal = { ...real.table, rows: real.table.rows.filter((r) => r.row_id !== 'TOTAL') }
+
+beforeEach(() => { drawn.length = 0 })
+
+describe('ADR-194 (1): the P&L Table tab opens compact (core)', () => {
+  it('the card opens on Payoff; the P&L Table tab shows the compact view, the full table hidden behind the switch', async () => {
+    const w = card()
+    expect(t(w, 'tab-payoff').attributes('aria-selected')).toBe('true')
+    expect(shown(w, 'panel-payoff')).toBe(true)
+    await t(w, 'tab-pnl').trigger('click')
+    expect(shown(w, 'panel-pnl')).toBe(true)
+    expect(shown(w, 'compact-view')).toBe(true)
+    expect(shown(w, 'full-view')).toBe(false)
+    expect(t(w, 'full-table-switch').element.checked).toBe(false)
+    expect(all(w, 'compact-head').map((h) => h.text())).toEqual(['Entry', 'LTP', 'P&L', 'P&L %'])
+    w.unmount()
+  })
+
+  it('one row per leg plus the reply TOTAL row, every cell the reply display string', () => {
+    const w = card()
+    const rows = all(w, 'compact-row')
+    expect(rows.map((r) => r.attributes('data-row'))).toEqual(real.table.rows.map((r) => r.row_id))
+    for (const row of real.table.rows) {
+      const tr = w.find(`[data-testid="compact-row"][data-row="${row.row_id}"]`)
+      for (const id of ['entry_price', 'ltp', 'unrealized_pnl', 'pnl_percent']) {
+        expect(tr.find(`[data-field="${id}"]`).text()).toBe(row.cells[id].display)
+      }
+      if (row.row_id !== 'TOTAL') {
+        const text = tr.text()
+        for (const id of ['quantity', 'expiry', 'strike', 'instrument']) expect(text).toContain(row.cells[id].display)
+        expect(tr.find('[data-testid="chip"]').text()).toBe(row.cells.action.value === 'BUY' ? 'B' : 'S')
+      }
+    }
+    expect(w.find('[data-row="TOTAL"]').text()).toContain('Total')
+    w.unmount()
+  })
+
+  it('no browser sum: a reply without a TOTAL row shows no Total row (and the Payoff Table shows its empty state)', () => {
+    const w = card(withoutTotal)
+    expect(w.find('[data-testid="compact-row"][data-row="TOTAL"]').exists()).toBe(false)
+    expect(all(w, 'compact-row')).toHaveLength(withoutTotal.rows.length)
+    expect(w.text()).not.toContain('Total')
+    expect(t(w, 'payoff-table-empty').exists()).toBe(true)
+    expect(payoffLevelRows(withoutTotal)).toBeNull()
+    w.unmount()
+  })
+})
+
+describe('ADR-194 (3) / REQ-035 AC-2: the Full table switch shows the REQ-035 table unchanged', () => {
+  it('every AC-2 column in the reply order, the heading pair, sticky left columns, Details under it', async () => {
+    const w = card(real.table, {})
+    await t(w, 'tab-pnl').trigger('click')
+    await t(w, 'full-table-switch').setValue(true)
+    expect(shown(w, 'full-view')).toBe(true)
+    expect(shown(w, 'compact-view')).toBe(false)
+    const heads = all(w, 'col-head')
+    expect(heads.map((h) => h.attributes('data-col'))).toEqual(real.table.columns.map((c) => c.id))
+    expect(heads.map((h) => h.text())).toEqual(real.table.columns.map((c) => c.label))
+    const fixed = real.table.columns.filter((c) => !c.is_scenario_level).map((c) => c.id)
+    expect(fixed).toEqual([...AC2_ORDER, 'lower_be', 'upper_be', 'status'])
+    expect(t(w, 'scenario-caption-left').exists()).toBe(false) // this reply sent no heading pair: none is made up
+    const m = card(money.table)
+    await t(m, 'full-table-switch').setValue(true)
+    expect(t(m, 'scenario-caption-left').text()).toBe(money.table.scenario_heading[0])
+    expect(t(m, 'scenario-caption-right').text()).toBe(money.table.scenario_heading[1])
+    expect(all(m, 'col-head').map((h) => h.attributes('data-col'))).toEqual(money.table.columns.map((c) => c.id))
+    m.unmount()
+    expect(heads.slice(0, 3).every((h) => h.classes().includes('sticky-col'))).toBe(true)
+    await t(w, 'full-table-switch').setValue(false)
+    expect(shown(w, 'compact-view')).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('Payoff tab: Graph and Table (UI-121, REQ-137 kept separate)', () => {
+  it('hover snaps to the levels the server sent: only sent points are drawn, nearest-on-x, tooltip = the sent strings', () => {
+    const w = card()
+    expect(drawn).toHaveLength(1)
+    const cfg = drawn[0]
+    expect(cfg.options.interaction).toEqual({ mode: 'nearest', axis: 'x', intersect: false })
+    for (const ds of cfg.data.datasets) expect(ds.data.map((d) => d.x)).toEqual(real.payoff.points.map((p) => Number(p.level)))
+    real.payoff.points.forEach((p, i) => {
+      expect(cfg.options.plugins.tooltip.callbacks.title([{ dataIndex: i }])).toBe('Index level: ' + p.level)
+      expect(cfg.options.plugins.tooltip.callbacks.label({ dataIndex: i })).toBe('P/L: ₹' + p.pnl)
+    })
+    expect(cfg.plugins.map((p) => p.id)).toContain('spotLine')
+    expect(t(w, 'payoff-legend-spot').text()).toContain(real.spot_level)
+    expect(t(w, 'payoff-graph').text()).not.toContain('%') // the reply carries no percent from spot, so none is shown
+    w.unmount()
+  })
+
+  it('the Table sub-tab lists each sent level with the TOTAL row value, the CURRENT level highlighted', async () => {
+    const w = card()
+    await t(w, 'tab-table').trigger('click')
+    expect(shown(w, 'payoff-table')).toBe(true)
+    expect(shown(w, 'payoff-graph')).toBe(false)
+    const total = real.table.rows.find((r) => r.row_id === 'TOTAL')
+    const levels = real.table.columns.filter((c) => c.is_scenario_level)
+    const rows = all(w, 'payoff-table-row')
+    expect(rows).toHaveLength(levels.length)
+    rows.forEach((r, i) => {
+      expect(r.find('[data-testid="payoff-table-level"]').text()).toBe(levels[i].label)
+      expect(r.find('[data-testid="payoff-table-pnl"]').text()).toBe(total.cells[levels[i].id].display)
+      expect(r.attributes('data-current')).toBe((levels[i].markers ?? []).includes('CURRENT') ? 'true' : 'false')
+    })
+    expect(rows.filter((r) => r.attributes('data-current') === 'true')).toHaveLength(1)
+    w.unmount()
+  })
+})
+
+describe('Greeks and Strategy chart tabs', () => {
+  it('Greeks: per-leg Delta, Gamma, Theta, Vega, IV as sent', async () => {
+    const w = card()
+    await t(w, 'tab-greeks').trigger('click')
+    expect(all(w, 'greeks-head').map((h) => h.text())).toEqual(['Delta', 'Gamma', 'Theta', 'Vega', 'IV'])
+    for (const row of real.table.rows) {
+      const tr = w.find(`[data-testid="greeks-row"][data-row="${row.row_id}"]`)
+      for (const id of ['delta', 'gamma', 'theta', 'vega', 'iv']) expect(tr.find(`[data-field="${id}"]`).text()).toBe(row.cells[id].display)
+    }
+    w.unmount()
+  })
+
+  it('Greeks absent from the reply: the shared empty state, no placeholder numbers', () => {
+    const drop = new Set(['delta', 'gamma', 'theta', 'vega', 'iv'])
+    const noGreeks = { ...real.table, columns: real.table.columns.filter((c) => !drop.has(c.id)) }
+    expect(greekRows(noGreeks)).toBeNull()
+    const w = card(noGreeks)
+    expect(t(w, 'greeks-empty').exists()).toBe(true)
+    expect(t(w, 'greeks-table').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('Strategy chart: an empty state (REQ-091 held)', async () => {
+    const w = card()
+    await t(w, 'tab-strategy-chart').trigger('click')
+    expect(shown(w, 'panel-strategy-chart')).toBe(true)
+    expect(t(w, 'strategy-chart-empty').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('a reply table without the compact columns gives no compact rows (the full table stays one switch away)', () => {
+    expect(compactRows({ columns: [], rows: [] })).toBeNull()
+  })
+})

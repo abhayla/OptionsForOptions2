@@ -7,29 +7,35 @@
      W-148 (REQ-076): leg rows with -/+, multiplier, tick; each edit is one POST /strategies/leg-edit and its reply is drawn.
      States: loading, computed, stale (computed with a labelled leg), not-connected, unpriced (legs, none priced), left-out,
      refused, error, no-draft.
+     W-192 (ADR-193 UI study b.1 + Revision 1, ADR-195): two columns at 1100 px and up. Left (572 px, min 480, sticky, own
+     scroll): Region A underlying bar, Region B strategy card (LegList) with its action row, Region C bottom tabs (inside
+     SaveDraftBar), Region D prices stamp. Right: the existing state panels and numbers blocks, unchanged (PR-2b/PR-2c restyle
+     them). W-193 (PR-2b): the summary card (Region E) heads the numbers, the Important info note sits under it.
+     Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import StrategyTable from '@/components/strategy/StrategyTable.vue'
-import PayoffChart from '@/components/strategy/PayoffChart.vue'
+import ChartCard from '@/components/strategy/ChartCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
-import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
-import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import Icon from '@/components/common/Icon.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
+import { UNDERLYINGS } from '@/lib/underlyings'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
+import Drawer from '@/components/common/Drawer.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -124,6 +130,9 @@ async function load() {
   const fallback = socketDropped
   const sentKey = inputsKey()
   // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
+  // Review 2: numbers already on screen stay mounted (marked updating) while the new answer is worked out, so the
+  // scenario switch keeps focus, the page does not jump and the chart is not rebuilt.
+  keepNumbers.value = showNumbers.value
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
@@ -378,12 +387,47 @@ async function editLeg(edit) {
   }
 }
 const picker = ref(null)
+// W-195 (ADR-193 UI-200): the leg picker is the left slide-in drawer, opened by Add/Edit or the empty state's buttons; the
+// inline add-leg form is gone from the left column. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover.
+const pickerOpen = ref(false)
+const settingsOpen = ref(false)
+const settingsRoot = ref(null)
+const settingsButton = ref(null)
+async function closeSettings() {
+  if (!settingsOpen.value) return
+  settingsOpen.value = false
+  await nextTick()
+  settingsButton.value?.focus?.()
+}
+useOutsideClose(() => settingsOpen.value, () => settingsRoot.value, closeSettings)
+const legUnit = ref('lots')
 // Edit / Reprice on a leg row: the picker's own edit form for that leg (same handler, same requests as before)
 const openInPicker = (i) => {
   const leg = legs.value[i]
-  if (leg) picker.value?.startEdit(leg)
+  if (!leg) return
+  pickerOpen.value = true
+  picker.value?.startEdit(leg)
 }
-const focusPicker = () => document.querySelector('[data-testid="leg-picker"]')?.scrollIntoView?.()
+const focusPicker = () => {
+  pickerOpen.value = true
+}
+// W-195 review 7: "Pick from Option Chain" is not a second Add leg: it opens the drawer on the Strikes tab
+const pickFromChain = () => {
+  picker.value?.showStrikes()
+  pickerOpen.value = true
+}
+// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
+// existing tracking block (right column)
+const historyOpen = ref(false)
+const showHistory = () => {
+  historyOpen.value = true
+}
+// a restore from the drawer opens that configuration through the one open path and closes the drawer
+const restoreFromHistory = (legsIn, id, revision, name) => {
+  historyOpen.value = false
+  openSaved(legsIn, id, revision, name)
+}
+const goToTracking = () => document.querySelector('[data-testid="tracking-panel"]')?.scrollIntoView?.()
 // AC-4: Execute stays disabled, with its reason, until the latest outcome and edit reply has arrived
 const refusal = computed(() => executeRefusal(legs.value) ?? (updating.value ? EXECUTE_WAITS_FOR_LATEST : null))
 const setChoice = (next) => {
@@ -397,8 +441,19 @@ onBeforeUnmount(() => {
 })
 
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
-const showNumbers = computed(() => ['computed', 'stale', 'from-entries'].includes(state.value) && data.value?.table)
+// W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
+const chartTab = ref('payoff')
+const chartPayoffView = ref('graph')
+const chartFullTable = ref(false)
+// Review 2: true while a reload runs over numbers that were on screen when it started (load() sets it); any other state
+// change draws its own block, so this only matters during 'loading'.
+const keepNumbers = ref(false)
+const showNumbers = computed(() => (['computed', 'stale', 'from-entries'].includes(state.value) || (state.value === 'loading' && keepNumbers.value)) && !!data.value?.table)
+const keptWhileLoading = computed(() => state.value === 'loading' && showNumbers.value)
+// Review 2: the summary card's Reward/Risk or Risk/Reward choice, owned here so a recompute never resets it
+const ratioFlipped = ref(false)
 const fromEntries = computed(() => state.value === 'from-entries')
+const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
 const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
@@ -432,113 +487,186 @@ const pricesStamp = computed(() => {
 
 <template>
   <section data-testid="strategy-builder" :data-state="state" :data-live="live.status.value">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
-    <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
+    <!-- W-193 (UI-005): the visible title block is gone (the top bar breadcrumb names the page); the heading stays for screen
+         readers. The planning sentence moved into the Important info note under the summary card. -->
+    <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
 
     <MarketClosedBanner v-if="data?.market_closed" class="mt-2" :prices-at="data.last_price_at" />
-    <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
-
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <LegPicker ref="picker" :legs="legs" :show-leg-list="false" @update:legs="setLegs" />
-    <ReadyMadePanel :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted" />
-    <ActivityPanel v-if="openStrategy" :current="openStrategy" @open="openSaved" />
-    <ErrorMessage v-if="openError" class="mt-2" :parts="openError" compact prefix="open-error" data-testid="open-error" />
-    <LegList
-      :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
-      :undo-offered="undoHeld !== null"
-      @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="focusPicker" @clear-all="clearAll" @undo-clear="undoClear"
-    />
+    <div class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">
+      <div
+        class="flex min-w-0 flex-col gap-4 max-[1099px]:contents min-[1100px]:sticky min-[1100px]:top-[72px] min-[1100px]:max-h-[calc(100vh-88px)] min-[1100px]:self-start min-[1100px]:overflow-y-auto"
+        data-testid="builder-left"
+      >
+        <!-- Region A (UI-100, UI-103): the underlying and the outcome reply's spot level; day change omitted until REQ-139 sends it -->
+        <div class="flex h-12 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm" data-testid="underlying-bar">
+          <span class="flex items-center gap-2">
+            <span v-if="headerUnderlying" class="font-semibold" data-testid="underlying-name">{{ headerUnderlying }}</span>
+            <!-- an empty builder chooses its underlying here (Region A owns it; the Ready-made tab reads it) -->
+            <select v-else v-model="pickUnderlying" class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="underlying-select">
+              <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
+            </select>
+            <span class="font-semibold" data-testid="underlying-spot" :title="data?.output_label || undefined">{{ data?.spot_level ?? NO_LIVE_LEVEL }}</span>
+          </span>
+          <span ref="settingsRoot" class="relative" @keydown.esc="closeSettings">
+            <button
+              ref="settingsButton" type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
+              data-testid="builder-settings" @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
+            ><Icon name="gear" :size="14" />Settings</button>
+            <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover">
+              <label class="flex items-center justify-between gap-2">Show legs as
+                <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
+                  <option value="lots">Lots</option>
+                  <option value="quantity">Quantity</option>
+                </select>
+              </label>
+            </span>
+          </span>
+        </div>
 
-    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :is-loading="state === 'loading'" />
-    <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
+        <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
+        <!-- Region B (UI-104..UI-108) -->
+        <LegList
+          :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
+          :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
+          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
+        >
+          <template #money>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
+          </template>
+        </LegList>
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+          <template #add-edit>
+            <button type="button" class="rounded border border-line px-3 py-1" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+          </template>
+          <template #menu="{ close }">
+            <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
+            <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
+          </template>
+          <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
+        </SaveDraftBar>
+        <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
+             it on a leg and a half-made selection survives a close -->
+        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist @close="pickerOpen = false">
+          <div data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" @update:legs="setLegs" @done="pickerOpen = false" /></div>
+        </Drawer>
+        <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
+          <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
+        </Drawer>
 
-    <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
-      Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
-    </p>
-
-    <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg above to start one.</p>
-
-    <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
-      <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
-      <p class="font-medium">Every leg is left out of the numbers.</p>
-      <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
-    </div>
-
-    <div v-else-if="state === 'error'" class="mt-4">
-      <ErrorMessage :parts="errorParts" data-testid="state-error" />
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
-      <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-      <ul class="mt-2 text-sm" data-testid="draft-legs">
-        <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
-      </ul>
-    </div>
-
-    <div v-else-if="state === 'refused'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-refused">
-      <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
-      <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
-      <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
-      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
-    </div>
-
-    <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''" :data-updating="updating ? 'true' : 'false'" data-testid="numbers">
-      <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
-        <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
-        <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
-        <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
-        <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
-        <ul v-if="staleLegs.length">
-          <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
-        </ul>
+        <!-- Region D (UI-150): the one prices stamp and the reconnecting line -->
+        <div class="text-xs text-ink-muted max-[1099px]:order-3" data-testid="stamp-line">
+          <p v-if="live.reconnecting.value" class="font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
+          <p v-if="showNumbers && pricesStamp" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
+        </div>
       </div>
 
-      <MoneySummary :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" />
-      <SummaryCards
-        class="mt-4"
-        :max-profit="maxProfit"
-        :max-loss="maxLoss"
-        :breakevens="data.summary.breakevens"
-        :what-can-i-make="data.summary.what_can_i_make"
-        :what-can-i-lose="data.summary.what_can_i_lose"
-        :where-i-start-losing="data.summary.where_do_i_start_losing"
-        :current-spot="data.spot_level ?? NO_LIVE_LEVEL"
-        :underlying="data.underlying"
-        :reward-risk="data.summary.reward_risk ?? null"
-        :reward-risk-reason="data.summary.reward_risk_reason ?? null"
-        :time-value="data.summary.time_value ?? null"
-        :intrinsic-value="data.summary.intrinsic_value ?? null"
-        :risk-reward="data.summary.risk_reward ?? null"
-        :value-label="data.summary.value_label ?? null"
-        :value-reason="data.summary.value_reason ?? null"
-        :funds-share="data.summary.funds_share ?? null"
-      />
-      <ProjectionsNote />
-      <p v-if="pricesStamp" class="px-4 text-xs text-ink-muted" data-testid="prices-as-of" :data-kind="pricesStamp.kind">{{ pricesStamp.text }}</p>
-      <PopFigure :pop="data.probability_of_profit ?? null" />
-      <MarginLine :margin="data.margin" :capabilities="capabilities" />
+      <div class="min-w-0 max-[1099px]:order-1" data-testid="builder-right">
+        <!-- W-194: with numbers on screen the scenario switch and range sit in the chart card header; without them
+             (loading, error, refused...) they stay here, so a pick that led to an error can still be changed back. -->
+        <ScenarioControls v-if="state !== 'no-draft' && !showNumbers" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
 
-      <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
-      <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
-      <StrategyTable
-        :table="data.table"
-        :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
-        :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
-      />
-      <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
-      <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-      <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
-      <StrategyFooter :current-spot="data.spot_level ?? ''" :underlying="data.underlying" />
+        <p v-if="state === 'loading' && keptWhileLoading" class="sr-only" data-testid="state-loading" data-kept="true">Working out the outcome...</p>
+        <p v-else-if="state === 'loading'" class="mt-4" data-testid="state-loading">
+          Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
+        </p>
+
+        <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg to start one.</p>
+
+        <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
+          <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
+          <p class="font-medium">Every leg is left out of the numbers.</p>
+          <p class="mt-1 text-sm text-ink-muted">Tick a leg to see the numbers.</p>
+        </div>
+
+        <div v-else-if="state === 'error'" class="mt-4">
+          <ErrorMessage :parts="errorParts" data-testid="state-error" />
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
+          <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <ul class="mt-2 text-sm" data-testid="draft-legs">
+            <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
+          </ul>
+        </div>
+
+        <div v-else-if="state === 'refused'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-refused">
+          <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
+          <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
+          <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+        </div>
+
+        <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
+          <!-- UI study Region E: the data-health strip at the top of the summary. W-193 (I-9): the data label (for example
+               "estimated from spot") is no longer a bare floating line: it is named here as the price data label (ADR-061:
+               never silent) and is also the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
+          <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[13px]" data-testid="data-health">
+            <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
+            <p v-if="data.output_label"><span class="text-ink-muted">Price data: </span><span data-testid="output-label">{{ data.output_label }}</span></p>
+            <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
+            <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
+            <ul v-if="staleLegs.length">
+              <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
+            </ul>
+          </div>
+
+          <SummaryCards
+            v-model:flipped="ratioFlipped"
+            class="mt-4"
+            :max-profit="maxProfit"
+            :max-loss="maxLoss"
+            :breakevens="data.summary.breakevens"
+            :what-can-i-make="data.summary.what_can_i_make"
+            :what-can-i-lose="data.summary.what_can_i_lose"
+            :where-i-start-losing="data.summary.where_do_i_start_losing"
+            :reward-risk="data.summary.reward_risk ?? null"
+            :reward-risk-reason="data.summary.reward_risk_reason ?? null"
+            :time-value="data.summary.time_value ?? null"
+            :intrinsic-value="data.summary.intrinsic_value ?? null"
+            :risk-reward="data.summary.risk_reward ?? null"
+            :value-label="data.summary.value_label ?? null"
+            :value-reason="data.summary.value_reason ?? null"
+            :funds-share="data.summary.funds_share ?? null"
+          >
+            <template #pop><PopFigure :pop="data.probability_of_profit ?? null" /></template>
+            <template #margin><MarginLine :margin="data.margin" :capabilities="capabilities" /></template>
+          </SummaryCards>
+          <ProjectionsNote />
+
+          <!-- W-194 (ADR-193 Region F, ADR-194): the tabbed chart card. The scenario switch and range sit in its header
+               (they drive the graph and the full table); the full REQ-035 table and its Bid/Ask Details are on the
+               P&L Table tab behind the Full table switch. -->
+          <ChartCard
+            v-model:tab="chartTab"
+            v-model:payoff-view="chartPayoffView"
+            v-model:full-table="chartFullTable"
+            :points="data.payoff.points"
+            :spot="data.spot_level ?? ''"
+            :table="data.table"
+            :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+            :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+          >
+            <template #controls>
+              <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
+            </template>
+            <template #details>
+              <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
+            </template>
+          </ChartCard>
+          <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
+          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
+        </div>
+      </div>
     </div>
   </section>
 </template>
