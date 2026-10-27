@@ -61,8 +61,8 @@ def _cd_target(words: list[str]) -> str | None:
 
 def _git_push(words: list[str]):
     """(dir options, push args) when the step is a git push, else None."""
-    from _route_common import head  # noqa: PLC0415
     import gate_before_commit as g  # noqa: PLC0415
+    from _route_common import head  # noqa: PLC0415
 
     if head(words) != "git":
         return None
@@ -129,32 +129,33 @@ def decide(tool_name: str, tool_input: dict, cwd: str | None = None) -> str | No
     for words in core_steps(command, tool_name.lower() == "powershell"):
         if head(words) in CD_WORDS:
             target = _cd_target(words)
-            if target:
-                current = _join(current, target)
+            current = _join(current, target) if target else current
             continue
-        found = _git_push(words)
-        if found is None:
-            continue
-        dir_opts, args = found
-        if _exempt_push(args):
-            continue
-        directory = current
-        for d in dir_opts:
-            directory = _join(directory, d)
-        sha = _head_sha(directory)
-        if sha is None:
-            continue  # not a repository / git failed: fail open
-        if ORCH_DIR not in sys.path:
-            sys.path.insert(0, ORCH_DIR)
-        try:
-            import prepush  # noqa: PLC0415
-
-            marked = prepush.has_marker(directory, sha)
-        except Exception:  # noqa: BLE001 - missing or broken prepush module: fail open
-            return None
-        if not marked:
-            return MESSAGE.format(short=sha[:7])
+        reason = _judge_push(words, current)
+        if reason:
+            return reason
     return None
+
+
+def _judge_push(words: list[str], current: str) -> str | None:
+    found = _git_push(words)
+    if found is None or _exempt_push(found[1]):
+        return None
+    directory = current
+    for d in found[0]:
+        directory = _join(directory, d)
+    sha = _head_sha(directory)
+    if sha is None:
+        return None  # not a repository / git failed: fail open
+    if ORCH_DIR not in sys.path:
+        sys.path.insert(0, ORCH_DIR)
+    try:
+        import prepush  # noqa: PLC0415
+
+        marked = prepush.has_marker(directory, sha)
+    except Exception:  # noqa: BLE001 - missing or broken prepush module: fail open
+        return None
+    return None if marked else MESSAGE.format(short=sha[:7])
 
 
 def main() -> int:

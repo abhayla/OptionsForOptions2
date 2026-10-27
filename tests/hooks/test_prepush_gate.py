@@ -16,6 +16,7 @@ import prepush  # noqa: E402
 import prepush_gate as pg  # noqa: E402
 
 REFUSED_WORD = "BLOCKED by prepush_gate"
+REFUSED_RC = 2
 
 
 def git(repo, *args):
@@ -192,7 +193,7 @@ def run_hook(payload, text=None, cwd=REPO):
 def test_subprocess_exit_codes(repo):
     payload = {"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD"}, "cwd": str(repo)}
     refused = run_hook(payload)
-    assert refused.returncode == 2
+    assert refused.returncode == REFUSED_RC
     assert REFUSED_WORD in refused.stderr
     mark(repo)
     assert run_hook(payload).returncode == 0

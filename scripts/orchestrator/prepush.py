@@ -1,4 +1,4 @@
-"""prepush.py [--full] [--repo PATH]: the project's whole pre-push list on one commit, and the marker that lets it be pushed.
+"""prepush.py [--full] [--repo PATH]: the whole pre-push list on one commit, and the marker that lets it be pushed.
 
 Runs, in order, every step even when an earlier one fails (so one run shows everything that is red):
   ci_local (the kit's ci.yml mirror; --full is passed through), ruff_ratchet, coverage --check, alembic guard
@@ -19,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -87,7 +87,7 @@ def tree_is_clean(repo) -> bool:
 def write_marker(repo, sha, results) -> str:
     path = marker_path(repo, sha)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    body = {"sha": sha, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    body = {"sha": sha, "at": datetime.now(UTC).isoformat(timespec="seconds"),
             "steps": [{"name": n, "rc": rc, "seconds": s} for n, rc, s, _ in results]}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:

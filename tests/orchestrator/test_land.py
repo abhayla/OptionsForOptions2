@@ -54,11 +54,13 @@ class Fake:
         return [c for c in self.calls if all(w in " ".join(c) for w in words)]
 
 
-def run(fake, tmp_path, capsys, reviewed_sha=SHA, marker=True, skip_prepush=""):
+def run(fake, tmp_path, capsys, reviewed_sha=SHA, **opts):
+    """opts: marker (default True: the pre-push marker exists), skip_prepush (default: no skip)."""
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
+    marker = opts.get("marker", True)
     env = land.Env(runner=fake, sleep=lambda s: None, tmp_dir=str(tmp_path), marker_check=lambda wt: marker)
-    rc = land.land("wt", "title", str(body), env, reviewed_sha=reviewed_sha, skip_prepush=skip_prepush)
+    rc = land.land("wt", "title", str(body), env, reviewed_sha=reviewed_sha, skip_prepush=opts.get("skip_prepush", ""))
     return rc, capsys.readouterr().out
 
 
