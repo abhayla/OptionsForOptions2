@@ -1114,10 +1114,10 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
     expect(named.every((c) => c.url.includes('expiry=2026-10-27'))).toBe(true) // the ISO date, never the label
   })
 
-  it('a reply with no day count shows the date as sent', async () => {
+  it('a reply with no day count shows the date alone, never raw ISO (REQ-148 AC-2)', async () => {
     const w = mountPicker()
     await flushPromises()
-    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['2026-10-13', '2026-10-27'])
+    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['13 Oct', '27 Oct']) // REQ-148 AC-2: never raw ISO
   })
 
   it('the Futures tab rows and forward rows take their label from the expiries reply', async () => {
