@@ -101,10 +101,8 @@ describe('Payoff tab: Graph and Table (UI-121, REQ-137 kept separate)', () => {
     const cfg = drawn[0]
     expect(cfg.options.interaction).toEqual({ mode: 'nearest', axis: 'x', intersect: false })
     for (const ds of cfg.data.datasets) expect(ds.data.map((d) => d.x)).toEqual(real.payoff.points.map((p) => Number(p.level)))
-    real.payoff.points.forEach((p, i) => {
-      expect(cfg.options.plugins.tooltip.callbacks.title([{ dataIndex: i }])).toBe('Index level: ' + p.level)
-      expect(cfg.options.plugins.tooltip.callbacks.label({ dataIndex: i })).toBe('P/L: ₹' + p.pnl)
-    })
+    // G-051: the canvas tooltip is off; the DOM tooltip (tests/payoff-hover.test.js) shows the sent strings
+    expect(cfg.options.plugins.tooltip).toEqual({ enabled: false })
     expect(cfg.plugins.map((p) => p.id)).toContain('spotLine')
     expect(t(w, 'payoff-legend-spot').text()).toContain(real.spot_level)
     expect(t(w, 'payoff-graph').text()).not.toContain('%') // the reply carries no percent from spot, so none is shown
