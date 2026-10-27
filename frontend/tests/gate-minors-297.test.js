@@ -1,7 +1,7 @@
 // Issue 297 items 1 and 4 (REQ-067 AC-4, ADR-072, ADR-086). The answer is the real push recorded from the live
 // websocket on 2026-10-16 (iron condor, 4 legs with no live quote; ofo-kite-ticks/2026-10-16/outcome).
 import { describe, expect, it, vi } from 'vitest'
-import { strikeLabel } from '@/lib/displayFormat'
+import { expiryWithDays, strikeLabel } from '@/lib/displayFormat'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -44,7 +44,7 @@ describe('item 1: a leg opened from a link is named once the catalogue answer is
     const rows = w.findAll('[data-testid="leg-row"]')
     expect(rows).toHaveLength(4)
     expect(rows.map((r) => [r.find('[data-testid="leg-expiry"]').text(), r.find('[data-testid="leg-strike"]').text(), r.find('[data-testid="leg-type"]').text()]))
-      .toEqual(real.legs.map((l) => [l.expiry, strikeLabel(l.strike), l.instrument]))
+      .toEqual(real.legs.map((l) => [expiryWithDays(l.expiry, l.days_to_expiry), strikeLabel(l.strike), l.instrument]))
     expect(w.text()).not.toContain('Contract details not available')
     w.unmount()
   })

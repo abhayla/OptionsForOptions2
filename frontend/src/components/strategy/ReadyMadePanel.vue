@@ -14,6 +14,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
+import { instrumentId } from '@/lib/legPicker'
 import { QUICK_PICK_DISTANCES, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
 
 const props = defineProps({
@@ -52,16 +53,47 @@ async function start() {
   }
 }
 
+let loadSeq = 0 // a newer load wins: an older reply landing late is dropped
+
+/** ONE planned-entry call for every loaded leg (GC-BM F-1; the same capture as a drawer pick). A leg the capture cannot
+ *  price stays unpriced with its reason (ADR-085): never a default, zero or old price. Returns { legs, failure }. */
+async function priced(legs, und) {
+  if (legs.length === 0) return { legs, failure: null }
+  const unpriced = (reason) => legs.map((l) => ({ ...l, reason_code: reason, checked_at: null }))
+  try {
+    const res = await api.post('/strategies/planned-entry', { underlying: und, instrument_ids: legs.map((l) => l.instrument_id) })
+    const entries = res?.data?.entries
+    if (!Array.isArray(entries)) return { legs: unpriced('capture_failed'), failure: null }
+    return {
+      failure: null,
+      legs: legs.map((l) => {
+        const found = entries.find((e) => instrumentId(e.exchange_segment, e.exchange_token) === l.instrument_id)
+        if (found && found.planned_entry != null && found.captured_at != null) {
+          return { ...l, planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source ?? l.source, reason_code: null, checked_at: res.data.answered_at ?? null }
+        }
+        return { ...l, reason_code: found?.reason_code ?? 'no_live_price', checked_at: res.data.answered_at ?? null }
+      }),
+    }
+  } catch (e) {
+    return { legs: unpriced('capture_failed'), failure: e?.parts ?? NEUTRAL_PARTS }
+  }
+}
+
 async function run(request) {
+  const mine = ++loadSeq
   busy.value = true
   try {
     const { data } = await api.post(request.path, request.body)
-    errorParts.value = null
-    emit('update:legs', data.legs.map((leg, i) => builderLeg(leg, data.underlying, i)))
+    const loaded = data.legs.map((leg, i) => builderLeg(leg, data.underlying, i))
+    const { legs, failure } = await priced(loaded, data.underlying)
+    if (mine !== loadSeq) return
+    errorParts.value = failure
+    emit('update:legs', legs)
   } catch (e) {
+    if (mine !== loadSeq) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS // the server's catalogue message; the legs on screen stay as they are
   } finally {
-    busy.value = false
+    if (mine === loadSeq) busy.value = false
   }
 }
 
