@@ -79,9 +79,87 @@ describe('REQ-079 AC-2: the list by market view with an expiry picker', () => {
     expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['2026-10-27', '2026-11-03'])
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await flushPromises()
-    expect(posts).toEqual([['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }]])
+    expect(posts[0]).toEqual(['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }])
     const emitted = w.emitted('update:legs')[0][0]
     expect(emitted.map((l) => [l.action, l.instrument_id, l.lots, l.planned_entry])).toEqual([['BUY', 'NSE_FO:1', 1, null], ['SELL', 'NSE_FO:2', 1, null]])
+  })
+})
+
+const ENTRIES = (rows) => ({ data: { answered_at: 'now', entries: rows } })
+const E = (token, price) => ({ exchange_segment: 'NSE_FO', exchange_token: token, planned_entry: price, captured_at: price == null ? null : 'c1', source: 'ltp', reason_code: price == null ? 'no_live_price' : null })
+const PE = '/strategies/planned-entry'
+const planned = () => posts.filter((p) => p[0] === PE)
+const answer = (entries) => (url) => Promise.resolve(url === PE ? entries : { data: ANSWER })
+
+describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (REQ-079 AC-4, REQ-077 AC-1)', () => {
+  it('template load: one planned-entry call for all ids; legs carry entries and capture times', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', '80.00')]))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    expect(planned()).toEqual([[PE, { underlying: 'NIFTY', instrument_ids: ['NSE_FO:1', 'NSE_FO:2'] }]])
+    const out = w.emitted('update:legs')
+    expect(out.length).toBe(1)
+    expect(out[0][0].map((l) => [l.instrument_id, l.planned_entry, l.captured_at])).toEqual([['NSE_FO:1', '120.50', 'c1'], ['NSE_FO:2', '80.00', 'c1']])
+  })
+
+  it('quick pick: the same capture', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', '80.00')]))
+    const w = await panel()
+    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
+    await flushPromises()
+    expect(planned().length).toBe(1)
+    expect(w.emitted('update:legs')[0][0].map((l) => l.planned_entry)).toEqual(['120.50', '80.00'])
+  })
+
+  it('one id with no price: that leg unpriced with its reason, the others priced', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', null)]))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    const legs = w.emitted('update:legs')[0][0]
+    expect(legs.map((l) => l.planned_entry)).toEqual(['120.50', null])
+    expect(legs[1].captured_at).toBeNull()
+    expect(legs[1].reason_code).toBe('no_live_price')
+  })
+
+  it('capture call fails: legs still load unpriced and the server message is shown', async () => {
+    loadAnswer = (url) => (url === PE
+      ? Promise.reject({ message: 'x', status: 503, parts: { what_happened: 'Prices are not available.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+      : Promise.resolve({ data: ANSWER }))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    const legs = w.emitted('update:legs')[0][0]
+    expect(legs.length).toBe(2)
+    expect(legs.every((l) => l.planned_entry === null && l.reason_code === 'capture_failed')).toBe(true)
+    expect(w.get('[data-testid="rm-error"]').text()).toContain('Prices are not available.')
+  })
+
+  it('Replace -> Cancel: no load-template and no planned-entry request', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '1.00'), E('2', '2.00')]))
+    const w = await panel(TWO_LEGS)
+    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
+    await w.get('[data-testid="rm-replace-no"]').trigger('click')
+    await flushPromises()
+    expect(posts).toEqual([])
+  })
+
+  it('an older load that finishes after a newer one does not overwrite it', async () => {
+    let release
+    const slow = new Promise((r) => { release = r })
+    let n = 0
+    loadAnswer = (url) => {
+      if (url === PE) return Promise.resolve(ENTRIES([E('1', '5.00'), E('2', '6.00')]))
+      return ++n === 1 ? slow : Promise.resolve({ data: ANSWER })
+    }
+    const w = await panel()
+    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    release({ data: ANSWER })
+    await flushPromises()
+    expect(w.emitted('update:legs').length).toBe(1)
   })
 })
 
@@ -115,7 +193,7 @@ describe('REQ-079 AC-5: replace prompt', () => {
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await w.get('[data-testid="rm-replace-yes"]').trigger('click')
     await flushPromises()
-    expect(posts.length).toBe(1)
+    expect(posts.filter((p) => p[0] !== PE).length).toBe(1)
     expect(w.emitted('update:legs')[0][0].length).toBe(2)
   })
 
@@ -136,17 +214,17 @@ describe('REQ-079 AC-7: quick picks', () => {
     await w.get('[data-testid="rm-side-sell"]').setValue(true)
     await w.get('[data-testid="rm-strangle-100"]').trigger('click')
     await flushPromises()
-    expect(posts).toEqual([['/strategies/quick-pick', { underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-27' }]])
+    expect(posts[0]).toEqual(['/strategies/quick-pick', { underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-27' }])
     await w.get('[data-testid="rm-straddle"]').trigger('click')
     await flushPromises()
-    expect(posts[1][1]).toEqual({ underlying: 'NIFTY', kind: 'straddle', distance: 0, side: 'SELL', expiry: '2026-10-27' })
+    expect(posts.find((p) => p[1].kind === 'straddle')[1]).toEqual({ underlying: 'NIFTY', kind: 'straddle', distance: 0, side: 'SELL', expiry: '2026-10-27' })
   })
 })
 
 describe('REQ-079 AC-9: Open in Builder', () => {
   it('?template=<id> loads that template for the nearest expiry', async () => {
     await panel([], { template: 'bull_call_spread' })
-    expect(posts).toEqual([['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }]])
+    expect(posts[0]).toEqual(['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }])
   })
 })
 
@@ -193,7 +271,7 @@ describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the opt
     expect(opts.map((o) => o.element.value)).toEqual(['2026-10-27', '2026-11-03'])
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await flushPromises()
-    expect(posts.at(-1)[1].expiry).toBe('2026-10-27')
+    expect(posts.find((p) => p[0] === '/strategies/load-template')[1].expiry).toBe('2026-10-27')
   })
 
   it('expiry day shows Today (0 days); a null day count shows the date alone', async () => {
