@@ -32,6 +32,10 @@ for what the product does); each is written the turn it is given.
 | P8 | Builder Positions tab: list the user's Zerodha positions and load ticked legs into the builder (Sensibull catalogue line 122; REQ-104, REQ-044, REQ-061)? | **In, read-only**: REQ-104 import + grouping into a strategy + load into the builder, never attached without the user, no orders (ADR-165). New builder-sequence rows needed (about 2-3). ADR-196 (4) amended. | 2026-10-27 |
 | P9 | The builder's 4th bottom tab (Sensibull "Drafts"; ours "Tracked", REQ-109 row 53; row 54 REQ-140 profit/loss left) | **Keep Tracked, prove it**: the Tracked tab stays; row 53's live proof runs in this phase; row 54 comes with tracking / positions later. | 2026-10-27 |
 
+| P10 | P8 "Positions tab, read-only" clashes with REQ-104 AC-2/AC-3 (attach to a strategy, "reconciled at once (REQ-060)"; REQ-104 blocked behind REQ-061) - how does the tab work this phase? | **Analyse only**: list Zerodha positions; ticked ones load into the builder as a draft to analyse, entered at Zerodha's average price; nothing attached or saved as an app strategy, no reconciliation. REQ-104 attach/grouping and REQ-060/061 come with the orders phase. Needs a short new requirement first. ADR-196 (4) amended. | 2026-10-27 |
+
+| P11 | #583 I-5: after hours, may a new leg take its entry from the last close (Sensibull does)? | **"Same as sensibull"**: entries from the last close and every number (At Expiry, Estimated Now, Greeks, IV) from closing prices, under the ADR-177 banner with the close labelled. SPEC CHANGE to REQ-077 AC-9, written as ADR-197. Recommendation was "last close, labelled; Estimated Now and Greeks unavailable". | 2026-10-27 |
+
 Applied without a question (settled): POP (REQ-082) and ready-made shapes (REQ-079) are held by Q211, which the owner
 decided on 2026-09-29 is "not a blocker for building": built and shown in development, switched on in production after
 the compliance review. The Strategy chart (REQ-091, held for display rights) follows P5: a placeholder card.
@@ -49,4 +53,5 @@ Nothing outside this goal is started until it is done; the pre-push gate (owner'
 
 Settled by the spec, not asked: ADR-193 (scope = screens the spec has; Sensibull-only features go to the owner one by
 one); Q211 does not block building (owner 2026-09-29), so ready-made shapes are built; REQ-078 AC-1 sets the speed
-target; row 39 (REQ-089, manual P&L on traded strategies) stays outside this goal; strategy expiry per Q39 = C.
+target; row 39 (REQ-089, typed Manual P/L) was first left outside this goal, then brought IN by P3 (see P3 / P6);
+strategy expiry per Q39 = C.
