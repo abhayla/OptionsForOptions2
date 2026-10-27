@@ -32,10 +32,12 @@ export function strikeLabel(text) {
 }
 
 /** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser
- *  counts nothing: a missing or non-integer day count shows the date as it was sent (never a guessed number). */
+ *  counts nothing: a missing or non-integer day count shows the date alone, '9 Nov' (never a guessed number, and never
+ *  the raw '2026-11-09', REQ-148 AC-2); text that is not a date comes back as it was sent. */
 export function expiryWithDays(expiry, days) {
   const day = expiryText(expiry)
-  if (!Number.isInteger(days) || days < 0 || !day) return expiry ?? ''
+  if (!day) return expiry ?? ''
+  if (!Number.isInteger(days) || days < 0) return day
   return days === 0 ? 'Today (0 days)' : `${day} (${days} days)`
 }
 
@@ -125,8 +127,14 @@ export function capturedCaption(iso, now = new Date().toISOString()) {
 /** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
  *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
 export function maxLine(summary, side) {
-  return summary?.[`max_${side}_unlimited`] ? 'Unlimited' : summary?.[`max_${side}`] ?? '-'
+  if (!summary) return '-'
+  if (summary[`max_${side}_unlimited`]) return 'Unlimited'
+  // REQ-148 AC-4/AC-6 (G-065, ADR-143): the engine gave no single maximum (legs on more than one expiry); the reason is
+  // the summary's own sentence under the figure. Never '-', '0' or a number the browser made up.
+  return summary[`max_${side}`] ?? MAX_NOT_AVAILABLE
 }
+
+export const MAX_NOT_AVAILABLE = 'Not available'
 
 /** REQ-081 AC-1 (screens 012, 107): Indian-style thousands separators on the server's money TEXT: '68007.07' ->
  *  '68,007.07', '-17436.25' -> '-17,436.25', 'Rs 1234567.5' -> 'Rs 12,34,567.5'. Display only: the digits are regrouped as
