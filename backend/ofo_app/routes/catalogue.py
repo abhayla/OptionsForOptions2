@@ -16,7 +16,7 @@ import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from ofo.timeutil import days_to_expiry
+from ofo.timeutil import IST, SESSION_CLOSE, days_to_expiry
 
 from ofo_app import catalogue_picker as picker
 from ofo_app.api_models import ApiModel, Identifier, Money
@@ -36,6 +36,7 @@ class ExpiriesOut(ApiModel):
     underlying: Underlying
     expiries: list[datetime.date]
     expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
+    default_expiry: Optional[datetime.date] = None  # ADR-199 (4): the server's default; null when the list is empty
 
 
 class ContractOut(ApiModel):
@@ -64,8 +65,11 @@ async def expiries(underlying: str, db: Any = Depends(get_db),
                    today: datetime.date = Depends(get_today)) -> ExpiriesOut:
     require_supported(underlying)
     listed = await picker.pickable_expiries(db, underlying, today)
+    now = (await picker.judging_instant(db, today)).astimezone(IST)
+    closed = now.date() == today and now.time() >= SESSION_CLOSE  # ADR-199 (1): today's expiry is spent after 15:30 IST
+    usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
-        "underlying": underlying, "expiries": listed,
+        "underlying": underlying, "expiries": listed, "default_expiry": usable[0] if usable else None,
         "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
 
 

@@ -287,6 +287,22 @@ describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the opt
   })
 })
 
+describe('ADR-199 (4): the default expiry is the server\'s default_expiry, never list position', () => {
+  it('after the close on an expiry day the panel opens on the reply\'s default and loads a template for it', async () => {
+    expiryReply = { default_expiry: '2026-11-03' } // 27 Oct stays first in the list, but is spent
+    const w = await panel()
+    expect(w.get('[data-testid="rm-expiry"]').element.value).toBe('2026-11-03')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    expect(posts.find((p) => p[0] === '/strategies/load-template')[1].expiry).toBe('2026-11-03')
+  })
+
+  it('an older reply without the field falls back to the first listed expiry', async () => {
+    const w = await panel()
+    expect(w.get('[data-testid="rm-expiry"]').element.value).toBe('2026-10-27')
+  })
+})
+
 describe('W-192 UI-111: the Ready-made tab layout (chips, expiry on the right, 4-per-row cards, Region A underlying)', () => {
   it('has no underlying select of its own and reads the underlying Region A passes', async () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }] })

@@ -1098,6 +1098,23 @@ describe('REQ-080 futures tab (W-147)', () => {
   })
 })
 
+describe('ADR-199 (4): the drawer opens on the reply\'s default_expiry', () => {
+  it('with no legs it opens on default_expiry, not the first listed expiry', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+  })
+
+  it('with legs it opens on the legs\' expiry even when the default differs', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
+    const w = mountPicker(legs)
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-13')
+  })
+})
+
 describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s count; the value stays the ISO date)', () => {
   const DAYS = [{ expiry: '2026-10-13', days: 0 }, { expiry: '2026-10-27', days: 14 }]
   it('the expiry select shows "Today (0 days)" and "27 Oct (14 days)" and keeps ISO values', async () => {

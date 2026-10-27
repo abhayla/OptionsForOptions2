@@ -46,7 +46,8 @@ async function start() {
     expiries.value = reply?.expiries ?? []
     expiryDays.value = daysByExpiry(reply?.expiry_days)
     const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))?.expiry // the draft's own expiry, when it has legs
-    expiry.value = own ?? expiries.value[0] ?? ''
+    const server = expiries.value.includes(reply?.default_expiry) ? reply.default_expiry : null // ADR-199 (4): the server's default, never list position
+    expiry.value = own ?? server ?? expiries.value[0] ?? '' // an older reply without the field falls back to the first listed
     errorParts.value = null
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
