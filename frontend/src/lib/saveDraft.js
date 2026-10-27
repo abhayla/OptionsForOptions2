@@ -35,6 +35,14 @@ export const STRATEGY_NAME_DEFAULT = 'New Strategy'
 export const STRATEGY_NAME_MAX = 20
 export const SAVE_AS_SUFFIX = ' copy'
 
+/** ADR-192 (REQ-134 AC-2): the Save As pre-fill. The original name (the API's quotes stripped; the default when there is none)
+ *  is cut from its end, and trailing spaces dropped, so that the original part plus " copy" is 20 characters or fewer. */
+export function saveAsName(shown) {
+  const original = Array.from(plainName(shown) ?? STRATEGY_NAME_DEFAULT) // characters (code points), as the server counts
+  const room = STRATEGY_NAME_MAX - SAVE_AS_SUFFIX.length
+  return `${(original.length > room ? original.slice(0, room).join('').trimEnd() : original.join(''))}${SAVE_AS_SUFFIX}`
+}
+
 /** The API sends a name as the user's quoted words (ADR-003, template strategy_name_shown): "NIFTY Oct condor" arrives
  *  wrapped in one pair of double quotes. Strips exactly one outer pair for display and for prefilling a name field; inner
  *  quote marks stay ('"say "hi""' -> 'say "hi"'). A value not wrapped in a pair, or empty inside it, is returned as

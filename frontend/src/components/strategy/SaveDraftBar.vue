@@ -20,7 +20,7 @@ import { istTime } from '@/lib/displayFormat'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
-  SAVE_AS_SUFFIX, STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, strategyLabel,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -177,7 +177,7 @@ async function undoSave() {
 function saveAs() {
   if (!canSave.value || !props.current) return
   asking.value = 'save-as'
-  nameText.value = `${plainName(props.current.name) ?? STRATEGY_NAME_DEFAULT}${SAVE_AS_SUFFIX}`
+  nameText.value = saveAsName(props.current.name)
 }
 
 function renameOpen() {

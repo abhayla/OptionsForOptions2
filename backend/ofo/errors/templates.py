@@ -53,6 +53,16 @@ class MessageTemplate:
         object.__setattr__(self, "slots", MappingProxyType(dict(self.slots)))
 
 
+# REQ-055 AC-3 / ADR-094: the margin needed is OUR estimate (Zerodha's figure plus the BUY top-up), so the refusal
+# states the condition only and never Zerodha's verdict. One home for the three margin texts.
+MARGIN_SHORTFALL_IMPACT: str = (
+    "Funds are below the margin this plan needs (our estimate, including the premium up to your limit prices), "
+    "so the basket was not built."
+)
+MARGIN_SHORTFALL_EXECUTE_IMPACT: str = (
+    "Funds are below the margin this plan needs (our estimate), so it is not executed."
+)
+
 _TEMPLATES: tuple[MessageTemplate, ...] = (
     MessageTemplate(
         id="user_input_lot_size",
@@ -109,7 +119,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         error_class=ErrorClass.MARGIN,
         code="MARGIN_001",
         what_happened="Margin available {available} is below the {required} this strategy needs.",
-        impact="Zerodha would reject this order for insufficient margin.",
+        impact=MARGIN_SHORTFALL_EXECUTE_IMPACT,
         what_is_blocked="Execution of this strategy.",
         next_action="Add funds in Zerodha or reduce the quantity, then retry.",
         slots={"available": Money, "required": Money},
@@ -344,9 +354,9 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The orders could be rejected for insufficient margin.", _EXEC,
           "Check your margin in Zerodha, then try again."),
     _gate("gate_margin_insufficient", _MG, 102,
-          "Available margin {available} is less than the estimated {required} this strategy needs. Zerodha's figure "
-          "is final. No order has been submitted.",
-          "Zerodha would reject these orders for insufficient margin.", _EXEC,
+          "Available margin {available} is less than the estimated {required} this strategy needs. "
+          "No order has been submitted.",
+          MARGIN_SHORTFALL_EXECUTE_IMPACT, _EXEC,
           "Add funds in Zerodha or reduce the quantity, then try again.",
           {"available": Rupees, "required": Rupees}),
     _gate("gate_entitlement_unconfirmed", _EA, 101,
@@ -942,7 +952,7 @@ _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("margin_basket_insufficient", _MG, 201,
           "This strategy needs {required} of margin with the premium up to your limit prices (an estimate); "
           "{available} is available in your account.",
-          "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
+          MARGIN_SHORTFALL_IMPACT,
           "Building the Zerodha basket for this strategy.",
           MARGIN_SHORTFALL_NEXT_ACTION,
           {"available": DisplayRupees, "required": DisplayRupees}),
