@@ -666,17 +666,19 @@ def _iv_rows(rep):
     return {f.name: f for f in rep.figures if " iv (" in f.name}
 
 
-def test_c4_closed_reply_every_model_figure_matches_on_the_stated_basis():
+def test_f5_closed_old_server_reply_flags_exactly_the_stale_mid_ivs():
+    """F-5 detection (replaces C-4's "every model figure matches"): the recorded 17:13 reply (the OLD server: IV from
+    the stale mid at q = 0) now flags both IV rows - ours is the closing-price (LTP) IV - and nothing else among the
+    non-display figures (the Greeks and Estimated Now are priced with the reply's own IV, so they still match); the
+    stated pricing basis (spot fallback) still matches."""
     est, atx, before, after, fut = _closed()
     rep = run(est, atx, before, after, fut)
-    c = exact_counts(rep)
-    assert c[u.MISMATCH] == 0, [(f.name, f.ours, f.independent) for f in rep.figures
-                                 if f.verdict == u.MISMATCH and not is_display_row(f.name)][:5]
-    assert c[u.MATCH] > 100
-    ivs = _iv_rows(rep)
-    assert len(ivs) == 2 and all(f.verdict == u.MATCH for f in ivs.values())
+    bad = [f.name for f in rep.figures if f.verdict == u.MISMATCH and not is_display_row(f.name)]
+    assert sorted(bad) == sorted(_iv_rows(rep)) and len(bad) == 2, bad
     used = rep.data_rows["D-B35/36 iv basis"]["leg1"]
-    assert used["used"] == "mid, q=0 (spot fallback)" and used["stated_basis"] == "SPOT_FALLBACK"
+    assert used["used"] == "ltp, q=0 (spot fallback)" and used["stated_basis"] == "SPOT_FALLBACK"
+    assert used["reply_iv"] == "0.147800" and used["ours_mid_spot_q0"] == 0.1478  # the old figure = the stale mid
+    assert len([f for f in rep.figures if f.verdict == u.MATCH]) > 100
     basis = [f for f in rep.figures if f.name.startswith("pricing basis")]
     assert basis and all(f.verdict == u.MATCH for f in basis)
 
@@ -724,7 +726,9 @@ def _leg(ltp):
         ({"bid": "10", "ask": "12", "health": "available"}, "11.5", (11.0, "mid")),  # both sides live: mid
         ({"bid": "10", "ask": None, "health": "available"}, "11.5", (11.5, "ltp")),  # one side live: the LTP
         ({"bid": None, "ask": "12", "health": "available"}, "11.5", (11.5, "ltp")),
-        ({"bid": "10", "ask": "12", "health": "stale"}, "11.5", (11.0, "mid")),  # stale but two-sided: still the mid
+        ({"bid": "10", "ask": "12", "health": "stale"}, "11.5", (11.5, "ltp")),  # F-5: a stale book is no live side
+        ({"bid": "10", "ask": "12", "health": "delayed"}, "11.5", (11.5, "ltp")),
+        ({"bid": "10", "ask": "12", "health": "stale"}, None, (None, None)),  # stale book, no LTP: not checkable
         ({"bid": "0", "ask": "12", "health": "available"}, "11.5", (11.5, "ltp")),  # a 0 side is no live side
         ({"bid": "0", "ask": "0", "health": "stale"}, "11.5", (11.5, "ltp")),  # none live: the LTP
         ({"bid": "12", "ask": "10", "health": "available"}, "11.5", (11.5, "ltp")),  # crossed: the LTP
