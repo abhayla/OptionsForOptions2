@@ -232,6 +232,55 @@ describe('PaperStrategies: Paper exit', () => {
   })
 })
 
+describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
+  it('R1-5: each per-leg Exit button is named by its leg', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    const w = await show()
+    expect(t(w, 'exit-leg-48-0').attributes('aria-label')).toBe('Exit Buy 22300 PE 3 Nov')
+    expect(t(w, 'exit-leg-48-1').attributes('aria-label')).toBe('Exit Sell 22400 PE 3 Nov')
+  })
+  it('R1-4: a read that changes the list drops an open confirm whose leg is no longer open', async () => {
+    let reply = REAL_REPLY
+    answers['GET /tracking'] = () => Promise.resolve({ data: reply })
+    const w = await show()
+    await t(w, 'exit-leg-48-0').trigger('click')
+    expect(has(w, 'exit-confirm')).toBe(true)
+    const out = (i) => leg(i, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null })
+    reply = list(item({ legs: [out(0), leg(1), leg(2), leg(3)] }))
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'exit-confirm')).toBe(false)
+  })
+  it('R1-4: a failed read drops the confirm and the exit error; they do not come back with the next good read', async () => {
+    let fail = false
+    answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
+    answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
+    const w = await show()
+    await t(w, 'exit-leg-48-0').trigger('click')
+    await t(w, 'exit-confirm').trigger('click')
+    await flushPromises()
+    expect(has(w, 'paper-exit-error')).toBe(true)
+    await t(w, 'exit-leg-48-1').trigger('click')
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-group')).toBe(true)
+    expect(has(w, 'exit-confirm')).toBe(false)
+    expect(has(w, 'paper-exit-error')).toBe(false)
+  })
+  it('R1-4: Cancel clears that group\'s exit error', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
+    const w = await show()
+    await t(w, 'exit-leg-48-0').trigger('click')
+    await t(w, 'exit-confirm').trigger('click')
+    await flushPromises()
+    await t(w, 'exit-leg-48-1').trigger('click')
+    await t(w, 'exit-cancel').trigger('click')
+    expect(has(w, 'paper-exit-error')).toBe(false)
+  })
+})
+
 describe('lib/tracking readers', () => {
   it('readTracking reads EXITED with booked and unbooked', () => {
     const v = readTracking({ state: 'EXITED', paper_pnl: '55.00', booked: '55.00', unbooked: '0.00', legs: [], detections: [] })

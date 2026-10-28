@@ -72,9 +72,11 @@ async function load(id) {
   if (!id) return
   try {
     const { data } = await api.get(`/strategies/${id}/tracking`)
+    if (id !== props.savedId) return // R1-2: the user opened another strategy while this read was out
     status.value = 'tracked'
     view.value = readTracking(data)
   } catch (e) {
+    if (id !== props.savedId) return
     if (e?.status === 404) status.value = 'untracked'
     else failed(e)
   }

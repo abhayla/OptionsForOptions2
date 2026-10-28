@@ -39,7 +39,7 @@
                 <td>{{ l.entry }}</td>
                 <td>{{ l.exited ? `Exited at ${l.exitPrice}` : (l.current ?? '-') }}</td>
                 <td>
-                  <button v-if="!l.exited" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-leg-${g.id}-${l.index}`" :disabled="busy" @click="ask(g, [l.index])">Exit</button>
+                  <button v-if="!l.exited" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-leg-${g.id}-${l.index}`" :disabled="busy" :aria-label="`Exit ${l.action} ${strikeLabel(l.strike)} ${l.instrument} ${expiryText(l.expiry)}`" @click="ask(g, [l.index])">Exit</button>
                 </td>
               </tr>
             </tbody>
@@ -48,7 +48,7 @@
           <div v-if="confirm && confirm.id === g.id" class="mt-2 rounded bg-amber-50 p-2" role="group" aria-label="Confirm paper exit">
             <p data-testid="exit-confirm-text">Paper exit - no order is sent. Exit {{ confirm.names }} at the current paper price?</p>
             <button type="button" class="mr-2 rounded border border-line px-3 py-1" data-testid="exit-confirm" :disabled="busy" @click="doExit">Confirm paper exit</button>
-            <button type="button" class="rounded border border-line px-3 py-1" data-testid="exit-cancel" :disabled="busy" @click="confirm = null">Cancel</button>
+            <button type="button" class="rounded border border-line px-3 py-1" data-testid="exit-cancel" :disabled="busy" @click="cancelExit(g.id)">Cancel</button>
           </div>
           <p v-if="exitErrors[g.id]" class="mt-2 text-red-700" role="alert" data-testid="paper-exit-error">{{ exitErrors[g.id] }}</p>
         </template>
@@ -82,14 +82,18 @@ function show(data) {
     items.value = null
     errorParts.value = NEUTRAL_PARTS
   } else {
+    const before = items.value
     items.value = list.map((x, i) => readTrackingItem(x, i))
     errorParts.value = null
+    settle(before, items.value)
   }
   loading.value = false
 }
 // a failed read shows no figure: the old list is dropped, never left on screen as if current
 function fail(e) {
   items.value = null
+  confirm.value = null // R1-4: nothing is shown to confirm against, and no old exit error comes back with the next read
+  exitErrors.value = {}
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
   loading.value = false
 }
@@ -101,6 +105,29 @@ const { refresh, refreshNow } = usePaperRefresh({
   onError: fail,
 })
 onMounted(refresh)
+
+// R1-4: what a group's legs look like to an exit (index and exited state); a read that changes it ends the exit's open question
+const legSig = (g) => (g && g.readable ? g.legs.map((l) => `${l.index}:${l.exited ? 'x' : 'o'}`).join(',') : null)
+const namesOf = (g, indexes) => g.legs.filter((l) => indexes.includes(l.index)).map((l) => `${l.action} ${strikeLabel(l.strike)} ${l.instrument}`).join(', ')
+function settle(before, now) {
+  const c = confirm.value
+  if (c) {
+    const g = now.find((x) => x.id === c.id)
+    const stillOpen = g && g.readable && c.legs.every((i) => g.legs.some((l) => l.index === i && !l.exited)) && namesOf(g, c.legs) === c.names
+    if (!stillOpen) confirm.value = null
+  }
+  const kept = {}
+  for (const [id, text] of Object.entries(exitErrors.value)) {
+    const was = (before ?? []).find((x) => String(x.id) === id)
+    const is = now.find((x) => String(x.id) === id)
+    if (text && was && is && legSig(was) === legSig(is)) kept[id] = text // the group did not move: the refusal still stands
+  }
+  exitErrors.value = kept
+}
+function cancelExit(id) {
+  confirm.value = null
+  exitErrors.value = { ...exitErrors.value, [id]: '' }
+}
 
 const openLegs = (g) => g.legs.filter((l) => !l.exited).map((l) => l.index)
 

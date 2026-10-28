@@ -14,7 +14,7 @@
      Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -75,8 +75,8 @@ function readDraft() {
 
 // The picked legs. A `draft` query seeds them (each already carries its planned entry and capture time). Every leg is
 // canonicalized once here (W-073); a link with a leg that will not canonicalize is refused, never half-opened.
-const draftQuery = readDraft()
-const canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
+let draftQuery = readDraft()
+let canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
 const linkRefused = ref(draftQuery !== null && canonicalQueryLegs === null)
 function legsFromQuery() {
   if (!draftQuery || canonicalQueryLegs === null) return []
@@ -269,12 +269,35 @@ async function openFromUrl() {
   const before = legs.value
   try {
     const saved = await fetchSavedDraft(api, id)
+    if (String(route.query.strategy ?? '') !== id) return // F-4: the URL moved on while the read was out
     if (legs.value !== before) return // the user changed the legs while the read was out: never overwrite them
     openSaved(saved.legs, saved.id, saved.revision, saved.name)
   } catch (e) {
     openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
   }
 }
+// F-4: the page stays mounted when only the query changes (App.vue's router-view is unkeyed), so a new ?strategy= / ?draft= is
+// opened here through the same paths a fresh load uses. The ?strategy= the page itself writes after Save names the open strategy
+// already, so it is not read again. Unsaved edits are replaced, exactly as the Saved tab's Open does (openSaved, no prompt).
+watch(() => route.query.strategy, (v) => {
+  if (!v || String(openStrategy.value?.id) === String(v)) return
+  openError.value = null
+  openFromUrl()
+})
+watch(() => route.query.draft, (v) => {
+  if (!v) return // dropped from the URL by Save
+  draftQuery = readDraft()
+  canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
+  const refused = draftQuery !== null && canonicalQueryLegs === null
+  openStrategy.value = null
+  openError.value = null
+  setLegs(legsFromQuery())
+  if (refused) {
+    linkRefused.value = true
+    state.value = 'error'
+    errorParts.value = INVALID_LINK_PARTS
+  }
+})
 const setLegs = (next) => {
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
