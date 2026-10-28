@@ -106,8 +106,8 @@ Row ids are from the differences document; `*` = SPEC CHANGE (approved, ADR-204)
 | Step | Item | Rows | What | Tier | Proof | Status |
 |---|---|---|---|---|---|---|
 | 0 | read first | - | Read the list above; write the overlap list here (which steps share StrategyBuilderPage.vue / ChartCard / the summary block; what each reuses) | C | Overlap list in this file | DONE (section "Step 0") |
-| 1 | CORE: independent data checker | (confirms D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33) | A script in the repo (`scripts/checks/ui_data_check.py`), own Black-Scholes and payoff code, reads what the API/screen shows plus the market inputs it used, recomputes: summary (max profit/loss, breakevens with and without charges, reward/risk, net premium, time and intrinsic value on the spec's basis), payoff points at expiry and estimated-now, P&L table cells, Greeks per leg and total (per unit and per lot), Paper/tracking totals | A | Figure-by-figure table for 3 real strategies; each DATA row confirmed or cleared with numbers | Not started |
-| 2 | DATA fixes | D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33, D-C27, D-C31 + every mismatch step 1 finds | Defect-fix contract per class; money maths (A46, A47, C33) Tier A with an Opus review | A (money) / B | Checker green on the same 3 strategies + each fix re-read on the live screen | Not started |
+| 1 | CORE: independent data checker | (confirms D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33) | A script in the repo (`scripts/checks/ui_data_check.py`), own Black-Scholes and payoff code, reads what the API/screen shows plus the market inputs it used, recomputes: summary (max profit/loss, breakevens with and without charges, reward/risk, net premium, time and intrinsic value on the spec's basis), payoff points at expiry and estimated-now, P&L table cells, Greeks per leg and total (per unit and per lot), Paper/tracking totals | A | Figure-by-figure table for 3 real strategies; each DATA row confirmed or cleared with numbers | DONE (merge 9659e6f8; live run 13:40 IST; see "Step 1 result") |
+| 2 | DATA fixes | D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33, D-C27, D-C31 + every mismatch step 1 finds | Defect-fix contract per class; money maths (A46, A47, C33) Tier A with an Opus review | A (money) / B | Checker green on the same 3 strategies + each fix re-read on the live screen | In progress (2 builders: gcui-data-be, gcui-data-fe) |
 | 3 | Builder top half (Area A) | D-A01, D-A04, D-A06, D-A07, D-A08, D-A09, D-A11, D-A12, D-A14, D-A15, D-A16, D-A17, D-A19, D-A20, D-A21, D-A22, D-A28, D-A29, D-A30*, D-A31*, D-A32*, D-A33, D-A36, D-A37, D-A38, D-A40*, D-A41, D-A42, D-A43* | Header strip, legs panel (dot price-moved marker), controls, action row, summary block in Sensibull form (ADR-202); goal of D-A28: the payoff graph starts on the first screen at 1536 x 864 | B | vitest red first; screenshot pair per row group; above-the-fold check | Not started |
 | 4 | Graph and analysis (Area B) | D-B01, D-B02, D-B04, D-B05, D-B06, D-B08, D-B09, D-B10, D-B11, D-B12, D-B14, D-B15, D-B16, D-B17, D-B19, D-B20, D-B24, D-B25, D-B26, D-B28, D-B29, D-B30*, D-B31, D-B34, D-B37, D-B39, D-B41, D-B43, D-B45, D-B46, D-B47, D-B48, D-B49, D-B50* | Chart card, payoff (both curves on one chart, display-only), P&L table, Greeks (per unit + multiply toggles, IV in %), lower panel, tracking panel form; partial rows build only their "Match now" half | B (A where a number changes) | vitest red first; screenshot pairs | Not started |
 | 5 | Strategy Chart | D-B40* | ADR-203: strategy combined price vs index future over recent trading days from Kite historical candles on the owner's connection, legs combined by the one engine, data source and range labelled, one flag to switch it off; REQ-091 AC-1/AC-4/AC-7 texts and the AC-7 production-flag test updated to cite ADR-203 | A (new data path) | Core of this item first: one real fetch of candles for one leg + the index future, read back; then the chart on 2 real strategies, values spot-checked by the step-1 checker | Not started |
@@ -153,10 +153,33 @@ the strike drawer's OI (G-074); the Greeks multiply toggles (B31, B37) are one s
 Later (ADR-008). Parallel-safe sets: {ReadyMadePanel, PositionsPage} alongside step 3; everything else sequential
 2 -> 3 -> 4 -> 5 -> 6.
 
+## Step 1 result (core proven, 2026-10-28 13:40 IST, live)
+
+Checker `scripts/checks/ui_data_check.py` (own BSM, IV solver, parity forward, breakevens, charges; AST test: no `ofo`
+import; 31 tests; Tier A mutants 5/5 killed). Raw replies and tables in `D:\Abhay\scratch\gcui-checker\run1*` (private:
+they hold the funds figure). Counts match / mismatch / not checkable: debit spread (strategy 54) 126/0/0, its paper
+reply 3/0/0; iron condor 148/7/0; calendar 66/2/6 (no expiry payoff across two expiries, ADR-143; calendar Estimated Now
+checkable only to about Rs 80 because the reply does not carry the far-expiry forward).
+
+DATA rows, all CONFIRMED with numbers: D-A46 (shown breakeven 22,687.80 is on the pre-charges payoff, which is the spec
+basis, section 1/3; P&L at it incl. charges is -140.79; incl.-charges breakeven 22,689.97), D-A47 (needed = Zerodha's
+32,029.59 to the paisa; the sentence "With the premium" claims a premium is added that is not), D-B33/D-B38 (table P&L
+and Greek cells identical under view=at_expiry and view=estimated_now), D-B35 (iv sent as a fraction 0.160347), D-B36
+(Greeks per position: delta 40.7883 = 0.6277 x 65), D-B51 (planned 194.40/106.60 vs paper 193.70/106.35 -> two P&Ls,
+1,738.75 vs 1,768.00), D-C33 (23 Nov forward from spot 22,828.46 vs the traded 23 Nov future 22,819.00, 9.5 pts).
+
+Mismatches triaged against the spec: condor TOTAL P&L % (reply 2.4% = P&L / max loss) is the SPEC basis (REQ-035 Q233
+"TOTAL P&L % = unrealized P&L ÷ max loss") -> checker defect C-1; condor margin needed 60,429.35 vs broker 60,413.10 is
+the ADR-094 top-up -> checker must model it, C-2; charges total vs sum of shown parts (+0.02 condor, +0.01 calendar, GST
+on unrounded parts) -> real defect F-1.
+
 ## Found during the run
 
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
+| F-1 | 1 | Charges breakdown: condor total 263.15 vs parts 263.13; calendar GST 18.63 vs 18% of shown parts 18.64 | Class: every strategy's charges breakdown (and the max profit / max loss that include it) where a part rounds; RCA (to confirm in step 2): parts and GST computed unrounded, each shown rounded, total rounded once | | |
+| C-1 | 1 | Checker computed TOTAL P&L % on net entry value | Checker defect: spec basis is max loss (REQ-035 Q233) | | |
+| C-2 | 1 | Checker did not model the ADR-094 top-up in margin needed | Checker defect | | |
 
 ## Parked
 
