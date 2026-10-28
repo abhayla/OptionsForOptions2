@@ -11,6 +11,7 @@ import asyncio
 import json
 import pathlib
 import sys
+from decimal import ROUND_HALF_UP, Decimal
 from http import HTTPStatus
 
 import pytest
@@ -80,12 +81,36 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     _no_float(out)
 
 
+async def test_route_carries_the_whole_rupee_display_texts(replayed, monkeypatch) -> None:
+    """REQ-152 AC-1/AC-3 and REQ-153 AC-1 on the real route: the same recorded replay, the display text beside every
+    exact value (4754.75 -> +4,755; 8245.25 -> U+2212 8,245; the margin figures to whole rupees, Indian grouping)."""
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    [resp] = await _post(_body(replayed), replayed, source(Transport()))
+    out = resp.json()
+    s, m = out["summary"], out["margin"]
+    minus = chr(0x2212)
+    assert (s["max_profit"], s["max_profit_display"]) == ("4754.75", "+4,755")
+    assert (s["max_loss"], s["max_loss_display"]) == ("8245.25", f"{minus}8,245")
+    assert s["net_premium"]["amount_display"] is not None and "." not in s["net_premium"]["amount_display"]
+    assert s["time_value_display"].lstrip(f"+{minus}").replace(",", "").isdigit()
+    assert len(s["breakevens_display"]) == len(s["breakevens"])
+    for exact, shown in zip(s["breakevens"], s["breakevens_display"], strict=True):
+        assert shown.split(" (")[0].replace(",", "") == str(Decimal(exact).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        assert shown.endswith("%)")
+    assert (m["needed"], m["needed_display"]) == ("7065.50", "7,066")  # recorded basket + top-up; .50 rounds half-up
+    assert m["available"] == "671.50" and m["available_display"] == "672"
+    assert m["broker_needed_display"] == "6,409"
+
+
 @pytest.mark.parametrize("status", [HTTPStatus.SERVICE_UNAVAILABLE, HTTPStatus.TOO_MANY_REQUESTS])
 async def test_unreadable_margin_leaves_the_share_null_and_the_rupee_figures(replayed, monkeypatch, status) -> None:
     monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
     [resp] = await _post(_body(replayed), replayed, source(Transport(status=status)))
     s = resp.json()["summary"]
     assert s["funds_share"] is None and s["max_loss"] == "8245.25" and s["max_profit"] == "4754.75"
+    assert s["max_profit_display"] == "+4,755"  # the rupee display does not depend on the margin read
+    m = resp.json()["margin"]
+    assert (m["needed_display"], m["available_display"], m["broker_needed_display"]) == (None, None, None)
 
 
 async def test_no_session_and_no_provider_carry_no_funds_share(replayed) -> None:
