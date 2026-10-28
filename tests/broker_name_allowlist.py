@@ -292,7 +292,7 @@ LINES: dict[str, tuple[str, ...]] = {
         "const VIEW_ON_KITE = 'view on Kite'",
         '<p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>',
         '<p>Read from Zerodha at <span data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>',
-        'Zerodha shows no open positions, and none of your strategies holds any.',
+        '<EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
         'Zerodha: <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> units,',
         '(Zerodha shows <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> on this contract)',
         '<a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="underline" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>',
