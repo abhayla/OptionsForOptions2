@@ -131,6 +131,7 @@ def test_column_and_cell_texts_are_exact(replayed) -> None:
     assert total["cells"]["lower_be"]["display"] == "22,326.85" and total["cells"]["upper_be"]["display"] == "22,873.15"
     assert total["cells"]["status"] == {"value": None, "display": "—", "kind": "text",
                                         "reason": "no strategy health was given", "side": None, "per_unit": None,
+                                        "per_unit_display": None,
                                         "vendor": None}
     assert out["scenario"]["label"] == "At Expiry"
 

@@ -124,6 +124,7 @@ class Cell:
     reason: str | None = None
     vendor: Decimal | None = None
     per_unit: Decimal | None = None
+    per_unit_display: str | None = None  # Greek cells only: the per-unit text the browser prints (GC-UI round 2b)
     side: str | None = None  # TOTAL Entry Value only: "Cr" (net credit) or "Dr" (net debit); None otherwise
 
     def __post_init__(self) -> None:
@@ -213,13 +214,23 @@ def _percent_cell(value: Decimal | None, reason: str | None = None) -> Cell:
     return Cell(value, render_explanation("cell_percent", value=value), CellKind.PERCENT)
 
 
+def _display_number(value: Decimal, places: int) -> ExplanationText:
+    """The text of a number at its display precision: ROUND_HALF_UP, plain notation, no "-0.00" (the Amount slot)."""
+    return render_explanation("cell_number", value=value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
+
+
 def _greek_cell(position_value: Decimal | None, vendor: Decimal | None, per_unit_value: Decimal | None,
-                reason: str | None) -> Cell:
+                reason: str | None, *, places: int = 2, unrounded: Decimal | None = None) -> Cell:
+    """A Greek cell. ``display`` / ``per_unit_display`` are the texts the browser prints, at ``places`` decimals
+    (delta, theta, vega 2; gamma 4; REQ-084 AC-8, Sensibull sb-05); the position text is made from the UNROUNDED
+    position value when given, so it is rounded once."""
+    per_unit_text = None if per_unit_value is None else _display_number(per_unit_value, places)
     if position_value is None:
         return Cell(None, _dash(), CellKind.GREEK, reason=reason or _r("not_available"), vendor=vendor,
-                    per_unit=per_unit_value)
-    return Cell(position_value, render_explanation("cell_number", value=position_value), CellKind.GREEK,
-                vendor=vendor, per_unit=per_unit_value)
+                    per_unit=per_unit_value, per_unit_display=per_unit_text)
+    shown = position_value if unrounded is None else unrounded
+    return Cell(position_value, _display_number(shown, places), CellKind.GREEK,
+                vendor=vendor, per_unit=per_unit_value, per_unit_display=per_unit_text)
 
 
 def _quantity_cell(value: int) -> Cell:
@@ -282,7 +293,9 @@ def _iv_cell(leg: LegInput) -> Cell:
         return Cell(None, _dash(), CellKind.IV, reason=_r("fut_no_iv"))
     if leg.iv is None:
         return Cell(None, _dash(), CellKind.IV, reason=_r("no_iv"))
-    return Cell(leg.iv, render_explanation("cell_number", value=leg.iv), CellKind.IV)
+    # REQ-145 AC-3: the fraction as a percent, two decimals, half-up ("0.160347" -> "16.03%"); done here, not in the browser
+    percent = (leg.iv * 100).quantize(_PERCENT_STEP, rounding=ROUND_HALF_UP)
+    return Cell(leg.iv, render_explanation("cell_percent", value=percent), CellKind.IV)
 
 
 def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
@@ -325,16 +338,20 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
         ColumnId.IV: _iv_cell(leg),
         ColumnId.DELTA: _greek_cell(None if position is None else position.delta,
                                      None if vendor is None else vendor.delta,
-                                     None if per_unit is None else per_unit.delta, greek_reason),
+                                     None if per_unit is None else per_unit.delta, greek_reason,
+                                    places=2, unrounded=None if raw_position is None else raw_position.delta),
         ColumnId.GAMMA: _greek_cell(None if position is None else position.gamma,
                                      None if vendor is None else vendor.gamma,
-                                     None if per_unit is None else per_unit.gamma, greek_reason),
+                                     None if per_unit is None else per_unit.gamma, greek_reason,
+                                    places=4, unrounded=None if raw_position is None else raw_position.gamma),
         ColumnId.THETA: _greek_cell(None if position is None else position.theta,
                                      None if vendor is None else vendor.theta,
-                                     None if per_unit is None else per_unit.theta, greek_reason),
+                                     None if per_unit is None else per_unit.theta, greek_reason,
+                                    places=2, unrounded=None if raw_position is None else raw_position.theta),
         ColumnId.VEGA: _greek_cell(None if position is None else position.vega,
                                     None if vendor is None else vendor.vega,
-                                    None if per_unit is None else per_unit.vega, greek_reason),
+                                    None if per_unit is None else per_unit.vega, greek_reason,
+                                    places=2, unrounded=None if raw_position is None else raw_position.vega),
     }
     for level in level_columns:
         if scenario is None or not scenario.available or scenario.leg_rows is None:
@@ -417,10 +434,14 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
         ColumnId.UNREALIZED_PNL: _money(unrealized, ltp_reason),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
-        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason),
-        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, None, greek_reason),
-        ColumnId.THETA: _greek_cell(greek_values["theta"], None, None, greek_reason),
-        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, None, greek_reason),
+        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason, places=2,
+                                    unrounded=None if not every_leg_has_greeks else raw_totals["delta"]),
+        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, None, greek_reason, places=4,
+                                    unrounded=None if not every_leg_has_greeks else raw_totals["gamma"]),
+        ColumnId.THETA: _greek_cell(greek_values["theta"], None, None, greek_reason, places=2,
+                                    unrounded=None if not every_leg_has_greeks else raw_totals["theta"]),
+        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, None, greek_reason, places=2,
+                                    unrounded=None if not every_leg_has_greeks else raw_totals["vega"]),
     }
     for i, level in enumerate(level_columns):
         if scenario is None or not scenario.available or scenario.totals is None:
