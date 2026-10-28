@@ -258,6 +258,13 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
       L('return Math.max(h.area.left, Math.min(h.x - w / 2, h.area.right - w))', 'pixel clamp of the tooltip'),
       L('const startIndex = () => nearestIndex(props.spot ? Number(props.spot) : firstLevel())', 'index level, not money'),
       L("show(Math.max(0, Math.min(props.points.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))", 'array index clamp'),
+      // F-1 round 1: the wider operator pattern (- and +) and the bound/template expressions now reach these real drawing lines
+      L(':style="{ left: `${hovered.x}px`, top: `${hovered.area.top}px`, height: `${hovered.area.bottom - hovered.area.top}px` }"', 'pixel height of the hover guide line'),
+      L('<span data-testid="payoff-last">{{ points[points.length - 1]?.level }}</span>', 'array index of the last point, text shown as sent'),
+      L('const w = ctx.measureText(text).width + 8', 'pixel width of the hover label'),
+      L('ctx.fillText(text, x, top + 8)', 'pixel position of the hover label text'),
+      L('const span = lastLevel() - firstLevel()', 'index level range, not money'),
+      L('show(nearestIndex(levelAt(e.clientX - box().left)))', 'mouse pixel to canvas pixel'),
     ],
     [path.join('components', 'strategy', 'PnLCell.vue')]: [
       L('const v = Number(props.value)', 'colour intensity only; the text is the API display'),
@@ -265,19 +272,97 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
       L('const i = Math.min(Math.abs(v) / (Math.abs(Number(props.maxLoss)) || 1), 1)', 'colour intensity only'),
     ],
   }
-  const stripComments = (t) => t.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, '')
-  const MONEY_MATHS = [...BANNED, /[A-Za-z0-9_)\]]\s*[*/]\s*[A-Za-z0-9_(]/]
+  // A small lexer, not a regex pair: comments are removed only OUTSIDE strings; a quote-delimited string is blanked, except the
+  // value of a Vue directive attribute (:x="..", @x="..", v-x="..") and the ${...} parts of a template literal, which are
+  // code and are scanned. Both outputs keep every newline, so line N of `masked` is line N of `plain` (comments removed,
+  // strings intact: the text a NAMED_USES line is compared with). A construct it cannot close is reported in `errors`.
+  const DIRECTIVE_ATTR = /(?:^|\s)(?::[\w.:-]+|@[\w.:-]+|v-[\w.:-]+)=$/
+  const nl = (s) => s.replace(/[^\n]/g, '')
+  function lex(text) {
+    let plain = ''
+    let masked = ''
+    const errors = []
+    let i = 0
+    const skip = (open, close) => {
+      const end = text.indexOf(close, i + open.length)
+      const stop = end < 0 ? text.length : end + close.length
+      plain += nl(text.slice(i, stop))
+      masked += nl(text.slice(i, stop))
+      i = stop
+    }
+    while (i < text.length) {
+      const c = text[i]
+      if (text.startsWith('/*', i)) { skip('/*', '*/'); continue }
+      if (text.startsWith('<!--', i)) { skip('<!--', '-->'); continue }
+      if (text.startsWith('//', i)) { const e = text.indexOf('\n', i); i = e < 0 ? text.length : e; continue }
+      if (c === "'" || c === '"') {
+        let j = i + 1
+        while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1
+        if (text[j] === c) {
+          const seg = text.slice(i, j + 1)
+          const before = plain.slice(-60)
+          plain += seg
+          if (DIRECTIVE_ATTR.test(before)) masked += ' (' + lex(seg.slice(1, -1)).masked + ') '
+          else masked += "''"
+          i = j + 1
+          continue
+        }
+      }
+      if (c === '`') {
+        let j = i + 1
+        let m = '``'
+        while (j < text.length && text[j] !== '`') {
+          if (text[j] === '\\') { j += 2; continue }
+          if (text[j] === '$' && text[j + 1] === '{') {
+            let depth = 1
+            let k = j + 2
+            while (k < text.length && depth) { depth += text[k] === '{' ? 1 : text[k] === '}' ? -1 : 0; k++ }
+            if (depth) { errors.push('unclosed ${ in a template literal'); break }
+            const sub = lex(text.slice(j + 2, k - 1))
+            errors.push(...sub.errors)
+            m += ' (' + sub.masked + ') '
+            j = k
+            continue
+          }
+          if (text[j] === '\n') m += '\n'
+          j++
+        }
+        if (text[j] !== '`') { errors.push('unterminated template literal'); plain += text.slice(i); masked += m; i = text.length; continue }
+        plain += text.slice(i, j + 1)
+        masked += m
+        i = j + 1
+        continue
+      }
+      plain += c
+      masked += c
+      i++
+    }
+    return { plain, masked, errors }
+  }
+  // Operators on a value: binary and compound (* / % + - ** and their =), a continuation line that starts with one, and a
+  // unary plus. Keywords that may precede a sign are replaced first; data-/aria-/v- attribute names are not subtraction.
+  const OPERAND = '[-+]?\\s*[A-Za-z0-9_(.]'
+  const MONEY_OPS = [
+    new RegExp('[A-Za-z0-9_)\\]]\\s*(?:\\*\\*|[*/%+-])=?\\s*' + OPERAND),
+    new RegExp('^\\s*(?:\\*\\*|[*/%+-])=?\\s*' + OPERAND),
+    /(?:^|[=(,:?&|]\s*)\+\s*[A-Za-z_(]/,
+  ]
+  const MONEY_MATHS = [...BANNED, ...MONEY_OPS]
+  const forTest = (line) => line.replace(/\b(?:return|typeof|case|in|of|else|yield|void|delete|new)\b/g, ';').replace(/(?<![\w.$)\]])(?:data|aria|v)-[\w-]+/g, '')
   // returns the violations of one allowed file's text: banned lines not in its list, and listed lines not found exactly once
   function scanAllowedFile(text, uses) {
     const listed = new Map(uses.map((u) => [u.line, 0]))
     const bad = []
-    for (const raw of stripComments(text).split('\n')) {
+    const { plain, masked, errors } = lex(text)
+    for (const e of errors) bad.push(`unclassifiable: ${e}`)
+    const plainLines = plain.split('\n')
+    const maskedLines = masked.split('\n')
+    plainLines.forEach((raw, n) => {
       const code = raw.trim()
-      const noStrings = code.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, "''") // a path inside a string is not a division
-      if (!code || !MONEY_MATHS.some((re) => re.test(noStrings))) continue
+      if (!code || !MONEY_MATHS.some((re) => re.test(forTest(maskedLines[n].trim())))) return
       if (listed.has(code)) listed.set(code, listed.get(code) + 1)
       else bad.push(`unlisted: ${code}`)
-    }
+    })
     for (const [line, n] of listed) if (n !== 1) bad.push(`listed line found ${n} times: ${line}`)
     return bad
   }
@@ -293,6 +378,29 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     for (const evil of ['const _x = Number(point.pnl) * 2', 'const _y = p.pnl.toFixed(2)', 'const _z = pnl / 2']) {
       expect(scanAllowedFile(text + '\n' + evil, NAMED_USES[rel]).length).toBeGreaterThan(0)
     }
+  })
+  it('F-15 mutation (round 1): a template binding, a template literal, a // after a string and a subtraction fail the scan', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    const evils = [
+      '<span :title="Number(p.pnl) * 2" />',
+      '<span :style="{ top: p.pnl - q.pnl }" />',
+      'const w = `${Number(p.pnl) * 2}`',
+      "const s = 'a//b'; const m = Number(p.pnl) * 2",
+      'const d = p.pnl - q.pnl',
+      'const e = p.pnl * -1',
+      'x.pnl *= 2',
+      'const f = +p.pnl + +q.pnl',
+      'const g = p.pnl\n  * 2',
+      'const h = `${p.pnl',
+    ]
+    for (const evil of evils) expect(scanAllowedFile(text + '\n' + evil, NAMED_USES[rel]).length, evil).toBeGreaterThan(0)
+  })
+  it('F-15 lexer: // inside a string does not hide the rest of the line; a real comment still does', () => {
+    expect(scanAllowedFile("const s = 'a//b'; const m = Number(p.pnl) * 2", []).length).toBeGreaterThan(0)
+    expect(scanAllowedFile('const k = 1 // Number(p.pnl) * 2', [])).toEqual([])
+    expect(scanAllowedFile("const u = 'https://x.y/z'", [])).toEqual([])
+    expect(scanAllowedFile('<div class="a-b c/d" data-testid="x-y">{{ t }}</div>', [])).toEqual([])
   })
   it('F-15 mutation: a marker comment does not exempt a line that is not listed', () => {
     const rel = path.join('components', 'strategy', 'PayoffChart.vue')
