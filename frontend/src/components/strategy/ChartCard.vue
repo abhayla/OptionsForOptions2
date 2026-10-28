@@ -7,7 +7,7 @@
          row only when it sent one); a "Full table" switch on the same tab shows the REQ-035 StrategyTable unchanged,
          with the Bid/Ask Details block under it.
        - Greeks: per-leg Delta, Theta, Decay, Gamma, Vega, IV (REQ-145 AC-2 order) as the reply carries them, else the shared EmptyState.
-       - Strategy chart: EmptyState (REQ-091 held for display rights).
+       - Strategy chart: StrategyPriceChart (REQ-091; D-B40 / D-B41), asked only once the tab is open.
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
 <script setup>
@@ -19,6 +19,7 @@ import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import PayoffChart from './PayoffChart.vue'
+import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import {
   COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
@@ -41,6 +42,8 @@ const props = defineProps({
   zoom: { type: Object, default: null },
   // GC-UI b2 D-B24 / D-B25 (REQ-137 AC-1): the reply's `payoff_table` (rows at the server's step, both columns)
   payoffTable: { type: Object, default: null },
+  // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
+  savedId: { type: Number, default: null },
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
 // makes the rows)
@@ -265,7 +268,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
 
     <!-- Strategy chart (REQ-091 held for display rights) -->
     <div v-show="tab === 'strategy-chart'" role="tabpanel" v-bind="link(VIEW, 'strategy-chart')" class="p-4" data-testid="panel-strategy-chart">
-      <EmptyState message="The strategy chart is coming soon." data-testid="strategy-chart-empty" />
+      <StrategyPriceChart :strategy-id="savedId" :active="tab === 'strategy-chart'" />
     </div>
   </Card>
 </template>
