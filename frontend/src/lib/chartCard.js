@@ -17,14 +17,18 @@ export const COMPACT_COLUMNS = [
   { id: 'pnl_percent', label: 'P&L %' },
 ]
 
-/** The Greeks tab's per-leg columns (ADR-194 (2)), in its order. */
+/** The Greeks tab's per-leg columns (ADR-194 (2)) in REQ-145 AC-2's order (D-B34, Sensibull 015 / sb-05): Delta, Theta,
+ *  Decay, Gamma, Vega, IV - whatever order the reply's own columns come in. */
 export const GREEK_COLUMNS = [
   { id: 'delta', label: 'Delta' },
-  { id: 'gamma', label: 'Gamma' },
   { id: 'theta', label: 'Theta' },
+  { id: 'decay', label: 'Decay' },
+  { id: 'gamma', label: 'Gamma' },
   { id: 'vega', label: 'Vega' },
   { id: 'iv', label: 'IV' },
 ]
+// a reply made before the Decay column (REQ-145) still fills the Greeks tab; its Decay cells print the em dash
+const OPTIONAL_GREEK_IDS = new Set(['decay'])
 
 // The instrument parts of a leg (the B/S chip, quantity, expiry, strike, type), all as the table sent them.
 const INSTRUMENT_PARTS = ['action', 'quantity', 'expiry', 'strike', 'instrument']
@@ -97,7 +101,8 @@ export function compactRows(table, legs = null) {
  *  carries no Greek columns (the Greeks tab then shows its empty state). */
 export function greekRows(table, legs = null) {
   const ids = GREEK_COLUMNS.map((c) => c.id)
-  if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
+  const needed = ids.filter((id) => !OPTIONAL_GREEK_IDS.has(id))
+  if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...needed])) return null
   return viewRows(table, ids, legs)
 }
 

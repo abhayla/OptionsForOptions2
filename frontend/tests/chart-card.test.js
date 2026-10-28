@@ -158,11 +158,12 @@ describe('Payoff tab: Graph and Table (UI-121, REQ-137 kept separate)', () => {
 })
 
 describe('Greeks and Strategy chart tabs', () => {
-  it('Greeks: per-leg Delta, Gamma, Theta, Vega, IV printed exactly as the server sent them (Per unit)', async () => {
+  it('Greeks: per-leg Delta, Theta, Decay, Gamma, Vega, IV (REQ-145 AC-2) printed exactly as the server sent them (Per unit)', async () => {
     const table = serverGreekTable()
     const w = card(table)
     await t(w, 'tab-greeks').trigger('click')
-    expect(all(w, 'greeks-head').map((h) => h.text())).toEqual(['Delta', 'Gamma', 'Theta', 'Vega', 'IV'])
+    // GC-UI b2 D-B34: the spec's order; this older recorded reply has no Decay column, so its Decay cells print a dash
+    expect(all(w, 'greeks-head').map((h) => h.text())).toEqual(['Delta', 'Theta', 'Decay', 'Gamma', 'Vega', 'IV'])
     for (const row of table.rows) {
       const tr = w.find(`[data-testid="greeks-row"][data-row="${row.row_id}"]`)
       expect(tr.find('[data-field="iv"]').text()).toBe(row.cells.iv.display)

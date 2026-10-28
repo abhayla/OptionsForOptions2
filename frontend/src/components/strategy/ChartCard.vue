@@ -6,7 +6,7 @@
        - P&L Table (ADR-194): compact per-leg view first (Instrument | Planned entry | LTP | P&L | P&L %, the reply's own TOTAL
          row only when it sent one); a "Full table" switch on the same tab shows the REQ-035 StrategyTable unchanged,
          with the Bid/Ask Details block under it.
-       - Greeks: per-leg Delta, Gamma, Theta, Vega, IV as the reply carries them, else the shared EmptyState.
+       - Greeks: per-leg Delta, Theta, Decay, Gamma, Vega, IV (REQ-145 AC-2 order) as the reply carries them, else the shared EmptyState.
        - Strategy chart: EmptyState (REQ-091 held for display rights).
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
