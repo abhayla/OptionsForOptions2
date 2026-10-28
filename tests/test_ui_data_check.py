@@ -8,6 +8,7 @@ import copy
 import datetime as dt
 import importlib.util
 import math
+import os
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -15,7 +16,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKER = ROOT / "scripts" / "checks" / "ui_data_check.py"
+# UI_DATA_CHECK_PATH points the suite at a scratch mutant copy (Tier A mutation run); unset = the real file
+CHECKER = Path(os.environ.get("UI_DATA_CHECK_PATH") or ROOT / "scripts" / "checks" / "ui_data_check.py")
 FIX = ROOT / "tests" / "fixtures" / "ui_data_check"
 
 _spec = importlib.util.spec_from_file_location("ui_data_check", CHECKER)
