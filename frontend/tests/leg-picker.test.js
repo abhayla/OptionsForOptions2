@@ -23,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft } from '@/lib/legPicker'
+import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
 const c = (token, type, strike, symbol, expiry = '2026-10-13') => ({
@@ -678,10 +678,10 @@ describe('REQ-080 strikes tab (W-147)', () => {
     // priced cell: the server's strings, nothing computed
     const ce = sideOf(w, '22500.00', 'ce')
     expect([ce.find('[data-testid="cell-ltp"]').text(), ce.find('[data-testid="cell-oi"]').text(), ce.find('[data-testid="cell-iv"]').text(), ce.find('[data-testid="cell-delta"]').text()])
-      .toEqual(['151.30', '3218475', '11.34', '0.5730'])
+      .toEqual(['151.30', '32.2L', '11.34', '0.5730'])
     // unpriced cell: '-' in every figure, and the reason sits above the list
     const none = sideOf(w, '22450.00', 'ce')
-    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '-', '-', '-'])
+    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '—', '-', '-'])
     expect(t(w, 'strikes-reason').text()).toBe('Some strikes have no live price right now; they show a dash.')
     expect(t(w, 'strikes-reason').element.compareDocumentPosition(rowOf(w, '22450.00').element) & 4).toBeTruthy() // the list follows the reason
     // select two contracts (22500 CE sell, 22550 PE buy), Done adds both
@@ -1286,12 +1286,31 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
   })
 
-  it('UI-202 (combined check A): the OI shown is the server number and no bar is drawn (a bar width would be browser maths, ADR-008)', async () => {
+  it('UI-202 (combined check A): the OI is written compactly in Indian units and no bar is drawn (a bar width would be browser maths, ADR-008)', async () => {
     const w = mountPicker()
     await flushPromises()
     await openStrikes(w)
-    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('3218475')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('32.2L')
+    expect(sideOf(w, '22550.00', 'pe').find('[data-testid="cell-oi"]').text()).toBe('40.2L')
     expect(w.findAll('[data-testid="cell-oi-bar"]')).toHaveLength(0)
+  })
+
+  // GC-UI D-C27 round 2: the drawer fits its panel. The widths are read from the grid the component really renders
+  // (its grid-template-columns and its gap class), a flexible minmax(Npx,1fr) counted at its N px minimum.
+  it('D-C27: the LTP view columns and gaps add up to at most 470 px (the 1536 x 864 drawer panel is 473 px), so none is cut off', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    for (const el of [t(w, 'strike-head'), rowOf(w, '22500.00')]) {
+      const tracks = el.element.style.gridTemplateColumns.split(/ (?![^(]*\))/)
+      expect(tracks).toHaveLength(11) // 4 figures + B/S per side, and the strike
+      const px = tracks.map((x) => Number((x.match(/^(?:minmax\()?(\d+(?:\.\d+)?)px/) || [])[1]))
+      expect(px.every((n) => n > 0)).toBe(true)
+      const gap = el.classes().find((k) => k.startsWith('gap-x-'))
+      const gapPx = gap.startsWith('gap-x-[') ? Number(gap.slice(7, -3)) : Number(gap.slice(6)) * 4
+      const total = px.reduce((a, b) => a + b, 0) + gapPx * (tracks.length - 1)
+      expect(total).toBeLessThanOrEqual(470)
+    }
   })
 
   it('UI-202: ITM halves are shaded from the server ATM flag only (calls below ATM, puts above); no ATM row shades nothing', async () => {
@@ -1314,10 +1333,10 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await openStrikes(w)
     const cols = t(w, 'strike-head').element.style.gridTemplateColumns.split(/\s+(?![^(]*\))/)
     const px = (c) => Number.parseInt(c, 10)
-    expect(px(cols[0])).toBeGreaterThanOrEqual(48) // Call Delta ("0.8376")
-    expect(px(cols[3])).toBeGreaterThanOrEqual(46) // Call IV ("47.00")
-    expect(t(w, 'strike-head').classes().join(' ')).toMatch(/gap-x-1\.5/)
-    expect(t(w, 'strike-row').classes().join(' ')).toMatch(/gap-x-1\.5/)
+    expect(px(cols[0])).toBeGreaterThanOrEqual(44) // Call Delta ("-0.4920", 7 characters at 11 px tabular)
+    expect(px(cols[3])).toBeGreaterThanOrEqual(36) // Call IV ("47.00"); round 2 narrowed both so the whole grid fits 470 px
+    expect(t(w, 'strike-head').classes().join(' ')).toMatch(/gap-x-\[3px\]/)
+    expect(t(w, 'strike-row').classes().join(' ')).toMatch(/gap-x-\[3px\]/)
   })
 
   it('UI-202/UI-205: the view switch changes the columns (LTP default, Greeks = Delta and IV); width and size sit in Settings', async () => {
@@ -1657,5 +1676,24 @@ describe('F-14: the drawer opens on the strategy underlying', () => {
     await open(w)
     expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
     expect(strikeReads()).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+})
+
+// GC-UI D-C27 round 2 (S-032): the OI is a contract count, written in Indian units - 1.23Cr from 1,00,00,000, 74.9L from
+// 1,00,000, Indian digit grouping below - and a missing OI shows a dash, never NaN.
+describe('oiCompact', () => {
+  it('writes each size in its unit', () => {
+    expect(oiCompact(62075)).toBe('62,075')
+    expect(oiCompact(375960)).toBe('3.8L')
+    expect(oiCompact(7491380)).toBe('74.9L')
+    expect(oiCompact(12345678)).toBe('1.23Cr')
+    expect(oiCompact(0)).toBe('0')
+    expect(oiCompact(99999)).toBe('99,999')
+    expect(oiCompact(100000)).toBe('1.0L')
+    expect(oiCompact(10000000)).toBe('1.00Cr')
+    expect(oiCompact('7491380')).toBe('74.9L')
+  })
+  it('shows a dash for null, undefined, empty and non-numbers, never NaN', () => {
+    for (const v of [null, undefined, '', 'abc', NaN]) expect(oiCompact(v)).toBe('—')
   })
 })
