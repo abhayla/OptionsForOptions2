@@ -958,3 +958,10 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Bears on REQ-091 AC-2 (1-minute bars over the window), AC-4 (a minute where any leg has no candle is a gap, never
   interpolated: with one illiquid leg about 1 minute in 20 is a gap, and with four legs more), AC-5 (listing date), and
   ADR-203 (1). Status: **measured once, one leg + the future; a 4-leg strategy and a far-OTM leg not measured**.
+- Addendum 2026-10-28 ~23:15 IST (route live on 699c53c3, strategy 56, NIFTY 3 Nov iron condor BUY 22400 PE / SELL
+  22500 PE / SELL 22700 CE / BUY 22800 CE): all four near-the-money legs had 3,850 minute candles each (14 Oct 09:15 to
+  28 Oct 15:39 IST), so the chart had 0 gaps; an independent recomputation from the raw candles matched all 3,850 route
+  points to the paisa (`D:/Abhay/scratch/gcui-chart/check56.py`). Kite's minute candles run to 15:39 IST (the closing
+  session), so the chart's last point (76.00) can differ from the builder's 15:30 LTP net (74.15: 22500 PE candle close
+  101.80 vs LTP 99.80). Gap rate is a property of the leg's liquidity: far-out-of-the-money legs gap (5.3% for the 25000
+  CE above), near-the-money legs did not. Still not measured: a 4-leg strategy with far-out legs.
