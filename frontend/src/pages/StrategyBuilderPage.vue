@@ -419,6 +419,7 @@ const picker = ref(null)
 // W-195 (ADR-193 UI-200): the leg picker is the left slide-in drawer, opened by Add/Edit or the empty state's buttons; the
 // inline add-leg form is gone from the left column. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover.
 const pickerOpen = ref(false)
+const pickerFolded = ref(false) // GC-UI 6c D-C35: the drawer was folded away by "Show Editor"
 const settingsOpen = ref(false)
 const settingsRoot = ref(null)
 const settingsButton = ref(null)
@@ -606,9 +607,19 @@ const pricesStamp = computed(() => {
         </SaveDraftBar>
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->
-        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist @close="pickerOpen = false">
-          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" @done="pickerOpen = false" /></div>
+        <!-- GC-UI 6c D-C20: no title bar (S-032: the picker's own header row is the top line); the width stays 520 px so the
+             strike grid keeps the 470 px D-C27 fits in. D-C35: the "Show Editor" edge tab folds the drawer away to see the
+             builder; the "Show Strikes" tab at the page edge brings it back with the picks kept (the picker stays mounted). -->
+        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist bare @close="pickerOpen = false; pickerFolded = false">
+          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
+          <template #edge>
+            <button type="button" class="rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]" data-testid="show-editor" @click="pickerOpen = false; pickerFolded = true">Show Editor &gt;&gt;</button>
+          </template>
         </Drawer>
+        <button
+          v-if="pickerFolded && !pickerOpen" type="button" class="fixed left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]"
+          data-testid="show-strikes" @click="pickerOpen = true; pickerFolded = false"
+        >&lt;&lt; Show Strikes</button>
         <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
           <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
         </Drawer>

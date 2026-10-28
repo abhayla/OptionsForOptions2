@@ -15,7 +15,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { instrumentId } from '@/lib/legPicker'
-import { LEARN_LINK_TEXT, LEARN_PATH, QUICK_PICK_DISTANCES, READY_MADE_HINT, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
+import { LEARN_LINK_TEXT, LEARN_PATH, READY_MADE_HINT, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
 import ShapeIcon from '@/components/strategy/ShapeIcon.vue'
 
 const props = defineProps({
@@ -32,13 +32,11 @@ const expiries = ref([])
 const expiry = ref('')
 const expiryDays = ref({}) // REQ-135 AC-2: the server's day count by expiry
 const group = ref(VIEW_GROUPS[0].key)
-const side = ref('SELL')
 const pending = ref(null) // the request waiting for the Replace / Cancel answer
 const errorParts = ref(null)
 const busy = ref(false)
 
 const shown = computed(() => templatesInGroup(templates.value, VIEW_GROUPS.find((g) => g.key === group.value)))
-const distances = computed(() => QUICK_PICK_DISTANCES[underlying.value] ?? [])
 
 async function start() {
   try {
@@ -104,8 +102,6 @@ function ask(request) {
   else run(request)
 }
 const loadTemplate = (id) => ask({ path: '/strategies/load-template', body: { underlying: underlying.value, template_id: id, expiry: expiry.value } })
-const quickPick = (kind, distance) =>
-  ask({ path: '/strategies/quick-pick', body: { underlying: underlying.value, kind, distance, side: side.value, expiry: expiry.value } })
 const replace = () => { const request = pending.value; pending.value = null; run(request) }
 const cancel = () => { pending.value = null }
 
@@ -150,20 +146,7 @@ onMounted(async () => {
       </li>
     </ul>
 
-    <div class="mt-3 text-sm" data-testid="rm-quick">
-      <h3 class="font-medium">Quick picks</h3>
-      <div class="mt-1 flex gap-2">
-        <label><input v-model="side" type="radio" value="BUY" data-testid="rm-side-buy" /> Buy</label>
-        <label><input v-model="side" type="radio" value="SELL" data-testid="rm-side-sell" /> Sell</label>
-        <button type="button" class="rounded border border-line px-2" :disabled="busy || !expiry" data-testid="rm-straddle" @click="quickPick('straddle', 0)">Straddle</button>
-      </div>
-      <div class="mt-1 flex flex-wrap gap-2">
-        <span>Strangle</span>
-        <button
-          v-for="d in distances" :key="d" type="button" class="rounded border border-line px-2" :disabled="busy || !expiry"
-          :data-testid="`rm-strangle-${d}`" @click="quickPick('strangle', d)">{{ d }} points</button>
-      </div>
-    </div>
+    <!-- GC-UI 6c D-C08 (S-037, S-038): straddles and strangles are the leg drawer's Straddles / Strangles tabs now -->
 
     <div v-if="pending" class="mt-3 rounded border border-line p-2" role="alertdialog" data-testid="rm-replace">
       <p data-testid="rm-replace-text">{{ replacePrompt(legs.length) }}</p>

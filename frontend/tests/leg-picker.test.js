@@ -1420,6 +1420,31 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     expect(drawer().element.parentElement.style.display).toBe('none')
     w.unmount()
   })
+
+  // GC-UI 6c D-C20 / D-C35 (S-032): no "Add or edit legs" title bar (the picker's header row is the top line, the title
+  // stays the dialog's name); "Show Editor" folds the drawer away keeping the picks, "Show Strikes" brings it back.
+  it('D-C20 / D-C35: no title bar; Show Editor folds the drawer with the picks kept, Show Strikes reopens it', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { attachTo: document.body, global: { plugins: [router] } })
+    await flushPromises()
+    const drawer = () => w.find('[data-testid="drawer"][data-side="left"]')
+    await t(w, 'add-edit').trigger('click')
+    expect(drawer().find('[data-testid="drawer-title"]').exists()).toBe(false)
+    expect(drawer().attributes('aria-label')).toBe('Add or edit legs')
+    expect(drawer().text()).not.toContain('Add or edit legs')
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    expect(t(w, 'show-strikes').exists()).toBe(false)
+    await drawer().find('[data-testid="show-editor"]').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('none')
+    await t(w, 'show-strikes').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('')
+    expect(t(w, 'show-strikes').exists()).toBe(false)
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected') // the half-made selection survived the fold
+    w.unmount()
+  })
 })
 
 describe('#582 item 7/8: the strike drawer list scrolls above its footer; strikes print as whole numbers', () => {
@@ -1738,5 +1763,100 @@ describe('GC-UI 6c drawer layout (D-C20, D-C21, D-C22, D-C23, D-C28)', () => {
     expect(t(w, 'picker-header').find('[data-testid="picker-spot"]').text()).toContain('22533.25')
     expect(t(w, 'strikes-spot').exists()).toBe(false) // no separate spot line above the table
     expect(w.findAll('[data-testid="strike-row"][data-centre="true"]').map((r) => r.attributes('data-strike'))).toEqual(['22550.00'])
+  })
+
+  it('spot missing: the header says so and no row is centred on a guess', async () => {
+    answers[STRIKES_URL()] = strikesAnswer({ centre: 'MIDDLE_STRIKE', spot: null, atm_strike: null, rows: strikesAnswer().rows.map((r) => ({ ...r, is_atm: false })) })
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('No live index price')
+    expect(t(w, 'strikes-centre').text()).toContain('ATM unknown')
+    expect(w.findAll('[data-testid="strike-row"][data-centre="true"]')).toHaveLength(0)
+  })
+})
+
+// ---- GC-UI 6c D-C08 / D-C24 / D-C25 (S-036..S-038): Straddles and Strangles tabs build the one selection; a type change
+// with picks asks first. Recorded reply: only 22500 CE and 22550 PE are priced; every strike lists both cells. ----
+describe('GC-UI 6c Straddles / Strangles tabs and the type-change confirm (D-C08, D-C24, D-C25)', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+    answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
+  })
+
+  it('Straddles: one radio per strike picks that strike\'s call and put on the chosen side; Done adds both legs as today', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-straddles').trigger('click') // 0 picks: no confirm
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-straddles').attributes('aria-selected')).toBe('true')
+    expect(w.findAll('[data-testid="type-row"]').map((r) => r.attributes('data-strike'))).toEqual(GRID)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined() // Done disabled until a pick (S-037)
+    await t(w, 'type-side-buy').trigger('click')
+    await w.find('[data-testid="type-row"][data-strike="22550.00"] [data-testid="straddle-radio"]').setValue(true)
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action, l.strike, l.instrument_type])).toEqual([
+      ['NSE_FO:44004', 'BUY', '22550.00', 'CE'], ['NSE_FO:44005', 'BUY', '22550.00', 'PE']])
+  })
+
+  it('Strangles: Quick Select asks the existing quick-pick call and its legs become the picks; a failed call picks nothing', async () => {
+    answers['POST /strategies/quick-pick'] = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44006', action: 'SELL', symbol: 'x' }, { instrument_id: 'NSE_FO:44001', action: 'SELL', symbol: 'y' }] }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-strangles').trigger('click')
+    await flushPromises()
+    expect(w.findAll('[data-testid^="quick-select-"]').filter((b) => b.element.tagName === 'BUTTON').map((b) => b.text())).toEqual(['50 pt', '100 pt', '150 pt', '200 pt'])
+    await t(w, 'quick-select-100').trigger('click')
+    await flushPromises()
+    expect(calls.find((x) => x.url === '/strategies/quick-pick').body).toEqual({ underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-13' })
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    expect(w.find('[data-testid="type-row"][data-strike="22600.00"] [data-testid="strangle-ce"]').element.checked).toBe(true)
+    expect(w.find('[data-testid="type-row"][data-strike="22450.00"] [data-testid="strangle-pe"]').element.checked).toBe(true)
+    answers['POST /strategies/quick-pick'] = new Error('down')
+    await t(w, 'quick-select-50').trigger('click')
+    await flushPromises()
+    expect(t(w, 'quick-select-error').exists()).toBe(true)
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected') // the earlier picks stay
+  })
+
+  it('a type change with picks asks "You are changing strategy type from Strikes to Straddles"; Cancel keeps them, Proceed clears them', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-straddles').trigger('click')
+    expect(t(w, 'type-confirm-text').text()).toBe('You are changing strategy type from Strikes to Straddles')
+    expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+    await t(w, 'type-confirm-cancel').trigger('click')
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'tab-straddles').trigger('click')
+    await t(w, 'type-confirm-proceed').trigger('click')
+    await flushPromises()
+    expect(t(w, 'tab-straddles').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0) // nothing added, nothing sent
+  })
+
+  it('the Futures tab keeps the picks (no confirm); the Straddles tab shows the strikes read failure', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'futures-none').text()).toBe('No future is listed for this index.')
+    await t(w, 'tab-strikes').trigger('click')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'picker-clear-all').trigger('click')
+    answers[STRIKES_URL()] = new Error('down')
+    await t(w, 'tab-straddles').trigger('click')
+    await flushPromises()
+    expect(t(w, 'strikes-error').text()).toBe('The strikes could not be read right now.')
   })
 })

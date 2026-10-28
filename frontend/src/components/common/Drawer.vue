@@ -18,6 +18,9 @@ const props = defineProps({
   width: { type: String, default: "420px" },
   // W-195: keep the content mounted (hidden) while closed, so its state and requests survive a close (the leg picker)
   persist: { type: Boolean, default: false },
+  // GC-UI 6c D-C20 (S-032): no title bar; the content's own first row is the top line and the close "x" sits at its right.
+  // The title stays the dialog's accessible name.
+  bare: { type: Boolean, default: false },
 });
 // W-195 review 1: the root is teleported to <body>, so a sticky or transformed ancestor (the Builder's left column)
 // can never trap it under another stacking context; attributes go to the root element, not the teleport.
@@ -85,7 +88,18 @@ onBeforeUnmount(() => {
         data-testid="drawer"
         @keydown="onKey"
       >
+        <button
+          v-if="bare"
+          type="button"
+          class="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-muted hover:text-ink"
+          aria-label="Close"
+          data-testid="drawer-close"
+          @click="emit('close')"
+        >
+          <Icon name="close" :size="18" />
+        </button>
         <header
+          v-else
           class="flex h-14 shrink-0 items-center justify-between border-b border-line px-4"
         >
           <h2 class="text-base font-semibold text-ink" data-testid="drawer-title">
@@ -108,6 +122,10 @@ onBeforeUnmount(() => {
         >
           <slot name="footer" />
         </footer>
+        <!-- GC-UI 6c D-C35: an optional tab on the panel's outer edge (the leg picker's "Show Editor") -->
+        <div v-if="$slots.edge" class="absolute top-1/2 left-full -translate-y-1/2">
+          <slot name="edge" />
+        </div>
       </div>
     </div>
   </Teleport>
