@@ -929,3 +929,18 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   condor and a long straddle (REQ-142 AC-1) - the conclusion rests on the reply's structure, which a fresh read does
   not change. Nothing built; D-A38 parked in the GC-UI contract.
   Status: **decided by the owner 2026-10-28 (ADR-206): REQ-142 held**; no broker order in the current scope.
+
+## F-63 - Sensibull's Greeks-tab Decay is the time value lost between the strategy's time and the next market open, about 0.73-0.84 of one day's theta overnight
+- Measured 2026-10-28 ~20:03 IST on web.sensibull.com logged out (REQ-145 AC-1 "measure first"; study screen 015 form),
+  NIFTY 3 Nov bull call spread that Sensibull loaded by default (BUY 22700 CE / SELL 22900 CE, 1 lot), its target time
+  "Wed, 28 Oct 3:40 PM", the next market open Thu 29 Oct 09:15 IST (17 h 35 min = 0.733 day). Per unit, rounded to
+  whole rupees by Sensibull: 22700 CE Theta -15, Decay -12; 22900 CE Theta +13, Decay +10; Total Theta -1.8, Decay -2.
+  Decay / Theta lies in 0.74-0.84 on both legs (rounding bounds); 0.733 day sits at the edge, so the measurement is
+  CONSISTENT with REQ-145's stated definition ("the time value change, in rupees, between now and the next market open
+  if everything else stays the same") and cannot separate a full model revaluation from theta x time at this rounding.
+  Columns in Sensibull order: Delta, Theta, Decay, Gamma, Vega.
+- Formula adopted (REQ-145 statement, no rule change): Decay per leg = model value at the next market open (same spot,
+  IV, rate, q; time to expiry shortened to that open) minus model value now, per unit, signed by the leg like theta;
+  Total = sum of legs. Not measured: an iron condor (REQ-145 AC-1 names one; the definition does not depend on the
+  shape) and a weekend gap (Friday -> Monday open, where the study says actual decay is 1/3 to 2/3 of the shown figure).
+  Status: **measured on Sensibull logged out (form + definition only, never used to check our numbers)**.
