@@ -6,12 +6,13 @@
      Adapted from the legacy StrategyBuilderView leg-row form shape only (client P&L, price fallbacks and the basket call
      are dropped). -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { capturedCaption, contractName, daysByExpiry, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
+import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
+import { QUICK_PICK_DISTANCES } from '@/lib/readyMade'
 import { healthSentence } from '@/lib/dataHealthText'
 import {
   DEFAULT_STRIKE_WIDTH,
@@ -163,6 +164,18 @@ let stSeq = 0
 let fuSeq = 0
 let timer = null
 
+// GC-UI 6c (D-C21, S-032): the select shows Sensibull's short "3 Nov" so it is never clipped; the server's day count
+// (REQ-135 AC-2) sits beside it as its own text, and the option value stays the ISO date.
+const expiryShort = (e) => expiryText(e) ?? e
+const expiryDaysText = computed(() => {
+  const d = expiryDays.value[expiry.value]
+  return Number.isInteger(d) && d >= 0 ? `${d} ${d === 1 ? 'day' : 'days'}` : ''
+})
+// D-C23: the spot sits in the header (the read time as its tooltip); with no live spot the header says why, and no row is
+// centred on a guess (D-C28 centres only the row the server marked ATM).
+const spotLive = computed(() => (strikesData.value?.centre === 'LIVE_SPOT' && strikesData.value?.spot ? strikesData.value.spot : null))
+const spotTitle = computed(() => (spotLive.value && strikesData.value?.answered_at ? `Index price, read ${istTime(strikesData.value.answered_at)}` : ''))
+const centreStrike = computed(() => (strikesData.value?.centre === 'MIDDLE_STRIKE' ? null : (strikesData.value?.rows ?? []).find((r) => r.is_atm)?.strike ?? null))
 const centreLine = computed(() => centreText(strikesData.value, istTime))
 const strikesReason = computed(() => listReasonText(strikesData.value?.reason))
 const futuresReason = computed(() => futuresListReasonText(futuresData.value?.reason))
@@ -226,6 +239,108 @@ const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / 
 const itm = computed(() => itmSides(strikesData.value?.rows))
 const COLUMN_LABEL = Object.freeze({ delta: 'Delta', ltp: 'LTP', oi: 'OI', iv: 'IV' })
 
+// GC-UI 6c D-C26 (S-032): an OI bar under the server's OI label. Its length is the ratio of two server OI values in this
+// reply, used for DRAWING only and never printed (ADR-008). A cell with no OI draws no bar and shows the dash (REQ-083 AC-6).
+const oiNumber = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
+const maxOi = computed(() => Math.max(0, ...(strikesData.value?.rows ?? []).flatMap((r) => ['ce', 'pe'].map((s) => oiNumber(r[s]?.oi) ?? 0))))
+const oiBarWidth = (v) => {
+  const n = oiNumber(v)
+  return n === null || n <= 0 || maxOi.value <= 0 ? null : `${Math.round((n / maxOi.value) * 100)}%`
+}
+
+// ---- GC-UI 6c D-C22 / D-C24 / D-C25 (S-032, S-036..S-038): four tabs. Straddles, Strangles and Strikes are strategy TYPES
+// that each build the one selection (`picked`); Futures adds a future directly. Changing type while picks exist asks first.
+const TABS = Object.freeze([['straddles', 'Straddles'], ['strangles', 'Strangles'], ['strikes', 'Strikes'], ['futures', 'Futures']])
+const TYPE_NAME = Object.freeze({ straddles: 'Straddles', strangles: 'Strangles', strikes: 'Strikes' })
+const pickType = ref('strikes') // the type the current picks were made under (kept while the Futures tab is open)
+const pendingTab = ref(null) // the type change waiting for Proceed / Cancel
+const typeSide = ref('SELL') // Straddles / Strangles: Buy or Sell both legs (the existing quick-pick `side`)
+const quickError = ref('')
+function selectTab(next) {
+  if (next === tab.value) return
+  if (next in TYPE_NAME && next !== pickType.value && pickedCount.value > 0) {
+    pendingTab.value = next
+    return
+  }
+  if (next in TYPE_NAME) pickType.value = next
+  tab.value = next
+}
+const confirmText = computed(() => (pendingTab.value ? `You are changing strategy type from ${TYPE_NAME[pickType.value]} to ${TYPE_NAME[pendingTab.value]}` : ''))
+function proceedTab() {
+  const next = pendingTab.value
+  pendingTab.value = null
+  clearAll()
+  pickType.value = next
+  tab.value = next
+}
+const cancelTab = () => { pendingTab.value = null }
+
+/** Pick a set of cells as THE selection of a Straddles / Strangles tab (it replaces the earlier picks of that type). */
+function pickSet(cells, side) {
+  const next = {}
+  const contractsNow = {}
+  for (const cell of cells) {
+    next[cell.instrument_id] = side
+    contractsNow[cell.instrument_id] = contractByInstrumentId(contracts.value, cell.instrument_id) ?? null
+  }
+  picked.value = next
+  pickedContracts.value = contractsNow
+  cellLots.value = {}
+  doneError.value = ''
+}
+// S-037: one radio per strike; the straddle is that strike's call and put, both on the chosen side
+const straddleStrike = computed(() => {
+  const ids = Object.keys(picked.value)
+  const row = (strikesData.value?.rows ?? []).find((r) => r.ce && r.pe && ids.length === 2 && ids.includes(r.ce.instrument_id) && ids.includes(r.pe.instrument_id))
+  return row ? row.strike : ''
+})
+function pickStraddle(row) {
+  if (row.ce && row.pe && choicesFor(row.ce).length && choicesFor(row.pe).length) pickSet([row.ce, row.pe], typeSide.value)
+}
+// S-038: a box on each side; at most one call and one put
+const strangleLeg = (side) => (strikesData.value?.rows ?? []).find((r) => r[side] && picked.value[r[side].instrument_id])?.strike ?? ''
+function pickStrangleSide(row, side) {
+  const other = side === 'ce' ? 'pe' : 'ce'
+  const otherRow = (strikesData.value?.rows ?? []).find((r) => r[other] && picked.value[r[other].instrument_id])
+  pickSet([row[side], ...(otherRow ? [otherRow[other]] : [])], typeSide.value)
+}
+function setTypeSide(side) {
+  typeSide.value = side
+  const ids = Object.keys(picked.value)
+  if (ids.length) picked.value = Object.fromEntries(ids.map((id) => [id, side]))
+}
+const quickDistances = computed(() => QUICK_PICK_DISTANCES[underlying.value] ?? [])
+/** D-C08 / D-C24: Quick Select asks the EXISTING quick-pick call (POST /strategies/quick-pick) which strikes make the
+ *  strangle; its legs become the selection, so Done prices and adds them like any pick. A failed or empty answer picks nothing. */
+async function quickSelect(distance) {
+  quickError.value = ''
+  if (busy.value || !expiry.value) return
+  const und = underlying.value
+  try {
+    const res = await api.post('/strategies/quick-pick', { underlying: und, kind: 'strangle', distance, side: typeSide.value, expiry: expiry.value })
+    const legs = Array.isArray(res?.data?.legs) ? res.data.legs : []
+    if (und !== underlying.value) return
+    if (!legs.length) { quickError.value = 'No strangle could be made at this distance, so nothing was picked.'; return }
+    pickSet(legs.map((l) => ({ instrument_id: l.instrument_id })), typeSide.value)
+  } catch {
+    quickError.value = 'The quick select could not be read right now, so nothing was picked.'
+  }
+}
+
+// D-C28: the list opens scrolled so the server's ATM row sits in the middle (on open and on a new list, never on the
+// 5 s refresh, which would pull the user's scroll back). jsdom has no layout, so the call is guarded.
+const strikesPanel = ref(null)
+let centrePending = true
+function centreAtm() {
+  if (!centrePending || !centreStrike.value) return
+  centrePending = false
+  nextTick(() => {
+    const el = strikesPanel.value?.querySelector?.('[data-centre="true"]')
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
+  })
+}
+watch(strikesData, centreAtm)
+
 // A new underlying, expiry or width is a new list: the old one goes before the new read starts. GC-BP F-2: the picks stay
 // across an expiry or width change (each carries its own contract, Done adds them all); only a new UNDERLYING clears them,
 // since a strategy has one underlying.
@@ -233,7 +348,8 @@ watch([underlying, expiry, width], () => {
   stSeq++
   strikesData.value = null
   strikesFailed.value = false
-  if (tab.value === 'strikes' && props.active) loadStrikes()
+  centrePending = true
+  if (tab.value !== 'futures' && props.active) loadStrikes()
 })
 watch(underlying, () => {
   picked.value = {}
@@ -252,6 +368,7 @@ watch(tab, refreshOpenTab)
 // (C) a catalogue read that failed earlier is tried again on open, so the error at the top of the drawer is current
 watch(() => props.active, (on) => {
   if (!on) return
+  centrePending = true // D-C28: every open shows the ATM row in the middle again
   // F-14: the underlying is the strategy's, decided when the drawer opens (the picker was mounted before the legs or the
   // header choice existed). A different one reloads its expiries; that load picks the opening expiry and reads the strikes.
   if (editingId.value === null) {
@@ -481,7 +598,7 @@ const legName = (l) => contractName(l)
 /** W-195 review 7: "Pick from Option Chain" opens the picker on the Strikes tab (Add leg keeps the tab the user left). */
 function showStrikes() {
   if (editingId.value !== null) resetForm()
-  tab.value = 'strikes'
+  selectTab('strikes') // picks made under another type still ask before they are dropped (D-C25)
 }
 defineExpose({ startEdit, showStrikes })
 </script>
@@ -493,14 +610,25 @@ defineExpose({ startEdit, showStrikes })
   <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
-    <div class="flex flex-wrap items-center gap-2" data-testid="picker-header">
+    <div class="flex flex-wrap items-center gap-2 pr-10" data-testid="picker-header">
       <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
         <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
       </select>
-      <select class="h-8 w-[120px] rounded border border-line px-1" aria-label="Expiry" data-testid="pick-expiry" :value="expiry" @change="onExpiry($event.target.value)">
-        <option value="">Expiry</option>
-        <option v-for="e in expiries" :key="e" :value="e">{{ expiryLabel(e) }}</option>
-      </select>
+      <!-- D-C23 (S-032): the index price in the header; its read time is the tooltip. No live price: the header says so. -->
+      <span v-if="spotLive" class="num font-semibold" :title="spotTitle" data-testid="picker-spot">{{ spotLive }}</span>
+      <span v-else-if="strikesData" class="text-xs text-ink-muted" data-testid="picker-spot">No live index price</span>
+    </div>
+
+    <div class="flex min-h-0 flex-1 flex-col" data-testid="picker-tabs">
+      <!-- D-C22 row 1: the four tabs, Settings at the right -->
+      <div class="flex shrink-0 items-center gap-3 border-b border-line" data-testid="picker-row1">
+        <span class="flex items-center gap-3" role="tablist">
+          <button
+            v-for="tb in TABS" :key="tb[0]" type="button" role="tab" class="-mb-px border-b-2 py-2"
+            :class="tab === tb[0] ? 'border-accent font-semibold text-ink' : 'border-transparent text-ink-muted'"
+            :data-testid="`tab-${tb[0]}`" :aria-selected="tab === tb[0]" @click="selectTab(tb[0])"
+          >{{ tb[1] }}</button>
+        </span>
       <span class="relative ml-auto" @keydown.esc.stop="settingsOpen = false">
         <button type="button" class="h-8 rounded border border-line px-2" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'" data-testid="picker-settings" @click="settingsOpen = !settingsOpen">Settings</button>
         <span v-show="settingsOpen" role="dialog" aria-label="Picker settings" class="absolute right-0 top-full z-10 mt-1 flex w-[240px] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-menu" data-testid="picker-settings-popover">
@@ -517,15 +645,22 @@ defineExpose({ startEdit, showStrikes })
           </label>
         </span>
       </span>
-    </div>
+      </div>
 
-    <div class="flex min-h-0 flex-1 flex-col" data-testid="picker-tabs">
-      <div class="flex shrink-0 flex-wrap items-center gap-4 border-b border-line" role="tablist">
-        <button
-          v-for="tb in [['strikes', 'Strikes'], ['futures', 'Futures']]" :key="tb[0]" type="button" role="tab" class="-mb-px border-b-2 py-2"
-          :class="tab === tb[0] ? 'border-accent font-semibold text-ink' : 'border-transparent text-ink-muted'"
-          :data-testid="`tab-${tb[0]}`" :aria-selected="tab === tb[0]" @click="tab = tb[0]"
-        >{{ tb[1] }}</button>
+      <!-- D-C25 (S-036): a change of strategy type with picks made asks first; Cancel keeps the picks -->
+      <div v-if="pendingTab" role="alertdialog" aria-label="Change strategy type" class="mt-2 flex flex-wrap items-center gap-2 rounded border border-line p-2" data-testid="type-confirm">
+        <span class="w-full" data-testid="type-confirm-text">{{ confirmText }}</span>
+        <button type="button" class="rounded border border-line px-3 py-1" data-testid="type-confirm-cancel" @click="cancelTab">Cancel</button>
+        <button type="button" class="rounded bg-accent px-3 py-1 font-semibold text-white" data-testid="type-confirm-proceed" @click="proceedTab">Proceed</button>
+      </div>
+
+      <!-- D-C22 row 2: the expiry (D-C21: Sensibull's short "3 Nov", the day count beside it) and the LTP / OI / Greeks switch -->
+      <div v-show="tab !== 'futures'" class="flex shrink-0 items-center gap-2 py-2" data-testid="picker-row2">
+        <select class="h-8 rounded border border-line px-1" aria-label="Expiry" data-testid="pick-expiry" :value="expiry" @change="onExpiry($event.target.value)">
+          <option value="">Expiry</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryShort(e) }}</option>
+        </select>
+        <span v-if="expiryDaysText" class="text-xs text-ink-muted" data-testid="pick-expiry-days">{{ expiryDaysText }}</span>
         <span v-if="tab === 'strikes'" class="ml-auto flex overflow-hidden rounded border border-line text-xs" role="radiogroup" aria-label="Columns" data-testid="picker-view">
           <button
             v-for="vw in [['ltp', 'LTP'], ['oi', 'OI'], ['greeks', 'Greeks']]" :key="vw[0]" type="button" role="radio" class="px-2 py-1"
@@ -535,7 +670,7 @@ defineExpose({ startEdit, showStrikes })
         </span>
       </div>
 
-      <div v-if="tab === 'strikes'" class="min-h-0 flex-1 overflow-y-auto" data-testid="strikes-panel">
+      <div v-if="tab === 'strikes'" ref="strikesPanel" class="min-h-0 flex-1 overflow-y-auto" data-testid="strikes-panel">
         <p v-if="!expiry" data-testid="strikes-choose-expiry">Choose an expiry to see its strikes.</p>
         <p v-else-if="strikesFailed" data-testid="strikes-error">The strikes could not be read right now.</p>
         <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
@@ -544,7 +679,6 @@ defineExpose({ startEdit, showStrikes })
           <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" />
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
-          <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
           <div class="mt-2 grid items-end gap-x-[3px] border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
@@ -554,6 +688,7 @@ defineExpose({ startEdit, showStrikes })
           <div
             v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-[3px] border-b border-line text-[11px] tabular-nums num"
             :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" :style="gridStyle" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'"
+            :data-centre="row.strike === centreStrike ? 'true' : 'false'"
           >
             <template v-for="side in ['ce', 'pe']" :key="side">
               <!-- the strike sits between the two sides; each side is `contents` so its columns join the row's grid -->
@@ -570,8 +705,15 @@ defineExpose({ startEdit, showStrikes })
                     <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
                     <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
                     <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
-                    <!-- UI-202: the OI count in Indian units (oiCompact); no bar (a bar width would be a browser calculation, ADR-008) -->
-                    <span v-else-if="col === 'oi'" class="text-ink-muted" data-testid="cell-oi">{{ oiCompact(row[side].oi) }}</span>
+                    <!-- UI-202 / D-C26: the OI count in Indian units (oiCompact) over a bar drawn from the server's OI (drawing
+                         only, never a printed figure, ADR-008); no OI = no bar and the dash -->
+                    <span v-else-if="col === 'oi'" class="relative flex h-5 w-full items-center" :class="side === 'ce' ? 'justify-end' : 'justify-start'">
+                      <span
+                        v-if="oiBarWidth(row[side].oi)" aria-hidden="true" class="absolute bottom-0 h-1 rounded-sm" :class="[side === 'ce' ? 'right-0 bg-sell-soft' : 'left-0 bg-buy-soft']"
+                        :style="{ width: oiBarWidth(row[side].oi) }" data-testid="cell-oi-bar"
+                      />
+                      <span class="relative text-ink-muted" data-testid="cell-oi">{{ oiCompact(row[side].oi) }}</span>
+                    </span>
                     <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
@@ -614,26 +756,92 @@ defineExpose({ startEdit, showStrikes })
         </ul>
       </div>
 
+      <!-- D-C24 (S-037 Straddles: one radio per strike; S-038 Strangles: a box each side + Quick Select). Both build the
+           same selection the footer's Done adds; the rows are the strikes reply, nothing is computed here. -->
+      <div v-else-if="tab === 'straddles' || tab === 'strangles'" class="min-h-0 flex-1 overflow-y-auto" :data-testid="`${tab}-panel`">
+        <div class="flex flex-wrap items-center gap-2 py-1">
+          <span class="flex overflow-hidden rounded border border-line text-xs" role="radiogroup" aria-label="Buy or sell" data-testid="type-side">
+            <button
+              v-for="sd in [['BUY', 'Buy'], ['SELL', 'Sell']]" :key="sd[0]" type="button" role="radio" class="px-2 py-1"
+              :class="typeSide === sd[0] ? 'bg-accent-soft font-semibold text-accent' : 'text-ink-muted'" :aria-checked="typeSide === sd[0] ? 'true' : 'false'"
+              :data-testid="`type-side-${sd[0].toLowerCase()}`" @click="setTypeSide(sd[0])"
+            >{{ sd[1] }}</button>
+          </span>
+          <span v-if="tab === 'strangles' && quickDistances.length" class="flex flex-wrap items-center gap-1 text-xs" data-testid="quick-select">Quick Select
+            <button
+              v-for="d in quickDistances" :key="d" type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy || !expiry"
+              :data-testid="`quick-select-${d}`" @click="quickSelect(d)"
+            >{{ d }} pt</button>
+          </span>
+        </div>
+        <p v-if="quickError" class="text-error" data-testid="quick-select-error">{{ quickError }}</p>
+        <p v-if="!expiry" data-testid="strikes-choose-expiry">Choose an expiry to see its strikes.</p>
+        <p v-else-if="strikesFailed" data-testid="strikes-error">The strikes could not be read right now.</p>
+        <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
+        <p v-else-if="!strikesData.rows?.length" data-testid="strikes-reason">{{ strikesReason || 'No strikes are listed for this expiry.' }}</p>
+        <template v-else>
+          <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <div class="grid grid-cols-[1fr_70px_1fr] border-b border-line pb-1 text-[10px] text-ink-muted" data-testid="type-head">
+            <span class="text-right">Call LTP</span><span class="text-center">Strike</span><span>Put LTP</span>
+          </div>
+          <div
+            v-for="row in strikesData.rows" :key="row.strike" class="grid h-7 grid-cols-[1fr_70px_1fr] items-center border-b border-line text-[11px] tabular-nums num"
+            :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" data-testid="type-row" :data-strike="row.strike"
+          >
+            <label class="flex items-center justify-end gap-1 pr-1">
+              <span data-testid="type-ce-ltp">{{ row.ce ? shown(row.ce.ltp) : '-' }}</span>
+              <input
+                v-if="tab === 'strangles' && row.ce && choicesFor(row.ce).length" type="radio" name="strangle-ce" :checked="strangleLeg('ce') === row.strike"
+                :aria-label="`Call ${strikeLabel(row.strike)}`" data-testid="strangle-ce" @change="pickStrangleSide(row, 'ce')"
+              />
+            </label>
+            <label class="flex items-center justify-center gap-1">
+              <input
+                v-if="tab === 'straddles'" type="radio" name="straddle" :checked="straddleStrike === row.strike" :disabled="!(row.ce && row.pe)"
+                :aria-label="`Straddle ${strikeLabel(row.strike)}`" data-testid="straddle-radio" @change="pickStraddle(row)"
+              />{{ strikeLabel(row.strike) }}
+            </label>
+            <label class="flex items-center justify-start gap-1 pl-1">
+              <input
+                v-if="tab === 'strangles' && row.pe && choicesFor(row.pe).length" type="radio" name="strangle-pe" :checked="strangleLeg('pe') === row.strike"
+                :aria-label="`Put ${strikeLabel(row.strike)}`" data-testid="strangle-pe" @change="pickStrangleSide(row, 'pe')"
+              />
+              <span data-testid="type-pe-ltp">{{ row.pe ? shown(row.pe.ltp) : '-' }}</span>
+            </label>
+          </div>
+        </template>
+      </div>
+
       <div v-else data-testid="futures-panel">
         <p v-if="futuresFailed" data-testid="futures-error">The futures could not be read right now.</p>
         <p v-else-if="!futuresData" data-testid="futures-loading">Reading futures...</p>
         <template v-else>
           <p v-if="futuresReason" data-testid="futures-reason">{{ futuresReason }}</p>
-          <!-- UI-204 (S-034): one row per future - expiry, B / S, price right-aligned -->
-          <ul class="mt-2" data-testid="futures-list">
+          <!-- UI-204 / D-C32 (S-034): an "Expiry / Price" head, then one row per future - expiry, B / S, price right-aligned -->
+          <div class="mt-2 flex border-b border-line pb-1 text-[10px] text-ink-muted" data-testid="futures-head"><span>Expiry</span><span class="ml-auto">Price</span></div>
+          <p v-if="!futuresData.futures?.length" class="py-1 text-ink-muted" data-testid="futures-none">No future is listed for this index.</p>
+          <ul data-testid="futures-list">
             <li v-for="f in futuresData.futures" :key="f.instrument_id" class="flex h-8 items-center gap-2 border-b border-line" data-testid="future-row" :data-expiry="f.expiry">
-              <span>{{ expiryLabel(f.expiry) }} future</span>
+              <span>{{ expiryLabel(f.expiry) }}</span>
               <button type="button" class="h-5 w-5 rounded bg-buy-soft text-[11px] font-semibold text-buy" aria-label="Buy" title="Buy" data-testid="future-buy" :disabled="busy" @click="addFuture(f, 'BUY')">B</button>
               <button type="button" class="h-5 w-5 rounded bg-sell-soft text-[11px] font-semibold text-sell" aria-label="Sell" title="Sell" data-testid="future-sell" :disabled="busy" @click="addFuture(f, 'SELL')">S</button>
-              <span class="ml-auto num">LTP <span data-testid="future-ltp">{{ shown(f.ltp) }}</span></span>
+              <span class="ml-auto num" data-testid="future-ltp">{{ shown(f.ltp) }}</span>
               <span v-if="f.ltp_reason" class="text-ink-muted" data-testid="future-reason">({{ futureReasonText(f.ltp_reason) }})</span>
             </li>
           </ul>
           <p v-if="doneError" data-testid="future-add-error">{{ doneError }}</p>
-          <h3 class="mt-3 text-xs font-semibold text-ink-muted">{{ FORWARD_LABEL }}</h3>
+          <!-- D-C32 (S-034): the section is "Synthetic Futures" with an (i); each row is the forward used for pricing that
+               expiry (ADR-061 source labels kept). B / S on a synthetic future is Later: none here. -->
+          <h3 class="mt-3 flex items-center gap-1 text-xs font-semibold text-ink-muted" data-testid="synthetic-title">Synthetic Futures
+            <span
+              class="cursor-help rounded-full border border-line px-1 text-[10px]" tabindex="0" role="img" aria-label="About synthetic futures"
+              :title="`${FORWARD_LABEL}: the price a future would have for an expiry, from put-call parity or, when a chain has too few prices, estimated from spot.`"
+              data-testid="synthetic-info"
+            >i</span>
+          </h3>
           <ul class="mt-1" data-testid="forwards-list">
             <li v-for="f in futuresData.forwards" :key="f.expiry" class="flex flex-wrap items-center gap-1 border-b border-line py-1" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">
-              {{ expiryLabel(f.expiry) }} {{ FORWARD_LABEL }}: <span class="ml-auto num" data-testid="forward-value">{{ shown(f.forward) }}</span>
+              {{ expiryLabel(f.expiry) }} <span class="ml-auto num" data-testid="forward-value">{{ shown(f.forward) }}</span>
               <span v-if="f.source === 'parity'" data-testid="forward-source">(from put-call parity)</span>
               <span v-else-if="f.source === 'spot_fallback'" data-testid="forward-source">({{ f.label ?? 'estimated from spot' }})</span>
               <span v-if="f.forward != null && f.spot_health !== 'available'" data-testid="forward-health">({{ healthSentence(f.spot_health) }})</span>
@@ -701,10 +909,10 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
     <!-- UI-206 footer, kept in view at the drawer's bottom edge: the count left; Pick from Option Chain, Clear All and Done
          right. Done adds every selected contract through the same planned-entry capture; it never places an order. -->
     <div
-      v-if="tab === 'strikes' && expiry" class="-mx-4 -mb-4 flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-t border-line bg-surface px-4 py-2"
+      v-if="tab !== 'futures' && expiry" class="-mx-4 -mb-4 flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-t border-line bg-surface px-4 py-2"
       data-testid="picker-footer"
     >
-      <span class="font-medium" data-testid="picker-count">{{ pickedCount }} selected</span>
+      <span class="font-medium" data-testid="picker-count">{{ pickedCount }} {{ pickedCount === 1 ? 'leg' : 'legs' }} selected</span>
       <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
       <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
       <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>

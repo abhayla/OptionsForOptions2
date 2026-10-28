@@ -103,15 +103,6 @@ describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (R
     expect(out[0][0].map((l) => [l.instrument_id, l.planned_entry, l.captured_at])).toEqual([['NSE_FO:1', '120.50', 'c1'], ['NSE_FO:2', '80.00', 'c1']])
   })
 
-  it('quick pick: the same capture', async () => {
-    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', '80.00')]))
-    const w = await panel()
-    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
-    await flushPromises()
-    expect(planned().length).toBe(1)
-    expect(w.emitted('update:legs')[0][0].map((l) => l.planned_entry)).toEqual(['120.50', '80.00'])
-  })
-
   it('one id with no price: that leg unpriced with its reason, the others priced', async () => {
     loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', null)]))
     const w = await panel()
@@ -139,7 +130,7 @@ describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (R
   it('Replace -> Cancel: no load-template and no planned-entry request', async () => {
     loadAnswer = answer(ENTRIES([E('1', '1.00'), E('2', '2.00')]))
     const w = await panel(TWO_LEGS)
-    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await w.get('[data-testid="rm-replace-no"]').trigger('click')
     await flushPromises()
     expect(posts).toEqual([])
@@ -154,7 +145,7 @@ describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (R
       return ++n === 1 ? slow : Promise.resolve({ data: ANSWER })
     }
     const w = await panel()
-    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     // The cards are :disabled while a load is busy, and a click on a disabled element does nothing, so the second click would
     // never reach the guard. Lift the attribute on the DOM node (a click that got through) so the second load really starts.
     const second = w.get('[data-testid="rm-template-bull_call_spread"]')
@@ -213,17 +204,11 @@ describe('REQ-079 AC-5: replace prompt', () => {
   })
 })
 
-describe('REQ-079 AC-7: quick picks', () => {
-  it('offers the underlying distances and posts the user side and distance', async () => {
+describe('GC-UI 6c D-C08: the Quick picks block has left Ready-made (now the leg drawer Straddles / Strangles tabs)', () => {
+  it('shows no quick-pick controls', async () => {
     const w = await panel()
-    expect(w.findAll('[data-testid^="rm-strangle-"]').map((b) => b.text())).toEqual(['50 points', '100 points', '150 points', '200 points'])
-    await w.get('[data-testid="rm-side-sell"]').setValue(true)
-    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
-    await flushPromises()
-    expect(posts[0]).toEqual(['/strategies/quick-pick', { underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-27' }])
-    await w.get('[data-testid="rm-straddle"]').trigger('click')
-    await flushPromises()
-    expect(posts.find((p) => p[1].kind === 'straddle')[1]).toEqual({ underlying: 'NIFTY', kind: 'straddle', distance: 0, side: 'SELL', expiry: '2026-10-27' })
+    for (const id of ['rm-quick', 'rm-straddle', 'rm-side-buy', 'rm-side-sell']) expect(w.find(`[data-testid="${id}"]`).exists()).toBe(false)
+    expect(w.findAll('[data-testid^="rm-strangle-"]')).toHaveLength(0)
   })
 })
 
