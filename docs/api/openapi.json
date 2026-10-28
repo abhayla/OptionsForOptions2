@@ -1122,6 +1122,89 @@
         "title": "CostOut",
         "type": "object"
       },
+      "CurveOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "points"
+        ],
+        "title": "CurveOut",
+        "type": "object"
+      },
+      "CurvesOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``).",
+        "properties": {
+          "at_expiry": {
+            "$ref": "#/components/schemas/CurveOut"
+          },
+          "estimated_now": {
+            "$ref": "#/components/schemas/CurveOut"
+          }
+        },
+        "required": [
+          "at_expiry",
+          "estimated_now"
+        ],
+        "title": "CurvesOut",
+        "type": "object"
+      },
       "DefinitionOut": {
         "additionalProperties": false,
         "properties": {
@@ -3012,6 +3095,12 @@
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
+          "both_views": {
+            "default": false,
+            "description": "REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in `curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly",
+            "title": "Both Views",
+            "type": "boolean"
+          },
           "fallback": {
             "default": false,
             "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
@@ -3026,6 +3115,21 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "payoff_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then carries `payoff_table` (also sent with both_views; absent: the strike step, NIFTY 50, SENSEX 100)",
+            "examples": [
+              50
+            ],
+            "title": "Payoff Step"
           },
           "range_end": {
             "anyOf": [
@@ -3058,6 +3162,12 @@
               "22800"
             ],
             "title": "Range Start"
+          },
+          "sd_bands": {
+            "default": false,
+            "description": "REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day horizon, the days to expiry when fewer)",
+            "title": "Sd Bands",
+            "type": "boolean"
           },
           "seq": {
             "anyOf": [
@@ -3125,6 +3235,16 @@
               }
             ]
           },
+          "curves": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurvesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "last_price_at": {
             "anyOf": [
               {
@@ -3184,6 +3304,16 @@
               }
             ]
           },
+          "payoff_table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffTableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "anyOf": [
               {},
@@ -3236,6 +3366,16 @@
               }
             ],
             "title": "Spot Level"
+          },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StandardDeviationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "state": {
             "enum": [
@@ -3319,6 +3459,70 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
+      "PayoffCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "pnl": {
+            "title": "Pnl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pnl",
+          "display"
+        ],
+        "title": "PayoffCellOut",
+        "type": "object"
+      },
+      "PayoffColumnOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason"
+        ],
+        "title": "PayoffColumnOut",
+        "type": "object"
+      },
       "PayoffOut": {
         "additionalProperties": false,
         "properties": {
@@ -3343,6 +3547,96 @@
           "points"
         ],
         "title": "PayoffOut",
+        "type": "object"
+      },
+      "PayoffRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at_expiry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimated_now": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "level_display": {
+            "title": "Level Display"
+          },
+          "nearest_spot": {
+            "title": "Nearest Spot",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "level_display",
+          "nearest_spot",
+          "estimated_now",
+          "at_expiry"
+        ],
+        "title": "PayoffRowOut",
+        "type": "object"
+      },
+      "PayoffTableOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "step",
+          "available",
+          "unavailable_reason",
+          "columns",
+          "rows"
+        ],
+        "title": "PayoffTableOut",
         "type": "object"
       },
       "PickerCellOut": {
@@ -4274,6 +4568,78 @@
         "title": "RowOut",
         "type": "object"
       },
+      "ScenarioOtherOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1 (both views asked for): the other view's totals on the scenario table's own levels.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "totals"
+        ],
+        "title": "ScenarioOtherOut",
+        "type": "object"
+      },
       "ScenarioOut": {
         "additionalProperties": false,
         "properties": {
@@ -4306,6 +4672,16 @@
             },
             "title": "Levels",
             "type": "array"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioOtherOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "output_label": {
             "anyOf": [
@@ -4371,6 +4747,169 @@
           "customised"
         ],
         "title": "ScenarioOut",
+        "type": "object"
+      },
+      "SdBandOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "sd": {
+            "enum": [
+              -2,
+              -1,
+              1,
+              2
+            ],
+            "title": "Sd",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sd",
+          "label",
+          "level",
+          "display"
+        ],
+        "title": "SdBandOut",
+        "type": "object"
+      },
+      "SdRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label"
+          },
+          "lower": {
+            "title": "Lower",
+            "type": "string"
+          },
+          "lower_display": {
+            "title": "Lower Display"
+          },
+          "move": {
+            "title": "Move",
+            "type": "string"
+          },
+          "move_display": {
+            "title": "Move Display"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "string"
+          },
+          "sd": {
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Sd",
+            "type": "integer"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "string"
+          },
+          "upper_display": {
+            "title": "Upper Display"
+          }
+        },
+        "required": [
+          "sd",
+          "label",
+          "move",
+          "percent",
+          "lower",
+          "upper",
+          "move_display",
+          "lower_display",
+          "upper_display"
+        ],
+        "title": "SdRowOut",
+        "type": "object"
+      },
+      "StandardDeviationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bands": {
+            "items": {
+              "$ref": "#/components/schemas/SdBandOut"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "horizon_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Days"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SdRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          }
+        },
+        "required": [
+          "available",
+          "reason",
+          "horizon_days",
+          "iv",
+          "spot",
+          "rows",
+          "bands"
+        ],
+        "title": "StandardDeviationOut",
         "type": "object"
       },
       "StatusOut": {
