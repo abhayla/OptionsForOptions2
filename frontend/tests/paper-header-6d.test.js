@@ -26,7 +26,7 @@ const leg = (i, over = {}) => withPriceTexts({
   strike: `${22300 + i * 100}.00`, expiry: '2026-11-03', quantity: 65, entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z',
   current_price: '113.60', price_state: 'live', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null, ...over,
 })
-const item = (over = {}) => ({
+const item = (over = {}) => withPriceTexts({
   strategy_id: 48, name: '"GCBP P1 BCS"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE',
   pause_reason: null, as_of: null, total: '-1894.75', booked: '0.00', unbooked: '-1894.75', legs: [leg(0), leg(1)], ...over,
 })
@@ -55,8 +55,8 @@ describe('GC-UI 6d: Paper strategy header (D-C44)', () => {
     const w = await show()
     const cols = w.findAll('[data-testid="paper-figure-label"]').map((x) => x.text())
     expect(cols).toEqual(['Total P&L', 'Unbooked P&L', 'Booked P&L'])
-    expect(t(w, 'paper-total').text()).toBe('-1,894.75')
-    expect(t(w, 'paper-unbooked').text()).toBe('-1,894.75')
+    expect(t(w, 'paper-total').text()).toBe('−1,894.75')
+    expect(t(w, 'paper-unbooked').text()).toBe('−1,894.75')
     expect(t(w, 'paper-booked').text()).toBe('0.00') // D-C53: a true zero has no sign
     expect(t(w, 'paper-count').text()).toBe('2 of 2 positions')
     const legs = w.findAll('[data-testid="paper-leg"]')
@@ -80,7 +80,7 @@ describe('GC-UI 6d: Paper strategy header (D-C44)', () => {
     answers['GET /tracking'] = ok(list(item({ total: '-20.00', booked: '-20.00', unbooked: '0.00', legs: [leg(0), out] })))
     const w = await show()
     expect(t(w, 'paper-count').text()).toBe('1 of 2 positions')
-    expect(t(w, 'paper-booked').text()).toBe('-20.00')
+    expect(t(w, 'paper-booked').text()).toBe('−20.00')
     expect(t(w, 'paper-booked').classes()).toContain('text-loss')
     expect(t(w, 'paper-unbooked').text()).toBe('0.00')
     const legs = w.findAll('[data-testid="paper-leg"]')

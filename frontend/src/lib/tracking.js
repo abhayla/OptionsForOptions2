@@ -50,6 +50,11 @@ export function signedRupees(text) {
   return `${minus && !zero ? '-' : '+'}${groupIndian(String(BigInt(whole)))}.${paise}`
 }
 
+/** Exited is the server's own marker (exited_at, or a booked P&L), never the presence of a price text. */
+const isExited = (leg) => (leg?.exited_at !== null && leg?.exited_at !== undefined) || leg?.pnl_kind === 'booked'
+/** A money figure as the server wrote it (REQ-152 AC-4); no text -> null (shown as a dash). Nothing is formed here. */
+const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
@@ -73,7 +78,8 @@ export function readTracking(body, replyLegs = null) {
     text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
     entry: leg.entry_price_display ?? null, // GC-UI D-PX: the server's two-decimal text, printed as sent
     current: leg.price_state === 'live' ? (leg.current_price_display ?? null) : null,
-    exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: set once the leg is paper-exited
+    exited: isExited(leg),
+    exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: the server's text of the exit price; null = a dash
     pnl: legPnlText(leg),
   }))
   // an answer carrying a detection this screen cannot name is unreadable as a whole: never silently dropped
@@ -125,7 +131,7 @@ export function readTrackingItem(item, index = 0) {
   const legs = []
   for (const l of item.legs) {
     if (!l || !Number.isInteger(l.leg_index) || typeof l.action !== 'string' || typeof l.instrument !== 'string') return bad(id)
-    const exited = l.exit_price !== null && l.exit_price !== undefined
+    const exited = isExited(l)
     legs.push({
       key: `${l.leg_index}`,
       index: l.leg_index,
@@ -137,7 +143,7 @@ export function readTrackingItem(item, index = 0) {
       entry: l.entry_price_display ?? null,
       current: l.price_state === 'live' ? (l.current_price_display ?? null) : null,
       exited,
-      exitPrice: exited ? (l.exit_price_display ?? null) : null,
+      exitPrice: exited ? (l.exit_price_display ?? null) : null, // null = the server sent no text: shown as a dash
     })
   }
   let stateText = ''
@@ -151,9 +157,9 @@ export function readTrackingItem(item, index = 0) {
     underlying: item.underlying,
     state: item.state,
     stateText,
-    total: signedRupees(item.total),
-    booked: signedRupees(item.booked),
-    unbooked: signedRupees(item.unbooked),
+    total: serverText(item.total_text),
+    booked: serverText(item.booked_text),
+    unbooked: serverText(item.unbooked_text),
     legs,
   }
 }

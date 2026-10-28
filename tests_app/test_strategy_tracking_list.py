@@ -104,6 +104,21 @@ async def test_list_all_live_gives_total_booked_unbooked_and_leg_fields(db):
         "entry_price": "39.15", "current_price": "45.15", "price_state": "live", "exit_price": None, "exited_at": None}
 
 
+async def test_list_sends_each_figure_as_server_text_and_a_true_zero_has_no_sign(db):
+    """Review fix 4 (REQ-109 AC-2, REQ-152 AC-4): the money text comes from the server; booked 0.00 is "0.00", never "+0.00"."""
+    app, *_ = await _tracked(db)
+    async with _client(app) as c:
+        first = (await c.get("/tracking")).json()["strategies"][0]
+    assert (first["total_text"], first["booked_text"], first["unbooked_text"]) == ("+195.00", "0.00", "+195.00")
+
+
+def test_signed_paisa_text_of_zero_and_negative_zero_is_unsigned():
+    from ofo.errors.explanations import render_explanation
+    for zero in (Decimal("0.00"), Decimal("-0.00"), Decimal("0.004"), Decimal("-0.004")):
+        assert render_explanation("summary_paisa_signed", amount=zero) == "0.00"
+    assert render_explanation("summary_paisa_signed", amount=Decimal("195")) == "+195.00"
+
+
 async def test_list_never_shows_another_users_tracking(db):
     _app, ids, *_ = await _tracked(db)
     other, *_ = await _setup(db)

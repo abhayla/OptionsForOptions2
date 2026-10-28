@@ -20,6 +20,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import { withPriceTexts } from './_priceTexts'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const LEG = {
@@ -135,7 +136,7 @@ describe('D-C16 Save modal', () => {
 })
 
 describe('D-C14 compact Paper list', () => {
-  const item = (id, over = {}) => ({
+  const item = (id, over = {}) => withPriceTexts({
     strategy_id: id, name: `"Paper ${id}"`, underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null, as_of: null,
     total: '71.50', booked: '0.00', unbooked: '71.50',
     legs: [0, 1].map((i) => ({ leg_index: i, instrument_id: `NSE_FO:${i}`, action: 'BUY', instrument: 'PE', strike: '22300.00', expiry: '2026-11-03', quantity: 65,
