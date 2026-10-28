@@ -105,7 +105,7 @@ Row ids are from the differences document; `*` = SPEC CHANGE (approved, ADR-204)
 
 | Step | Item | Rows | What | Tier | Proof | Status |
 |---|---|---|---|---|---|---|
-| 0 | read first | - | Read the list above; write the overlap list here (which steps share StrategyBuilderPage.vue / ChartCard / the summary block; what each reuses) | C | Overlap list in this file | Not started |
+| 0 | read first | - | Read the list above; write the overlap list here (which steps share StrategyBuilderPage.vue / ChartCard / the summary block; what each reuses) | C | Overlap list in this file | DONE (section "Step 0") |
 | 1 | CORE: independent data checker | (confirms D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33) | A script in the repo (`scripts/checks/ui_data_check.py`), own Black-Scholes and payoff code, reads what the API/screen shows plus the market inputs it used, recomputes: summary (max profit/loss, breakevens with and without charges, reward/risk, net premium, time and intrinsic value on the spec's basis), payoff points at expiry and estimated-now, P&L table cells, Greeks per leg and total (per unit and per lot), Paper/tracking totals | A | Figure-by-figure table for 3 real strategies; each DATA row confirmed or cleared with numbers | Not started |
 | 2 | DATA fixes | D-A46, D-A47, D-B33, D-B35, D-B36, D-B38, D-B51, D-C33, D-C27, D-C31 + every mismatch step 1 finds | Defect-fix contract per class; money maths (A46, A47, C33) Tier A with an Opus review | A (money) / B | Checker green on the same 3 strategies + each fix re-read on the live screen | Not started |
 | 3 | Builder top half (Area A) | D-A01, D-A04, D-A06, D-A07, D-A08, D-A09, D-A11, D-A12, D-A14, D-A15, D-A16, D-A17, D-A19, D-A20, D-A21, D-A22, D-A28, D-A29, D-A30*, D-A31*, D-A32*, D-A33, D-A36, D-A37, D-A38, D-A40*, D-A41, D-A42, D-A43* | Header strip, legs panel (dot price-moved marker), controls, action row, summary block in Sensibull form (ADR-202); goal of D-A28: the payoff graph starts on the first screen at 1536 x 864 | B | vitest red first; screenshot pair per row group; above-the-fold check | Not started |
@@ -127,6 +127,31 @@ Size, stated honestly: 104 rows plus a new data path (Strategy Chart) and an ind
 session; the Status column and the per-row status in the differences document make the contract resumable. Order: step
 0, step 1 (core) before anything else; step 2 next (wrong numbers outrank looks); steps 3-6 may run as parallel builders
 only where step 0's overlap list shows no shared file (StrategyBuilderPage.vue layout belongs to step 3); 7-10 last.
+
+## Step 0: overlap list (2026-10-28, from the import graph of `frontend/src`)
+
+Files two or more steps touch, and the rule for each:
+
+| File | Steps | Rule |
+|---|---|---|
+| `pages/StrategyBuilderPage.vue` | 3 (layout owner: A28, A42, A43), 4 (B46 lower panel, B47 band), 6 (lower tabs placement) | Step 3 lands first; steps 4 and 6 change it only after step 3 is merged, and only the slots they own |
+| `lib/displayFormat.js` | 3 (A04, A21 one rupee/number rule), 4 (B29, B30, B49 contract form), 6 (C53) | One format sub-step inside step 3 adds the shared helpers; steps 4 and 6 call them, never add a second formatter |
+| `components/strategy/SummaryCards.vue` | 2 (A46 breakeven basis), 3 (A29-A33, A36, A37) | Step 2 first (number), then step 3 (form) |
+| `components/strategy/MarginLine.vue` | 2 (A47), 3 (A38, A40, A41) | Step 2 first |
+| `components/strategy/ChartCard.vue` + `lib/chartCard.js` | 2 (B33, B38 switch per tab; B35, B36 Greeks), 4 (B01-B39), 5 (B40 Strategy Chart tab body) | Step 2 first; step 4 next; step 5 only adds the Strategy Chart tab body (a new component) |
+| `components/strategy/PayoffChart.vue` | 4 only (B06-B17, B19) | - |
+| `components/strategy/LegPicker.vue` | 2 (C27 columns, C31 form overlap, C33 forward label), 6 (C20-C35) | Step 2 first; C30 (remove the contract form) is the class fix for C31, so C31 lands in step 2 by removing the form |
+| `components/strategy/TrackingPanel.vue`, `PaperStrategies.vue`, `lib/tracking.js` | 2 (B51 entry label), 4 (B48, B49, B50), 6 (C14, C41-C54) | Step 2 first; step 4 owns TrackingPanel, step 6 owns PaperStrategies |
+| `components/strategy/SaveDraftBar.vue` | 3 (A22 action row), 6 (C01, C11, C12, C14, C16 lower tabs, Saved list, Save dialog) | Step 3 first |
+| `components/strategy/LegList.vue`, `StrategyControls.vue` | 3 only | - |
+| `components/strategy/ReadyMadePanel.vue`, `lib/readyMade.js` | 6 only (C02-C08) | Can run in parallel with step 3/4 |
+| `pages/PositionsPage.vue` | 6 only (C40) | Can run in parallel |
+| backend `ofo/engine`, `ofo/outcome` (breakeven, funds needed, forward) | 2 only (A46, A47, C33); 4 reads (B19/B45 SD, B16 OI via existing replies); 5 (new history route) | The checker (step 1) imports NOTHING from `backend/ofo/engine` |
+
+Reuse: SD bands (B19, B45) use the server's spot / ATM IV / days already in the outcome reply; OI bars (B16, B17) reuse
+the strike drawer's OI (G-074); the Greeks multiply toggles (B31, B37) are one shared control; per-leg Paper P&L stays
+Later (ADR-008). Parallel-safe sets: {ReadyMadePanel, PositionsPage} alongside step 3; everything else sequential
+2 -> 3 -> 4 -> 5 -> 6.
 
 ## Found during the run
 
