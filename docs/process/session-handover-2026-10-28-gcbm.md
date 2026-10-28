@@ -1,6 +1,6 @@
 # Session handover: GC-BM (builder must-have set + user-style test), 2026-10-27 15:48 to 2026-10-28 ~09:45 IST
 
-Contract: `docs/process/goal-contract-GC-BM-2026-10-27.md` (rides in this PR). Result: **PARTIAL**. Every item is built
+Contract: `docs/process/goal-contract-GC-BM-2026-10-27.md` (local branch `build/gcbm-must-have`, NOT pushed). Result: **PARTIAL, ON HOLD before the push**. Every item is built
 and walked clean on the real app; one F-row remainder is PARKED (#596), and the contract counts a parked remainder as
 not passed. **NEXT = GC-B2.**
 
@@ -17,8 +17,10 @@ not passed. **NEXT = GC-B2.**
   15:30:00 IST"); 09:16 in-hours check PASS (live prices, no banner, "captured 28 Oct 2026, 09:16:16 IST", depth 5
   levels).
 - Reviews: Tier A (Opus) and Tier B (Sonnet) PASS in two rounds.
-- Local gate before the one push: full vitest, ruff ratchet (no rule rose), coverage, openapi no drift, DB route tests
-  on db_run_fresh, Playwright for the 12 builder specs 80 passed / 8 skipped / 0 failed, prepush.py (servers stopped).
+- Local checks: full vitest, ruff ratchet (no rule rose), coverage, openapi no drift, DB route tests on db_run_fresh,
+  Playwright for the 12 builder specs 80 passed / 8 skipped / 0 failed. prepush.py run 1 (44e8410f): every step PASS
+  except ci_checks (stale generated files); regenerated in 2dbd84f0; run 2 stopped at the owner's hold after ci_checks
+  PASS (no marker written).
 
 ## PENDING
 - Deferred issues: #597 (Option Chain default expiry after the close), #598 (ADR-008 scan MINORs), #599 (market
@@ -31,12 +33,16 @@ not passed. **NEXT = GC-B2.**
   migration for `close_at`, which needs draft-PR CI (ADR-191 (2)).
 
 ## Process notes
-- The one-push rule held: one push, one PR, one CI run.
+- OWNER HOLD (2026-10-28 ~09:50 IST): "Don't create the PR ... I need to work more, test few more, implement few
+  more features before we create a PR and push." Nothing pushed; no PR; worktrees kept.
 - Local e2e: Git Bash `$!` is not the Windows PID, so the old script never stopped its servers; on 2026-10-28 servers
   from 06:42 answered the 09:22 run on a dropped database (8 false failures). The script now refuses busy ports and
   stops servers by the PID that owns each port. The 2026-10-28 ~07:00 whole-suite numbers in the contract are suspect
   for the same reason (strategy-table passed once the ports were clean).
 
 ## NEXT
+- When the owner's extra work is in: merge main, `regen.py`, prepush.py with the servers stopped (needs a marker for the
+  final head), ONE push, ONE PR (body draft: D:\Abhay\scratch\gcbm-briefs\pr-body.md, fill the prepush row), CI,
+  merge.py, then wt-rm.ps1 for the gcbm-* worktrees.
 - GC-B2 (`docs/process/goal-contracts-builder-phase-2026-10-27.md`): edit speed p95 <= 1,000 ms (G-019) and the Width /
   Hedge values (G-018). Market hours, the owner sets it as /goal in a fresh session.

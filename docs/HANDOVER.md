@@ -4,9 +4,9 @@
 
 - **GC-BM PARTIAL:** the 5 must-have builder rows (G-065, G-070, G-075, G-024, G-051) and F-1..F-20 built with failing
   tests first; ADR-199, ADR-200; real-app walks clean after hours, before the open and in hours (2026-10-28 09:16).
-  One push, one PR. Parked: #596 (close label on a reopened saved strategy needs a migration).
+  ON HOLD before the push (owner, 09:50): no PR yet. Parked: #596 (close label on a reopened saved strategy needs a migration).
 - **PENDING:** deferred #597-#602; owner visual-differences list in the GC-BM contract.
-- **NEXT:** GC-B2 (edit speed p95 <= 1,000 ms; Width / Hedge values), market hours, fresh session.
+- **NEXT:** the owner's extra work on this branch, then the one push / PR / merge; then GC-B2 (edit speed p95 <= 1,000 ms; Width / Hedge values), market hours, fresh session.
 
 ## EARLIER: (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
 
