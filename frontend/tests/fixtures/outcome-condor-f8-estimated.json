@@ -89,7 +89,10 @@
   "available": null,
   "checked_at": null,
   "shortfall": false,
-  "shortfall_reason": null
+  "shortfall_reason": null,
+  "needed_display": null,
+  "available_display": null,
+  "broker_needed_display": null
  },
  "table": {
   "underlying": "NIFTY",
@@ -2795,9 +2798,18 @@
    "side": "get",
    "per_unit": "97.95",
    "text": "Get ₹6,366.75",
-   "reason": null
+   "reason": null,
+   "amount_display": "6,367"
   },
-  "funds_share": null
+  "funds_share": null,
+  "max_profit_display": "+6,367",
+  "max_loss_display": "−3,383",
+  "breakevens_display": [
+   "22,552 (+0.1%)",
+   "23,048 (+2.3%)"
+  ],
+  "time_value_display": "+1,677",
+  "intrinsic_value_display": "−7,589"
  },
  "charges_breakdown": null
 }
