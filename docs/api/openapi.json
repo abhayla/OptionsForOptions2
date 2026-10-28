@@ -3726,6 +3726,26 @@
           "level_display": {
             "title": "Level Display"
           },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
           "nearest_spot": {
             "title": "Nearest Spot",
             "type": "boolean"
@@ -3735,6 +3755,8 @@
           "level",
           "level_display",
           "nearest_spot",
+          "move_pct",
+          "move_pct_display",
           "estimated_now",
           "at_expiry"
         ],
@@ -4271,6 +4293,133 @@
           }
         },
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PriceHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "future_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Future Label"
+          },
+          "notes": {
+            "items": {},
+            "title": "Notes",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PricePointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "title": "Source"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "leg_not_listed",
+              "no_future_candles",
+              "all_gaps",
+              "no_session",
+              "kite_refused",
+              "future_not_in_catalogue"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "state",
+          "reason",
+          "source",
+          "future_label",
+          "as_of",
+          "notes",
+          "points"
+        ],
+        "title": "PriceHistoryOut",
+        "type": "object"
+      },
+      "PricePointOut": {
+        "additionalProperties": false,
+        "properties": {
+          "future": {
+            "$ref": "#/components/schemas/PriceValueOut"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceValueOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "t": {
+            "format": "date-time",
+            "title": "T",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "strategy",
+          "future"
+        ],
+        "title": "PricePointOut",
+        "type": "object"
+      },
+      "PriceValueOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "PriceValueOut",
         "type": "object"
       },
       "QuickPickIn": {
@@ -8635,6 +8784,68 @@
           }
         },
         "summary": "Rename Strategy"
+      }
+    },
+    "/strategies/{strategy_id}/price-history": {
+      "get": {
+        "description": "The strategy's combined net price per unit per minute beside the index future (REQ-091 AC-2..AC-5). Another\nuser's strategy answers exactly as a missing one (store.load is owner-scoped). Prices only, no P&L (AC-6).",
+        "operationId": "strategy_price_history_strategies__strategy_id__price_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invert",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Invert",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 15,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Price History"
       }
     },
     "/strategies/{strategy_id}/restore/{seq}": {
