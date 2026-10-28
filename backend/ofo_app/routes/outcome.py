@@ -258,6 +258,12 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day "
                     "horizon, the days to expiry when fewer)")
+    open_interest: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario "
+                    "range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time "
+                    "read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change "
+                    "is not offered (D-B18, Later)")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -581,6 +587,27 @@ class LegQuoteOut(ApiModel):
     health: HealthCode | None
 
 
+class OiRowOut(ApiModel):
+    """One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / "0"."""
+    strike: Money
+    call_oi: int | None
+    call_oi_display: CatalogueText
+    put_oi: int | None
+    put_oi_display: CatalogueText
+
+
+class OpenInterestOut(ApiModel):
+    """REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason."""
+    available: bool
+    unavailable_reason: CatalogueText | None  # "OI not available for this expiry: ..." (AC-6); None when available
+    expiry: datetime.date | None
+    expiry_note: CatalogueText | None  # a calendar: which expiry the bars are for (the nearest); None otherwise
+    read_at: datetime.datetime | None  # the oldest time among the quotes used
+    read_at_display: CatalogueText | None  # "OI data at 09:20 IST"
+    contracts: int  # the contracts the bars read (two per listed strike in range)
+    rows: list[OiRowOut]
+
+
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "FROM_ENTRIES", "NOT_CONNECTED", "REFUSED"]
     underlying: Underlying
@@ -611,6 +638,7 @@ class OutcomeResponse(ApiModel):
     curves: CurvesOut | None = None
     payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
     standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
+    open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -725,6 +753,12 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
+    if req.open_interest:  # REQ-083 AC-5 / AC-6: the bars, or the one reason (never a 0 in a missing place)
+        from ofo_app.outcome_oi import oi_block  # late: outcome_oi's readers import this module
+        body["open_interest"] = oi_block(
+            None if ctx is None else ctx.provider, req.underlying, [leg.instrument_id for leg in req.legs], body,
+            closed=state.closed, live_blocked=live_blocked,
+            streams=None if ctx is None else (lambda ids: inputs_streaming(ctx, streaming, ids)))
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key

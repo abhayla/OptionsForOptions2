@@ -440,6 +440,22 @@ class WholePoints(SlotType):
         return format_whole_points(value)
 
 
+class OiCount(SlotType):
+    """GC-UI D-B16: an open interest, a whole contract count of 0 or more (never a bool), in the drawer's compact Indian
+    form ("62,075", "74.9L", "1.23Cr"); a real 0 prints "0"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, int, "OiCount")
+        if value < 0:  # type: ignore[operator]
+            raise ValueError("OiCount slot requires a count of 0 or more")
+
+    @staticmethod
+    def format(value: int) -> str:
+        from ofo.engine.display import format_oi_compact  # late: display imports this module
+        return format_oi_compact(value)
+
+
 class SignedPercent(SlotType):
     """REQ-153: a percent to one decimal, half-up, with "+" / U+2212; only a true zero is "0.0" with no sign (F-4)."""
 
@@ -1173,6 +1189,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("payoff_table_too_many_rows", "values_seen",
                         "This range has too many rows at a {step}-point interval. Pick a wider interval.",
                         {"step": Amount}),
+    # GC-UI D-B16 / D-B17 (REQ-083 AC-5, AC-6): the payoff chart's OI bars; the AC-6 line always opens with the
+    # requirement's own words, then the reason. Today's OI change (D-B18) is Later: no template for it.
+    ExplanationTemplate("outcome_oi_count", "values_seen", "{count}", {"count": OiCount}),
+    ExplanationTemplate("outcome_oi_read_at", "values_seen", "OI data at {time} IST", {"time": HourMinute}),
+    ExplanationTemplate("outcome_oi_nearest_expiry", "values_seen",
+                        "OI is shown for the nearest expiry, {expiry}.", {"expiry": ExpiryDate}),
+    ExplanationTemplate("outcome_oi_not_connected", "values_seen",
+                        "OI not available for this expiry: live data is not connected."),
+    ExplanationTemplate("outcome_oi_not_streaming", "values_seen",
+                        "OI not available for this expiry: its strikes are not streaming."),
+    ExplanationTemplate("outcome_oi_stale", "values_seen",
+                        "OI not available for this expiry: the feed is stale."),
+    ExplanationTemplate("outcome_oi_no_strikes", "values_seen",
+                        "OI not available for this expiry: no listed strike is inside the chart's range."),
     ExplanationTemplate("cell_rupees", "values_seen", "{amount}", {"amount": Rupees}),
     ExplanationTemplate("cell_rupees_cr", "values_seen", "{amount} Cr", {"amount": Rupees}),
     ExplanationTemplate("cell_rupees_dr", "values_seen", "{amount} Dr", {"amount": Rupees}),
