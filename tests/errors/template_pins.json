@@ -1024,11 +1024,19 @@
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_checked": {
-    "sha256": "b179eefe2bf9e952553cc57b9df8f1ad26fb1f4e1054359546003983125670aa",
+    "sha256": "b80caa7cb0ddd9f3e76536c25825479ce059b1ea446dfda60532deae5e8ea154",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_checked_top_up": {
+    "sha256": "1b7d7bce3ce396409d4e132581816a822fd0487cbfe25fa7e8be5efac68fbd99",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_short": {
-    "sha256": "cce50ffea570b125014dbeb473971fe38772e58c3bdb2ca887ae60388f7f7303",
+    "sha256": "8a26bb01c3597982f97b0e6f86e0a51a66316199f0b528fff5741882008d3081",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_short_top_up": {
+    "sha256": "52e1d1f9f6da8911c5b770446eee0790f7cdd0fc16d8b961b78bf0cd8e80fece",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_unreadable": {
@@ -1165,6 +1173,14 @@
   },
   "explanation:summary_start_touch": {
     "sha256": "5bc2edeab02971fa1029be3ab0ffaacd485019075644a1e8c3d7f28bb1a3da77",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_start_regions_with_charges": {
+    "sha256": "86328226531ba115eb3169cdadcdda69c85860097e27f24ecb24b6b7e9fdcc29",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_start_touch_with_charges": {
+    "sha256": "2e588ccc9f7d0ac5cc6041fdd80830c69a567e2b812e28dc46ba53687edf9954",
     "reviewed": "pending owner read"
   },
   "explanation:summary_start_never": {

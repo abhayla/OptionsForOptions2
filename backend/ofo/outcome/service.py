@@ -225,25 +225,36 @@ MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_mar
 
 
 def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime,
-                   broker_needed: Decimal) -> Margin:
+                   broker_needed: Decimal, top_up: Decimal) -> Margin:
     """ADR-099: the amount needed (ours: Zerodha's figure plus the ADR-094 top-up), Zerodha's own figure, Zerodha's
     available funds and the time they were read. Both arrive already rounded half-up to the paisa
     where they were parsed (ADR-101: Kite's float noise 68498.85000000001 reads 68498.85); any rounding left here is on
     the safe side (needed UP, funds DOWN) for figures not from Kite, and ``shortfall``
     compares exactly the two amounts shown, so the screen never shows equal figures with a shortfall mark, nor hides a
-    shortfall the gate would block. Display only: the gate (REQ-055) is the check before the basket."""
-    for value in (needed, available, broker_needed):
+    shortfall the gate would block. Display only: the gate (REQ-055) is the check before the basket.
+    ``top_up`` is the ADR-094 top-up exactly as ``margin_gate.basket_requirement`` computed it (never recomputed
+    here); it alone picks the wording (GC-UI D-A47): 0 says Zerodha's figure already includes the bought legs'
+    premium, more than 0 names the amount added."""
+    for value in (needed, available, broker_needed, top_up):
         if type(value) is not Decimal or not value.is_finite():
             raise ValueError("a margin figure must be a finite Decimal")
+    if top_up < 0:
+        raise ValueError("the ADR-094 top-up is never below 0")
     if not isinstance(checked_at, datetime.datetime) or checked_at.tzinfo is None:
         raise ValueError("checked_at must be a timezone-aware datetime")
     need = needed.quantize(HUNDREDTH, rounding=ROUND_CEILING)
     have = available.quantize(HUNDREDTH, rounding=ROUND_FLOOR)
     theirs = max(broker_needed, Decimal(0)).quantize(HUNDREDTH, rounding=ROUND_CEILING)  # a closing basket: 0
     short = have < need
-    figures = {"broker_needed": theirs, "needed": need, "available": have}  # REQ-055 AC-3: each named for itself
-    reason = render_explanation("outcome_margin_short", **figures) if short else None
-    return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", **figures), need,
+    added = top_up.quantize(HUNDREDTH, rounding=ROUND_CEILING)
+    if added > 0:  # REQ-055 AC-3: each named for itself
+        figures = {"broker_needed": theirs, "top_up": added, "needed": need, "available": have}
+        checked_id, short_id = "outcome_margin_checked_top_up", "outcome_margin_short_top_up"
+    else:  # nothing was added: never name an addition (GC-UI D-A47)
+        figures = {"broker_needed": theirs, "available": have}
+        checked_id, short_id = "outcome_margin_checked", "outcome_margin_short"
+    reason = render_explanation(short_id, **figures) if short else None
+    return Margin(MARGIN_CHECKED, render_explanation(checked_id, **figures), need,
                   theirs, have, checked_at, short, reason)
 
 
@@ -346,15 +357,21 @@ def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
     return _not_live_label(snapshot)
 
 
-def _start_losing(regions, idx) -> ExplanationText:
-    """ADR-072: the sentence names every region where the engine's expiry P&L is below zero, nothing else."""
+def _start_losing(regions, idx, charges: Decimal | None = None) -> ExplanationText:
+    """ADR-072: the sentence names every region where the engine's expiry P&L is below zero, nothing else. The levels
+    are the pre-charges payoff's (spec sections 1 and 3); with the charges known, a sentence that names levels says
+    they are before those charges (GC-UI D-A46)."""
     if not regions:
         return render_explanation("summary_start_never")
     if regions == ((None, None),):
         return render_explanation("summary_start_everywhere")
     if len(regions) == 1 and regions[0][:2] == (None, None):  # a loss everywhere but its single zero points (#172)
-        return render_explanation("summary_start_touch", levels=regions[0][2])
-    return render_explanation("summary_start_regions", index=idx, regions=regions)
+        if charges is None:
+            return render_explanation("summary_start_touch", levels=regions[0][2])
+        return render_explanation("summary_start_touch_with_charges", levels=regions[0][2], charges=charges)
+    if charges is None:
+        return render_explanation("summary_start_regions", index=idx, regions=regions)
+    return render_explanation("summary_start_regions_with_charges", index=idx, regions=regions, charges=charges)
 
 
 def exercise_stt_line(legs) -> ExplanationText | None:
@@ -417,7 +434,7 @@ def _summary(metrics: StrategyMetrics | None, level_set: LevelSet, inputs: Model
     else:
         make = render_explanation("summary_make_at_most_with_charges", amount=max_profit, charges=charges)
     lo, up = level_set.lower_be, level_set.upper_be
-    start = _start_losing(metrics.loss_regions, idx)
+    start = _start_losing(metrics.loss_regions, idx, charges)
     legs = inputs.strategy.legs
     shown_profit, shown_loss = None if profit_unl else max_profit, None if loss_unl else max_loss
     ratio = money.reward_risk(shown_profit, shown_loss, single_expiry=inputs.strategy.is_single_expiry,

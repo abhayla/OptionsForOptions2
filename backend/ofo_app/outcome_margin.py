@@ -96,12 +96,12 @@ def basket_orders(provider: MarketDataProvider, legs: Sequence[PlannedOrderIn]) 
     return tuple(orders)
 
 
-def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal, Decimal]:
-    """In a worker thread: Zerodha's available funds, then the basket's required total (ours, ADR-094) and Zerodha's
-    own figure."""
+def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """In a worker thread: Zerodha's available funds, then the basket's required total (ours, ADR-094), Zerodha's
+    own figure and the ADR-094 top-up inside the required total."""
     available = client.fetch_available_funds()
     basket = client.fetch_basket_margin(orders)
-    return available, basket.required_total, basket.zerodha_total
+    return available, basket.required_total, basket.zerodha_total, basket.top_up
 
 
 @dataclass(frozen=True)
@@ -181,7 +181,7 @@ class OutcomeMargin:
             client = await asyncio.wait_for(self._open(), timeout)
             if client is None:  # no stored session after all
                 return MARGIN, False
-            available, needed, broker_needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders),
+            available, needed, broker_needed, top_up = await asyncio.wait_for(asyncio.to_thread(_read, client, orders),
                                                                        timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
@@ -192,7 +192,7 @@ class OutcomeMargin:
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)
             return margin_unreadable(), False
         try:
-            return margin_checked(needed, available, self._clock(), broker_needed), True
+            return margin_checked(needed, available, self._clock(), broker_needed, top_up), True
         except ValueError:
             return margin_unreadable(), False
 

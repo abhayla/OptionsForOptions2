@@ -967,18 +967,27 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_margin_pending", "values_seen",
                         "Margin from Zerodha is not shown yet; it needs your Kite login."),
     # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
+    # GC-UI D-A47: two wordings, chosen on the server by the ADR-094 top-up (margin_gate.basket_requirement). Top-up
+    # 0: Zerodha's figure already includes the bought legs' premium and nothing was added, so no addition is named.
     ExplanationTemplate("outcome_margin_checked", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}. With the premium at your planned entry "
-                        "prices, "
-                        "about {needed} is needed (an estimate); {available} is available in your Zerodha account.",
-                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
+                        "Zerodha's own margin figure is {broker_needed}, which already includes the premium of the "
+                        "legs you buy; {available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "available": Rupees}),
+    ExplanationTemplate("outcome_margin_checked_top_up", "values_seen",
+                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "{available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
     ExplanationTemplate("outcome_margin_short", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}. With the premium at your planned entry "
-                        "prices, "
-                        "about {needed} is needed (an estimate); {available} is available in your account. "
-                        + MARGIN_SHORTFALL_NEXT_ACTION,
-                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
+                        "Zerodha's own margin figure is {broker_needed}, which already includes the premium of the "
+                        "legs you buy; {available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "available": Rupees}),
+    ExplanationTemplate("outcome_margin_short_top_up", "values_seen",
+                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "{available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
@@ -1065,6 +1074,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"index": UnderlyingName, "regions": LevelRegions}),
     ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {levels} at expiry.",
                         {"levels": ExceptLevels}),
+    # GC-UI D-A46: charges known; the levels are the pre-charges payoff's breakevens (spec sections 1 and 3)
+    ExplanationTemplate("summary_start_regions_with_charges", "values_seen",
+                        "If {index} ends {regions} at expiry, before about {charges} of charges and taxes.",
+                        {"index": UnderlyingName, "regions": LevelRegions, "charges": Rupees}),
+    ExplanationTemplate("summary_start_touch_with_charges", "values_seen",
+                        "At every level except exactly {levels} at expiry, before about {charges} of charges and "
+                        "taxes.", {"levels": ExceptLevels, "charges": Rupees}),
     ExplanationTemplate("summary_start_never", "values_seen", "At no level at expiry."),
     ExplanationTemplate("summary_start_everywhere", "values_seen",
                         "At every level at expiry."),

@@ -136,7 +136,17 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
     to Kite, in the same order as ``data["orders"]``. The reply must have been parsed with ``parse_float=Decimal``.
     Anything unusable (no final.total, a BUY leg's option_premium missing/not a number/negative, a count or identity
     mismatch between request and reply, a bad quantity or price) raises `MarginReplyError`."""
-    required = _final_total(data)
+    total, top_up = basket_requirement(data, orders)
+    return total + top_up
+
+
+def basket_requirement(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> tuple[Decimal, Decimal]:
+    """The two parts of `required_from_basket_reply`, computed once: (Zerodha's ``final.total``, 0 when negative;
+    the ADR-094 top-up, the sum over option BUY legs of ``max(0, quantity x limit price - option_premium)``). The
+    Builder's margin sentence names the top-up only when it is above 0 (GC-UI D-A47). Same errors as
+    `required_from_basket_reply`."""
+    total = _final_total(data)
+    top_up = Decimal(0)
     rows = data.get("orders")
     if not isinstance(rows, list) or len(rows) != len(orders):
         raise MarginReplyError("the basket margin reply does not list the orders that were sent")
@@ -150,8 +160,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
         if (type(quantity) is not int or quantity <= 0 or type(price) is not Decimal or not price.is_finite()
                 or price <= 0):
             raise MarginReplyError("a BUY leg has no usable quantity and limit price")
-        required += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))
-    return required
+        top_up += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))
+    return total, top_up
 
 
 def _final_total(data: Mapping[str, object]) -> Decimal:
