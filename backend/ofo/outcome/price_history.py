@@ -52,6 +52,12 @@ def strategy_display(value: Decimal) -> str:
     return render_explanation("cell_number", value=value.quantize(PAISE))
 
 
+def price_text(value: Decimal | None) -> str | None:
+    """GC-UI D-PX (REQ-152 AC-2/AC-4): a per-unit price as the browser prints it, two decimals half-up; None -> None (the
+    browser prints the dash). The one helper every reply that carries a ``*_display`` price beside its exact value uses."""
+    return None if value is None else strategy_display(value)
+
+
 def future_display(value: Decimal) -> str:
     return render_explanation("cell_points", value=value)
 

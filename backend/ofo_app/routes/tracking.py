@@ -31,6 +31,7 @@ from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
+from ofo.outcome.price_history import price_text
 from ofo.strategy import stored_form as sf
 from ofo.tracking import paper
 from pydantic import BaseModel, ConfigDict, Field
@@ -78,10 +79,13 @@ class TrackingLegOut(ApiModel):
     expiry: datetime.date
     quantity: int
     entry_price: Money
+    entry_price_display: CatalogueText  # GC-UI D-PX (REQ-152 AC-2): two-decimal text of the price beside it
     entry_at: datetime.datetime
     current_price: Money | None
+    current_price_display: CatalogueText | None = None
     price_state: paper.LegState
     price_at: datetime.datetime | None
+    exit_price_display: CatalogueText | None = None
     exit_price: Money | None  # REQ-109 AC-4: set once the leg is paper-exited (then price_state is "exited")
     exited_at: datetime.datetime | None
     # GC-UI D-B48 (REQ-109 AC-2/AC-4, ADR-008): this leg's paper P&L from the one engine, exact to the paisa. Booked for
@@ -199,10 +203,13 @@ def _figures(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], vi
         state = price.state if price is not None else paper.EXITED if done else (reasons[i] or "missing")
         rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "action": leg.action.value,
                      "instrument": leg.instrument.value, "strike": leg.strike, "expiry": leg.expiry,
-                     "quantity": leg.quantity, "entry_price": leg.entry_price, "entry_at": leg.price_at,
-                     "current_price": None if price is None else price.price, "price_state": state,
+                     "quantity": leg.quantity, "entry_price": leg.entry_price,
+                     "entry_price_display": price_text(leg.entry_price), "entry_at": leg.price_at,
+                     "current_price": None if price is None else price.price,
+                     "current_price_display": None if price is None else price_text(price.price), "price_state": state,
                      "price_at": None if price is None else price.at,
                      "exit_price": None if done is None else done.exit_price,
+                     "exit_price_display": None if done is None else price_text(done.exit_price),
                      "exited_at": None if done is None else done.exited_at,
                      "pnl": _money(pnls[i]),
                      "pnl_text": None if pnls[i] is None else

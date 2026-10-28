@@ -40,6 +40,7 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.outcome.money import with_funds
+from ofo.outcome.price_history import price_text
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -481,6 +482,7 @@ class NetPremiumOut(ApiModel):
     amount_display: CatalogueText | None = None  # REQ-152: whole rupees, Indian grouping, no sign ("5,707"); null = absent
     side: Literal["get", "pay"] | None
     per_unit: Money | None
+    per_unit_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): "1.50", two decimals; null = absent
     text: CatalogueText | None
     reason: CatalogueText | None
 
@@ -573,8 +575,10 @@ class LegOut(ApiModel):
     lot_size: int | None
     quantity: int | None
     planned_entry: Money | None  # None only for a leg saved without a price (ADR-085)
+    planned_entry_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): two-decimal text, null = absent
     captured_at: datetime.datetime
     ltp: Money | None
+    ltp_display: CatalogueText | None = None  # GC-UI D-PX: "99.80" for an ltp of 99.8
     iv: Money | None
     health: HealthCode | None
     label: CatalogueText | None
@@ -586,6 +590,8 @@ class LegQuoteOut(ApiModel):
     symbol: Identifier | None
     bid: Money | None
     ask: Money | None
+    bid_display: CatalogueText | None = None  # GC-UI D-PX: two-decimal text
+    ask_display: CatalogueText | None = None
     health: HealthCode | None
 
 
@@ -654,6 +660,8 @@ def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str
                      "symbol": symbols.get(leg.instrument_id),
                      "bid": None if q is None or q.bid is None else f"{q.bid:f}",
                      "ask": None if q is None or q.ask is None else f"{q.ask:f}",
+                     "bid_display": None if q is None else price_text(q.bid),
+                     "ask_display": None if q is None else price_text(q.ask),
                      "health": None if q is None else q.health.value})
     return rows
 
