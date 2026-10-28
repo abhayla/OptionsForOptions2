@@ -64,6 +64,7 @@ from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.display import format_points, format_rupees
 from ofo.engine.inputs import LegInput
 from ofo.engine.model import ModelInputs, leg_greeks_unrounded
+from ofo.engine.money_summary import net_price_per_unit
 from ofo.engine.legs import Action, Instrument, live_pnl
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
 from ofo.scenario.levels import LevelSet
@@ -400,8 +401,7 @@ def _net_per_unit_cell(legs: Sequence[LegInput], price: str, has_futures: bool) 
     prices = [getattr(leg, price) for leg in legs]
     if any(p is None for p in prices):
         return _net_premium_cell(None, _r("not_all_ltp"))
-    return _net_premium_cell(sum(((p if leg.action is Action.SELL else -p) for leg, p in zip(legs, prices, strict=True)),
-                                 Decimal(0)))
+    return _net_premium_cell(net_price_per_unit(legs, prices))  # ADR-008: the sum is the engine's
 
 
 def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,
