@@ -70,6 +70,7 @@ from ofo.scenario.levels import (
     LevelSet,
     RangeOverride,
     build_level_set,
+    first_multiple_at_or_above,
     graph_level_set,
 )
 from ofo.scenario.spot import spot_reading
@@ -654,7 +655,7 @@ def payoff_table(level_set: LevelSet, model: ModelInputs, step: Decimal | None, 
         step = payoff_table_default_step(config.index)
     elif step not in PAYOFF_TABLE_STEPS or not isinstance(step, Decimal):
         raise ValueError(f"payoff table step must be one of {PAYOFF_TABLE_STEPS}, got {step!r}")
-    first = (level_set.start / step).to_integral_value(rounding=ROUND_CEILING) * step
+    first = first_multiple_at_or_above(level_set.start, step)
     count = 0 if first > level_set.end else int((level_set.end - first) / step) + 1
     if count > MAX_PAYOFF_TABLE_ROWS:
         return PayoffTable(step, (), None, (), render_explanation("payoff_table_too_many_rows", step=step))

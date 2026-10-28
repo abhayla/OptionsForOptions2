@@ -287,3 +287,9 @@ def graph_level_set(level_set: LevelSet, inputs: ModelInputs) -> LevelSet:
             kinds.setdefault(leg.strike, set()).add(ColumnKind.STRIKE)
     columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
     return replace(level_set, columns=columns)
+
+
+def first_multiple_at_or_above(start: Decimal, step: Decimal) -> Decimal:
+    """REQ-137 AC-1: the first index level that is a multiple of ``step`` at or above ``start`` (index points, not
+    rupees): the payoff table's first row."""
+    return (start / step).to_integral_value(rounding=ROUND_CEILING) * step
