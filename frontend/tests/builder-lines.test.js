@@ -126,19 +126,19 @@ describe('contract names in the advanced details and the picker', () => {
       .toEqual(['NIFTY 13 Oct 22800 CE', 'Contract details not available'])
   })
 
-  it('the picker shows the lot-size line with the contract name', async () => {
+  it('the Edit form shows the lot-size line with the contract name', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = {
       underlying: 'NIFTY',
       contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }],
     }
-    const w = mount(LegPicker, { props: { legs: [] } })
+    const leg = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: '104.65', captured_at: '2026-10-13T09:20:09+05:30', reason_code: null }
+    const w = mount(LegPicker, { props: { legs: [leg] } }) // the by-contract form is the Edit path only (D-C31)
     await flushPromises()
-    await t(w, 'pick-expiry').setValue('2026-10-13')
+    expect(t(w, 'pick-type').exists()).toBe(false)
+    await t(w, 'edit-leg').trigger('click')
     await flushPromises()
-    await t(w, 'pick-type').setValue('CE')
-    await t(w, 'pick-strike').setValue('22800.00')
     expect(t(w, 'lot-size').text()).toBe('NIFTY 13 Oct 22800 CE, lot size 65')
   })
 })

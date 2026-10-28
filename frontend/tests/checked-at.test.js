@@ -99,13 +99,17 @@ describe('Checked at on the four non-normal states', () => {
       entries: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, planned_entry: null, captured_at: null, source: null, reason_code: 'not_connected' }],
     }
     const w = await open()
+    const cellOf = { instrument_id: 'NSE_FO:44624', lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null }
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'] = {
+      state: 'LIVE', reason: null, underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: '22533.25', spot_at: STAMP, centre: 'LIVE_SPOT',
+      atm_strike: '22800.00', answered_at: STAMP, market_closed: false, rows: [{ strike: '22800.00', is_atm: true, ce: cellOf, pe: null }],
+    }
+    await t(w, 'add-edit').trigger('click') // the picker is a drawer on the page
+    await flushPromises()
     await t(w, 'pick-expiry').setValue('2026-10-13')
     await flushPromises()
-    await t(w, 'pick-type').setValue('CE')
-    await t(w, 'pick-strike').setValue('22800.00')
-    await t(w, 'pick-action').setValue('SELL')
-    await t(w, 'pick-lots').setValue('1')
-    await t(w, 'add-leg').trigger('click')
+    await w.find('[data-testid="strike-row"][data-strike="22800.00"] [data-testid="cell-ce"] [data-testid="cell-sell"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(state(w)).toBe('unpriced')
     expect(t(w, 'checked-at').text()).toBe(LINE)
