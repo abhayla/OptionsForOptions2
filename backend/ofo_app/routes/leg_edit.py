@@ -42,6 +42,7 @@ from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.marketdata.quote import priced
 from ofo.money import PAISE
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
 from ofo.strategy import shape_families, stored_form
@@ -258,6 +259,7 @@ class EditLegOut(ApiModel):
     base_lots: int
     quantity: int
     planned_entry: Money | None
+    planned_entry_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): two-decimal text; null = no price
     captured_at: datetime.datetime | None
     close_at: datetime.datetime | None = None  # ADR-197: the quote's own time of an entry captured after hours
     price_source: Literal["captured", "typed", "none"]
@@ -574,6 +576,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "strike": x.leg.strike, "expiry": x.leg.expiry,
         "days_to_expiry": days_to_expiry(x.leg.expiry, today), "lots": x.lots, "base_lots": x.base_lots,
         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
+        "planned_entry_display": None if i in unpriced else price_text(x.leg.entry_price),
         "captured_at": None if i in unpriced else stamps[i],
         "close_at": None if i in unpriced or x.typed else closes[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),

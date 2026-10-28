@@ -7,7 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import real from './fixtures/outcome-condor.json'
+import realRaw from './fixtures/outcome-condor.json'
+import { withPriceTexts } from './_priceTexts'
+const real = withPriceTexts(realRaw) // GC-UI D-PX: the recorded reply plus the display texts the server now adds
 import MARGIN from './fixtures/outcome-margin-states.json'
 import { istTime } from '@/lib/displayFormat'
 // GC-UI step 3b (ADR-202 (1); REQ-034 AC-7 as changed by ADR-204): a figure's sentence and exact value are lines of its
@@ -74,8 +76,8 @@ describe('REQ-034 AC-7: the technical detail is expandable (core)', () => {
     expect(rows).toHaveLength(real.leg_quotes.length)
     for (const q of real.leg_quotes) {
       const row = details.find(`tr[data-leg="${q.instrument_id}"]`)
-      expect(row.find('[data-testid="adv-bid"]').text()).toBe(q.bid)
-      expect(row.find('[data-testid="adv-ask"]').text()).toBe(q.ask)
+      expect(row.find('[data-testid="adv-bid"]').text()).toBe(q.bid_display)
+      expect(row.find('[data-testid="adv-ask"]').text()).toBe(q.ask_display)
     }
     w.unmount()
   })

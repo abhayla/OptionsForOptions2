@@ -42,10 +42,12 @@ const S54 = () => [
     days_to_expiry: 6, lots: 1, quantity: 65, planned_entry: '106.60', captured_at: '2026-10-28T11:29:37+05:30', included: true, hedge: true },
 ]
 const LIVE = { 'S54-BUY-22600CE': '236.35', 'S54-SELL-22800CE': '131.65' }
+// the outcome's own two-decimal display texts (GC-UI D-PX): what the sentence prints
+const TEXTS = { 'S54-BUY-22600CE': { ltp_display: '236.35', planned_entry_display: '194.40' }, 'S54-SELL-22800CE': { ltp_display: '131.65', planned_entry_display: '106.60' } }
 // REQ-077 AC-6 sentence, verbatim, as movedMarker writes it for these legs
 const MOVED_0 = 'Price has moved since 28 Oct 2026, 11:29:37 IST: planned 194.40, now 236.35'
 const MOVED_1 = 'Price has moved since 28 Oct 2026, 11:29:37 IST: planned 106.60, now 131.65'
-const list = (props = {}) => mount(LegList, { props: { legs: S54(), hasReply: true, shapeName: 'Bull Call Spread', ltpById: LIVE, ...props }, attachTo: document.body })
+const list = (props = {}) => mount(LegList, { props: { legs: S54(), hasReply: true, shapeName: 'Bull Call Spread', ltpById: LIVE, priceTextById: TEXTS, ...props }, attachTo: document.body })
 
 describe('Core (D-A09, D-A15, ADR-202 (2)): strategy 54, both prices moved, one row per leg with a dot + heading icon', () => {
   it('no visible second line; a dot on each moved price box whose tooltip holds the AC-6 sentence verbatim; one icon by the price head', async () => {

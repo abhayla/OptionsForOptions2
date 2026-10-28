@@ -17,15 +17,16 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST') } }
 })
 
+import { withPriceTexts } from './_priceTexts'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import { PAPER_PNL_PREFIX, START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracking, signedRupees } from '@/lib/tracking'
 
-const legs = [
+const legs = withPriceTexts([
   { instrument_id: 'NSE_FO:44624', action: 'SELL', instrument: 'CE', strike: '22800.00', entry_price: '39.15',
     current_price: '45.15', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null },
   { instrument_id: 'NSE_FO:44604', action: 'SELL', instrument: 'PE', strike: '22400.00', entry_price: '82.75',
     current_price: null, price_state: 'stale', expiry: '2026-11-03', quantity: 65, exit_price: null },
-]
+])
 // the builder reply's legs (GET outcome): the server's whole-lot count per instrument (GC-UI D-B39)
 const replyLegs = [
   { instrument_id: 'NSE_FO:44624', quantity: 65, lots: 1 },
@@ -120,9 +121,9 @@ describe('TrackingPanel', () => {
   })
 
   it('answer states: no detections shows nothing; an exited leg shows its exit price; a FUT leg and an unmatched leg print honestly', async () => {
-    const exited = { ...legs[0], price_state: 'exited', current_price: null, exit_price: '50.25' }
-    const fut = { instrument_id: 'NSE_FO:9', action: 'BUY', instrument: 'FUT', strike: null, entry_price: '22500.00',
-      current_price: '22510.50', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null }
+    const exited = { ...legs[0], price_state: 'exited', current_price: null, current_price_display: null, exit_price: '50.25', exit_price_display: '50.25' }
+    const fut = withPriceTexts({ instrument_id: 'NSE_FO:9', action: 'BUY', instrument: 'FUT', strike: null, entry_price: '22500.00',
+      current_price: '22510.50', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null })
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ detections: [], legs: [exited, fut] }) })
     const w = await panel()
     expect(w.find('[data-testid="detection"]').exists()).toBe(false)

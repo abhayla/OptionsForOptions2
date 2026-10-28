@@ -71,9 +71,9 @@ export function readTracking(body, replyLegs = null) {
     // GC-UI D-B39 / D-B49: "<lots> x <D Mon> <strike> <type>"; the lots are the builder reply's own whole-lot count for the
     // same instrument and quantity text, else the quantity form (no division here, ADR-008)
     text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
-    entry: leg.entry_price,
-    current: leg.price_state === 'live' ? leg.current_price : null,
-    exitPrice: leg.exit_price ?? null, // REQ-109 AC-4: set once the leg is paper-exited
+    entry: leg.entry_price_display ?? null, // GC-UI D-PX: the server's two-decimal text, printed as sent
+    current: leg.price_state === 'live' ? (leg.current_price_display ?? null) : null,
+    exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: set once the leg is paper-exited
     pnl: legPnlText(leg),
   }))
   // an answer carrying a detection this screen cannot name is unreadable as a whole: never silently dropped
@@ -134,10 +134,10 @@ export function readTrackingItem(item, index = 0) {
       strike: l.strike,
       expiry: l.expiry,
       quantity: l.quantity,
-      entry: l.entry_price,
-      current: l.price_state === 'live' ? l.current_price : null,
+      entry: l.entry_price_display ?? null,
+      current: l.price_state === 'live' ? (l.current_price_display ?? null) : null,
       exited,
-      exitPrice: exited ? l.exit_price : null,
+      exitPrice: exited ? (l.exit_price_display ?? null) : null,
     })
   }
   let stateText = ''

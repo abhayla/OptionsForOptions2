@@ -11,6 +11,7 @@ from ofo.engine.black_scholes import GREEK_STEP
 from ofo.engine.display import breakeven_percent_exact
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts
@@ -73,7 +74,7 @@ def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
     if p is None:
         return None
     return {"amount": _s(p.amount), "amount_display": _whole(p.amount, signed=False), "side": p.side,
-            "per_unit": _s(p.per_unit), "text": p.text, "reason": p.reason}
+            "per_unit": _s(p.per_unit), "per_unit_display": price_text(p.per_unit), "text": p.text, "reason": p.reason}
 
 
 def _funds_share(f: money.FundsShare | None) -> dict[str, Any] | None:
@@ -124,7 +125,8 @@ def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
             "expiry": None if leg.expiry is None else leg.expiry.isoformat(),
             "days_to_expiry": None if today is None else days_to_expiry(leg.expiry, today), "lots": leg.lots,
             "lot_size": leg.lot_size, "quantity": leg.quantity, "planned_entry": _s(leg.planned_entry),
-            "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "iv": _s(leg.iv),
+            "planned_entry_display": price_text(leg.planned_entry),
+            "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "ltp_display": price_text(leg.ltp), "iv": _s(leg.iv),
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 

@@ -10,8 +10,10 @@ import MoneySummary from "@/components/strategy/MoneySummary.vue";
 import SummaryCards from "@/components/strategy/SummaryCards.vue";
 import { istTime, groupMoney } from "@/lib/displayFormat";
 import { summaryFigure } from "@/lib/summaryFigures";
-import CONDOR from "./fixtures/outcome-money-condor.json";
+import CONDOR_RAW from "./fixtures/outcome-money-condor.json";
+import { withPriceTexts } from "./_priceTexts";
 import NO_RATES from "./fixtures/outcome-money-no-rates.json";
+const CONDOR = withPriceTexts(CONDOR_RAW); // GC-UI D-PX: the recorded reply plus the display texts the server now adds
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`);
 // GC-UI step 3b: the props exactly as StrategyBuilderPage passes them (server display strings + the exact values for "?")
@@ -60,7 +62,7 @@ describe("core: the real reply is printed as sent", () => {
     expect(await hintLines(m, "net_premium")).toEqual(["Get ₹4,754.75"]);
     expect(s.net_premium.text).toBe("Get ₹4,754.75");
     expect(t(m, "net-premium-per-unit").text()).toBe(
-      `(${s.net_premium.per_unit} per unit)`,
+      `(${s.net_premium.per_unit_display} per unit)`,
     );
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);

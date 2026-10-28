@@ -102,6 +102,7 @@ export function applyEditReply(prev, reply) {
       base_lots: r.base_lots,
       quantity: r.quantity ?? null, // the server's lots times lot size, drawn as sent (ADR-008)
       planned_entry: r.planned_entry,
+      planned_entry_display: r.planned_entry_display ?? null, // GC-UI D-PX: the server's two-decimal text
       captured_at: r.captured_at,
       included: r.included,
       typed: r.price_source === 'typed',
@@ -168,15 +169,18 @@ export function priceReasonText(code) {
   return null
 }
 
-/** REQ-077 AC-6: the 'Price has moved' marker text, or null. The two server strings are compared for EQUALITY only (no
+/** REQ-152 AC-4: a price the server sent no display text for prints as the dash, never as the raw value. */
+const NO_PRICE_TEXT = '—'
+
+/** REQ-077 AC-6: the 'Price has moved' marker text, or null. The two server strings are compared for EQUALITY only; `shown` is the server's two-decimal display text of each (GC-UI D-PX), the only text printed (no
  *  arithmetic, ADR-008): no marker without a live price, no marker without a planned entry; the marker changes no number. */
-export function movedMarker(leg, ltp) {
+export function movedMarker(leg, ltp, shown = {}) {
   if (leg?.planned_entry == null || ltp == null || ltp === '') return null
   const planned = canonicalMoney(leg.planned_entry) ?? leg.planned_entry
   const now = canonicalMoney(ltp) ?? ltp
   if (planned === now) return null
   const since = leg.captured_at == null ? '' : ` since ${istTime(leg.captured_at)}`
-  return `Price has moved${since}: planned ${leg.planned_entry}, now ${ltp}`
+  return `Price has moved${since}: planned ${shown.planned_entry_display ?? NO_PRICE_TEXT}, now ${shown.ltp_display ?? NO_PRICE_TEXT}`
 }
 
 /** ADR-195 (Sensibull S-111, ADR-152): while any leg is left out of the numbers the builder names no shape, shows no Hedge

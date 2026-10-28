@@ -45,7 +45,7 @@ const netText = computed(() => {
             v-if="netPremium.per_unit"
             class="text-gray-500"
             data-testid="net-premium-per-unit"
-            >({{ netPremium.per_unit }} per unit)</span
+            >({{ netPremium.per_unit_display ?? '—' }} per unit)</span
           >
           <span class="font-medium" data-testid="net-premium-text" :data-raw="netPremium.text">{{
             netText
