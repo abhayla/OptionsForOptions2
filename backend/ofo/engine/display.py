@@ -48,6 +48,31 @@ def _number(value: Decimal, step: Decimal) -> tuple[str, str]:
     return sign, _group_indian(whole) + (f".{fraction}" if fraction else "")
 
 
+_LAKH: Final = 100_000
+_CRORE: Final = 10_000_000
+_LAKHS_IN_A_CRORE: Final = 100 * 10  # 100.0L at one decimal: shown as crore from here
+
+
+def _in_unit(count: int, unit: int, places: int) -> tuple[int, str]:
+    """``count / unit`` rounded half-up to ``places`` decimals, integer arithmetic only (no float at a .5 edge)."""
+    scale = 10 ** places
+    rounded = (count * scale * 2 + unit) // (unit * 2)
+    return rounded, f"{rounded // scale}.{str(rounded % scale).zfill(places)}"
+
+
+def format_oi_compact(count: int) -> str:
+    """GC-UI D-B16 (the strike drawer's compact form, S-032): an open interest is a CONTRACT COUNT, not money, in Indian
+    units: "1.23Cr" from 1,00,00,000, "74.9L" from 1,00,000, Indian grouping ("62,075") below; a real 0 is "0"."""
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError(f"an open interest must be a whole count of 0 or more, got {count!r}")
+    lakh_rounded, lakh_text = _in_unit(count, _LAKH, 1)
+    if count >= _CRORE or (count >= _LAKH and lakh_rounded >= _LAKHS_IN_A_CRORE):
+        return f"{_in_unit(count, _CRORE, 2)[1]}Cr"
+    if count >= _LAKH:
+        return f"{lakh_text}L"
+    return _group_indian(str(count))
+
+
 def format_rupees(amount: Decimal) -> str:
     """Exact money to the paisa: ``₹17,19,000.00``, ``−₹8,175.00``."""
     sign, text = _number(_finite(amount, "amount"), _PAISA)

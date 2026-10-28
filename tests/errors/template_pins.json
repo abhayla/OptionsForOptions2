@@ -1344,7 +1344,7 @@
     "reviewed": "pending owner read"
   },
   "labels:table_reason": {
-    "sha256": "54d0280fafbfe6ac4a2516d49f6a8bae4eca9c4b83956eb6c4bd16cec3dc2214",
+    "sha256": "a0927e963e75a2c5ef23357c6f561405de5c013ecc4989b2d4844becfd3c8ae5",
     "reviewed": "pending owner read"
   },
   "labels:level_region": {
@@ -1725,6 +1725,38 @@
   },
   "explanation:summary_breakeven_percent": {
     "sha256": "61a942ce68ccb169eaaf576a12474c551b8641af349773da617c8e2e8e364778",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_count": {
+    "sha256": "7ffc7243805f5398c55734a139722759ce27fa23e39815964510209b348bfd1f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_read_at": {
+    "sha256": "daecc2fd720d2003cae995cac280b4696a4cb4dec483106f7c8838c72fec830e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_nearest_expiry": {
+    "sha256": "95a4b1c315d87883915d41b7b3b6a25533e589a2015235f79042b384718de7f4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_not_connected": {
+    "sha256": "f4862940c96f7425b638404cdc34838a49b94b9475d6ed2732adfd5eb9089aa2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_not_streaming": {
+    "sha256": "a0d91bdf5d5678e568576c062be702d3e53e30687c033e3ff2eeb504ead6a72d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_stale": {
+    "sha256": "6c65584d602b7605c1ce1790fb469bcdbe971720b9be908139daea9707b83572",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_oi_no_strikes": {
+    "sha256": "d2534a53ef8371ce2ba9ec3cf412e75e15a431ced74974acd25233d725e7da6a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:table_reason_not_same_quantity": {
+    "sha256": "a247bad73d07ffc21c27df538642c5f315cc7f9e8e9476f5779b111e4d9ee6dc",
     "reviewed": "pending owner read"
   }
 }

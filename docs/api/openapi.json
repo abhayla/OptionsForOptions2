@@ -3092,6 +3092,137 @@
         "title": "NetPremiumOut",
         "type": "object"
       },
+      "OiRowOut": {
+        "additionalProperties": false,
+        "description": "One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / \"0\".",
+        "properties": {
+          "call_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi"
+          },
+          "call_oi_display": {
+            "title": "Call Oi Display"
+          },
+          "put_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi"
+          },
+          "put_oi_display": {
+            "title": "Put Oi Display"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strike",
+          "call_oi",
+          "call_oi_display",
+          "put_oi",
+          "put_oi_display"
+        ],
+        "title": "OiRowOut",
+        "type": "object"
+      },
+      "OpenInterestOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "contracts": {
+            "title": "Contracts",
+            "type": "integer"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "expiry_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Note"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "read_at_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At Display"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OiRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "available",
+          "unavailable_reason",
+          "expiry",
+          "expiry_note",
+          "read_at",
+          "read_at_display",
+          "contracts",
+          "rows"
+        ],
+        "title": "OpenInterestOut",
+        "type": "object"
+      },
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3115,6 +3246,12 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "open_interest": {
+            "default": false,
+            "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
+            "title": "Open Interest",
+            "type": "boolean"
           },
           "payoff_step": {
             "anyOf": [
@@ -3284,6 +3421,16 @@
           "market_closed": {
             "title": "Market Closed",
             "type": "boolean"
+          },
+          "open_interest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenInterestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "output_label": {
             "anyOf": [

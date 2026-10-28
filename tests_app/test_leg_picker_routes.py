@@ -813,7 +813,7 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
                "ofo.timeutil", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money", "ofo.outcome.snapshot",
                "ofo.rules.inputs", "ofo_app.api_models", "ofo_app.catalogue_picker", "ofo_app.chain_push",
                "ofo_app.errors", "ofo_app.live_push", "ofo_app.routes", "ofo_app.routes.outcome",
-               "ofo_app.routes.broker",
+               "ofo_app.routes.broker", "ofo_app.outcome_oi",  # the OI rule shared with the payoff chart: reads only
                "ofo_app.underlying", "ofo_app", "ofo_app.db"}
     assert imported <= allowed, imported - allowed
     forbidden = ("execute", "basket", "margin", "order")

@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
-from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable, priced
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE
 from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
@@ -63,6 +63,7 @@ from ofo_app.chain_push import (
 )
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
+from ofo_app.outcome_oi import oi_of, price_counts
 from ofo_app.routes import live
 from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
 from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, label_time, market_state
@@ -288,13 +289,7 @@ FUTURES_LEASE = WindowLease()  # the listed futures: the same fan-out and socket
 
 # ---- the strikes read -----------------------------------------------------------------------------------------------
 
-def _priced(quote: NormalizedQuote | None, closed: bool = False) -> bool:
-    """The one 'a quote's price counts' rule (``ofo.marketdata.quote.priced``: live and above 0); outside market hours
-    (``closed``, the one market-state answer) also the last close the feed holds (ADR-200 (1): the strike drawer uses
-    it; ``ofo.marketdata.quote.planning_price_usable``). Never an order rule."""
-    if not closed:
-        return priced(quote)
-    return planning_price_usable(quote, market_closed=True) and quote is not None and is_live_price(quote.ltp)
+_priced = price_counts  # the one rule, shared with the payoff chart's OI bars (ofo_app.outcome_oi)
 
 
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None,
@@ -306,9 +301,7 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: Cha
     return PickerCellOut(
         instrument_id=contract.instrument_id, lot_size=contract.lot_size,
         ltp=quote.ltp.quantize(PAISE) if priced and quote.ltp is not None else None,
-        # in hours exactly as before (any AVAILABLE quote's OI, even with LTP 0); after the close the last close held
-        # (ADR-200 (1))
-        oi=(quote.oi if priced else None) if closed else (quote.oi if quote.health is DataHealth.AVAILABLE else None),
+        oi=oi_of(quote, closed),  # the drawer's OI rule, shared with the payoff chart (ofo_app.outcome_oi)
         iv_percent=None if greeks is None or not priced else (greeks.iv * _PERCENT).quantize(PAISE),
         delta=None if greeks is None or not priced else greeks.delta.quantize(_DELTA_STEP),
         health=quote.health.value, at=quote.timestamp)

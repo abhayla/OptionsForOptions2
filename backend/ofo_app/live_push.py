@@ -26,6 +26,7 @@ from pydantic import ValidationError
 
 from ofo_app.errors import SocketClosed
 from ofo_app.outcome_margin import OutcomeMargin
+from ofo_app.outcome_oi import hold_ids as oi_hold_ids
 from ofo_app.routes.outcome import (
     ContractLookup,
     MarketContext,
@@ -81,6 +82,8 @@ class StrategyPush:
         self._req: Optional[OutcomeRequest] = None
         self._handle: Optional[int] = None
         self._forward_handle: Optional[int] = None  # D-C33: the strikes nearest the money of each leg expiry
+        self._oi_handle: Optional[int] = None  # REQ-083 AC-5: the OI bars' strikes over the reply's range
+        self._oi_ids: tuple[str, ...] = ()
         self._seen: dict[str, tuple] = {}
         self._dirty = False
         self._last_push: Optional[float] = None
@@ -119,6 +122,30 @@ class StrategyPush:
             return self._feed.fanout.subscribe(_no_listener, ids, max_queue=1)
         except KeyError:
             return None
+
+    def _hold_oi(self, req: OutcomeRequest, body: Any) -> None:
+        """REQ-083 AC-5: hold the contracts of the OI bars of the reply just sent (its scenario range, the strategy's
+        expiry), so the next push carries their OI. Swapped new-first (a shared contract is never dropped and re-added),
+        released when the follow message stops asking for OI and when the socket ends (``run``'s finally). A changed
+        set marks the strategy dirty: the next push (the 1 s gate still holds) reads the newly held contracts."""
+        if self._feed is None:
+            return
+        ids: tuple[str, ...] = ()
+        if req.open_interest:
+            ids = tuple(oi_hold_ids(self._feed.ctx.provider, req.underlying, [leg.instrument_id for leg in req.legs],
+                                    body.model_dump(mode="json")))
+        if ids == self._oi_ids:
+            return
+        new_handle = None
+        if ids:
+            try:
+                new_handle = self._feed.fanout.subscribe(_no_listener, list(ids), max_queue=1)
+            except KeyError:  # a contract the provider does not know: hold nothing (the reply says not streaming)
+                new_handle = None
+        self._release_forward(self._oi_handle)
+        self._oi_handle, self._oi_ids = new_handle, ids if new_handle is not None else ()
+        if new_handle is not None:
+            self._dirty = True
 
     def _input_ids(self, req: OutcomeRequest) -> list[str]:
         ids = [leg.instrument_id for leg in req.legs]
@@ -171,6 +198,7 @@ class StrategyPush:
         await self._channel.send(body)
         self.pushes += 1
         self._last_push = self._monotonic()
+        self._hold_oi(req, body)
 
     async def run(self) -> None:
         recv: Optional[asyncio.Future] = None
@@ -199,3 +227,5 @@ class StrategyPush:
             self._release()
             self._release_forward(self._forward_handle)
             self._forward_handle = None
+            self._release_forward(self._oi_handle)  # REQ-083 AC-5: the OI bars' lease ends with the socket
+            self._oi_handle, self._oi_ids = None, ()

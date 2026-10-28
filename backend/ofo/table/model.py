@@ -126,7 +126,7 @@ class Cell:
     vendor: Decimal | None = None
     per_unit: Decimal | None = None
     per_unit_display: str | None = None  # Greek cells only: the per-unit text the browser prints (GC-UI round 2b)
-    side: str | None = None  # TOTAL Entry Value only: "Cr" (net credit) or "Dr" (net debit); None otherwise
+    side: str | None = None  # TOTAL Entry Value / Entry Price / LTP: "Cr" (net credit) or "Dr" (net debit); else None
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, CellKind):
@@ -387,6 +387,23 @@ def _total_pnl_percent_cell(inputs: ModelInputs, unrealized: Decimal | None) -> 
     return Cell(value, render_explanation("cell_percent_signed", value=value), CellKind.PERCENT)
 
 
+def _net_per_unit_cell(legs: Sequence[LegInput], price: str, has_futures: bool) -> Cell:
+    """GC-UI D-B28 (Match-now half): the TOTAL row's net per-unit Entry (``price`` "premium") or LTP ("ltp"): sells
+    plus, buys minus, summed per unit over the legs, the basis of the summary's per-unit net premium
+    (``engine.money_summary.net_premium_per_unit``), shown as a magnitude with Cr / Dr like TOTAL Entry Value. A
+    futures leg (premium and futures price cannot be added), unequal quantities (no single per-unit figure) or a leg
+    without an LTP: no value, with that reason. The "Projected" label is Later."""
+    if has_futures:
+        return _net_premium_cell(None, _r("futures_notional"))
+    if len({leg.quantity for leg in legs}) != 1:
+        return _net_premium_cell(None, _r("not_same_quantity"))
+    prices = [getattr(leg, price) for leg in legs]
+    if any(p is None for p in prices):
+        return _net_premium_cell(None, _r("not_all_ltp"))
+    return _net_premium_cell(sum(((p if leg.action is Action.SELL else -p) for leg, p in zip(legs, prices, strict=True)),
+                                 Decimal(0)))
+
+
 def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,
                health: "StrategyHealth | None", supplied: Sequence[Greeks | None]) -> Row:
     legs = inputs.legs
@@ -431,8 +448,8 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
         ColumnId.EXPIRY: _text(None),
         ColumnId.STRIKE: _text(None),
         ColumnId.QUANTITY: _text(None),
-        ColumnId.ENTRY_PRICE: _text(None),
-        ColumnId.LTP: _text(None),
+        ColumnId.ENTRY_PRICE: _net_per_unit_cell(legs, "premium", has_futures),
+        ColumnId.LTP: _net_per_unit_cell(legs, "ltp", has_futures),
         ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, futures_reason),
         ColumnId.CURRENT_VALUE: _net_premium_cell(net_current, futures_reason if has_futures else ltp_reason),
         ColumnId.UNREALIZED_PNL: _money(unrealized, ltp_reason),
