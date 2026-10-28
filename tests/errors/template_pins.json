@@ -1715,6 +1715,10 @@
     "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
     "reviewed": "pending owner read"
   },
+  "explanation:summary_paisa_signed": {
+    "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
+    "reviewed": "pending owner read"
+  },
   "explanation:summary_breakeven_level": {
     "sha256": "d6245c829440679ffc002796b40435dbe6f507d7fc78d057791a111d14d52d49",
     "reviewed": "pending owner read"

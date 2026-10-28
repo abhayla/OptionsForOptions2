@@ -158,6 +158,27 @@ def booked_pnl(legs: Sequence[TrackedLeg], exit_prices: Mapping[int, Decimal]) -
     return _subset(legs, exit_prices)
 
 
+def leg_pnl(leg: TrackedLeg, price: Decimal) -> Decimal:
+    """GC-UI D-B48: one leg's paper P&L by the same engine call as the total (``paper_pnl`` on that single leg), at its
+    live price (open) or its exit price (exited, booked). Exact Decimal, never rounded, so legs add to the total."""
+    return paper_pnl([leg], [price])
+
+
+def leg_pnls(legs: Sequence[TrackedLeg], open_prices: Mapping[int, Decimal],
+             exit_prices: Mapping[int, Decimal]) -> tuple[Decimal | None, ...]:
+    """Per leg, in order: an exited leg's BOOKED P&L (at its exit price), an open leg's UNBOOKED P&L (at its live price
+    in ``open_prices``), or None when the leg is open with no price given (absent, never 0; REQ-109 AC-5). Same refusals
+    as ``pnl_split``. When no leg is None the figures sum to ``pnl_split(...).total`` exactly."""
+    both = set(open_prices) & set(exit_prices)
+    if both:
+        raise ValueError(f"a leg is either open or exited, and exits once: {sorted(both)}")
+    unknown = [i for i in (*open_prices, *exit_prices) if i < 0 or i >= len(legs)]
+    if unknown:
+        raise ValueError(f"no such leg among {len(legs)}: {sorted(unknown)}")
+    priced = {**open_prices, **exit_prices}
+    return tuple(None if i not in priced else leg_pnl(leg, priced[i]) for i, leg in enumerate(legs))
+
+
 @dataclass(frozen=True)
 class PnlSplit:
     booked: Decimal
@@ -213,6 +234,7 @@ class TrackingView:
     booked: Decimal = Decimal(0)  # REQ-109 AC-4: exited legs at their exit prices
     unbooked: Decimal | None = None  # open legs at live prices; None when paused
     exited: bool = False  # every leg exited: paper_pnl == booked, frozen
+    leg_pnls: tuple[Decimal | None, ...] = ()  # GC-UI D-B48, per leg in order; None = no figure (paused / not live)
 
 
 def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
@@ -232,7 +254,8 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
     prices = tuple(_leg_answer(snapshot, leg, reasons[i], i in exits) for i, leg in enumerate(legs))
     split = pnl_split(legs, {i: prices[i].price for i in open_legs if is_live(prices[i])}, exits)
     if snapshot is None:
-        return TrackingView(False, None, split.total, None, prices, None, None, (), split.booked, split.unbooked, True)
+        return TrackingView(False, None, split.total, None, prices, None, None, (), split.booked, split.unbooked, True,
+                            leg_pnls(legs, {}, exits))
     contract_reason = next((reasons[i] for i in open_legs if reasons[i] is not None), None)
     paused = split.unbooked is None
     known = [prices[i].at for i in open_legs if not is_live(prices[i]) and prices[i].at is not None]
@@ -245,8 +268,10 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
                                         index_level=index.price, threshold_percent=threshold_percent)
     reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
     as_of = min(known) if paused and known else None
+    # D-B48: a paused view (REQ-109 AC-5) shows no open leg's figure, so no half-known set; exited legs stay booked.
+    live_open = {} if paused else {i: prices[i].price for i in open_legs}
     return TrackingView(paused, reason, split.total, as_of, prices, index, breakevens, detections, split.booked,
-                        split.unbooked, not open_legs)
+                        split.unbooked, not open_legs, leg_pnls(legs, live_open, exits))
 
 
 def _leg_answer(snapshot: MarketSnapshot | None, leg: TrackedLeg, reason: ContractReason | None,

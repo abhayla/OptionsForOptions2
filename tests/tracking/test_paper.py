@@ -179,3 +179,23 @@ def test_ac5_a_stale_quote_that_still_carries_a_price_pauses_and_refuses_on_its_
         paper.capture_entry(snap, _legs())
     exited = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {1: D("14.95")})  # open leg 0 still pauses
     assert (exited.paused, exited.paper_pnl, exited.unbooked) == (True, None, None)
+    # GC-UI D-B48: paused = no open leg's figure (never 0); the exited leg keeps its booked figure
+    assert exited.leg_pnls == (None, (D("14.95") - entry[1].entry_price) * 65, None, None)
+
+
+def test_d_b48_view_leg_pnls_live_exited_at_exit_price_and_they_add_to_the_total(replayed):
+    """Feed at 45.15 / 14.95 / 70.75 / 30.80 from 39.15 / 12.95 / 82.75 / 35.80, 65 a leg: -390.00, +130.00, +780.00,
+    -325.00 = +195.00. SELL 22800 CE (leg 0) exited at 40.00 books (39.15 - 40.00) x 65 = -55.25, not the -390.00 it
+    would be at the current 45.15; total -55.25 + 130 + 780 - 325 = +529.75."""
+    provider, last = replayed  # module-scoped: other tests move its prices, so set them here and state the entries
+    for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
+        provider.on_frame(_frame(provider, iid, rupees), last)
+    snap = _snapshot(provider, last)
+    entry = [dataclasses.replace(leg, entry_price=D(price))
+             for leg, price in zip(_legs(), ["39.15", "12.95", "82.75", "35.80"], strict=True)]
+    live = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert live.leg_pnls == (D("-390.00"), D("130.00"), D("780.00"), D("-325.00"))
+    assert sum(live.leg_pnls) == live.paper_pnl == D("195.00")
+    mixed = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {0: D("40.00")})
+    assert mixed.leg_pnls == (D("-55.25"), D("130.00"), D("780.00"), D("-325.00"))
+    assert sum(mixed.leg_pnls) == mixed.paper_pnl == D("529.75")

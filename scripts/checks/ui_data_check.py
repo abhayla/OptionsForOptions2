@@ -1160,6 +1160,17 @@ def _model_points(rep, label, pts, legs, leg_model, qinfo, expiries, r) -> None:
         )
 
 
+def display_paisa_signed(value: Decimal) -> str:
+    """REQ-109 AC-2: a paper P&L to the paisa, half-up on the magnitude, Indian grouping; plus on a profit, U+2212 on a
+    loss; a figure that rounds to zero is "0.00" with no sign."""
+    mag = abs(value).quantize(PAISA, rounding=ROUND_HALF_UP)
+    whole, _, frac = f"{mag:f}".partition(".")
+    text = f"{_indian(whole)}.{frac}"
+    if mag == 0:
+        return text
+    return (MINUS_SIGN if value < 0 else "+") + text
+
+
 def check_paper(tracking: dict, planned_legs: list) -> Report:
     rep = Report(f"paper strategy {tracking.get('strategy_id')}")
     if not tracking or tracking.get("state") not in ("LIVE", "PAUSED", "EXITED", "CLOSED"):
@@ -1180,6 +1191,14 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
             booked += pnl
         else:
             unbooked += pnl
+        # D-B48: the reply's own per-leg figure against this checker's (px - entry) x qty, sign by side; a reply with
+        # no per-leg figure is a mismatch (a missing value never matches), and an exited leg must say "booked"
+        rep.add(f"paper leg{i + 1} pnl", leg.get("pnl"), money(pnl))
+        rep.add(
+            f"paper leg{i + 1} pnl kind", leg.get("pnl_kind"), "booked" if leg.get("exit_price") else "unbooked"
+        )
+        # the leg's own text against the same figure to the paisa; a missing text is not a match
+        rep.add(f"paper leg{i + 1} pnl text", leg.get("pnl_text"), display_paisa_signed(pnl))
         planned = planned_legs[i]["planned_entry"] if i < len(planned_legs) else None
         rows[f"leg{i + 1}"] = {
             "planned_entry": planned,

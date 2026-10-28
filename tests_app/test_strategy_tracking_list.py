@@ -392,3 +392,68 @@ async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_alre
             assert [(int(r[0]), r[1]) for r in rows] == [(0, D("11.00"))]
     finally:
         await _remove_tracked_rows(admin_engine, user, contract_ids)
+
+
+# --- GC-UI D-B48: each leg's own paper P&L, from the one engine ------------------------------------------------------
+# The replay condor moved to 45.15 / 14.95 / 70.75 / 30.80 from entries 39.15 / 12.95 / 82.75 / 35.80, 65 a leg:
+# SELL 22800 CE (39.15 - 45.15) x 65 = -390.00; BUY 23000 CE (14.95 - 12.95) x 65 = +130.00;
+# SELL 22400 PE (82.75 - 70.75) x 65 = +780.00; BUY 22200 PE (30.80 - 35.80) x 65 = -325.00; total +195.00.
+HAND = ["-390.00", "130.00", "780.00", "-325.00"]
+
+
+def _pnl_fields(row):
+    return [(leg["pnl"], leg["pnl_kind"], leg["pnl_text"]) for leg in row["legs"]]
+
+
+def _sum(row):
+    return sum(Decimal(leg["pnl"]) for leg in row["legs"])
+
+
+async def test_leg_pnl_all_live_each_leg_has_its_figure_and_they_add_to_the_total(db):
+    app, ids, *_ = await _tracked(db)
+    async with _client(app) as c:
+        row = (await c.get("/tracking")).json()["strategies"][0]
+        one = (await c.get(f"/strategies/{ids[0]}/tracking")).json()
+    assert [f[0] for f in _pnl_fields(row)] == HAND and {f[1] for f in _pnl_fields(row)} == {"unbooked"}
+    assert [f[2] for f in _pnl_fields(row)] == ["\u2212390.00", "+130.00", "+780.00", "\u2212325.00"]
+    assert _sum(row) == Decimal(row["total"]) == Decimal("195.00")
+    assert _pnl_fields(one) == _pnl_fields(row) and _sum(one) == Decimal(one["paper_pnl"])
+
+
+async def test_leg_pnl_one_exited_one_open_still_sum_to_the_total_and_the_exited_leg_is_frozen(db):
+    app, ids, provider, _clock, last = await _tracked(db)
+    async with _client(app) as c:
+        assert (await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0]})).status_code == HTTPStatus.OK
+        _move(provider, last, ["50.00", *MOVED[1:]])  # the exited SELL leg moves: its booked figure must not
+        row = (await c.get("/tracking")).json()["strategies"][0]
+    assert [f[1] for f in _pnl_fields(row)] == ["booked", "unbooked", "unbooked", "unbooked"]
+    assert [f[0] for f in _pnl_fields(row)] == HAND
+    assert _sum(row) == Decimal(row["total"]) == Decimal(row["booked"]) + Decimal(row["unbooked"])
+
+
+async def test_leg_pnl_fully_exited_is_all_booked_and_adds_to_the_total(db):
+    app, ids, *_ = await _tracked(db)
+    async with _client(app) as c:
+        assert (await c.post(f"/strategies/{ids[0]}/tracking/exit",
+                             json={"legs": [0, 1, 2, 3]})).status_code == HTTPStatus.OK
+        row = (await c.get("/tracking")).json()["strategies"][0]
+    assert {f[1] for f in _pnl_fields(row)} == {"booked"} and _sum(row) == Decimal(row["total"]) == Decimal("195.00")
+
+
+async def test_leg_pnl_paused_has_no_open_figure_never_zero_and_the_exited_leg_keeps_its_booked_figure(db):
+    app, ids, _provider, clock, last = await _tracked(db)
+    async with _client(app) as c:
+        assert (await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0]})).status_code == HTTPStatus.OK
+        clock.now = last + datetime.timedelta(minutes=10)
+        row = (await c.get("/tracking")).json()["strategies"][0]
+    assert _pnl_fields(row) == [("-390.00", "booked", "\u2212390.00"), (None, None, None), (None, None, None),
+                                (None, None, None)]
+
+
+async def test_leg_pnl_not_connected_keeps_only_the_exited_leg(db):
+    app, ids, *_ = await _tracked(db)
+    async with _client(app) as c:
+        assert (await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0]})).status_code == HTTPStatus.OK
+        app.dependency_overrides[tracking_routes.get_market_context] = lambda: None
+        row = (await c.get("/tracking")).json()["strategies"][0]
+    assert [f[0] for f in _pnl_fields(row)] == ["-390.00", None, None, None]

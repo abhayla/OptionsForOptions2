@@ -26,6 +26,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
 from ofo.engine.legs import Action, Instrument
+from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
@@ -83,6 +84,13 @@ class TrackingLegOut(ApiModel):
     price_at: datetime.datetime | None
     exit_price: Money | None  # REQ-109 AC-4: set once the leg is paper-exited (then price_state is "exited")
     exited_at: datetime.datetime | None
+    # GC-UI D-B48 (REQ-109 AC-2/AC-4, ADR-008): this leg's paper P&L from the one engine, exact to the paisa. Booked for
+    # an exited leg (at its exit price, frozen), unbooked for an open live leg. All three are None - never 0 - when the
+    # leg has no figure (price not live, view paused, contract not live, not connected). Legs with a figure add up to
+    # booked + unbooked = the strategy's total.
+    pnl: Money | None
+    pnl_text: CatalogueText | None  # REQ-152 text of pnl: to the paisa, signed ("+5,053.75")
+    pnl_kind: Literal["booked", "unbooked"] | None
 
 
 class TrackingIndexOut(ApiModel):
@@ -182,6 +190,8 @@ def _figures(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], vi
     """The per-leg rows and the paper figures shared by GET /strategies/{id}/tracking and GET /tracking. ``view`` None
     = not connected: booked is still known (exit prices are stored), unbooked and total are not."""
     exits = {e.leg_index: e for e in tracking.exits}
+    # D-B48: not connected = no market view, so only exited legs (stored exit prices) have a figure
+    pnls = paper.leg_pnls(legs, {}, tracking.exit_prices) if view is None else view.leg_pnls
     rows = []
     for i, leg in enumerate(legs):
         price = None if view is None else view.legs[i]
@@ -193,7 +203,11 @@ def _figures(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], vi
                      "current_price": None if price is None else price.price, "price_state": state,
                      "price_at": None if price is None else price.at,
                      "exit_price": None if done is None else done.exit_price,
-                     "exited_at": None if done is None else done.exited_at})
+                     "exited_at": None if done is None else done.exited_at,
+                     "pnl": _money(pnls[i]),
+                     "pnl_text": None if pnls[i] is None else
+                     render_explanation("summary_paisa_signed", amount=pnls[i]),
+                     "pnl_kind": None if pnls[i] is None else "booked" if done else "unbooked"})
     if view is None:
         open_reasons = [r for i, r in enumerate(reasons) if i not in exits]
         return {"legs": rows, "state": "NOT_CONNECTED", "pause_reason": next((r for r in open_reasons if r), None),

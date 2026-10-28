@@ -904,3 +904,73 @@ def test_s4_answer_states():
     # a both reply that is not computed: one not-checkable row, never a match
     r = _both_rows(_run_both(est, atx, before, after, fut, {"state": "REFUSED", "reason": "r"}, step))
     assert [f.verdict for f in r.values()] == [u.NOT_CHECKABLE]
+
+
+# ---------------------------------------------------------------- GC-UI D-B48: per-leg paper P&L (independent rule)
+
+
+def paper_reply():
+    """Strategy 54's recorded tracking reply (2026-10-28): BUY 22600 CE 193.70 -> 271.45, SELL 22800 CE 106.35 ->
+    156.90, 65 a leg; by hand +5053.75 and -3285.75, total 1768.00."""
+    base = {"quantity": 65, "exit_price": None, "pnl_kind": "unbooked"}
+    return {
+        "strategy_id": 54,
+        "state": "LIVE",
+        "paper_pnl": "1768.00",
+        "booked": "0.00",
+        "unbooked": "1768.00",
+        "legs": [
+            base | {"action": "BUY", "entry_price": "193.70", "current_price": "271.45", "pnl": "5053.75",
+                    "pnl_text": "+5,053.75"},
+            base | {"action": "SELL", "entry_price": "106.35", "current_price": "156.90", "pnl": "-3285.75",
+                    "pnl_text": "−3,285.75"},
+        ],
+    }
+
+
+def test_paper_leg_pnl_recorded_reply_matches():
+    rep = u.check_paper(paper_reply(), [])
+    assert rep.counts()[u.MISMATCH] == 0
+    assert verdicts(rep)["paper leg1 pnl"] == u.MATCH and verdicts(rep)["paper leg2 pnl"] == u.MATCH
+
+
+@pytest.mark.parametrize(("leg_no", "wrong"), [(1, "5053.76"), (2, "3285.75"), (2, "-3285.76")])
+def test_paper_leg_pnl_tamper_is_flagged(leg_no, wrong):
+    reply = paper_reply()
+    reply["legs"][leg_no - 1]["pnl"] = wrong
+    assert verdicts(u.check_paper(reply, []))[f"paper leg{leg_no} pnl"] == u.MISMATCH
+
+
+def test_paper_leg_pnl_missing_never_matches():
+    reply = paper_reply()
+    del reply["legs"][0]["pnl"]
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl"] != u.MATCH
+
+
+def test_paper_leg_pnl_exited_leg_is_valued_at_its_exit_price_and_must_say_booked():
+    reply = paper_reply()
+    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_text": "+5,609.50", "pnl_kind": "booked", "current_price": None}
+    reply |= {"paper_pnl": "2323.75", "booked": "5609.50", "unbooked": "-3285.75"}
+    assert u.check_paper(reply, []).counts()[u.MISMATCH] == 0
+    reply["legs"][0]["pnl_kind"] = "unbooked"
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl kind"] == u.MISMATCH
+
+
+@pytest.mark.parametrize(("leg_no", "wrong"), [
+    (1, "+5,054"), (1, "+5,053.76"), (1, "5,053.75"), (2, "-3,285.75"), (2, "−3,285"), (2, "+3,285.75"),
+])
+def test_paper_leg_pnl_text_must_equal_the_figure_to_the_paisa(leg_no, wrong):
+    reply = paper_reply()
+    reply["legs"][leg_no - 1]["pnl_text"] = wrong
+    assert verdicts(u.check_paper(reply, []))[f"paper leg{leg_no} pnl text"] == u.MISMATCH
+
+
+def test_paper_leg_pnl_text_missing_never_matches():
+    reply = paper_reply()
+    del reply["legs"][0]["pnl_text"]
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl text"] != u.MATCH
+
+
+def test_paper_leg_pnl_text_recorded_reply_matches():
+    assert verdicts(u.check_paper(paper_reply(), []))["paper leg1 pnl text"] == u.MATCH
+    assert verdicts(u.check_paper(paper_reply(), []))["paper leg2 pnl text"] == u.MATCH
