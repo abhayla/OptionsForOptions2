@@ -23,6 +23,8 @@ contract's docs commit). The owner starts this contract with /goal in a FRESH se
 9. PR / CI (owner, verbatim): "We will not create PRs for every changes. We will create PR only at the end when
    everything is working. And I will let you know when to create PR." -> NO push, PR, draft PR, GitHub Actions,
    `ci_local.py`, `prepush.py`, `land.py` or `merge.py` in this goal. Local commits only.
+10. Browser always VISIBLE (owner, 2026-10-28): every browser step runs in the owner's own Chrome via
+   Claude-in-Chrome, never a headless browser (details under "Running the app").
 
 Spec basis: ADR-193 (Sensibull layout under OUR brand: our colours and fonts from GLOBAL.md, not Sensibull's), ADR-152
 (Sensibull default except safety, legal, money), ADR-165 (no orders: no Trade All / Add to Drafts / Convert to real),
@@ -90,7 +92,12 @@ rows below are confirmed or cleared by it. If the checker cannot be made indepen
   http://127.0.0.1:8765/broker/zerodha/login.
 - Live checks in market hours (09:15-15:30 IST); after hours the builder works from the last close (ADR-197), which is
   enough for the data checker (same inputs on both sides) but not for "prices move" checks.
-- Browser: the owner's Chrome (claude-in-chrome) at 1536 x 864 so the owner can watch; Playwright MCP is headless.
+- Browser (owner, 2026-10-28: the browser must always be on screen "so that I can see it"): EVERY browser step - live
+  walks, screenshot pairs, side-by-side checks, live re-tests, Sensibull logged out - runs in the owner's own VISIBLE
+  Chrome through Claude-in-Chrome (`mcp__claude-in-chrome__*`), at 1536 x 864. Never the headless Playwright MCP
+  browser for anything the owner should see (on 2026-10-28 a walk ran there and the owner saw nothing). Only the
+  session drives Chrome: one tab per task, closed when done, no builder or reviewer agent drives a browser. If the
+  Chrome extension is not connected, stop and tell the owner instead of falling back to a headless browser.
 
 ## Items
 
