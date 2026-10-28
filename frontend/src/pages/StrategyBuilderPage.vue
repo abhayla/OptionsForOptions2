@@ -438,6 +438,14 @@ const openInPicker = (i) => {
 const focusPicker = () => {
   pickerOpen.value = true
 }
+// GC-UI 3a D-A07: the tick-all box runs the existing per-leg include edit once per leg that differs, one after another
+// (each edit's reply is drawn before the next is sent, so no edit cancels another); no include rule of its own
+async function includeAll(included) {
+  for (let i = 0; i < legs.value.length; i++) {
+    if ((legs.value[i]?.included !== false) !== included) await editLeg({ control: 'include', index: i, included })
+    if (editError.value) return // a refused edit stops the run with its reason shown; nothing further is sent
+  }
+}
 // W-195 review 7: "Pick from Option Chain" is not a second Add leg: it opens the drawer on the Strikes tab
 const pickFromChain = () => {
   picker.value?.showStrikes()
@@ -536,8 +544,10 @@ const pricesStamp = computed(() => {
         data-testid="builder-left"
       >
         <!-- Region A (UI-100, UI-103): the underlying and the outcome reply's spot level; day change omitted until REQ-139 sends it -->
-        <div class="flex h-12 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm" data-testid="underlying-bar">
-          <span class="flex items-center gap-2">
+        <!-- GC-UI 3a D-A01: the index sits in a field with a magnifier inside it; Settings is a separate boxed button beside it -->
+        <div class="flex h-12 items-center gap-2 text-sm" data-testid="underlying-bar">
+          <span class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-3" data-testid="underlying-field">
+            <span class="text-ink-muted" data-testid="underlying-search-icon"><Icon name="search" :size="16" /></span>
             <span v-if="headerUnderlying" class="font-semibold" data-testid="underlying-name">{{ headerUnderlying }}</span>
             <!-- an empty builder chooses its underlying here (Region A owns it; the Ready-made tab reads it) -->
             <select v-else v-model="pickUnderlying" class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="underlying-select">
@@ -547,7 +557,7 @@ const pricesStamp = computed(() => {
           </span>
           <span ref="settingsRoot" class="relative" @keydown.esc="closeSettings">
             <button
-              ref="settingsButton" type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
+              ref="settingsButton" type="button" class="flex h-10 items-center gap-1 rounded-lg border border-line bg-surface px-3" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
               data-testid="builder-settings" @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
             ><Icon name="gear" :size="14" />Settings</button>
             <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover">
@@ -566,7 +576,7 @@ const pricesStamp = computed(() => {
         <LegList
           :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
-          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
+          @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
@@ -574,7 +584,7 @@ const pricesStamp = computed(() => {
         </LegList>
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
-            <button type="button" class="rounded border border-line px-3 py-1" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+            <button type="button" class="h-10 flex-1 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
           <template #menu="{ close }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>

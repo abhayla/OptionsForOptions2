@@ -190,6 +190,8 @@ export function controlsForSelection(controls, legs) {
 
 /** W-192 (UI-104): the compact leg row's column widths in px, in order (tick, B/S, expiry, strike, type, lots, price, depth,
  *  edit, remove). Their sum plus the card's side padding stays within the 480 px narrowest left column, so a row never wraps. */
-export const LEG_ROW_COLUMNS = Object.freeze([22, 26, 92, 96, 34, 44, 72, 22, 22, 22])
+// GC-UI 3a (D-A09, D-A16): tick, B/S, expiry, strike stepper, type, lots, price box, depth, bin (the pencil column is gone:
+// the strike opens the leg in the drawer)
+export const LEG_ROW_COLUMNS = Object.freeze([22, 28, 88, 104, 34, 44, 80, 24, 24])
 export const LEG_CARD_PADDING_PX = 12
 export const LEFT_COLUMN_MIN_PX = 480

@@ -334,7 +334,7 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
   it('attack 1+3: Rename PATCHes the loaded revision (no extra GET); the shown name comes from the reply, quotes stripped', async () => {
     answers['PATCH /strategies/7/name'] = RENAMED
     const w = await bar({ current })
-    expect(t(w, 'current-name').text()).toBe('NIFTY Oct condor')
+    expect(t(w, 'current-name').exists()).toBe(false) // GC-UI 3a D-A22: the name is the legs card title (LegList), not repeated here
     await t(w, 'rename-open').trigger('click')
     expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor')
     await t(w, 'name-input').setValue(' Condor wider ')
@@ -345,7 +345,6 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
     expect(calls.filter((c) => c.method === 'GET' && c.url === '/strategies/7')).toEqual([])
     expect(w.emitted('renamed')).toEqual([[7, quoted('Condor wider')]])
     await w.setProps({ current: { ...current, name: w.emitted('renamed')[0][1] } }) // what the page does with the event
-    expect(t(w, 'current-name').text()).toBe('Condor wider')
     expect(t(w, 'name-form').exists()).toBe(false)
   })
   it('attack 2: a never-saved strategy shows no Rename (Save asks the name instead)', async () => {

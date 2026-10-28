@@ -64,7 +64,7 @@ describe('polish 5: the Shift label has no stray hyphen', () => {
     const w = mount(StrategyControls, { props: { controls } })
     expect(w.find('[data-testid="control-shift"]').text()).not.toContain('-Shift')
     expect(w.find('[data-testid="shift-total"]').text()).toBe('-') // inside the stepper (Sensibull 107), not glued to the label
-    expect(w.find('[data-testid="control-shift"] span').text()).toBe('Shift')
+    expect(w.find('[data-testid="shift-value"] span').text()).toBe('Shift') // GC-UI 3a D-A17: the label sits in the value box
   })
 })
 

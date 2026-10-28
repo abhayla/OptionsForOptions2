@@ -12,6 +12,8 @@ const PATHS = {
   sliders: "M4 7h10M18 7h2M4 17h4M12 17h8M14 5v4M8 15v4",
   check: "M4 12.5 9 17.5 20 6.5",
   table: "M4 5h16v14H4zM4 10h16M10 10v9",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
+  depth: "M4 6h16M4 10h12M4 14h16M4 18h9",
   chart: "M4 19h16M6 15l4-5 3 3 5-7",
   globe:
     "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18",

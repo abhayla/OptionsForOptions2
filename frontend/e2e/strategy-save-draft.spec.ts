@@ -175,7 +175,7 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof')
   await page.getByTestId('name-input').fill('E2E renamed')
   await page.getByTestId('name-confirm').click()
-  await expect(page.getByTestId('current-name')).toHaveText('E2E renamed')
+  await expect(page.getByTestId('strategy-card-name')).toHaveText('E2E renamed') // GC-UI 3a D-A22: the name is the legs card title
   const renamedRow = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
   expect(renamedRow.name).toBe('"E2E renamed"')
   expect(renamedRow.revision).toBe(2)
