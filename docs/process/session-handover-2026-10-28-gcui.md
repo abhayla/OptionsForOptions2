@@ -39,7 +39,35 @@ Full vitest after the last frontend merge: 83 files / 1328 tests passed. Full no
 was not on the closed-slot allow-list); fixed right after c45a5adb, `tests/errors` 690 passed. The post-merge full
 backend run caught it (the builder ran only the pin tests): keep running it after every backend merge.
 
+## UPDATE at session end (~21:15 IST, head ebabbe61 + this commit)
+
+Done since the first handover: step 4 server rounds 3-4 (OI per strike `open_interest`, TOTAL row net per-unit moved
+into the engine, Decay column per F-63, checker rules for OI / TOTAL / Decay; merged 5ce3384a, 8d8c8af8; full backend
+7693 passed / 0 failed), checker C-5 (BSE exchange rate), SENSEX checked (233/0/1, with both curves 644/0/1), finding
+F-63 (Sensibull Decay measured logged out), step 4 frontend b1 payoff chart (both curves, two-value hover, OI bars,
+SD bands, zoom, current price + breakeven marks, Sensibull tabs; merged b8e94b0c; full vitest after the leg-picker
+fix ebabbe61). Chrome 20:5x: chart matches Sensibull's layout; three defects seen (OI strip "22700.00", doubled
+"stale since" line, OI axis raw counts) - in b2's brief.
+
+IN FLIGHT when the session ended: step 4 frontend round b2 (payoff table view, TOTAL row, Decay order, Greeks panel,
+SD table, lower card, per-leg paper P&L, round-a carry-overs, the three b1 defects) in worktree
+D:\Abhay\Ventures\OptionsForOptions2-gcui-tables, branch build/gcui-tables; its first commit 4a1aabfc (Greeks tab order
+with Decay) was in, the rest may or may not be. Its brief: D:\Abhay\scratch\gcui-briefs\brief-tables.md (all 28
+briefs of this session are in that folder; the old scratchpad copies may be gone).
+
+NEXT in the fresh session, in order:
+1. `git -C D:\Abhay\Ventures\OptionsForOptions2-gcui-tables log --oneline build/gcbm-must-have..HEAD` and `status`:
+   if b2 finished, verify (its touched vitest files, money scan), merge, full vitest, guard suite + full backend in
+   the background, Chrome check (Greeks tab order, payoff table, lower card, the three b1 defects gone); if b2 stopped
+   part-way, dispatch its round 2 from brief-tables.md for the unfinished rows (it is round 1/2 now).
+2. Step 5 Strategy Chart (core proof first, PENDING item 3 below).
+3. Step 6 rest, then steps 7-10 (PENDING items 4-5 below).
+Run ONE builder at a time (the PC ran critically low on memory at ~19:45; the API was killed once).
+Servers at session end: API PID 12988 (port 8765, code ebabbe61-equivalent), Vite PID 3964 (port 5174), viewer 31380.
+
 ## PENDING (contract order)
+
+(Items 1 and 2 below are DONE except round b2 - see the UPDATE above.)
 
 1. Step 4 server round 3: D-B16 / B17 OI bars + "OI data at" strip (per-strike OI from the chain for the strategy's
    expiry, server display in L / Cr), D-B34 Decay column (REQ-145 AC-1: time-value change to the next market open;
