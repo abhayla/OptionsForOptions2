@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { groupMoney } from '@/lib/displayFormat'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
+import { hintLines } from './helpers/figureHint'
 import ReadyMadePanel from '@/components/strategy/ReadyMadePanel.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
 import LegList from '@/components/strategy/LegList.vue'
@@ -33,28 +34,30 @@ describe('polish 3: money text gets Indian thousands separators', () => {
     expect(groupMoney('181.55')).toBe('181.55')
     expect(groupMoney('8839.57, 23100')).toBe('8,839.57, 23,100')
   })
-  it('the summary card shows separators and keeps the raw string in data-raw', () => {
-    const w = mount(SummaryCards, { props: { maxProfit: '17160.43', maxLoss: '-17436.25', breakevens: ['22839.57'] } })
-    expect(w.find('[data-testid="max-profit"]').text()).toBe('17,160.43')
-    expect(w.find('[data-testid="max-profit"]').attributes('data-raw')).toBe('17160.43')
-    expect(w.find('[data-testid="max-loss"]').text()).toBe('-17,436.25')
-    expect(w.find('[data-testid="breakevens"]').text()).toBe('22,839.57')
+  // GC-UI step 3b (REQ-152 AC-1..AC-3): the separators come from the server's display strings; the card prints them as
+  // sent and keeps the exact value, as sent, in the figure's "?" (it replaced data-raw)
+  it('the summary card shows the server separators and keeps the exact value in the ?', async () => {
+    const w = mount(SummaryCards, { props: { maxProfit: '+17,160', maxProfitExact: '17160.43', maxLoss: '\u221217,436',
+      maxLossExact: '17436.25', breakevens: ['22,840 (+0.2%)'], breakevensExact: ['22839.57'] } })
+    expect(w.find('[data-testid="max-profit"]').text()).toBe('+17,160')
+    expect(w.find('[data-testid="max-loss"]').text()).toBe('\u221217,436')
+    expect(w.find('[data-testid="breakevens"]').text()).toBe('22,840 (+0.2%)')
+    expect(await hintLines(w, 'max_profit')).toEqual(['Exact value: 17160.43'])
+    expect(await hintLines(w, 'max_loss')).toEqual(['Exact value: 17436.25'])
+    expect(await hintLines(w, 'breakeven_expiry')).toEqual(['Exact value: 22839.57'])
   })
 })
 
-describe('polish 4: Max Loss / Max Profit sentence is one sentence until More', () => {
+// GC-UI step 3b (REQ-034 AC-7 as changed by ADR-204; ADR-202 (1)): the sentence is no longer a visible paragraph cut at
+// More; the WHOLE sentence, the charges part included, is the first line of the figure's "?", word for word.
+describe('polish 4: the Max Loss / Max Profit sentence is whole in the figure ?', () => {
   const two = 'You can lose at most Rs 8,460. This includes the charges we expect.'
-  it('shows the first sentence, More shows the rest, Less hides it again', async () => {
+  it('the ? holds both sentences verbatim, the charges part included; no More control is left', async () => {
     const w = mount(SummaryCards, { props: { whatCanILose: two, whatCanIMake: 'One sentence only.' } })
-    const lose = () => w.find('[data-testid="sum-lose"]')
-    expect(lose().text()).toContain('You can lose at most Rs 8,460.')
-    expect(lose().text()).not.toContain('charges we expect')
-    expect(lose().attributes('data-full')).toBe(two)
-    await w.find('[data-testid="sum-lose-more"]').trigger('click')
-    expect(lose().text()).toContain('charges we expect')
-    await w.find('[data-testid="sum-lose-more"]').trigger('click')
-    expect(lose().text()).not.toContain('charges we expect')
-    expect(w.find('[data-testid="sum-make-more"]').exists()).toBe(false) // a one-sentence text needs no More
+    expect(await hintLines(w, 'max_loss')).toEqual([two])
+    expect(await hintLines(w, 'max_profit')).toEqual(['One sentence only.'])
+    expect(w.find('[data-testid="sum-lose-more"]').exists()).toBe(false)
+    expect(w.find('[data-testid="sum-make-more"]').exists()).toBe(false)
   })
 })
 

@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { hintLines } from './helpers/figureHint'
 import { createPinia, setActivePinia } from 'pinia'
 import CONDOR from './fixtures/outcome-money-condor.json'
 
@@ -77,7 +78,9 @@ describe('ADR-200: the builder after the close', () => {
     expect(banners[0].text()).toBe(BANNER)
     expect(banners[0].text()).toBe('Market closed. Prices are from 8 Oct 2026, 15:29:59 IST.')
     expect(w.find('[data-testid="numbers"]').exists()).toBe(true)
-    expect(w.find('[data-testid="max-profit"]').attributes('data-raw')).toBe(CONDOR.summary.max_profit)
+    // REQ-152: the server's display string on the figure, the exact value in its "?"
+    expect(w.find('[data-testid="max-profit"]').text()).toBe(CONDOR.summary.max_profit_display)
+    expect(await hintLines(w, 'max_profit')).toContain(`Exact value: ${CONDOR.summary.max_profit}`)
     expect(w.text().split(BANNER)).toHaveLength(2) // the banner sentence appears once on the page, nowhere else
   })
 

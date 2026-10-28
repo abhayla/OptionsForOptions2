@@ -29,6 +29,7 @@ import {
 import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { movedMarker } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
+import { hintLines } from './helpers/figureHint'
 import rec from './fixtures/leg-edit-controls.json'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { buildSaveBody } from '@/lib/saveDraft'
@@ -104,7 +105,8 @@ describe('Core: a + on an option leg sends one leg-edit request and the page is 
     expect(edits()[0].body.edit).toEqual({ control: 'step', index: 0, direction: 1 })
     expect(edits()[0].body.legs.map((l) => l.instrument_id)).toEqual(real.legs.map((l) => l.instrument_id))
     expect(all(w, 'leg-strike')[0].text()).toBe('22850')
-    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+    // GC-UI step 3b (REQ-034 AC-7, ADR-204): the reply's sentence is the Max Profit "?" line
+    expect((await hintLines(w, 'max_profit'))[0]).toBe('REPLY: make nothing')
     expect(t(w, 'output-label').text()).toBe('REPLY LABEL')
   })
 })
@@ -268,11 +270,11 @@ describe('LegList rows (screens 011, 012)', () => {
     await flushPromises()
     expect(t(w, 'numbers').attributes('data-updating')).toBe('true')
     expect(t(w, 'numbers-updating').exists()).toBe(true)
-    expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make) // the old numbers stay until the reply
+    expect((await hintLines(w, 'max_profit'))[0]).toBe(real.summary.what_can_i_make) // the old numbers stay until the reply
     release()
     await flushPromises()
     expect(t(w, 'numbers').attributes('data-updating')).toBe('false')
-    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+    expect((await hintLines(w, 'max_profit'))[0]).toBe('REPLY: make nothing')
   })
 })
 
