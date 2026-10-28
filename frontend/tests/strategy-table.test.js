@@ -223,8 +223,10 @@ describe('W-075: the Charges and taxes row is drawn from the API like every othe
 describe('ADR-008: no client maths on the outcome response (second layer)', () => {
   const SRC = path.resolve(__dirname, '../src')
   // Named exceptions, each with its reason: PayoffChart hands numbers to chart.js to DRAW the line (its tooltip and labels
-  // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display).
-  const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
+  // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display);
+  // lib/oiBars.js scales the strike drawer's OI bars (GC-UI 6c, D-C26): OI counts, not money, a CSS width only.
+  const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue'),
+    path.join('lib', 'oiBars.js')])
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
@@ -289,6 +291,14 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
       L('const v = Number(props.value)', 'colour intensity only; the text is the API display'),
       L('const i = Math.min(v / (Number(props.maxProfit) || 1), 1)', 'colour intensity only'),
       L('const i = Math.min(Math.abs(v) / (Math.abs(Number(props.maxLoss)) || 1), 1)', 'colour intensity only'),
+    ],
+    [path.join('lib', 'oiBars.js')]: [
+      L("const oiCount = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))",
+        'OI count, not money: a bar width only; missing OI is no bar'),
+      L("return Math.max(0, ...(rows ?? []).flatMap((r) => ['ce', 'pe'].map((s) => oiCount(r?.[s]?.oi) ?? 0)))",
+        'largest OI on screen: the bar scale only'),
+      L('return n === null || n <= 0 || !(max > 0) ? null : `${Math.round((n / max) * 100)}%`',
+        'OI bar CSS width percent, not money'),
     ],
   }
   // A small lexer, not a regex pair: comments are removed only OUTSIDE strings; a quote-delimited string is blanked, except the
@@ -433,8 +443,9 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     expect(scanAllowedFile(text.replace('const v = Number(props.value)', ''), NAMED_USES[rel]).length).toBeGreaterThan(0)
     expect(scanAllowedFile(text + '\nconst v = Number(props.value)', NAMED_USES[rel]).length).toBeGreaterThan(0)
   })
-  it('only the two named files may parse an API number, and they exist', () => {
-    expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
+  it('only the three named files may parse an API number, and they exist', () => {
+    expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'),
+      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js')].sort())
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
   })
 })

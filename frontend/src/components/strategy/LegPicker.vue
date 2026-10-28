@@ -14,6 +14,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { QUICK_PICK_DISTANCES } from '@/lib/readyMade'
 import { healthSentence } from '@/lib/dataHealthText'
+import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
 import {
   DEFAULT_STRIKE_WIDTH,
   FORWARD_LABEL,
@@ -239,14 +240,10 @@ const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / 
 const itm = computed(() => itmSides(strikesData.value?.rows))
 const COLUMN_LABEL = Object.freeze({ delta: 'Delta', ltp: 'LTP', oi: 'OI', iv: 'IV' })
 
-// GC-UI 6c D-C26 (S-032): an OI bar under the server's OI label. Its length is the ratio of two server OI values in this
-// reply, used for DRAWING only and never printed (ADR-008). A cell with no OI draws no bar and shows the dash (REQ-083 AC-6).
-const oiNumber = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
-const maxOi = computed(() => Math.max(0, ...(strikesData.value?.rows ?? []).flatMap((r) => ['ce', 'pe'].map((s) => oiNumber(r[s]?.oi) ?? 0))))
-const oiBarWidth = (v) => {
-  const n = oiNumber(v)
-  return n === null || n <= 0 || maxOi.value <= 0 ? null : `${Math.round((n / maxOi.value) * 100)}%`
-}
+// GC-UI 6c D-C26 (S-032): an OI bar under the server's OI label, sized in lib/oiBars.js (drawing only, ADR-008); a cell
+// with no OI draws no bar and shows the dash (REQ-083 AC-6).
+const maxOi = computed(() => oiBarMax(strikesData.value?.rows))
+const oiBarWidth = (v) => barWidthOf(v, maxOi.value)
 
 // ---- GC-UI 6c D-C22 / D-C24 / D-C25 (S-032, S-036..S-038): four tabs. Straddles, Strangles and Strikes are strategy TYPES
 // that each build the one selection (`picked`); Futures adds a future directly. Changing type while picks exist asks first.
