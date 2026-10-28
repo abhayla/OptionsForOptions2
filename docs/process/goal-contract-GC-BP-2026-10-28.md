@@ -3,7 +3,7 @@
 Written 2026-10-28 ~10:15 IST in a planning-only session. Branch `build/gcbm-must-have`, worktree
 `D:\Abhay\Ventures\OptionsForOptions2-gcbm` (local only; head 303dc8c3 = GC-BM's 86 commits + ADR-201). GC-BM is
 DONE and on hold before its push (`docs/process/session-handover-2026-10-28-gcbm.md`). GC-BP builds on top of it.
-At the end, ONE push and ONE PR carry both contracts.
+No push, PR or CI in this goal: a later "ready to land" goal the owner starts carries GC-BM + GC-BP in ONE push and ONE PR.
 
 ## Owner decisions behind this contract (2026-10-28, question tool and chat; recorded as ADR-201)
 
@@ -60,7 +60,7 @@ none touches tracking, paper or Positions.
 
 ## No-CI rules (owner instruction 4; same as GC-BM)
 
-- **No push, no PR, no draft PR, no GitHub Actions** until step 8 passes its clean walk.
+- **No push, no PR, no draft PR, no GitHub Actions in this goal at all** (owner, 2026-10-28: market hours are for building and live testing).
 - **No `ci_local.py`, `prepush.py`, `land.py` or `merge.py`** per item. Builders run only the tests of the files they
   touch, plus `ruff` on touched Python and `npx eslint` on touched frontend files. Long output goes to a log file;
   read only the tail. After each local merge, run the FULL frontend vitest once (memory: targeted runs missed 3 stale
@@ -98,8 +98,8 @@ none touches tracking, paper or Positions.
 | 5 | paper exit | REQ-109 AC-4: "Paper exit" of a whole strategy and of one leg records the exit price at that moment, freezes that part's P&L into booked, appended to the timeline labelled paper; refused when prices are not live (AC-5 wording). Never reaches Execute (AC-3 test) | A (writes money records) | Tests red first; live: exit one leg of a condor, booked moves and unbooked drops by that leg | Not started |
 | 6 | Paper tab | ADR-201 (2): Positions page tabs "Positions" / "Paper"; Paper lists each strategy as a group (legs, entry, LTP, P&L total / booked / unbooked, price state, Open in Builder, Paper exit with a confirm), the banner "Paper trades - not real money", and its own totals, never added to real. Both Positions menu items show the tabs. The builder's "Tracked" tab lists the same strategies (one shared component, no copy). Sensibull: 090-092 for the group content, 050-053 for the tab look | B | vitest red first; live: 3+ paper strategies visible with moving P&L | Not started |
 | 7 | re-walk | Full P-list again on the final code; new F-rows go to step 3; repeat until a full pass is clean | C | Clean P-list with times | Not started |
-| 8 | final gate + land | With servers STOPPED: `python scripts/generate_openapi.py` drift; Playwright for changed pages (builder, positions; `D:\Abhay\scratch\gcbm-briefs\e2e_local2.sh` inside db_run_fresh); `ruff_ratchet.py`; `coverage.py . --check`; `prepush.py`. One combined review: fresh Opus for steps 4-5 (Tier A), Sonnet for the rest, at most 2 rounds. Then ONE push of `build/gcbm-must-have`, ONE PR covering GC-BM + GC-BP (PR body from `D:\Abhay\scratch\gcbm-briefs\pr-body.md` + this contract; Spec-deviation block for ADR-201; no closing keywords), CI, `merge.py <pr> --reviewed-sha <full sha>` | A | Every command's tail line; CI green on the PR sha; main has the files | Not started |
-| 9 | handover | Visual-differences list, gap-list re-verdicts (G-029, G-030 and touched rows), deferred issues via `gh_issue.py app ... --stage`, DONE / PENDING / BLOCKED / PARKED / NEXT block; same PR as step 8 (no second push). Worktrees removed with `wt-rm.ps1` after merge | C | Files in the PR | Not started |
+| 8 | review, NO land | One combined code review of this contract's diff: fresh Opus for steps 4-5 (Tier A), Sonnet for the rest, at most 2 rounds; accepted findings fixed and re-walked. NOT in this goal (owner, 2026-10-28: no PR and no CI "until certain features are fully complete and we are ready to create a PR"): openapi drift, Playwright, ruff_ratchet, coverage, `prepush.py`, push, PR, CI, merge. Those run once, in a later "ready to land" goal the owner starts. List them in the handover as OWED | A | Review verdicts; commits on the local branch; `git rev-parse @{u}` still has no upstream | Not started |
+| 9 | handover | Visual-differences list, gap-list re-verdicts (G-029, G-030 and touched rows), a list of deferred issues WRITTEN IN THE HANDOVER (not filed on GitHub until the land goal), DONE / PENDING / BLOCKED / PARKED / OWED-AT-LAND / NEXT block, committed on the local branch. Worktrees: builder sub-worktrees merged locally are removed with `wt-rm.ps1 -Discard`-free removal only after their commits are on `build/gcbm-must-have`; the gcbm worktree stays | C | Handover file committed locally | Not started |
 
 ## The P-list (a user's walk: build, paper-trade, follow)
 
