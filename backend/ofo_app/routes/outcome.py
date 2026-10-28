@@ -253,7 +253,7 @@ class OutcomeRequest(BaseModel):
     payoff_step: StrictInt | None = Field(
         default=None, examples=[50],
         description="REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then "
-                    "carries `payoff_table` (also sent with both_views, at the Admin step when this is absent)")
+                    "carries `payoff_table` (also sent with both_views; absent: the strike step, NIFTY 50, SENSEX 100)")
     sd_bands: StrictBool = Field(
         default=False,
         description="REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day "
@@ -269,7 +269,7 @@ class OutcomeRequest(BaseModel):
         return self
 
     def table_step(self) -> Decimal | None:
-        """REQ-137 AC-1: the payoff table's interval as index points (None: the Admin step, ADR-042)."""
+        """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
         return None if self.payoff_step is None else Decimal(self.payoff_step)
 
     def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:

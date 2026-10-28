@@ -91,6 +91,9 @@ MARGIN_NO_BASKET: Final = "NO_BASKET"
 _UNUSABLE: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 #: REQ-137 AC-1 / D-B24: the payoff table's intervals a user may pick, in index points
 PAYOFF_TABLE_STEPS: Final = (Decimal(10), Decimal(25), Decimal(50), Decimal(100))
+#: REQ-137 AC-1: with no interval picked, "default the underlying's strike step: NIFTY 50, SENSEX 100". This is NOT
+#: the scenario grid's Admin step (ADR-042: NIFTY 100, SENSEX 300), which the per-leg table keeps.
+PAYOFF_TABLE_DEFAULT_STEPS: Final = {"NIFTY": Decimal(50), "SENSEX": Decimal(100)}
 MAX_PAYOFF_TABLE_ROWS: Final = 1000
 #: D-B20 (Fixed SD): the SD block's horizon in calendar days; the days to the nearest expiry when fewer
 SD_HORIZON_DAYS: Final = 7
@@ -631,14 +634,24 @@ def standard_deviation(spot: Decimal | None, move: ExpectedMove | None) -> Stand
     return StandardDeviation(True, None, move.days, move.iv, spot, rows)
 
 
+def payoff_table_default_step(index: str) -> Decimal:
+    """REQ-137 AC-1: the payoff table's interval when none is picked (the underlying's strike step). An index with no
+    stated strike step is refused, never given another index's step."""
+    try:
+        return PAYOFF_TABLE_DEFAULT_STEPS[index]
+    except KeyError:
+        raise ValueError(f"no payoff table strike step is stated for {index!r} (REQ-137 AC-1)") from None
+
+
 def payoff_table(level_set: LevelSet, model: ModelInputs, step: Decimal | None, *,  # noqa: PLR0913
                  config: ScenarioConfig, rates: ChargeRates | None, spot: Decimal | None,
                  no_estimate: ExplanationText | None = None) -> PayoffTable:
     """REQ-137 AC-1: rows from the first multiple of ``step`` at or above the range start to the range end; each view
-    from :func:`scenario_values` on those levels (the one engine). ``step`` None: the Admin step (ADR-042).
+    from :func:`scenario_values` on those levels (the one engine). ``step`` None: the underlying's strike step
+    (REQ-137 AC-1, :func:`payoff_table_default_step`), never the grid's Admin step.
     ``no_estimate``: Estimated Now cannot be computed (no live prices) and carries this reason."""
     if step is None:
-        step = config.step_points
+        step = payoff_table_default_step(config.index)
     elif step not in PAYOFF_TABLE_STEPS or not isinstance(step, Decimal):
         raise ValueError(f"payoff table step must be one of {PAYOFF_TABLE_STEPS}, got {step!r}")
     first = (level_set.start / step).to_integral_value(rounding=ROUND_CEILING) * step

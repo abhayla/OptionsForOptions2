@@ -1,8 +1,8 @@
 """GC-UI step 4 server, items 2 and 3.
 
 Item 2 (REQ-137 AC-1/AC-2, D-B24/D-B25): a payoff table at a user-picked interval of 10/25/50/100 index points with
-both P&L columns (Estimated Now and At Expiry), each value from the one engine; absent -> the Admin step (ADR-042:
-NIFTY 100, SENSEX 300). It is separate from the per-leg scenario table, which keeps its step.
+both P&L columns (Estimated Now and At Expiry), each value from the one engine; absent -> the underlying's strike step
+(REQ-137 AC-1: NIFTY 50, SENSEX 100). It is separate from the per-leg scenario table, which keeps its Admin step.
 
 Item 3 (REQ-083 AC-4, REQ-137 AC-3, D-B19/D-B20/D-B45): the 1 SD / 2 SD block from the engine's spot, ATM IV and a
 FIXED 7-day horizon (days to expiry when fewer), via the one expected-move formula (spot x IV x sqrt(days / 365));
@@ -10,13 +10,15 @@ absent with a reason when the ATM IV or the spot is missing. The expected values
 independently in Decimal, never a Sensibull number."""
 from __future__ import annotations
 
+import dataclasses
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 from ofo.errors.explanations import render_explanation
-from ofo.outcome import service
+from ofo.outcome import StrategyDefinition, service
 from ofo.outcome.serialize import outcome_to_dict
 from outcome._both_curves_cases import CALENDAR, S54, as_json, definition, entries_outcome, market, outcome, snapshot
+from outcome.test_same_engine import VALUATION
 
 TENTH = Decimal("0.1")
 ONE_19OCT = (("NSE_FO:47139", service.Action.BUY),)  # 22600 CE 19-Oct: 11 days out, so the 7-day cap applies
@@ -66,9 +68,40 @@ def test_estimated_cells_equal_the_curve_values_at_shared_levels(provider):
         assert r["estimated_now"]["pnl"] == curve[r["level"]]
 
 
-def test_payoff_table_absent_step_is_the_admin_step_and_only_with_an_option(provider):
+def _row_gaps(table):
+    levels = [Decimal(r["level"]) for r in table["rows"]]
+    return {b - a for a, b in zip(levels, levels[1:], strict=False)}
+
+
+def test_payoff_table_absent_step_is_the_strike_step_and_only_with_an_option(provider):
+    """REQ-137 AC-1: "default the underlying's strike step: NIFTY 50, SENSEX 100" - NOT the scenario grid's Admin step
+    (ADR-042: NIFTY 100), which the per-leg table keeps (a different view)."""
     assert "payoff_table" not in _body(provider)
-    assert _body(provider, both_views=True)["payoff_table"]["step"] == "100"  # NIFTY Admin step (ADR-042)
+    body = _body(provider, both_views=True)
+    table = body["payoff_table"]
+    assert table["step"] == "50" and _row_gaps(table) == {Decimal(50)}
+    assert outcome(provider, S54, both_views=True).level_set.step == Decimal(100)  # the grid keeps the Admin step
+    fe = as_json(outcome_to_dict(entries_outcome(provider, S54, both_views=True)))["payoff_table"]
+    assert fe["step"] == "50" and _row_gaps(fe) == {Decimal(50)}
+
+
+def test_payoff_table_default_step_sensex_is_100():
+    """REQ-137 AC-1 for SENSEX (strike step 100; the Admin grid step is 300). The SENSEX case of test_from_entries
+    (78000 / 78300 strikes, lot 20, real catalogue rows with only the name, strike and lot changed)."""
+    from outcome.test_from_entries import LOW, _spread, _stored
+    stored = {iid: dataclasses.replace(
+        c, contract=dataclasses.replace(c.contract, name="SENSEX", lot_size=20,
+                                        strike=c.contract.strike + (Decimal(55000) if iid == LOW else Decimal(55100))))
+              for iid, c in _stored().items()}
+    out = service.from_entries(StrategyDefinition("SENSEX", _spread().legs), None, stored, VALUATION, both_views=True)
+    assert out.level_set.step == Decimal(300)  # the grid's Admin step is unchanged
+    table = as_json(outcome_to_dict(out))["payoff_table"]
+    assert table["step"] == "100" and _row_gaps(table) == {Decimal(100)} and len(table["rows"]) > 2
+
+
+def test_default_step_refuses_an_index_without_a_strike_step():
+    with pytest.raises(ValueError, match="strike step"):
+        service.payoff_table_default_step("BANKNIFTY")
 
 
 @pytest.mark.parametrize("bad", [Decimal(30), Decimal(0), Decimal(-50), Decimal("50.5"), Decimal(300)])
