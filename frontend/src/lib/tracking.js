@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { istTime } from '@/lib/displayFormat'
+import { instrumentText, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 
 /** ADR-166: the action's label on every screen (owner decision; change it here only). */
@@ -46,32 +46,47 @@ const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
 const INVALID = Object.freeze({ kind: 'invalid', text: UNREADABLE_TEXT, figure: null, legs: [], detections: [] })
 
+const lotsOf = (replyLegs, leg) => (Array.isArray(replyLegs)
+  ? replyLegs.find((r) => r?.instrument_id === leg.instrument_id && String(r.quantity) === String(leg.quantity))?.lots ?? null
+  : null)
+
 /** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | exited | invalid.
  *  booked / unbooked are the server's strings, signed for display (null when absent or unreadable). */
-export function readTracking(body) {
+export function readTracking(body, replyLegs = null) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
     key: leg.instrument_id,
     action: leg.action,
     instrument: leg.instrument,
     strike: leg.strike,
+    // GC-UI D-B39 / D-B49: "<lots> x <D Mon> <strike> <type>"; the lots are the builder reply's own whole-lot count for the
+    // same instrument and quantity text, else the quantity form (no division here, ADR-008)
+    text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
     entry: leg.entry_price,
     current: leg.price_state === 'live' ? leg.current_price : null,
+    exitPrice: leg.exit_price ?? null, // REQ-109 AC-4: set once the leg is paper-exited
   }))
   // an answer carrying a detection this screen cannot name is unreadable as a whole: never silently dropped
   if (!Array.isArray(body.detections)) return INVALID
   if (!body.detections.every((d) => d && d.kind === 'platform_detection' && CONDITIONS.has(d.condition))) return INVALID
   const detections = body.detections
-    .map((d) => ({
-      key: `${d.condition}-${d.level}`,
-      label: PLATFORM_DETECTION_LABEL,
-      condition: CONDITION_TEXT[d.condition],
-      level: d.level,
-      index: d.index_level,
-      distance: `${d.distance_points} points (${d.distance_percent}%)`,
-      threshold: `${d.threshold_percent}%`,
-      at: istTime(d.at),
-    }))
+    .map((d) => {
+      const distance = `${d.distance_points} points (${d.distance_percent}%)`
+      const condition = CONDITION_TEXT[d.condition]
+      return {
+        key: `${d.condition}-${d.level}`,
+        label: PLATFORM_DETECTION_LABEL,
+        condition,
+        level: d.level,
+        index: d.index_level,
+        distance,
+        threshold: `${d.threshold_percent}%`,
+        at: istTime(d.at),
+        // GC-UI D-B50 (ADR-202 (1), ADR-204): one visible line, the rest of REQ-046 AC-1's Layer 1 behind the "?"
+        line: `${PLATFORM_DETECTION_LABEL}: ${condition}: ${d.level}, ${distance} away`,
+        details: [`Index: ${d.index_level}`, `Distance: ${distance}`, `Threshold: ${d.threshold_percent}%`, `As of ${istTime(d.at)}`],
+      }
+    })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
   if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
   const signed = signedRupees(body.paper_pnl)

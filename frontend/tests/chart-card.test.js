@@ -17,7 +17,7 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const shown = (w, id) => t(w, id).element.style.display !== 'none'
 const card = (table = real.table, extra = {}) =>
-  mount(ChartCard, { attachTo: document.body, props: { points: real.payoff.points, spot: real.spot_level, table, ...extra } })
+  mount(ChartCard, { attachTo: document.body, props: { points: real.payoff.points, spot: real.spot_level, table, legs: real.legs, ...extra } })
 const AC2_ORDER = ['leg', 'action', 'instrument', 'expiry', 'strike', 'quantity', 'entry_price', 'ltp', 'entry_value', 'current_value',
   'unrealized_pnl', 'pnl_percent', 'iv', 'delta', 'gamma', 'theta', 'vega']
 const withoutTotal = { ...real.table, rows: real.table.rows.filter((r) => r.row_id !== 'TOTAL') }
@@ -73,8 +73,10 @@ describe('ADR-194 (1): the P&L Table tab opens compact (core)', () => {
         expect(tr.find(`[data-field="${id}"]`).text()).toBe(row.cells[id].display)
       }
       if (row.row_id !== 'TOTAL') {
-        const text = tr.text()
-        for (const id of ['quantity', 'expiry', 'strike', 'instrument']) expect(text).toContain(row.cells[id].display)
+        // GC-UI D-B29: "<lots> x <D Mon> <strike> <type>", the lots from the reply's own leg (outcome-condor.json: NIFTY 13 Oct)
+        const leg = real.legs[Number(row.row_id) - 1]
+        expect(tr.find('[data-testid="instrument-text"]').text()).toBe(`${leg.lots} x 13 Oct ${leg.strike} ${leg.instrument}`)
+        expect(tr.text()).not.toContain(row.cells.expiry.display)
         expect(tr.find('[data-testid="chip"]').text()).toBe(row.cells.action.value === 'BUY' ? 'B' : 'S')
       }
     }

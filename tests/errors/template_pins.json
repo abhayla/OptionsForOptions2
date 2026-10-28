@@ -1706,5 +1706,21 @@
   "explanation:payoff_table_too_many_rows": {
     "sha256": "cacf8c98ab54c0529c1d17f5360e59b68bd9ffc42a1efe7f3e606ad272e28439",
     "reviewed": "pending owner read"
+  },
+  "explanation:summary_whole_rupees": {
+    "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_whole_rupees_signed": {
+    "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_breakeven_level": {
+    "sha256": "d6245c829440679ffc002796b40435dbe6f507d7fc78d057791a111d14d52d49",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_breakeven_percent": {
+    "sha256": "61a942ce68ccb169eaaf576a12474c551b8641af349773da617c8e2e8e364778",
+    "reviewed": "pending owner read"
   }
 }
