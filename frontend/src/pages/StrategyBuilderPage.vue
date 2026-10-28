@@ -710,6 +710,7 @@ const pricesStamp = computed(() => {
             :unavailable-reason="data.scenario && !data.scenario.available ? data.scenario.unavailable_reason : null"
             :spot="data.spot_level ?? ''"
             :table="data.table"
+            :legs="data.legs ?? null"
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
           >
@@ -721,7 +722,7 @@ const pricesStamp = computed(() => {
             </template>
           </ChartCard>
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
+          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" :legs="data.legs ?? null" />
         </div>
       </div>
     </div>

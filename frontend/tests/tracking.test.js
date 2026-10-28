@@ -22,9 +22,14 @@ import { PAPER_PNL_PREFIX, START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracki
 
 const legs = [
   { instrument_id: 'NSE_FO:44624', action: 'SELL', instrument: 'CE', strike: '22800.00', entry_price: '39.15',
-    current_price: '45.15', price_state: 'live' },
+    current_price: '45.15', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null },
   { instrument_id: 'NSE_FO:44604', action: 'SELL', instrument: 'PE', strike: '22400.00', entry_price: '82.75',
-    current_price: null, price_state: 'stale' },
+    current_price: null, price_state: 'stale', expiry: '2026-11-03', quantity: 65, exit_price: null },
+]
+// the builder reply's legs (GET outcome): the server's whole-lot count per instrument (GC-UI D-B39)
+const replyLegs = [
+  { instrument_id: 'NSE_FO:44624', quantity: 65, lots: 1 },
+  { instrument_id: 'NSE_FO:44604', quantity: 65, lots: 1 },
 ]
 const detection = { kind: 'platform_detection', condition: 'near_short_strike', level: '22400.00', index_level: '22533.25',
   distance_points: '133.25', distance_percent: '0.59', threshold_percent: '0.6', at: '2026-10-08T09:20:09+05:30',
@@ -37,8 +42,14 @@ beforeEach(() => {
   answers = {}
 })
 
+// a row as its three cells: the Leg cell is the B/S chip then the instrument text
+const legRows = (w) => w.findAll('[data-testid="tracking-leg"]').map((r) => {
+  const [leg, entry, ltp] = r.findAll('td')
+  return [`${leg.get('[data-testid="chip"]').text()} ${leg.get('[data-testid="instrument-text"]').text()}`, entry.text(), ltp.text()]
+})
+
 async function panel() {
-  const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
+  const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3, legs: replyLegs } })
   await flushPromises()
   return w
 }
@@ -73,22 +84,49 @@ describe('TrackingPanel', () => {
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ paper_pnl: '1240.50' }) })
     const w = await panel()
     expect(w.get('[data-testid="paper-pnl"]').text()).toBe(`${PAPER_PNL_PREFIX}+1,240.50`)
-    const rows = w.findAll('[data-testid="tracking-leg"]').map((r) => r.findAll('td').map((c) => c.text()))
-    expect(rows).toEqual([['SELL 22800.00 CE', '39.15', '45.15'], ['SELL 22400.00 PE', '82.75', '-']])
+    const rows = legRows(w)
+    // GC-UI D-B49 / D-B39: one value per column, the instrument as "<lots> x <D Mon> <strike> <type>" (no ".00"), prices as sent
+    expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', '45.15'], ['S 1 x 3 Nov 22400 PE', '82.75', '-']])
     // D-B51: the price stored at Start tracking is the Paper entry (the P&L Table's column is the Planned entry)
     expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP'])
   })
 
-  it('REQ-045 AC-1 / REQ-046 AC-1: a detection shows the label and its Layer 1 facts', async () => {
+  it('REQ-045 AC-1 / REQ-046 AC-1 (ADR-204, D-B50): one visible line per detection; the Layer 1 facts sit behind its "?"', async () => {
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
     const w = await panel()
     const d = w.get('[data-testid="detection"]')
     expect(d.text()).toContain('Adjustment opportunity detected')
-    expect(d.text()).toContain('Index is near a short strike: 22400.00')
-    expect(d.text()).toContain('Index: 22533.25')
-    expect(d.text()).toContain('Distance: 133.25 points (0.59%)')
-    expect(d.text()).toContain('Threshold: 0.6%')
-    expect(d.text()).toContain('As of 8 Oct 2026, 09:20:09 IST')
+    expect(d.get('[data-testid="detection-line"]').text()).toBe('Adjustment opportunity detected: Index is near a short strike: 22400.00, 133.25 points (0.59%) away')
+    // nothing else is visible until the "?" is opened
+    expect(d.text()).not.toContain('Threshold')
+    expect(d.text()).not.toContain('As of')
+    expect(d.text()).not.toContain('22533.25')
+    await d.get('[data-testid="figure-hint-mark"]').trigger('click')
+    const lines = d.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())
+    expect(lines).toEqual(['Index: 22533.25', 'Distance: 133.25 points (0.59%)', 'Threshold: 0.6%', 'As of 8 Oct 2026, 09:20:09 IST'])
+  })
+
+  it('D-B49: headings sit over their columns (right-aligned numbers), no "₹" or rounding added to the server text', async () => {
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
+    const w = await panel()
+    const heads = w.findAll('[data-testid="tracking-view"] th')
+    expect(heads.map((h) => h.attributes('scope'))).toEqual(['col', 'col', 'col'])
+    expect(heads.slice(1).every((h) => h.classes().includes('text-right'))).toBe(true)
+    const cells = w.findAll('[data-testid="tracking-leg"]')[0].findAll('td')
+    expect(cells.slice(1).every((c) => c.classes().includes('text-right') && c.classes().includes('tabular-nums'))).toBe(true)
+    expect(cells.slice(1).every((c) => c.classes().includes('pl-6'))).toBe(true) // a gap between columns: entry and LTP never run together
+  })
+
+  it('answer states: no detections shows nothing; an exited leg shows its exit price; a FUT leg and an unmatched leg print honestly', async () => {
+    const exited = { ...legs[0], price_state: 'exited', current_price: null, exit_price: '50.25' }
+    const fut = { instrument_id: 'NSE_FO:9', action: 'BUY', instrument: 'FUT', strike: null, entry_price: '22500.00',
+      current_price: '22510.50', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null }
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ detections: [], legs: [exited, fut] }) })
+    const w = await panel()
+    expect(w.find('[data-testid="detection"]').exists()).toBe(false)
+    const rows = legRows(w)
+    // the FUT leg is not among the reply's legs: quantity form, never a guessed lot count
+    expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', 'Exited at 50.25'], ['B 65 units 3 Nov FUT', '22500.00', '22510.50']])
   })
 
   it('REQ-109 AC-5: a paused answer shows the paused text with its time and no figure', async () => {

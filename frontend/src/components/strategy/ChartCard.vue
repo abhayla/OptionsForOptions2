@@ -19,7 +19,6 @@ import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import PayoffChart from './PayoffChart.vue'
 import StrategyTable from './StrategyTable.vue'
-import { strikeLabel } from '@/lib/displayFormat'
 import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, signOf } from '@/lib/chartCard'
 
 const props = defineProps({
@@ -27,6 +26,7 @@ const props = defineProps({
   spot: { type: String, default: '' },
   view: { type: String, default: '' }, // the reply's payoff.view (G-051: names the tooltip's curve)
   table: { type: Object, required: true },
+  legs: { type: Array, default: null }, // the reply's legs: their lot_size turns a row's quantity into lots (D-B29)
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
   unavailableReason: { type: String, default: null }, // the reply's reason when the selected view has no curve
@@ -53,8 +53,8 @@ const payoffView = defineModel('payoffView', { type: String, default: 'graph' })
 const fullTable = defineModel('fullTable', { type: Boolean, default: false }) // ADR-194 (1): the compact view is the default
 
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
-const compact = computed(() => compactRows(props.table))
-const greeks = computed(() => greekRows(props.table))
+const compact = computed(() => compactRows(props.table, props.legs))
+const greeks = computed(() => greekRows(props.table, props.legs))
 const levels = computed(() => payoffLevelRows(props.table))
 // G-051: the chart's tooltip shows, per level, the same display string as the Table row (one reply feeds both).
 const pnlByLevel = computed(() => (levels.value ? Object.fromEntries(levels.value.map((r) => [r.id, r.pnl])) : null))
@@ -126,10 +126,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                 <span v-if="r.isTotal">Total</span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                   <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
-                  <span>{{ r.parts.quantity }}</span>
-                  <span>{{ r.parts.expiry }}</span>
-                  <span>{{ strikeLabel(r.parts.strike) }}</span>
-                  <Chip kind="opt" :label="r.parts.instrument" />
+                  <span data-testid="instrument-text">{{ r.text }}</span>
                 </span>
               </td>
               <td
@@ -184,8 +181,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
               <span v-if="r.isTotal">Total</span>
               <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
-                <span>{{ strikeLabel(r.parts.strike) }}</span>
-                <Chip kind="opt" :label="r.parts.instrument" />
+                <span data-testid="instrument-text">{{ r.text }}</span>
               </span>
             </td>
             <td v-for="c in GREEK_COLUMNS" :key="c.id" class="py-1.5 text-right tabular-nums" :data-field="c.id" data-testid="greeks-cell">{{ greekText(r.values[c.id], c.id, greekMode) }}</td>

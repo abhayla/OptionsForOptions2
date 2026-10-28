@@ -3,6 +3,9 @@
 // nothing is summed, scaled, interpolated or derived here (ADR-008). A view whose columns the reply does not carry
 // returns null, and the screen shows an empty state instead of a placeholder number.
 import { isCurrentColumn } from '@/lib/strategyTable'
+import { instrumentText, strikeLabel } from '@/lib/displayFormat'
+
+export { instrumentText }
 
 export const TOTAL_ROW_ID = 'TOTAL'
 
@@ -32,14 +35,29 @@ const hasColumns = (table, ids) => {
   return ids.every((id) => have.has(id))
 }
 
-function viewRows(table, valueIds) {
+const commaless = (t) => String(t ?? '').replace(/,/g, '').trim()
+
+/** The whole-lot count the reply sent for a table row: the row's `leg` number is the 1-based place in the reply's legs.
+ *  Trusted only when side, type, expiry, strike and quantity text all agree with the row; otherwise null. */
+function lotsOfRow(row, legs) {
+  if (!Array.isArray(legs)) return null
+  const c = row.cells ?? {}
+  const l = legs.find((_, i) => String(i + 1) === String(c.leg?.value))
+  if (!l || l.action !== c.action?.value || l.instrument !== c.instrument?.value || l.expiry !== c.expiry?.value) return null
+  if (strikeLabel(commaless(l.strike)) !== strikeLabel(commaless(c.strike?.value))) return null
+  return String(l.quantity) === commaless(c.quantity?.value) && Number.isInteger(l.lots) ? l.lots : null
+}
+
+function viewRows(table, valueIds, legs) {
   return (table.rows ?? []).map((row) => {
     const isTotal = row.row_id === TOTAL_ROW_ID
+    const parts = Object.fromEntries(INSTRUMENT_PARTS.map((id) => [id, display(row, id)]))
     return {
       rowId: row.row_id,
       isTotal,
       side: isTotal ? null : (row.cells?.action?.value ?? null),
-      parts: Object.fromEntries(INSTRUMENT_PARTS.map((id) => [id, display(row, id)])),
+      parts,
+      text: isTotal ? '' : instrumentText(parts, lotsOfRow(row, legs)),
       values: Object.fromEntries(valueIds.map((id) => [id, {
         display: display(row, id),
         value: row.cells?.[id]?.value ?? null,
@@ -69,18 +87,18 @@ export function greekModeHeading(rows, mode) {
 
 /** ADR-194 (1): one row per leg plus the reply's own TOTAL row when it sent one (never a browser sum). Null when the
  *  reply's table lacks a compact column. */
-export function compactRows(table) {
+export function compactRows(table, legs = null) {
   const ids = COMPACT_COLUMNS.map((c) => c.id)
   if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
-  return viewRows(table, ids)
+  return viewRows(table, ids, legs)
 }
 
 /** ADR-194 (2): the per-leg Greeks and IV the reply carries, with its TOTAL row only if sent. Null when the reply
  *  carries no Greek columns (the Greeks tab then shows its empty state). */
-export function greekRows(table) {
+export function greekRows(table, legs = null) {
   const ids = GREEK_COLUMNS.map((c) => c.id)
   if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
-  return viewRows(table, ids)
+  return viewRows(table, ids, legs)
 }
 
 /** The Payoff tab's Table view (REQ-137 kept separate; no interval chooser yet): one row per scenario level the reply
