@@ -41,6 +41,7 @@ const TIMED_OUT = 'The strategy chart is taking longer than usual. Please try ag
 
 const props = defineProps({
   strategyId: { type: Number, default: null }, // the saved strategy's id; null = not saved, nothing to ask
+  version: { type: [Number, String], default: null }, // the saved version: changes on every re-save of the same id
   active: { type: Boolean, default: true }, // the tab is open: ask only then (the card keeps panels mounted)
 })
 
@@ -111,7 +112,7 @@ function draw() {
 
 async function load() {
   if (!props.strategyId || !props.active) return
-  const key = `${props.strategyId}|${invert.value}`
+  const key = `${props.strategyId}|${props.version}|${invert.value}`
   if (key === asked && (reply.value || held.value)) return
   asked = key
   const mine = ++seq
@@ -134,7 +135,17 @@ async function load() {
   }
 }
 
-watch(() => [props.strategyId, props.active, invert.value], load, { immediate: true })
+// What the chart shows changed (another strategy, or the same one re-saved): the old picture goes at once, so it can
+// never stand for the new one while the new answer is on its way; an older request still in flight is dropped (seq).
+watch(() => [props.strategyId, props.version], () => {
+  reply.value = null
+  held.value = ''
+  error.value = ''
+  asked = ''
+  seq += 1
+  drop()
+})
+watch(() => [props.strategyId, props.version, props.active, invert.value], load, { immediate: true })
 watch(reply, async () => { await nextTick(); draw() })
 onBeforeUnmount(drop)
 </script>
