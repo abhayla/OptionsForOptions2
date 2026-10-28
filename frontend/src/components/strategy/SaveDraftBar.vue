@@ -290,11 +290,11 @@ onMounted(refresh)
     <div class="-mt-4 flex min-h-14 items-center gap-2 rounded-b-lg border border-line bg-surface px-3 py-2 text-sm" data-testid="action-row">
       <slot name="add-edit" />
       <button
-type="button" data-testid="save-draft" class="h-10 flex-1 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
+type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
               :disabled="!canSave" @click="save">Save</button>
       <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button
-ref="menuButton" type="button" class="flex h-10 w-10 items-center justify-center rounded-lg border border-line" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
+ref="menuButton" type="button" class="flex h-10 w-12 shrink-0 items-center justify-center rounded-lg border border-line" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
                 aria-label="More actions" data-testid="more-menu" :disabled="!hasMenu" @click="menuOpen ? closeMenu() : (menuOpen = true)"><Icon name="more" :size="16" /></button>
         <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button

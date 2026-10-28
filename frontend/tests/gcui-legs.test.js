@@ -267,12 +267,12 @@ describe('D-A22: the action row', () => {
     await flushPromises()
     return w
   }
-  it('equal full-height buttons: Save fills a slot (primary), "..." is a square; the repeated name is gone (it is the card title)', async () => {
+  it('equal full-height buttons: Save fills a slot (primary), "..." is a fixed-width box; the repeated name is gone (it is the card title)', async () => {
     const w = await bar()
     expect(t(w, 'current-name').exists()).toBe(false)
     expect(t(w, 'action-row').text()).not.toContain('W2 P1 BCS')
     expect(t(w, 'save-draft').classes()).toEqual(expect.arrayContaining(['flex-1', 'h-10', 'bg-accent']))
-    expect(t(w, 'more-menu').classes()).toEqual(expect.arrayContaining(['h-10', 'w-10']))
+    expect(t(w, 'more-menu').classes()).toEqual(expect.arrayContaining(['h-10', 'w-12']))
     expect(t(w, 'action-row').text()).not.toMatch(/Trade All|Add to Drafts/) // ADR-165
   })
 })

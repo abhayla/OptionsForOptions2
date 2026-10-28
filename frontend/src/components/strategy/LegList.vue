@@ -167,7 +167,7 @@ function setMultiplier(index) {
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
       <div class="leg-grid grid items-center whitespace-nowrap text-xs text-ink-muted max-[639px]:hidden" :style="{ ...cardPadding, ...gridStyle }" aria-hidden="true" data-testid="leg-table-head">
-        <span></span><span class="text-center">B/S</span><span>Expiry</span><span class="text-center">Strike</span><span class="text-center">Type</span><span class="text-center">Lots</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span v-if="anyMoved" class="text-warn" title="Price has moved" data-testid="price-moved-head"><Icon name="info" :size="12" /></span></span><span></span><span></span>
+        <span></span><span class="px-1 text-center">B/S</span><span class="pl-2 pr-1">Expiry</span><span class="px-1 text-center">Strike</span><span class="px-1 text-center">Type</span><span class="px-1 text-center">Lots</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span class="relative inline-flex" :class="anyMoved ? 'text-warn' : ''" :title="anyMoved ? 'Price has moved' : 'Your planned entry price'" data-testid="price-help" data-icon="question"><Icon name="help" :size="12" /><span v-if="anyMoved" class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" data-testid="price-moved-head"></span></span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
         <li

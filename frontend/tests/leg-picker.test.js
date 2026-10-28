@@ -1773,6 +1773,31 @@ describe('GC-UI 6c drawer layout (D-C20, D-C21, D-C22, D-C23, D-C28)', () => {
     expect(t(w, 'strikes-centre').text()).toContain('ATM unknown')
     expect(w.findAll('[data-testid="strike-row"][data-centre="true"]')).toHaveLength(0)
   })
+
+  // GC-UI polish D-7b (ADR-197): after hours the drawer header shows the page header's last close, not "No live index price"
+  const closedStrikes = () => strikesAnswer({ centre: 'MIDDLE_STRIKE', spot: null, atm_strike: null, market_closed: true, rows: strikesAnswer().rows.map((r) => ({ ...r, is_atm: false })) })
+  it('D-7b: market closed with the page\'s last close: the header shows that same spot with "Market closed" (no number of its own)', async () => {
+    answers[STRIKES_URL()] = closedStrikes()
+    const w = mount(LegPicker, { props: { legs: [], lastClose: '22698.85', closedAt: '2026-10-28T15:30:00+05:30' } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('22698.85')
+    expect(t(w, 'picker-spot').attributes('title')).toBe('Market closed. Prices are from 28 Oct 2026, 15:30:00 IST.')
+    expect(t(w, 'picker-spot-closed').text()).toBe('Market closed')
+    expect(t(w, 'picker-header').text()).not.toContain('No live index price')
+  })
+  it('D-7b: market closed but the page has no last close: the reason is shown and no number', async () => {
+    answers[STRIKES_URL()] = closedStrikes()
+    const w = mount(LegPicker, { props: { legs: [], lastClose: null, closedAt: null } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('No live index price')
+    expect(t(w, 'picker-spot-closed').exists()).toBe(false)
+  })
+  it('D-7b: a live spot still wins over the last close', async () => {
+    const w = mount(LegPicker, { props: { legs: [], lastClose: '22698.85', closedAt: null } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('22533.25')
+    expect(t(w, 'picker-spot-closed').exists()).toBe(false)
+  })
 })
 
 // ---- GC-UI 6c D-C08 / D-C24 / D-C25 (S-036..S-038): Straddles and Strangles tabs build the one selection; a type change

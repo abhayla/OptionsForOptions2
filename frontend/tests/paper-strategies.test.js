@@ -113,7 +113,7 @@ describe('PaperStrategies: answer states', () => {
     answers['GET /tracking'] = ok(list(item({ state: 'PAUSED', total: null, unbooked: null, as_of: '2026-10-28T11:00:00+05:30', pause_reason: 'price_stale' })))
     const w = await show()
     expect(t(w, 'paper-state').text()).toContain('prices not live, as of 28 Oct 2026, 11:00:00 IST')
-    expect(t(w, 'paper-pause-reason').text()).toBe('price_stale')
+    expect(w.text()).not.toContain('price_stale') // GC-UI polish D-7a: a state code is never shown
     expect(t(w, 'paper-total').text()).toBe('—')
     expect(t(w, 'paper-unbooked').text()).toBe('—')
   })

@@ -595,7 +595,7 @@ const pricesStamp = computed(() => {
         </LegList>
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
-            <button type="button" class="h-10 flex-1 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+            <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
           <template #menu="{ close }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
@@ -611,7 +611,7 @@ const pricesStamp = computed(() => {
              strike grid keeps the 470 px D-C27 fits in. D-C35: the "Show Editor" edge tab folds the drawer away to see the
              builder; the "Show Strikes" tab at the page edge brings it back with the picks kept (the picker stays mounted). -->
         <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist bare @close="pickerOpen = false; pickerFolded = false">
-          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
+          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" :last-close="closedBanner ? indexLevel : null" :closed-at="closedBanner?.at ?? null" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
           <template #edge>
             <button type="button" class="rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]" data-testid="show-editor" @click="pickerOpen = false; pickerFolded = true">Show Editor &gt;&gt;</button>
           </template>

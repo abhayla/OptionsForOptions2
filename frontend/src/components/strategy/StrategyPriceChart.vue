@@ -16,7 +16,7 @@
       </div>
       <p v-if="held" class="text-sm text-ink-muted" data-testid="price-chart-held">{{ held }}</p>
       <p v-else-if="error" role="alert" class="text-sm text-ink-muted" data-testid="price-chart-error">{{ error }}</p>
-      <p v-else-if="loading && !reply" class="text-sm text-ink-muted" data-testid="price-chart-loading">{{ LOADING }}</p>
+      <p v-else-if="loading && !reply" class="flex h-72 items-center justify-center text-sm text-ink-muted" data-testid="price-chart-loading">{{ LOADING }}</p>
       <template v-else-if="reply">
         <p v-if="reason" class="text-sm text-ink-muted" data-testid="price-chart-reason">{{ reason }}</p>
         <div v-else class="relative h-72" data-testid="price-chart-plot">

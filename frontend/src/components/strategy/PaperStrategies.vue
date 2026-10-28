@@ -5,7 +5,10 @@
      strategies. A failed or unreadable read shows no figure. Nothing here reaches Execute (REQ-109 AC-3): the exit is a
      paper exit and sends no order. -->
 <template>
-  <section :class="['text-sm', compact ? '' : 'rounded-lg border-2 border-dashed border-accent p-3']" data-testid="paper-strategies">
+  <!-- GC-UI polish D-C41 (S-090 "Drafts Mode"): the whole tab content sits in one dashed frame with a header strip; our words, and the
+       not-real banner stays (ADR-201). New words "Paper mode": pending owner read. -->
+  <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
+    <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
@@ -21,7 +24,7 @@
             <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ g.legs.length }} {{ g.legs.length === 1 ? 'leg' : 'legs' }}</span>
           </span>
           <span class="shrink-0 text-right">
-            <span class="block font-semibold" data-testid="paper-total">{{ g.total ?? '-' }}</span>
+            <span class="block font-semibold" :class="toneOf(g.total)" data-testid="paper-total">{{ g.total ?? '-' }}</span>
             <span v-if="g.total === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
           </span>
         </RouterLink>
@@ -46,7 +49,6 @@
             </dl>
           </div>
           <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
-          <p v-if="g.pauseReason" class="text-ink-muted" data-testid="paper-pause-reason">{{ g.pauseReason }}</p>
           <div class="mt-2 flex gap-3">
             <table v-if="g.legs.length" class="w-full min-w-0 flex-1 text-left">
               <thead>
