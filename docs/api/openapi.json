@@ -5322,6 +5322,41 @@
             "title": "Leg Index",
             "type": "integer"
           },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "booked",
+                  "unbooked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Kind"
+          },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
+          },
           "price_at": {
             "anyOf": [
               {
@@ -5390,7 +5425,10 @@
           "price_state",
           "price_at",
           "exit_price",
-          "exited_at"
+          "exited_at",
+          "pnl",
+          "pnl_text",
+          "pnl_kind"
         ],
         "title": "TrackingLegOut",
         "type": "object"
