@@ -928,4 +928,4 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   legs"): no field of that reply gives it. Not measured: three fresh live reads of a bull call spread, a short iron
   condor and a long straddle (REQ-142 AC-1) - the conclusion rests on the reply's structure, which a fresh read does
   not change. Nothing built; D-A38 parked in the GC-UI contract.
-  Status: **open for owner decision** (keep REQ-142 and find another source, or drop the row).
+  Status: **decided by the owner 2026-10-28 (ADR-206): REQ-142 held**; no broker order in the current scope.
