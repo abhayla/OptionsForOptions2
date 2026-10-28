@@ -60,7 +60,7 @@ describe('Positions pages', () => {
       expect(w.get('[data-testid=positions-outside]').text()).toBe('1 outside lot - view on Kite')
       expect(w.findAll('[data-testid=position-row]')).toHaveLength(1)
       expect(w.text()).not.toMatch(/P&L|price|margin|₹|Rs|you should|best/i)
-      expect(w.find('button').exists()).toBe(false)
+      expect(w.find('button:not([role=tab])').exists()).toBe(false) // GC-BP step 6: the two tab buttons are not actions
     })
   }
 

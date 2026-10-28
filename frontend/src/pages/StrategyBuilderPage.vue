@@ -25,6 +25,7 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
@@ -557,6 +558,8 @@ const pricesStamp = computed(() => {
             <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
+          <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
+          <template #tracked="{ active }"><PaperStrategies v-if="active" /></template>
         </SaveDraftBar>
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->
