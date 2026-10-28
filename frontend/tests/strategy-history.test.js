@@ -246,7 +246,7 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     for (const id of [6, 7]) {
       const row = rowOf(id)
       expect(row.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
-      expect(row.get('[data-testid="delete-refused"]').text()).toBe(DELETE_REFUSED_TEXT)
+      expect(row.get('[data-testid="delete-refused"]').attributes('title')).toBe(DELETE_REFUSED_TEXT) // GC-UI 6b D-C12: an icon, the reason as its tooltip
     }
   })
 

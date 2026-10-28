@@ -9,6 +9,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useOutsideClose } from '@/composables/useOutsideClose'
+import Modal from '@/components/common/Modal.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -20,7 +21,7 @@ import { istTime } from '@/lib/displayFormat'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, plainName, renameStrategy, saveAsName, strategyLabel,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel, trackedText,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -52,7 +53,7 @@ async function closeMenu() {
   menuButton.value?.focus?.()
 }
 useOutsideClose(() => menuOpen.value, () => menuRoot.value, closeMenu)
-const BUILDER_TABS = [{ key: 'ready-made', label: 'Ready-made' }, { key: 'positions', label: 'Positions' }, { key: 'saved', label: 'Saved' }, { key: 'tracked', label: 'Tracked' }]
+const BUILDER_TABS = [{ key: 'ready-made', label: 'Ready-made' }, { key: 'positions', label: 'Positions' }, { key: 'saved', label: 'Saved Strategies' }, { key: 'tracked', label: 'Paper' }]
 const SAVED_TAB_ROWS = 10
 const tab = ref('ready-made')
 const search = ref('')
@@ -189,6 +190,34 @@ function renameOpen() {
   nameText.value = plainName(props.current.name) ?? ''
 }
 
+// GC-UI 6b D-C16: the name form is a centred modal; focus goes to the field once the modal has taken it (Esc / X / Cancel all close)
+const nameInput = ref(null)
+watch(asking, async (mode) => {
+  if (!mode) return
+  await nextTick()
+  await nextTick()
+  nameInput.value?.focus?.()
+})
+const NAME_TITLES = { save: 'Save New Strategy', 'save-as': 'Save As', rename: 'Update Strategy Name' }
+
+// GC-UI 6b D-C12: the row's pencil opens the EXISTING rename (REQ-134 AC-3) on that strategy. Rename needs the revision the page
+// loaded, so a row that is not the open one is opened first and the dialog follows once the page holds it.
+let pendingRename = null
+async function renameRow(d) {
+  if (busy.value) return
+  if (props.current?.id === d.id) return renameOpen()
+  pendingRename = d.id
+  await open(d.id)
+  await nextTick()
+  pendingRename = null
+}
+watch(() => props.current?.id, (id) => {
+  if (pendingRename !== null && id === pendingRename) {
+    pendingRename = null
+    renameOpen()
+  }
+})
+
 function cancelName() {
   asking.value = null
   errorParts.value = null
@@ -284,17 +313,20 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>
     <slot name="after-actions" />
-    <form v-if="asking" class="mt-2 text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
-      <label class="block font-medium" for="strategy-name">{{ asking === 'save-as' ? 'Save As' : asking === 'rename' ? 'Rename' : 'Save New Strategy' }}: Strategy Name</label>
-      <input
-id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class="mt-1 rounded border border-line px-2 py-1"
-             :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />
-      <p class="text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-count">{{ nameText.length }}/{{ STRATEGY_NAME_MAX }} characters</p>
-      <div class="mt-1 flex gap-2">
-        <button type="button" data-testid="name-cancel" class="rounded border border-line px-3 py-1" @click="cancelName">Cancel</button>
-        <button type="submit" data-testid="name-confirm" class="rounded border border-line px-3 py-1" :disabled="busy">Save</button>
-      </div>
-    </form>
+    <!-- GC-UI 6b D-C16 (S-116): the centred modal; Cancel + a primary Save; the 20-character limit and the counter are unchanged -->
+    <Modal :open="!!asking" :title="NAME_TITLES[asking] ?? 'Save New Strategy'" data-testid="name-modal" @close="cancelName">
+      <form id="strategy-name-form" class="text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
+        <label class="block font-medium" for="strategy-name">Strategy Name</label>
+        <input
+id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" type="text" class="mt-1 h-10 w-full rounded border border-line px-2"
+               :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />
+        <p class="mt-1 text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-count">{{ nameText.length }}/{{ STRATEGY_NAME_MAX }} characters</p>
+      </form>
+      <template #actions>
+        <button type="button" data-testid="name-cancel" class="h-10 rounded-lg border border-line px-3 font-medium" @click="cancelName">Cancel</button>
+        <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
+      </template>
+    </Modal>
     <p v-if="saveUndo" class="mt-2 flex items-center gap-2 text-sm" data-testid="save-undo-toast">
       <span>Saved.</span>
       <button type="button" class="underline" :disabled="busy" data-testid="save-undo" @click="undoSave">Undo</button>
@@ -309,12 +341,26 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
       <div v-show="tab === 'saved'" class="mt-3" data-testid="tab-panel-saved">
         <input v-model="search" type="search" class="h-10 w-full rounded border border-line px-2" placeholder="Search name or underlying" aria-label="Search name or underlying" data-testid="saved-search" />
         <h2 class="sr-only">Saved drafts</h2>
-        <ul v-if="recentDrafts.length" class="mt-2" data-testid="saved-drafts">
-          <li v-for="d in recentDrafts" :key="d.id" class="flex min-h-10 items-center gap-2 border-b border-line py-1" data-testid="saved-draft-row" :data-current="current?.id === d.id ? 'true' : 'false'">
+        <p class="mt-2 text-ink-muted" data-testid="saved-hint">Please click on a saved strategy to load it:</p>
+        <ul v-if="recentDrafts.length" class="mt-1" data-testid="saved-drafts">
+          <!-- GC-UI 6b D-C11/D-C12 (S-117, S-218, S-219): the WHOLE row opens the strategy (click, or Enter on the row); line 1 the name,
+               line 2 "<first leg> and N more" from the list reply's own first_leg + leg_count (no second line when it cannot be written);
+               the pencil and the bin show on hover or keyboard focus -->
+          <li
+v-for="d in recentDrafts" :key="d.id" class="group flex min-h-14 cursor-pointer items-center gap-2 border-b border-line py-1 hover:bg-surface-muted" tabindex="-1"
+              data-testid="saved-draft-row" :data-current="current?.id === d.id ? 'true' : 'false'" @click="open(d.id)" @keydown.enter.self="open(d.id)">
             <Icon v-if="current?.id === d.id" name="check" :size="14" />
-            <span class="min-w-0 flex-1 truncate" data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}, {{ d.underlying }}, updated {{ istTime(d.updated_at) }}</span>
-            <button type="button" :data-testid="`open-draft-${d.id}`" class="text-accent" :disabled="busy" @click="open(d.id)">Open</button>
-            <DraftDelete :row="d" :flow="deleteFlow" />
+            <button type="button" :data-testid="`open-draft-${d.id}`" class="min-w-0 flex-1 text-left" :disabled="busy" :title="`${d.underlying}, updated ${istTime(d.updated_at)}`">
+              <span class="block truncate" :class="current?.id === d.id ? 'font-medium text-accent' : ''" data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}</span>
+              <span v-if="legsLine(d)" class="block truncate text-xs text-ink-muted" data-testid="saved-draft-legs">{{ legsLine(d) }}</span>
+            </button>
+            <span v-if="trackedText(d.tracked)" class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-tracked">{{ trackedText(d.tracked) }}</span>
+            <span
+class="flex shrink-0 items-center gap-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100" :class="deleteFlow.confirming === d.id ? '!opacity-100' : ''"
+                  :data-testid="`actions-${d.id}`" @click.stop @keydown.enter.stop>
+              <button type="button" class="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:text-ink" aria-label="Rename strategy" title="Rename" :disabled="busy" :data-testid="`rename-draft-${d.id}`" @click="renameRow(d)"><Icon name="pencil" :size="16" /></button>
+              <DraftDelete :row="d" :flow="deleteFlow" icon />
+            </span>
           </li>
         </ul>
         <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
