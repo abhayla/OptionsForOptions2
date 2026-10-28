@@ -67,6 +67,19 @@ ALLOWED_FRONTEND_PATHS = frozenset({
     ("components/strategy/StrategyPriceChart.vue", "/strategies/${props.strategyId}/price-history"),
 })
 
+# F2 (GC-UI step 9 review): the guard is TRANSITIVE. Every allow-listed module reaches history, so importing one counts
+# as importing history: its importer must itself be allow-listed (else ``from ofo_app.price_history_source import
+# history_opener`` in any module would pass). The ONE route that may reach the chain is named here with the exact
+# chain modules it may import (ADR-203 (2): the builder's Strategy Chart only); it is NOT added to the chain, so the
+# app that mounts it is not flagged, and any OTHER history import in it still fails.
+ROUTE_DOOR: dict[str, frozenset[str]] = {
+    "ofo_app.routes.strategies": frozenset({
+        "ofo_app.strategy_price_history",  # GET /strategies/{id}/price-history: the chart's reads
+        "ofo_app.price_history_source",    # the opener wired into that route (adapter side)
+        "ofo.outcome.price_history",       # the chart's display formatting of the points (pure)
+    }),
+}
+
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
 # Dynamic-import sources, named by what the call RESOLVES to through the module's imports (not by identifier text):
 DYNAMIC_ROOTS = ("importlib", "runpy")  # any attribute of these modules
@@ -80,8 +93,8 @@ PATH_LOADERS = {"importlib.util.spec_from_file_location", "importlib.util.module
 PATH_LOADER_FOLDERS = ("ofo_app.alembic.versions.",)
 
 
-def _is_history(dotted: str) -> bool:
-    return any(dotted == m or dotted.startswith(m + ".") for m in HISTORY_MODULES)
+def _is_history(dotted: str, history: tuple[str, ...] = HISTORY_MODULES) -> bool:
+    return any(dotted == m or dotted.startswith(m + ".") for m in history)
 
 
 def _package_of(module: str, is_package: bool) -> list[str]:
@@ -89,7 +102,7 @@ def _package_of(module: str, is_package: bool) -> list[str]:
     return parts if is_package else parts[:-1]
 
 
-def _from_hits(node: ast.ImportFrom, module: str, is_package: bool) -> list[str]:
+def _from_hits(node: ast.ImportFrom, module: str, is_package: bool, history: tuple[str, ...]) -> list[str]:
     base = node.module or ""
     if node.level:
         pkg = _package_of(module, is_package)
@@ -97,11 +110,11 @@ def _from_hits(node: ast.ImportFrom, module: str, is_package: bool) -> list[str]
             return [f"unresolvable relative import at line {node.lineno}"]
         pkg = pkg[: len(pkg) - (node.level - 1)]
         base = ".".join(pkg + ([node.module] if node.module else []))
-    if _is_history(base):
+    if _is_history(base, history):
         return [f"from {base} import ..."]
     star = base in WIDE_PACKAGES and any(a.name == "*" for a in node.names)
     hits = [f"star import from {base} at line {node.lineno}"] if star else []
-    return hits + [f"from {base} import {a.name}" for a in node.names if _is_history(f"{base}.{a.name}")]
+    return hits + [f"from {base} import {a.name}" for a in node.names if _is_history(f"{base}.{a.name}", history)]
 
 
 def _aliases(tree: ast.AST) -> dict[str, str]:
@@ -203,7 +216,7 @@ def _module_base(node: ast.Call, dotted: str) -> tuple[str | None, str]:
     return (base, "") if base is not None else (None, "unresolvable relative name in")
 
 
-def _dynamic_call_hits(node: ast.Call, dotted: str) -> list[str]:
+def _dynamic_call_hits(node: ast.Call, dotted: str, history: tuple[str, ...]) -> list[str]:
     """A dynamic import is read only when its module name (and fromlist/package/level) are literals; else flagged."""
     line = f"{dotted}() at line {node.lineno}"
     if dotted in PATH_LOADERS:
@@ -214,11 +227,11 @@ def _dynamic_call_hits(node: ast.Call, dotted: str) -> list[str]:
     more = _fromlist_names(node, dotted, base)
     if more is None:
         return [f"non-literal fromlist in {line}"]
-    hit = next((n for n in [base, *more] if _is_history(n)), None)
+    hit = next((n for n in [base, *more] if _is_history(n, history)), None)
     return [f"{dotted}({hit!r})"] if hit else []
 
 
-def _dynamic_hits(tree: ast.AST, aliases: dict[str, str]) -> list[str]:
+def _dynamic_hits(tree: ast.AST, aliases: dict[str, str], history: tuple[str, ...]) -> list[str]:
     """Calls AND bare references (``f = importlib.import_module``, ``getattr(importlib, ...)``) that resolve to a
     dynamic-import source by import. Fail closed: a reference we cannot follow is flagged."""
     hits: list[str] = []
@@ -230,7 +243,7 @@ def _dynamic_hits(tree: ast.AST, aliases: dict[str, str]) -> list[str]:
             inner.add(id(node.func))
             dotted = _resolve(node.func, aliases)
             if _is_dynamic(dotted):
-                hits += _dynamic_call_hits(node, dotted)
+                hits += _dynamic_call_hits(node, dotted, history)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Name, ast.Attribute)) and id(node) not in inner:
             if _is_dynamic(_resolve(node, aliases)):
@@ -241,28 +254,55 @@ def _dynamic_hits(tree: ast.AST, aliases: dict[str, str]) -> list[str]:
     return hits
 
 
-def import_hits(source: str, module: str, is_package: bool = False) -> list[str]:
-    """Every history import, or unresolvable import shape, in one backend module's source (empty = clean)."""
+def import_hits(source: str, module: str, is_package: bool = False,
+                history: tuple[str, ...] = HISTORY_MODULES) -> list[str]:
+    """Every import of a module in ``history``, or unresolvable import shape, in one backend module's source."""
     hits: list[str] = []
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            hits += [f"import {a.name}" for a in node.names if _is_history(a.name)]
+            hits += [f"import {a.name}" for a in node.names if _is_history(a.name, history)]
         elif isinstance(node, ast.ImportFrom):
-            hits += _from_hits(node, module, is_package)
-    return hits + _dynamic_hits(tree, _aliases(tree))
+            hits += _from_hits(node, module, is_package, history)
+    return hits + _dynamic_hits(tree, _aliases(tree), history)
 
 
-def scan_backend(backend: Path) -> dict[str, list[str]]:
+def scan_backend(backend: Path, history: tuple[str, ...] = HISTORY_MODULES) -> dict[str, list[str]]:
     """Dotted module name -> hits, for every module under ``backend`` that has any."""
     found: dict[str, list[str]] = {}
     for path in sorted(backend.rglob("*.py")):
         rel = path.relative_to(backend).with_suffix("")
         is_package = rel.name == "__init__"
         module = ".".join(rel.parent.parts if is_package else rel.parts)
-        hits = import_hits(path.read_text(encoding="utf-8"), module, is_package)
+        hits = import_hits(path.read_text(encoding="utf-8"), module, is_package, history)
         if hits:
             found[module] = hits
+    return found
+
+
+def chain(allowed: frozenset[str] = ALLOWED_IMPORTERS) -> tuple[str, ...]:
+    """The transitive history set: the history readers plus every module allowed to import one."""
+    return tuple(sorted(set(HISTORY_MODULES) | allowed))
+
+
+def transitive_scan(backend: Path, allowed: frozenset[str] = ALLOWED_IMPORTERS,
+                    door: dict[str, frozenset[str]] | None = None) -> dict[str, list[str]]:
+    """Every module importing the transitive chain outside ``allowed``. A ``door`` module is scanned with ITS named
+    chain modules taken out of the set: what it imports beyond them is still a hit."""
+    door = ROUTE_DOOR if door is None else door
+    full = chain(allowed)
+    found = disallowed(scan_backend(backend, full), allowed)
+    for module, targets in door.items():
+        if module not in found:
+            continue
+        path = backend / Path(*module.split("."))
+        is_package = not path.with_suffix(".py").exists()
+        source = (path / "__init__.py" if is_package else path.with_suffix(".py")).read_text(encoding="utf-8")
+        rest = import_hits(source, module, is_package, tuple(m for m in full if m not in targets))
+        if rest:
+            found[module] = rest
+        else:
+            del found[module]
     return found
 
 
@@ -325,13 +365,19 @@ def scan_frontend(src: Path) -> dict[str, list[str]]:
 
 def test_only_the_allow_listed_modules_import_a_history_reader():
     """AC-1: no module outside the allow-list (so no route, no app entry point) imports a history reader."""
-    bad = disallowed(scan_backend(BACKEND), ALLOWED_IMPORTERS)
+    bad = transitive_scan(BACKEND)
     assert bad == {}, f"history readers imported outside the allow-list (ADR-066, internal use only): {bad}"
 
 
 def test_no_route_or_app_entry_is_allow_listed_and_the_list_has_no_stale_entry():
     """AC-1: the allow-list names no route module and not the app's main, and every entry is a real module."""
     assert not [m for m in ALLOWED_IMPORTERS if m.startswith("ofo_app.routes") or m == "ofo_app.main"]
+    # F2: exactly one route may reach the chain, for ADR-203's chart only, and only through the named chain modules
+    named = {"ofo_app.routes.strategies": frozenset(
+        {"ofo_app.strategy_price_history", "ofo_app.price_history_source", "ofo.outcome.price_history"})}
+    assert named == ROUTE_DOOR
+    assert all(t in ALLOWED_IMPORTERS for t in ROUTE_DOOR["ofo_app.routes.strategies"])
+    assert (BACKEND / "ofo_app" / "routes" / "strategies.py").exists()
     assert list((BACKEND / "ofo_app" / "routes").glob("*.py")), "routes folder not found: the scan would be vacuous"
     assert (BACKEND / "ofo_app" / "main.py").exists()
     for module in ALLOWED_IMPORTERS:
@@ -541,3 +587,39 @@ def test_removing_the_exemption_makes_the_repo_scan_fail_on_the_activity_file(mo
     flagged = scan_frontend(FRONTEND_SRC)
     assert _ACTIVITY_FILE in flagged
     assert chart[0] in flagged
+
+
+# ---- F2 (GC-UI step 9 review round 1): an allow-listed module is not a back door -----------------------------------
+# The reviewer's M2 / M3 plants: importing a module that is itself allowed to read history passed the direct-only scan.
+_CHAIN_PLANTS = {
+    "m2_opener": "from ofo_app.price_history_source import history_opener\n",
+    "m3_feature": "from ofo_app import strategy_price_history\n",
+    "m3_dotted": "import ofo_app.strategy_price_history as s\n",
+    "pure_chart": "from ofo.outcome.price_history import build_chart\n",
+    "dynamic": "import importlib\nimportlib.import_module('ofo_app.price_history_source')\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_CHAIN_PLANTS))
+def test_a_module_importing_an_allow_listed_history_module_fails_the_scan(tmp_path, name):
+    for folder in ("ofo_app", "routes"):
+        target = tmp_path / "ofo_app" / ("routes" if folder == "routes" else "")
+        target.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ofo_app" / f"{name}.py").write_text(_CHAIN_PLANTS[name], encoding="utf-8")
+    (tmp_path / "ofo_app" / "routes" / f"{name}.py").write_text(_CHAIN_PLANTS[name], encoding="utf-8")
+    found = transitive_scan(tmp_path)
+    assert sorted(found) == sorted([f"ofo_app.{name}", f"ofo_app.routes.{name}"])
+    assert disallowed(scan_backend(tmp_path), ALLOWED_IMPORTERS) == {}  # the old direct-only scan missed it
+
+
+def test_the_route_door_passes_its_named_chain_modules_and_nothing_else(tmp_path):
+    routes = tmp_path / "ofo_app" / "routes"
+    routes.mkdir(parents=True)
+    door = ("from ofo_app import strategy_price_history as sph\nfrom ofo.outcome import price_history as ph\n"
+            "def get():\n    from ofo_app.price_history_source import history_opener\n    return history_opener\n")
+    (routes / "strategies.py").write_text(door, encoding="utf-8")
+    (routes / "positions.py").write_text(door, encoding="utf-8")  # the same imports in any other route fail
+    (tmp_path / "ofo_app" / "main.py").write_text("from ofo_app.routes import strategies\n", encoding="utf-8")
+    assert sorted(transitive_scan(tmp_path)) == ["ofo_app.routes.positions"]
+    (routes / "strategies.py").write_text(door + "from ofo_app.kite_history import KiteHistory\n", encoding="utf-8")
+    assert transitive_scan(tmp_path)["ofo_app.routes.strategies"] == ["from ofo_app.kite_history import ..."]

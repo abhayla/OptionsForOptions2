@@ -542,7 +542,7 @@ async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_d
 
 PRICE_HISTORY_HELD = "price_history_held"
 PriceHistoryState = Literal["available", "leg_not_listed", "no_future_candles", "all_gaps", "no_session",
-                            "broker_refused", "future_not_in_catalogue"]
+                            "broker_refused", "future_not_in_catalogue", "quantity_not_whole_lots"]
 
 
 def require_price_history() -> None:
@@ -619,11 +619,18 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
                 raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
             listed.append(item.listed)
         definition = stored.saved.definition
-        legs = [sph.ChartLeg(leg.action, leg.quantity // lc.contract.lot_size)  # saved quantity is lots x lot size
-                for leg, lc in zip(definition.legs, listed, strict=True)]
-        return await sph.answer(db, legs, listed, definition.underlying, days=days, invert=invert, now=now,
-                                reader=reader, finder=finder)
-    ans = await _run(db, work, form_status=409)
+        legs = []
+        for leg, lc in zip(definition.legs, listed, strict=True):  # saved quantity is lots x lot size
+            lots, rest = divmod(leg.quantity, lc.contract.lot_size)
+            if rest or lots < 1:  # F4: a lot-size change after saving; never a silent floor, never a 500
+                return sph.Answer("quantity_not_whole_lots", render_explanation("price_history_quantity_not_whole_lots",
+                                                                                leg=sph.label(lc)))
+            legs.append(sph.ChartLeg(leg.action, lots))
+        return await sph.prepare(db, legs, listed, definition.underlying, reader=reader, finder=finder)
+    # F1: every DB read above ran in ONE short block; _run commits it, which hands the pooled connection back BEFORE
+    # any Kite call. The Kite phase below gets no database handle (pool: 2 connections shared with orders).
+    plan = await _run(db, work, form_status=409)
+    ans = plan if isinstance(plan, sph.Answer) else await sph.fetch(plan, days=days, invert=invert, now=now)
     chart = ans.chart
     points = [] if chart is None or ans.state != "available" else [
         PricePointOut(t=p.t, future=PriceValueOut(value=p.future, display=ph.future_display(p.future)),

@@ -72,14 +72,23 @@ def test_answer_states_show_dash_or_null_never_zero_or_nan():
         assert cell["display"] == "—" and cell["per_unit"] is None and cell.get("per_unit_display") is None
 
 
-def test_all_options_total_row_has_a_display_and_no_per_unit():
+def test_all_options_total_row_has_a_display_and_a_lot_weighted_per_unit():
+    """GC-UI T-1 (c592fb7b): when every leg has a per-unit Greek, the TOTAL Greek cell carries per_unit /
+    per_unit_display = the lot-weighted signed sum of the legs' per-units (1:1 here, so the plain sum); IV has no
+    total."""
     legs = [nifty_leg(Action.BUY, Instrument.CE, "22400", "81.30", ltp="85", iv="0.160347"),
             nifty_leg(Action.SELL, Instrument.PE, "22300", "30.00", ltp="31", iv="0.154691")]
-    total = _rows(legs)[TOTAL_ROW_ID]
+    rows = _rows(legs)
+    total = rows[TOTAL_ROW_ID]
+    leg_rows = [rows[k] for k in rows if k != TOTAL_ROW_ID]
     for col in (ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA):
         cell = total[str(col)]
-        assert cell["per_unit"] is None and cell.get("per_unit_display") is None
         assert cell["display"] != "—" and "." in cell["display"]
+        assert cell["per_unit"] is not None and cell["per_unit_display"] is not None, col
+        total_unit, legs_sum = D(cell["per_unit"]), sum(D(r[str(col)]["per_unit"]) for r in leg_rows)
+        ulp = D(1).scaleb(total_unit.as_tuple().exponent)  # the total rounds the UNROUNDED sum once; legs round each
+        assert abs(total_unit - legs_sum) <= ulp, (col, total_unit, legs_sum)
+    assert total.get(str(ColumnId.IV), {}).get("per_unit") is None  # IV has no total
     leg1 = _rows(legs)
     first = leg1[next(k for k in leg1 if k != TOTAL_ROW_ID)]
     assert first[str(ColumnId.IV)]["display"] == "16.03%"

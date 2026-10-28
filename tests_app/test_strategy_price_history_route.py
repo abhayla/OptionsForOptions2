@@ -11,8 +11,13 @@ Real PostgreSQL only (ADR-048); every test rolls back.
 """
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import datetime
+import http.client
 import io
+import os
+import threading
 from decimal import Decimal
 from http import HTTPStatus
 from pathlib import Path
@@ -20,7 +25,7 @@ from pathlib import Path
 import pytest
 from ofo.timeutil import IST
 from ofo_app import broker_token_store as tokens
-from ofo_app import held_switches, kite_history
+from ofo_app import catalogue_store, held_switches, kite_history
 from ofo_app import strategy_price_history as sph
 from ofo_app import strategy_store as store
 from ofo_app.broker_config import load_broker_config
@@ -30,7 +35,7 @@ from ofo_app.kite_history import KiteHistory
 from ofo_app.live_market import OWNER_REF
 from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import (
     WING,
@@ -334,3 +339,207 @@ async def test_s5_1_a_token_store_error_answers_no_session_with_its_code_never_5
     assert ended is None and real_kite_transport == []
     assert "store refused: token_read_needs_fresh_connection" in caplog.text  # the reason, by code only
     assert SECRET not in resp.text and SECRET not in caplog.text
+
+
+# ---- F1 (GC-UI step 9 review round 1): no request DB connection is held while Kite answers --------------------------
+# A REAL pooled engine (the API's shape: QueuePool, overflow 0) runs the production route; Kite's transport is a fake
+# that BLOCKS until the test releases it. While it blocks, the pool must show 0 connections checked out and another
+# DB request on the same pool must complete. Before the fix the route kept its connection until every call returned.
+
+def _pooled(size: int):
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is unset")
+    return create_async_engine(url, pool_size=size, max_overflow=0, pool_timeout=5,
+                               connect_args={"server_settings": {"jit": "off"}})
+
+
+def _blocking_transport(started, release, seen: list[str]):
+    answer = _standard([])
+
+    def fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:
+        seen.append(url)
+        started.set()
+        release.wait(20)
+        return answer(url, headers)
+    return fetch
+
+
+@pytest.fixture
+def blocking_kite(monkeypatch):
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())
+    started, release, seen = threading.Event(), threading.Event(), []
+    monkeypatch.setattr(kite_history, "urllib_transport", _blocking_transport(started, release, seen))
+    yield started, release, seen
+    release.set()
+
+
+async def _seeded(app_engine, admin_engine, run):
+    user = _user()
+    cids, session_id = [], None
+    try:
+        sid, cids, session_id = await _committed_seed(app_engine, user, session=SECRET)
+        return await run(user, sid)
+    finally:
+        await _remove_seed(admin_engine, user, cids, session_id)
+
+
+def _pooled_app(pooled, user):
+    app = _app(async_sessionmaker(pooled, class_=AsyncSession, expire_on_commit=False), user)
+    app.dependency_overrides[strategy_routes.get_history_now] = lambda: NOW
+    return app
+
+
+async def test_f1_no_connection_is_held_while_kite_answers(app_engine, admin_engine, blocking_kite):
+    started, release, seen = blocking_kite
+    pooled = _pooled(1)  # ONE connection: a held connection would starve every other request
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            chart = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history"))
+            assert await asyncio.to_thread(started.wait, 15), "Kite was never called"
+            held = pooled.pool.checkedout()
+            async with pooled.connect() as conn:  # another request's DB work on the same one-connection pool
+                other = await asyncio.wait_for(conn.scalar(text("SELECT 1")), 4)
+            release.set()
+            resp = await chart
+        return held, other, resp
+    try:
+        held, other, resp = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    assert held == 0, f"{held} connection(s) held while Kite answers"
+    assert other == 1
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.json()["state"] == "available" and len(seen) == 5  # noqa: PLR2004
+
+
+async def test_f1_two_identical_requests_share_one_fetch_per_contract(app_engine, admin_engine, blocking_kite):
+    started, release, seen = blocking_kite
+    pooled = _pooled(2)
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            first = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history"))
+            assert await asyncio.to_thread(started.wait, 15)
+            second = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history?invert=true"))
+            for _ in range(200):  # until the second request has joined the first's in-flight fetch
+                if sph.joined_in_flight():
+                    break
+                await asyncio.sleep(0.02)
+            release.set()
+            return await first, await second
+    try:
+        one, two = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    assert one.json()["state"] == two.json()["state"] == "available"
+    assert sph.joined_in_flight() >= 1
+    assert len(seen) == 5 and len(set(seen)) == 5  # noqa: PLR2004 - 4 legs + the future, each fetched ONCE
+
+
+async def test_f1_a_fetch_past_the_deadline_answers_broker_refused(app_engine, admin_engine, blocking_kite,
+                                                                   monkeypatch):
+    _, _, seen = blocking_kite
+    monkeypatch.setattr(sph, "FETCH_DEADLINE_SECONDS", 0.5)
+    pooled = _pooled(1)
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            return await ac.get(f"/strategies/{sid}/price-history")
+    try:
+        resp = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    body = resp.json()
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert (body["state"], body["reason"]) == ("broker_refused",
+                                               "Zerodha did not return the price history. Try again later.")
+    assert seen  # Kite was called; the deadline, not a refusal, ended it
+
+
+# ---- F3: a body cut short or not UTF-8 is a refusal at the transport, never a 500 ---------------------------------
+
+class _Response:
+    status = 200
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def read(self):
+        raise self._exc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"{\"status\": \"succ", 900),
+                                 UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")])
+def test_f3_a_cut_or_undecodable_body_is_a_candle_fetch_error(monkeypatch, caplog, exc):
+    monkeypatch.setattr(kite_history, "kite_open_url", lambda url, **kw: _Response(exc))
+    with pytest.raises(kite_history.CandleFetchError) as refused:
+        kite_history.urllib_transport("https://api.kite.trade/instruments/historical/1/minute",
+                                      {"Authorization": f"token k:{SECRET}"})
+    assert str(refused.value) == f"transport error: {type(exc).__name__}"  # the class name only
+    assert SECRET not in str(refused.value) and SECRET not in caplog.text
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"", 10),
+                                 UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")])
+async def test_f3_the_chart_answers_broker_refused_on_those_errors(app_engine, monkeypatch, exc):
+    monkeypatch.setattr(kite_history, "kite_open_url", lambda url, **kw: _Response(exc))
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            resp = await _get(conn, user, stored.id, transport=kite_history.urllib_transport)
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert resp.json()["state"] == "broker_refused"
+        finally:
+            await trans.rollback()
+
+
+# ---- F4: a saved quantity that is not a whole number of lots at today's lot size ----------------------------------
+
+@pytest.mark.parametrize("lot_size", [30, 75])  # saved 65 = 1 lot of 65: 65 / 30 leaves 5; 65 / 75 is 0 lots
+async def test_f4_a_quantity_that_is_not_whole_lots_is_a_named_state(app_engine, monkeypatch, lot_size):
+    real = catalogue_store.load_contracts
+
+    async def relisted(db, ids):
+        found = await real(db, ids)
+        return {cid: dataclasses.replace(item, listed=dataclasses.replace(
+            item.listed, contract=dataclasses.replace(item.listed.contract, lot_size=lot_size)))
+            for cid, item in found.items()}
+    monkeypatch.setattr(catalogue_store, "load_contracts", relisted)
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            seen: list[str] = []
+            resp = await _get(conn, user, stored.id, transport=_standard(seen))
+            body = resp.json()
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert (body["available"], body["state"], body["points"]) == (False, "quantity_not_whole_lots", [])
+            assert body["reason"].endswith(": the saved quantity is not a whole number of lots at today's lot size.")
+            assert seen == []  # refused before any Kite call; never a silent floor
+        finally:
+            await trans.rollback()
+
+
+# ---- F7: the chart cache drops expired entries on every write and keeps at most CACHE_MAX_ENTRIES -----------------
+
+def test_f7_the_cache_evicts_expired_and_caps_its_size(monkeypatch):
+    monkeypatch.setattr(sph, "CACHE_MAX_ENTRIES", 3)
+    day = datetime.date(2026, 10, 14)
+    for i in range(3):
+        sph._remember((f"old{i}", day, day), float(i), [], float(i))
+    sph._remember(("new", day, day), sph.CACHE_SECONDS + 1.5, [], sph.CACHE_SECONDS + 1.5)
+    assert sorted(k[0] for k in sph._cache) == ["new", "old2"]  # 0 and 1 expired (>= 300 s old) and were dropped
+    for i in range(4):
+        at = sph.CACHE_SECONDS + 2 + i
+        sph._remember((f"fresh{i}", day, day), at, [], at)
+    assert len(sph._cache) == 3  # noqa: PLR2004 - the cap
+    assert sorted(k[0] for k in sph._cache) == ["fresh1", "fresh2", "fresh3"]  # the oldest went first
