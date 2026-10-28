@@ -19,6 +19,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ChartCard from '@/components/strategy/ChartCard.vue'
+import LowerCard from '@/components/strategy/LowerCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
@@ -738,6 +739,7 @@ const pricesStamp = computed(() => {
               <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
             </template>
           </ChartCard>
+          <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
           <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" :legs="data.legs ?? null" />
         </div>

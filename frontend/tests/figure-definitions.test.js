@@ -28,6 +28,7 @@ const IDS = [
   "margin_available",
   "estimated_now",
   "expected_move_bands",
+  "decay",
   "probability_of_profit",
 ];
 

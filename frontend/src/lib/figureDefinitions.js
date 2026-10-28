@@ -96,6 +96,14 @@ export const FIGURES = {
     text: `The range the index is expected to stay within by the target date, measured from implied volatility. Estimated: ${MODEL_PHRASE}.`,
     source: `REQ-136 AC-1 (expected-move bands) and AC-4; scenario requirement; ${NOT_IN_STUDY}`,
   },
+  // REQ-145 AC-5 (GC-UI b2): the Decay head's info mark. Worded from REQ-145's statement; not yet read by the owner.
+  decay: {
+    label: "Decay",
+    text: "The time value change, in rupees, between now and the next market open if everything else stays the same.",
+    source:
+      "REQ-145 statement and AC-5 (Decay definition); Sensibull bundle-findings.md line 335 tooltip, reworded",
+    reviewed: "pending owner read",
+  },
   probability_of_profit: {
     label: "Probability of profit",
     text: `The estimated chance that the strategy ends with a profit at expiry. It is a mathematical probability, not a promise. Estimated: ${MODEL_PHRASE}.`,
