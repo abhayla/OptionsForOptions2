@@ -1,6 +1,14 @@
 # Handover
 
-## NOW (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
+## NOW (2026-10-28 ~09:45 IST, after GC-BM; full block: docs/process/session-handover-2026-10-28-gcbm.md)
+
+- **GC-BM PARTIAL:** the 5 must-have builder rows (G-065, G-070, G-075, G-024, G-051) and F-1..F-20 built with failing
+  tests first; ADR-199, ADR-200; real-app walks clean after hours, before the open and in hours (2026-10-28 09:16).
+  One push, one PR. Parked: #596 (close label on a reopened saved strategy needs a migration).
+- **PENDING:** deferred #597-#602; owner visual-differences list in the GC-BM contract.
+- **NEXT:** GC-B2 (edit speed p95 <= 1,000 ms; Width / Hedge values), market hours, fresh session.
+
+## EARLIER: (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
 
 - **GC-B1:** every item merged or measured (G-069 verdict 14:11, #592 closed), but two pushes and one gate skip broke
   the contract's one-push rule. Docs #585 (ADR-196, ADR-197, contracts GC-B1..B17, gap list) and #589 (REQ-141 approved, six gap rows

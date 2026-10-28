@@ -174,7 +174,12 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
   "captured 28 Oct 2026, 09:16:16 IST", "Price has moved since ..." lines (REQ-077 AC-1); depth popup 5 levels, no
   banner. PASS.
 - Step 9 so far: ruff ratchet OK (no rule rose), openapi no drift, coverage OK. Deferred issues filed: #596 (1, parked),
-  #597 (2), #598 (4, incl. PayoffChart.vue scan skip), #599 (5), #600 (6), #601 (7), #602 (8); item 3 added to #497.
+  #597 (2), #598 (4; the PayoffChart.vue scan skip was already fixed by F-15), #599 (5), #600 (6), #601 (7), #602 (8); item 3 added to #497.
+- Local Playwright, 12 builder specs (app-tests.yml shape, db_run_fresh): first run 09:22 8 failed = INVALID (servers
+  from the 06:42 / 06:50 runs still held 8000 / 8001 / 4173-4175 on a dropped database; Git Bash `$!` is not the
+  Windows PID, so the script's taskkill never stopped them). Script fixed (refuses busy ports, stops by port owner);
+  re-run 09:28: 80 passed / 8 skipped / 0 failed, ports free after. strategy-table passed too, so the ~07:00
+  "fails on main too" result above is suspect for the same reason.
 - Launch note: the first restart missed `OFO_API_TARGET` (vite proxied to 8000: 500s), then `LIVE_MARKET` and
   `APP_ENV` (no feed, no ready-made cards). Not app defects; the launch line above is the right one.
 
