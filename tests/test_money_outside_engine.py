@@ -142,6 +142,7 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
 NOT_MONEY_FRONTEND_WHY: dict[str, str] = {
     "frontend/src/lib/guided.js": 'index levels and listed strikes (points) parsed for selection; no rupee value',
     "frontend/src/pages/CreateStrategyPage.vue": 'the wizard step counter (`step.value`), a page number',
+    "frontend/src/lib/oiBars.js": 'open-interest COUNTS (contracts, not rupees) scaled to a CSS bar width; never printed',
 }
 NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     "frontend/src/lib/guided.js": (
@@ -157,6 +158,10 @@ NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     ),
     "frontend/src/pages/CreateStrategyPage.vue": (
         'step.value = step.value === 3 && isKnow.value ? 1 : step.value - 1',
+    ),
+    "frontend/src/lib/oiBars.js": (
+        "const oiCount = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null "
+        ": Number(v))",
     ),
 }
 
