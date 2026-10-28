@@ -201,7 +201,7 @@ margin sentence "which already includes the premium of the legs you buy" (s54, t
 
 - Checker live 15:24:31-15:25:00 IST, all three strategies, 0 mismatches: s54 158/0/1, iron condor 219/0/1, calendar
   100/0/7 (not checkable: calendar expiry figures per ADR-143, margin needed per C-2). Raw replies:
-  D:\Abhay\scratch\gcui-checkerun4-live-close\ (private: funds figure inside) for after-hours replays.
+  D:\Abhay\scratch\gcui-checker\run4-live-close\ (private: funds figure inside) for after-hours replays.
 - Paper P&L moves live: strategy 54 tracking unbooked 1,124.50 at 15:25:03 -> 1,179.75 at 15:25:16 IST, state LIVE
   (step 8's "Paper tab moves" half; the screen walk on the final code is still owed).
 
