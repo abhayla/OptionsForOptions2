@@ -1,5 +1,51 @@
 # Session handover: GC-UI (Sensibull look + independent data check), 2026-10-28, session 1 of ~3
 
+## UPDATE session 2 (2026-10-28 21:30 -> 2026-10-29 ~04:50 IST, head 05615606 + this commit) - READ THIS FIRST
+
+Every step's code is merged on `build/gcbm-must-have` (LOCAL ONLY, nothing pushed). Each row with its proof is in the
+contract's "Found during the run" table, from row `b2 r1` to `review fe fix`.
+
+DONE this session: b2 (payoff table, Greeks order + Decay, lower card, per-leg paper P&L); step 5 Strategy Chart (core
+proven on real Kite candles, F-64; route + engine + tab; checked against raw candles at all 3,850 points; 2 review
+rounds, F1 connection-held-across-Kite and F2 guard bypass fixed); T-1 per-unit Greeks total; step 6b / 6c / 6d; step 7
+Chrome pass at 1536 + Sonnet verdicts (52 matched / 22 differs / 17 not visible, triaged) + polish round; D-PX price
+display texts ("now 99.80"); step 8 checker on 5 strategies on the final code: 0 mismatches (2,976 matched); step 9
+review part 1 (Opus, backend) and part 2 (Sonnet, frontend) with fix rounds merged.
+Last full runs (on 1d4a9d46 / ea4a4b04): guards 960 passed; full backend 7734 passed + the golden fixed after (02bb4a82);
+full vitest 93 files / 1457 passed; tests/outcome 255 passed.
+
+PENDING - needs market hours (09:15-15:30 IST), do these first in the next session:
+1. Step 8 paper walk with LIVE prices in Chrome: build a NIFTY strategy -> Save -> Start tracking -> Positions > Paper
+   (Paper mode strip, three P&L columns move) -> tick one leg -> Exit (1) -> confirm -> booked; then the checker
+   `--paper <id>` on it. Never an order route; never click inside a Kite order panel.
+2. The Paper tab's LTP / exit text in market hours: every price two decimals (D-PX: "186.1" must read "186.10").
+3. Strategy Chart in market hours (live minute candles; 4.8 s cold after hours).
+Then step 10: final handover text (DONE / PENDING / BLOCKED / PARKED / OWED-AT-LAND / NEXT), memory note.
+
+NOT RUN (say so, do not claim): the 1366 px no-break check (the window is maximised at the screen's 1536 and
+resize_window cannot shrink it - the owner un-maximises Chrome or accepts it untested); e2e (Playwright) - owed at land.
+
+FOR THE OWNER (look choices, not defects): the Strategy Chart's 1-minute line is very spiky on early days (REQ-091 AC-2
+allows daily bars); the Futures tab repeats the "Stale..." sentence under every synthetic row after hours; the Straddles
+list is not centred on ATM. New texts pending owner read (pinned): chart reasons / notes / future label, Decay
+definition, "Paper mode", the "?" tooltip "Your planned entry price", the S5-3 timeout sentence, quantity_not_whole_lots.
+
+PARKED: D-A09 (leg expiry cell 91 / 82 px, "3 Nov (5 days" clipped), D-C27 (drawer grid 2 px over, horizontal
+scrollbar). HELD: D-A38 (ADR-206).
+
+DEFERRED (file at land with `gh_issue.py app ... --stage`): routes/execute.py:298 holds its DB connection while awaiting
+Kite reads (same class as F1, order route, pre-existing); R2-2 a module importing routes.strategies can reuse
+get_history_opener unseen by the history guard; F5 Greeks TOTAL vs chart weight by different gcds (mixed lot sizes
+only); F6 oiBarWidth exported; drawer tab arrow keys; the option-chain vitest flake (2nd occurrence); LiveStrategyCard
+and DepthPopup print raw prices (no display text on their routes); everything in the older DEFERRED list below.
+
+INCIDENT recorded: the orchestrator re-saved strategy 56 by clicking Save to reach the Save dialog (same legs, only
+updated_at changed, no order path).
+
+Process lesson (4 occurrences this session): builders skip whole-repo guards their round did not touch; the
+orchestrator's post-merge guard + full backend + full vitest runs caught every one - keep them after every merge batch.
+Servers at handover: API on ea4a4b04 (port 8765), Vite (5174). Worktrees from this session stay until the land goal.
+
 Contract: `docs/process/goal-contract-GC-UI-2026-10-28.md` (Status column, "Step 1 result", "Found during the run" and
 "Parked" tables hold every number). Branch `build/gcbm-must-have` in `D:\Abhay\Ventures\OptionsForOptions2-gcbm`, LOCAL
 ONLY (no upstream; no push / PR / CI of any kind until the owner says so). Head at handover: 7861ff1b. Session 13:30 to
