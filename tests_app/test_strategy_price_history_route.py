@@ -94,7 +94,7 @@ async def test_available_on_the_real_bodies_and_invert_and_cache(app_engine):
                 inverted = (await ac.get(f"/strategies/{stored.id}/price-history?invert=true")).json()
             assert body["available"] is True and body["state"] == "available" and body["reason"] is None
             assert body["source"] == "Kite historical 1-minute candles"
-            assert body["future_label"] == "NIFTY FUT 2026-10-13"
+            assert body["future_label"] == "NIFTY 13 Oct FUT"
             assert body["notes"] == [] and len(body["points"]) == FUTURE_MINUTES
             first = body["points"][0]
             assert first == {"t": "2026-10-14T09:15:00+05:30",
