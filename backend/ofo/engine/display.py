@@ -75,6 +75,15 @@ def format_whole_rupees(amount: Decimal, *, signed: bool) -> str:
     return mark + _group_indian(f"{whole:f}")
 
 
+def format_signed_paisa(amount: Decimal) -> str:
+    """GC-UI D-B48 / REQ-109 AC-2: a paper P&L figure to the paisa with Indian grouping, "+" on a profit, U+2212 on a
+    loss (``+5,053.75``, ``−3,285.75``); a figure that rounds to zero is ``0.00`` with no sign. Display only."""
+    sign, text = _number(_finite(amount, "amount"), _PAISA)
+    if text == "0.00":
+        return text
+    return (sign or "+") + text
+
+
 def format_whole_points(level: Decimal) -> str:
     """REQ-152 / D-A04: an index level in whole points with Indian grouping, half-up: ``22,688``."""
     return _group_indian(f"{_finite(level, 'level').quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")

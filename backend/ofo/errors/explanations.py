@@ -414,6 +414,19 @@ class SignedWholeRupees(SlotType):
         return format_whole_rupees(value, signed=True)
 
 
+class SignedPaisa(SlotType):
+    """GC-UI D-B48: a paper P&L figure to the paisa, Indian grouping, "+" on profit, U+2212 on loss, "0.00" for zero."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_paisa  # late: display imports this module
+        return format_signed_paisa(value)
+
+
 class WholePoints(SlotType):
     """REQ-152 / D-A04: an index level in whole points with Indian grouping and no currency sign."""
 
@@ -1145,6 +1158,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"level": Points}),
     ExplanationTemplate("summary_whole_rupees", "values_seen", "{amount}", {"amount": WholeRupees}),
     ExplanationTemplate("summary_whole_rupees_signed", "values_seen", "{amount}", {"amount": SignedWholeRupees}),
+    ExplanationTemplate("summary_paisa_signed", "values_seen", "{amount}", {"amount": SignedPaisa}),
     ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
     ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
                         {"level": WholePoints, "percent": SignedPercent}),

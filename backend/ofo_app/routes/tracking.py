@@ -89,7 +89,7 @@ class TrackingLegOut(ApiModel):
     # leg has no figure (price not live, view paused, contract not live, not connected). Legs with a figure add up to
     # booked + unbooked = the strategy's total.
     pnl: Money | None
-    pnl_text: CatalogueText | None  # REQ-152 text of pnl: whole rupees, signed ("+5,054")
+    pnl_text: CatalogueText | None  # REQ-152 text of pnl: to the paisa, signed ("+5,053.75")
     pnl_kind: Literal["booked", "unbooked"] | None
 
 
@@ -206,7 +206,7 @@ def _figures(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], vi
                      "exited_at": None if done is None else done.exited_at,
                      "pnl": _money(pnls[i]),
                      "pnl_text": None if pnls[i] is None else
-                     render_explanation("summary_whole_rupees_signed", amount=pnls[i]),
+                     render_explanation("summary_paisa_signed", amount=pnls[i]),
                      "pnl_kind": None if pnls[i] is None else "booked" if done else "unbooked"})
     if view is None:
         open_reasons = [r for i, r in enumerate(reasons) if i not in exits]
