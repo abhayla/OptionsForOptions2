@@ -680,7 +680,21 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     return w
   }
-  const txt = (w, id) => w.find(`[data-testid="${id}"]`).text()
+  // GC-UI step 3b (ADR-202 (1), REQ-034 AC-7 as changed by ADR-204): the "what can I lose" sentence is no longer a
+  // visible paragraph; it is the first line of the Max Loss "?" (words unchanged). loseLine opens that "?", reads the
+  // sentence and closes it; it THROWS when the Max Loss "?" is missing, so no negative check below can pass vacuously.
+  // seen(w) = the page text plus the open "?" text, for the checks that a dropped reply's sentence is drawn nowhere.
+  async function loseHint(w) {
+    const hint = w.find('[data-testid="figure-hint"][data-figure="max_loss"]')
+    if (!hint.exists()) throw new Error('the Max Loss "?" is not on the page')
+    await hint.find('[data-testid="figure-hint-mark"]').trigger('click')
+    const lines = hint.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())
+    const all = hint.find('[data-testid="figure-hint-text"]').text()
+    await hint.find('[data-testid="figure-hint-mark"]').trigger('click')
+    return { first: lines[0] ?? '', all }
+  }
+  const loseLine = async (w) => (await loseHint(w)).first
+  const seen = async (w) => `${w.text()} ${(await loseHint(w)).all}`
   let honourAbort = true // false = a transport that ignores the abort: the reply still arrives, and is dropped by its seq
   afterEach(() => { apiAnswer = null; honourAbort = true })
 
@@ -694,8 +708,8 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
     await flushPromises()
-    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
-    expect(w.text()).not.toContain('REPLY ONE')
+    expect(await loseLine(w)).toBe('REPLY TWO')
+    expect(await seen(w)).not.toContain('REPLY ONE')
     w.unmount()
   })
 
@@ -707,15 +721,15 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     expect(parked).toHaveLength(2)
     parked[1].answer(REPLY('REPLY TWO', 'NSE_FO:44625'))
     await flushPromises()
-    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(await loseLine(w)).toBe('REPLY TWO')
     parked[0].answer(REPLY('REPLY ONE', 'NSE_FO:44625'))
     await flushPromises()
-    expect(txt(w, 'sum-lose')).toBe('REPLY TWO')
+    expect(await loseLine(w)).toBe('REPLY TWO')
     expect(parked[0].signal?.aborted).toBe(true)
     expect(parked[1].seq).toBeGreaterThan(parked[0].seq) // each edit carries its own, rising seq (the server echoes it)
     expect(w.text()).not.toContain('Something went wrong')
     expect(w.find('[data-testid="edit-error"]').exists()).toBe(false) // the abort of request 1 is no edit error (AC-3)
-    expect(w.text()).toContain('REPLY TWO')
+    expect(await seen(w)).toContain('REPLY TWO')
     w.unmount()
   })
 
@@ -758,7 +772,7 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     const [newer] = outcomes()
     edit.answer(REPLY('LEG-EDIT REPLY (at_expiry)', 'NSE_FO:44625'))
     await flushPromises()
-    expect(w.text()).not.toContain('LEG-EDIT REPLY (at_expiry)')
+    expect(await seen(w)).not.toContain('LEG-EDIT REPLY (at_expiry)')
     expect(newer.signal.aborted).toBe(false)
     // AC-4 (combined check F): while the matching numbers are awaited the previous block stays mounted, marked updating,
     // never as current; the leg-edit reply's numbers are not drawn (asserted above)
@@ -767,7 +781,7 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     newer.answer(estimatedBody('OUTCOME estimated_now (old legs)', 'NSE_FO:44625'))
     await flushPromises()
     expect(w.get('[data-testid="numbers"]').attributes('data-updating')).toBe('false')
-    expect(txt(w, 'sum-lose')).toBe('OUTCOME estimated_now (old legs)')
+    expect(await loseLine(w)).toBe('OUTCOME estimated_now (old legs)')
     expect(actions(w).props('executeRefusal')).toBeNull()
     w.unmount()
   })
@@ -784,14 +798,14 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     await flushPromises()
     outcomes()[0].answer(estimatedBody('OLD LEGS', real.legs[0].instrument_id)) // sent with the legs before the edit
     await flushPromises()
-    expect(w.text()).not.toContain('OLD LEGS')
+    expect(await seen(w)).not.toContain('OLD LEGS')
     expect(outcomes()).toHaveLength(2)
     expect(outcomes()[1].body.legs[0].instrument_id).toBe('NSE_FO:44625')
     expect(outcomes()[1].body.view).toBe('estimated_now')
     expect(executeWaits(w)).toBe(true)
     outcomes()[1].answer(estimatedBody('NEW LEGS', 'NSE_FO:44625'))
     await flushPromises()
-    expect(txt(w, 'sum-lose')).toBe('NEW LEGS')
+    expect(await loseLine(w)).toBe('NEW LEGS')
     expect(actions(w).props('executeRefusal')).toBeNull()
     w.unmount()
   })
@@ -807,7 +821,7 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     expect(edit.body.range_start).toBeUndefined() // the server's leg-edit has no range field
     edit.answer({ ...REPLY('ESTIMATED NOW', 'NSE_FO:44625'), outcome: estimatedBody('ESTIMATED NOW', 'NSE_FO:44625') })
     await flushPromises()
-    expect(txt(w, 'sum-lose')).toBe('ESTIMATED NOW')
+    expect(await loseLine(w)).toBe('ESTIMATED NOW')
     expect(actions(w).props('executeRefusal')).toBeNull()
     w.unmount()
   })
@@ -823,7 +837,7 @@ describe('REQ-119 23b core: the newest edit wins on the mounted page, out of ord
     expect(edit.body.range_start).toBeUndefined()
     edit.answer(REPLY('AT EXPIRY DEFAULT RANGE', 'NSE_FO:44625'))
     await flushPromises()
-    expect(w.text()).not.toContain('AT EXPIRY DEFAULT RANGE')
+    expect(await seen(w)).not.toContain('AT EXPIRY DEFAULT RANGE')
     expect(w.findComponent(LegList).props('legs')[0].instrument_id).toBe('NSE_FO:44625') // the edit itself is kept
     expect(outcomes()).toHaveLength(1)
     expect(outcomes()[0].body.range_start).toBe('24000')
@@ -901,12 +915,16 @@ describe('REQ-135 AC-3: one Prices-as-of stamp from last_price_at, never a refre
     w.unmount()
   })
 
-  it('a stale answer shows its data-health label in place of the time', async () => {
+  // GC-UI step 3b (D-A42, ADR-202 (3)): the answer's output label is never silent (ADR-061), but it is shown ONCE, as
+  // the small label beside the summary figures it qualifies; the foot stamp keeps the true price time (last_price_at).
+  it('a stale answer shows its data-health label once, beside the summary figures; the stamp keeps the price time', async () => {
     const w = await open({ ...FRESH, output_label: 'Prices are 4 minutes old' })
-    expect(stamp(w).text()).toBe('Prices are 4 minutes old')
-    expect(stamp(w).attributes('data-kind')).toBe('health')
-    expect(w.text()).not.toContain('Prices as of')
-    w.unmount()
+    try {
+      expect(w.find('[data-testid="output-label"]').text()).toBe('Prices are 4 minutes old')
+      expect(w.text().match(/Prices are 4 minutes old/g)).toHaveLength(1)
+      expect(stamp(w).text()).toBe('Prices as of 10:15:00 IST')
+      expect(stamp(w).attributes('data-kind')).toBe('time')
+    } finally { w.unmount() }
   })
 
   it('a stale leg label (staleLegs) also replaces the time', async () => {
@@ -945,7 +963,9 @@ describe('REQ-135 AC-4: a strategy of one futures leg', () => {
   const FUT = { ...real.legs[0], instrument: 'FUT', strike: null }
   const LONE = { ...real, legs: [{ ...FUT, action: 'BUY' }], last_price_at: '2026-10-19T10:15:00+05:30',
     summary: { ...real.summary, max_profit: null, max_profit_unlimited: true, max_loss: '1560000.00', max_loss_unlimited: false,
-      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00' } }
+      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00',
+      // GC-UI step 3b (REQ-152): the display strings serialize.py writes beside the exact values ("0" for zero)
+      max_profit_display: null, max_loss_display: '−15,60,000', time_value_display: '0', intrinsic_value_display: '0' } }
   const DRAFT_ONE = { underlying: 'NIFTY', legs: [{ instrument_id: FUT.instrument_id, action: 'BUY', lots: FUT.lots, planned_entry: FUT.planned_entry, captured_at: FUT.captured_at }] }
   beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) })
 
@@ -965,8 +985,9 @@ describe('REQ-135 AC-4: a strategy of one futures leg', () => {
     expect(w.find('[data-testid="max-profit"]').text()).toBe('Unlimited')
     expect(w.find('[data-testid="reward-risk"]').text()).toBe('-')
     expect(w.find('[data-testid="reward-risk-reason"]').text()).toBe('(No fixed maximum)')
-    expect(w.find('[data-testid="time-value"]').text()).toBe('0.00')
-    expect(w.find('[data-testid="intrinsic-value"]').text()).toBe('0.00')
+    // REQ-152 AC-1/AC-3: the server's display string is printed; the exact '0.00' is still sent, in the figure's "?"
+    expect(w.find('[data-testid="time-value"]').text()).toBe('0')
+    expect(w.find('[data-testid="intrinsic-value"]').text()).toBe('0')
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     expect(w.find('[data-testid="strike-minus"]').exists()).toBe(false)
     expect(w.find('[data-testid="strike-plus"]').exists()).toBe(false)

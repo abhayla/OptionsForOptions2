@@ -92,7 +92,10 @@
   "available": "50000.00",
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": false,
-  "shortfall_reason": null
+  "shortfall_reason": null,
+  "needed_display": "7,066",
+  "available_display": "50,000",
+  "broker_needed_display": "6,409"
  },
  "table": {
   "underlying": "NIFTY",
@@ -2764,7 +2767,8 @@
    "side": "get",
    "per_unit": "73.15",
    "text": "Get ₹4,754.75",
-   "reason": null
+   "reason": null,
+   "amount_display": "4,755"
   },
   "funds_share": {
    "funds": "50000.00",
@@ -2773,7 +2777,15 @@
    "max_loss_percent": "17",
    "max_profit_text": "9% of funds",
    "max_loss_text": "17% of funds"
-  }
+  },
+  "max_profit_display": "+4,540",
+  "max_loss_display": "−8,460",
+  "breakevens_display": [
+   "22,327 (−0.9%)",
+   "22,873 (+1.5%)"
+  ],
+  "time_value_display": "−4,755",
+  "intrinsic_value_display": "0"
  },
  "leg_quotes": [
   {

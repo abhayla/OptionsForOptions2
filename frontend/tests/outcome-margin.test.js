@@ -11,6 +11,17 @@ import CONDOR from './fixtures/outcome-condor.json'
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const ON = { basket_margin_quote: true } // REQ-117: the flag the margin line asks
 const line = (margin, capabilities = ON) => mount(MarginLine, { props: { margin, capabilities } })
+// GC-UI step 3b (D-A41, ADR-202 (4)): the warning is one visible line; the server's full message is behind More
+const shortText = async (w) => {
+  await t(w, 'margin-shortfall-more').trigger('click')
+  return t(w, 'margin-shortfall-text').text()
+}
+// D-A40: "Checked at" moved into the Margin available "?"
+const hintOf = async (w, fig) => {
+  const h = w.find(`[data-testid="figure-hint"][data-figure="${fig}"]`)
+  await h.find('[data-testid="figure-hint-mark"]').trigger('click')
+  return h.find('[data-testid="figure-hint-text"]').text()
+}
 
 // REQ-117 AC-4 (W-132): the margin line asks the flag `basket_margin_quote`; missing, unknown or unreadable = hidden.
 const REASON = 'Margin from the broker is not available for this account.'
@@ -54,7 +65,7 @@ describe('margin line asks the basket_margin_quote flag (REQ-117)', () => {
 })
 
 describe('outcome margin slot (ADR-099)', () => {
-  it('shortfall: the figures, the shortfall mark and the Checked-at time', () => {
+  it('shortfall: the figures, the shortfall mark and the Checked-at time', async () => {
     const w = line(STATES.shortfall)
     expect(t(w, 'margin').attributes('data-margin-state')).toBe('CHECKED')
     expect(t(w, 'margin-figures').text()).toBe(STATES.shortfall.reason)
@@ -63,10 +74,11 @@ describe('outcome margin slot (ADR-099)', () => {
     expect(t(w, 'margin').attributes('data-short')).toBe('true')
     expect(t(w, 'margin').classes()).toEqual(expect.arrayContaining(['border-l-4', 'border-loss']))
     expect(t(w, 'margin-short-line').text()).toBe('Not enough funds for this strategy')
-    expect(t(w, 'margin-short-line').classes()).toContain('text-loss')
-    expect(t(w, 'margin-shortfall').text()).toBe('Available funds are below the margin needed.')
+    expect(t(w, 'margin-shortfall').classes()).toContain('text-loss')
     expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1)
-    expect(t(w, 'margin-checked-at').text()).toBe('Checked at 16 Oct 2026, 12:08:52 IST')
+    expect(await shortText(w)).toBe('Available funds are below the margin needed.')
+    expect(t(w, 'margin-checked-at').exists()).toBe(false)
+    expect(await hintOf(w, 'margin_available')).toContain('Checked at 16 Oct 2026, 12:08:52 IST')
     expect(t(w, 'margin-text').exists()).toBe(false)
   })
 
@@ -84,42 +96,47 @@ describe('outcome margin slot (ADR-099)', () => {
     expect(w.find('[data-testid="funds-needed"]').exists()).toBe(false)
   })
 
-  it('W-193 (I-8): with the server message the shortfall text appears ONCE and the figures sentence is not repeated', () => {
+  it('W-193 (I-8): with the server message the shortfall text appears ONCE and the figures sentence is not repeated', async () => {
     const w = line(STATES.short)
     expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1)
     expect(t(w, 'margin-figures').exists()).toBe(false)
+    expect(t(w, 'margin-shortfall').text()).toBe('Not enough funds for this strategyMore') // one visible line (D-A41)
+    await shortText(w)
     expect(w.text().split("Zerodha's own margin figure").length - 1).toBe(1)
     expect(t(w, 'margin-short-line').exists()).toBe(true)
   })
 
-  it('short with the server line: shown verbatim, with both ways forward (REQ-055 AC-4)', () => {
+  it('short with the server line: shown verbatim, with both ways forward (REQ-055 AC-4)', async () => {
     const w = line(STATES.short)
-    expect(t(w, 'margin-shortfall').text()).toBe(STATES.short.shortfall_reason)
-    expect(t(w, 'margin-shortfall').text()).toContain('Reduce the quantity, review the strategy, or add funds')
-    expect(t(w, 'margin-shortfall').findAll('button, a').length).toBe(0) // text only: nothing places, builds or changes anything
+    const text = await shortText(w)
+    expect(text).toBe(STATES.short.shortfall_reason)
+    expect(text).toContain('Reduce the quantity, review the strategy, or add funds')
+    // text only: the one control is the More / Less switch; nothing places, builds or changes anything
+    expect(t(w, 'margin-shortfall').findAll('a').length).toBe(0)
+    expect(t(w, 'margin-shortfall').findAll('button').map((b) => b.attributes('data-testid'))).toEqual(['margin-shortfall-more'])
   })
 
-  it('the browser never compares: figures that read needed < available with shortfall true still show the shortfall', () => {
+  it('the browser never compares: figures that read needed < available with shortfall true still show the shortfall', async () => {
     const w = line(STATES.string_trap)
-    expect(t(w, 'margin-shortfall').text()).toBe('The server decided this one.')
+    expect(await shortText(w)).toBe('The server decided this one.')
     const none = line({ ...STATES.string_trap, shortfall: false, shortfall_reason: null })
     expect(t(none, 'margin-shortfall').exists()).toBe(false)
   })
 
-  it('enough funds: the figures without a shortfall mark', () => {
+  it('enough funds: the figures without a shortfall mark', async () => {
     const w = line(STATES.enough)
     expect(t(w, 'margin-figures').text()).toBe(STATES.enough.reason)
     expect(t(w, 'margin-figures').classes()).not.toContain('text-red-700')
     expect(t(w, 'margin-shortfall').exists()).toBe(false)
-    expect(t(w, 'margin-checked-at').text()).toBe('Checked at 16 Oct 2026, 12:08:52 IST')
+    expect(await hintOf(w, 'margin_available')).toContain('Checked at 16 Oct 2026, 12:08:52 IST')
   })
 
-  it('REQ-055 AC-3: the browser adds no Zerodha label; the server text names the two figures apart', () => {
+  it('REQ-055 AC-3: the browser adds no Zerodha label; the server text names the two figures apart', async () => {
     // W-193: on a shortfall the server's message carries the figures (once); the figures sentence is checked on `enough`
     const w = line(STATES.short)
-    const shortText = t(w, 'margin-shortfall').text()
-    expect(shortText).toContain("Zerodha's own margin figure is ₹6,409.00")
-    expect(shortText).toContain('about ₹7,065.50 is needed (an estimate)')
+    const shown = await shortText(w)
+    expect(shown).toContain("Zerodha's own margin figure is ₹6,409.00")
+    expect(shown).toContain('about ₹7,065.50 is needed (an estimate)')
     const text = t(line(STATES.enough), 'margin-figures').text()
     expect(text).toBe(STATES.enough.reason)
     expect(text).toContain("Zerodha's own margin figure is ₹6,409.00")
