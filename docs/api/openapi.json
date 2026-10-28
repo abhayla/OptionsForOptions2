@@ -5945,6 +5945,15 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/TrackingLegOut"
@@ -6006,6 +6015,15 @@
             ],
             "title": "Total"
           },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
           "unbooked": {
             "anyOf": [
               {
@@ -6016,6 +6034,15 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
           },
           "underlying": {
             "enum": [
@@ -6037,6 +6064,9 @@
           "total",
           "booked",
           "unbooked",
+          "total_text",
+          "booked_text",
+          "unbooked_text",
           "legs"
         ],
         "title": "TrackedStrategyOut",
