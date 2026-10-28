@@ -368,6 +368,68 @@ async def load_contract(conn: Any, contract_id: int) -> StoredContract:
                           delisted_on=rows[0].delisted_on)
 
 
+_SELECT_MANY = text(
+    f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "  # noqa: S608 constant table names
+    f"c.currently_listed, c.retired, c.delisted, c.delisted_on, b.broker, b.broker_token, b.broker_symbol, "
+    f"b.broker_segment, b.lot_size, b.tick_size, b.freeze_limit, b.seen_on "
+    f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id "
+    f"WHERE c.id = ANY(CAST(:ids AS BIGINT[])) ORDER BY c.id, b.broker"
+)
+_LIVE_IDS = text(
+    f"SELECT id, exchange_segment, exchange_token FROM {CONTRACTS} WHERE NOT retired AND NOT delisted "  # noqa: S608 constant table name
+    f"AND (exchange_segment, exchange_token) IN (SELECT * FROM unnest(CAST(:segments AS TEXT[]), "
+    f"CAST(:tokens AS BIGINT[])))"
+)
+
+
+async def load_contracts(conn: Any, contract_ids: Iterable[int]) -> dict[int, StoredContract | CatalogueStoreError]:
+    """``load_contract`` for many ids in ONE query (GC-BP F-3: no per-row read). Each id answers its stored contract or
+    the CatalogueStoreError ``load_contract`` would raise for it (no row, or a row that does not read)."""
+    out: dict[int, StoredContract | CatalogueStoreError] = {}
+    ids = []
+    for i in set(contract_ids):
+        try:
+            ids.append(_check_contract_id(i))
+        except CatalogueStoreError as exc:
+            out[i] = exc
+    ids.sort()
+    grouped: dict[int, list[Any]] = {}
+    if ids:
+        for row in (await conn.execute(_SELECT_MANY, {"ids": ids})).all():
+            grouped.setdefault(int(row.id), []).append(row)
+    for cid in ids:
+        rows = grouped.get(cid)
+        if not rows:
+            out[cid] = CatalogueStoreError(f"no stored contract has internal id {cid}")
+            continue
+        try:
+            listed, is_listed = _stored_row(rows)
+        except CatalogueStoreError as exc:
+            out[cid] = exc
+            continue
+        out[cid] = StoredContract(contract_id=cid, listed=listed, currently_listed=is_listed,
+                                  retired=bool(rows[0].retired), delisted=bool(rows[0].delisted),
+                                  delisted_on=rows[0].delisted_on)
+    return out
+
+
+async def live_contract_ids(conn: Any, instrument_ids: Iterable[InstrumentId]) -> dict[InstrumentId, int]:
+    """``live_contract_id`` for many exchange identities in ONE query; an identity no live contract holds is absent.
+    Two live rows on one identity fail closed exactly like ``live_contract_id``."""
+    keys = sorted(set(instrument_ids), key=lambda i: (i.exchange_segment, i.exchange_token))
+    if not keys:
+        return {}
+    rows = (await conn.execute(_LIVE_IDS, {"segments": [k.exchange_segment for k in keys],
+                                           "tokens": [k.exchange_token for k in keys]})).all()
+    out: dict[InstrumentId, int] = {}
+    for r in rows:
+        key = InstrumentId(r.exchange_segment, int(r.exchange_token))
+        if key in out:
+            raise CatalogueStoreError(f"2 live contracts share {key}; refusing to pick one")
+        out[key] = int(r.id)
+    return out
+
+
 async def live_contract_id(conn: Any, instrument_id: InstrumentId) -> int | None:
     """The internal id of the LIVE contract holding this exchange identity today, or None (never a retired one)."""
     if not isinstance(instrument_id, InstrumentId):

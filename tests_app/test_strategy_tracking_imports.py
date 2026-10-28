@@ -22,6 +22,30 @@ def test_ac1_the_tracking_modules_import_nothing_from_the_order_path():
         assert not [line for line in imports if "execut" in line or "basket" in line or "orders" in line], path
 
 
+#: GC-BP step 5 (REQ-109 AC-3): the order path a paper module must never import, matched on the import source.
+ORDER_PATH = ("execut", "basket", "orders", "order_book", "place_order", "kite_order")
+
+
+def _imported_names(path: pathlib.Path) -> list[str]:
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom):
+            found += [f"{node.module or ''}.{a.name}" for a in node.names]
+        elif isinstance(node, ast.Import):
+            found += [a.name for a in node.names]
+    return found
+
+
+def test_req109_ac3_paper_tracking_and_exit_import_nothing_from_the_order_path():
+    """AC-3 (GC-BP step 5): start, view, list and paper exit never reach Execute: the route, store and domain import
+    no module or name from the order path (execute*, basket*, broker order code), in any import form (AST, so a
+    parenthesised multi-line import is read too)."""
+    for rel in ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py",
+                "backend/ofo/tracking/paper.py"):
+        bad = [m for m in _imported_names(ROOT / rel) if any(word in m.lower() for word in ORDER_PATH)]
+        assert not bad, (rel, bad)
+
+
 TRACKING_CODE = ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py")
 #: The raw catalogue identity a stored contract id could be priced by without the live-identity check.
 RAW_IDENTITY = ("exchange_token", "catalogue_contracts", "load_contract", "live_contract_id")
@@ -71,11 +95,14 @@ def test_tracking_reaches_a_feed_key_only_through_tracked_contracts():
 
 def test_the_choke_point_checks_the_live_holder_of_the_token():
     """The choke point itself prices nothing unless the live contract holding the token is the stored id: it calls
-    catalogue_store.live_contract_id and compares the holder with the contract id."""
+    catalogue_store.live_contract_id (or its one-query batch live_contract_ids, GC-BP F-3) and compares the holder with
+    the contract id, in both the single and the batch path."""
     source = (ROOT / "backend/ofo_app/tracked_contracts.py").read_text(encoding="utf-8")
-    assert "from ofo_app.catalogue_store import CatalogueStoreError, StoredContract, live_contract_id, load_contract" \
-        in source
-    assert "holder != stored.contract_id" in source and 'return LIVE if holder == stored.contract_id' in source
+    imported = set(_imported_names(ROOT / "backend/ofo_app/tracked_contracts.py"))
+    assert {f"ofo_app.catalogue_store.{n}" for n in ("CatalogueStoreError", "StoredContract", "live_contract_id",
+                                                     "live_contract_ids", "load_contract", "load_contracts")} <= imported
+    assert source.count("holder != stored.contract_id") == 2
+    assert source.count("return LIVE if holder == stored.contract_id") == 2
 
 
 @pytest.mark.parametrize("snippet", [
