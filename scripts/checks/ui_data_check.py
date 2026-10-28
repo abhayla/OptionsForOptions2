@@ -1,3 +1,5 @@
+# ruff: noqa: PLR0913, PLR2004, C901, PLR0912, PLR0915 - textbook BSM signatures (S, K, T, r, q, sigma, kind);
+# check_outcome is one long figure list on purpose (each block is one reply section), split in round 2 if asked
 """Independent UI data checker (GC-UI step 1): re-derives every number the builder's outcome reply and the paper
 tracking reply show, from the same market inputs, with its OWN formulas, and names each figure that differs.
 
@@ -23,12 +25,14 @@ Known bypasses (not chased; the threat model is "one altered figure in the reply
   against the seed date and flagged when it differs).
 
 CLI: python scripts/checks/ui_data_check.py --strategy-legs <legs.json> [--paper <id>] [--replay <dir>] --out <dir>
-Live mode (no --replay) fetches the replies from the running API (read-only GET/POST outcome only; never an order route).
+Live mode (no --replay) fetches the replies from the running API (read-only GETs + POST outcome; never an order route).
 """
+
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import itertools
 import json
 import math
 import statistics
@@ -60,6 +64,7 @@ MATCH, MISMATCH, NOT_CHECKABLE = "match", "mismatch", "not checkable"
 
 
 # ---------------------------------------------------------------- figures
+
 
 @dataclass
 class Figure:
@@ -114,7 +119,9 @@ class Report:
     def add_list(self, name, ours, independent, tol=Decimal("0"), note=""):
         """Numeric list compare: same length and every element within tol."""
         if ours is None or independent is None:
-            return self.add(name, None if ours is None else str(ours), None if independent is None else str(independent))
+            return self.add(
+                name, None if ours is None else str(ours), None if independent is None else str(independent)
+            )
         a, b = [Decimal(str(x)) for x in ours], [Decimal(str(x)) for x in independent]
         ok = len(a) == len(b) and all(abs(x - y) <= tol for x, y in zip(a, b, strict=True))
         fig = Figure(name, [str(x) for x in a], [str(x) for x in b], str(tol), MATCH if ok else MISMATCH, note=note)
@@ -148,6 +155,7 @@ def money(v, mode=ROUND_HALF_UP) -> Decimal:
 
 
 # ---------------------------------------------------------------- Black-Scholes-Merton (own implementation)
+
 
 def _ncdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
@@ -212,6 +220,7 @@ def years_to_expiry(valuation: dt.datetime, expiry: str) -> float:
 
 # ---------------------------------------------------------------- put-call parity forward
 
+
 def parity_forward(chain: dict, t: float, r: float):
     """ADR-061: F = median over two-sided strikes of K + e^(rT)(Cmid - Pmid). Returns (F, q, n, reason)."""
     spot = D(chain.get("spot")) if chain else None
@@ -235,6 +244,7 @@ def parity_forward(chain: dict, t: float, r: float):
 
 
 # ---------------------------------------------------------------- expiry payoff (exact Decimal)
+
 
 def leg_expiry_pnl(leg: dict, level: Decimal) -> Decimal:
     k, entry, qty = D(leg["strike"]), D(leg["planned_entry"]), D(leg["quantity"])
@@ -264,9 +274,9 @@ def breakevens(legs, offset=Decimal(0)):
     """Levels > 0 where payoff == offset, solved exactly on each linear segment, half-even to 0.01."""
     ks = kinks(legs)
     top = ks[-1] + Decimal(1000)
-    pts = ks + [top]
+    pts = [*ks, top]
     out = []
-    for a, b in zip(pts, pts[1:], strict=False):
+    for a, b in itertools.pairwise(pts):
         fa, fb = payoff(legs, a) - offset, payoff(legs, b) - offset
         if fa == 0 and a > 0:
             out.append(a)
@@ -289,6 +299,7 @@ def extremes(legs):
 
 # ---------------------------------------------------------------- charges (round trip at the planned entry)
 
+
 def round_trip_charges(legs, rates=CHARGE_RATES, mode=ROUND_HALF_UP, gst_on_unrounded=False) -> dict:
     """Enter every leg and square it off at the same price: 2 orders per leg; STT on each sell side; stamp on each
     buy side; exchange + SEBI on all premium turnover; GST on brokerage + exchange + SEBI."""
@@ -304,14 +315,25 @@ def round_trip_charges(legs, rates=CHARGE_RATES, mode=ROUND_HALF_UP, gst_on_unro
     exch = money(rates["transaction_rate_nse_fo"] * turnover, mode)
     sebi = money(rates["sebi_rate"] * turnover, mode)
     stamp = money(rates["stamp_buy_rate"] * buy_side, mode)
-    gst_base = (brokerage + rates["transaction_rate_nse_fo"] * turnover + rates["sebi_rate"] * turnover
-                if gst_on_unrounded else brokerage + exch + sebi)
+    gst_base = (
+        brokerage + rates["transaction_rate_nse_fo"] * turnover + rates["sebi_rate"] * turnover
+        if gst_on_unrounded
+        else brokerage + exch + sebi
+    )
     gst = money(rates["gst_rate"] * gst_base, mode)
-    return {"brokerage": brokerage, "stt": stt, "exchange_transaction": exch, "gst": gst, "stamp": stamp,
-            "sebi": sebi, "total": brokerage + stt + exch + gst + stamp + sebi}
+    return {
+        "brokerage": brokerage,
+        "stt": stt,
+        "exchange_transaction": exch,
+        "gst": gst,
+        "stamp": stamp,
+        "sebi": sebi,
+        "total": brokerage + stt + exch + gst + stamp + sebi,
+    }
 
 
 # ---------------------------------------------------------------- the check
+
 
 def _cells(reply, row_id):
     for row in (reply.get("table") or {}).get("rows") or []:
@@ -351,7 +373,7 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     for i, leg in enumerate(legs):
         for key in ("strike", "expiry", "quantity", "planned_entry", "instrument", "action"):
             if leg.get(key) is None:
-                rep.skip(f"leg{i+1} {key}", "reply leg field null")
+                rep.skip(f"leg{i + 1} {key}", "reply leg field null")
                 return rep
     expiries = sorted({leg["expiry"] for leg in legs})
     single_expiry = len(expiries) == 1
@@ -372,22 +394,25 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             c = _cells(reply, str(i + 1)) or {}
             qty, entry, ltp = D(leg["quantity"]), D(leg["planned_entry"]), D(leg.get("ltp"))
             ev = money(entry * qty)
-            rep.add(f"[{view}] leg{i+1} entry_value", c.get("entry_value"), ev)
+            rep.add(f"[{view}] leg{i + 1} entry_value", c.get("entry_value"), ev)
             tot_entry += _sign(leg) * ev
             if ltp is None:
-                rep.skip(f"[{view}] leg{i+1} current_value", "leg ltp null", c.get("current_value"))
-                rep.skip(f"[{view}] leg{i+1} unrealized_pnl", "leg ltp null", c.get("unrealized_pnl"))
+                rep.skip(f"[{view}] leg{i + 1} current_value", "leg ltp null", c.get("current_value"))
+                rep.skip(f"[{view}] leg{i + 1} unrealized_pnl", "leg ltp null", c.get("unrealized_pnl"))
                 cur_ok = False
                 continue
             cv = money(ltp * qty)
             pnl = money((ltp - entry) * qty * _sign(leg))
-            rep.add(f"[{view}] leg{i+1} current_value", c.get("current_value"), cv)
-            rep.add(f"[{view}] leg{i+1} unrealized_pnl", c.get("unrealized_pnl"), pnl)
+            rep.add(f"[{view}] leg{i + 1} current_value", c.get("current_value"), cv)
+            rep.add(f"[{view}] leg{i + 1} unrealized_pnl", c.get("unrealized_pnl"), pnl)
             pct = c.get("pnl_percent")
             dp = len(pct.split(".")[1]) if pct and "." in pct else 0
-            rep.add(f"[{view}] leg{i+1} pnl_percent", pct,
-                    (pnl / ev * 100).quantize(Decimal(1).scaleb(-dp), rounding=ROUND_HALF_UP) if ev else None,
-                    note=f"compared at the reply's {dp} dp")
+            rep.add(
+                f"[{view}] leg{i + 1} pnl_percent",
+                pct,
+                (pnl / ev * 100).quantize(Decimal(1).scaleb(-dp), rounding=ROUND_HALF_UP) if ev else None,
+                note=f"compared at the reply's {dp} dp",
+            )
             tot_cur += _sign(leg) * cv
             tot_pnl += pnl
         t = _cells(reply, "TOTAL") or {}
@@ -398,11 +423,14 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             pct = t.get("pnl_percent")
             dp = len(pct.split(".")[1]) if pct and "." in pct else 0
             q_ = Decimal(1).scaleb(-dp)
-            rep.add(f"[{view}] total pnl_percent", pct,
-                    (tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
-                    note=f"ours = unrealized / net entry value, at the reply's {dp} dp",
-                    alt=(tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
-                    alt_label="unrealized / pre-charges max loss")
+            rep.add(
+                f"[{view}] total pnl_percent",
+                pct,
+                (tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
+                note=f"ours = unrealized / net entry value, at the reply's {dp} dp",
+                alt=(tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
+                alt_label="unrealized / pre-charges max loss",
+            )
 
     # --- strategy-level exact money (section 3)
     summ = est.get("summary") or {}
@@ -411,11 +439,20 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     rep.add("net_premium amount", npr.get("amount"), money(abs(net)))
     rep.add("net_premium side", npr.get("side"), "get" if net > 0 else "pay" if net < 0 else "none")
     qtys = {D(leg["quantity"]) for leg in legs}
-    rep.add("net_premium per_unit", npr.get("per_unit"),
-            money(abs(net) / qtys.pop()) if len(qtys) == 1 else None)
-    intrinsic_now = sum((_sign(leg) * D(leg["quantity"]) * (
-        max(Decimal(0), spot - D(leg["strike"])) if leg["instrument"] == "CE" else max(Decimal(0), D(leg["strike"]) - spot))
-        for leg in legs), Decimal(0))
+    rep.add("net_premium per_unit", npr.get("per_unit"), money(abs(net) / qtys.pop()) if len(qtys) == 1 else None)
+    intrinsic_now = sum(
+        (
+            _sign(leg)
+            * D(leg["quantity"])
+            * (
+                max(Decimal(0), spot - D(leg["strike"]))
+                if leg["instrument"] == "CE"
+                else max(Decimal(0), D(leg["strike"]) - spot)
+            )
+            for leg in legs
+        ),
+        Decimal(0),
+    )
     rep.add("intrinsic_value (at reply spot)", summ.get("intrinsic_value"), money(intrinsic_now))
     if all(leg.get("ltp") is not None for leg in legs):
         cur_net = sum((_sign(leg) * D(leg["ltp"]) * D(leg["quantity"]) for leg in legs), Decimal(0))
@@ -428,8 +465,11 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         rep.add(f"charges {k}", cb.get(k), v, alt=ch_unr[k], alt_label="GST-on-unrounded-components")
     comps = [cb.get(k) for k in ("brokerage", "stt", "exchange_transaction", "gst", "stamp", "sebi")]
     if all(c is not None for c in comps):
-        rep.add("charges total = sum of the reply's own shown components", cb.get("total"),
-                sum((D(c) for c in comps), Decimal(0)))
+        rep.add(
+            "charges total = sum of the reply's own shown components",
+            cb.get("total"),
+            sum((D(c) for c in comps), Decimal(0)),
+        )
     if cb.get("rates_read_on") and cb["rates_read_on"] != CHARGE_RATES["read_on"]:
         rep.notes.append(f"reply rates_read_on {cb['rates_read_on']} differs from the seed {CHARGE_RATES['read_on']}")
     rep.add("summary charges", summ.get("charges"), ch["total"])
@@ -440,8 +480,7 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         rep.add("max_loss_unlimited", summ.get("max_loss_unlimited"), lu)
         mp = None if pu else money(mx - ch["total"])
         ml = None if lu else money(max(Decimal(0), -mn) + ch["total"])
-        rep.add("max_profit (incl. charges)", summ.get("max_profit"), mp,
-                note="unlimited" if pu else "")
+        rep.add("max_profit (incl. charges)", summ.get("max_profit"), mp, note="unlimited" if pu else "")
         rep.add("max_loss (incl. charges)", summ.get("max_loss"), ml, note="unlimited" if lu else "")
         bes = breakevens(legs)
         ours_be = [D(x) for x in summ.get("breakevens") or []]
@@ -449,15 +488,27 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         if mp is not None and ml:
             rr = (mp / ml).quantize(PAISA, rounding=ROUND_HALF_UP)
             rep.add("reward_risk", summ.get("reward_risk"), rr)
-            rep.add("risk_reward", summ.get("risk_reward"), (ml / mp).quantize(PAISA, rounding=ROUND_HALF_UP) if mp else None)
+            rep.add(
+                "risk_reward",
+                summ.get("risk_reward"),
+                (ml / mp).quantize(PAISA, rounding=ROUND_HALF_UP) if mp else None,
+            )
         fs = summ.get("funds_share") or {}
         funds = D(fs.get("funds"))
         if funds and mp is not None:
-            rep.add("funds_share max_profit_percent", fs.get("max_profit_percent"),
-                    (mp / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP), note="whole percent")
+            rep.add(
+                "funds_share max_profit_percent",
+                fs.get("max_profit_percent"),
+                (mp / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP),
+                note="whole percent",
+            )
         if funds and ml is not None:
-            rep.add("funds_share max_loss_percent", fs.get("max_loss_percent"),
-                    (ml / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP), note="whole percent")
+            rep.add(
+                "funds_share max_loss_percent",
+                fs.get("max_loss_percent"),
+                (ml / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP),
+                note="whole percent",
+            )
         # D-A46
         be_incl = breakevens(legs, offset=ch["total"])
         rep.data_rows["D-A46"] = {
@@ -465,7 +516,8 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             "breakevens_pre_charges": [str(x) for x in bes],
             "breakevens_incl_charges": [str(x) for x in be_incl],
             "pnl_at_shown_breakeven_incl_charges": [str(money(payoff(legs, b) - ch["total"])) for b in ours_be],
-            "max_loss_includes_charges": ml is not None and summ.get("max_loss") is not None
+            "max_loss_includes_charges": ml is not None
+            and summ.get("max_loss") is not None
             and D(summ["max_loss"]) == ml,
         }
         # at-expiry payoff points (exact)
@@ -481,21 +533,32 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     else:
         for k in ("max_profit", "max_loss", "breakevens"):
             v = summ.get(k)
-            rep.skip(k, "mixed expiries: no closed-form expiry payoff (the near expiry leaves the far leg open)",
-                     v if v not in ([], None) else None)
+            rep.skip(
+                k,
+                "mixed expiries: no closed-form expiry payoff (the near expiry leaves the far leg open)",
+                v if v not in ([], None) else None,
+            )
         if (atx or {}).get("state") == "COMPUTED":
             sc = atx.get("scenario") or {}
-            rep.skip("[at_expiry] scenario", f"reply: available={sc.get('available')} "
-                     f"reason={sc.get('unavailable_reason')!r}; mixed expiries")
-        rep.data_rows["D-A46"] = {"note": "mixed expiries: no breakeven shown", "summary_breakevens": summ.get("breakevens")}
+            rep.skip(
+                "[at_expiry] scenario",
+                f"reply: available={sc.get('available')} reason={sc.get('unavailable_reason')!r}; mixed expiries",
+            )
+        rep.data_rows["D-A46"] = {
+            "note": "mixed expiries: no breakeven shown",
+            "summary_breakevens": summ.get("breakevens"),
+        }
 
     # --- margin (D-A47): recorded, not a figure check
     m = est.get("margin") or {}
     rep.data_rows["D-A47"] = {
-        "needed": m.get("needed"), "broker_needed": m.get("broker_needed"),
+        "needed": m.get("needed"),
+        "broker_needed": m.get("broker_needed"),
         "broker_needed_plus_debit": str(money(D(m["broker_needed"]) + (-net if net < 0 else 0)))
-        if m.get("broker_needed") else None,
-        "net_premium_signed": str(money(net)), "reason": m.get("reason"),
+        if m.get("broker_needed")
+        else None,
+        "net_premium_signed": str(money(net)),
+        "reason": m.get("reason"),
         "needed_equals_broker_needed": m.get("needed") == m.get("broker_needed"),
     }
 
@@ -505,8 +568,17 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         t = years_to_expiry(valuation, e)
         fb, qb, nb, why_b = parity_forward(chains_before.get(e), t, r)
         fa, qa, na, why_a = parity_forward(chains_after.get(e), t, r)
-        qinfo[e] = {"T_years": t, "F_before": fb, "q_before": qb, "n_before": nb, "reason_before": why_b,
-                    "F_after": fa, "q_after": qa, "n_after": na, "reason_after": why_a}
+        qinfo[e] = {
+            "T_years": t,
+            "F_before": fb,
+            "q_before": qb,
+            "n_before": nb,
+            "reason_before": why_b,
+            "F_after": fa,
+            "q_after": qa,
+            "n_after": na,
+            "reason_after": why_a,
+        }
         qinfo[e].update(_q_band(chains_before.get(e), fb, fa, qb, t, r))
     rep.data_rows["forwards"] = qinfo
     # D-C33
@@ -517,10 +589,14 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         fspot = float(futures["spot"]) if futures.get("spot") else None
         for e in sorted(set(fwd) | set(fut)):
             t = years_to_expiry(valuation, e)
-            dc[e] = {"future_ltp": (fut.get(e) or {}).get("ltp"), "future_ltp_reason": (fut.get(e) or {}).get("ltp_reason"),
-                     "server_forward": (fwd.get(e) or {}).get("forward"), "server_source": (fwd.get(e) or {}).get("source"),
-                     "spot_fallback_S_e^rT": round(fspot * math.exp(r * t), 2) if fspot else None,
-                     "our_parity_forward": round(qinfo[e]["F_after"], 2) if e in qinfo and qinfo[e]["F_after"] else None}
+            dc[e] = {
+                "future_ltp": (fut.get(e) or {}).get("ltp"),
+                "future_ltp_reason": (fut.get(e) or {}).get("ltp_reason"),
+                "server_forward": (fwd.get(e) or {}).get("forward"),
+                "server_source": (fwd.get(e) or {}).get("source"),
+                "spot_fallback_S_e^rT": round(fspot * math.exp(r * t), 2) if fspot else None,
+                "our_parity_forward": round(qinfo[e]["F_after"], 2) if e in qinfo and qinfo[e]["F_after"] else None,
+            }
         rep.data_rows["D-C33"] = dc
 
     if est.get("status_label") or est.get("output_label"):
@@ -537,7 +613,9 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         iv_reply = leg.get("iv")
         lq = quotes.get(leg["instrument_id"]) or {}
         bid, ask = lq.get("bid"), lq.get("ask")
-        mid = (float(bid) + float(ask)) / 2 if bid is not None and ask is not None and float(ask) >= float(bid) else None
+        mid = (
+            (float(bid) + float(ask)) / 2 if bid is not None and ask is not None and float(ask) >= float(bid) else None
+        )
         iv_mid = implied_vol(mid, s, k, t, r, q, leg["instrument"]) if mid is not None else None
         iv_ltp = implied_vol(float(leg["ltp"]), s, k, t, r, q, leg["instrument"]) if leg.get("ltp") else None
         iv_mid_spot = implied_vol(mid, s, k, t, r, 0.0, leg["instrument"]) if mid is not None else None
@@ -548,15 +626,23 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         iv_alt = implied_vol(px_basis, s, k, t, r, qa_, leg["instrument"]) if px_basis is not None else None
         iv_tol = Decimal("0.0001") + Decimal(str(round(abs((iv_alt or ours_iv or 0) - (ours_iv or 0)), 6)))
         if iv_reply is None:
-            rep.skip(f"leg{i+1} iv", "reply iv null")
+            rep.skip(f"leg{i + 1} iv", "reply iv null")
         else:
-            rep.add(f"leg{i+1} iv (fraction; ours from {'mid' if iv_mid is not None else 'ltp'}, parity q)",
-                    iv_reply, None if ours_iv is None else round(ours_iv, 6), iv_tol,
-                    note="6 dp print + IV change across the forward band")
-        rep.data_rows.setdefault("D-B35/36 iv basis", {})[f"leg{i+1}"] = {
-            "reply_iv": iv_reply, "ours_mid_parity": iv_mid and round(iv_mid, 6),
-            "ours_ltp_parity": iv_ltp and round(iv_ltp, 6), "ours_mid_spot_q0": iv_mid_spot and round(iv_mid_spot, 6),
-            "mid": mid, "ltp": leg.get("ltp")}
+            rep.add(
+                f"leg{i + 1} iv (fraction; ours from {'mid' if iv_mid is not None else 'ltp'}, parity q)",
+                iv_reply,
+                None if ours_iv is None else round(ours_iv, 6),
+                iv_tol,
+                note="6 dp print + IV change across the forward band",
+            )
+        rep.data_rows.setdefault("D-B35/36 iv basis", {})[f"leg{i + 1}"] = {
+            "reply_iv": iv_reply,
+            "ours_mid_parity": iv_mid and round(iv_mid, 6),
+            "ours_ltp_parity": iv_ltp and round(iv_ltp, 6),
+            "ours_mid_spot_q0": iv_mid_spot and round(iv_mid_spot, 6),
+            "mid": mid,
+            "ltp": leg.get("ltp"),
+        }
         leg_model.append((leg, float(iv_reply) if iv_reply is not None else None, q, t, k))
         c = _cells(est, str(i + 1)) or {}
         if iv_reply is not None and t > 0:
@@ -565,16 +651,22 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             qty = float(leg["quantity"]) * _sign(leg)
             for gk in ("delta", "gamma", "theta", "vega"):
                 if c.get(gk) is None:
-                    rep.skip(f"leg{i+1} {gk}", "reply greek null")
+                    rep.skip(f"leg{i + 1} {gk}", "reply greek null")
                     continue
                 # 4 dp per unit x qty (rounding) + the spread across the q read before / after the reply
                 tol = abs(qty) * 0.00005 + abs(g[gk] - g2[gk]) * abs(qty) + 0.0001
-                rep.add(f"leg{i+1} {gk} (per position = per unit x signed qty)", c[gk],
-                        round((g[gk] + g2[gk]) / 2 * qty, 4), Decimal(str(round(tol + abs(g[gk] - g2[gk]) * abs(qty) / 2, 4))),
-                        note="ours at the forward mid; tol = 4 dp x qty + forward band")
-            rep.data_rows.setdefault("D-B35/36 greek unit", {})[f"leg{i+1}"] = {
-                "reply_delta": c.get("delta"), "ours_per_unit_delta": round(g["delta"], 4),
-                "ours_per_position_delta": round(g["delta"] * qty, 4)}
+                rep.add(
+                    f"leg{i + 1} {gk} (per position = per unit x signed qty)",
+                    c[gk],
+                    round((g[gk] + g2[gk]) / 2 * qty, 4),
+                    Decimal(str(round(tol + abs(g[gk] - g2[gk]) * abs(qty) / 2, 4))),
+                    note="ours at the forward mid; tol = 4 dp x qty + forward band",
+                )
+            rep.data_rows.setdefault("D-B35/36 greek unit", {})[f"leg{i + 1}"] = {
+                "reply_delta": c.get("delta"),
+                "ours_per_unit_delta": round(g["delta"], 4),
+                "ours_per_position_delta": round(g["delta"] * qty, 4),
+            }
 
     # Estimated-Now scenario points
     pts = (est.get("payoff") or {}).get("points") or []
@@ -599,8 +691,13 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
                     px2 = money(bsm_price(lvl, k, t, r, qa2, sig, leg["instrument"]))
                     tot2 += (px2 - D(leg["planned_entry"])) * D(leg["quantity"]) * _sign(leg)
                 drift += float(abs(tot2 - tot))
-            rep.add(f"[estimated_now] payoff @{p['level']}", p.get("pnl"), money(tot),
-                    tol + Decimal(str(round(drift, 2))), note="0.005/unit/leg rounding + forward band (before/after gap/2 + 1 pt)")
+            rep.add(
+                f"[estimated_now] payoff @{p['level']}",
+                p.get("pnl"),
+                money(tot),
+                tol + Decimal(str(round(drift, 2))),
+                note="0.005/unit/leg rounding + forward band (before/after gap/2 + 1 pt)",
+            )
 
     # D-B33/38: table now-values and Greeks identical in both views?
     if (atx or {}).get("state") == "COMPUTED":
@@ -612,7 +709,8 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         rep.data_rows["D-B33/38"] = {
             "table_heading_est": (est.get("table") or {}).get("scenario_heading"),
             "scenario_label_atx": (atx.get("scenario") or {}).get("label"),
-            "cells (est, at_expiry)": same}
+            "cells (est, at_expiry)": same,
+        }
     return rep
 
 
@@ -627,7 +725,7 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
         entry, qty = D(leg["entry_price"]), D(leg["quantity"])
         px = D(leg.get("exit_price")) or D(leg.get("current_price"))
         if px is None:
-            rep.skip(f"paper leg{i+1}", "no current or exit price")
+            rep.skip(f"paper leg{i + 1}", "no current or exit price")
             return rep
         pnl = (px - entry) * qty * (1 if leg["action"] == "BUY" else -1)
         tot += pnl
@@ -637,11 +735,15 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
         else:
             unbooked += pnl
         planned = planned_legs[i]["planned_entry"] if i < len(planned_legs) else None
-        rows[f"leg{i+1}"] = {"planned_entry": planned, "paper_entry": leg["entry_price"],
-                             "current": leg.get("current_price"),
-                             "pnl_paper_entry": str(money(pnl)),
-                             "pnl_planned_entry": str(money((px - D(planned)) * qty * (1 if leg["action"] == "BUY" else -1)))
-                             if planned else None}
+        rows[f"leg{i + 1}"] = {
+            "planned_entry": planned,
+            "paper_entry": leg["entry_price"],
+            "current": leg.get("current_price"),
+            "pnl_paper_entry": str(money(pnl)),
+            "pnl_planned_entry": str(money((px - D(planned)) * qty * (1 if leg["action"] == "BUY" else -1)))
+            if planned
+            else None,
+        }
     rep.add("paper_pnl", tracking.get("paper_pnl", tracking.get("total")), money(tot))
     rep.add("paper booked", tracking.get("booked"), money(booked))
     rep.add("paper unbooked", tracking.get("unbooked"), money(unbooked))
@@ -651,49 +753,79 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
 
 # ---------------------------------------------------------------- output
 
+
 def write_report(reports, out: Path, stem: str):
     out.mkdir(parents=True, exist_ok=True)
-    data = [{"strategy": r.strategy, "counts": r.counts(), "notes": r.notes,
-             "figures": [asdict(f) for f in r.figures], "data_rows": r.data_rows} for r in reports]
+    data = [
+        {
+            "strategy": r.strategy,
+            "counts": r.counts(),
+            "notes": r.notes,
+            "figures": [asdict(f) for f in r.figures],
+            "data_rows": r.data_rows,
+        }
+        for r in reports
+    ]
     (out / f"{stem}.json").write_text(json.dumps(data, indent=1, default=str), encoding="utf-8")
     lines = []
     for r in reports:
         c = r.counts()
-        lines += [f"## {r.strategy}", "",
-                  f"match {c[MATCH]} / mismatch {c[MISMATCH]} / not checkable {c[NOT_CHECKABLE]}", ""]
+        lines += [
+            f"## {r.strategy}",
+            "",
+            f"match {c[MATCH]} / mismatch {c[MISMATCH]} / not checkable {c[NOT_CHECKABLE]}",
+            "",
+        ]
         lines += [f"- note: {n}" for n in r.notes]
-        lines += ["| figure | ours (API) | independent | abs diff | tolerance | verdict | note |",
-                  "|---|---|---|---|---|---|---|"]
+        lines += [
+            "| figure | ours (API) | independent | abs diff | tolerance | verdict | note |",
+            "|---|---|---|---|---|---|---|",
+        ]
         for f in r.figures:
-            lines.append(f"| {f.name} | {f.ours} | {f.independent} | {f.abs_diff} | {f.tolerance} | "
-                         f"{f.verdict} | {f.note} |")
+            lines.append(
+                f"| {f.name} | {f.ours} | {f.independent} | {f.abs_diff} | {f.tolerance} | {f.verdict} | {f.note} |"
+            )
         lines += ["", "### Data rows", "", "```json", json.dumps(r.data_rows, indent=1, default=str), "```", ""]
     (out / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 # ---------------------------------------------------------------- live fetch / replay
 
+
 def _http(base, path, body=None):
-    req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+    if not base.startswith("http://127.0.0.1"):
+        raise SystemExit("refusing a non-local API base: the checker reads only the local app")
+    req = urllib.request.Request(  # noqa: S310 - base checked to be local http above
+        base + path,
+        data=None if body is None else json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - base checked to be local http above
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         return {"state": "REFUSED", "reason": f"HTTP {e.code}", "_body": e.read().decode()[:500]}
 
 
 def fetch_live(base, legs_doc, outdir: Path):
-    expiries = sorted({m["_expiry"] for m in legs_doc.get("meta", []) if "_expiry" in m}) or legs_doc["expiries"]
-    chain = lambda e: _http(base, f"/api/market/chain?underlying={legs_doc['underlying']}&expiry={e}"  # noqa: E731
-                                  "&strikes_each_side=10&bid_and_ask=true")
+    # the legs file names each expiry its legs use (meta[]._expiry or expiries[]): the chain is read per expiry
+    meta = legs_doc.get("meta", [])
+    expiries = sorted({m["_expiry"] for m in meta if "_expiry" in m}) or legs_doc.get("expiries", [])
+
+    def chain(e):
+        q = f"underlying={legs_doc['underlying']}&expiry={e}&strikes_each_side=10&bid_and_ask=true"
+        return _http(base, f"/api/market/chain?{q}")
+
     for e in expiries:
         _http(base, f"/api/leg-picker/strikes?underlying={legs_doc['underlying']}&expiry={e}&width=10")
     time.sleep(4)
     saved = {f"chain_before_{e}": chain(e) for e in expiries}
     for view in ("estimated_now", "at_expiry"):
-        saved[f"outcome_{view}"] = _http(base, "/api/strategies/outcome",
-                                         {"underlying": legs_doc["underlying"], "view": view, "legs": legs_doc["legs"]})
+        saved[f"outcome_{view}"] = _http(
+            base,
+            "/api/strategies/outcome",
+            {"underlying": legs_doc["underlying"], "view": view, "legs": legs_doc["legs"]},
+        )
     saved.update({f"chain_after_{e}": chain(e) for e in expiries})
     saved["futures"] = _http(base, f"/api/leg-picker/futures?underlying={legs_doc['underlying']}")
     outdir.mkdir(parents=True, exist_ok=True)
@@ -706,6 +838,7 @@ def load_replay(d: Path):
     def j(name):
         p = d / name
         return json.loads(p.read_text()) if p.exists() else None
+
     est, atx = j("outcome_estimated_now.json"), j("outcome_at_expiry.json")
     before, after = {}, {}
     for p in sorted(d.glob("chain_*.json")):
@@ -731,8 +864,11 @@ def main(argv=None):
     reports = [check_outcome(name, est, atx, before, after, fut)]
     if a.paper:
         tp = src / f"tracking_{a.paper}.json"
-        tr = json.loads(tp.read_text()) if a.replay and tp.exists() else (
-            None if a.replay else _http(a.api, f"/strategies/{a.paper}/tracking"))
+        tr = (
+            json.loads(tp.read_text())
+            if a.replay and tp.exists()
+            else (None if a.replay else _http(a.api, f"/strategies/{a.paper}/tracking"))
+        )
         if tr is None and a.replay:
             tp2 = src.parent / f"tracking_{a.paper}.json"
             tr = json.loads(tp2.read_text()) if tp2.exists() else None
