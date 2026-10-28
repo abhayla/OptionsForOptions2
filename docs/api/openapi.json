@@ -254,6 +254,15 @@
             ],
             "title": "Per Unit"
           },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
+          },
           "reason": {
             "anyOf": [
               {},
@@ -309,6 +318,7 @@
           "reason",
           "side",
           "per_unit",
+          "per_unit_display",
           "vendor"
         ],
         "title": "CellOut",
@@ -7971,7 +7981,7 @@
     },
     "/strategies/{strategy_id}/tracking/exit": {
       "post": {
-        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start. Any named leg not live refuses the whole exit (nothing stored). The store\nre-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once.",
+        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start. Any named leg not live refuses the whole exit (nothing stored): a contract no\nlonger live answers tracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or\nmissing answers tracking_exit_prices_not_live (AC-5: try again when prices update). The store\nre-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once.",
         "operationId": "exit_tracking_strategies__strategy_id__tracking_exit_post",
         "parameters": [
           {

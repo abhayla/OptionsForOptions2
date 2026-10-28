@@ -26,6 +26,7 @@ from ofo.errors import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.feed_health import FEED_STALE  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.outcome.snapshot import forward_strike_ids  # noqa: E402
 from ofo_app import live_market  # noqa: E402
 from ofo_app.config import Settings  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
@@ -964,3 +965,18 @@ def test_req133_a_first_connect_closed_market_or_ended_session_never_waits():
     provider.on_connected(now[0])
     provider.feed._market_open = lambda _now: False  # the calendar says closed, still inside the limit
     assert _answer(provider, ctx)["status_label"] != WAITING
+
+
+async def test_c33_following_a_strategy_holds_the_forward_strikes_and_releases_them(rig):
+    """D-C33: the push holds forward_strike_ids of each leg expiry (so the outcome's forward is parity, not the spot
+    fallback, while the chain is live) and lets them go when the socket ends."""
+
+    provider, feed, _channel, _mono, push = rig
+    req = OutcomeRequest.model_validate(request(provider))
+    await push._replace(request(provider))
+    ids = forward_strike_ids(provider.instrument_master(), "NIFTY", [leg.instrument_id for leg in req.legs],
+                             provider.underlying_quote("NIFTY").ltp)
+    assert ids and all(feed.fanout.subscriber_count(i) > 0 for i in ids)
+    push._release_forward(push._forward_handle)
+    push._forward_handle = None
+    assert all(feed.fanout.subscriber_count(i) == 0 for i in ids)

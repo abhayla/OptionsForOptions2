@@ -151,17 +151,74 @@ def test_charges_hand_example():
     # hand: turnover 2 x (12,636 + 6,929) = 39,130; brokerage 4 x 20; STT 0.15% x 19,565 = 29.3475;
     # exchange 0.03553% x 39,130 = 13.9029; SEBI 39,130 / 1e6 = 0.0391; stamp 0.003% x 19,565 = 0.5870;
     # GST 18% x (80 + 13.90 + 0.04) = 16.9092
+    # C-3 (ADR-082 (1)): every part EXACT, GST on the EXACT brokerage + exchange + SEBI (a GST on rounded parts
+    # would be 18% x 93.94 = 16.9092), total = exact sum 140.78603242 rounded up once
     legs = [leg("BUY", "CE", 22600, "194.40"), leg("SELL", "CE", 22800, "106.60")]
     c = u.round_trip_charges(legs)
-    assert {k: str(v) for k, v in c.items()} == {
-        "brokerage": "80.00",
-        "stt": "29.35",
-        "exchange_transaction": "13.90",
-        "gst": "16.91",
-        "stamp": "0.59",
-        "sebi": "0.04",
-        "total": "140.79",
+    assert {k: Decimal(str(v)) for k, v in c.items()} == {
+        "brokerage": Decimal("80"),
+        "stt": Decimal("29.3475"),
+        "exchange_transaction": Decimal("13.902889"),
+        "gst": Decimal("16.90956342"),
+        "stamp": Decimal("0.58695"),
+        "sebi": Decimal("0.03913"),
+        "exact_total": Decimal("140.78603242"),
+        "total": Decimal("140.79"),
     }
+
+
+def test_c3_charges_total_is_rounded_up_not_half_up():
+    """C-3: run1 credit iron condor (2026-10-28 11:29 IST): exact 263.140937008 -> the server's 263.15 (ROUND_UP,
+    ADR-082 "rounded up"); half-up would give 263.14 and the old rounded-parts sum gave 263.13."""
+    legs = [
+        leg("BUY", "PE", 22500, "92.25"),
+        leg("SELL", "PE", 22600, "123.65"),
+        leg("SELL", "CE", 22800, "155.20"),
+        leg("BUY", "CE", 22900, "111.30"),
+    ]
+    c = u.round_trip_charges(legs)
+    assert c["exact_total"] == Decimal("263.140937008")
+    assert str(c["total"]) == "263.15"
+
+
+def _condor_reply_cb():
+    """The run1 condor's charges block exactly as the server replied (parts half-even, total rounded up)."""
+    return {
+        "brokerage": "160.00",
+        "stt": "47.03",
+        "exchange_transaction": "22.28",
+        "gst": "32.82",
+        "stamp": "0.94",
+        "sebi": "0.06",
+        "total": "263.15",
+    }
+
+
+def test_c3_condor_shown_parts_match_and_a_changed_part_is_flagged():
+    est, atx, b, a, f = fixture()
+    est = copy.deepcopy(est)
+    ref = est["legs"][0]
+    est["legs"] = [
+        dict(ref, **x)
+        for x in (
+            {"action": "BUY", "instrument": "PE", "strike": "22500.00", "planned_entry": "92.25"},
+            {"action": "SELL", "instrument": "PE", "strike": "22600.00", "planned_entry": "123.65"},
+            {"action": "SELL", "instrument": "CE", "strike": "22800.00", "planned_entry": "155.20"},
+            {"action": "BUY", "instrument": "CE", "strike": "22900.00", "planned_entry": "111.30"},
+        )
+    ]
+    est["charges_breakdown"] = dict(est["charges_breakdown"], **_condor_reply_cb())
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    names = [f"charges {k}" for k in u.CHARGE_PARTS] + [
+        "charges total",
+        "charges total = sum of the reply's own shown components",
+    ]
+    assert {n: figs[n].verdict for n in names} == dict.fromkeys(names, u.MATCH)
+    for part in (*u.CHARGE_PARTS, "total"):
+        est2 = copy.deepcopy(est)
+        est2["charges_breakdown"][part] = str(Decimal(est2["charges_breakdown"][part]) + Decimal("0.01"))
+        figs2 = {x.name: x for x in run(est2, atx, b, a, f).figures}
+        assert figs2[f"charges {part}"].verdict == u.MISMATCH, part
 
 
 def test_max_profit_and_loss_include_charges():
@@ -170,6 +227,45 @@ def test_max_profit_and_loss_include_charges():
     figs = {x.name: x for x in rep.figures}
     assert figs["max_profit (incl. charges)"].independent == "7152.21"  # 7,293.00 - 140.79
     assert figs["max_loss (incl. charges)"].independent == "5847.79"  # 5,707.00 + 140.79
+
+
+def test_c1_total_pnl_percent_basis_is_unrealized_over_max_loss():
+    """C-1: REQ-035 owner Q233: TOTAL P&L % = unrealized P&L / max loss; the leg rows keep unrealized / entry value."""
+    est, atx, b, a, f = fixture()
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    tot = figs["[estimated_now] total pnl_percent"]
+    assert "max loss" in tot.note and "Q233" in tot.note
+    pnl = Decimal(figs["[estimated_now] total unrealized_pnl"].independent)
+    dp = len(str(tot.ours).split(".")[1]) if tot.ours and "." in str(tot.ours) else 0
+    expected = (pnl / Decimal("5707.00") * 100).quantize(Decimal(1).scaleb(-dp), rounding="ROUND_HALF_UP")
+    assert tot.independent == str(expected)  # 5,707.00 = the s54 spread's pre-charges max loss
+
+
+def test_c1_credit_strategy_total_pnl_percent_is_on_max_loss_not_net_entry():
+    """C-1 mutant killer: on a debit spread net entry == max loss, so the two bases agree. Flip s54's actions: a
+    credit spread with net credit 5,707.00 and pre-charges max loss 200 x 65 - 5,707 = 7,293.00 (differ)."""
+    est, atx, b, a, f = fixture()
+    est = copy.deepcopy(est)
+    for lg in est["legs"]:
+        lg["action"] = "SELL" if lg["action"] == "BUY" else "BUY"
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    tot = figs["[estimated_now] total pnl_percent"]
+    pnl = Decimal(figs["[estimated_now] total unrealized_pnl"].independent)
+    dp = len(str(tot.ours).split(".")[1]) if tot.ours and "." in str(tot.ours) else 0
+    q_ = Decimal(1).scaleb(-dp)
+    on_max_loss = (pnl / Decimal("7293.00") * 100).quantize(q_, rounding="ROUND_HALF_UP")
+    on_net_entry = (pnl / Decimal("5707.00") * 100).quantize(q_, rounding="ROUND_HALF_UP")
+    assert on_max_loss != on_net_entry  # the case discriminates
+    assert tot.independent == str(on_max_loss)
+
+
+def test_c2_margin_needed_is_not_checkable_never_matched():
+    est, atx, b, a, f = fixture()
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    if (est.get("margin") or {}).get("needed") is not None:
+        assert figs["margin needed"].verdict == u.NOT_CHECKABLE and "option_premium" in figs["margin needed"].note
+    else:
+        assert "margin needed" not in figs
 
 
 # ---------------------------------------------------------------- independence
@@ -225,9 +321,10 @@ def test_tamper_one_figure_by_one_paisa_is_flagged_alone(path, label):
     changed = {k for k in base if base[k] != tam.get(k)}
     assert tam[label] == u.MISMATCH
     allowed = {label}
-    if label == "charges stt":
-        allowed.add("charges total = sum of the reply's own shown components")
-    assert changed == allowed
+    if label == "charges stt":  # the sum-of-shown-parts check has a 0.04 tolerance (ADR-082 (1)), may not move
+        assert changed - {"charges total = sum of the reply's own shown components"} == allowed
+    else:
+        assert changed == allowed
 
 
 def test_tamper_expiry_payoff_point_flagged():

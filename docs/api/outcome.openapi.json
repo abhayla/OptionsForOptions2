@@ -111,6 +111,15 @@
             ],
             "title": "Per Unit"
           },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
+          },
           "vendor": {
             "anyOf": [
               {
@@ -132,6 +141,7 @@
           "reason",
           "side",
           "per_unit",
+          "per_unit_display",
           "vendor"
         ],
         "title": "CellOut"

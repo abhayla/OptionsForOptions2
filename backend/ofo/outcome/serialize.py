@@ -3,10 +3,11 @@ float (ADR-008); times are ISO-8601 with their offset; enums are their values. S
 from __future__ import annotations
 
 import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any
 
+from ofo.engine.black_scholes import GREEK_STEP
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
 from ofo.outcome.service import Outcome, OutcomeLeg
@@ -69,11 +70,17 @@ def _col_id(cid: object) -> str:
     return _s(cid)  # a scenario column's id is its level
 
 
+def _per_unit_4dp(value: Decimal | None) -> Decimal | None:
+    """A per-unit Greek at the boundary: Decimal to 4 dp (scenario-calculations section 4), never through a float."""
+    return None if value is None else value.quantize(GREEK_STEP, rounding=ROUND_HALF_UP)
+
+
 def _cell(cell: Cell) -> dict[str, Any]:
     v = cell.value
     value = v if isinstance(v, str) or v is None else _s(v)
     return {"value": value, "display": cell.display, "kind": cell.kind.value, "reason": cell.reason,
-            "side": cell.side, "per_unit": _s(cell.per_unit), "vendor": _s(cell.vendor)}
+            "side": cell.side, "per_unit": _s(_per_unit_4dp(cell.per_unit)),
+            "per_unit_display": cell.per_unit_display, "vendor": _s(cell.vendor)}
 
 
 def _column(col: ColumnSpec, visible: set[str]) -> dict[str, Any]:

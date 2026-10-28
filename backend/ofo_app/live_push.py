@@ -20,6 +20,8 @@ from typing import Any, Callable, Optional, Protocol
 
 from ofo.errors import UserFacingError, render
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.quote import is_live_price
+from ofo.outcome.snapshot import forward_strike_ids
 from pydantic import ValidationError
 
 from ofo_app.errors import SocketClosed
@@ -60,6 +62,10 @@ def _input_state(quote) -> tuple:
     return (quote.ltp, quote.bid, quote.ask, quote.health)
 
 
+def _no_listener(_quote: Any) -> None:
+    """The forward strikes' holder: reads take the provider's current quotes; a forward tick alone pushes nothing."""
+
+
 class StrategyPush:
     def __init__(self, channel: Channel, feed: Optional[LiveFeed], *,  # noqa: PLR0913 - one seam per collaborator
                  monotonic: Callable[[], float],
@@ -74,6 +80,7 @@ class StrategyPush:
         self._lookup = lookup or get_contract_lookup()  # the stored catalogue, for the no-provider answer (#259)
         self._req: Optional[OutcomeRequest] = None
         self._handle: Optional[int] = None
+        self._forward_handle: Optional[int] = None  # D-C33: the strikes nearest the money of each leg expiry
         self._seen: dict[str, tuple] = {}
         self._dirty = False
         self._last_push: Optional[float] = None
@@ -90,6 +97,28 @@ class StrategyPush:
         if self._handle is not None and self._feed is not None:
             self._feed.fanout.unsubscribe(self._handle)
         self._handle = None
+
+    def _release_forward(self, handle: Optional[int]) -> None:
+        if handle is not None and self._feed is not None:
+            self._feed.fanout.unsubscribe(handle)
+
+    def _hold_forward(self, req: OutcomeRequest) -> Optional[int]:
+        """D-C33: hold the strikes nearest the money of every leg expiry (``forward_strike_ids``) so the chain the
+        outcome hands ``parity_forward`` has ADR-061's 3+ two-sided strikes; with only the legs held the live chain
+        snapshot (the book of subscribed contracts) fell back to spot while the chain was live. A separate handle with
+        no listener (a forward tick alone does not drive a push; the legs and the index do), max_queue 1 like the
+        picker's leases. A contract the provider does not know holds nothing (the legs' own answer is unchanged)."""
+        provider = self._feed.ctx.provider
+        spot = provider.underlying_quote(req.underlying)
+        live_spot = spot.ltp if spot is not None and is_live_price(spot.ltp) else None
+        ids = forward_strike_ids(provider.instrument_master(), req.underlying,
+                                 [leg.instrument_id for leg in req.legs], live_spot)
+        if not ids:
+            return None
+        try:
+            return self._feed.fanout.subscribe(_no_listener, ids, max_queue=1)
+        except KeyError:
+            return None
 
     def _input_ids(self, req: OutcomeRequest) -> list[str]:
         ids = [leg.instrument_id for leg in req.legs]
@@ -117,7 +146,10 @@ class StrategyPush:
             except KeyError:  # an instrument the catalogue does not know: nothing was subscribed
                 await self._error()
                 return
+        old_forward = self._forward_handle
+        self._forward_handle = None if self._feed is None else self._hold_forward(req)
         self._release()  # after the new subscription, so a shared instrument is never dropped and re-added
+        self._release_forward(old_forward)
         self._handle, self._req, self._seen = new_handle, req, {}
         # A changed strategy is an input change: it recomputes, but the 1 s gate since the LAST push still holds (only the
         # first push after the socket opens goes at once), so client messages cannot drive pushes or engine work faster.
@@ -165,3 +197,5 @@ class StrategyPush:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await recv
             self._release()
+            self._release_forward(self._forward_handle)
+            self._forward_handle = None

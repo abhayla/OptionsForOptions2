@@ -41,7 +41,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_UP, Decimal
 from pathlib import Path
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -300,36 +300,37 @@ def extremes(legs):
 # ---------------------------------------------------------------- charges (round trip at the planned entry)
 
 
-def round_trip_charges(legs, rates=CHARGE_RATES, mode=ROUND_HALF_UP, gst_on_unrounded=False) -> dict:
+CHARGE_PARTS = ("brokerage", "stt", "exchange_transaction", "gst", "stamp", "sebi")
+HALF_PAISA = Decimal("0.005")  # a shown part is a correct paisa rounding of its exact value within this
+
+
+def round_trip_charges(legs, rates=CHARGE_RATES) -> dict:
     """Enter every leg and square it off at the same price: 2 orders per leg; STT on each sell side; stamp on each
-    buy side; exchange + SEBI on all premium turnover; GST on brokerage + exchange + SEBI."""
+    buy side; exchange + SEBI on all premium turnover; GST on brokerage + exchange + SEBI.
+
+    ADR-082 (1): every amount is exact Decimal (no part is rounded, GST is on the EXACT brokerage + exchange + SEBI);
+    the total is the exact sum rounded UP to the paisa once (ADR-082 worked example "214.95956479500 rounded up";
+    the run1 replies discriminate: condor exact 263.140937 -> 263.15, calendar 172.670651 -> 172.68, so ROUND_UP,
+    not half-up). The parts returned here are EXACT; compare a shown part within HALF_PAISA of them."""
     turnover = sell_side = buy_side = Decimal(0)
     for leg in legs:
         v = D(leg["planned_entry"]) * D(leg["quantity"])
         turnover += 2 * v
         sell_side += v
         buy_side += v
-    orders = 2 * len(legs)
-    brokerage = money(rates["brokerage_per_order"] * orders, mode)
-    stt = money(rates["stt_sell_rate"] * sell_side, mode)
-    exch = money(rates["transaction_rate_nse_fo"] * turnover, mode)
-    sebi = money(rates["sebi_rate"] * turnover, mode)
-    stamp = money(rates["stamp_buy_rate"] * buy_side, mode)
-    gst_base = (
-        brokerage + rates["transaction_rate_nse_fo"] * turnover + rates["sebi_rate"] * turnover
-        if gst_on_unrounded
-        else brokerage + exch + sebi
-    )
-    gst = money(rates["gst_rate"] * gst_base, mode)
-    return {
+    brokerage = rates["brokerage_per_order"] * 2 * len(legs)
+    exch = rates["transaction_rate_nse_fo"] * turnover
+    sebi = rates["sebi_rate"] * turnover
+    parts = {
         "brokerage": brokerage,
-        "stt": stt,
+        "stt": rates["stt_sell_rate"] * sell_side,
         "exchange_transaction": exch,
-        "gst": gst,
-        "stamp": stamp,
+        "gst": rates["gst_rate"] * (brokerage + exch + sebi),
+        "stamp": rates["stamp_buy_rate"] * buy_side,
         "sebi": sebi,
-        "total": brokerage + stt + exch + gst + stamp + sebi,
     }
+    exact_total = sum(parts.values(), Decimal(0))
+    return {**parts, "exact_total": exact_total, "total": exact_total.quantize(PAISA, rounding=ROUND_UP)}
 
 
 # ---------------------------------------------------------------- the check
@@ -426,10 +427,12 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             rep.add(
                 f"[{view}] total pnl_percent",
                 pct,
-                (tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
-                note=f"ours = unrealized / net entry value, at the reply's {dp} dp",
-                alt=(tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
-                alt_label="unrealized / pre-charges max loss",
+                # C-1: REQ-035 owner Q233 "TOTAL P&L % = unrealized P&L / max loss" ("-" when unlimited, zero or
+                # mixed expiries, Q242); the leg rows keep their own basis (unrealized / the leg's entry value)
+                (tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
+                note=f"ours = unrealized / pre-charges max loss (REQ-035 Q233), at the reply's {dp} dp",
+                alt=(tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
+                alt_label="unrealized / net entry value (the old, wrong basis)",
             )
 
     # --- strategy-level exact money (section 3)
@@ -460,15 +463,18 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
 
     ch = round_trip_charges(legs)
     cb = est.get("charges_breakdown") or {}
-    ch_unr = round_trip_charges(legs, gst_on_unrounded=True)
-    for k, v in ch.items():
-        rep.add(f"charges {k}", cb.get(k), v, alt=ch_unr[k], alt_label="GST-on-unrounded-components")
-    comps = [cb.get(k) for k in ("brokerage", "stt", "exchange_transaction", "gst", "stamp", "sebi")]
+    for k in CHARGE_PARTS:  # ADR-082 (1): each shown part within half a paisa of its exact value
+        rep.add(f"charges {k}", cb.get(k), ch[k], tol=HALF_PAISA, note="ours = exact (ADR-082 (1)); tol = rounding")
+    rep.add("charges total", cb.get("total"), ch["total"], note="exact sum rounded up once (ADR-082 (1))")
+    comps = [cb.get(k) for k in CHARGE_PARTS]
     if all(c is not None for c in comps):
+        # each shown part is rounded on its own, so the shown parts may differ from the total by a paisa or two
         rep.add(
             "charges total = sum of the reply's own shown components",
             cb.get("total"),
             sum((D(c) for c in comps), Decimal(0)),
+            tol=HALF_PAISA * len(CHARGE_PARTS) + PAISA,
+            note="tol = 6 parts x half a paisa + the one round-up",
         )
     if cb.get("rates_read_on") and cb["rates_read_on"] != CHARGE_RATES["read_on"]:
         rep.notes.append(f"reply rates_read_on {cb['rates_read_on']} differs from the seed {CHARGE_RATES['read_on']}")
@@ -551,6 +557,14 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
 
     # --- margin (D-A47): recorded, not a figure check
     m = est.get("margin") or {}
+    # C-2: needed = broker_needed + the ADR-094 top-up max(0, qty x planned price - option_premium) per BUY leg; the
+    # per-leg option_premium is not in the reply, so `needed` cannot be derived independently: never matched.
+    if m.get("needed") is not None:
+        rep.skip(
+            "margin needed",
+            "needs each BUY leg's Zerodha option_premium (ADR-094 top-up), not in the reply",
+            m.get("needed"),
+        )
     rep.data_rows["D-A47"] = {
         "needed": m.get("needed"),
         "broker_needed": m.get("broker_needed"),
@@ -817,7 +831,8 @@ def fetch_live(base, legs_doc, outdir: Path):
     expiries = sorted({m["_expiry"] for m in meta if "_expiry" in m}) or legs_doc.get("expiries", [])
     if not expiries:  # learn the legs' expiries from one read-only outcome call
         probe = _http(
-            base, "/api/strategies/outcome",
+            base,
+            "/api/strategies/outcome",
             {"underlying": legs_doc["underlying"], "view": "at_expiry", "legs": legs_doc["legs"]},
         )
         expiries = sorted({lg["expiry"] for lg in probe.get("legs") or [] if lg.get("expiry")})
