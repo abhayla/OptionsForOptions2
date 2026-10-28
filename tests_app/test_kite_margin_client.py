@@ -176,7 +176,8 @@ def test_ac1_a_sensex_basket_on_bfo_is_checked_not_refused() -> None:
     so the top-up is 205 and the requirement 15120."""
     orders, fake = _recorded_basket(SENSEX_STRANGLE_FILE)
     result = client(fake).fetch_basket_margin(orders)
-    assert (result.zerodha_total, result.required_total) == (Decimal("14915"), Decimal("15120"))
+    assert (result.zerodha_total, result.required_total, result.top_up) == (Decimal("14915"), Decimal("15120"),
+                                                                             Decimal("205"))
     assert '"exchange": "BFO"' in fake.calls[0][3]
 
 
@@ -184,7 +185,8 @@ def test_adr094_the_client_adds_the_buy_premium_above_kites_figure() -> None:
     """ADR-094: real 2026-10-16 NIFTY long-strangle reply: Zerodha 6409, required 6409 + 263.25 + 393.25 = 7065.50."""
     orders, fake = _recorded_basket(STRANGLE_FILE)
     result = client(fake).fetch_basket_margin(orders)
-    assert (result.zerodha_total, result.required_total) == (Decimal("6409"), Decimal("7065.50"))
+    assert (result.zerodha_total, result.required_total, result.top_up) == (Decimal("6409"), Decimal("7065.50"),
+                                                                             Decimal("656.50"))
 
 
 def test_099_float_tails_from_kite_read_to_the_paisa_through_the_client() -> None:
@@ -198,7 +200,8 @@ def test_099_float_tails_from_kite_read_to_the_paisa_through_the_client() -> Non
         return lambda method, url, headers, body: (200, tailed) if "basket" in url else (200, funds_text(net))
 
     basket = client(transport("1")).fetch_basket_margin(condor())
-    assert (basket.zerodha_total, basket.required_total) == (Decimal("68498.85"), Decimal("68498.85"))
+    assert (basket.zerodha_total, basket.required_total, basket.top_up) == (Decimal("68498.85"), Decimal("68498.85"),
+                                                                             Decimal(0))  # GC-UI D-A47: none
     assert client(transport("68498.84999999999")).fetch_available_funds() == Decimal("68498.85")
     assert margin_verdict(client(transport("68498.84999999999")), condor()).allowed is True
     assert margin_verdict(client(transport("68498.85000000001")), condor()).allowed is True
