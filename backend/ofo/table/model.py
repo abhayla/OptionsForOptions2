@@ -15,7 +15,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
 - **AC-6, Greeks are POSITION-level, one unit throughout the table** (round-2 fix, verifier finding: leg cells were
   per-unit while the TOTAL row was position-level — two units in one column is the defect). A leg's Delta/Gamma/
   Theta/Vega cell is the platform Black-Scholes per-unit Greek x quantity x sign (+1 BUY / -1 SELL) — the same
-  sign convention as ``position_pnl``. The per-unit (unsigned) Black-Scholes value is kept as ``Cell.per_unit``, a
+  sign convention as ``position_pnl``. The per-unit Black-Scholes value is kept as ``Cell.per_unit``, SIGNED by the leg's direction since GC-UI F-2 (per_unit x quantity == value), a
   secondary field for Advanced display. A futures leg has no Black-Scholes Greeks, but it is not excluded from the
   total (the round-2 bug): its per-unit Delta is 1 (a future's linear payoff has slope 1), Gamma/Theta/Vega 0, so a
   SELL 75 x FUT leg's Delta cell and its share of TOTAL Delta are both -75. Its IV cell stays "—" (a futures leg
@@ -319,6 +319,9 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
     raw_position = _position_greeks(per_unit, core.action, core.quantity) if per_unit is not None else None
     position = (Greeks(*(_round_greek(v) for v in (raw_position.delta, raw_position.gamma, raw_position.theta,
                                                      raw_position.vega))) if raw_position is not None else None)
+    # GC-UI F-2: the per-unit figure a cell carries is the leg's SIGNED one (quantity 1), so per_unit x quantity
+    # equals the per-position value, sign included; the unsigned ``per_unit`` stays for the position maths above.
+    signed_unit = _position_greeks(per_unit, core.action, 1) if per_unit is not None else None
     vendor = leg.greeks
 
     cells: dict[object, Cell] = {
@@ -338,19 +341,19 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
         ColumnId.IV: _iv_cell(leg),
         ColumnId.DELTA: _greek_cell(None if position is None else position.delta,
                                      None if vendor is None else vendor.delta,
-                                     None if per_unit is None else per_unit.delta, greek_reason,
+                                     None if signed_unit is None else signed_unit.delta, greek_reason,
                                     places=2, unrounded=None if raw_position is None else raw_position.delta),
         ColumnId.GAMMA: _greek_cell(None if position is None else position.gamma,
                                      None if vendor is None else vendor.gamma,
-                                     None if per_unit is None else per_unit.gamma, greek_reason,
+                                     None if signed_unit is None else signed_unit.gamma, greek_reason,
                                     places=4, unrounded=None if raw_position is None else raw_position.gamma),
         ColumnId.THETA: _greek_cell(None if position is None else position.theta,
                                      None if vendor is None else vendor.theta,
-                                     None if per_unit is None else per_unit.theta, greek_reason,
+                                     None if signed_unit is None else signed_unit.theta, greek_reason,
                                     places=2, unrounded=None if raw_position is None else raw_position.theta),
         ColumnId.VEGA: _greek_cell(None if position is None else position.vega,
                                     None if vendor is None else vendor.vega,
-                                    None if per_unit is None else per_unit.vega, greek_reason,
+                                    None if signed_unit is None else signed_unit.vega, greek_reason,
                                     places=2, unrounded=None if raw_position is None else raw_position.vega),
     }
     for level in level_columns:
