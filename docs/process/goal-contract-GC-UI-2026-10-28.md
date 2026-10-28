@@ -197,6 +197,14 @@ margin sentence "which already includes the premium of the legs you buy" (s54, t
 | P-1 | 2 | Orchestrator miss: decided the charges rounding rule as "spec silent" without grepping ADR-082 for rounding (spec-first R1 skipped); a builder found it | Process: R1 grep by every key term (here: round, paisa, GST) before a technical call that touches shown money | - | recorded; the R2 business/technical split also applies: money shown = owner's call |
 | D-C33 | 2 | Every leg expiry in market hours priced on the spot fallback | RCA: the strategy socket subscribed only legs + index, so parity never had 3 two-sided strikes; fix holds the 5 nearest strikes CE+PE per leg expiry (+10 contracts per expiry on the feed) | 1c65f911 | recorded 2026-10-08 frames; live re-run after merge |
 
+## Last live reads before the close (2026-10-28, code f000f155)
+
+- Checker live 15:24:31-15:25:00 IST, all three strategies, 0 mismatches: s54 158/0/1, iron condor 219/0/1, calendar
+  100/0/7 (not checkable: calendar expiry figures per ADR-143, margin needed per C-2). Raw replies:
+  D:\Abhay\scratch\gcui-checkerun4-live-close\ (private: funds figure inside) for after-hours replays.
+- Paper P&L moves live: strategy 54 tracking unbooked 1,124.50 at 15:25:03 -> 1,179.75 at 15:25:16 IST, state LIVE
+  (step 8's "Paper tab moves" half; the screen walk on the final code is still owed).
+
 ## Parked
 
 | Row / item | Why (evidence) | What is left |
