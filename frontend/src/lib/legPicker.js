@@ -154,6 +154,28 @@ export function centreText(strikes, timeText) {
 /** A price-like cell value as shown: the server's string, or '-' when it sent none. */
 export const shown = (value) => (value == null || value === '' ? PRICE_MISSING : String(value))
 
+/** The shared dash for an answer with no value (S-032): the OI shows it for null, undefined, empty and non-numbers. */
+export const OI_MISSING = '—'
+/** GC-UI D-C27 (S-032): the open interest is a CONTRACT COUNT, not money, written in Indian units: 1.23Cr from 1,00,00,000,
+ *  74.9L from 1,00,000, Indian digit grouping ("62,075") below. A display form only; the count is the server's. */
+export function oiCompact(count) {
+  const text = count == null ? '' : String(count).trim().replace(/\.0+$/, '')
+  if (!/^\d+$/.test(text)) return OI_MISSING
+  const whole = BigInt(text)
+  // whole / unit rounded to `places` decimals, as text; integer arithmetic only, so no float noise at a .5 edge
+  const inUnit = (unit, places) => {
+    const scale = 10n ** BigInt(places)
+    const rounded = (whole * scale * 2n + unit) / (unit * 2n)
+    const frac = String(rounded % scale).padStart(places, '0')
+    return { rounded, text: `${rounded / scale}.${frac}` }
+  }
+  const lakh = inUnit(100000n, 1)
+  if (whole >= 10000000n || (whole >= 100000n && lakh.rounded >= 1000n)) return `${inUnit(10000000n, 2).text}Cr`
+  if (whole >= 100000n) return `${lakh.text}L`
+  const plain = String(whole) // below 1,00,000: Indian grouping is the last three digits, then pairs
+  return plain.length > 3 ? `${plain.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${plain.slice(-3)}` : plain
+}
+
 /** The lots selector's choices. Lots mode lists 1, 2, 3 ...; quantity mode lists multiples of the lot size the server
  *  sent for that contract (REQ-080 AC-4), none when it sent no usable lot size. `value` is always a whole number of lots. */
 export function lotChoices(mode, lotSize) {
