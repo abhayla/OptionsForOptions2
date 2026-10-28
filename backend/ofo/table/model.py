@@ -451,15 +451,19 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
     # Round-3 fix: sum the UNROUNDED position Greeks across legs, round ONCE at the end (no round-then-scale).
     raw_totals: dict[str, Decimal] = {"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0),
                                        "vega": Decimal(0)}
+    unit_totals: dict[str, Decimal] = {name: Decimal(0) for name in raw_totals}  # GC-UI T-1: per-unit, lot-weighted
+    weights = _lot_weights(legs)
     every_leg_has_greeks = True
-    for leg, given in zip(legs, supplied, strict=True):
+    for leg, weight, given in zip(legs, weights, supplied, strict=True):
         per_unit, _reason = _leg_per_unit_greeks(leg, inputs, given)
         if per_unit is None:
             every_leg_has_greeks = False
             break
         raw_position = _position_greeks(per_unit, leg.action, leg.quantity)
+        signed_unit = _position_greeks(per_unit, leg.action, 1)  # already carries the side's sign: not negated again
         for name in raw_totals:
             raw_totals[name] += getattr(raw_position, name)
+            unit_totals[name] += weight * getattr(signed_unit, name)
     if not every_leg_has_greeks:
         greek_values: dict[str, Decimal | None] = {name: None for name in raw_totals}
         greek_reason = _r("not_all_iv")
@@ -481,13 +485,13 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
         ColumnId.UNREALIZED_PNL: _money(unrealized, ltp_reason),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
-        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason, places=2,
+        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, unit_totals["delta"] if every_leg_has_greeks else None, greek_reason, places=2,
                                     unrounded=None if not every_leg_has_greeks else raw_totals["delta"]),
-        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, None, greek_reason, places=4,
+        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, unit_totals["gamma"] if every_leg_has_greeks else None, greek_reason, places=4,
                                     unrounded=None if not every_leg_has_greeks else raw_totals["gamma"]),
-        ColumnId.THETA: _greek_cell(greek_values["theta"], None, None, greek_reason, places=2,
+        ColumnId.THETA: _greek_cell(greek_values["theta"], None, unit_totals["theta"] if every_leg_has_greeks else None, greek_reason, places=2,
                                     unrounded=None if not every_leg_has_greeks else raw_totals["theta"]),
-        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, None, greek_reason, places=2,
+        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, unit_totals["vega"] if every_leg_has_greeks else None, greek_reason, places=2,
                                     unrounded=None if not every_leg_has_greeks else raw_totals["vega"]),
         ColumnId.DECAY: _total_decay_cell(legs, inputs, decay_until),
     }
@@ -510,16 +514,29 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
     return Row(TOTAL_ROW_ID, cells)
 
 
+def _lot_weights(legs: Sequence[LegInput]) -> list[int]:
+    """GC-UI T-1: each leg's lots divided by the gcd of all lots (quantities share the lot size, so the ratio of
+    quantities is the ratio of lots): a 1:2 ratio strategy weights its second leg x2 in a per-unit total."""
+    from math import gcd  # noqa: PLC0415
+
+    divisor = 0
+    for leg in legs:
+        divisor = gcd(divisor, leg.quantity)
+    return [leg.quantity // divisor if divisor else 1 for leg in legs]
+
+
 def _total_decay_cell(legs: Sequence[LegInput], inputs: ModelInputs, until: datetime.datetime | None) -> Cell:
     """TOTAL Decay: the sum of the legs' UNROUNDED position Decay, rounded once; absent when any leg's is absent
     (never a partial sum): "not every leg has an implied volatility", or no next open."""
     raw = Decimal(0)
-    for leg in legs:
+    per_unit_total = Decimal(0)
+    for leg, weight in zip(legs, _lot_weights(legs), strict=True):
         unit, reason = _leg_unit_decay(leg, inputs, until)
         if unit is None:
             return _greek_cell(None, None, None, _r("not_all_iv") if until is not None else reason, places=2)
         raw += _signed(unit, leg.action, leg.quantity)
-    return _greek_cell(_round_greek(raw), None, None, None, places=2, unrounded=raw)
+        per_unit_total += weight * _signed(unit, leg.action, 1)
+    return _greek_cell(_round_greek(raw), None, per_unit_total, None, places=2, unrounded=raw)
 
 
 def _checked_leg_greeks(inputs: ModelInputs, leg_greeks: Sequence[Greeks | None] | None) -> list[Greeks | None]:
