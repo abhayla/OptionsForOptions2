@@ -11,7 +11,7 @@ Rounding is half-even throughout (to the paisa for money, to the whole unit for 
 from __future__ import annotations
 from ofo.errors.explanations import render_explanation
 
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 from typing import Final, Sequence
 
 from ofo.engine.estimate import EstimatedNow
@@ -60,6 +60,32 @@ def format_points(level: Decimal) -> str:
     step = _WHOLE if value == value.to_integral_value() else _PAISA
     sign, text = _number(value, step)
     return f"{sign}{text}"
+
+
+def format_whole_rupees(amount: Decimal, *, signed: bool) -> str:
+    """REQ-152 AC-1/AC-3/AC-4: a summary money figure in whole rupees, Indian grouping, rounded HALF-UP from the exact
+    Decimal (6025.50 -> ``+6,026``; a loss rounds on its magnitude, -104.50 -> ``−105``). ``signed``: a plus on
+    a positive figure, U+2212 on a negative one; unsigned shows the magnitude only. A figure that rounds to zero is
+    ``0`` with no sign. Display only: the exact Decimal stays in the reply."""
+    value = _finite(amount, "amount")
+    whole = abs(value).quantize(_WHOLE, rounding=ROUND_HALF_UP)
+    if whole == 0:
+        return "0"
+    mark = (MINUS if value < 0 else "+") if signed else ""
+    return mark + _group_indian(f"{whole:f}")
+
+
+def format_breakeven(level: Decimal, spot: Decimal | None) -> str:
+    """REQ-153 AC-1 / REQ-152: a breakeven in whole points with Indian grouping and its signed percent from spot to
+    one decimal, half-up: ``22,688 (−0.1%)``. No usable spot (None or not above 0): the level alone. A percent that
+    rounds to zero is ``0.0%`` with no sign."""
+    value = _finite(level, "level")
+    points = _group_indian(f"{value.quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")
+    if spot is None or _finite(spot, "spot") <= 0:
+        return points
+    moved = ((value - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    mark = "" if moved == 0 else (MINUS if moved < 0 else "+")
+    return f"{points} ({mark}{abs(moved)}%)"
 
 
 def format_approx_rupees(amount: Decimal) -> str:
