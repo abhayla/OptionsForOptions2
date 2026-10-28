@@ -20,7 +20,10 @@ land goal.
 - Step 6: Positions page tabs "Positions" / "Paper"; one shared Paper list (also in the builder's Tracked tab); one
   refresh composable for every paper figure.
 - ofo_dev migrated 0026 -> 0027 (owner role, 11:15 IST).
-- Frontend vitest on 711cc107: 78 files, 1260 passed.
+- Step 8 review, 2 rounds: Opus Tier A backend PASS (4 MINOR fixed: pause on price STATE not price presence; an exit of a
+  not-live contract gets its own refusal 436 instead of "try again"; migration 0027, batch-equivalence and exit-race tests);
+  Sonnet frontend REVISE -> F-4 (builder ignored in-page ?strategy= links) fixed and re-walked live; round 2 PASS.
+- Frontend vitest after the last merge: 78 files, 1270 passed. API restarted on the final code (PID 11976).
 
 ## Gap-list re-verdicts (docs/process/builder-gap-list-2026-10-27.md)
 
@@ -46,6 +49,22 @@ land goal.
    its own `.claude/worktrees/agent-*` tree and was refused git in a tree made for it (commits taken from its branch).
 7. Tooling: builder mutant scripts edited live files in place and wrote CRLF back; the re-run used byte-exact restore
    and counted a mutant killed only on a failed test. Mutants belong on a scratch copy.
+8. Round 2 review MINORs (unverified by run): a slow FAILED open of strategy B can show its error over a later-opened C
+   (`StrategyBuilderPage.vue:276`); after Clear all the URL keeps ?strategy=X, so Open in Builder on X does nothing until
+   a reload (`:282`); an open within one leg-edit round trip can be dropped silently (`:271`); TrackingPanel `start()` has
+   no id guard (A's start reply can show under B for up to 5 s).
+9. Two 5 s paper refresh loops can run on one builder page (panel + Tracked tab): the same strategy's figure can differ
+   for up to 5 s; polling continues while the browser tab is hidden.
+10. `?template=` links inside the builder are not followed by the new URL watcher (read by the Ready-made panel itself).
+
+## For the owner to read (product words, no decision taken here)
+
+- New refusal texts are "pending owner read" in `tests/errors/template_pins.json`: tracking_exit_prices_not_live (433),
+  tracking_leg_already_exited (434), tracking_exit_legs_invalid (435), tracking_exit_contract_not_live (436).
+- Opening another strategy from inside the builder replaces unsaved edits without asking (the Saved tab's Open already
+  did this). A prompt would be a product change.
+- Calendar max profit / loss / breakeven show "can't be estimated" (spec ADR-143 (1)); Sensibull shows a model estimate.
+- The visual-differences table in the contract.
 
 ## OWED AT LAND (not run in this goal, by the owner's rule)
 
@@ -53,6 +72,18 @@ openapi drift check (`generate_openapi.py`; the file was regenerated in 1c9094a7
 positions page (no e2e spec for the Paper tab yet), `ruff_ratchet.py`, `coverage.py . --check`, `prepush.py`, the one
 push, one PR for GC-BM + GC-BP (Spec-deviation block for ADR-201; no closing keywords), CI, `merge.py <pr>
 --reviewed-sha <sha>`, the deferred issues above, migration 0027 through the normal CI/deploy path.
+
+## Worktrees kept (could not be removed in this goal)
+
+All 8 GC-BP builder trees are clean and their commits are on build/gcbm-must-have (checked with
+`git merge-base --is-ancestor`), but `wt-rm.ps1` refuses any branch not merged into main ("100 commit(s) not in main")
+unless `-Discard -MergedSha`, and the contract forbids -Discard. They go at the land goal, after the merge:
+`OptionsForOptions2-gcbp-tab`, `-gcbp-paper`, `-gcbp-r1fe`, `-gcbp-f3` (unused: its builder worked elsewhere),
+`OptionsForOptions2-OptionsForOptions2-gcbp-f2` (doubled name), and agent trees under `.claude/worktrees/`:
+`agent-a3ec8bf2060309c83` (F-3), `agent-a5d7e179a5296faa1` (round 1 backend), `agent-aa781e0a91af4fbef` (steps 4+5,
+locked by the agent tooling). The f2, tab and r1fe trees hold a `frontend/node_modules` JUNCTION to the gcbm tree's
+install: wt-rm deletes it as a link; never `rm -rf` them. The gcbm worktree stays. Dev servers left running for the
+owner: API PID 11976 (port 8765), Vite PID 7980 (port 5174).
 
 ## NEXT
 
