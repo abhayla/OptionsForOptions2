@@ -128,6 +128,15 @@ session; the Status column and the per-row status in the differences document ma
 0, step 1 (core) before anything else; step 2 next (wrong numbers outrank looks); steps 3-6 may run as parallel builders
 only where step 0's overlap list shows no shared file (StrategyBuilderPage.vue layout belongs to step 3); 7-10 last.
 
+## Owner answers during the run
+
+- 2026-10-28 ~15:4x IST (chat + question tool): the order flow stays ADR-165 / ADR-201 - builder trades are paper,
+  never sent to Zerodha, shown on Positions > Paper; real Zerodha positions are imported read-only into Positions;
+  adjustments on both. Recorded as ADR-206 (local); REQ-142 Funds needed held; D-A38 stays parked.
+- Same time: the goal order is kept - finish GC-UI, then B2, B6/B7, B16/B17, LAND, chain, POP, adjustments; the owner
+  sends the first adjustment playbook early. No spec change: an order already recorded in
+  docs/process/goal-contracts-builder-phase-2026-10-27.md.
+
 ## Step 0: overlap list (2026-10-28, from the import graph of `frontend/src`)
 
 Files two or more steps touch, and the rule for each:
