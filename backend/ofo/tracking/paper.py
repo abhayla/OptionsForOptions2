@@ -19,15 +19,20 @@ retired, delisted, its token reassigned to another contract, or missing - is nev
 under its old feed key (a reused token quotes ANOTHER contract). Such a leg carries its reason as its state, pauses the
 view with that reason and stops every detection (the strategy priced is no longer the one tracked).
 
+Paper exit (REQ-109 AC-4; ADR-201 (2)): an exited leg keeps the price it was exited at, and its P&L is BOOKED - the same
+engine function (paper_pnl) with the exit price as that leg's "current" price, so it never moves again. The open legs'
+P&L at live prices is UNBOOKED; total = booked + unbooked, only when unbooked is known (every open leg live). An exited
+leg is never priced, and its contract state no longer pauses the view (its figure is frozen).
+
 A start with any leg not live is refused (PricesNotLive): a guessed price is never stored. The view pauses paper P&L
-when any leg is not live, and computes no detection when the index is not live. A multi-expiry strategy has no exact
+when an open leg is not live, and computes no detection when the index is not live. A multi-expiry strategy has no exact
 breakevens (MultiExpiryError): paper P&L and the short-strike condition still run, the breakeven condition does not.
 Standard library only; no clock is read here.
 """
 from __future__ import annotations
 
 import datetime
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -43,7 +48,9 @@ from ofo.rules.inputs import DataHealth
 
 PriceState = Literal["live", "stale", "missing"]
 ContractReason = Literal["contract_retired", "contract_delisted", "token_reassigned", "contract_missing"]
-LegState = PriceState | ContractReason
+ExitedState = Literal["exited"]
+LegState = PriceState | ContractReason | ExitedState
+EXITED: ExitedState = "exited"
 PauseReason = Literal["prices_not_live"] | ContractReason
 LIVE: PriceState = "live"
 PRICES_NOT_LIVE: PauseReason = "prices_not_live"
@@ -130,6 +137,53 @@ def paper_pnl(legs: Sequence[TrackedLeg], current: Sequence[Decimal]) -> Decimal
     return Strategy(tuple(_engine_leg(leg, c) for leg, c in zip(legs, current, strict=True))).live_pnl()
 
 
+def _subset(legs: Sequence[TrackedLeg], prices: Mapping[int, Decimal]) -> Decimal:
+    if any(i < 0 or i >= len(legs) for i in prices):
+        raise ValueError(f"no such leg among {len(legs)}: {sorted(prices)}")
+    if not prices:
+        return Decimal(0)
+    order = sorted(prices)
+    return paper_pnl([legs[i] for i in order], [prices[i] for i in order])
+
+
+def booked_pnl(legs: Sequence[TrackedLeg], exit_prices: Mapping[int, Decimal]) -> Decimal:
+    """REQ-109 AC-4: the exited legs' paper P&L, each frozen at its exit price (leg index -> exit price); 0 if none."""
+    return _subset(legs, exit_prices)
+
+
+@dataclass(frozen=True)
+class PnlSplit:
+    booked: Decimal
+    unbooked: Decimal | None  # None: an open leg has no live price (REQ-109 AC-5)
+    total: Decimal | None  # booked + unbooked, only when unbooked is known
+
+
+def pnl_split(legs: Sequence[TrackedLeg], open_prices: Mapping[int, Decimal],
+              exit_prices: Mapping[int, Decimal]) -> PnlSplit:
+    """ADR-201 (2): booked (exited legs at their exit price) + unbooked (open legs at ``open_prices``) = total. An open
+    leg missing from ``open_prices`` makes unbooked and total unknown; a leg in both maps is refused."""
+    both = set(open_prices) & set(exit_prices)
+    if both:
+        raise ValueError(f"a leg is either open or exited, and exits once: {sorted(both)}")
+    booked = booked_pnl(legs, exit_prices)
+    unbooked = _subset(legs, open_prices)  # also refuses an unknown index
+    if any(i not in open_prices for i in range(len(legs)) if i not in exit_prices):
+        return PnlSplit(booked, None, None)
+    return PnlSplit(booked, unbooked, booked + unbooked)
+
+
+def exit_prices_now(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg]) -> tuple[Price, ...]:
+    """REQ-109 AC-4/AC-5: each named leg's live price now, on the same basis as the entry; any leg not live refuses
+    the whole exit (PricesNotLive) - a guessed exit price is never stored."""
+    if not legs:
+        raise ValueError("a paper exit needs at least one leg")
+    prices = tuple(leg_price(snapshot, leg.instrument_id) for leg in legs)
+    not_live = [p for p in prices if p.state != LIVE]
+    if not_live:
+        raise PricesNotLive(not_live)
+    return prices
+
+
 def entry_breakevens(legs: Sequence[TrackedLeg]) -> tuple[Decimal, ...] | None:
     """The strategy's at-expiry breakevens on the paper entry prices; None for a multi-expiry strategy (no exact
     ones)."""
@@ -142,34 +196,56 @@ def entry_breakevens(legs: Sequence[TrackedLeg]) -> tuple[Decimal, ...] | None:
 @dataclass(frozen=True)
 class TrackingView:
     paused: bool
-    pause_reason: PauseReason | None  # a contract reason (first leg in order) wins over prices_not_live
-    paper_pnl: Decimal | None  # None when paused (REQ-109 AC-5)
-    as_of: datetime.datetime | None  # paused: the oldest known quote time of a leg not live
+    pause_reason: PauseReason | None  # a contract reason (first open leg in order) wins over prices_not_live
+    paper_pnl: Decimal | None  # the total; None when paused (REQ-109 AC-5)
+    as_of: datetime.datetime | None  # paused: the oldest known quote time of an open leg not live
     legs: tuple[Price, ...]
-    index: Price
-    breakevens: tuple[Decimal, ...] | None  # None: multi-expiry, no exact breakevens
+    index: Price | None  # None only when every leg is exited (no market read)
+    breakevens: tuple[Decimal, ...] | None  # None: multi-expiry (no exact breakevens) or nothing open
     detections: tuple[Detection, ...]  # empty when the index is not live (index.state says why)
+    booked: Decimal = Decimal(0)  # REQ-109 AC-4: exited legs at their exit prices
+    unbooked: Decimal | None = None  # open legs at live prices; None when paused
+    exited: bool = False  # every leg exited: paper_pnl == booked, frozen
 
 
-def tracking_view(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg], threshold_percent: Decimal,
-                  contract_reasons: Sequence[ContractReason | None]) -> TrackingView:
+def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
+                  threshold_percent: Decimal, contract_reasons: Sequence[ContractReason | None],
+                  exit_prices: Mapping[int, Decimal] | None = None) -> TrackingView:
     """``contract_reasons``: per leg, None when its stored contract is live, else why not (module docstring). Required
-    (issue #500): a caller cannot price a leg without having asked the catalogue whether its contract is still live."""
+    (issue #500): a caller cannot price a leg without having asked the catalogue whether its contract is still live.
+    ``exit_prices``: leg index -> its paper exit price; those legs are booked and never priced. ``snapshot`` may be
+    None only when every leg is exited."""
     reasons = tuple(contract_reasons)
     if len(reasons) != len(legs):
         raise ValueError("tracking_view needs one contract answer per leg")
-    prices = tuple(leg_price(snapshot, leg.instrument_id) if reason is None else
-                   Price(leg.instrument_id, reason, None, None) for leg, reason in zip(legs, reasons, strict=True))
-    contract_reason = next((r for r in reasons if r is not None), None)
-    paused = any(p.state != LIVE for p in prices)
-    pnl = None if paused else paper_pnl(legs, [p.price for p in prices])
-    known = [p.at for p in prices if p.state != LIVE and p.at is not None]
+    exits = dict(exit_prices or {})
+    open_legs = [i for i in range(len(legs)) if i not in exits]
+    if snapshot is None and open_legs:
+        raise ValueError("an open leg needs a market snapshot")
+    prices = tuple(_leg_answer(snapshot, leg, reasons[i], i in exits) for i, leg in enumerate(legs))
+    split = pnl_split(legs, {i: prices[i].price for i in open_legs if prices[i].price is not None}, exits)
+    if snapshot is None:
+        return TrackingView(False, None, split.total, None, prices, None, None, (), split.booked, split.unbooked, True)
+    contract_reason = next((reasons[i] for i in open_legs if reasons[i] is not None), None)
+    paused = split.unbooked is None
+    known = [prices[i].at for i in open_legs if prices[i].state != LIVE and prices[i].at is not None]
     index = index_price(snapshot)
-    breakevens = entry_breakevens(legs)
+    still_open = [legs[i] for i in open_legs]
+    breakevens = entry_breakevens(still_open) if still_open else None
     detections: tuple[Detection, ...] = ()
-    if index.state == LIVE and contract_reason is None:
-        detections = detect_near_levels(short_strike_levels=short_strikes(legs), breakevens=breakevens or (),
+    if index.state == LIVE and contract_reason is None and still_open:
+        detections = detect_near_levels(short_strike_levels=short_strikes(still_open), breakevens=breakevens or (),
                                         index_level=index.price, threshold_percent=threshold_percent)
     reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
     as_of = min(known) if paused and known else None
-    return TrackingView(paused, reason, pnl, as_of, prices, index, breakevens, detections)
+    return TrackingView(paused, reason, split.total, as_of, prices, index, breakevens, detections, split.booked,
+                        split.unbooked, not open_legs)
+
+
+def _leg_answer(snapshot: MarketSnapshot | None, leg: TrackedLeg, reason: ContractReason | None,
+                exited: bool) -> Price:
+    if exited:
+        return Price(leg.instrument_id, EXITED, None, None)
+    if reason is not None or snapshot is None:
+        return Price(leg.instrument_id, reason or "missing", None, None)
+    return leg_price(snapshot, leg.instrument_id)

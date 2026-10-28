@@ -916,6 +916,19 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Can't delete: orders were sent",
           "The strategy and its history were not changed.", "Deleting this strategy.",
           "Keep the strategy; its history stays readable."),
+    # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
+    _gate("tracking_exit_prices_not_live", _SV, 433,
+          "Prices are not live; try again when they update.",
+          "No leg was exited and nothing was stored; a paper exit never uses a guessed price.",
+          "Exiting these paper legs.", "Try again when the prices update."),
+    _gate("tracking_leg_already_exited", _SV, 434,
+          "A leg you chose has already been exited on paper.",
+          "No leg was exited and nothing was changed; a paper exit is recorded once per leg.",
+          "Exiting these paper legs.", "Reload the tracking panel and choose only open legs."),
+    _gate("tracking_exit_legs_invalid", _SV, 435,
+          "A leg you chose is not a leg of this tracked strategy, or is listed twice.",
+          "No leg was exited and nothing was stored.", "Exiting these paper legs.",
+          "Reload the tracking panel and choose its open legs."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

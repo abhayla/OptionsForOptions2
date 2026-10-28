@@ -19,6 +19,7 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -29,12 +30,13 @@ from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
+from ofo.strategy import stored_form as sf
 from ofo.tracking import paper
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import strategy_store as store
 from ofo_app import tracked_contracts, tracking_store
-from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
@@ -60,7 +62,14 @@ class TrackingStartIn(BaseModel):
                           description="the saved strategy revision the user started tracking from")
 
 
+class TrackingExitIn(BaseModel):
+    """REQ-109 AC-4: the legs to exit by index; no price (the server reads it). "All open legs" = send them all."""
+    model_config = ConfigDict(extra="forbid")
+    legs: list[Annotated[int, Field(ge=0, le=INTEGER_MAX)]] = Field(min_length=1, max_length=64)
+
+
 class TrackingLegOut(ApiModel):
+    leg_index: int
     instrument_id: InstrumentId
     action: Literal["BUY", "SELL"]
     instrument: Literal["CE", "PE", "FUT"]
@@ -72,6 +81,8 @@ class TrackingLegOut(ApiModel):
     current_price: Money | None
     price_state: paper.LegState
     price_at: datetime.datetime | None
+    exit_price: Money | None  # REQ-109 AC-4: set once the leg is paper-exited (then price_state is "exited")
+    exited_at: datetime.datetime | None
 
 
 class TrackingIndexOut(ApiModel):
@@ -93,19 +104,44 @@ class DetectionOut(ApiModel):
     price_health: PriceStateCode
 
 
+TrackingState = Literal["LIVE", "PAUSED", "NOT_CONNECTED", "EXITED"]
+
+
 class TrackingOut(ApiModel):
     strategy_id: int
     started_at: datetime.datetime
     prices_at: datetime.datetime
-    state: Literal["LIVE", "PAUSED", "NOT_CONNECTED"]
+    state: TrackingState
     pause_reason: paper.PauseReason | None
-    paper_pnl: Money | None
+    paper_pnl: Money | None  # the total = booked + unbooked; None when unbooked is unknown
+    booked: Money  # REQ-109 AC-4 / ADR-201 (2): exited legs at their exit prices; "0.00" when nothing exited
+    unbooked: Money | None  # open legs at live prices; None when paused or not connected
     as_of: datetime.datetime | None
     answered_at: datetime.datetime
     legs: list[TrackingLegOut]
     index: TrackingIndexOut | None
     breakevens: list[Money] | None
     detections: list[DetectionOut]
+
+
+class TrackedStrategyOut(ApiModel):
+    """One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections."""
+    strategy_id: int
+    name: CatalogueText  # REQ-134: quoted user text
+    underlying: Underlying
+    started_at: datetime.datetime
+    state: TrackingState
+    pause_reason: paper.PauseReason | None
+    as_of: datetime.datetime | None
+    total: Money | None
+    booked: Money
+    unbooked: Money | None
+    legs: list[TrackingLegOut]
+
+
+class TrackingListOut(ApiModel):
+    strategies: list[TrackedStrategyOut]
+    answered_at: datetime.datetime
 
 
 def _legs(saved, ids: list[str]) -> list[paper.TrackedLeg]:
@@ -141,28 +177,44 @@ def _money(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
-def _view(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
-          view: paper.TrackingView | None, answered_at: datetime.datetime,
-          reasons: list[paper.ContractReason | None]) -> TrackingOut:
+def _figures(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,
+             reasons: list[paper.ContractReason | None]) -> dict:
+    """The per-leg rows and the paper figures shared by GET /strategies/{id}/tracking and GET /tracking. ``view`` None
+    = not connected: booked is still known (exit prices are stored), unbooked and total are not."""
+    exits = {e.leg_index: e for e in tracking.exits}
     rows = []
     for i, leg in enumerate(legs):
         price = None if view is None else view.legs[i]
-        rows.append({"instrument_id": leg.instrument_id, "action": leg.action.value, "instrument": leg.instrument.value,
-                     "strike": leg.strike, "expiry": leg.expiry, "quantity": leg.quantity,
-                     "entry_price": leg.entry_price, "entry_at": leg.price_at,
-                     "current_price": None if price is None else price.price,
-                     "price_state": (reasons[i] or "missing") if price is None else price.state,
-                     "price_at": None if price is None else price.at})
-    body: dict = {"strategy_id": tracking.strategy_id, "started_at": tracking.started_at,
-                  "prices_at": tracking.prices_at, "answered_at": answered_at, "legs": rows, "detections": []}
+        done = exits.get(i)
+        state = price.state if price is not None else paper.EXITED if done else (reasons[i] or "missing")
+        rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "action": leg.action.value,
+                     "instrument": leg.instrument.value, "strike": leg.strike, "expiry": leg.expiry,
+                     "quantity": leg.quantity, "entry_price": leg.entry_price, "entry_at": leg.price_at,
+                     "current_price": None if price is None else price.price, "price_state": state,
+                     "price_at": None if price is None else price.at,
+                     "exit_price": None if done is None else done.exit_price,
+                     "exited_at": None if done is None else done.exited_at})
     if view is None:
-        return TrackingOut.model_validate(body | {"state": "NOT_CONNECTED", "paper_pnl": None, "as_of": None,
-                                                  "index": None, "breakevens": None,
-                                                  "pause_reason": next((r for r in reasons if r), None)})
+        open_reasons = [r for i, r in enumerate(reasons) if i not in exits]
+        return {"legs": rows, "state": "NOT_CONNECTED", "pause_reason": next((r for r in open_reasons if r), None),
+                "as_of": None, "total": None, "unbooked": None,
+                "booked": _money(paper.booked_pnl(legs, tracking.exit_prices))}
+    state = "EXITED" if view.exited else "PAUSED" if view.paused else "LIVE"
+    return {"legs": rows, "state": state, "pause_reason": view.pause_reason, "as_of": view.as_of,
+            "total": _money(view.paper_pnl), "booked": _money(view.booked), "unbooked": _money(view.unbooked)}
+
+
+def _view(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
+          view: paper.TrackingView | None, answered_at: datetime.datetime,
+          reasons: list[paper.ContractReason | None]) -> TrackingOut:
+    figures = _figures(tracking, legs, view, reasons)
+    body: dict = {"strategy_id": tracking.strategy_id, "started_at": tracking.started_at,
+                  "prices_at": tracking.prices_at, "answered_at": answered_at, "detections": [],
+                  "paper_pnl": figures.pop("total")} | figures
+    if view is None or view.index is None:
+        return TrackingOut.model_validate(body | {"index": None, "breakevens": None})
     index = view.index
-    body["pause_reason"] = view.pause_reason
-    body |= {"state": "PAUSED" if view.paused else "LIVE", "paper_pnl": _money(view.paper_pnl), "as_of": view.as_of,
-             "index": {"underlying": underlying, "level": index.price, "state": index.state, "at": index.at},
+    body |= {"index": {"underlying": underlying, "level": index.price, "state": index.state, "at": index.at},
              "breakevens": None if view.breakevens is None else list(view.breakevens)}
     body["detections"] = [{"kind": PLATFORM_DETECTION, "condition": d.condition, "level": d.level,
                            "index_level": d.index_level, "distance_points": d.distance_points,
@@ -173,15 +225,21 @@ def _view(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], under
 
 async def _entry_legs(db: Any, tracking: tracking_store.Tracking) \
         -> tuple[list[paper.TrackedLeg], list[paper.ContractReason | None]]:
+    """The one tracking's legs (``_legs_of``), its contracts resolved in one batch."""
+    contracts = await tracked_contracts.resolve(db, [row.contract_id for row in tracking.legs])
+    return _legs_of(tracking, contracts)
+
+
+def _legs_of(tracking: tracking_store.Tracking, contracts: Sequence[tracked_contracts.TrackedContract]) \
+        -> tuple[list[paper.TrackedLeg], list[paper.ContractReason | None]]:
     """REQ-109 AC-2 ("from the paper entry prices"): the tracked legs come ONLY from the stored paper entry - each row's
     catalogue contract, side, quantity, entry price and time. The strategy as saved now is never read here, so an edit
-    after the start changes nothing in the tracked figures. Each contract goes through tracked_contracts.resolve: a
+    after the start changes nothing in the tracked figures. Each contract went through tracked_contracts.resolve: a
     leg whose contract is not live keeps its stored terms and its own (old) exchange identity for display, is left out
     of the market read, and carries its reason, so paper.tracking_view never prices it. A tracked row whose contract
     row is missing (contract_missing; the foreign key and the never-delete catalogue forbid it) has no terms to show
     and fails closed: an error, never invented terms."""
     legs = []
-    contracts = await tracked_contracts.resolve(db, [row.contract_id for row in tracking.legs])
     for row, found in zip(tracking.legs, contracts, strict=True):
         if found.stored is None or found.identity is None:
             raise RuntimeError(f"tracked contract id {row.contract_id} has no stored contract row ({found.state})")
@@ -198,12 +256,23 @@ async def _answer(db: Any, stored, tracking: tracking_store.Tracking, ctx: Marke
                   feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime) -> TrackingOut:
     legs, reasons = await _entry_legs(db, tracking)
     underlying = stored.saved.definition.underlying  # fixed for the strategy's life (strategy_store UNDERLYING_FIXED)
+    exits = tracking.exit_prices
+    if len(exits) == len(legs):  # every leg exited: frozen at its exit prices, no market read (EXITED)
+        return _view(tracking, legs, underlying, paper.tracking_view(None, legs, threshold, reasons, exits),
+                     answered_at, reasons)
     if not _connected(ctx):
         return _view(tracking, legs, underlying, None, answered_at, reasons)
-    keys = [leg.instrument_id for leg, reason in zip(legs, reasons, strict=True) if reason is None]
-    snapshot = await _snapshot(ctx, feed, underlying, keys)
-    view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons)
+    snapshot = await _snapshot(ctx, feed, underlying, _open_keys(tracking, legs, reasons))
+    view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
     return _view(tracking, legs, underlying, view, answered_at, reasons)
+
+
+def _open_keys(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg],
+               reasons: list[paper.ContractReason | None]) -> list[str]:
+    """The feed keys to read: open legs whose contract is live (an exited leg is never priced again)."""
+    exits = tracking.exit_prices
+    return [leg.instrument_id for i, (leg, reason) in enumerate(zip(legs, reasons, strict=True))
+            if reason is None and i not in exits]
 
 
 @router.post("/strategies/{strategy_id}/tracking", status_code=201, response_model=TrackingOut)
@@ -256,5 +325,95 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
     if tracking is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     return await _answer(db, stored, tracking, ctx, feed, threshold, now())
+
+
+@router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut)
+async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
+                        db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                        feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                        now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingOut:
+    """REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from
+    the same market context as the start. Any named leg not live refuses the whole exit (nothing stored). The store
+    re-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once."""
+    stored = await _load(db, user_ref, strategy_id)
+    tracking = await tracking_store.load(db, strategy_id)
+    if tracking is None:
+        raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    if len(set(body.legs)) != len(body.legs) or any(i >= len(tracking.legs) for i in body.legs):
+        raise StrategyRefused("tracking_exit_legs_invalid")
+    if set(body.legs) & set(tracking.exit_prices):
+        raise StrategyRefused("tracking_leg_already_exited", Failure.CONFLICT)
+    if not _connected(ctx):
+        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
+    legs, reasons = await _entry_legs(db, tracking)
+    if any(reasons[i] is not None for i in body.legs):
+        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)  # never priced from another contract
+    named = [legs[i] for i in body.legs]
+    snapshot = await _snapshot(ctx, feed, stored.saved.definition.underlying, [leg.instrument_id for leg in named])
+    try:
+        prices = paper.exit_prices_now(snapshot, named)
+    except paper.PricesNotLive:
+        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
+    try:
+        tracking = await tracking_store.exit_legs(db, user_ref, strategy_id,
+                                                  [(i, p.price, p.at) for i, p in zip(body.legs, prices, strict=True)])
+        await db.commit()
+    except store.StrategyStoreError as exc:
+        await db.rollback()
+        if exc.code == tracking_store.ALREADY_EXITED:
+            raise StrategyRefused("tracking_leg_already_exited", Failure.CONFLICT) from None
+        raise refused_answer(exc, 409) from None
+    except Exception:
+        await db.rollback()
+        raise
+    return await _answer(db, stored, tracking, ctx, feed, threshold, now())
+
+
+@router.get("/tracking", response_model=TrackingListOut)
+async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - FastAPI dependencies
+                        user_ref: Annotated[str, Depends(current_user_ref)],
+                        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                        feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                        now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingListOut:
+    """GC-BP step 4: every tracked strategy of the signed-in user (never another user's: the store filters by the
+    strategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost whatever the count (finding
+    F-3): three store queries, one contract batch (two queries), and ONE market read per underlying for all open legs
+    together. A fully exited strategy needs no read. A read failure raises (the house refusal), never a partial list."""
+    rows = await tracking_store.load_all(db, user_ref)
+    contracts = await tracked_contracts.resolve(db, [leg.contract_id for r in rows for leg in r.tracking.legs])
+    built = []
+    start = 0
+    for r in rows:
+        count = len(r.tracking.legs)
+        legs, reasons = _legs_of(r.tracking, contracts[start:start + count])
+        start += count
+        built.append((r, legs, reasons))
+    connected = _connected(ctx)
+    keys: dict[str, list[str]] = {}
+    for r, legs, reasons in built:
+        keys.setdefault(r.underlying, [])
+        keys[r.underlying] += [k for k in _open_keys(r.tracking, legs, reasons) if k not in keys[r.underlying]]
+    snapshots = {}
+    if connected:
+        for underlying, ids in keys.items():
+            if ids or any(len(r.tracking.exit_prices) < len(lg) for r, lg, _ in built if r.underlying == underlying):
+                snapshots[underlying] = await _snapshot(ctx, feed, underlying, ids)  # type: ignore[arg-type]
+    out = []
+    checked = check_threshold(threshold)
+    for r, legs, reasons in built:
+        exits = r.tracking.exit_prices
+        if len(exits) == len(legs):
+            view = paper.tracking_view(None, legs, checked, reasons, exits)
+        elif connected:
+            view = paper.tracking_view(snapshots[r.underlying], legs, checked, reasons, exits)
+        else:
+            view = None
+        figures = _figures(r.tracking, legs, view, reasons)
+        out.append({"strategy_id": r.tracking.strategy_id, "name": sf.shown_name(r.name), "underlying": r.underlying,
+                    "started_at": r.tracking.started_at} | figures)
+    return TrackingListOut.model_validate({"strategies": out, "answered_at": now()})
 
 

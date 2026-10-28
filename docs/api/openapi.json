@@ -5034,6 +5034,145 @@
         "title": "TemplatesOut",
         "type": "object"
       },
+      "TrackedStrategyOut": {
+        "additionalProperties": false,
+        "description": "One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "name",
+          "underlying",
+          "started_at",
+          "state",
+          "pause_reason",
+          "as_of",
+          "total",
+          "booked",
+          "unbooked",
+          "legs"
+        ],
+        "title": "TrackedStrategyOut",
+        "type": "object"
+      },
+      "TrackingExitIn": {
+        "additionalProperties": false,
+        "description": "REQ-109 AC-4: the legs to exit by index; no price (the server reads it). \"All open legs\" = send them all.",
+        "properties": {
+          "legs": {
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "legs"
+        ],
+        "title": "TrackingExitIn",
+        "type": "object"
+      },
       "TrackingIndexOut": {
         "additionalProperties": false,
         "properties": {
@@ -5118,6 +5257,29 @@
             "title": "Entry Price",
             "type": "string"
           },
+          "exit_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price"
+          },
+          "exited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exited At"
+          },
           "expiry": {
             "format": "date",
             "title": "Expiry",
@@ -5136,6 +5298,10 @@
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "type": "string"
+          },
+          "leg_index": {
+            "title": "Leg Index",
+            "type": "integer"
           },
           "price_at": {
             "anyOf": [
@@ -5167,6 +5333,10 @@
                   "contract_missing"
                 ],
                 "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
               }
             ],
             "title": "Price State"
@@ -5188,6 +5358,7 @@
           }
         },
         "required": [
+          "leg_index",
           "instrument_id",
           "action",
           "instrument",
@@ -5198,9 +5369,34 @@
           "entry_at",
           "current_price",
           "price_state",
-          "price_at"
+          "price_at",
+          "exit_price",
+          "exited_at"
         ],
         "title": "TrackingLegOut",
+        "type": "object"
+      },
+      "TrackingListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/TrackedStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies",
+          "answered_at"
+        ],
+        "title": "TrackingListOut",
         "type": "object"
       },
       "TrackingOut": {
@@ -5222,6 +5418,10 @@
               }
             ],
             "title": "As Of"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
           },
           "breakevens": {
             "anyOf": [
@@ -5307,7 +5507,8 @@
             "enum": [
               "LIVE",
               "PAUSED",
-              "NOT_CONNECTED"
+              "NOT_CONNECTED",
+              "EXITED"
             ],
             "title": "State",
             "type": "string"
@@ -5315,6 +5516,17 @@
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
           }
         },
         "required": [
@@ -5324,6 +5536,8 @@
           "state",
           "pause_reason",
           "paper_pnl",
+          "booked",
+          "unbooked",
           "as_of",
           "answered_at",
           "legs",
@@ -7755,6 +7969,56 @@
         "summary": "Start Tracking"
       }
     },
+    "/strategies/{strategy_id}/tracking/exit": {
+      "post": {
+        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start. Any named leg not live refuses the whole exit (nothing stored). The store\nre-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once.",
+        "operationId": "exit_tracking_strategies__strategy_id__tracking_exit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingExitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exit Tracking"
+      }
+    },
     "/strategies/{strategy_id}/undelete": {
       "post": {
         "description": "Undo of a delete: the same strategy comes back (REQ-070 AC-6).",
@@ -7852,6 +8116,25 @@
           }
         },
         "summary": "Confirm Version"
+      }
+    },
+    "/tracking": {
+      "get": {
+        "description": "GC-BP step 4: every tracked strategy of the signed-in user (never another user's: the store filters by the\nstrategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost whatever the count (finding\nF-3): three store queries, one contract batch (two queries), and ONE market read per underlying for all open legs\ntogether. A fully exited strategy needs no read. A read failure raises (the house refusal), never a partial list.",
+        "operationId": "list_tracking_tracking_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tracking"
       }
     }
   }

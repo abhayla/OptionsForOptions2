@@ -35,7 +35,14 @@ from typing import Any, Literal
 from ofo.instruments.models import InstrumentId
 from ofo.tracking.paper import ContractReason
 
-from ofo_app.catalogue_store import CatalogueStoreError, StoredContract, live_contract_id, load_contract
+from ofo_app.catalogue_store import (
+    CatalogueStoreError,
+    StoredContract,
+    live_contract_id,
+    live_contract_ids,
+    load_contract,
+    load_contracts,
+)
 
 ContractState = Literal["live"] | ContractReason
 LIVE: ContractState = "live"
@@ -93,9 +100,34 @@ async def resolve_one(db: Any, contract_id: int) -> TrackedContract:
     return TrackedContract(contract_id, await _state(db, stored), stored)
 
 
+def _state_of(stored: StoredContract, holder: int | None) -> ContractState:
+    """``_state`` with the live holder already read (the same rules, in the same order)."""
+    if stored.retired:
+        return "contract_retired"
+    if holder is not None and holder != stored.contract_id:
+        return "token_reassigned"
+    if stored.delisted:
+        return "contract_delisted"
+    return LIVE if holder == stored.contract_id else "contract_missing"
+
+
 async def resolve(db: Any, contract_ids: Sequence[int]) -> tuple[TrackedContract, ...]:
-    """Each stored contract's answer, in order (module docstring)."""
-    return tuple([await resolve_one(db, cid) for cid in contract_ids])
+    """Each stored contract's answer, in order (module docstring), in TWO queries whatever the count (GC-BP F-3: the
+    tracking list resolves every tracked leg of every strategy at once): the stored rows, then the live holder of each
+    non-retired row's (segment, token). Same answers as ``resolve_one`` per id."""
+    found = await load_contracts(db, contract_ids)
+    stored = {cid: s for cid, s in found.items() if isinstance(s, StoredContract)}
+    keys = {cid: InstrumentId(s.listed.contract.exchange_segment, s.listed.contract.exchange_token)
+            for cid, s in stored.items() if not s.retired}
+    holders = await live_contract_ids(db, keys.values())
+    out = []
+    for cid in contract_ids:
+        s = stored.get(cid)
+        if s is None:
+            out.append(TrackedContract(cid, "contract_missing", None))
+        else:
+            out.append(TrackedContract(cid, _state_of(s, holders.get(keys[cid]) if cid in keys else None), s))
+    return tuple(out)
 
 
 def reasons(contracts: Sequence[TrackedContract]) -> list[ContractReason | None]:

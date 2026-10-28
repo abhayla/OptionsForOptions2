@@ -1587,6 +1587,18 @@
     "sha256": "abf645a78fb7af6b73038aae355c38b7a00df76aedcc39021aeb19bb48c02197",
     "reviewed": "pending owner read"
   },
+  "tracking_exit_prices_not_live": {
+    "sha256": "8e9b743393a8285037720b57610cc24635474f33cd191315aaaf8dee44f941ba",
+    "reviewed": "pending owner read"
+  },
+  "tracking_leg_already_exited": {
+    "sha256": "c783f34e6bd727d57dfb4efa9c65919ed1f078077f4215dbb179c7c4130764c7",
+    "reviewed": "pending owner read"
+  },
+  "tracking_exit_legs_invalid": {
+    "sha256": "3e60adb95ec23f5d16c624ccfd43f57f5d678d6a9ded832127f3ba216370da9f",
+    "reviewed": "pending owner read"
+  },
   "explanation:money_premium_get": {
     "sha256": "d042c6c69b5beffa75cb4876d4a37f7a094f198d8c7b38af1aa30a104c8a3d8a",
     "reviewed": "pending owner read"
