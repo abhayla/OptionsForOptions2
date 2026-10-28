@@ -15,7 +15,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "101.55",
+    "ltp_display": "101.55",
     "planned_entry": "101.55",
+    "planned_entry_display": "101.55",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1322600CE"
@@ -33,7 +35,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "178.25",
+    "ltp_display": "178.25",
     "planned_entry": "178.25",
+    "planned_entry_display": "178.25",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1922600CE"
@@ -206,6 +210,7 @@
     "amount": "4985.50",
     "amount_display": "4,986",
     "per_unit": "76.70",
+    "per_unit_display": "76.70",
     "reason": null,
     "side": "pay",
     "text": "Pay ₹4,985.50"
@@ -1907,7 +1912,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "101.55",
+    "ltp_display": "101.55",
     "planned_entry": "101.55",
+    "planned_entry_display": "101.55",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1322600CE"
@@ -1925,7 +1932,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "178.25",
+    "ltp_display": "178.25",
     "planned_entry": "178.25",
+    "planned_entry_display": "178.25",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1922600CE"
@@ -2232,6 +2241,7 @@
     "amount": "4985.50",
     "amount_display": "4,986",
     "per_unit": "76.70",
+    "per_unit_display": "76.70",
     "reason": null,
     "side": "pay",
     "text": "Pay ₹4,985.50"
@@ -3933,7 +3943,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "101.55",
+    "ltp_display": "101.55",
     "planned_entry": "101.55",
+    "planned_entry_display": "101.55",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1322600CE"
@@ -3951,7 +3963,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "39.15",
+    "ltp_display": "39.15",
     "planned_entry": "39.15",
+    "planned_entry_display": "39.15",
     "quantity": 65,
     "strike": "22800",
     "symbol": "NIFTY26O1322800CE"
@@ -4273,6 +4287,7 @@
     "amount": "4056.00",
     "amount_display": "4,056",
     "per_unit": "62.40",
+    "per_unit_display": "62.40",
     "reason": null,
     "side": "pay",
     "text": "Pay ₹4,056.00"
@@ -6016,7 +6031,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "101.55",
+    "ltp_display": "101.55",
     "planned_entry": "101.55",
+    "planned_entry_display": "101.55",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1322600CE"
@@ -6034,7 +6051,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": "39.15",
+    "ltp_display": "39.15",
     "planned_entry": "39.15",
+    "planned_entry_display": "39.15",
     "quantity": 65,
     "strike": "22800",
     "symbol": "NIFTY26O1322800CE"
@@ -6356,6 +6375,7 @@
     "amount": "4056.00",
     "amount_display": "4,056",
     "per_unit": "62.40",
+    "per_unit_display": "62.40",
     "reason": null,
     "side": "pay",
     "text": "Pay ₹4,056.00"
@@ -8100,7 +8120,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": null,
+    "ltp_display": null,
     "planned_entry": "101.55",
+    "planned_entry_display": "101.55",
     "quantity": 65,
     "strike": "22600",
     "symbol": "NIFTY26O1322600CE"
@@ -8118,7 +8140,9 @@
     "lot_size": 65,
     "lots": 1,
     "ltp": null,
+    "ltp_display": null,
     "planned_entry": "39.15",
+    "planned_entry_display": "39.15",
     "quantity": 65,
     "strike": "22800",
     "symbol": "NIFTY26O1322800CE"
@@ -8429,6 +8453,7 @@
     "amount": "4056.00",
     "amount_display": "4,056",
     "per_unit": "62.40",
+    "per_unit_display": "62.40",
     "reason": null,
     "side": "pay",
     "text": "Pay ₹4,056.00"
