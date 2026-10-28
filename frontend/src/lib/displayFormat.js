@@ -46,6 +46,23 @@ export function daysByExpiry(list) {
   return Object.fromEntries((Array.isArray(list) ? list : []).filter((x) => typeof x?.expiry === 'string').map((x) => [x.expiry, x.days]))
 }
 
+const commaless = (t) => String(t ?? '').replace(/,/g, '').trim()
+
+/** D-B29 / D-B30 / D-B39 (REQ-146 AC-5, REQ-151, ADR-204): the instrument as Sensibull prints it, "1 x 3 Nov 22600 CE".
+ *  `lots` is the server's own whole-lot count for the leg (the reply's `lots`; the browser divides nothing, ADR-008), or
+ *  null when the reply did not give one for this row: then the quantity form "100 units 3 Nov 22600 CE" is printed
+ *  (never a fraction of a lot, never a guessed count). A FUT leg has no strike or CE/PE: "1 x 3 Nov FUT"; an option
+ *  leg without a strike prints "-" there. A date that is not a date stays as sent. `parts` are the table's display texts
+ *  (quantity, expiry, strike, instrument). */
+export function instrumentText(parts, lots) {
+  const qty = commaless(parts?.quantity)
+  const head = Number.isInteger(lots) && lots > 0 ? `${lots} x` : /^\d+$/.test(qty) ? `${qty} units` : ''
+  const type = parts?.instrument ?? ''
+  const strike = type === 'FUT' ? '' : (strikeLabel(commaless(parts?.strike)) || '-')
+  const day = expiryText(parts?.expiry) ?? parts?.expiry ?? ''
+  return [head, day, strike, type].filter(Boolean).join(' ')
+}
+
 /** The leg's contract name: '<UNDERLYING> <D Mon> <strike> <CE|PE>', or '<UNDERLYING> <D Mon> FUT'. Built from underlying,
  *  expiry, strike and type only; never from an instrument id or a broker trading symbol. A leg missing any of them shows
  *  CONTRACT_UNAVAILABLE. The type is `instrument_type` (picker legs) or `instrument` (outcome answer legs). */

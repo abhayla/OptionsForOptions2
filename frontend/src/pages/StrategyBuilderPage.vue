@@ -722,7 +722,7 @@ const pricesStamp = computed(() => {
             </template>
           </ChartCard>
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
+          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" :legs="data.legs ?? null" />
         </div>
       </div>
     </div>

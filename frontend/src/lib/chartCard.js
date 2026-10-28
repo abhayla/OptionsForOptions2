@@ -3,7 +3,9 @@
 // nothing is summed, scaled, interpolated or derived here (ADR-008). A view whose columns the reply does not carry
 // returns null, and the screen shows an empty state instead of a placeholder number.
 import { isCurrentColumn } from '@/lib/strategyTable'
-import { expiryText, strikeLabel } from '@/lib/displayFormat'
+import { instrumentText, strikeLabel } from '@/lib/displayFormat'
+
+export { instrumentText }
 
 export const TOTAL_ROW_ID = 'TOTAL'
 
@@ -34,21 +36,6 @@ const hasColumns = (table, ids) => {
 }
 
 const commaless = (t) => String(t ?? '').replace(/,/g, '').trim()
-
-/** D-B29 / D-B30 / D-B39 (REQ-146 AC-5, REQ-151, ADR-204): the instrument as Sensibull prints it, "1 x 3 Nov 22600 CE".
- *  `lots` is the server's own whole-lot count for the leg (the reply's `lots`; the browser divides nothing, ADR-008), or
- *  null when the reply did not give one for this row: then the quantity form "100 units 3 Nov 22600 CE" is printed
- *  (never a fraction of a lot, never a guessed count). A FUT leg has no strike or CE/PE: "1 x 3 Nov FUT"; an option
- *  leg without a strike prints "-" there. A date that is not a date stays as sent. `parts` are the table's display texts
- *  (quantity, expiry, strike, instrument). */
-export function instrumentText(parts, lots) {
-  const qty = commaless(parts?.quantity)
-  const head = Number.isInteger(lots) && lots > 0 ? `${lots} x` : /^\d+$/.test(qty) ? `${qty} units` : ''
-  const type = parts?.instrument ?? ''
-  const strike = type === 'FUT' ? '' : (strikeLabel(commaless(parts?.strike)) || '-')
-  const day = expiryText(parts?.expiry) ?? parts?.expiry ?? ''
-  return [head, day, strike, type].filter(Boolean).join(' ')
-}
 
 /** The whole-lot count the reply sent for a table row: the row's `leg` number is the 1-based place in the reply's legs.
  *  Trusted only when side, type, expiry, strike and quantity text all agree with the row; otherwise null. */
