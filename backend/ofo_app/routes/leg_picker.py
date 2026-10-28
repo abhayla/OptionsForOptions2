@@ -594,7 +594,8 @@ def _held_after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.date
         return None
     depth, stats = held
     day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
-    own_at = feed.ctx.provider.held_quote_time(instrument_id, read_at)  # ADR-200 (4): the quote's own time, never a frame's
+    # ADR-200 (4): the quote's own time, never a frame's
+    own_at = feed.ctx.provider.held_quote_time(instrument_id, read_at)
     return _depth_out(instrument_id, depth, day, read_at, market_closed=True, last_price_at=own_at)
 
 

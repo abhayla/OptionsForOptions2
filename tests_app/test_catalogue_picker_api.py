@@ -267,7 +267,8 @@ async def _default_at(monkeypatch: pytest.MonkeyPatch, today: date, at: dt, list
 
 
 async def _default_for(monkeypatch: pytest.MonkeyPatch, today: date, hour: int, listed: list[date], name="NIFTY"):
-    return await _default_at(monkeypatch, today, dt(today.year, today.month, today.day, hour, 0, tzinfo=IST_TZ), listed, name)
+    at = dt(today.year, today.month, today.day, hour, 0, tzinfo=IST_TZ)
+    return await _default_at(monkeypatch, today, at, listed, name)
 
 
 EXPIRY_DAY = date(2026, 10, 27)  # a Tuesday, a NIFTY expiry
@@ -300,7 +301,8 @@ async def test_default_expiry_boundaries_come_from_the_market_calendar(monkeypat
 async def test_default_expiry_on_a_saturday_is_the_next_one(monkeypatch) -> None:
     saturday = date(2026, 10, 31)  # nothing trades: a listed date of today is never the default
     at = dt(2026, 10, 31, 10, 0, tzinfo=IST_TZ)
-    assert (await _default_at(monkeypatch, saturday, at, [saturday, date(2026, 11, 3)]))["default_expiry"] == "2026-11-03"
+    answer = await _default_at(monkeypatch, saturday, at, [saturday, date(2026, 11, 3)])
+    assert answer["default_expiry"] == "2026-11-03"
 
 
 async def test_default_expiry_is_null_for_an_empty_list_or_only_todays_expiry(monkeypatch) -> None:
