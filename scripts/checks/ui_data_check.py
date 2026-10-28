@@ -41,7 +41,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_UP, Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_UP, Decimal
 from pathlib import Path
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -152,6 +152,150 @@ def D(v) -> Decimal | None:
 
 def money(v, mode=ROUND_HALF_UP) -> Decimal:
     return Decimal(str(v)).quantize(PAISA, rounding=mode)
+
+
+# ---------------------------------------------------------------- display strings (this checker's OWN formatting)
+
+MINUS_SIGN = "\N{MINUS SIGN}"  # the server's minus on summary money and breakevens (REQ-152)
+DASH = "—"  # what a cell prints for "no value"
+
+
+def _indian(whole: str) -> str:
+    """Indian grouping of a digit string: last three digits, then pairs ("1,89,000")."""
+    head, tail = whole[:-3], whole[-3:]
+    groups = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        groups.insert(0, head)
+    return ",".join([*groups, tail])
+
+
+def display_whole(value: Decimal, signed: bool) -> str:
+    """REQ-152 AC-1..AC-4: whole rupees, half-up on the magnitude, Indian grouping; signed: plus on a profit, U+2212 on
+    a loss; a figure that rounds to zero is "0" with no sign."""
+    whole = abs(value).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    if whole == 0:
+        return "0"
+    mark = (MINUS_SIGN if value < 0 else "+") if signed else ""
+    return mark + _indian(f"{whole:f}")
+
+
+def display_breakeven(level: Decimal, spot: Decimal | None) -> str:
+    """REQ-153 AC-1: the level in whole points with its signed percent from spot to one decimal ("22,688 (-0.1%)");
+    zero percent is "0.0" with no sign; no usable spot: the level alone."""
+    text = _indian(f"{level.quantize(Decimal(1), rounding=ROUND_HALF_UP):f}")
+    if spot is None or spot <= 0:
+        return text
+    pct = ((level - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    shown = "0.0" if pct == 0 else (MINUS_SIGN if pct < 0 else "+") + f"{abs(pct):f}"
+    return f"{text} ({shown}%)"
+
+
+GREEK_PLACES = {"delta": 2, "gamma": 4, "theta": 2, "vega": 2}
+
+
+def display_cell(kind: str, value: Decimal, half_down: bool = False) -> str:
+    """REQ-145 AC-3 / GC-UI round 2b: IV as a percent with two decimals ("0.183667" -> "18.37%"); delta, theta, vega
+    2 dp, gamma 4 dp, half-up (`half_down`: the other neighbour of an exact half step); never "-0.00"."""
+    mode = ROUND_HALF_DOWN if half_down else ROUND_HALF_UP
+    if kind == "iv":
+        return f"{_plain((value * 100).quantize(Decimal('0.01'), rounding=mode))}%"
+    return _plain(value.quantize(Decimal(1).scaleb(-GREEK_PLACES[kind]), rounding=mode))
+
+
+def _plain(q: Decimal) -> str:
+    return f"{abs(q):f}" if q == 0 else f"{q:f}"
+
+
+def _is_half_step(value: Decimal, places: int) -> bool:
+    """True when `value` lies exactly on the half step of `places` decimals. The server rounds the position figure
+    from its unrounded value and the reply carries it at 4 dp, so a 4 dp tie may have been rounded either way."""
+    scaled = abs(value) * Decimal(10) ** places
+    return scaled - scaled.to_integral_value(rounding=ROUND_FLOOR) == Decimal("0.5")
+
+
+def check_text(rep, name, shown, exact, expected, also=()):
+    """One display string against its exact figure: exact text, tolerance 0. Answer states: text present and equal;
+    both null (a dash counts as null) = match; null text while the exact exists = mismatch (missing text); a text
+    while there is no exact = mismatch. `also`: other texts accepted for an exact half step."""
+    fig = Figure(name, shown, expected)
+    if exact is None:
+        fig.verdict = MATCH if shown in (None, DASH) else MISMATCH
+        fig.note = "" if fig.verdict == MATCH else "text shown where the reply has no exact figure"
+    elif shown is None:
+        fig.verdict, fig.note = MISMATCH, "missing text: the exact figure exists but its display is null"
+    else:
+        fig.verdict = MATCH if shown == expected or shown in also else MISMATCH
+        if fig.verdict == MATCH and shown != expected:
+            fig.note = "exact half step at the 4 dp print: either rounding accepted"
+    rep.figures.append(fig)
+    return fig
+
+
+def check_displays(rep, view, reply) -> int:
+    """Every server display string of an outcome reply against its exact figure, formatted by this file's own rules.
+    Returns the figures added."""
+    n0 = len(rep.figures)
+    s, m = reply.get("summary"), reply.get("margin")
+    if s is not None:
+        for key, base, signed, neg in (
+            ("max_profit_display", "max_profit", True, False),
+            ("max_loss_display", "max_loss", True, True),
+            ("time_value_display", "time_value", True, False),
+            ("intrinsic_value_display", "intrinsic_value", True, False),
+        ):
+            ex = D(s.get(base))
+            exp = None if ex is None else display_whole(-ex if neg else ex, signed)
+            check_text(rep, f"[{view}] summary.{key}", s.get(key), ex, exp)
+        bes, shown = s.get("breakevens") or [], s.get("breakevens_display") or []
+        spot = D(reply.get("spot_level"))
+        for i in range(max(len(bes), len(shown))):
+            ex = D(bes[i]) if i < len(bes) else None
+            exp = None if ex is None else display_breakeven(ex, spot)
+            check_text(rep, f"[{view}] summary.breakevens_display[{i}]", shown[i] if i < len(shown) else None, ex, exp)
+        np_ = s.get("net_premium")
+        if np_ is not None:
+            ex = D(np_.get("amount"))
+            check_text(
+                rep,
+                f"[{view}] summary.net_premium.amount_display",
+                np_.get("amount_display"),
+                ex,
+                None if ex is None else display_whole(ex, False),
+            )
+    if m is not None:
+        for base in ("needed", "broker_needed", "available"):
+            ex = D(m.get(base))
+            check_text(
+                rep,
+                f"[{view}] margin.{base}_display",
+                m.get(f"{base}_display"),
+                ex,
+                None if ex is None else display_whole(ex, False),
+            )
+    for row in (reply.get("table") or {}).get("rows") or []:
+        who = "TOTAL" if row.get("row_id") == "TOTAL" else f"leg{row.get('row_id')}"
+        for kind in ("iv", *GREEK_KEYS):
+            cell = (row.get("cells") or {}).get(kind)
+            if cell is None:
+                continue
+            for field_, shown_key in (("value", "display"), ("per_unit", "per_unit_display")):
+                if field_ == "per_unit" and kind == "iv":
+                    continue
+                ex = D(cell.get(field_))
+                places = GREEK_PLACES.get(kind, 4)
+                tie = kind != "iv" and ex is not None and places < 4 and _is_half_step(ex, places)
+                check_text(
+                    rep,
+                    f"[{view}] {who} {kind} {shown_key}",
+                    cell.get(shown_key),
+                    ex,
+                    None if ex is None else display_cell(kind, ex),
+                    also=(display_cell(kind, ex, half_down=True),) if tie else (),
+                )
+    return len(rep.figures) - n0
 
 
 # ---------------------------------------------------------------- Black-Scholes-Merton (own implementation)
@@ -413,6 +557,7 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     for view, reply in (("estimated_now", est), ("at_expiry", atx)):
         if (reply or {}).get("state") == "COMPUTED":
             check_per_unit_signs(rep, view, reply)
+            check_displays(rep, view, reply)
     legs = est.get("legs") or []
     for i, leg in enumerate(legs):
         for key in ("strike", "expiry", "quantity", "planned_entry", "instrument", "action"):
