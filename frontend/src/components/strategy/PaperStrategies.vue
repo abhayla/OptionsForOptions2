@@ -62,7 +62,7 @@
                   <td data-testid="paper-instrument"><span class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ l.action === 'Buy' ? 'B' : l.action === 'Sell' ? 'S' : l.action }}</span> <span>{{ instrumentCell(l) }}</span></td>
                   <td data-testid="paper-qty">{{ qtyText(l) }}</td>
                   <td>{{ l.entry }}</td>
-                  <td>{{ l.exited ? `Exited at ${l.exitPrice}` : (l.current ?? '-') }}</td>
+                  <td>{{ l.exited ? `Exited at ${l.exitPrice ?? NO_FIGURE}` : (l.current ?? '-') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -106,8 +106,8 @@ const figures = [
 ]
 // D-C53 (REQ-109 AC-2, REQ-152 AC-4): the server's text to the paisa; a true zero has no sign, a missing figure is a dash
 // (the reason is the state line under the header). D-C54: the colour follows the server's sign, read from its text.
-const pnlText = (v) => (v === null || v === undefined ? NO_FIGURE : /^[+-]0\.00$/.test(v) ? '0.00' : v)
-const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, ''))] ?? ''
+const pnlText = (v) => (v === null || v === undefined ? NO_FIGURE : v) // the server's text, printed as sent
+const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, '').replace('−', '-'))] ?? ''
 // D-C48: "3 Nov 23000 CE" (a FUT leg "3 Nov FUT"); the Qty is signed from the server's side, nothing is computed
 const instrumentCell = (l) => instrumentText({ expiry: l.expiry, strike: l.strike, instrument: l.instrument }, null)
 const qtyText = (l) => (l.action === 'Sell' ? `-${l.quantity}` : `${l.quantity}`)

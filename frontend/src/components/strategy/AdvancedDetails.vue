@@ -20,8 +20,8 @@ defineProps({ rows: { type: Array, required: true }, nameOf: { type: Function, r
         <tbody>
           <tr v-for="r in rows" :key="r.instrument_id" :data-leg="r.instrument_id">
             <td class="pr-4" data-testid="adv-symbol">{{ nameOf(r) }}</td>
-            <td class="pr-4" data-testid="adv-bid">{{ r.bid_display ?? missingReason(r, 'bid') }}</td>
-            <td class="pr-4" data-testid="adv-ask">{{ r.ask_display ?? missingReason(r, 'ask') }}</td>
+            <td class="pr-4" data-testid="adv-bid">{{ r.bid_display ?? missingReason(r, 'bid') ?? '—' }}</td>
+            <td class="pr-4" data-testid="adv-ask">{{ r.ask_display ?? missingReason(r, 'ask') ?? '—' }}</td>
             <td data-testid="adv-health">{{ r.health ? (healthSentence(r.health) ?? 'Available') : healthSentence(null) }}</td>
           </tr>
         </tbody>

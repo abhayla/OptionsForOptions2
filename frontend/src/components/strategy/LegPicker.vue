@@ -255,10 +255,12 @@ const oiBarWidth = (v) => barWidthOf(v, maxOi.value)
 const TABS = Object.freeze([['straddles', 'Straddles'], ['strangles', 'Strangles'], ['strikes', 'Strikes'], ['futures', 'Futures']])
 const TYPE_NAME = Object.freeze({ straddles: 'Straddles', strangles: 'Strangles', strikes: 'Strikes' })
 const pickType = ref('strikes') // the type the current picks were made under (kept while the Futures tab is open)
+const syntheticInfoText = `${FORWARD_LABEL}: the price a future would have for an expiry, from put-call parity or, when a chain has too few prices, estimated from spot.`
 const pendingTab = ref(null) // the type change waiting for Proceed / Cancel
 const typeSide = ref('SELL') // Straddles / Strangles: Buy or Sell both legs (the existing quick-pick `side`)
 const quickError = ref('')
 function selectTab(next) {
+  pendingTab.value = null // a click on any tab cancels a change still waiting for Proceed (the picks stay)
   if (next === tab.value) return
   if (next in TYPE_NAME && next !== pickType.value && pickedCount.value > 0) {
     pendingTab.value = next
@@ -839,11 +841,12 @@ defineExpose({ startEdit, showStrikes })
           <!-- D-C32 (S-034): the section is "Synthetic Futures" with an (i); each row is the forward used for pricing that
                expiry (ADR-061 source labels kept). B / S on a synthetic future is Later: none here. -->
           <h3 class="mt-3 flex items-center gap-1 text-xs font-semibold text-ink-muted" data-testid="synthetic-title">Synthetic Futures
-            <span
-              class="cursor-help rounded-full border border-line px-1 text-[10px]" tabindex="0" role="img" aria-label="About synthetic futures"
-              :title="`${FORWARD_LABEL}: the price a future would have for an expiry, from put-call parity or, when a chain has too few prices, estimated from spot.`"
+            <button
+              type="button" class="cursor-help rounded-full border border-line px-1 text-[10px]" aria-label="About synthetic futures"
+              aria-describedby="synthetic-info-text" :title="syntheticInfoText"
               data-testid="synthetic-info"
-            >i</span>
+            >i</button>
+            <span id="synthetic-info-text" class="sr-only" data-testid="synthetic-info-text">{{ syntheticInfoText }}</span>
           </h3>
           <ul class="mt-1" data-testid="forwards-list">
             <li v-for="f in futuresData.forwards" :key="f.expiry" class="flex flex-wrap items-center gap-1 border-b border-line py-1" data-testid="forward-row" :data-expiry="f.expiry" :data-source="f.source ?? ''">

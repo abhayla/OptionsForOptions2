@@ -43,3 +43,4 @@ def test_the_net_premium_per_unit_carries_its_text() -> None:
     assert _net_premium(premium)["per_unit_display"] == "1.50"
     empty = SimpleNamespace(amount=None, side=None, per_unit=None, text=None, reason="x")
     assert _net_premium(empty)["per_unit_display"] is None
+

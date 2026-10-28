@@ -148,6 +148,11 @@ class TrackedStrategyOut(ApiModel):
     total: Money | None
     booked: Money
     unbooked: Money | None
+    # REQ-109 AC-2 / REQ-152 AC-4: the server's own text of each figure, to the paisa, signed; a true zero is "0.00"
+    # with no sign. The browser prints these as sent and forms no money text (ADR-008).
+    total_text: CatalogueText | None
+    booked_text: CatalogueText | None
+    unbooked_text: CatalogueText | None
     legs: list[TrackingLegOut]
 
 
@@ -437,8 +442,10 @@ async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - 
         else:
             view = None
         figures = _figures(r.tracking, legs, view, reasons)
+        texts = {f"{k}_text": None if figures[k] is None else render_explanation("summary_paisa_signed", amount=figures[k])
+                 for k in ("total", "booked", "unbooked")}
         out.append({"strategy_id": r.tracking.strategy_id, "name": sf.shown_name(r.name), "underlying": r.underlying,
-                    "started_at": r.tracking.started_at} | figures)
+                    "started_at": r.tracking.started_at} | figures | texts)
     return TrackingListOut.model_validate({"strategies": out, "answered_at": now()})
 
 

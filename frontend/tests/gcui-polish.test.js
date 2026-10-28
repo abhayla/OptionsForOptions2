@@ -23,6 +23,7 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import StrategyPriceChart from '@/components/strategy/StrategyPriceChart.vue'
 import CONDOR from './fixtures/outcome-money-condor.json'
+import { withPriceTexts } from './_priceTexts'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 beforeEach(() => {
@@ -115,7 +116,7 @@ describe('D-A22: action row buttons of equal width', () => {
 describe('D-C41 / D-C54 / D-7a: the Paper tab', () => {
   const leg = (i) => ({ leg_index: i, instrument_id: `NSE_FO:${i}`, action: 'BUY', instrument: 'CE', strike: '22600.00', expiry: '2026-11-03', quantity: 65,
     entry_price: '114.25', current_price: '113.60', price_state: 'live', exit_price: null })
-  const item = (id, over = {}) => ({ strategy_id: id, name: `"P ${id}"`, underlying: 'NIFTY', state: 'LIVE', pause_reason: null, as_of: null,
+  const item = (id, over = {}) => withPriceTexts({ strategy_id: id, name: `"P ${id}"`, underlying: 'NIFTY', state: 'LIVE', pause_reason: null, as_of: null,
     total: '2808.00', booked: '0.00', unbooked: '2808.00', legs: [leg(0)], ...over })
   async function show(items, compact = false) {
     answers['GET /tracking'] = () => Promise.resolve({ data: { strategies: items, answered_at: '2026-10-28T06:00:00Z' } })

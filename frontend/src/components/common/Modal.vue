@@ -9,6 +9,8 @@ import { trapTab } from "./focusTrap.js";
 const props = defineProps({
   open: { type: Boolean, required: true },
   title: { type: String, required: true },
+  // where focus goes on close when the opener is hidden by then (a menu item the menu hides): a visible element
+  fallbackFocus: { type: String, default: "" },
 });
 // W-195 review 1: the root is teleported to <body>, so a sticky or transformed ancestor (the Builder's left column)
 // can never trap it under another stacking context; attributes go to the root element, not the teleport.
@@ -26,8 +28,10 @@ watch(
       returnTo = document.activeElement;
       await nextTick();
       dialog.value?.focus();
-    } else if (returnTo && typeof returnTo.focus === "function") {
-      returnTo.focus();
+    } else {
+      const visible = returnTo && returnTo.isConnected && (returnTo.offsetParent !== null || returnTo.getClientRects().length > 0);
+      const target = visible ? returnTo : props.fallbackFocus ? document.querySelector(props.fallbackFocus) : returnTo;
+      if (target && typeof target.focus === "function") target.focus();
       returnTo = null;
     }
   },

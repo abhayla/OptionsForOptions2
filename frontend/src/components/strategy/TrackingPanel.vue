@@ -36,7 +36,7 @@
               </span>
             </td>
             <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.entry }}</td>
-            <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.exitPrice !== null ? `Exited at ${leg.exitPrice}` : (leg.current ?? '-') }}</td>
+            <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</td>
             <!-- GC-UI b2 D-B48: the server's per-leg paper P&L text (booked legs say so), "—" when it sent none -->
             <td class="py-1.5 pl-6 text-right tabular-nums" data-testid="tracking-leg-pnl">{{ leg.pnl }}</td>
           </tr>

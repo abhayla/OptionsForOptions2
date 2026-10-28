@@ -743,6 +743,7 @@ const pricesStamp = computed(() => {
             :zoom="zoomGrid"
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
+            :saved-revision="savedRevision"
             @zoom="zoomTo"
             @payoff-step="stepTo"
           >

@@ -20,8 +20,9 @@ vi.mock('@/services/api', async (importActual) => {
 import PositionsPage from '@/pages/PositionsPage.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import { withPriceTexts } from './_priceTexts'
 
-const TRACKING = {
+const TRACKING = withPriceTexts({
   strategies: [{
     strategy_id: 48, name: '"GCBP P3 IC"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null,
     as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50',
@@ -30,7 +31,7 @@ const TRACKING = {
       exit_price: null, exited_at: null }],
   }],
   answered_at: '2026-10-28T06:00:00Z',
-}
+})
 const POSITIONS = { read_at: '2026-10-16T12:21:04+05:30', strategies: [], has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [] }
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()

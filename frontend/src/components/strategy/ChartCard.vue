@@ -44,6 +44,7 @@ const props = defineProps({
   payoffTable: { type: Object, default: null },
   // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
   savedId: { type: Number, default: null },
+  savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
 // makes the rows)
@@ -275,7 +276,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
 
     <!-- Strategy chart (REQ-091 held for display rights) -->
     <div v-show="tab === 'strategy-chart'" role="tabpanel" v-bind="link(VIEW, 'strategy-chart')" class="p-4" data-testid="panel-strategy-chart">
-      <StrategyPriceChart :strategy-id="savedId" :active="tab === 'strategy-chart'" />
+      <StrategyPriceChart :strategy-id="savedId" :version="savedRevision" :active="tab === 'strategy-chart'" />
     </div>
   </Card>
 </template>

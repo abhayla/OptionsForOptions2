@@ -20,6 +20,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import { withPriceTexts } from './_priceTexts'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const LEG = {
@@ -86,7 +87,7 @@ describe('D-C12 row actions', () => {
   it('a pencil and a bin per row, shown on hover (hover classes); a bin click asks the existing confirm and does not open the row', async () => {
     const w = await bar([summary(2)])
     const row = w.get('[data-testid="saved-draft-row"]')
-    expect(row.get('[data-testid="rename-draft-2"]').attributes('aria-label')).toBe('Rename strategy')
+    expect(row.get('[data-testid="rename-draft-2"]').attributes('aria-label')).toBe('Rename Plan 2')
     expect(row.get('[data-testid="actions-2"]').classes().join(' ')).toContain('group-hover:')
     await row.get('[data-testid="delete-2"]').trigger('click')
     expect(w.find('[data-testid="delete-confirm-box"]').exists()).toBe(true)
@@ -135,7 +136,7 @@ describe('D-C16 Save modal', () => {
 })
 
 describe('D-C14 compact Paper list', () => {
-  const item = (id, over = {}) => ({
+  const item = (id, over = {}) => withPriceTexts({
     strategy_id: id, name: `"Paper ${id}"`, underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null, as_of: null,
     total: '71.50', booked: '0.00', unbooked: '71.50',
     legs: [0, 1].map((i) => ({ leg_index: i, instrument_id: `NSE_FO:${i}`, action: 'BUY', instrument: 'PE', strike: '22300.00', expiry: '2026-11-03', quantity: 65,

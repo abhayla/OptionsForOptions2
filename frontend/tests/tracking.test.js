@@ -121,7 +121,7 @@ describe('TrackingPanel', () => {
   })
 
   it('answer states: no detections shows nothing; an exited leg shows its exit price; a FUT leg and an unmatched leg print honestly', async () => {
-    const exited = { ...legs[0], price_state: 'exited', current_price: null, current_price_display: null, exit_price: '50.25', exit_price_display: '50.25' }
+    const exited = { ...legs[0], price_state: 'exited', current_price: null, current_price_display: null, exit_price: '50.25', exit_price_display: '50.25', exited_at: '2026-10-28T09:00:00Z', pnl_kind: 'booked' }
     const fut = withPriceTexts({ instrument_id: 'NSE_FO:9', action: 'BUY', instrument: 'FUT', strike: null, entry_price: '22500.00',
       current_price: '22510.50', price_state: 'live', expiry: '2026-11-03', quantity: 65, exit_price: null })
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ detections: [], legs: [exited, fut] }) })
