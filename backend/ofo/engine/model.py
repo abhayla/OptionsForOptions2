@@ -234,6 +234,26 @@ def leg_greeks_unrounded(model: ModelInputs, leg: LegInput) -> Greeks:
                                    days_in_year=f.days_in_year, dividend_yield=em.dividend_yield)
 
 
+def leg_decay_unrounded(model: ModelInputs, leg: LegInput, until: datetime.datetime) -> Decimal:
+    """Per-unit UNROUNDED Decay of one leg to ``until`` (the next market open; GC-UI D-B34, REQ-145 AC-2, F-63): the
+    model value at ``until`` minus the model value now, at the live spot with the expiry's q, the leg's IV and the
+    rate, time in calendar days / ``days_in_year`` like every model figure (scenario-calculations section 4). A futures
+    leg has no time value: a true 0. An expiry whose close is at or before ``until`` decays to its intrinsic value."""
+    m = _require(model)
+    if leg.instrument is Instrument.FUT:
+        return Decimal(0)
+    if leg.iv is None:
+        raise ValueError(f"leg {leg.contract} has no IV")
+    if not isinstance(until, datetime.datetime) or until.tzinfo is None or until <= m.inputs.valuation_time:
+        raise ValueError(f"until must be a timezone-aware time after the valuation, got {until!r}")
+    em = m.expiry_model(leg.expiry)
+    f = em.forward
+    close = datetime.datetime.combine(leg.expiry, _bs.EXPIRY_CLOSE)
+    then = (_bs.year_fraction(until, leg.expiry, days_in_year=f.days_in_year) if until < close else Decimal(0))
+    return _bs.bs_decay_unrounded(leg.instrument, em.level, leg.strike, f.years, then, f.rate, leg.iv,
+                                  dividend_yield=em.dividend_yield)
+
+
 def greeks(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal, level: Decimal | None = None) -> ModelGreeks:
     """Per-unit engine Greeks (4 dp) at ``level`` (default: the live spot) with the expiry's q."""
     e = _require_expiry(em)

@@ -12,7 +12,7 @@ from ofo.table.model import build_table, scenario_caption, scenario_header, visi
 FULL_FIXED_EXPECTED = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
     ColumnId.ENTRY_PRICE, ColumnId.LTP, ColumnId.ENTRY_VALUE, ColumnId.CURRENT_VALUE, ColumnId.UNREALIZED_PNL,
-    ColumnId.PNL_PERCENT, ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA,
+    ColumnId.PNL_PERCENT, ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.DECAY, ColumnId.VEGA,
     ColumnId.LOWER_BE, ColumnId.UPPER_BE, ColumnId.STATUS,
 ]
 FORMER_HIDDEN = [ColumnId.PNL_PERCENT, ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA,
@@ -37,7 +37,7 @@ def test_ac7_the_visible_list_is_the_whole_table_in_its_own_order(golden, golden
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
     assert [c.id for c in visible_columns(table)] == list(table.column_ids)
-    assert list(table.column_ids) == FULL_FIXED_EXPECTED[:17] + list(level_set.levels) + FULL_FIXED_EXPECTED[17:]
+    assert list(table.column_ids) == FULL_FIXED_EXPECTED[:18] + list(level_set.levels) + FULL_FIXED_EXPECTED[18:]
 
 
 def test_ac7_dropping_one_column_from_the_set_is_caught(golden, golden_scenario):

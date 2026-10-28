@@ -354,6 +354,14 @@
      "visible": true
     },
     {
+     "id": "decay",
+     "is_scenario_level": false,
+     "kind": "greek",
+     "label": "Decay",
+     "markers": [],
+     "visible": true
+    },
+    {
      "id": "vega",
      "is_scenario_level": false,
      "kind": "greek",
@@ -808,6 +816,16 @@
        "value": "6600.75",
        "vendor": null
       },
+      "decay": {
+       "display": "824.91",
+       "kind": "greek",
+       "per_unit": "12.6909",
+       "per_unit_display": "12.69",
+       "reason": null,
+       "side": null,
+       "value": "824.9067",
+       "vendor": null
+      },
       "delta": {
        "display": "-27.23",
        "kind": "greek",
@@ -1233,6 +1251,16 @@
        "value": "11586.25",
        "vendor": null
       },
+      "decay": {
+       "display": "-636.88",
+       "kind": "greek",
+       "per_unit": "-9.7981",
+       "per_unit_display": "-9.80",
+       "reason": null,
+       "side": null,
+       "value": "-636.8754",
+       "vendor": null
+      },
       "delta": {
        "display": "30.28",
        "kind": "greek",
@@ -1656,6 +1684,16 @@
        "reason": null,
        "side": "Dr",
        "value": "4985.50",
+       "vendor": null
+      },
+      "decay": {
+       "display": "188.03",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": null,
+       "side": null,
+       "value": "188.0313",
        "vendor": null
       },
       "delta": {
@@ -2342,6 +2380,14 @@
      "visible": true
     },
     {
+     "id": "decay",
+     "is_scenario_level": false,
+     "kind": "greek",
+     "label": "Decay",
+     "markers": [],
+     "visible": true
+    },
+    {
      "id": "vega",
      "is_scenario_level": false,
      "kind": "greek",
@@ -2796,6 +2842,16 @@
        "value": "6600.75",
        "vendor": null
       },
+      "decay": {
+       "display": "824.91",
+       "kind": "greek",
+       "per_unit": "12.6909",
+       "per_unit_display": "12.69",
+       "reason": null,
+       "side": null,
+       "value": "824.9067",
+       "vendor": null
+      },
       "delta": {
        "display": "-27.23",
        "kind": "greek",
@@ -3221,6 +3277,16 @@
        "value": "11586.25",
        "vendor": null
       },
+      "decay": {
+       "display": "-636.88",
+       "kind": "greek",
+       "per_unit": "-9.7981",
+       "per_unit_display": "-9.80",
+       "reason": null,
+       "side": null,
+       "value": "-636.8754",
+       "vendor": null
+      },
       "delta": {
        "display": "30.28",
        "kind": "greek",
@@ -3644,6 +3710,16 @@
        "reason": null,
        "side": "Dr",
        "value": "4985.50",
+       "vendor": null
+      },
+      "decay": {
+       "display": "188.03",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": null,
+       "side": null,
+       "value": "188.0313",
        "vendor": null
       },
       "delta": {
@@ -4347,6 +4423,14 @@
      "visible": true
     },
     {
+     "id": "decay",
+     "is_scenario_level": false,
+     "kind": "greek",
+     "label": "Decay",
+     "markers": [],
+     "visible": true
+    },
+    {
      "id": "vega",
      "is_scenario_level": false,
      "kind": "greek",
@@ -4821,6 +4905,16 @@
        "value": "6600.75",
        "vendor": null
       },
+      "decay": {
+       "display": "-824.91",
+       "kind": "greek",
+       "per_unit": "-12.6909",
+       "per_unit_display": "-12.69",
+       "reason": null,
+       "side": null,
+       "value": "-824.9067",
+       "vendor": null
+      },
       "delta": {
        "display": "27.23",
        "kind": "greek",
@@ -5256,6 +5350,16 @@
        "value": "2544.75",
        "vendor": null
       },
+      "decay": {
+       "display": "586.31",
+       "kind": "greek",
+       "per_unit": "9.0202",
+       "per_unit_display": "9.02",
+       "reason": null,
+       "side": null,
+       "value": "586.3121",
+       "vendor": null
+      },
       "delta": {
        "display": "-13.64",
        "kind": "greek",
@@ -5689,6 +5793,16 @@
        "reason": null,
        "side": "Dr",
        "value": "4056.00",
+       "vendor": null
+      },
+      "decay": {
+       "display": "-238.59",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": null,
+       "side": null,
+       "value": "-238.5946",
        "vendor": null
       },
       "delta": {
@@ -6392,6 +6506,14 @@
      "visible": true
     },
     {
+     "id": "decay",
+     "is_scenario_level": false,
+     "kind": "greek",
+     "label": "Decay",
+     "markers": [],
+     "visible": true
+    },
+    {
      "id": "vega",
      "is_scenario_level": false,
      "kind": "greek",
@@ -6866,6 +6988,16 @@
        "value": "6600.75",
        "vendor": null
       },
+      "decay": {
+       "display": "-824.91",
+       "kind": "greek",
+       "per_unit": "-12.6909",
+       "per_unit_display": "-12.69",
+       "reason": null,
+       "side": null,
+       "value": "-824.9067",
+       "vendor": null
+      },
       "delta": {
        "display": "27.23",
        "kind": "greek",
@@ -7301,6 +7433,16 @@
        "value": "2544.75",
        "vendor": null
       },
+      "decay": {
+       "display": "586.31",
+       "kind": "greek",
+       "per_unit": "9.0202",
+       "per_unit_display": "9.02",
+       "reason": null,
+       "side": null,
+       "value": "586.3121",
+       "vendor": null
+      },
       "delta": {
        "display": "-13.64",
        "kind": "greek",
@@ -7734,6 +7876,16 @@
        "reason": null,
        "side": "Dr",
        "value": "4056.00",
+       "vendor": null
+      },
+      "decay": {
+       "display": "-238.59",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": null,
+       "side": null,
+       "value": "-238.5946",
        "vendor": null
       },
       "delta": {
@@ -8427,6 +8579,14 @@
      "visible": true
     },
     {
+     "id": "decay",
+     "is_scenario_level": false,
+     "kind": "greek",
+     "label": "Decay",
+     "markers": [],
+     "visible": true
+    },
+    {
      "id": "vega",
      "is_scenario_level": false,
      "kind": "greek",
@@ -8881,6 +9041,16 @@
        "value": null,
        "vendor": null
       },
+      "decay": {
+       "display": "—",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": "no implied volatility for this leg",
+       "side": null,
+       "value": null,
+       "vendor": null
+      },
       "delta": {
        "display": "—",
        "kind": "greek",
@@ -9306,6 +9476,16 @@
        "value": null,
        "vendor": null
       },
+      "decay": {
+       "display": "—",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": "no implied volatility for this leg",
+       "side": null,
+       "value": null,
+       "vendor": null
+      },
       "delta": {
        "display": "—",
        "kind": "greek",
@@ -9727,6 +9907,16 @@
        "per_unit": null,
        "per_unit_display": null,
        "reason": "not every leg has an LTP",
+       "side": null,
+       "value": null,
+       "vendor": null
+      },
+      "decay": {
+       "display": "—",
+       "kind": "greek",
+       "per_unit": null,
+       "per_unit_display": null,
+       "reason": "not every leg has an implied volatility",
        "side": null,
        "value": null,
        "vendor": null
