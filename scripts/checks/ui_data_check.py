@@ -184,12 +184,14 @@ def display_whole(value: Decimal, signed: bool) -> str:
 
 def display_breakeven(level: Decimal, spot: Decimal | None) -> str:
     """REQ-153 AC-1: the level in whole points with its signed percent from spot to one decimal ("22,688 (-0.1%)");
-    zero percent is "0.0" with no sign; no usable spot: the level alone."""
+    a non-zero percent that rounds to 0.0 keeps its sign ("22,688 (-0.0%)", F-4); only a TRUE zero is "0.0" with no
+    sign (REQ-152 AC-4); no usable spot: the level alone."""
     text = _indian(f"{level.quantize(Decimal(1), rounding=ROUND_HALF_UP):f}")
     if spot is None or spot <= 0:
         return text
-    pct = ((level - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-    shown = "0.0" if pct == 0 else (MINUS_SIGN if pct < 0 else "+") + f"{abs(pct):f}"
+    raw = (level - spot) / spot * 100
+    pct = raw.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    shown = "0.0" if raw == 0 else (MINUS_SIGN if raw < 0 else "+") + f"{abs(pct):f}"
     return f"{text} ({shown}%)"
 
 
@@ -365,14 +367,37 @@ def years_to_expiry(valuation: dt.datetime, expiry: str) -> float:
 # ---------------------------------------------------------------- put-call parity forward
 
 
+def is_live(quote: dict | None) -> bool:
+    """A quote counts as live when its health says `available`; a quote with no health key (an older reply, a
+    synthetic chain) is treated as live, a stale / unavailable one is not."""
+    return (quote or {}).get("health", "available") == "available"
+
+
+def iv_price(leg: dict, quote: dict | None):
+    """ADR-172: the price a leg's IV is implied from -> (price, source). The bid-ask mid when BOTH sides are live
+    (present and above 0: "a bid or ask of 0 is no live side", engine/model.py) and ask >= bid; otherwise the last
+    traded price; nothing usable -> (None, None). The quote's freshness label does not enter: a stale but two-sided
+    quote still gives the mid (measured on the 17:13 replies: all 8 legs' server IV equals the mid IV at q = 0)."""
+    q = quote or {}
+    bid, ask = q.get("bid"), q.get("ask")
+    if bid is not None and ask is not None and float(bid) > 0 and float(ask) > 0 and float(ask) >= float(bid):
+        return (float(bid) + float(ask)) / 2, "mid"
+    if leg.get("ltp"):
+        return float(leg["ltp"]), "ltp"
+    return None, None
+
+
 def parity_forward(chain: dict, t: float, r: float):
-    """ADR-061: F = median over two-sided strikes of K + e^(rT)(Cmid - Pmid). Returns (F, q, n, reason)."""
+    """ADR-061: F = median over LIVE two-sided strikes of K + e^(rT)(Cmid - Pmid); fewer than 3 -> spot fallback
+    (F = S e^(rT), q = 0). Returns (F, q, n, reason)."""
     spot = D(chain.get("spot")) if chain else None
     if not chain or chain.get("state") != "LIVE" or spot is None:
         return None, None, 0, "chain not live"
     vals = []
     for row in chain.get("rows") or []:
         ce, pe = row.get("ce") or {}, row.get("pe") or {}
+        if not (is_live(ce) and is_live(pe)):  # a stale quote is not a market: it cannot give a forward (ADR-061)
+            continue
         quotes = [ce.get("bid"), ce.get("ask"), pe.get("bid"), pe.get("ask")]
         if any(x is None for x in quotes):
             continue
@@ -782,6 +807,22 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             "reason_after": why_a,
         }
         qinfo[e].update(_q_band(chains_before.get(e), fb, fa, qb, t, r))
+        # C-4: the basis the reply states (the chain's greeks_basis, else the reply's "estimated from spot" label)
+        # against the basis OUR rule gives from the live quotes (ADR-061: fewer than 3 live two-sided strikes = spot)
+        label = f"{est.get('status_label') or ''} {est.get('output_label') or ''}"
+        stated = (chains_after.get(e) or {}).get("greeks_basis") or (
+            "SPOT_FALLBACK" if "estimated from spot" in label else None
+        )
+        n_live = na if chains_after.get(e) else nb
+        ours_basis = "SPOT_FALLBACK" if n_live < MIN_PARITY_STRIKES else "PARITY"
+        qinfo[e]["stated_basis"], qinfo[e]["our_basis"] = stated, ours_basis
+        if stated is not None and chains_after.get(e) and fa is not None:
+            rep.add(
+                f"pricing basis {e} (stated by the reply vs ours from the live quotes)",
+                stated,
+                ours_basis,
+                note=f"ours: {n_live} live two-sided strikes (needs {MIN_PARITY_STRIKES}); spot fallback means q = 0",
+            )
     rep.data_rows["forwards"] = qinfo
     # D-C33
     if futures:
@@ -822,20 +863,22 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         mid = (
             (float(bid) + float(ask)) / 2 if bid is not None and ask is not None and float(ask) >= float(bid) else None
         )
+        px_basis, src = iv_price(leg, lq)  # C-4: mid only when both sides are live, else the LTP (ADR-172)
         iv_mid = implied_vol(mid, s, k, t, r, q, leg["instrument"]) if mid is not None else None
         iv_ltp = implied_vol(float(leg["ltp"]), s, k, t, r, q, leg["instrument"]) if leg.get("ltp") else None
         iv_mid_spot = implied_vol(mid, s, k, t, r, 0.0, leg["instrument"]) if mid is not None else None
-        ours_iv = iv_mid if iv_mid is not None else iv_ltp
+        ours_iv = implied_vol(px_basis, s, k, t, r, q, leg["instrument"]) if px_basis is not None else None
+        q_note = "q=0 (spot fallback)" if qi["our_basis"] == "SPOT_FALLBACK" else "parity q"
+        used = f"{src}, {q_note}" if src else "no price"
         # IV tolerance: 0.0001 for the 6 dp print + the IV change across the q read before and after the reply.
         qa_ = qi["q_hi"] if qi["q_hi"] is not None else q
-        px_basis = mid if mid is not None else (float(leg["ltp"]) if leg.get("ltp") else None)
         iv_alt = implied_vol(px_basis, s, k, t, r, qa_, leg["instrument"]) if px_basis is not None else None
         iv_tol = Decimal("0.0001") + Decimal(str(round(abs((iv_alt or ours_iv or 0) - (ours_iv or 0)), 6)))
         if iv_reply is None:
             rep.skip(f"leg{i + 1} iv", "reply iv null")
         else:
             rep.add(
-                f"leg{i + 1} iv (fraction; ours from {'mid' if iv_mid is not None else 'ltp'}, parity q)",
+                f"leg{i + 1} iv (fraction; ours from {used})",
                 iv_reply,
                 None if ours_iv is None else round(ours_iv, 6),
                 iv_tol,
@@ -843,6 +886,8 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             )
         rep.data_rows.setdefault("D-B35/36 iv basis", {})[f"leg{i + 1}"] = {
             "reply_iv": iv_reply,
+            "used": used,
+            "stated_basis": qi["stated_basis"],
             "ours_mid_parity": iv_mid and round(iv_mid, 6),
             "ours_ltp_parity": iv_ltp and round(iv_ltp, 6),
             "ours_mid_spot_q0": iv_mid_spot and round(iv_mid_spot, 6),

@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 
 from ofo.engine.black_scholes import GREEK_STEP
-from ofo.engine.display import breakeven_percent
+from ofo.engine.display import breakeven_percent_exact
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
 from ofo.outcome.service import Outcome, OutcomeLeg
@@ -39,7 +39,7 @@ def _whole(value: Decimal | None, *, signed: bool) -> Any:
 
 def _breakeven(level: Decimal, spot: Decimal | None) -> Any:
     """REQ-153 AC-1: the level in whole points with its signed percent from spot; no usable spot: the level alone."""
-    percent = breakeven_percent(level, spot)
+    percent = breakeven_percent_exact(level, spot)
     if percent is None:
         return render_explanation("summary_breakeven_level", level=level)
     return render_explanation("summary_breakeven_percent", level=level, percent=percent)

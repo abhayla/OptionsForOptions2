@@ -97,7 +97,9 @@ def test_breakeven_percent_from_spot():  # REQ-153 AC-1
     assert format_breakeven(D("22687.8"), D("22706.8")) == f"22,688 ({M}0.1%)"
     assert format_breakeven(D("22900.2"), D("22706.8")) == "22,900 (+0.9%)"
     assert format_breakeven(D("22706.8"), D("22706.8")) == "22,707 (0.0%)"  # no sign on zero
-    assert format_breakeven(D("22700"), D("22706.8")) == "22,700 (0.0%)"  # -0.03% rounds to zero: no minus
+    assert format_breakeven(D("22700"), D("22706.8")) == f"22,700 ({M}0.0%)"  # F-4: -0.03% rounds to 0.0, sign stays
+    assert format_breakeven(D("22687.8"), D("22698.85")) == f"22,688 ({M}0.0%)"  # -0.0487%, the recorded 17:13 case
+    assert format_breakeven(D("22707.5"), D("22706.8")) == "22,708 (+0.0%)"  # +0.003% likewise
     assert format_breakeven(D("23000"), None) == "23,000"  # no spot: the level alone
     assert format_breakeven(D("23000"), D("0")) == "23,000"
     s = _s(_summary(breakevens=(D("22400"), D("23000"))))
@@ -147,4 +149,5 @@ def test_formatter_refuses_a_non_decimal(bad):
 def test_percent_helpers():
     assert breakeven_percent(D("22687.8"), D("22706.8")) == D("-0.1")
     assert breakeven_percent(D("1"), None) is None
-    assert format_signed_percent(D("0.04")) == "0.0" and format_signed_percent(D("-0.04")) == "0.0"
+    assert format_signed_percent(D("0.04")) == "+0.0" and format_signed_percent(D("-0.04")) == f"{M}0.0"  # F-4
+    assert format_signed_percent(D("0")) == "0.0" and format_signed_percent(D("-0.0")) == "0.0"  # a true zero
