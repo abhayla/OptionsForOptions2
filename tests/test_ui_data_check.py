@@ -325,3 +325,11 @@ def test_parity_impossible_reply_still_checked_and_labelled():
     rep = run(est, atx, dead, dead, f)
     fw = rep.data_rows["forwards"]["2026-11-03"]
     assert "parity impossible" in fw["reason_before"]
+
+
+def test_no_chain_for_an_expiry_makes_model_figures_not_checkable():
+    est, atx, _b, _a, f = fixture()
+    rep = run(est, atx, {}, {}, f)
+    v = verdicts(rep)
+    assert v["model figures (IV, Greeks, Estimated Now)"] == u.NOT_CHECKABLE
+    assert rep.counts()[u.MISMATCH] == 0

@@ -604,6 +604,10 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     s = float(spot)
     quotes = {q["instrument_id"]: q for q in est.get("leg_quotes") or []}
     leg_model = []
+    no_chain = [e for e in expiries if qinfo[e]["q_mid"] is None]
+    if no_chain:
+        rep.skip("model figures (IV, Greeks, Estimated Now)", f"no option chain for expiry {', '.join(no_chain)}")
+        return rep
     for i, leg in enumerate(legs):
         e = leg["expiry"]
         qi = qinfo[e]
@@ -811,6 +815,12 @@ def fetch_live(base, legs_doc, outdir: Path):
     # the legs file names each expiry its legs use (meta[]._expiry or expiries[]): the chain is read per expiry
     meta = legs_doc.get("meta", [])
     expiries = sorted({m["_expiry"] for m in meta if "_expiry" in m}) or legs_doc.get("expiries", [])
+    if not expiries:  # learn the legs' expiries from one read-only outcome call
+        probe = _http(
+            base, "/api/strategies/outcome",
+            {"underlying": legs_doc["underlying"], "view": "at_expiry", "legs": legs_doc["legs"]},
+        )
+        expiries = sorted({lg["expiry"] for lg in probe.get("legs") or [] if lg.get("expiry")})
 
     def chain(e):
         q = f"underlying={legs_doc['underlying']}&expiry={e}&strikes_each_side=10&bid_and_ask=true"
