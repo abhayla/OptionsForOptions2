@@ -21,19 +21,19 @@
       <!-- Block 1: Max Profit, Max Loss, Breakeven -->
       <div class="min-w-0 @2xl:pr-4" data-testid="summary-block-outcome">
         <p v-if="estimateLabel" class="mb-1 inline-block rounded bg-warn-soft px-1.5 text-[11px] text-ink" data-testid="output-label">{{ estimateLabel }}</p>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-wrap gap-x-3 gap-y-1">
           <div class="min-w-0">
             <span class="flex items-center text-xs text-ink-muted">Max Profit<FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
-            <div class="mt-0.5 inline-flex flex-wrap items-baseline gap-1 rounded bg-profit-soft px-1.5 py-0.5 text-profit" data-testid="max-profit-pill">
+            <div class="mt-0.5 inline-flex h-6 flex-nowrap items-baseline gap-1 whitespace-nowrap rounded bg-profit-soft px-1.5 leading-6 text-profit" data-testid="max-profit-pill">
               <span class="num text-sm font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
-              <span v-if="fundsShare?.max_profit_text" class="text-xs">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
+              <span v-if="fundsShare?.max_profit_text" class="text-[11px]">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
           </div>
           <div class="min-w-0">
             <span class="flex items-center text-xs text-ink-muted">Max Loss<FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
-            <div class="mt-0.5 inline-flex flex-wrap items-baseline gap-1 rounded bg-loss-soft px-1.5 py-0.5 text-loss" data-testid="max-loss-pill">
+            <div class="mt-0.5 inline-flex h-6 flex-nowrap items-baseline gap-1 whitespace-nowrap rounded bg-loss-soft px-1.5 leading-6 text-loss" data-testid="max-loss-pill">
               <span class="num text-sm font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
-              <span v-if="fundsShare?.max_loss_text" class="text-xs">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
+              <span v-if="fundsShare?.max_loss_text" class="text-[11px]">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
           </div>
         </div>

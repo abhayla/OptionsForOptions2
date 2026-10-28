@@ -25,37 +25,44 @@ const netText = computed(() => {
 <template>
   <div
     v-if="netPremium || charges"
-    class="mt-4 px-4 text-sm min-w-0 break-words"
+    class="mt-4 px-4 text-sm min-w-0"
     data-testid="money-summary"
   >
+    <!-- GC-UI polish D-A20: ONE line (Sensibull screens 011, sb-01): per unit, then the total, then Charges with its icon.
+         The words are ours; below 640 px the line may wrap rather than overflow. -->
     <div
-      v-if="netPremium"
-      class="flex flex-wrap items-center gap-1"
-      data-testid="net-premium"
+      class="flex flex-nowrap items-center gap-x-3 whitespace-nowrap max-[639px]:flex-wrap"
+      data-testid="money-line"
     >
-      <span class="text-gray-500">Net premium: </span>
-      <template v-if="netPremium.text">
-        <span class="font-medium" data-testid="net-premium-text" :data-raw="netPremium.text">{{
-          netText
-        }}</span>
-        <span
-          v-if="netPremium.per_unit"
-          class="text-gray-500"
-          data-testid="net-premium-per-unit"
-          >({{ netPremium.per_unit }} per unit)</span
-        >
-        <FigureHint id="net_premium" :lines="[netPremium.text]" />
-      </template>
-      <template v-else>
-        <span class="font-medium" data-testid="net-premium-text">-</span>
-        <span
-          v-if="netPremium.reason"
-          class="text-gray-500"
-          data-testid="net-premium-reason"
-          >({{ netPremium.reason }})</span
-        >
-      </template>
+      <div
+        v-if="netPremium"
+        class="flex items-center gap-1"
+        data-testid="net-premium"
+      >
+        <span class="text-gray-500">Net premium: </span>
+        <template v-if="netPremium.text">
+          <span
+            v-if="netPremium.per_unit"
+            class="text-gray-500"
+            data-testid="net-premium-per-unit"
+            >({{ netPremium.per_unit }} per unit)</span
+          >
+          <span class="font-medium" data-testid="net-premium-text" :data-raw="netPremium.text">{{
+            netText
+          }}</span>
+          <FigureHint id="net_premium" :lines="[netPremium.text]" />
+        </template>
+        <template v-else>
+          <span class="font-medium" data-testid="net-premium-text">-</span>
+          <span
+            v-if="netPremium.reason"
+            class="whitespace-normal text-gray-500"
+            data-testid="net-premium-reason"
+            >({{ netPremium.reason }})</span
+          >
+        </template>
+      </div>
+      <ChargesBreakdown v-if="charges" :breakdown="charges" />
     </div>
-    <ChargesBreakdown v-if="charges" class="mt-1" :breakdown="charges" />
   </div>
 </template>

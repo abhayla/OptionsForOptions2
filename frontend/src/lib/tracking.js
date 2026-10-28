@@ -151,7 +151,6 @@ export function readTrackingItem(item, index = 0) {
     underlying: item.underlying,
     state: item.state,
     stateText,
-    pauseReason: item.state === 'PAUSED' ? item.pause_reason ?? null : null,
     total: signedRupees(item.total),
     booked: signedRupees(item.booked),
     unbooked: signedRupees(item.unbooked),
