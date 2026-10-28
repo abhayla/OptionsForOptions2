@@ -151,3 +151,31 @@ def test_ac2_paper_pnl_refuses_a_missing_current_price():
     leg = paper.TrackedLeg("NSE_FO:1", Action.SELL, Instrument.CE, D("24400"), EXPIRY, 65, D("100"), at)
     with pytest.raises(ValueError):
         paper.paper_pnl([leg, leg], [D("90")])
+
+
+def test_ac5_a_stale_quote_that_still_carries_a_price_pauses_and_refuses_on_its_state(replayed, monkeypatch):
+    """AC-5 (GC-BP step 8 review M1): the decision is the price's STATE, never "a price is present". A stale answer
+    that keeps its last price (45.15 here) must pause paper P&L (no total, no unbooked, reason prices_not_live) and
+    refuse an entry and an exit, exactly as a stale answer without one."""
+    provider, last = replayed
+    entry = paper.capture_entry(_snapshot(provider, last), _legs())
+    real = paper.leg_price
+
+    def stale_with_price(snapshot, instrument_id):
+        found = real(snapshot, instrument_id)
+        if instrument_id != IDS[0]:
+            return found
+        return paper.Price(instrument_id, "stale", D("45.15"), found.at)
+
+    monkeypatch.setattr(paper, "leg_price", stale_with_price)
+    snap = _snapshot(provider, last)
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert (view.paused, view.pause_reason, view.paper_pnl, view.unbooked, view.booked) == (
+        True, "prices_not_live", None, None, D("0"))
+    assert view.legs[0].state == "stale"
+    with pytest.raises(paper.PricesNotLive):
+        paper.exit_prices_now(snap, entry[:1])
+    with pytest.raises(paper.PricesNotLive):
+        paper.capture_entry(snap, _legs())
+    exited = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {1: D("14.95")})  # open leg 0 still pauses
+    assert (exited.paused, exited.paper_pnl, exited.unbooked) == (True, None, None)
