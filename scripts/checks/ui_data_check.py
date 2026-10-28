@@ -374,13 +374,17 @@ def is_live(quote: dict | None) -> bool:
 
 
 def iv_price(leg: dict, quote: dict | None):
-    """ADR-172: the price a leg's IV is implied from -> (price, source). The bid-ask mid when BOTH sides are live
-    (present and above 0: "a bid or ask of 0 is no live side", engine/model.py) and ask >= bid; otherwise the last
-    traded price; nothing usable -> (None, None). The quote's freshness label does not enter: a stale but two-sided
-    quote still gives the mid (measured on the 17:13 replies: all 8 legs' server IV equals the mid IV at q = 0)."""
+    """ADR-172: the price a leg's IV is implied from -> (price, source). The bid-ask mid only when BOTH sides are live
+    and ask >= bid; otherwise the last traded price (after hours: the closing price, ADR-197); nothing usable ->
+    (None, None). A side is live only when it is present, above 0 AND the quote's health is `available` (GC-UI F-5:
+    a stale / delayed / unavailable book stopped ticking, so its bid and ask are not live sides). The health is the
+    quote's own, else the leg's; with neither (an older reply, a synthetic chain) it is treated as live, as is_live
+    does. Derived from the spec text on its own, never from the server's code."""
     q = quote or {}
     bid, ask = q.get("bid"), q.get("ask")
-    if bid is not None and ask is not None and float(bid) > 0 and float(ask) > 0 and float(ask) >= float(bid):
+    health = q.get("health", (leg or {}).get("health", "available"))
+    two_sided = bid is not None and ask is not None and float(bid) > 0 and float(ask) > 0 and float(ask) >= float(bid)
+    if health == "available" and two_sided:
         return (float(bid) + float(ask)) / 2, "mid"
     if leg.get("ltp"):
         return float(leg["ltp"]), "ltp"
@@ -519,14 +523,16 @@ def _sign(leg):
 FORWARD_BAND_POINTS = 1.0  # parity F from mids moved 0.5-0.7 points between two reads ~2 s apart (2026-10-28 live)
 
 
-def _q_band(chain, fb, fa, qb, t, r) -> dict:
+def _q_band(chain, fb, fa, qb, t, r, fallback: bool = False) -> dict:
     """The model's q: the mid of the F read before and after the reply; the band: +/- (half their gap + 1 point).
-    The server reads its own snapshot between the two, so its q lies in the band, not at our point."""
+    The server reads its own snapshot between the two, so its q lies in the band, not at our point. On the spot
+    fallback (both reads, ADR-061) F = S e^(rT) and q = 0 exactly: no mid noise, so no fixed 1-point band (GC-UI F-5:
+    the 1-point band let a stale-mid IV, 0.0005 off the closing-price IV, pass as a match)."""
     if fb is None or chain is None or chain.get("spot") is None or t <= 0:
         return {"q_mid": qb, "q_hi": qb, "F_band_points": None}
     fa = fa if fa is not None else fb
     s = float(chain["spot"])
-    fmid, half = (fb + fa) / 2, abs(fb - fa) / 2 + FORWARD_BAND_POINTS
+    fmid, half = (fb + fa) / 2, abs(fb - fa) / 2 + (0.0 if fallback else FORWARD_BAND_POINTS)
     return {"q_mid": r - math.log(fmid / s) / t, "q_hi": r - math.log((fmid - half) / s) / t, "F_band_points": half}
 
 
@@ -806,7 +812,8 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             "n_after": na,
             "reason_after": why_a,
         }
-        qinfo[e].update(_q_band(chains_before.get(e), fb, fa, qb, t, r))
+        fallback = why_b is not None and (why_a is not None or fa is None)  # spot fallback on every read we have
+        qinfo[e].update(_q_band(chains_before.get(e), fb, fa, qb, t, r, fallback))
         # C-4: the basis the reply states (the chain's greeks_basis, else the reply's "estimated from spot" label)
         # against the basis OUR rule gives from the live quotes (ADR-061: fewer than 3 live two-sided strikes = spot)
         label = f"{est.get('status_label') or ''} {est.get('output_label') or ''}"
@@ -863,7 +870,7 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         mid = (
             (float(bid) + float(ask)) / 2 if bid is not None and ask is not None and float(ask) >= float(bid) else None
         )
-        px_basis, src = iv_price(leg, lq)  # C-4: mid only when both sides are live, else the LTP (ADR-172)
+        px_basis, src = iv_price(leg, lq)  # F-5: mid only with two live (available) sides, else the LTP (ADR-172)
         iv_mid = implied_vol(mid, s, k, t, r, q, leg["instrument"]) if mid is not None else None
         iv_ltp = implied_vol(float(leg["ltp"]), s, k, t, r, q, leg["instrument"]) if leg.get("ltp") else None
         iv_mid_spot = implied_vol(mid, s, k, t, r, 0.0, leg["instrument"]) if mid is not None else None
