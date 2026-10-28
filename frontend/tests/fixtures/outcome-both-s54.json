@@ -1,0 +1,454 @@
+{
+ "_source": "tests/fixtures/ui_data_check/both_s54_replay/outcome_both.json (recorded reply, request both_views + sd_bands, payoff_step 50); trimmed to the chart keys, so no funds or margin figure is carried",
+ "state": "COMPUTED",
+ "underlying": "NIFTY",
+ "spot_level": "22533.25",
+ "scenario": {
+  "view": "at_expiry",
+  "label": "At Expiry",
+  "kind": "exact",
+  "available": true,
+  "unavailable_reason": null,
+  "step": "100",
+  "start": "21500",
+  "end": "23500",
+  "customised": false
+ },
+ "payoff": {
+  "view": "at_expiry",
+  "points": [
+   {
+    "level": "21500",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "21600",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "21700",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "21800",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "21900",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22000",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22100",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22200",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22300",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22400",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22500",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22533.25",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22600",
+    "pnl": "-4056.00",
+    "display": "−₹4,056.00"
+   },
+   {
+    "level": "22662.4",
+    "pnl": "0.00",
+    "display": "₹0.00"
+   },
+   {
+    "level": "22700",
+    "pnl": "2444.00",
+    "display": "₹2,444.00"
+   },
+   {
+    "level": "22800",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "22900",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23000",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23100",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23200",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23300",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23400",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   },
+   {
+    "level": "23500",
+    "pnl": "8944.00",
+    "display": "₹8,944.00"
+   }
+  ]
+ },
+ "curves": {
+  "at_expiry": {
+   "view": "at_expiry",
+   "label": "At Expiry",
+   "kind": "exact",
+   "available": true,
+   "unavailable_reason": null,
+   "output_label": null,
+   "points": [
+    {
+     "level": "21500",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "21600",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "21700",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "21800",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "21900",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22000",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22100",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22200",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22300",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22400",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22500",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22533.25",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22600",
+     "pnl": "-4056.00",
+     "display": "−₹4,056.00"
+    },
+    {
+     "level": "22662.4",
+     "pnl": "0.00",
+     "display": "₹0.00"
+    },
+    {
+     "level": "22700",
+     "pnl": "2444.00",
+     "display": "₹2,444.00"
+    },
+    {
+     "level": "22800",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "22900",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23000",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23100",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23200",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23300",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23400",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    },
+    {
+     "level": "23500",
+     "pnl": "8944.00",
+     "display": "₹8,944.00"
+    }
+   ]
+  },
+  "estimated_now": {
+   "view": "estimated_now",
+   "label": "Estimated Now (estimate)",
+   "kind": "estimate",
+   "available": true,
+   "unavailable_reason": null,
+   "output_label": null,
+   "points": [
+    {
+     "level": "21500",
+     "pnl": "-4054.05",
+     "display": "−₹4,054.05"
+    },
+    {
+     "level": "21600",
+     "pnl": "-4050.15",
+     "display": "−₹4,050.15"
+    },
+    {
+     "level": "21700",
+     "pnl": "-4038.45",
+     "display": "−₹4,038.45"
+    },
+    {
+     "level": "21800",
+     "pnl": "-4009.85",
+     "display": "−₹4,009.85"
+    },
+    {
+     "level": "21900",
+     "pnl": "-3945.50",
+     "display": "−₹3,945.50"
+    },
+    {
+     "level": "22000",
+     "pnl": "-3814.20",
+     "display": "−₹3,814.20"
+    },
+    {
+     "level": "22100",
+     "pnl": "-3570.45",
+     "display": "−₹3,570.45"
+    },
+    {
+     "level": "22200",
+     "pnl": "-3157.70",
+     "display": "−₹3,157.70"
+    },
+    {
+     "level": "22300",
+     "pnl": "-2517.45",
+     "display": "−₹2,517.45"
+    },
+    {
+     "level": "22400",
+     "pnl": "-1612.65",
+     "display": "−₹1,612.65"
+    },
+    {
+     "level": "22500",
+     "pnl": "-442.65",
+     "display": "−₹442.65"
+    },
+    {
+     "level": "22533.25",
+     "pnl": "-1.95",
+     "display": "−₹1.95"
+    },
+    {
+     "level": "22600",
+     "pnl": "942.50",
+     "display": "₹942.50"
+    },
+    {
+     "level": "22662.4",
+     "pnl": "1873.95",
+     "display": "₹1,873.95"
+    },
+    {
+     "level": "22700",
+     "pnl": "2445.95",
+     "display": "₹2,445.95"
+    },
+    {
+     "level": "22800",
+     "pnl": "3942.25",
+     "display": "₹3,942.25"
+    },
+    {
+     "level": "22900",
+     "pnl": "5311.15",
+     "display": "₹5,311.15"
+    },
+    {
+     "level": "23000",
+     "pnl": "6461.65",
+     "display": "₹6,461.65"
+    },
+    {
+     "level": "23100",
+     "pnl": "7352.15",
+     "display": "₹7,352.15"
+    },
+    {
+     "level": "23200",
+     "pnl": "7985.90",
+     "display": "₹7,985.90"
+    },
+    {
+     "level": "23300",
+     "pnl": "8403.20",
+     "display": "₹8,403.20"
+    },
+    {
+     "level": "23400",
+     "pnl": "8656.05",
+     "display": "₹8,656.05"
+    },
+    {
+     "level": "23500",
+     "pnl": "8797.75",
+     "display": "₹8,797.75"
+    }
+   ]
+  }
+ },
+ "standard_deviation": {
+  "available": true,
+  "reason": null,
+  "horizon_days": 5,
+  "iv": "0.1249035",
+  "spot": "22533.25",
+  "rows": [
+   {
+    "sd": 1,
+    "label": "1SD",
+    "move": "329.4",
+    "percent": "1.5",
+    "lower": "22203.8",
+    "upper": "22862.7",
+    "move_display": "329.4 (1.5%)",
+    "lower_display": "22203.8",
+    "upper_display": "22862.7"
+   },
+   {
+    "sd": 2,
+    "label": "2SD",
+    "move": "658.8",
+    "percent": "2.9",
+    "lower": "21874.4",
+    "upper": "23192.1",
+    "move_display": "658.8 (2.9%)",
+    "lower_display": "21874.4",
+    "upper_display": "23192.1"
+   }
+  ],
+  "bands": [
+   {
+    "sd": -2,
+    "label": "-2SD",
+    "level": "21874.4",
+    "display": "21874.4"
+   },
+   {
+    "sd": -1,
+    "label": "-1SD",
+    "level": "22203.8",
+    "display": "22203.8"
+   },
+   {
+    "sd": 1,
+    "label": "1SD",
+    "level": "22862.7",
+    "display": "22862.7"
+   },
+   {
+    "sd": 2,
+    "label": "2SD",
+    "level": "23192.1",
+    "display": "23192.1"
+   }
+  ]
+ },
+ "summary": {
+  "breakevens": [
+   "22662.4"
+  ],
+  "breakevens_display": [
+   "22,662 (+0.6%)"
+  ]
+ }
+}

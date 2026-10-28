@@ -16,6 +16,27 @@ export function pointSigns(points) {
  * zero-crossing gradient is drawing work and lives in PayoffChart.vue (ADR-008 named drawing exception); it is GIVEN
  * here as crossing(chart), which returns a gradient or null (null = grey, nothing drawn wrongly).
  */
+/**
+ * GC-UI b1, D-B15 (Sensibull 012 / sb-02 layout, our colour tokens): the hatched fill of a profit or loss zone, an 8 px
+ * tile with one diagonal stroke, repeated. Drawing only; no value is read. Without a canvas (jsdom, an old browser) the
+ * plain colour is returned, so a zone is never left unfilled.
+ */
+export function hatchPattern(doc, colour) {
+  const tile = colour ? doc?.createElement?.('canvas') : null
+  const g = tile?.getContext?.('2d')
+  if (!g) return colour || undefined
+  tile.width = 8
+  tile.height = 8
+  g.globalAlpha = 0.45
+  g.strokeStyle = colour
+  g.lineWidth = 1.5
+  g.beginPath()
+  g.moveTo(0, 8)
+  g.lineTo(8, 0)
+  g.stroke()
+  return g.createPattern(tile, 'repeat') ?? colour
+}
+
 export function segmentColour(signs, colours, crossing) {
   return (c) => {
     const a = signs[c.p0DataIndex]
