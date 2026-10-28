@@ -41,12 +41,12 @@ from ofo.outcome import (
 )
 from ofo.outcome.money import with_funds
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import Margin, waiting_first_price
+from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.timeutil import IST
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
@@ -250,13 +250,27 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in "
                     "`curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly")
+    payoff_step: StrictInt | None = Field(
+        default=None, examples=[50],
+        description="REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then "
+                    "carries `payoff_table` (also sent with both_views, at the Admin step when this is absent)")
+    sd_bands: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day "
+                    "horizon, the days to expiry when fewer)")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
         """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
         self.scenario_choice()
+        if self.payoff_step is not None and Decimal(self.payoff_step) not in PAYOFF_TABLE_STEPS:
+            raise ValueError("payoff_step must be one of 10, 25, 50, 100")
         return self
+
+    def table_step(self) -> Decimal | None:
+        """REQ-137 AC-1: the payoff table's interval as index points (None: the Admin step, ADR-042)."""
+        return None if self.payoff_step is None else Decimal(self.payoff_step)
 
     def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
@@ -391,6 +405,65 @@ class CurvesOut(ApiModel):
     """REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``)."""
     at_expiry: CurveOut
     estimated_now: CurveOut
+
+
+class PayoffCellOut(ApiModel):
+    pnl: Money
+    display: CatalogueText
+
+
+class PayoffRowOut(ApiModel):
+    level: Money
+    level_display: CatalogueText
+    nearest_spot: bool
+    estimated_now: PayoffCellOut | None  # None: that view is unavailable (its column carries the reason)
+    at_expiry: PayoffCellOut | None
+
+
+class PayoffColumnOut(ApiModel):
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+
+
+class PayoffTableOut(ApiModel):
+    step: Money
+    available: bool
+    unavailable_reason: CatalogueText | None
+    columns: list[PayoffColumnOut]
+    rows: list[PayoffRowOut]
+
+
+class SdRowOut(ApiModel):
+    sd: Literal[1, 2]
+    label: CatalogueText
+    move: Money
+    percent: Money
+    lower: Money
+    upper: Money
+    move_display: CatalogueText
+    lower_display: CatalogueText
+    upper_display: CatalogueText
+
+
+class SdBandOut(ApiModel):
+    sd: Literal[-2, -1, 1, 2]
+    label: CatalogueText
+    level: Money
+    display: CatalogueText
+
+
+class StandardDeviationOut(ApiModel):
+    available: bool
+    reason: CatalogueText | None
+    horizon_days: int | None
+    iv: Money | None
+    spot: Money | None
+    rows: list[SdRowOut]
+    bands: list[SdBandOut]
+
 
 class NetPremiumOut(ApiModel):
     """REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a
@@ -536,6 +609,8 @@ class OutcomeResponse(ApiModel):
     charges_breakdown: ChargesBreakdownOut | None = None  # REQ-081 AC-2 / ADR-167 (2)
     #: GC-UI step 4 (REQ-083 AC-1): both curves on the same levels, keyed by view; absent unless ``both_views``
     curves: CurvesOut | None = None
+    payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
+    standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -616,7 +691,8 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         answered_at = now()
         config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
-                            override=override, both_views=req.both_views)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            override=override, both_views=req.both_views, payoff_step=req.table_step(),
+                            sd_bands=req.sd_bands)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
@@ -632,12 +708,14 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         elif live_blocked:
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override, both_views=req.both_views)
+                                config=config, override=override, both_views=req.both_views,
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands)
                    or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override, shared=shared, both_views=req.both_views)
+                                config=config, override=override, shared=shared, both_views=req.both_views,
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2

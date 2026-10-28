@@ -74,10 +74,14 @@ class ExpectedMove:
         if not 0 < self.days <= MAX_EXPECTED_MOVE_DAYS:
             raise ValueError(f"expected-move days must be within [1, {MAX_EXPECTED_MOVE_DAYS}], got {self.days}")
 
+    def exact_points(self, spot: Decimal) -> Decimal:
+        """THE expected-move formula (REQ-027 Q254, scenario-calculations section 4): one standard deviation in points,
+        spot x IV x sqrt(calendar days / 365), unrounded. The default range and the SD block both read it."""
+        return spot * self.iv * (Decimal(self.days) / DAYS_IN_YEAR).sqrt()
+
     def points(self, spot: Decimal) -> Decimal:
-        """One-standard-deviation move in points: spot x IV x sqrt(days / 365), rounded up to a whole point."""
-        move = spot * self.iv * (Decimal(self.days) / DAYS_IN_YEAR).sqrt()
-        return move.to_integral_value(rounding=ROUND_CEILING)
+        """One-standard-deviation move in points, rounded up to a whole point (the default range)."""
+        return self.exact_points(spot).to_integral_value(rounding=ROUND_CEILING)
 
 
 @dataclass(frozen=True)

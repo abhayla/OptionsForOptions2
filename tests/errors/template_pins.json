@@ -1686,5 +1686,25 @@
   "explanation:summary_start_mixed_expiry": {
     "sha256": "d819f4fb49d3fbc5c7536ed7f0dee9e0448489d152729e37d99deb27ab34938b",
     "reviewed": "pending owner read"
+  },
+  "explanation:sd_move": {
+    "sha256": "fac6430c1a520edd145578f48a5cd88f84abfcb8a3e1f4987890432965ddf518",
+    "reviewed": "pending owner read"
+  },
+  "explanation:sd_label": {
+    "sha256": "f7fa24f57f10a2745a94aad9b28203b3bb25f946f528c3085595a0f218a7b2f1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:sd_no_iv": {
+    "sha256": "f5b88e70bdb9eff9def18d320141ab88579a43827b57f3a955d060303aa73d91",
+    "reviewed": "pending owner read"
+  },
+  "explanation:sd_no_spot": {
+    "sha256": "a77657cae966c1118e346f645b8630abc624eb16e4abc2c74fcdfb7a66793292",
+    "reviewed": "pending owner read"
+  },
+  "explanation:payoff_table_too_many_rows": {
+    "sha256": "cacf8c98ab54c0529c1d17f5360e59b68bd9ffc42a1efe7f3e606ad272e28439",
+    "reviewed": "pending owner read"
   }
 }

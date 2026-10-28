@@ -142,6 +142,46 @@ def _curve(v: Any) -> dict[str, Any]:
             "points": _points(v.levels, v.totals) if v.available and v.totals is not None else []}
 
 
+def _view_head(v: Any) -> dict[str, Any]:
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason}
+
+
+def _payoff_table(t: Any) -> dict[str, Any]:
+    """REQ-137 AC-1: one row per level, each view's P&L with its display text (None where the view is unavailable)."""
+    cols = {v.view: (v.totals if v.available else None) for v in t.views}
+
+    def cell(view, i):
+        totals = cols.get(view)
+        if totals is None:
+            return None
+        return {"pnl": _s(totals[i]), "display": render_explanation("cell_rupees", amount=totals[i])}
+
+    from ofo.scenario.views import View  # late: the module's imports stay the outcome's own
+    return {"step": _s(t.step), "available": t.unavailable_reason is None,
+            "unavailable_reason": t.unavailable_reason, "columns": [_view_head(v) for v in t.views],
+            "rows": [{"level": _s(lvl), "level_display": render_explanation("cell_points", value=lvl),
+                      "nearest_spot": lvl == t.nearest_spot, "estimated_now": cell(View.ESTIMATED_NOW, i),
+                      "at_expiry": cell(View.AT_EXPIRY, i)} for i, lvl in enumerate(t.levels)]}
+
+
+def _sd(sd: Any) -> dict[str, Any]:
+    """REQ-083 AC-4 / REQ-137 AC-3: the SD table rows and the four band levels, both from the same rows."""
+    rows = [{"sd": r.sd, "label": render_explanation("sd_label", n=r.sd), "move": _s(r.move),
+             "percent": _s(r.percent), "lower": _s(r.lower), "upper": _s(r.upper),
+             "move_display": render_explanation("sd_move", points=r.move, percent=r.percent),
+             "lower_display": render_explanation("cell_number", value=r.lower),
+             "upper_display": render_explanation("cell_number", value=r.upper)} for r in sd.rows]
+    bands = []
+    if len(sd.rows) == 2:
+        one, two = sd.rows
+        for n, level in ((-2, two.lower), (-1, one.lower), (1, one.upper), (2, two.upper)):
+            bands.append({"sd": n, "label": render_explanation("sd_label", n=n), "level": _s(level),
+                          "display": render_explanation("cell_number", value=level)})
+    return {"available": sd.available, "reason": sd.reason, "horizon_days": sd.horizon_days, "iv": _s(sd.iv),
+            "spot": _s(sd.spot), "rows": rows, "bands": bands}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -197,6 +237,10 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
     }
     if out.curves:  # both views asked for (REQ-083 AC-1): absent otherwise, so today's replies keep their keys
         body["curves"] = {c.view.value: _curve(c) for c in out.curves}
+    if out.payoff_table is not None:  # REQ-137 AC-1: a step or both views asked for
+        body["payoff_table"] = _payoff_table(out.payoff_table)
+    if out.standard_deviation is not None:  # REQ-083 AC-4 / REQ-137 AC-3: sd_bands asked for
+        body["standard_deviation"] = _sd(out.standard_deviation)
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     return body

@@ -33,7 +33,7 @@ import dataclasses
 import datetime
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Final
 
@@ -89,6 +89,12 @@ MARGIN_CHECKED: Final = "CHECKED"
 MARGIN_UNREADABLE: Final = "UNREADABLE"
 MARGIN_NO_BASKET: Final = "NO_BASKET"
 _UNUSABLE: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
+#: REQ-137 AC-1 / D-B24: the payoff table's intervals a user may pick, in index points
+PAYOFF_TABLE_STEPS: Final = (Decimal(10), Decimal(25), Decimal(50), Decimal(100))
+MAX_PAYOFF_TABLE_ROWS: Final = 1000
+#: D-B20 (Fixed SD): the SD block's horizon in calendar days; the days to the nearest expiry when fewer
+SD_HORIZON_DAYS: Final = 7
+_TENTH: Final = Decimal("0.1")
 
 
 class OutcomeState(Enum):
@@ -223,6 +229,41 @@ class Outcome:
     # SAME graph levels (At Expiry first), and the other view's values on the table's columns (``on_levels``)
     curves: tuple[ScenarioValues, ...] = ()
     other_view: ScenarioValues | None = None
+    payoff_table: PayoffTable | None = None  # REQ-137 AC-1: only when asked for (a step or both views)
+    standard_deviation: StandardDeviation | None = None  # REQ-083 AC-4 / REQ-137 AC-3: only when asked for
+
+
+@dataclass(frozen=True)
+class PayoffTable:
+    """REQ-137 AC-1: index levels at the picked interval with both views' values from the one engine. A view the
+    engine cannot give (a leg without IV, ADR-143 mixed expiries, no live prices) is unavailable with its reason."""
+
+    step: Decimal
+    levels: tuple[Decimal, ...]
+    nearest_spot: Decimal | None  # the row highlighted; None when the answer has no live index price
+    views: tuple[ScenarioValues, ...] = ()  # Estimated Now first, then At Expiry (the screen's column order)
+    unavailable_reason: ExplanationText | None = None
+
+
+@dataclass(frozen=True)
+class SdRow:
+    """One SD row: the move, its percent of spot and the two levels, each half-up to 0.1 from the exact figure."""
+
+    sd: int
+    move: Decimal
+    percent: Decimal
+    lower: Decimal
+    upper: Decimal
+
+
+@dataclass(frozen=True)
+class StandardDeviation:
+    available: bool
+    reason: ExplanationText | None
+    horizon_days: int | None = None
+    iv: Decimal | None = None
+    spot: Decimal | None = None
+    rows: tuple[SdRow, ...] = ()
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -537,8 +578,9 @@ def atm_iv(snapshot: MarketSnapshot, expiry: datetime.date, shared: FeedScope | 
     return (ivs[0] + ivs[1]) / 2
 
 
-def _expected_move(legs, snapshot: MarketSnapshot, valuation: datetime.datetime,
-                   shared: FeedScope | None = None, known: Mapping[str, Decimal] | None = None) -> ExpectedMove | None:
+def _expected_move(legs, snapshot: MarketSnapshot, valuation: datetime.datetime,  # noqa: PLR0913
+                   shared: FeedScope | None = None, known: Mapping[str, Decimal] | None = None, *,
+                   horizon: int | None = None) -> ExpectedMove | None:
     """REQ-027 (Q254) / REQ-034 AC-4: the one expected move the product computes (the default range today; REQ-083's
     SD bands and REQ-027's suggestions call this too). IV = :func:`atm_iv` of the nearest leg expiry; days = calendar
     days from the valuation date in India time to that expiry, at least 1. None when there are no legs, the ATM IV is
@@ -551,6 +593,8 @@ def _expected_move(legs, snapshot: MarketSnapshot, valuation: datetime.datetime,
     if iv is None:
         return None
     days = max((expiry - valuation.astimezone(IST).date()).days, 1)
+    if horizon is not None:  # D-B20 Fixed SD: at most ``horizon`` days
+        days = min(days, horizon)
     try:
         return ExpectedMove(iv, days)
     except ValueError:
@@ -570,6 +614,48 @@ def _graph_points(graph: ScenarioValues) -> tuple[tuple[Decimal, Decimal], ...]:
     if not graph.available or graph.totals is None:
         return ()
     return tuple(zip(graph.levels, graph.totals, strict=True))
+
+
+def standard_deviation(spot: Decimal | None, move: ExpectedMove | None) -> StandardDeviation:
+    """REQ-083 AC-4 / REQ-137 AC-3: the ONE SD figure behind the chart's bands and the SD table, from
+    :meth:`ExpectedMove.exact_points` (the one formula). No spot or no ATM IV: unavailable with the reason."""
+    if spot is None:
+        return StandardDeviation(False, render_explanation("sd_no_spot"))
+    if move is None:
+        return StandardDeviation(False, render_explanation("sd_no_iv"))
+    one = move.exact_points(spot)
+    rows = tuple(SdRow(n, (one * n).quantize(_TENTH, ROUND_HALF_UP),
+                       (one * n / spot * 100).quantize(_TENTH, ROUND_HALF_UP),
+                       (spot - one * n).quantize(_TENTH, ROUND_HALF_UP),
+                       (spot + one * n).quantize(_TENTH, ROUND_HALF_UP)) for n in (1, 2))
+    return StandardDeviation(True, None, move.days, move.iv, spot, rows)
+
+
+def payoff_table(level_set: LevelSet, model: ModelInputs, step: Decimal | None, *,  # noqa: PLR0913
+                 config: ScenarioConfig, rates: ChargeRates | None, spot: Decimal | None,
+                 no_estimate: ExplanationText | None = None) -> PayoffTable:
+    """REQ-137 AC-1: rows from the first multiple of ``step`` at or above the range start to the range end; each view
+    from :func:`scenario_values` on those levels (the one engine). ``step`` None: the Admin step (ADR-042).
+    ``no_estimate``: Estimated Now cannot be computed (no live prices) and carries this reason."""
+    if step is None:
+        step = config.step_points
+    elif step not in PAYOFF_TABLE_STEPS or not isinstance(step, Decimal):
+        raise ValueError(f"payoff table step must be one of {PAYOFF_TABLE_STEPS}, got {step!r}")
+    first = (level_set.start / step).to_integral_value(rounding=ROUND_CEILING) * step
+    count = 0 if first > level_set.end else int((level_set.end - first) / step) + 1
+    if count > MAX_PAYOFF_TABLE_ROWS:
+        return PayoffTable(step, (), None, (), render_explanation("payoff_table_too_many_rows", step=step))
+    levels = tuple(first + step * i for i in range(count))
+    table_set = dataclasses.replace(level_set, columns=tuple(LevelColumn(lvl, frozenset({ColumnKind.GRID}))
+                                                             for lvl in levels))
+    views = []
+    for v in (View.ESTIMATED_NOW, View.AT_EXPIRY):
+        if v is View.ESTIMATED_NOW and no_estimate is not None:
+            views.append(ScenarioValues(v, LABELS[v], "estimate", levels, False, no_estimate, None, None))
+        else:
+            views.append(scenario_values(table_set, model, v, rates=rates))
+    nearest = None if spot is None or not levels else min(levels, key=lambda x: (abs(x - spot), x))
+    return PayoffTable(step, levels, nearest, tuple(views))
 
 
 def _other(view: View) -> View:
@@ -599,7 +685,8 @@ def _no_current(level_set: LevelSet) -> LevelSet:
 def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None, stored,  # noqa: PLR0913
                  valuation: datetime.datetime, *, view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                  rates: ChargeRates | None = None, override: RangeOverride | None = None,
-                 both_views: bool = False) -> Outcome | None:
+                 both_views: bool = False, payoff_step: Decimal | None = None,
+                 sd_bands: bool = False) -> Outcome | None:
     """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
     from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
@@ -654,6 +741,10 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     if both_views:  # Estimated Now needs live prices: its curve is unavailable with the same reason
         curves, other = _both(graph, no_estimate(graph.levels), level_set)
         other = values if view is View.ESTIMATED_NOW else other
+    table_p = None
+    if both_views or payoff_step is not None:
+        table_p = payoff_table(level_set, model, payoff_step, config=config, rates=None if charges is None else rates,
+                               spot=None, no_estimate=render_explanation("outcome_from_entries_no_estimate"))
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
     points = _graph_points(graph) if shown.available else ()
@@ -667,7 +758,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         visible_columns=visible_columns(table), payoff_points=points,
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
-        curves=curves, other_view=other)
+        curves=curves, other_view=other, payoff_table=table_p,
+        standard_deviation=standard_deviation(None, None) if sd_bands else None)
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
@@ -675,7 +767,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
                   override: RangeOverride | None = None, shared: FeedScope | None = None,
-                  both_views: bool = False) -> Outcome:
+                  both_views: bool = False, payoff_step: Decimal | None = None,
+                  sd_bands: bool = False) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
@@ -693,7 +786,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return not_connected(definition, snapshot)
     if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
         return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
-                             override=override, both_views=both_views)
+                             override=override, both_views=both_views, payoff_step=payoff_step,
+                             sd_bands=sd_bands)
                 or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
@@ -793,6 +887,14 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if both_views:  # REQ-083 AC-1: the other view from the same engine, on the same graph levels and inputs
         curves, other = _both(graph, scenario_values(graph_levels, model, _other(view),
                                                      rates=None if charges is None else rates), level_set)
+    table_p = None
+    if both_views or payoff_step is not None:
+        table_p = payoff_table(level_set, model, payoff_step, config=config, rates=None if charges is None else rates,
+                               spot=model.spot_level)
+    sd = None
+    if sd_bands:  # the same expected move as the range, on the fixed horizon (D-B20)
+        sd = standard_deviation(model.spot_level, _expected_move(inputs, snapshot, valuation, shared, solved,
+                                                                 horizon=SD_HORIZON_DAYS))
     table = build_table(model, level_set=level_set, scenario=values,
                         leg_greeks=_shared_leg_greeks(model, snapshot, shared))
     points = _graph_points(graph)
@@ -807,4 +909,5 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         payoff_points=points,
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
-        charges_breakdown=breakdown, curves=curves, other_view=other)
+        charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
+        standard_deviation=sd)

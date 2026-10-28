@@ -52,7 +52,7 @@ async def test_both_views_flag_off_keeps_todays_keys_and_on_adds_curves(replayed
     off = (await _post(_body(replayed), replayed)).json()
     on = (await _post(_body(replayed, both_views=True), replayed)).json()
     assert "curves" not in off and "other" not in off["scenario"]
-    assert set(on) - set(off) == {"curves"}
+    assert set(on) - set(off) == {"curves", "payoff_table"}  # both views also brings the two-column table
     assert on["curves"]["at_expiry"]["points"] == off["payoff"]["points"]
     est = (await _post(_body(replayed, view="estimated_now"), replayed)).json()
     assert on["curves"]["estimated_now"]["points"] == est["payoff"]["points"]
@@ -62,3 +62,18 @@ async def test_both_views_flag_off_keeps_todays_keys_and_on_adds_curves(replayed
 @pytest.mark.parametrize("bad", [1, "true", None])
 async def test_both_views_is_strict(replayed, bad):
     assert (await _post(_body(replayed, both_views=bad), replayed)).status_code == 422
+
+
+@pytest.mark.parametrize("bad", [30, 0, -50, 300, 50.0, "50", True])
+async def test_payoff_step_outside_the_four_is_refused(replayed, bad):
+    assert (await _post(_body(replayed, payoff_step=bad), replayed)).status_code == 422
+
+
+@pytest.mark.parametrize("step", [10, 25, 50, 100])
+async def test_payoff_step_and_sd_through_the_route(replayed, step):
+    off = (await _post(_body(replayed), replayed)).json()
+    on = (await _post(_body(replayed, payoff_step=step, sd_bands=True), replayed)).json()
+    assert set(on) - set(off) == {"payoff_table", "standard_deviation"}
+    assert on["payoff_table"]["step"] == str(step) and on["payoff_table"]["rows"]
+    assert on["standard_deviation"]["available"] is True and on["standard_deviation"]["horizon_days"] == 5
+    assert len(on["standard_deviation"]["bands"]) == 4
