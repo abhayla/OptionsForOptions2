@@ -11,11 +11,12 @@ const calls = []
 let answers = {}
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
+  const { withPriceTexts } = await import('./_priceTexts.js')
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
-    return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a })
+    return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: withPriceTexts(a) })
   }
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
@@ -608,8 +609,12 @@ describe('REQ-077 AC-5 Reset Prices and the per-leg reset', () => {
 
 describe('REQ-077 AC-6 / AC-7 the price-has-moved marker', () => {
   const leg = { planned_entry: '44.90', captured_at: '2026-10-24T10:35:12+05:30' }
+  it('D-PX: the marker prints the server display text ("now 99.80" for an ltp sent as "99.8"), never the raw value', () => {
+    expect(movedMarker({ planned_entry: '140.35', captured_at: null }, '99.8', { planned_entry_display: '140.35', ltp_display: '99.80' })).toBe('Price has moved: planned 140.35, now 99.80')
+    expect(movedMarker({ planned_entry: '140.35', captured_at: null }, '99.8', {})).toBe('Price has moved: planned —, now —')
+  })
   it('AC-6: differing strings give the marker with the time, planned and now exactly as sent', () => {
-    expect(movedMarker(leg, '47.15')).toBe('Price has moved since 24 Oct 2026, 10:35:12 IST: planned 44.90, now 47.15')
+    expect(movedMarker(leg, '47.15', { planned_entry_display: '44.90', ltp_display: '47.15' })).toBe('Price has moved since 24 Oct 2026, 10:35:12 IST: planned 44.90, now 47.15')
   })
   it('AC-6: equal strings (also 44.9 vs 44.90) give no marker; no live data gives none', () => {
     expect(movedMarker(leg, '44.90')).toBeNull()
@@ -928,7 +933,7 @@ describe('W-192 Revision 1 (REQ-077 AC-1, AC-6, AC-7): a visible second line onl
   })
   it('a moved price shows a dot on its price box with the AC-6 sentence in its tooltip, no second line (ADR-202 (2), GC-UI 3a D-A15)', () => {
     const legs = condorLegs()
-    const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' } } })
+    const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' }, priceTextById: { [legs[0].instrument_id]: { ltp_display: '39.15', planned_entry_display: '100.00' } } } })
     expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
     expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved-dot"]').exists()).toBe(true)
     expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')

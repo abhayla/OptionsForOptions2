@@ -30,6 +30,7 @@ const props = defineProps({
   updating: { type: Boolean, default: false },
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that row (REQ-077 AC-2)
+  priceTextById: { type: Object, default: () => ({}) }, // GC-UI D-PX: the outcome's own two-decimal price texts by instrument id: { ltp_display, planned_entry_display }
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
   controls: { type: Object, default: () => NO_CONTROLS }, // REQ-078 AC-2: controlsFrom(the newest reply)
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
@@ -69,7 +70,7 @@ const tickState = computed(() => (selectedCount.value === props.legs.length ? 'a
 const legName = (l) => contractName(l)
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
-const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id])
+const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
 // D-A06: the card title is the same plain name the action row used (no literal quote marks)
@@ -226,7 +227,7 @@ function setMultiplier(index) {
             <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
-          <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry }}</span>
+          <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
             <span v-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
