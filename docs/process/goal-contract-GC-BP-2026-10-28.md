@@ -50,6 +50,14 @@ Measured 2026-10-28 on 303dc8c3:
 - Step 0 re-checks this list with `git log origin/main..HEAD --stat` and grep. Any extra overlap goes on the list
   before code is written.
 
+**Step 0 result (2026-10-28 10:15 IST, head 1422770a, 88 commits ahead of origin/main):** the list above holds. No
+GC-BM commit touches tracking or positions code (the only matches in `git log origin/main..HEAD --stat` are this
+contract and ADR-201). No exit code anywhere in `ofo/tracking/paper.py` or `routes/tracking.py`. Extra reuse points:
+`ofo_app/tracking_store.py` has `start`, `load` and `tracked_ids(conn, strategy_ids)` (step 4 builds on these, no new
+store); `routes/strategies.py` already calls the store (its tracked flag). Grep hits in `AppHeader.vue`
+(`tracking-wide` CSS) and `legPicker.js` (a comment) are not tracking code. Deferred issues #596-#602 are all open and
+none touches tracking, paper or Positions.
+
 ## No-CI rules (owner instruction 4; same as GC-BM)
 
 - **No push, no PR, no draft PR, no GitHub Actions** until step 8 passes its clean walk.
@@ -82,8 +90,8 @@ Measured 2026-10-28 on 303dc8c3:
 
 | Step | Item | What | Tier | Proof (read back on the live screen) | Status |
 |---|---|---|---|---|---|
-| 0 | read first | Read `git log origin/main..HEAD`, the GC-BM contract + 10-28 handover, deferred issues #596-#602, and the "already exists" list above; write the overlap list here | C | List written in this file | Not started |
-| 1 | core proof | The Core/Proof above, before any code | C | Two paper P&L readings with times + the GET reply | Not started |
+| 0 | read first | Read `git log origin/main..HEAD`, the GC-BM contract + 10-28 handover, deferred issues #596-#602, and the "already exists" list above; write the overlap list here | C | List written in this file | DONE 10:15 (step 0 result block) |
+| 1 | core proof | The Core/Proof above, before any code | C | Two paper P&L readings with times + the GET reply | DONE 10:25 with F-1: strategy 46 "GCBP P1 BCS" (NIFTY 3 Nov 22550/22750 CE) saved + tracked 10:18:19 IST, entry 187.35 / 107.30. Server: 3.25 (10:18:27) -> -130.00 (10:20:31), state LIVE, both legs live; hand check 65x(186.45-187.35)+65x(107.30-106.35)=3.25. Screen did NOT move (F-1); after the fix: -104.00 (10:24:34) -> -84.50 (10:24:43) |
 | 2 | walk 1 | The P-list below on the live app, before code changes (except a step-1 fix). Every functional failure becomes an F-row; visual differences go to the visual list | C | P-list filled in, screenshot names | Not started |
 | 3 | fix F-rows | Each F-row: RCA, Class, failing test first, class-level fix, re-test on the live app (defect-fix contract E5). At most 2 rounds per row, then park (`parked` issue) | B (A if it touches engine maths, order path or tracking writes) | Each row's re-test line | Not started |
 | 4 | paper list API | `GET /api/tracking` (name per house style): every paper-tracked strategy of the signed-in user (REQ-125: never another user's), each with legs, entry, LTP, paper P&L total / booked / unbooked from the ONE engine (reuse `ofo.tracking.paper` + the W-122 view code, do not copy it), price state and paused reason. Openapi regenerated. Answer states: none tracked, all live, some paused, no Zerodha session, expired leg (AC-7), read failure | B; Opus review if engine code changes | Route tests red first (db_run_fresh); live read with 3 tracked strategies | Not started |
@@ -122,6 +130,7 @@ the same legs; the browser console has no uncaught error. Plus these cross-check
 
 | F | P-step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
+| F-1 | step 1 (P-1) | TrackingPanel showed -120.25 at 10:21:57 IST while GET answered -188.50: the paper figure and leg LTPs never changed after the page opened | RCA: `TrackingPanel.vue` read GET /tracking once, on strategy-id change, with no re-read. Class: every screen showing a paper P&L figure (today 1: TrackingPanel; step 6's Paper tab and the Tracked tab must reuse the same refresh). Fix: re-read every `TRACKING_REFRESH_MS` = 5000 (the strike picker's rate; spec silent, searched refresh/seconds/tick in REQ-109, REQ-033) while tracked, one read at a time, late answers for another strategy dropped, a failed read shows no figure. 7 tests red first (5 failed on old code), 4 mutants each killed. Detection: the P-list now reads the screen twice, not only the API | see git log (GC-BP F-1) | 10:24:34 -104.00 -> 10:24:43 -84.50 on screen, owner's Chrome |
 
 ## Visual differences for the owner (not fixed here)
 

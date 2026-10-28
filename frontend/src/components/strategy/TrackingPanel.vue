@@ -45,9 +45,9 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { START_TRACKING_LABEL, readTracking } from '@/lib/tracking'
+import { START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracking } from '@/lib/tracking'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -93,6 +93,27 @@ async function start() {
     busy.value = false
   }
 }
+
+// GC-BP F-1: while tracked, re-read every TRACKING_REFRESH_MS. One read at a time; an answer for a strategy no longer
+// shown is dropped; a failed read shows no figure (an old figure is never left on screen as if current).
+let reading = false
+async function refresh() {
+  const id = props.savedId
+  if (status.value !== 'tracked' || reading || !id) return
+  reading = true
+  try {
+    const { data } = await api.get(`/strategies/${id}/tracking`)
+    if (id !== props.savedId) return
+    error.value = ''
+    view.value = readTracking(data)
+  } catch (e) {
+    if (id === props.savedId) failed(e)
+  } finally {
+    reading = false
+  }
+}
+const timer = setInterval(refresh, TRACKING_REFRESH_MS)
+onBeforeUnmount(() => clearInterval(timer))
 
 watch(() => props.savedId, load, { immediate: true })
 </script>

@@ -5,6 +5,8 @@ import { istTime } from '@/lib/displayFormat'
 
 /** ADR-166: the action's label on every screen (owner decision; change it here only). */
 export const START_TRACKING_LABEL = 'Start tracking'
+/** GC-BP F-1: a tracked strategy's paper P&L is re-read this often while it is on screen (the strike picker's rate). */
+export const TRACKING_REFRESH_MS = 5000
 /** REQ-045 AC-1: the label of every platform detection. */
 export const PLATFORM_DETECTION_LABEL = 'Adjustment opportunity detected'
 /** REQ-109 AC-2: every paper figure says it is not real. */

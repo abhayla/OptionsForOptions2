@@ -2,7 +2,7 @@
 // are the shape of GET /strategies/{id}/tracking on the recorded 2026-10-08 replay (tests_app/test_strategy_tracking.py:
 // paper P&L "195.00", detection 22400.00 / 22533.25 / 133.25 points / 0.59% at 0.6); every expected value is that
 // answer's own string, only re-grouped, never a value this code computed.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 const calls = []
@@ -18,7 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { PAPER_PNL_PREFIX, START_TRACKING_LABEL, readTracking, signedRupees } from '@/lib/tracking'
+import { PAPER_PNL_PREFIX, START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracking, signedRupees } from '@/lib/tracking'
 
 const legs = [
   { instrument_id: 'NSE_FO:44624', action: 'SELL', instrument: 'CE', strike: '22800.00', entry_price: '39.15',
@@ -148,5 +148,95 @@ describe('TrackingPanel', () => {
     const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: null } })
     await flushPromises()
     expect(w.get('[data-testid="start-tracking"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+// GC-BP F-1 (2026-10-28, live walk on strategy 46): the panel read the paper P&L once and never again, so at 10:21:57 IST
+// it showed -120.25 while the server answered -188.50. The panel now re-reads every TRACKING_REFRESH_MS while tracked.
+describe('TrackingPanel refresh (GC-BP F-1)', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  const gets = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/strategies/7/tracking').length
+
+  it('a tracked strategy re-reads every TRACKING_REFRESH_MS and shows the new figure', async () => {
+    let pnl = '195.00'
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ paper_pnl: pnl }) })
+    const w = await panel()
+    expect(TRACKING_REFRESH_MS).toBe(5000)
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +195.00')
+    pnl = '-188.50'
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(gets()).toBe(2)
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): -188.50')
+  })
+
+  it('after Start tracking the figure refreshes too', async () => {
+    let tracked = false
+    answers['GET /strategies/7/tracking'] = () => (tracked
+      ? Promise.resolve({ data: body({ paper_pnl: '-50.00' }) })
+      : Promise.reject({ status: 404, parts: null }))
+    answers['POST /strategies/7/tracking'] = () => { tracked = true; return Promise.resolve({ data: body() }) }
+    const w = await panel()
+    await w.get('[data-testid="start-tracking"]').trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): -50.00')
+  })
+
+  it('fail closed: a failed refresh shows no figure (never the old one as if current); the next one restores it', async () => {
+    let fail = false
+    answers['GET /strategies/7/tracking'] = () => (fail
+      ? Promise.reject({ status: 503, parts: { what_happened: 'Prices could not be read.' } })
+      : Promise.resolve({ data: body({ paper_pnl: '10.00' }) }))
+    const w = await panel()
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
+    expect(w.get('[data-testid="tracking-error"]').text()).toBe('Prices could not be read.')
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +10.00')
+    expect(w.find('[data-testid="tracking-error"]').exists()).toBe(false)
+  })
+
+  it('an untracked strategy is not polled', async () => {
+    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
+    await panel()
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS * 3)
+    expect(gets()).toBe(1)
+  })
+
+  it('no read after the panel is gone', async () => {
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
+    const w = await panel()
+    w.unmount()
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS * 3)
+    expect(gets()).toBe(1)
+  })
+
+  it('a read still in flight is never doubled by the next tick', async () => {
+    let release
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
+    await panel()
+    answers['GET /strategies/7/tracking'] = () => new Promise((r) => { release = () => r({ data: body() }) })
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS * 3)
+    expect(gets()).toBe(2)
+    release()
+    await flushPromises()
+  })
+
+  it("a late answer for the previous strategy never overwrites the new strategy's figure", async () => {
+    let releaseOld
+    answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ paper_pnl: '1.00' }) })
+    answers['GET /strategies/8/tracking'] = () => Promise.resolve({ data: body({ strategy_id: 8, paper_pnl: '2.00' }) })
+    const w = await panel()
+    answers['GET /strategies/7/tracking'] = () => new Promise((r) => { releaseOld = () => r({ data: body({ paper_pnl: '99.00' }) }) })
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    await w.setProps({ savedId: 8 })
+    await flushPromises()
+    releaseOld()
+    await flushPromises()
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +2.00')
   })
 })
