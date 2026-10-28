@@ -1285,6 +1285,18 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     expect(w2.findAll('.bg-warn-soft')).toHaveLength(0)
   })
 
+  it('D-C27: the LTP view gives Delta and IV room for a 4 dp / 2 dp value plus a gap (jsdom cannot measure pixels; the live screen is checked after merge)', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const cols = t(w, 'strike-head').element.style.gridTemplateColumns.split(/\s+(?![^(]*\))/)
+    const px = (c) => Number.parseInt(c, 10)
+    expect(px(cols[0])).toBeGreaterThanOrEqual(48) // Call Delta ("0.8376")
+    expect(px(cols[3])).toBeGreaterThanOrEqual(46) // Call IV ("47.00")
+    expect(t(w, 'strike-head').classes().join(' ')).toMatch(/gap-x-1\.5/)
+    expect(t(w, 'strike-row').classes().join(' ')).toMatch(/gap-x-1\.5/)
+  })
+
   it('UI-202/UI-205: the view switch changes the columns (LTP default, Greeks = Delta and IV); width and size sit in Settings', async () => {
     const w = mountPicker()
     await flushPromises()
