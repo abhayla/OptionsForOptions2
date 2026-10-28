@@ -54,7 +54,7 @@ test('four picked legs are priced by the real outcome route on the recorded fram
   await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'no-draft')
   await expect(page.getByTestId('pick-strike')).toBeVisible()
-  await expect(page.getByTestId('pick-expiry')).toContainText('2026-10-13')
+  await expect(page.getByTestId('pick-expiry')).toContainText('13 Oct') // REQ-148 AC-2: never raw ISO
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await page.getByTestId('pick-type').selectOption('CE')
   // only the two offered CE strikes are choices
