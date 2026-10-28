@@ -8,7 +8,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
 /** '2026-10-19' -> '19 Oct', or null when it is not a calendar date string. */
-function expiryText(expiry) {
+export function expiryText(expiry) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
