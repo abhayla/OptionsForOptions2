@@ -251,3 +251,4 @@ Deferred issues to file with the PR (gh_issue.py app ... --stage):
 5. Market calendar holds 2026 only: from 2027-01-01 the closed-market rule would misjudge trading days.
 6. leg-edit echoes a client-sent close_at for legs it does not re-capture (caption only).
 7. After hours the drawer's first open fills prices ~4 s late (new contracts' snapshots arrive late).
+8. Broker-status text "Prices are from 03:30:00 PM" carries no date (every other closed label reads "27 Oct 2026, 15:30 IST").

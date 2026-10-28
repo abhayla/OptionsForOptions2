@@ -185,10 +185,12 @@ def test_closed_market_with_a_held_price_but_no_depth_keeps_day_values_and_the_c
         out = leg_picker.depth_answer(feed, HELD, clock)
     finally:
         feed.fanout.unsubscribe(handle)
-    assert out.market_closed is True and out.reason != "FEED_STALE"
+    assert (out.state, out.reason, out.market_closed) == ("NOT_AVAILABLE", "MARKET_CLOSED", True)
+    assert out.bids == [] and out.asks == []
     assert out.last_price_at == datetime.datetime(2026, 10, 27, 15, 30, tzinfo=IST)
-    if out.state == "NOT_AVAILABLE":
-        assert out.reason == "MARKET_CLOSED" and out.day_open is not None
+    # the day values the 44-byte packet carries (the recorded frame), as sent; no exchange time in it
+    assert [f"{v:f}" for v in (out.day_open, out.day_high, out.prev_close)] == ["46.25", "52.80", "53.70"]
+    assert out.last_trade_at is None
 
 
 def test_after_close_the_execute_depth_still_refuses():

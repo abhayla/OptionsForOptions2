@@ -61,6 +61,11 @@ const unavailableReason = computed(() => {
   if (a && a.state === 'AVAILABLE' && !available.value) return depthReasonText('DEPTH_EMPTY')
   return depthReasonText(a?.reason)
 })
+// GC-BM F-20 / ADR-200 (1): closed with no levels, the server may still send the day values; they show as sent
+const heldDay = computed(() => {
+  const a = answer.value
+  return !failed.value && !!a && ['day_open', 'day_high', 'day_low', 'prev_close', 'last_trade_at'].some((k) => a[k] != null)
+})
 const levels = computed(() => {
   const a = answer.value
   return available.value ? Array.from({ length: a.bids.length > a.asks.length ? a.bids.length : a.asks.length }, (_, i) => ({ bid: a.bids[i] ?? null, ask: a.asks[i] ?? null })) : []
@@ -77,13 +82,14 @@ const levels = computed(() => {
     <!-- ADR-200 (2): the held after-hours depth sits under the one market-closed banner, the quote's own time -->
     <MarketClosedBanner v-if="answer?.market_closed === true" class="mt-2" :prices-at="answer.last_price_at" />
     <p v-if="!loaded" data-testid="depth-loading">Reading depth...</p>
-    <template v-else-if="available">
-      <dl class="mt-2 grid grid-cols-4 gap-2" data-testid="depth-day">
-        <div><dt class="text-xs text-ink-muted">Open</dt><dd data-testid="depth-open">{{ shown(answer.day_open) }}</dd></div>
-        <div><dt class="text-xs text-ink-muted">High</dt><dd data-testid="depth-high">{{ shown(answer.day_high) }}</dd></div>
-        <div><dt class="text-xs text-ink-muted">Low</dt><dd data-testid="depth-low">{{ shown(answer.day_low) }}</dd></div>
-        <div v-if="answer.prev_close != null"><dt class="text-xs text-ink-muted">Prev close</dt><dd data-testid="depth-prev-close">{{ answer.prev_close }}</dd></div>
-      </dl>
+    <!-- the day values: with the depth, or (closed, GC-BM F-20) on their own when the server holds them -->
+    <dl v-if="loaded && (available || heldDay)" class="mt-2 grid grid-cols-4 gap-2" data-testid="depth-day">
+      <div><dt class="text-xs text-ink-muted">Open</dt><dd data-testid="depth-open">{{ shown(answer.day_open) }}</dd></div>
+      <div><dt class="text-xs text-ink-muted">High</dt><dd data-testid="depth-high">{{ shown(answer.day_high) }}</dd></div>
+      <div><dt class="text-xs text-ink-muted">Low</dt><dd data-testid="depth-low">{{ shown(answer.day_low) }}</dd></div>
+      <div v-if="answer.prev_close != null"><dt class="text-xs text-ink-muted">Prev close</dt><dd data-testid="depth-prev-close">{{ answer.prev_close }}</dd></div>
+    </dl>
+    <template v-if="loaded && available">
       <table class="mt-2 w-full border-collapse text-right tabular-nums" data-testid="depth-table">
         <thead class="text-xs text-ink-muted"><tr><th class="px-3 py-1">Bids</th><th class="px-3 py-1">Qty</th><th class="px-3 py-1">Offers</th><th class="px-3 py-1">Qty</th></tr></thead>
         <tbody>
@@ -99,9 +105,10 @@ const levels = computed(() => {
       </p>
       <p v-if="answer.day_stats_reason" class="mt-1 text-ink-muted" data-testid="depth-day-reason">Day figures not shown: {{ dayStatsReasonText(answer.day_stats_reason) }}</p>
     </template>
-    <div v-else data-testid="depth-unavailable">
+    <div v-else-if="loaded" data-testid="depth-unavailable">
       <p class="mt-2 font-medium">{{ DEPTH_NOT_AVAILABLE }}</p>
       <p data-testid="depth-reason">{{ unavailableReason }}</p>
+      <p v-if="heldDay" class="mt-2 text-xs text-ink-muted">Last trade <span data-testid="depth-last-trade">{{ answer.last_trade_at ? istTime(answer.last_trade_at) : '-' }}</span></p>
     </div>
   </div>
 </template>

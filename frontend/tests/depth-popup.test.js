@@ -103,6 +103,25 @@ describe('depth popup not available (AC-8)', () => {
     ])
   })
 
+  it('GC-BM F-20 / ADR-200 (1): closed with no levels but day values held: no table, the reason, AND the day values and last trade time as sent', async () => {
+    answer = { ...NOT_AVAILABLE, reason: 'MARKET_CLOSED', market_closed: true, last_price_at: '2026-10-27T15:30:00+05:30',
+      day_open: '140.00', day_high: '158.90', day_low: '131.40', prev_close: '139.20', last_trade_at: '2026-10-27T15:29:58+05:30' }
+    const w = mountPopup()
+    await flushPromises()
+    expect(t(w, 'depth-table').exists()).toBe(false)
+    expect(t(w, 'depth-reason').text()).toBe('The market is closed. No depth is held from the last session.')
+    expect([t(w, 'depth-open').text(), t(w, 'depth-high').text(), t(w, 'depth-low').text(), t(w, 'depth-prev-close').text()]).toEqual(['140.00', '158.90', '131.40', '139.20'])
+    expect(t(w, 'depth-last-trade').text()).toBe('27 Oct 2026, 15:29:58 IST')
+  })
+
+  it('GC-BM F-20: not available with no day values sent shows no day block (nothing invented)', async () => {
+    answer = { ...NOT_AVAILABLE, reason: 'MARKET_CLOSED', market_closed: true, last_price_at: null }
+    const w = mountPopup()
+    await flushPromises()
+    expect(t(w, 'depth-day').exists()).toBe(false)
+    expect(t(w, 'depth-last-trade').exists()).toBe(false)
+  })
+
   it('AC-8: a state AVAILABLE answer with an empty side is refused, not shown as an empty table', async () => {
     answer = { ...AVAILABLE, asks: [] }
     const w = mountPopup()

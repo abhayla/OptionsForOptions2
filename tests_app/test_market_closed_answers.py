@@ -90,14 +90,15 @@ async def test_saturday_with_heartbeats_every_route_answers_market_closed_with_t
     no quote reads available. ADR-200 (4) (GC-BM fix round 1): a closed answer's label time is the quotes' OWN
     last-price time, never a frame's arrival (the quote-time case is tests_app/test_builder_after_hours.py). Here the
     outcome is REFUSED (the recorded contract has expired) and the index answer holds no index quote, so neither used a
-    price and neither carries a time (none invented, never the frame's). The Option Chain is outside this fix (threat
-    model) and still carries the frame's arrival."""
-    outcome, chain, indices, frame_at, healths = await _answers(SATURDAY)
+    price and neither carries a time (none invented, never the frame's). ADR-200 (2) (GC-BM F-19): the Option Chain's
+    label is the spot's session close; the recorded frame holds no NIFTY index quote, so the chain carries no time
+    either (never the frame's arrival)."""
+    outcome, chain, indices, _frame_at, healths = await _answers(SATURDAY)
     for answer in (outcome, chain, indices):
         assert answer["market_closed"] is True
     assert outcome["state"] == "REFUSED" and outcome["last_price_at"] is None
     assert indices["last_price_at"] is None
-    assert _instant(chain["last_price_at"]) == frame_at
+    assert chain["last_price_at"] is None and chain["spot_at"] is None
     assert healths == ["stale"]  # the quotes those answers read (the recorded contract has expired: outcome REFUSED)
 
 
