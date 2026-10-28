@@ -13,9 +13,10 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from ofo.engine.display import format_breakeven, format_whole_rupees
+from ofo.engine.display import breakeven_percent, format_signed_percent, format_whole_rupees
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
+from ofo.outcome.serialize import _breakeven as format_breakeven
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import (
     MARGIN,
@@ -141,3 +142,9 @@ def test_funds_needed_is_not_built():  # REQ-142: not derivable (item 3); no fie
 def test_formatter_refuses_a_non_decimal(bad):
     with pytest.raises(ValueError):
         format_whole_rupees(bad, signed=True)
+
+
+def test_percent_helpers():
+    assert breakeven_percent(D("22687.8"), D("22706.8")) == D("-0.1")
+    assert breakeven_percent(D("1"), None) is None
+    assert format_signed_percent(D("0.04")) == "0.0" and format_signed_percent(D("-0.04")) == "0.0"

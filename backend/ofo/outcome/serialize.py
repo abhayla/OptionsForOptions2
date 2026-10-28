@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 
 from ofo.engine.black_scholes import GREEK_STEP
-from ofo.engine.display import format_breakeven, format_whole_rupees
+from ofo.engine.display import breakeven_percent
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
 from ofo.outcome.service import Outcome, OutcomeLeg
@@ -29,9 +29,20 @@ def _t(value: datetime.datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
-def _whole(value: Decimal | None, *, signed: bool) -> str | None:
-    """REQ-152: the whole-rupee text of a summary figure, made here (ADR-008); None stays None (the reason is beside it)."""
-    return None if value is None else format_whole_rupees(value, signed=signed)
+def _whole(value: Decimal | None, *, signed: bool) -> Any:
+    """REQ-152: the whole-rupee text of a summary figure, made on the server from the catalogue (ADR-008, ADR-003);
+    None stays None (the reason or the unlimited flag is beside it)."""
+    if value is None:
+        return None
+    return render_explanation("summary_whole_rupees_signed" if signed else "summary_whole_rupees", amount=value)
+
+
+def _breakeven(level: Decimal, spot: Decimal | None) -> Any:
+    """REQ-153 AC-1: the level in whole points with its signed percent from spot; no usable spot: the level alone."""
+    percent = breakeven_percent(level, spot)
+    if percent is None:
+        return render_explanation("summary_breakeven_level", level=level)
+    return render_explanation("summary_breakeven_percent", level=level, percent=percent)
 
 
 def _margin(out: Outcome) -> dict[str, Any]:
@@ -61,7 +72,8 @@ def _breakdown(b: Any) -> dict[str, Any] | None:
 def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
     if p is None:
         return None
-    return {"amount": _s(p.amount), "amount_display": _whole(p.amount, signed=False), "side": p.side, "per_unit": _s(p.per_unit), "text": p.text, "reason": p.reason}
+    return {"amount": _s(p.amount), "amount_display": _whole(p.amount, signed=False), "side": p.side,
+            "per_unit": _s(p.per_unit), "text": p.text, "reason": p.reason}
 
 
 def _funds_share(f: money.FundsShare | None) -> dict[str, Any] | None:
@@ -141,8 +153,9 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "where_do_i_start_losing": s.where_do_i_start_losing, "max_profit": _s(s.max_profit),
             "max_profit_display": _whole(s.max_profit, signed=True),
             "max_loss": _s(s.max_loss),
-            "max_loss_display": None if s.max_loss is None else format_whole_rupees(-s.max_loss, signed=True),
-            "breakevens_display": [format_breakeven(b, out.spot_level) for b in s.breakevens], "max_profit_unlimited": s.max_profit_unlimited,
+            "max_loss_display": None if s.max_loss is None else _whole(-s.max_loss, signed=True),
+            "breakevens_display": [_breakeven(b, out.spot_level) for b in s.breakevens],
+            "max_profit_unlimited": s.max_profit_unlimited,
             "max_loss_unlimited": s.max_loss_unlimited, "breakevens": [_s(b) for b in s.breakevens],
             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),
             "risk_boundaries": [_s(b) for b in s.risk_boundaries],

@@ -75,17 +75,24 @@ def format_whole_rupees(amount: Decimal, *, signed: bool) -> str:
     return mark + _group_indian(f"{whole:f}")
 
 
-def format_breakeven(level: Decimal, spot: Decimal | None) -> str:
-    """REQ-153 AC-1 / REQ-152: a breakeven in whole points with Indian grouping and its signed percent from spot to
-    one decimal, half-up: ``22,688 (−0.1%)``. No usable spot (None or not above 0): the level alone. A percent that
-    rounds to zero is ``0.0%`` with no sign."""
+def format_whole_points(level: Decimal) -> str:
+    """REQ-152 / D-A04: an index level in whole points with Indian grouping, half-up: ``22,688``."""
+    return _group_indian(f"{_finite(level, 'level').quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")
+
+
+def breakeven_percent(level: Decimal, spot: Decimal | None) -> Decimal | None:
+    """REQ-153 AC-1: (level - spot) / spot x 100 to one decimal, half-up; None when there is no usable spot (None or
+    not above 0), so the caller shows the level alone."""
     value = _finite(level, "level")
-    points = _group_indian(f"{value.quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")
     if spot is None or _finite(spot, "spot") <= 0:
-        return points
-    moved = ((value - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-    mark = "" if moved == 0 else (MINUS if moved < 0 else "+")
-    return f"{points} ({mark}{abs(moved)}%)"
+        return None
+    return ((value - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+
+def format_signed_percent(percent: Decimal) -> str:
+    """A percent with one decimal and a sign: ``+0.9``, ``−0.1``; zero is ``0.0`` with no sign (REQ-153 AC-1)."""
+    value = _finite(percent, "percent").quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return f"{0:.1f}" if value == 0 else f"{MINUS if value < 0 else '+'}{abs(value)}"
 
 
 def format_approx_rupees(amount: Decimal) -> str:
