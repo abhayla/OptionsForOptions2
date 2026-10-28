@@ -571,6 +571,8 @@ def test_d3_whole_rupee_rule(value, signed, text):
         ("22400", "22712", f"22,400 ({M}1.4%)"),
         ("23000", "22712", "23,000 (+1.3%)"),
         ("22687.8", "22698.85", "22,688 (0.0%)"),  # rounds to 0.0: no sign
+        ("20010", "20000", "20,010 (+0.1%)"),  # exactly 0.05: half-up gives 0.1 (half-even would give 0.0)
+        ("19990", "20000", f"19,990 ({M}0.1%)"),
         ("22688", None, "22,688"),  # no usable spot: the level alone
         ("22688", "0", "22,688"),
     ],
