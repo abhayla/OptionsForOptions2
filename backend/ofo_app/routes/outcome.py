@@ -40,7 +40,7 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.outcome.money import with_funds
-from ofo.outcome.price_history import price_text
+from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings

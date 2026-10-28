@@ -11,7 +11,7 @@ from ofo.engine.black_scholes import GREEK_STEP
 from ofo.engine.display import breakeven_percent_exact
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
-from ofo.outcome.price_history import price_text
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts

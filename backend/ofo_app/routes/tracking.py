@@ -31,7 +31,7 @@ from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
-from ofo.outcome.price_history import price_text
+from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.tracking import paper
 from pydantic import BaseModel, ConfigDict, Field

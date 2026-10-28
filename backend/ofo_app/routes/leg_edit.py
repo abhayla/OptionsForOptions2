@@ -42,7 +42,7 @@ from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.marketdata.quote import priced
 from ofo.money import PAISE
-from ofo.outcome.price_history import price_text
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
 from ofo.strategy import shape_families, stored_form
