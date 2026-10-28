@@ -51,7 +51,7 @@ KNOWN_ON_MAIN: dict[str, tuple[str, ...]] = {
         'net = sum((signed_premium(o) for o in orders), Decimal(0))',
     ),
     "backend/ofo/execution/margin_gate.py": (
-        'required += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))',
+        'top_up += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))',  # GC-UI D-A47
     ),
     "backend/ofo/execution/sequence.py": (
         'impact[ref] = base - plan_margin(Strategy(others), planner).total',
