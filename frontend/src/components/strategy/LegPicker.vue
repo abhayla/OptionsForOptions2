@@ -12,6 +12,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
+import { marketClosedText } from '@/lib/sharedStateText'
 import { QUICK_PICK_DISTANCES } from '@/lib/readyMade'
 import { healthSentence } from '@/lib/dataHealthText'
 import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
@@ -49,6 +50,10 @@ const props = defineProps({
   active: { type: Boolean, default: true },
   // GC-BM F-14: the page's chosen underlying, used when the strategy has no legs; '' = no opinion (keep the current one)
   pageUnderlying: { type: String, default: '' },
+  // GC-UI polish D-7b (ADR-197): after hours the page header shows the last close; the drawer header shows that same string (the page's own
+  // source, nothing computed here) with the same "Market closed" label. null = the page has none: the header says so and shows no number.
+  lastClose: { type: String, default: null },
+  closedAt: { type: String, default: null },
 })
 // `done`: Done added the selection (the Builder closes the drawer, UI-206)
 const emit = defineEmits(['update:legs', 'done'])
@@ -613,6 +618,10 @@ defineExpose({ startEdit, showStrikes })
       </select>
       <!-- D-C23 (S-032): the index price in the header; its read time is the tooltip. No live price: the header says so. -->
       <span v-if="spotLive" class="num font-semibold" :title="spotTitle" data-testid="picker-spot">{{ spotLive }}</span>
+      <template v-else-if="strikesData && lastClose">
+        <span class="num font-semibold" :title="marketClosedText(istTime(closedAt))" data-testid="picker-spot">{{ lastClose }}</span>
+        <span class="text-xs text-ink-muted" data-testid="picker-spot-closed">Market closed</span>
+      </template>
       <span v-else-if="strikesData" class="text-xs text-ink-muted" data-testid="picker-spot">No live index price</span>
     </div>
 
