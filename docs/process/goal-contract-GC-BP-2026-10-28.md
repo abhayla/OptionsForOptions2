@@ -1,0 +1,139 @@
+# Goal contract GC-BP: builder -> paper trade -> Positions, tested as a user until clean (2026-10-28)
+
+Written 2026-10-28 ~10:15 IST in a planning-only session. Branch `build/gcbm-must-have`, worktree
+`D:\Abhay\Ventures\OptionsForOptions2-gcbm` (local only; head 303dc8c3 = GC-BM's 86 commits + ADR-201). GC-BM is
+DONE and on hold before its push (`docs/process/session-handover-2026-10-28-gcbm.md`). GC-BP builds on top of it.
+At the end, ONE push and ONE PR carry both contracts.
+
+## Owner decisions behind this contract (2026-10-28, question tool and chat; recorded as ADR-201)
+
+1. "Place" a strategy = **paper tracking** ("Start tracking" at the live price, REQ-109). No order goes to Zerodha
+   (ADR-165 (1)). Owner: "paper trading, no, not the actual orders, but it should be visible on [the] position screen".
+2. Positions screen = **two tabs: "Positions" (real Zerodha, unchanged) and "Paper"**. Each paper strategy is a group
+   showing its legs, entry price, LTP, P&L (total / booked / unbooked), Open in Builder and an exit action, labelled
+   as not a real trade (Sensibull Draft Portfolio content, study 090-092). Paper and real totals are never added
+   together. This is a SPEC CHANGE to ADR-138 (2) / W-111. Sensibull keeps paper trades on a separate page.
+3. Scope = **functional only**. Everything on the flow must WORK. Visual differences from Sensibull go into a list
+   for the owner and are not fixed (same rule as GC-BM).
+4. Process (owner, verbatim): "do not create PRs, do not push, do not start any CI, local or this thing, until all
+   those things are complete ... before making any changes, you read that code and do not duplicate things ... once
+   everything starts working, only then we will create a PR and push and run the CI."
+
+Spec basis: ADR-201 (this round), ADR-165 (no orders; Start tracking; (8) every item names its Sensibull screens),
+REQ-109 AC-1..AC-8 (paper tracking; AC-2 paper P&L from the one engine and never mixed with real; AC-4 paper exit,
+partial by leg; AC-5 paused when prices are not live), ADR-008 (one engine, exact Decimal), ADR-102 (paper never
+summed with real), ADR-138 (2) + W-111 + REQ-044 AC-3 (today's Positions page), ADR-200 (closing-price walks),
+ADR-152 (Sensibull default). Sensibull: private study `D:\Abhay\Ventures\competitors\sensibull\2026-10-21`
+(`catalogue-raw.md` 010-039, 050-053 Positions, 090-092 Draft Portfolios, 100-134, 209-234; INDEX.md). Never copy
+its images into this repo.
+
+**Core:** a strategy built in the live builder can be saved, paper-tracked, and its paper P&L read back moving with
+live prices.
+**Proof:** step 1. On the live app in market hours, BEFORE any code: build a NIFTY Bull Call Spread, Save, press
+Start tracking, read the TrackingPanel's "Paper P&L (not real)" figure at two times at least 2 minutes apart, and
+read `GET /api/strategies/{id}/tracking` (entry per leg, price_state, paper P&L). If this fails, fixing it IS the
+work; nothing else starts (Core-first R3).
+
+## What already exists (read before writing ANY code; do not rebuild)
+
+Measured 2026-10-28 on 303dc8c3:
+- `backend/ofo_app/routes/tracking.py` (W-122): `POST /strategies/{id}/tracking` (start) and `GET` (view: stored
+  entry, current prices, paper P&L from the engine or the paused state, one detection). Domain: `backend/ofo/tracking/paper.py`.
+- Frontend: `frontend/src/lib/tracking.js` (`START_TRACKING_LABEL`), `components/strategy/TrackingPanel.vue`, the
+  builder's "..." menu item Start tracking (`StrategyBuilderPage.vue` ~l.422), the builder's "Tracked" tab
+  (`SaveDraftBar.vue` l.55/l.322, an empty state that points to My Strategies), and `MyStrategiesPage.vue`'s tracked
+  text (`trackedText` in `lib/saveDraft.js`).
+- `frontend/src/pages/PositionsPage.vue` (W-111): reads ONLY `GET /api/positions` (Zerodha), quantities grouped by
+  strategy, no P&L. No Paper tab.
+- NOT built: paper exit (REQ-109 AC-4: no exit route in tracking.py), a list of all of a user's paper strategies,
+  and the Paper tab.
+- Step 0 re-checks this list with `git log origin/main..HEAD --stat` and grep. Any extra overlap goes on the list
+  before code is written.
+
+## No-CI rules (owner instruction 4; same as GC-BM)
+
+- **No push, no PR, no draft PR, no GitHub Actions** until step 8 passes its clean walk.
+- **No `ci_local.py`, `prepush.py`, `land.py` or `merge.py`** per item. Builders run only the tests of the files they
+  touch, plus `ruff` on touched Python and `npx eslint` on touched frontend files. Long output goes to a log file;
+  read only the tail. After each local merge, run the FULL frontend vitest once (memory: targeted runs missed 3 stale
+  assertions in GC-BM). It needs `FULL_SUITE_BUDGET=N` for the session hook.
+- DB tests: the main checkout's `scripts/orchestrator/db_run_fresh.py`, one file at a time (ofo_test is dirty; the
+  VPS serves IPODhan prod).
+- All work is stacked commits on `build/gcbm-must-have`. Builder sub-branches (`build/gcbp-<item>`, worktrees via
+  `wt-new.ps1`, 48h TTL) merge into it locally.
+- No closing keywords ("Fixes #N") in commit subjects.
+
+## Running the app (from the GC-BM launch note; the wrong line cost two restarts)
+
+- API: `LIVE_MARKET=1 APP_ENV=development python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/dev_run.py
+  D:/Abhay/Ventures/OptionsForOptions2-gcbm python -m uvicorn --factory ofo_app.main:create_app --app-dir backend
+  --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765` (ofo_dev).
+- Frontend: in `frontend/`, `OFO_API_TARGET=http://127.0.0.1:8765 npx vite --port 5174 --strictPort`.
+- Before starting, check the ports are free. Record each PID from `netstat -ano` and stop ONLY those, with a literal
+  `taskkill //PID <digits> //T //F`. Git Bash `$!` is not the Windows PID (memory e2e-orphan-servers).
+- Kite token: the owner's cached token. If it has expired (06:00), the one owner step is a login in a PRIVATE window
+  at http://127.0.0.1:8765/broker/zerodha/login.
+- Paper P&L needs LIVE prices (REQ-109 AC-5/AC-6 pause it otherwise). Steps 1, 2, 6 and 8 run in market hours,
+  09:15-15:30 IST. Code steps can run any time.
+- Safety: never press Execute or any order button, never call an order endpoint, never click inside a broker order
+  panel (memories real-order-guardrails, no-clicks-inside-order-panels). Browser: Playwright MCP at 1536 x 864.
+
+## Items
+
+| Step | Item | What | Tier | Proof (read back on the live screen) | Status |
+|---|---|---|---|---|---|
+| 0 | read first | Read `git log origin/main..HEAD`, the GC-BM contract + 10-28 handover, deferred issues #596-#602, and the "already exists" list above; write the overlap list here | C | List written in this file | Not started |
+| 1 | core proof | The Core/Proof above, before any code | C | Two paper P&L readings with times + the GET reply | Not started |
+| 2 | walk 1 | The P-list below on the live app, before code changes (except a step-1 fix). Every functional failure becomes an F-row; visual differences go to the visual list | C | P-list filled in, screenshot names | Not started |
+| 3 | fix F-rows | Each F-row: RCA, Class, failing test first, class-level fix, re-test on the live app (defect-fix contract E5). At most 2 rounds per row, then park (`parked` issue) | B (A if it touches engine maths, order path or tracking writes) | Each row's re-test line | Not started |
+| 4 | paper list API | `GET /api/tracking` (name per house style): every paper-tracked strategy of the signed-in user (REQ-125: never another user's), each with legs, entry, LTP, paper P&L total / booked / unbooked from the ONE engine (reuse `ofo.tracking.paper` + the W-122 view code, do not copy it), price state and paused reason. Openapi regenerated. Answer states: none tracked, all live, some paused, no Zerodha session, expired leg (AC-7), read failure | B; Opus review if engine code changes | Route tests red first (db_run_fresh); live read with 3 tracked strategies | Not started |
+| 5 | paper exit | REQ-109 AC-4: "Paper exit" of a whole strategy and of one leg records the exit price at that moment, freezes that part's P&L into booked, appended to the timeline labelled paper; refused when prices are not live (AC-5 wording). Never reaches Execute (AC-3 test) | A (writes money records) | Tests red first; live: exit one leg of a condor, booked moves and unbooked drops by that leg | Not started |
+| 6 | Paper tab | ADR-201 (2): Positions page tabs "Positions" / "Paper"; Paper lists each strategy as a group (legs, entry, LTP, P&L total / booked / unbooked, price state, Open in Builder, Paper exit with a confirm), the banner "Paper trades - not real money", and its own totals, never added to real. Both Positions menu items show the tabs. The builder's "Tracked" tab lists the same strategies (one shared component, no copy). Sensibull: 090-092 for the group content, 050-053 for the tab look | B | vitest red first; live: 3+ paper strategies visible with moving P&L | Not started |
+| 7 | re-walk | Full P-list again on the final code; new F-rows go to step 3; repeat until a full pass is clean | C | Clean P-list with times | Not started |
+| 8 | final gate + land | With servers STOPPED: `python scripts/generate_openapi.py` drift; Playwright for changed pages (builder, positions; `D:\Abhay\scratch\gcbm-briefs\e2e_local2.sh` inside db_run_fresh); `ruff_ratchet.py`; `coverage.py . --check`; `prepush.py`. One combined review: fresh Opus for steps 4-5 (Tier A), Sonnet for the rest, at most 2 rounds. Then ONE push of `build/gcbm-must-have`, ONE PR covering GC-BM + GC-BP (PR body from `D:\Abhay\scratch\gcbm-briefs\pr-body.md` + this contract; Spec-deviation block for ADR-201; no closing keywords), CI, `merge.py <pr> --reviewed-sha <full sha>` | A | Every command's tail line; CI green on the PR sha; main has the files | Not started |
+| 9 | handover | Visual-differences list, gap-list re-verdicts (G-029, G-030 and touched rows), deferred issues via `gh_issue.py app ... --stage`, DONE / PENDING / BLOCKED / PARKED / NEXT block; same PR as step 8 (no second push). Worktrees removed with `wt-rm.ps1` after merge | C | Files in the PR | Not started |
+
+## The P-list (a user's walk: build, paper-trade, follow)
+
+At least 8 strategies, both indices, each built as a user would, then Saved and paper-tracked. Compare each screen
+with the Sensibull screen named. Write pass / FAIL (functional) / visual-only.
+
+| P | Strategy | How it is built | Then | Sensibull |
+|---|---|---|---|---|
+| P-1 | NIFTY Bull Call Spread | Ready-made card | Save, Start tracking | S-011, 115-119 |
+| P-2 | NIFTY Short Straddle | Quick pick | Save, Start tracking | S-037 |
+| P-3 | NIFTY Short Iron Condor | Ready-made card | Save, Start tracking; later Paper exit ONE leg (step 5) | S-011 |
+| P-4 | NIFTY custom 4 legs | Strike drawer: 2 B + 2 S, lots 2 on one leg | Save, Start tracking | S-032 |
+| P-5 | NIFTY Long Call (1 leg) | Drawer, one pick | Save, Start tracking; later Paper exit all | S-032 |
+| P-6 | NIFTY Calendar (mixed expiry) | Drawer: sell near, buy next expiry | Save, Start tracking | S-104 |
+| P-7 | SENSEX Short Strangle | Quick pick on SENSEX | Save, Start tracking | S-038 |
+| P-8 | SENSEX Bear Put Spread | Ready-made on SENSEX | Save, Start tracking | S-011 |
+
+For every P-row check: legs load priced; summary numbers present (max profit / loss, breakevens, margin); chart and
+P&L table agree; Save reads back; Start tracking stores an entry per leg at the shown price; the Paper tab
+(after step 6) shows the strategy with P&L that moves between two readings ~2 minutes apart; Open in Builder reopens
+the same legs; the browser console has no uncaught error. Plus these cross-checks:
+- PX-1: Positions tab (real) still loads and shows no paper strategy; Paper totals never appear in it.
+- PX-2: a paper strategy cannot reach Execute (no Execute link from the Paper tab; REQ-109 AC-3).
+- PX-3: after a Paper exit, that strategy's P&L stays frozen across two readings.
+- PX-4: reload the page; every paper strategy and its entry prices come back the same.
+
+## Found in the walks (steps 2 and 7)
+
+| F | P-step | What failed (seen) | Class / RCA | Fix commit | Re-test |
+|---|---|---|---|---|---|
+
+## Visual differences for the owner (not fixed here)
+
+| P-step | Ours | Sensibull (screen) | Gap row |
+|---|---|---|---|
+
+## Rules for the run
+
+- Run to the end: stop only for the owner's Kite login, an irreversible act, or a true product fork (owner present:
+  one question per call with a `Business call:` line and Spec basis; owner away: write it to
+  `docs/process/owner-questions-2026-10-28.md` and continue).
+- Technical calls are the session's own; complex ones get an independent reviewer first.
+- Every Agent brief carries `Core:` / `Proof:`, `Budget:`, `Sensibull:`, `Report: evidence-table`, the
+  `.claude/kit/builder-brief.md` standing items and an explicit `model`.
+- Evidence table at every done claim: a command run that turn plus its result line. A worker's report is a claim.
