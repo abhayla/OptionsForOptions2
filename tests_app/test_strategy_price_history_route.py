@@ -68,10 +68,10 @@ def _transport(by_token: dict[str, tuple[int, str]], default: tuple[int, str], s
 def _app_with(conn, user, *, transport=None, session=True, future=True):
     app = _app(_ConnMaker(conn), user)
 
-    async def opener(_db, listed):
+    async def opener(_db):
         if not session:
             return None
-        return KiteHistory(listed, api_key="k", access_token=SECRET, transport=transport).minute_candles
+        return lambda listed: KiteHistory(listed, api_key="k", access_token=SECRET, transport=transport).minute_candles
 
     async def finder(_db, _underlying):
         return _fixture_rows([WING])[0] if future else None
@@ -151,9 +151,9 @@ async def test_flag_off_refuses_before_any_read(app_engine, monkeypatch):
 @pytest.mark.parametrize(("kw", "state", "reason"), [
     ({"session": False}, "no_session", "Connect Zerodha to see the strategy chart."),
     ({"future": False}, "future_not_in_catalogue", "No index future is listed in the stored instrument list."),
-    ({"refuse": (429, "")}, "kite_refused", "Zerodha did not return the price history. Try again later."),
-    ({"refuse": (500, "")}, "kite_refused", "Zerodha did not return the price history. Try again later."),
-    ({"refuse": (200, "not json")}, "kite_refused", "Zerodha did not return the price history. Try again later."),
+    ({"refuse": (429, "")}, "broker_refused", "Zerodha did not return the price history. Try again later."),
+    ({"refuse": (500, "")}, "broker_refused", "Zerodha did not return the price history. Try again later."),
+    ({"refuse": (200, "not json")}, "broker_refused", "Zerodha did not return the price history. Try again later."),
     ({"leg_empty": True}, "leg_not_listed", "NIFTY26O1322800CE has no prices in this window."),
     ({"future_empty": True}, "no_future_candles", "The index future has no prices in this window."),
 ])
@@ -282,4 +282,46 @@ async def test_s5_1_real_token_read_and_real_future_pick_answer_available(app_en
     assert len(real_kite_transport) == 5  # noqa: PLR2004 - 4 legs + the future, each once
     assert f"/historical/{_nov_future()[0].ref('zerodha').broker_token}/minute?" in "".join(real_kite_transport)
     assert ended is None  # the read did not end the live session
+    assert SECRET not in resp.text and SECRET not in caplog.text
+
+
+async def _past_expiry(admin_engine, session_id):
+    async with admin_engine.connect() as conn, conn.begin():
+        await conn.execute(text("SET LOCAL session_replication_role = replica"))
+        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() - "
+                                "interval '1 minute' WHERE id = :id"), {"id": session_id})
+
+
+def _no_session_answer(resp) -> None:
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert (body["available"], body["state"], body["reason"], body["points"]) == (
+        False, "no_session", NO_SESSION_REASON, [])
+    assert body["future_label"] == "NIFTY 23 Nov FUT"
+
+
+async def test_s5_1_no_stored_session_answers_no_session(app_engine, admin_engine, real_kite_transport):
+    resp, _ = await _real_get(app_engine, admin_engine, session=None)
+    _no_session_answer(resp)
+    assert real_kite_transport == []  # Kite is never called without a session
+
+
+async def test_s5_1_a_session_past_expiry_is_ended_by_the_store_and_answers_no_session(app_engine, admin_engine,
+                                                                                      real_kite_transport, caplog):
+    resp, ended = await _real_get(app_engine, admin_engine, session=SECRET, before_get=_past_expiry)
+    _no_session_answer(resp)
+    assert ended == "expired"  # the store ended it, committed on the request's own (fresh) connection
+    assert real_kite_transport == [] and SECRET not in resp.text and SECRET not in caplog.text
+
+
+async def test_s5_1_a_token_store_error_answers_no_session_with_its_code_never_500(app_engine, admin_engine,
+                                                                                    real_kite_transport, caplog,
+                                                                                    monkeypatch):
+    async def refuses(*_a, **_k):
+        raise tokens.BrokerStoreError("token_read_needs_fresh_connection")
+    monkeypatch.setattr(tokens, "access_token_for", refuses)
+    resp, ended = await _real_get(app_engine, admin_engine, session=SECRET)
+    _no_session_answer(resp)
+    assert ended is None and real_kite_transport == []
+    assert "store refused: token_read_needs_fresh_connection" in caplog.text  # the reason, by code only
     assert SECRET not in resp.text and SECRET not in caplog.text
