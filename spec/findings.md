@@ -946,7 +946,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Status: **measured on Sensibull logged out (form + definition only, never used to check our numbers)**.
 
 ## F-64 - Kite's historical minute candles cover the Strategy Chart's 10-day window for a leg and the future, but an option leg misses about 5% of the future's minutes and prices arrive as JSON numbers
-- Measured 2026-10-28 ~21:45 IST (GC-UI step 5 core proof, after hours) on the owner's own Kite Connect session read
+- Measured 2026-10-28 ~21:33 IST (GC-UI step 5 core proof, after hours) on the owner's own Kite Connect session read
   from the encrypted store (`history_finalize.stored_credentials`), through the app's allow-listed door
   (`GET /instruments/historical/{token}/minute`, `oi=1`), 2026-10-14 09:15 to 2026-10-28 15:30 IST: NIFTY26N0325000CE
   (token 13908994) 3,638 candles, first `2026-10-14T09:15 5.4`, last `2026-10-28T15:29 close 0.65`; NIFTY26NOVFUT
