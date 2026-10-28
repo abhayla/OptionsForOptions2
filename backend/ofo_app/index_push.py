@@ -29,7 +29,7 @@ from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
+from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
 from ofo_app.underlying import Underlying
 
 #: The two indices of the view, in the order the message lists them (NIFTY then SENSEX).
@@ -99,8 +99,9 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     # LIVE: the not-live answer, each row's last value kept as stale with its time, the market-closed banner shown.
     shown_live = live and not state.closed
     rows = [_row(ctx, u, i, live, state.closed) for u, i in index_ids(ctx).items()]
+    # ADR-200 (4): closed, the banner's time is the index quotes' own last-price time, never a reconnect frame's
     return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
-                      market_closed=state.closed, last_price_at=state.last_price_at)
+                      market_closed=state.closed, last_price_at=label_time(state, (r.at for r in rows)))
 
 
 def _shown_state(body: IndicesOut) -> tuple:

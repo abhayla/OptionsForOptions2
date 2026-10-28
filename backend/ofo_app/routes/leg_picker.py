@@ -63,7 +63,7 @@ from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes import live
 from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
-from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, market_state
+from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, label_time, market_state
 from ofo_app.underlying import Underlying
 
 STRIKES_PATH = "/api/leg-picker/strikes"
@@ -133,6 +133,9 @@ class StrikesOut(ApiModel):
     rows: list[PickerRowOut]  # ascending strike
     answered_at: datetime.datetime
     market_closed: bool
+    #: ADR-200 (2)/(4): with ``market_closed`` the drawer's banner time, the latest own last-price time among the quotes
+    #: the cells and the engine spot used (never a reconnect frame's time); None in market hours or with no such quote
+    last_price_at: datetime.datetime | None = None
 
 
 class FutureOut(ApiModel):
@@ -185,6 +188,8 @@ class DepthOut(ApiModel):
     #: ADR-200 (1)/(2): outside market hours the held last depth and day values (read-only), shown under the one
     #: market-closed banner; never an order input (Execute reads ``latest_depth``, live only)
     market_closed: bool = False
+    #: ADR-200 (2)/(4): with ``market_closed`` the popup banner's time, the contract quote's own last-price time
+    last_price_at: datetime.datetime | None = None
 
 
 # ---- the window lease -----------------------------------------------------------------------------------------------
@@ -299,7 +304,9 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: Cha
     return PickerCellOut(
         instrument_id=contract.instrument_id, lot_size=contract.lot_size,
         ltp=quote.ltp.quantize(PAISE) if priced and quote.ltp is not None else None,
-        oi=quote.oi if priced else None,  # live, or after the close the last close held (ADR-200 (1))
+        # in hours exactly as before (any AVAILABLE quote's OI, even with LTP 0); after the close the last close held
+        # (ADR-200 (1))
+        oi=(quote.oi if priced else None) if closed else (quote.oi if quote.health is DataHealth.AVAILABLE else None),
         iv_percent=None if greeks is None or not priced else (greeks.iv * _PERCENT).quantize(PAISE),
         delta=None if greeks is None or not priced else greeks.delta.quantize(_DELTA_STEP),
         health=quote.health.value, at=quote.timestamp)
@@ -391,7 +398,8 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
-    closed = market_state(ctx, answered_at).closed
+    mstate = market_state(ctx, answered_at)
+    closed = mstate.closed
     head = {"underlying": underlying, "expiry": expiry, "width": width, "answered_at": answered_at,
             "market_closed": closed}
     state: Literal["LIVE", "NOT_LIVE"] = "NOT_LIVE" if ctx is None else "LIVE"
@@ -420,6 +428,8 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
         rows.append(PickerRowOut(strike=strike.quantize(PAISE), is_atm=strike == centre.atm, ce=sides.get("CE"),
                                  pe=sides.get("PE")))
     reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
+    if closed:  # ADR-200 (4): the label time is the used quotes' own time (in hours: no banner, no time)
+        head["last_price_at"] = label_time(mstate, (q.timestamp for q in (*usable, engine_spot) if q is not None))
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)
@@ -554,8 +564,8 @@ def _paise(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
-def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime.datetime, *,
-               market_closed: bool = False) -> DepthOut:
+def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime.datetime, *,  # noqa: PLR0913
+               market_closed: bool = False, last_price_at: datetime.datetime | None = None) -> DepthOut:
     stats = day.stats
     last_trade = None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
         stats.last_trade_ts, IST)
@@ -567,7 +577,8 @@ def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime
         day_high=None if stats is None else _paise(stats.day_high),
         day_low=None if stats is None else _paise(stats.day_low),
         prev_close=None if stats is None else _paise(stats.prev_close),
-        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at, market_closed=market_closed)
+        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at, market_closed=market_closed,
+        last_price_at=last_price_at)
 
 
 def _held_after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime) -> DepthOut | None:
@@ -583,7 +594,8 @@ def _held_after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.date
         return None
     depth, stats = held
     day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
-    return _depth_out(instrument_id, depth, day, read_at, market_closed=True)
+    own_at = feed.ctx.provider.held_quote_time(instrument_id, read_at)  # ADR-200 (4): the quote's own time, never a frame's
+    return _depth_out(instrument_id, depth, day, read_at, market_closed=True, last_price_at=own_at)
 
 
 def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) -> DepthOut:

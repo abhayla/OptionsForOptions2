@@ -27,6 +27,7 @@ from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
 from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import (
     OutcomeState,
@@ -174,6 +175,18 @@ def market_state(ctx: MarketContext | None, at: datetime.datetime) -> MarketStat
     provider = None if ctx is None else ctx.provider
     return MarketState(closed=market_closed_for(provider, at),
                        last_price_at=getattr(getattr(provider, "feed", None), "last_price_at", None))
+
+
+def label_time(state: MarketState, quote_times: Iterable[datetime.datetime | None]) -> datetime.datetime | None:
+    """ADR-200 (4): the time a market-closed answer is labelled with ("Market closed. Prices are from <time>.") is the
+    quotes' OWN last-price time, the latest ``at`` among the quotes the answer used, never the feed's last frame time (a
+    21:05 reconnect frame is not a price from the session that closed). An older-session price (a holiday before) is
+    kept and labelled with its own time. No usable quote time: None (no time is invented). In market hours the
+    answer's ``last_price_at`` stays the feed's last price frame, unchanged (the reconnecting text reads it)."""
+    if not state.closed:
+        return state.last_price_at
+    times = [t for t in quote_times if isinstance(t, datetime.datetime) and t.utcoffset() is not None]
+    return max(times) if times else None
 
 
 def feed_scope(ctx: MarketContext) -> FeedScope | None:
@@ -550,6 +563,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     frozen quotes. ``now`` stamps the answer time (ADR-088); ``stored`` names the legs when there is no provider (#249)."""
     definition = _definition(req)
     live_blocked = False
+    used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
     if ctx is None:
         answered_at = now()
         config, override = req.scenario_choice()
@@ -561,6 +575,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  answered_at, ctx.rate, shared)
+        used_quotes = [snapshot.spot, *(leg.quote for leg in snapshot.legs.values())]
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
@@ -580,7 +595,8 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     state = market_state(ctx, answered_at)
-    body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
+    body["market_closed"] = state.closed
+    body["last_price_at"] = label_time(state, (q.timestamp for q in used_quotes if q is not None))
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one

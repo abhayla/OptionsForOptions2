@@ -91,6 +91,8 @@ export function applyEditReply(prev, reply) {
       id: old.id ?? `edit-${i}`,
       underlying: old.underlying,
       instrument_id: r.instrument_id,
+      // ADR-197: the close label stays only on the same capture; a re-captured entry has no close time from this reply
+      close_at: same && r.captured_at === old.captured_at ? old.close_at ?? null : null,
       contract_id: r.contract_id ?? null, // the server's id for THIS contract (a stepped leg's new one); null = not savable
       lot_size: r.lot_size ?? null,
       symbol: same ? old.symbol ?? null : null,

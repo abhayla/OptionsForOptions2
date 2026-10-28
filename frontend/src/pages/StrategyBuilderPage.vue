@@ -444,6 +444,13 @@ onBeforeUnmount(() => {
 
 const index = useIndexAnswer()
 const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
+// ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
+// the drawer priced from the last close) it follows the index answer the page already holds (its own socket / REST read)
+const closedBanner = computed(() => {
+  if (data.value) return data.value.market_closed ? { at: data.value.last_price_at } : null
+  const a = index.answer.value
+  return a?.market_closed === true ? { at: a.last_price_at ?? null } : null
+})
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 // W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
 const chartTab = ref('payoff')
@@ -495,7 +502,7 @@ const pricesStamp = computed(() => {
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
 
-    <MarketClosedBanner v-if="data?.market_closed" class="mt-2" :prices-at="data.last_price_at" />
+    <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <div class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">

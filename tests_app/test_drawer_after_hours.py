@@ -11,6 +11,7 @@ at 18:00 IST the drawer's window lease subscribes the rest and the feed delivers
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import pathlib
 import sys
@@ -24,6 +25,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import new_provider, recorded_frames, replay  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.marketdata.quote import planning_price_usable  # noqa: E402
+from ofo.rules.inputs import DataHealth  # noqa: E402
 from ofo_app.catalogue_picker import PickableContract  # noqa: E402
 from ofo_app.chain_push import ChainCatalogue  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
@@ -96,11 +99,6 @@ def test_in_hours_a_stale_drawer_still_prices_nothing():
 @pytest.mark.parametrize("health", ["unhealthy"])
 def test_an_unsound_quote_is_never_priced_after_close(health):
     """Fail closed: the planning rule refuses a quote with a validation error even after the close."""
-    import dataclasses
-
-    from ofo.marketdata.quote import planning_price_usable
-    from ofo.rules.inputs import DataHealth
-
     provider, clock, _items = new_provider()
     provider.subscribe([HELD])
     replay(provider, clock)

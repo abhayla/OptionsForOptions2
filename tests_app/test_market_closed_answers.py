@@ -87,11 +87,17 @@ def _instant(text: str) -> datetime.datetime:
 @pytest.mark.asyncio
 async def test_saturday_with_heartbeats_every_route_answers_market_closed_with_the_last_price_time():
     """AC-7: Saturday 10:00 IST, one frame then heartbeats: outcome, chain and index answer market_closed true and
-    the last price time is the frame's arrival; no quote reads available."""
+    no quote reads available. ADR-200 (4) (GC-BM fix round 1): a closed answer's label time is the quotes' OWN
+    last-price time, never a frame's arrival (the quote-time case is tests_app/test_builder_after_hours.py). Here the
+    outcome is REFUSED (the recorded contract has expired) and the index answer holds no index quote, so neither used a
+    price and neither carries a time (none invented, never the frame's). The Option Chain is outside this fix (threat
+    model) and still carries the frame's arrival."""
     outcome, chain, indices, frame_at, healths = await _answers(SATURDAY)
     for answer in (outcome, chain, indices):
         assert answer["market_closed"] is True
-        assert _instant(answer["last_price_at"]) == frame_at
+    assert outcome["state"] == "REFUSED" and outcome["last_price_at"] is None
+    assert indices["last_price_at"] is None
+    assert _instant(chain["last_price_at"]) == frame_at
     assert healths == ["stale"]  # the quotes those answers read (the recorded contract has expired: outcome REFUSED)
 
 

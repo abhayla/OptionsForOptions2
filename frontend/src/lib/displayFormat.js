@@ -113,10 +113,19 @@ export function istClock(iso) {
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
 }
 
+/** ADR-197: the caption word of an entry captured from the last close ("Close, 27 Oct 2026, 15:30:00 IST"). */
+export const CLOSE_CAPTION_PREFIX = 'Close, '
+
 /** Review 3 (REQ-077 AC-1): a captured price's caption. "captured 10:35:12" when the capture is on today's India date,
  *  else "captured 21 Oct 2026, 10:35:12 IST"; null when the time is missing or unreadable. `now` is only the clock used to
  *  name today (an ISO instant; the browser clock when omitted): no number is computed from it. */
-export function capturedCaption(iso, now = new Date().toISOString()) {
+export function capturedCaption(iso, now = new Date().toISOString(), closeAt = null) {
+  // ADR-197: an entry captured outside market hours is the close, labelled with the quote's own last-price time
+  // (`close_at`, sent by the server), never the capture clock time
+  if (closeAt != null) {
+    const c = istTime(closeAt)
+    if (c !== TIME_UNAVAILABLE) return `${CLOSE_CAPTION_PREFIX}${c}`
+  }
   const t = istTime(iso)
   if (t === TIME_UNAVAILABLE) return null
   const today = istTime(now)

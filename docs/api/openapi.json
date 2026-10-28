@@ -1274,6 +1274,18 @@
             "title": "Instrument Id",
             "type": "string"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
           "last_trade_at": {
             "anyOf": [
               {
@@ -3544,6 +3556,18 @@
             ],
             "title": "Captured At"
           },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
+          },
           "exchange_segment": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Exchange Segment",
@@ -4666,6 +4690,18 @@
             "format": "date",
             "title": "Expiry",
             "type": "string"
+          },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
           },
           "market_closed": {
             "title": "Market Closed",
