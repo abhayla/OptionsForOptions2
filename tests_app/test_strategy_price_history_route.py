@@ -12,18 +12,28 @@ Real PostgreSQL only (ADR-048); every test rolls back.
 from __future__ import annotations
 
 import datetime
+import io
 from decimal import Decimal
 from http import HTTPStatus
 from pathlib import Path
 
 import pytest
 from ofo.timeutil import IST
-from ofo_app import held_switches
+from ofo_app import broker_token_store as tokens
+from ofo_app import held_switches, kite_history
 from ofo_app import strategy_price_history as sph
+from ofo_app import strategy_store as store
+from ofo_app.broker_config import load_broker_config
+from ofo_app.broker_crypto import TokenCipher
+from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from ofo_app.kite_history import KiteHistory
+from ofo_app.live_market import OWNER_REF
 from ofo_app.routes import strategies as strategy_routes
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from test_strategy_followups import _ConnMaker
-from test_strategy_store import WING, _app, _client, _fixture_rows, _user, _with_draft
+from test_strategy_store import (WING, _app, _client, _fixture_rows, _ids, _remove_own_rows, _saved_in, _user,
+                                 _with_draft)
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_history"
 LEG_BODY = (FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8")
@@ -178,3 +188,98 @@ async def test_days_outside_1_to_15_is_refused(app_engine):
                 assert (await _get(conn, user, stored.id, q, transport=_standard([]))).status_code >= 400  # noqa: PLR2004
         finally:
             await trans.rollback()
+
+
+# ---- S5-1: the production seams run for real (no opener / finder fake; only Kite's HTTP transport is faked) ----
+# The route runs as in production: a real AsyncSession per request (a fresh connection, as ``get_db`` gives), the
+# owner's session stored ENCRYPTED by the store's own write, the real token read and the real catalogue FUT pick. The
+# rows are COMMITTED (the request's own session must see them) and removed after.
+
+LIST_DAY = datetime.date(2026, 10, 8)
+AS_OF = datetime.datetime(2026, 10, 8, 9, 0, tzinfo=IST)
+FUT_CSV = Path(__file__).resolve().parent / "fixtures" / "zerodha_instruments_nifty_sensex_2026-10-02.csv"
+NOV_FUT = "NIFTY26NOVFUT"  # real row: 15736578,61471,NIFTY26NOVFUT,NIFTY,0,2026-11-23,0,0.1,65,FUT,NFO-FUT,NFO
+NO_SESSION_REASON = "Connect Zerodha to see the strategy chart."
+
+
+def _nov_future():
+    lines = [ln for ln in FUT_CSV.read_text(encoding="utf-8").splitlines() if not ln.startswith("#")]
+    row = next(ln for ln in lines if f",{NOV_FUT}," in ln)
+    return list(parse_rows_naming_the_row(io.StringIO(f"{lines[0]}\n{row}\n")))
+
+
+async def _committed_seed(app_engine, user: str, *, session: str | None):
+    """Commits the recorded catalogue + the real NIFTY Nov FUT row, one saved strategy and (``session``) the owner's
+    session written by the store itself. Returns (strategy id, new contract ids, session id)."""
+    async with app_engine.connect() as conn:
+        before = {r[0] for r in await conn.execute(text("SELECT id FROM public.catalogue_contracts"))}
+        await conn.rollback()  # end the read's autobegun transaction; the seed commits in its own
+        async with conn.begin():
+            await apply_update(conn, _fixture_rows() + _nov_future(), as_of=AS_OF)
+            stored = await store.save_draft(conn, user, await _saved_in(conn, user, await _ids(conn)))
+            session_id = None
+            if session is not None:
+                session_id = await tokens.store_session(conn, OWNER_REF, session,
+                                                        TokenCipher(load_broker_config().token_key))
+        after = {r[0] for r in await conn.execute(text("SELECT id FROM public.catalogue_contracts"))}
+    return stored.id, sorted(after - before), session_id
+
+
+async def _remove_seed(admin_engine, user: str, contract_ids: list[int], session_id: int | None) -> None:
+    await _remove_own_rows(admin_engine, contract_ids, user)
+    if session_id is not None:
+        async with admin_engine.connect() as conn, conn.begin():
+            await conn.execute(text("SET LOCAL session_replication_role = replica"))
+            await conn.execute(text("DELETE FROM public.broker_sessions WHERE id = :id"), {"id": session_id})
+
+
+def _real_app(app_engine, user: str):
+    """The production dependencies except "now" (the recorded day): no opener, no finder override."""
+    app = _app(async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False), user)
+    app.dependency_overrides[strategy_routes.get_history_now] = lambda: NOW
+    return app
+
+
+@pytest.fixture
+def real_kite_transport(monkeypatch):
+    """Kite's HTTP transport is the ONLY fake: the real recorded F-64 bodies, by Kite instrument token."""
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())  # the recorded list's own day (pinned clock)
+    seen: list[str] = []
+    monkeypatch.setattr(kite_history, "urllib_transport", _standard(seen))
+    return seen
+
+
+async def _real_get(app_engine, admin_engine, *, session: str | None, before_get=None):
+    user = _user()
+    cids, session_id = [], None
+    try:
+        sid, cids, session_id = await _committed_seed(app_engine, user, session=session)
+        if before_get is not None:
+            await before_get(admin_engine, session_id)
+        async with _client(_real_app(app_engine, user)) as ac:
+            resp = await ac.get(f"/strategies/{sid}/price-history")
+        ended = None
+        if session_id is not None:
+            async with admin_engine.connect() as conn:
+                ended = (await conn.execute(text("SELECT end_reason FROM public.broker_sessions WHERE id = :id"),
+                                            {"id": session_id})).scalar_one()
+        return resp, ended
+    finally:
+        await _remove_seed(admin_engine, user, cids, session_id)
+
+
+async def test_s5_1_real_token_read_and_real_future_pick_answer_available(app_engine, admin_engine, caplog,
+                                                                          real_kite_transport):
+    """Core proof of S5-1: before the fix this answered 500 (token_read_needs_fresh_connection)."""
+    resp, ended = await _real_get(app_engine, admin_engine, session=SECRET)
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert (body["available"], body["state"], body["reason"]) == (True, "available", None)
+    assert body["future_label"] == "NIFTY 23 Nov FUT"  # the real nearest FUT row of the stored catalogue
+    assert len(body["points"]) == FUTURE_MINUTES
+    assert sum(p["strategy"] is None for p in body["points"]) == GAPS
+    assert body["points"][0]["future"] == {"value": "22841.1", "display": "22,841.10"}
+    assert len(real_kite_transport) == 5  # noqa: PLR2004 - 4 legs + the future, each once
+    assert f"/historical/{_nov_future()[0].ref('zerodha').broker_token}/minute?" in "".join(real_kite_transport)
+    assert ended is None  # the read did not end the live session
+    assert SECRET not in resp.text and SECRET not in caplog.text
