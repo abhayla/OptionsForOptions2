@@ -21,6 +21,10 @@ Known bypasses (not chased; the threat model is "one altered figure in the reply
   an IV that is wrong by less than the IV tolerance passes through to the model figures.
 - The implied q comes from a chain captured a second or two before the reply, not the server's own snapshot; the model
   tolerance is widened by the measured q movement between the chain captured before and after the reply.
+- GC-UI step 4 (`--both`): the SD block takes the reply's ATM IV and spot (market inputs) and re-derives the horizon,
+  the moves, percents, levels, bands and texts itself; the Estimated Now curve is compared with the Estimated Now
+  single-view points (re-priced by this file's BSM) and the payoff table's Estimated Now cells are re-priced the same
+  way; the At Expiry curve and cells are the closed-form payoff. Mixed expiries: the At Expiry figures are not checked.
 - Charge rates are the seed table; an admin rate row added later is not seen (the reply's `rates_read_on` is checked
   against the seed date and flagged when it differs).
 
@@ -300,6 +304,173 @@ def check_displays(rep, view, reply) -> int:
     return len(rep.figures) - n0
 
 
+# ---------------------------------------------------------------- GC-UI step 4: second curve, payoff table, SD block
+
+#: REQ-137 AC-1 (read as text, not imported): the payoff table's intervals, and with none picked "default the
+#: underlying's strike step: NIFTY 50, SENSEX 100" (not the scenario grid's Admin step)
+PAYOFF_STEPS = (Decimal(10), Decimal(25), Decimal(50), Decimal(100))
+STRIKE_STEP = {"NIFTY": Decimal(50), "SENSEX": Decimal(100)}
+SD_HORIZON_DAYS = 7  # D-B20 Fixed SD: a 7-day horizon, the days to the nearest expiry when fewer
+TENTH = Decimal("0.1")
+
+
+def display_rupees(value: Decimal) -> str:
+    """A payoff-table / curve cell: rupees to the paisa, Indian grouping, U+2212 on a loss ("−₹4,056.00")."""
+    q = abs(value).quantize(PAISA, rounding=ROUND_HALF_UP)
+    whole, frac = f"{q:f}".split(".")
+    return (MINUS_SIGN if value < 0 and q != 0 else "") + "₹" + _indian(whole) + "." + frac
+
+
+def display_points(level: Decimal) -> str:
+    """A payoff-table level: whole index points, Indian grouping ("21,500")."""
+    return _indian(f"{level.quantize(Decimal(1), rounding=ROUND_HALF_UP):f}")
+
+
+def sd_rows(spot: Decimal, iv: Decimal, days: int) -> list[dict]:
+    """scenario-calculations section 4 written out: 1 SD = spot x IV x sqrt(days / 365) (calendar days); 2 SD = twice
+    it; percent of spot; the levels spot -/+ the move; each half-up to 0.1 from the exact figure."""
+    one = spot * iv * (Decimal(days) / Decimal(365)).sqrt()
+    rows = []
+    for n in (1, 2):
+        m = one * n
+        rows.append({"sd": n, "move": m.quantize(TENTH, ROUND_HALF_UP),
+                     "percent": (m / spot * 100).quantize(TENTH, ROUND_HALF_UP),
+                     "lower": (spot - m).quantize(TENTH, ROUND_HALF_UP),
+                     "upper": (spot + m).quantize(TENTH, ROUND_HALF_UP)})
+    return rows
+
+
+def sd_horizon(valuation: dt.datetime, expiries) -> int:
+    """Calendar days from the valuation date in India to the nearest expiry, at least 1, at most the 7-day horizon."""
+    near = min(dt.date.fromisoformat(e) for e in expiries)
+    return min(max((near - valuation.astimezone(IST).date()).days, 1), SD_HORIZON_DAYS)
+
+
+def table_levels(start: Decimal, end: Decimal, step: Decimal) -> list[Decimal]:
+    """The payoff table's levels: every multiple of `step` from the first at or above the range start to the end."""
+    first = -((-start) // step) * step  # ceiling to a multiple
+    out, lvl = [], first
+    while lvl <= end:
+        out.append(lvl)
+        lvl += step
+    return out
+
+
+def check_curves(rep, both, est, atx, legs, single_expiry) -> None:
+    """REQ-083 AC-1: the two curves sit on the same levels; At Expiry is the closed-form payoff (single expiry) and
+    equals the At Expiry single-view reply's points; Estimated Now equals the Estimated Now single-view points (which
+    this file re-prices with its own BSM in check_outcome)."""
+    curves = both.get("curves")
+    if not curves:
+        rep.skip("[both] curves", "reply has no curves block")
+        return
+    ax, en = curves.get("at_expiry") or {}, curves.get("estimated_now") or {}
+    lx = [p["level"] for p in ax.get("points") or []]
+    le = [p["level"] for p in en.get("points") or []]
+    if ax.get("available") and en.get("available"):
+        rep.add("[both] curves on the same levels", str(le), str(lx))
+    for key, single in (("at_expiry", atx), ("estimated_now", est)):
+        cur = curves.get(key) or {}
+        if not cur.get("available"):
+            rep.skip(f"[both] curves.{key}", f"unavailable: {cur.get('unavailable_reason')!r}")
+            continue
+        mine = [(p["level"], p["pnl"]) for p in cur.get("points") or []]
+        sv = [(p["level"], p["pnl"]) for p in ((single or {}).get("payoff") or {}).get("points") or []]
+        rep.add(f"[both] curves.{key} = the {key} single-view points", str(mine), str(sv) if sv else None)
+        for p in cur.get("points") or []:
+            check_text(rep, f"[both] curves.{key} display @{p['level']}", p.get("display"), D(p.get("pnl")),
+                       display_rupees(D(p["pnl"])))
+    if single_expiry and ax.get("available"):
+        for p in ax.get("points") or []:
+            rep.add(f"[both] curves.at_expiry @{p['level']}", p.get("pnl"), money(payoff(legs, D(p["level"]))))
+
+
+def check_payoff_table(rep, both, legs, single_expiry, step_asked) -> list:
+    """REQ-137 AC-1: rows at the picked interval (absent: the strike step), both columns, nearest-spot row, displays.
+    Returns the (level, Estimated Now pnl) pairs for the model check."""
+    t = both.get("payoff_table")
+    if t is None:
+        rep.skip("[both] payoff_table", "reply has no payoff_table block")
+        return []
+    step = Decimal(step_asked) if step_asked is not None else STRIKE_STEP.get(both.get("underlying"))
+    rep.add("[both] payoff_table step (asked, else the strike step)", t.get("step"), step)
+    sc = both.get("scenario") or {}
+    start, end = D(sc.get("start")), D(sc.get("end"))
+    levels = [D(r["level"]) for r in t.get("rows") or []]
+    if start is None or end is None or step is None:
+        rep.skip("[both] payoff_table levels", "reply scenario has no range")
+    else:
+        rep.add_list("[both] payoff_table levels", levels, table_levels(start, end, step))
+    spot = D(both.get("spot_level"))
+    near = None if spot is None or not levels else min(levels, key=lambda x: (abs(x - spot), x))
+    rep.add("[both] payoff_table nearest_spot row", str([D(r["level"]) for r in t["rows"] if r.get("nearest_spot")]),
+            str([near] if near is not None else []))
+    cols = {c["view"]: c for c in t.get("columns") or []}
+    est_pts = []
+    for r in t.get("rows") or []:
+        lvl = D(r["level"])
+        check_text(rep, f"[both] payoff_table level_display @{r['level']}", r.get("level_display"), lvl,
+                   display_points(lvl))
+        for key in ("at_expiry", "estimated_now"):
+            cell, col = r.get(key), cols.get(key) or {}
+            if not col.get("available"):
+                rep.add(f"[both] payoff_table {key} @{r['level']} empty (column unavailable)",
+                        "null" if cell is None else "value", "null")
+                continue
+            if cell is None:
+                rep.add(f"[both] payoff_table {key} @{r['level']}", None, "a value")
+                continue
+            check_text(rep, f"[both] payoff_table {key} display @{r['level']}", cell.get("display"), D(cell["pnl"]),
+                       display_rupees(D(cell["pnl"])))
+            if key == "at_expiry" and single_expiry:
+                rep.add(f"[both] payoff_table at_expiry @{r['level']}", cell["pnl"], money(payoff(legs, lvl)))
+            if key == "estimated_now":
+                est_pts.append({"level": r["level"], "pnl": cell["pnl"]})
+    return est_pts
+
+
+def check_sd(rep, both, legs, valuation) -> None:
+    """REQ-083 AC-4 / REQ-137 AC-3: the SD table and the four bands from this file's own formula (section 4) on the
+    fixed horizon, with the reply's spot and ATM IV (market inputs, known bypass); displays from this file's rules."""
+    sd = both.get("standard_deviation")
+    if sd is None:
+        rep.skip("[both] standard_deviation", "reply has no standard_deviation block")
+        return
+    spot, iv = D(sd.get("spot")), D(sd.get("iv"))
+    if not sd.get("available"):
+        rep.add("[both] standard_deviation unavailable has a reason and no rows",
+                str((sd.get("reason") is not None, sd.get("rows"), sd.get("bands"))), str((True, [], [])))
+        return
+    days = sd_horizon(valuation, sorted({leg["expiry"] for leg in legs}))
+    rep.add("[both] standard_deviation horizon_days", sd.get("horizon_days"), days)
+    rep.add("[both] standard_deviation spot = reply spot", sd.get("spot"), both.get("spot_level"))
+    if spot is None or iv is None:
+        rep.skip("[both] standard_deviation rows", "available but no spot or IV in the block")
+        return
+    want = sd_rows(spot, iv, days)
+    rows = sd.get("rows") or []
+    rep.add("[both] standard_deviation row count", len(rows), len(want))
+    for got, w in zip(rows, want, strict=False):
+        n = w["sd"]
+        for k in ("move", "percent", "lower", "upper"):
+            rep.add(f"[both] SD {n} {k}", got.get(k), w[k])
+        check_text(rep, f"[both] SD {n} label", got.get("label"), n, f"{n}SD")
+        check_text(rep, f"[both] SD {n} move_display", got.get("move_display"), w["move"],
+                   f"{w['move']:f} ({w['percent']:f}%)")
+        for k in ("lower", "upper"):
+            check_text(rep, f"[both] SD {n} {k}_display", got.get(f"{k}_display"), w[k], f"{w[k]:f}")
+    if len(want) == 2:  # noqa: PLR2004
+        one, two = want
+        bands = [(-2, two["lower"]), (-1, one["lower"]), (1, one["upper"]), (2, two["upper"])]
+        got_b = sd.get("bands") or []
+        rep.add("[both] SD bands", str([(b.get("sd"), b.get("level")) for b in got_b]),
+                str([(n, f"{lvl:f}") for n, lvl in bands]))
+        for b in got_b:
+            check_text(rep, f"[both] SD band {b.get('sd')} label", b.get("label"), b.get("sd"), f"{b.get('sd')}SD")
+            check_text(rep, f"[both] SD band {b.get('sd')} display", b.get("display"), D(b.get("level")),
+                       f"{D(b['level']):f}" if b.get("level") is not None else None)
+
+
 # ---------------------------------------------------------------- Black-Scholes-Merton (own implementation)
 
 
@@ -576,8 +747,10 @@ def check_per_unit_signs(rep, view, reply) -> int:
     return added
 
 
-def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=RISK_FREE_RATE) -> Report:
-    """est / atx: the outcome replies for view=estimated_now / at_expiry; chains_*: {expiry: chain reply}."""
+def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=RISK_FREE_RATE, both=None,
+                  step_asked=None) -> Report:
+    """est / atx: the outcome replies for view=estimated_now / at_expiry; chains_*: {expiry: chain reply}. both: the
+    reply asked with both_views / payoff_step / sd_bands (GC-UI step 4), step_asked its payoff_step (None: absent)."""
     rep = Report(name)
     for view, reply in (("estimated_now", est), ("at_expiry", atx)):
         state = (reply or {}).get("state")
@@ -849,6 +1022,13 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             }
         rep.data_rows["D-C33"] = dc
 
+    table_est = []
+    if (both or {}).get("state") == "COMPUTED":  # GC-UI step 4: the new figures, from this file's own maths
+        check_curves(rep, both, est, atx, legs, single_expiry)
+        table_est = check_payoff_table(rep, both, legs, single_expiry, step_asked)
+        check_sd(rep, both, legs, valuation)
+    elif both is not None:
+        rep.skip("[both] every figure", f"reply state {both.get('state')} ({both.get('reason')})")
     if est.get("status_label") or est.get("output_label"):
         rep.notes.append(f"reply label: {est.get('status_label') or est.get('output_label')}")
     s = float(spot)
@@ -926,36 +1106,11 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
                 "ours_per_position_delta": round(g["delta"] * qty, 4),
             }
 
-    # Estimated-Now scenario points
-    pts = (est.get("payoff") or {}).get("points") or []
-    if not pts:
-        rep.skip("[estimated_now] payoff points", "empty payoff")
-    elif any(m[1] is None for m in leg_model):
-        rep.skip("[estimated_now] payoff points", "a leg has no IV")
-    else:
-        tol = Decimal(str(round(sum(float(leg["quantity"]) for leg in legs) * 0.0051, 2)))
-        for p in pts:
-            lvl = float(p["level"])
-            tot = Decimal(0)
-            for leg, sig, q, t, k in leg_model:
-                px = money(bsm_price(lvl, k, t, r, q, sig, leg["instrument"]))
-                tot += (px - D(leg["planned_entry"])) * D(leg["quantity"]) * _sign(leg)
-            # forward band: move each expiry's q to its band edge on its own; the effects add in the worst case
-            drift = 0.0
-            for e in expiries:
-                tot2 = Decimal(0)
-                for leg, sig, _q, t, k in leg_model:
-                    qa2 = qinfo[e]["q_hi"] if leg["expiry"] == e and qinfo[e]["q_hi"] is not None else _q
-                    px2 = money(bsm_price(lvl, k, t, r, qa2, sig, leg["instrument"]))
-                    tot2 += (px2 - D(leg["planned_entry"])) * D(leg["quantity"]) * _sign(leg)
-                drift += float(abs(tot2 - tot))
-            rep.add(
-                f"[estimated_now] payoff @{p['level']}",
-                p.get("pnl"),
-                money(tot),
-                tol + Decimal(str(round(drift, 2))),
-                note="0.005/unit/leg rounding + forward band (before/after gap/2 + 1 pt)",
-            )
+    # Estimated-Now scenario points; the payoff table's Estimated Now cells by the same model (GC-UI step 4)
+    _model_points(rep, "[estimated_now] payoff", (est.get("payoff") or {}).get("points") or [], legs, leg_model,
+                  qinfo, expiries, r)
+    if table_est:
+        _model_points(rep, "[both] payoff_table estimated_now", table_est, legs, leg_model, qinfo, expiries, r)
 
     # D-B33/38: table now-values and Greeks identical in both views?
     if (atx or {}).get("state") == "COMPUTED":
@@ -970,6 +1125,39 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             "cells (est, at_expiry)": same,
         }
     return rep
+
+
+def _model_points(rep, label, pts, legs, leg_model, qinfo, expiries, r) -> None:
+    """Each Estimated Now point re-priced with this file's BSM at the reply's per-leg IV and the parity q."""
+    if not pts:
+        rep.skip(f"{label} points", "empty payoff")
+        return
+    if any(m[1] is None for m in leg_model):
+        rep.skip(f"{label} points", "a leg has no IV")
+        return
+    tol = Decimal(str(round(sum(float(leg["quantity"]) for leg in legs) * 0.0051, 2)))
+    for p in pts:
+        lvl = float(p["level"])
+        tot = Decimal(0)
+        for leg, sig, q, t, k in leg_model:
+            px = money(bsm_price(lvl, k, t, r, q, sig, leg["instrument"]))
+            tot += (px - D(leg["planned_entry"])) * D(leg["quantity"]) * _sign(leg)
+        # forward band: move each expiry's q to its band edge on its own; the effects add in the worst case
+        drift = 0.0
+        for e in expiries:
+            tot2 = Decimal(0)
+            for leg, sig, _q, t, k in leg_model:
+                qa2 = qinfo[e]["q_hi"] if leg["expiry"] == e and qinfo[e]["q_hi"] is not None else _q
+                px2 = money(bsm_price(lvl, k, t, r, qa2, sig, leg["instrument"]))
+                tot2 += (px2 - D(leg["planned_entry"])) * D(leg["quantity"]) * _sign(leg)
+            drift += float(abs(tot2 - tot))
+        rep.add(
+            f"{label} @{p['level']}",
+            p.get("pnl"),
+            money(tot),
+            tol + Decimal(str(round(drift, 2))),
+            note="0.005/unit/leg rounding + forward band (before/after gap/2 + 1 pt)",
+        )
 
 
 def check_paper(tracking: dict, planned_legs: list) -> Report:
@@ -1114,6 +1302,24 @@ def load_replay(d: Path):
     return est, atx, before, after, j("futures.json")
 
 
+def load_both(d: Path):
+    """GC-UI step 4: the reply asked with the new options (outcome_both.json) and the request's options
+    (request_both.json, its payoff_step read from there); (None, None) when the folder has none."""
+    p, q = d / "outcome_both.json", d / "request_both.json"
+    if not p.exists():
+        return None, None
+    req = json.loads(q.read_text(encoding="utf-8")) if q.exists() else {}
+    return json.loads(p.read_text(encoding="utf-8")), req.get("payoff_step")
+
+
+def fetch_both(base, legs_doc, outdir: Path, flags: dict):
+    """Live: one read-only POST outcome with the new options, saved beside the other replies."""
+    body = {"underlying": legs_doc["underlying"], "view": "at_expiry", "legs": legs_doc["legs"], **flags}
+    (outdir / "outcome_both.json").write_text(json.dumps(_http(base, "/api/strategies/outcome", body), indent=1),
+                                              encoding="utf-8")
+    (outdir / "request_both.json").write_text(json.dumps(flags), encoding="utf-8")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--strategy-legs", required=True)
@@ -1121,12 +1327,20 @@ def main(argv=None):
     ap.add_argument("--replay")
     ap.add_argument("--out", required=True)
     ap.add_argument("--api", default="http://127.0.0.1:8765")
+    ap.add_argument("--both", action="store_true", help="live: also ask both_views + sd_bands (GC-UI step 4)")
+    ap.add_argument("--payoff-step", type=int, help="live with --both: the payoff_step asked (absent: none sent)")
     a = ap.parse_args(argv)
     legs_doc = json.loads(Path(a.strategy_legs).read_text())
     name = Path(a.strategy_legs).resolve().parent.name
     src = Path(a.replay) if a.replay else fetch_live(a.api, legs_doc, Path(a.out) / f"raw-{name}")
+    if a.both and not a.replay:
+        flags = {"both_views": True, "sd_bands": True}
+        if a.payoff_step is not None:
+            flags["payoff_step"] = a.payoff_step
+        fetch_both(a.api, legs_doc, src, flags)
     est, atx, before, after, fut = load_replay(src)
-    reports = [check_outcome(name, est, atx, before, after, fut)]
+    both, step_asked = load_both(src)
+    reports = [check_outcome(name, est, atx, before, after, fut, both=both, step_asked=step_asked)]
     if a.paper:
         tp = src / f"tracking_{a.paper}.json"
         tr = (
