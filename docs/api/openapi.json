@@ -4354,7 +4354,7 @@
               "no_future_candles",
               "all_gaps",
               "no_session",
-              "kite_refused",
+              "broker_refused",
               "future_not_in_catalogue"
             ],
             "title": "State",

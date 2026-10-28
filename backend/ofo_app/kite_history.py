@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import Callable, Iterable  # noqa: UP035
+from typing import Any, Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
 
 from ofo.broker import rate_limit
@@ -63,3 +63,41 @@ class KiteHistory:
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")
         return parse_candles(text, instrument_id, index=instrument_id in self._index_ids)
+
+
+#: (listed contracts) -> the minute-candle reader for exactly those contracts on the owner's stored session
+ReaderFactory = Callable[[Iterable[ListedContract]], Callable[[str, datetime.datetime, datetime.datetime],
+                                                               list[MinuteBar]]]
+
+
+async def owner_minute_reader(db: Any, *, transport: Transport | None = None) -> ReaderFactory | None:
+    """GC-UI S5-1 (Strategy Chart): the owner's stored session (encrypted store, never the environment) -> a factory of
+    ``KiteHistory.minute_candles``; None when there is no usable session.
+
+    Called FIRST on the request's connection, before anything else touches it: ``access_token_for`` may commit (it
+    ends a session past its expiry, GC-6 MAJOR-1) and refuses a connection already in a transaction, so reading first
+    keeps ONE role connection per request (ADR-048) and its commit can never carry the caller's work. A store or
+    configuration error is no session (logged by its code only, never the token), never a 500. The HTTP transport is
+    looked up at call time (``urllib_transport``) so a test replaces only Kite's transport, nothing else."""
+    from ofo_app.broker_config import BrokerConfigError, load_broker_config  # noqa: PLC0415 - loads only on use
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.broker_token_store import BrokerStoreError, access_token_for  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+
+    try:
+        config = load_broker_config()
+        token = await access_token_for(db, OWNER_REF, TokenCipher(config.token_key))
+    except BrokerStoreError as exc:  # carries only a code (e.g. token_read_needs_fresh_connection), never the token
+        log.warning("strategy chart: no usable broker session (store refused: %s)", exc.args[0] if exc.args else "-")
+        return None
+    except BrokerConfigError:  # its message names missing settings only; not logged, the class name is enough
+        log.warning("strategy chart: no usable broker session (broker configuration incomplete)")
+        return None
+    if token is None:
+        return None
+    send = transport if transport is not None else urllib_transport
+
+    def reader(listed: Iterable[ListedContract]) -> Callable[[str, datetime.datetime, datetime.datetime],
+                                                             list[MinuteBar]]:
+        return KiteHistory(listed, api_key=config.api_key, access_token=token, transport=send).minute_candles
+    return reader

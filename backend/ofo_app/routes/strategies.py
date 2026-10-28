@@ -542,7 +542,7 @@ async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_d
 
 PRICE_HISTORY_HELD = "price_history_held"
 PriceHistoryState = Literal["available", "leg_not_listed", "no_future_candles", "all_gaps", "no_session",
-                            "kite_refused", "future_not_in_catalogue"]
+                            "broker_refused", "future_not_in_catalogue"]
 
 
 def require_price_history() -> None:
@@ -554,8 +554,8 @@ def require_price_history() -> None:
 
 
 def get_history_opener() -> Any:
-    from ofo_app.strategy_price_history import kite_history_for  # noqa: PLC0415 - a Kite door loads only on use
-    return kite_history_for
+    from ofo_app.price_history_source import history_opener  # noqa: PLC0415 - the adapter loads only on use
+    return history_opener()
 
 
 def get_future_finder() -> Any:
@@ -606,6 +606,10 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
     from ofo_app import strategy_price_history as sph  # noqa: PLC0415
 
     async def work():
+        # S5-1: the owner's token is read FIRST, while this request's connection holds no transaction: the read may
+        # commit (an expired session is ended) and refuses a connection in a transaction (GC-6 MAJOR-1). One
+        # connection per request (ADR-048); a store error answers no_session, never a 500.
+        reader = await opener(db)
         stored = await store.load(db, user_ref, strategy_id)
         found = await catalogue_store.load_contracts(db, stored.saved.contract_ids)
         listed = []
@@ -618,7 +622,7 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         legs = [sph.ChartLeg(leg.action, leg.quantity // lc.contract.lot_size)  # saved quantity is lots x lot size
                 for leg, lc in zip(definition.legs, listed, strict=True)]
         return await sph.answer(db, legs, listed, definition.underlying, days=days, invert=invert, now=now,
-                                opener=opener, finder=finder)
+                                reader=reader, finder=finder)
     ans = await _run(db, work, form_status=409)
     chart = ans.chart
     points = [] if chart is None or ans.state != "available" else [
