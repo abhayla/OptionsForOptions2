@@ -255,9 +255,13 @@ def greeks_unrounded(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: De
 
 def iv_price(q: NormalizedQuote) -> Decimal | None:
     """ADR-172: THE price an implied volatility is solved from, for every caller (the outcome leg, the ATM pair, the
-    leg picker's chain): the bid-ask mid when both sides are live and the ask is at or above the bid, else the LTP
-    (None when there is no LTP either: no IV). A bid or ask of 0 is no live side."""
-    return mid_price(q.bid, q.ask) if q.bid and q.ask and q.ask >= q.bid else q.ltp
+    leg picker's chain and the chain push): the bid-ask mid when both sides are live and the ask is at or above the
+    bid, else the LTP (None when there is no LTP either: no IV). A side is live only when it is present, above 0 AND
+    the quote's health is AVAILABLE (GC-UI F-5): a STALE / DELAYED / UNHEALTHY / UNAVAILABLE book stopped ticking, so
+    after hours every leg solves from its closing LTP (ADR-197), never from the stale mid - the same health gate the
+    parity forward's mid uses (ofo.marketdata.forward._mid)."""
+    live_book = q.health is DataHealth.AVAILABLE and q.bid and q.ask and q.bid > 0 and q.ask >= q.bid
+    return mid_price(q.bid, q.ask) if live_book else q.ltp
 
 
 def implied_vol(em: ExpiryModel, kind: Instrument, price: Decimal, strike: Decimal) -> ModelIV:
