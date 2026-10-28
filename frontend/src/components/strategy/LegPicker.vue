@@ -259,6 +259,7 @@ const pendingTab = ref(null) // the type change waiting for Proceed / Cancel
 const typeSide = ref('SELL') // Straddles / Strangles: Buy or Sell both legs (the existing quick-pick `side`)
 const quickError = ref('')
 function selectTab(next) {
+  pendingTab.value = null // a click on any tab cancels a change still waiting for Proceed (the picks stay)
   if (next === tab.value) return
   if (next in TYPE_NAME && next !== pickType.value && pickedCount.value > 0) {
     pendingTab.value = next

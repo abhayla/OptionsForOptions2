@@ -1866,6 +1866,23 @@ describe('GC-UI 6c Straddles / Strangles tabs and the type-change confirm (D-C08
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0) // nothing added, nothing sent
   })
 
+  it('review fix 6: clicking Futures (or any tab) while a type change waits cancels it; the picks stay and Futures shows no banner', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-straddles').trigger('click')
+    expect(t(w, 'type-confirm').exists()).toBe(true)
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-futures').attributes('aria-selected')).toBe('true')
+    await t(w, 'tab-strikes').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+  })
+
   it('the Futures tab keeps the picks (no confirm); the Straddles tab shows the strikes read failure', async () => {
     answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
     const w = mountPicker()
