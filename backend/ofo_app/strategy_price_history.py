@@ -57,6 +57,8 @@ _cache: dict[_Key, tuple[float, list[MinuteBar]]] = {}
 #: F1 single-flight: the one in-flight fetch per (contract, window); a second request for the same key awaits it
 _in_flight: dict[_Key, asyncio.Task[list[MinuteBar]]] = {}
 _gates: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
+#: R2-1: how many requests are waiting on each in-flight entry; a queued fetch nobody waits on is dropped
+_waiters: dict[_Key, int] = {}
 _joined = 0
 
 
@@ -134,22 +136,41 @@ async def _bars(fetch: Fetcher, iid: str, start: datetime.datetime, end: datetim
     task = _in_flight.get(key)
     if task is not None:
         _joined += 1
-        return await asyncio.shield(task)
+        return await _wait_on(key, task)
 
     async def run() -> list[MinuteBar]:
         try:
+            if not _waiters.get(key):  # nobody waits: take no slot, ask no limiter, send nothing
+                raise _Abandoned
             async with _gate():
+                if not _waiters.get(key):  # gave up while queued on the semaphore
+                    raise _Abandoned
                 bars = await asyncio.to_thread(fetch, iid, start, end)
             now = clock()
             _remember(key, now, bars, now)
             return bars
         finally:
             _in_flight.pop(key, None)  # same step as the cache write: no window with neither
+            _waiters.pop(key, None)
 
+    _waiters[key] = 0
     task = asyncio.ensure_future(run())
     task.add_done_callback(_retrieve)
     _in_flight[key] = task
-    return await asyncio.shield(task)
+    return await _wait_on(key, task)
+
+
+class _Abandoned(RuntimeError):
+    """Every request waiting on this fetch gave up before it was sent: dropped, not cached."""
+
+
+async def _wait_on(key: _Key, task: asyncio.Task[list[MinuteBar]]) -> list[MinuteBar]:
+    _waiters[key] = _waiters.get(key, 0) + 1
+    try:
+        return await asyncio.shield(task)
+    finally:
+        if key in _waiters:
+            _waiters[key] -= 1
 
 
 def _retrieve(task: asyncio.Task[Any]) -> None:

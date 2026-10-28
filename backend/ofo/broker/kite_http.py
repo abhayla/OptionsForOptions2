@@ -210,5 +210,23 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
                 exc.close()
 
 
-__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "QUOTE_INSTRUMENT", "KiteCallRefused", "check_call",
-           "check_ws_url", "endpoint_of", "open_url", "plain_headers", "plain_method", "plain_str", "plain_timeout"]
+class KiteReadError(OSError):
+    """A response body that could not be read whole or decoded (cut short, or not UTF-8); names no URL or token.
+    ``cause`` is the class name of the original failure (the only thing a caller logs)."""
+
+    def __init__(self, cause: str) -> None:
+        super().__init__(f"response body unreadable: {cause}")
+        self.cause = cause
+
+
+def read_text(response) -> str:
+    """The response body as UTF-8 text. A body cut short (``http.client`` errors) or not UTF-8 becomes one
+    door-level ``KiteReadError`` (an ``OSError``), so callers import no network module to catch it."""
+    try:
+        return response.read().decode("utf-8")
+    except (_urllib_request.http.client.HTTPException, UnicodeDecodeError) as exc:
+        raise KiteReadError(type(exc).__name__) from None
+
+
+__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "QUOTE_INSTRUMENT", "KiteCallRefused", "KiteReadError", "check_call",
+           "check_ws_url", "endpoint_of", "open_url", "read_text", "plain_headers", "plain_method", "plain_str", "plain_timeout"]
