@@ -773,8 +773,10 @@ def paper_reply():
         "booked": "0.00",
         "unbooked": "1768.00",
         "legs": [
-            base | {"action": "BUY", "entry_price": "193.70", "current_price": "271.45", "pnl": "5053.75"},
-            base | {"action": "SELL", "entry_price": "106.35", "current_price": "156.90", "pnl": "-3285.75"},
+            base | {"action": "BUY", "entry_price": "193.70", "current_price": "271.45", "pnl": "5053.75",
+                    "pnl_text": "+5,053.75"},
+            base | {"action": "SELL", "entry_price": "106.35", "current_price": "156.90", "pnl": "-3285.75",
+                    "pnl_text": "−3,285.75"},
         ],
     }
 
@@ -800,8 +802,28 @@ def test_paper_leg_pnl_missing_never_matches():
 
 def test_paper_leg_pnl_exited_leg_is_valued_at_its_exit_price_and_must_say_booked():
     reply = paper_reply()
-    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_kind": "booked", "current_price": None}
+    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_text": "+5,609.50", "pnl_kind": "booked", "current_price": None}
     reply |= {"paper_pnl": "2323.75", "booked": "5609.50", "unbooked": "-3285.75"}
     assert u.check_paper(reply, []).counts()[u.MISMATCH] == 0
     reply["legs"][0]["pnl_kind"] = "unbooked"
     assert verdicts(u.check_paper(reply, []))["paper leg1 pnl kind"] == u.MISMATCH
+
+
+@pytest.mark.parametrize(("leg_no", "wrong"), [
+    (1, "+5,054"), (1, "+5,053.76"), (1, "5,053.75"), (2, "-3,285.75"), (2, "−3,285"), (2, "+3,285.75"),
+])
+def test_paper_leg_pnl_text_must_equal_the_figure_to_the_paisa(leg_no, wrong):
+    reply = paper_reply()
+    reply["legs"][leg_no - 1]["pnl_text"] = wrong
+    assert verdicts(u.check_paper(reply, []))[f"paper leg{leg_no} pnl text"] == u.MISMATCH
+
+
+def test_paper_leg_pnl_text_missing_never_matches():
+    reply = paper_reply()
+    del reply["legs"][0]["pnl_text"]
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl text"] != u.MATCH
+
+
+def test_paper_leg_pnl_text_recorded_reply_matches():
+    assert verdicts(u.check_paper(paper_reply(), []))["paper leg1 pnl text"] == u.MATCH
+    assert verdicts(u.check_paper(paper_reply(), []))["paper leg2 pnl text"] == u.MATCH

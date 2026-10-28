@@ -10,6 +10,7 @@ from ofo.engine.display import (
     format_approx_rupees,
     format_points,
     format_rupees,
+    format_signed_paisa,
 )
 from ofo.engine.estimate import estimate_now
 
@@ -69,3 +70,22 @@ def test_estimate_model_text_names_the_implied_yield_never_no_dividends():
     assert "Black-Scholes-Merton" in MODEL and "implied dividend yield" in MODEL and "put-call parity" in MODEL
     assert "estimated from spot" in MODEL
     assert "no dividend" not in MODEL.lower()
+
+
+@pytest.mark.parametrize(
+    "amount, text",
+    [
+        (D("5053.75"), "+5,053.75"),  # strategy 54 BUY 22600 CE
+        (D("-3285.75"), "−3,285.75"),  # strategy 54 SELL 22800 CE
+        (D("1768.00"), "+1,768.00"),
+        (D("1240.5"), "+1,240.50"),
+        (D("-1234567.89"), "−12,34,567.89"),
+        (D("0"), "0.00"),
+        (D("0.00"), "0.00"),
+        (D("-0.004"), "0.00"),  # rounds to zero: no sign
+        (D("0.005"), "0.00"),  # half-even like format_rupees
+        (D("0.015"), "+0.02"),
+    ],
+)
+def test_format_signed_paisa(amount, text):
+    assert format_signed_paisa(amount) == text
