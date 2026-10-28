@@ -929,6 +929,13 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A leg you chose is not a leg of this tracked strategy, or is listed twice.",
           "No leg was exited and nothing was stored.", "Exiting these paper legs.",
           "Reload the tracking panel and choose its open legs."),
+    # GC-BP step 8 (Opus review M2): an exit of a leg whose contract is no longer live; retrying cannot help, so it is
+    # not tracking_exit_prices_not_live, and Start tracking's own words ("Tracking did not start") would be false here.
+    _gate("tracking_exit_contract_not_live", _SV, 436,
+          "A leg you chose is no longer a live contract (expired, delisted, or its exchange token now belongs to "
+          "another contract).",
+          "No leg was exited and nothing was stored; a leg is never priced from another contract.",
+          "Exiting these paper legs.", "Exit only the legs whose contracts are still live."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

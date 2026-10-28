@@ -233,8 +233,9 @@ async def test_exit_refused_when_a_named_leg_is_not_live_and_nothing_is_stored(d
                                              ((_DELIST,), "contract_delisted")])
 async def test_exit_of_a_leg_whose_contract_is_not_live_is_refused_contract_not_live_never_try_again(db, sqls, state):
     """Review M2: a retired / delisted / token-reassigned contract never comes back, so "try again when prices update"
-    would be a lie. The exit answers Start tracking's tracking_contract_not_live (409, STRATEGY_VALIDATION_414) and
-    stores nothing; the feed still quotes the old token at 45.15, which is never used."""
+    would be a lie. The exit answers tracking_exit_contract_not_live (409, STRATEGY_VALIDATION_436) - never Start
+    tracking's words "Tracking did not start" - and stores nothing; the feed still quotes the old token at 45.15, which
+    is never used."""
     app, ids, *_ = await _tracked(db)
     leg0 = (await _leg_contracts(db, ids[0]))[0]
     for sql in sqls:
@@ -244,8 +245,9 @@ async def test_exit_of_a_leg_whose_contract_is_not_live_is_refused_contract_not_
         refused = await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0, 1]})
     assert refused.status_code == HTTPStatus.CONFLICT
     body = refused.json()
-    assert body["code"] == "STRATEGY_VALIDATION_414" and "no longer a live contract" in body["what_happened"]
+    assert body["code"] == "STRATEGY_VALIDATION_436" and "no longer a live contract" in body["what_happened"]
     assert "try again" not in refused.text.lower()
+    assert "tracking did not start" not in refused.text.lower()
     assert await _exits(db, ids[0]) == []
 
 
