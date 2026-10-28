@@ -65,6 +65,9 @@ class HeldOnlyProvider:
         self.reads += 1
         return self.quote if self.reads > self.polls_before_quote else None
 
+    def instrument_master(self) -> list:  # GC-UI F-3: the futures lease reads it for the forward strikes
+        return []
+
     def option_chain_snapshot(self, underlying, expiry):
         return []
 

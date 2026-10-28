@@ -44,6 +44,7 @@ from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_for
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable, priced
 from ofo.money import PAISE
+from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
 from pydantic import AfterValidator
@@ -56,6 +57,7 @@ from ofo_app.chain_push import (
     ChainReader,
     atm_strike,
     index_id_of,
+    live_spot,
     stored_chain,
     strike_grid,
 )
@@ -511,6 +513,43 @@ def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: Norma
                       strikes_used=fwd.strikes_used, reason=None, spot_health=fwd.spot_health.value)
 
 
+FORWARD_HOLD_CAP, FORWARD_HOLD_DAYS = 250, 95  # contracts held for forwards; beyond the cap only near expiries
+
+
+def _forward_hold_ids(ctx: Any, underlying: str, expiries: tuple[datetime.date, ...], spot: Decimal | None,
+                      today: datetime.date) -> list[str]:
+    """GC-UI F-3: the contracts whose quotes let ``parity_forward`` answer each listed option expiry: one near-the-money
+    call as the expiry's 'leg' plus ``forward_strike_ids`` (D-C33's own strike choice, not duplicated). With the spot
+    live the money is the spot, else the middle listed strike. Over ``FORWARD_HOLD_CAP`` contracts only the expiries
+    within ``FORWARD_HOLD_DAYS`` days are held; the rest stay honestly on the spot-fallback label. A provider that
+    offers no instrument master (``NotSupported``) holds nothing extra."""
+    if not expiries:
+        return []
+    try:
+        master = [lc for lc in ctx.provider.instrument_master()
+                  if lc.contract.name == underlying and lc.contract.expiry in expiries]
+    except NotSupported:
+        return []
+
+    def build(wanted: tuple[datetime.date, ...]) -> list[str]:
+        legs: list[str] = []
+        for expiry in wanted:
+            calls = [lc for lc in master if lc.contract.expiry == expiry and lc.contract.instrument_type == "CE"
+                     and lc.contract.strike is not None]
+            if not calls:
+                continue
+            strikes = sorted(lc.contract.strike for lc in calls)
+            centre = spot if spot is not None else strikes[len(strikes) // 2]
+            legs.append(contract_id(min(calls, key=lambda lc: (abs(lc.contract.strike - centre), lc.contract.strike))))
+        return legs + forward_strike_ids(master, underlying, legs, spot)
+
+    ids = build(expiries)
+    if len(ids) > FORWARD_HOLD_CAP:
+        horizon = today + datetime.timedelta(days=FORWARD_HOLD_DAYS)
+        ids = build(tuple(e for e in expiries if e <= horizon))
+    return ids
+
+
 def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
                    viewer: str = V1_OWNER_REF) -> FuturesOut:
     ctx = None if feed is None else feed.ctx
@@ -521,7 +560,12 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
         # forwards need it and no other screen may hold it (finding live-read-without-own-subscription)
         key = (viewer, underlying, "futures")
         index_id = index_id_of(feed.ctx, underlying)
-        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures] + ([index_id] if index_id else []))
+        # GC-UI F-3: and the strikes nearest the money of every listed option expiry, so each forward is the parity
+        # forward a leg on that expiry is priced with (D-C33), not the spot fallback of an unsubscribed chain
+        spot_now = live_spot(feed.ctx, underlying)
+        forward_ids = _forward_hold_ids(feed.ctx, underlying, catalogue.option_expiries, spot_now, answered_at.date())
+        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures] + ([index_id] if index_id else [])
+                           + forward_ids)
         streamed = FUTURES_LEASE.ids_of(key)
     spot_quote = None if ctx is None else _index_quote(ctx, underlying)
     spot = None if spot_quote is None or not is_live_price(spot_quote.ltp) else spot_quote.ltp
