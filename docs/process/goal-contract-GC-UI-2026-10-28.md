@@ -178,8 +178,12 @@ on unrounded parts) -> real defect F-1.
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
 | F-1 | 1 | Charges breakdown: condor total 263.15 vs parts 263.13; calendar GST 18.63 vs 18% of shown parts 18.64 | Class: every strategy's charges breakdown (and the max profit / max loss that include it) where a part rounds; RCA (to confirm in step 2): parts and GST computed unrounded, each shown rounded, total rounded once | | |
-| C-1 | 1 | Checker computed TOTAL P&L % on net entry value | Checker defect: spec basis is max loss (REQ-035 Q233) | | |
-| C-2 | 1 | Checker did not model the ADR-094 top-up in margin needed | Checker defect | | |
+| F-1 (re-classed) | 2 | NOT a server defect. ADR-082 (1): "every amount is exact Decimal; STT and stamp duty are not rounded at order level (as Kite's order-level charges reply, F-35)"; its worked example rounds the exact total once (214.95956479500 -> 214.96). The round-1 per-part rounding fix (fd25009c) was an unapproved SPEC CHANGE and is reverted (02e4b968). Rounded lines can therefore differ from the total by 1-2 paise; a note explaining that is a product-wording question for the owner (asked) | Checker defect C-3 | 02e4b968 (revert) | outcome tests 177 passed after revert |
+| C-1 | 1 | Checker computed TOTAL P&L % on net entry value | Checker defect: spec basis is max loss (REQ-035 Q233) | 77666b86 | replay: s54 126/0/1; mutant survived (debit spread cannot tell the bases apart) -> credit case in round 2a |
+| C-2 | 1 | Checker did not model the ADR-094 top-up in margin needed | Checker defect: needed marked not checkable (per-leg option_premium not in the reply) | 77666b86 | replay counts above |
+| C-3 | 2 | Checker expected charge lines to add up to the total | Checker defect: must follow ADR-082 (1) exact amounts | (round 2a) | |
+| P-1 | 2 | Orchestrator miss: decided the charges rounding rule as "spec silent" without grepping ADR-082 for rounding (spec-first R1 skipped); a builder found it | Process: R1 grep by every key term (here: round, paisa, GST) before a technical call that touches shown money | - | recorded; the R2 business/technical split also applies: money shown = owner's call |
+| D-C33 | 2 | Every leg expiry in market hours priced on the spot fallback | RCA: the strategy socket subscribed only legs + index, so parity never had 3 two-sided strikes; fix holds the 5 nearest strikes CE+PE per leg expiry (+10 contracts per expiry on the feed) | 1c65f911 | recorded 2026-10-08 frames; live re-run after merge |
 
 ## Parked
 
