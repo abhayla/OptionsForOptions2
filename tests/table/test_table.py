@@ -22,7 +22,7 @@ from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, ni
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
     ColumnId.ENTRY_PRICE, ColumnId.LTP, ColumnId.ENTRY_VALUE, ColumnId.CURRENT_VALUE, ColumnId.UNREALIZED_PNL,
-    ColumnId.PNL_PERCENT, ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA,
+    ColumnId.PNL_PERCENT, ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.DECAY, ColumnId.VEGA,
 ]
 TRAILING_ORDER = [ColumnId.LOWER_BE, ColumnId.UPPER_BE, ColumnId.STATUS]
 GREEK_COLUMNS = [ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA]

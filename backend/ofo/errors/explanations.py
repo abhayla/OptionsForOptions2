@@ -718,12 +718,12 @@ class CellText(SlotType):
         return value.isoformat() if isinstance(value, datetime.date) else str(value)
 
 
-#: The 20 fixed table column headings (REQ-035 AC-2), by `ofo.table.columns.ColumnId` name.
+#: The 21 fixed table column headings (REQ-035 AC-2), by `ofo.table.columns.ColumnId` name.
 COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "LEG": "Leg", "ACTION": "Action", "INSTRUMENT": "Instrument", "EXPIRY": "Expiry", "STRIKE": "Strike",
     "QUANTITY": "Quantity", "ENTRY_PRICE": "Entry Price", "LTP": "LTP", "ENTRY_VALUE": "Entry Value",
     "CURRENT_VALUE": "Current Value", "UNREALIZED_PNL": "Unrealized P&L", "PNL_PERCENT": "P&L %", "IV": "IV",
-    "DELTA": "Delta", "GAMMA": "Gamma", "THETA": "Theta", "VEGA": "Vega", "LOWER_BE": "Lower Breakeven",
+    "DELTA": "Delta", "GAMMA": "Gamma", "THETA": "Theta", "DECAY": "Decay", "VEGA": "Vega", "LOWER_BE": "Lower Breakeven",
     "UPPER_BE": "Upper Breakeven", "STATUS": "Status",
 })
 
@@ -748,6 +748,7 @@ TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "no_upper_be": "no upper breakeven",
     "no_health": "no strategy health was given",
     "not_same_quantity": "the legs have different quantities, so there is no single per-unit figure",
+    "no_next_open": "the market calendar has no next open, so there is no decay to it",
 })
 
 

@@ -1340,11 +1340,11 @@
     "reviewed": "pending owner read"
   },
   "labels:column": {
-    "sha256": "99b0610abd40e8c0e672e2b69acc97c495491a623a73138b70ee2df6dd7eff34",
+    "sha256": "37688024479ced9d32590afaac5dba8a68f94b6e7770090a9f33e701c86cd1d9",
     "reviewed": "pending owner read"
   },
   "labels:table_reason": {
-    "sha256": "a0927e963e75a2c5ef23357c6f561405de5c013ecc4989b2d4844becfd3c8ae5",
+    "sha256": "928db8080acfd07eb5f46b9bb0b417ec2d36cd2f1461da43037ecb28364cfaf3",
     "reviewed": "pending owner read"
   },
   "labels:level_region": {
@@ -1757,6 +1757,10 @@
   },
   "explanation:table_reason_not_same_quantity": {
     "sha256": "a247bad73d07ffc21c27df538642c5f315cc7f9e8e9476f5779b111e4d9ee6dc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:table_reason_no_next_open": {
+    "sha256": "48c157cc19cad9bf8b679b6915a7b36bdfe7a8bb63f22f877cd40e650565133b",
     "reviewed": "pending owner read"
   }
 }

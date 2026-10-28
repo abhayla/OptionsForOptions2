@@ -750,8 +750,100 @@ def check_per_unit_signs(rep, view, reply) -> int:
     return added
 
 
+# ---------------------------------------------------------------- round 4: OI rows, TOTAL net per-unit, Decay
+SESSION_OPEN = dt.time(9, 15)
+ABSENT = "absent"
+DASH = "\u2014"
+
+
+def next_weekday_open(valuation: dt.datetime) -> dt.datetime:
+    """The checker's OWN next-open rule: 09:15 IST of the first weekday whose 09:15 is after ``valuation``. It knows no
+    exchange holiday: a caller passes ``holidays`` to check_outcome, and Decay across one is marked not checkable."""
+    local = valuation.astimezone(IST)
+    day = local.date()
+    while True:
+        opens = dt.datetime.combine(day, SESSION_OPEN, IST)
+        if day.weekday() < 5 and opens > local:  # noqa: PLR2004 - Mon-Fri
+            return opens
+        day += dt.timedelta(days=1)
+
+
+def decay_per_unit(s, k, t, r, q, sigma, kind, valuation: dt.datetime, until: dt.datetime) -> float:  # noqa: PLR0913
+    """F-63 / REQ-145 AC-2, unsigned per unit: BSM with (t - elapsed) left minus BSM now, same S, K, r, q, sigma; time
+    in calendar seconds / (365 x 86400). An expiry before ``until`` values at intrinsic (bsm_price at t <= 0)."""
+    elapsed = (until - valuation).total_seconds() / (365.0 * 86400.0)
+    return bsm_price(s, k, t - elapsed, r, q, sigma, kind) - bsm_price(s, k, t, r, q, sigma, kind)
+
+
+def check_total_net_per_unit(rep, view, reply) -> None:
+    """GC-UI D-B28: the TOTAL row's Entry Price / LTP = sells + buys - of the legs' per-unit prices, shown as a
+    magnitude with side Cr / Dr (None at 0); absent with a futures leg, unequal quantities or a leg with no price."""
+    legs = reply.get("legs") or []
+    total = next((r["cells"] for r in (reply.get("table") or {}).get("rows") or [] if r["row_id"] == "TOTAL"), None)
+    if not legs or total is None:
+        rep.skip(f"[{view}] total net per-unit", "no legs or no TOTAL row")
+        return
+    for column, source in (("entry_price", "planned_entry"), ("ltp", "ltp")):
+        cell = total.get(column) or {}
+        prices = [D(leg.get(source)) for leg in legs]
+        if (any(leg.get("instrument") == "FUT" for leg in legs) or len({leg.get("quantity") for leg in legs}) != 1
+                or any(p is None or (source == "ltp" and p == 0) for p in prices)):
+            rep.add(f"[{view}] total {column} per unit (absent)",
+                    ABSENT if cell.get("value") is None else cell.get("value"), ABSENT,
+                    note="futures leg, unequal quantities or a leg without a price")
+            continue
+        net = sum(((p if leg["action"] == "SELL" else -p) for leg, p in zip(legs, prices, strict=True)), Decimal(0))
+        rep.add(f"[{view}] total {column} per unit (net magnitude)", cell.get("value"), abs(net))
+        side = "Cr" if net > 0 else "Dr" if net < 0 else None
+        if cell.get("value") is not None:  # a reply recorded before D-B28 has no value: not checkable, above
+            rep.add(f"[{view}] total {column} side", str(cell.get("side")), str(side))
+
+
+def _chain_side_oi(chain: dict, strike: Decimal, side: str) -> int | None:
+    """One contract's OI in a chain reply; None when the chain has no usable quote (in hours: not a live quote)."""
+    row = next((x for x in chain.get("rows") or [] if D(x.get("strike")) == strike), None)
+    quote = (row or {}).get(side.lower())
+    if not quote or quote.get("oi") is None:
+        return None
+    if quote.get("health") != "available" and not chain.get("market_closed"):
+        return None
+    return int(quote["oi"])
+
+
+def check_open_interest(rep, view, reply, chains_before, chains_after) -> None:
+    """REQ-083 AC-5 / AC-6: every ``open_interest`` row's call / put OI equals the chain snapshot's OI for the same
+    contract (the chain read before or after the reply: OI can tick between reads); a side the chain has no usable
+    quote for is null with the dash, never 0; an unavailable block has no rows."""
+    oi = (reply or {}).get("open_interest")
+    if oi is None:
+        return  # flag off: no block
+    if not oi.get("available"):
+        rep.add(f"[{view}] open_interest unavailable has no rows", len(oi.get("rows") or []), 0,
+                note=f"reason: {oi.get('unavailable_reason')}")
+        return
+    expiry = str(oi.get("expiry"))
+    chains = [c for c in ((chains_before or {}).get(expiry), (chains_after or {}).get(expiry)) if c]
+    if not chains:
+        rep.skip(f"[{view}] open_interest rows", f"no chain read for expiry {expiry}")
+        return
+    for row in oi.get("rows") or []:
+        strike = D(row.get("strike"))
+        for side, key in (("CE", "call_oi"), ("PE", "put_oi")):
+            want = [_chain_side_oi(c, strike, side) for c in chains]
+            got = row.get(key)
+            name = f"[{view}] open_interest {strike} {side}"
+            if got is None or all(w is None for w in want):
+                rep.add(name + " (no usable quote: null, never 0)", ABSENT if got is None else got,
+                        ABSENT if all(w is None for w in want) else next(w for w in want if w is not None))
+                if got is None:
+                    rep.add(name + " display", row.get(f"{key}_display"), DASH)
+                continue
+            best = min((w for w in want if w is not None), key=lambda w: abs(w - got))
+            rep.add(name, got, best, note="the chain before / after the reply")
+
+
 def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=RISK_FREE_RATE, both=None,
-                  step_asked=None) -> Report:
+                  step_asked=None, holidays=()) -> Report:
     """est / atx: the outcome replies for view=estimated_now / at_expiry; chains_*: {expiry: chain reply}. both: the
     reply asked with both_views / payoff_step / sd_bands (GC-UI step 4), step_asked its payoff_step (None: absent)."""
     rep = Report(name)
@@ -765,6 +857,10 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         if (reply or {}).get("state") == "COMPUTED":
             check_per_unit_signs(rep, view, reply)
             check_displays(rep, view, reply)
+            check_total_net_per_unit(rep, view, reply)
+            check_open_interest(rep, view, reply, chains_before, chains_after)
+    if (both or {}).get("state") == "COMPUTED":
+        check_open_interest(rep, "both", both, chains_before, chains_after)
     legs = est.get("legs") or []
     for i, leg in enumerate(legs):
         for key in ("strike", "expiry", "quantity", "planned_entry", "instrument", "action"):
@@ -1041,6 +1137,9 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
     if no_chain:
         rep.skip("model figures (IV, Greeks, Estimated Now)", f"no option chain for expiry {', '.join(no_chain)}")
         return rep
+    decay_until = next_weekday_open(valuation)
+    decay_ok = decay_until.date() not in set(holidays)
+    decay_parts: list = []  # (value, tol) per leg, or None when the checker has no value for the leg
     for i, leg in enumerate(legs):
         e = leg["expiry"]
         qi = qinfo[e]
@@ -1103,11 +1202,36 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
                     Decimal(str(round(tol + abs(g[gk] - g2[gk]) * abs(qty) / 2, 4))),
                     note="ours at the forward mid; tol = 4 dp x qty + forward band",
                 )
+            if not decay_ok:
+                rep.skip(f"leg{i + 1} decay", f"next weekday {decay_until.date()} is an exchange holiday: the checker "
+                         "has no calendar to find the next open (not checkable)", c.get("decay"))
+                decay_parts.append(None)
+            else:
+                d1 = decay_per_unit(s, k, t, r, q, float(iv_reply), leg["instrument"], valuation, decay_until)
+                d2 = decay_per_unit(s, k, t, r, qa_, float(iv_reply), leg["instrument"], valuation, decay_until)
+                dtol = abs(qty) * 0.00005 + abs(d1 - d2) * abs(qty) + 0.0001
+                want = (d1 + d2) / 2 * qty
+                rep.add(f"leg{i + 1} decay (Rs to {decay_until:%a %d-%b %H:%M} IST, signed)", c.get("decay"),
+                        round(want, 4), Decimal(str(round(dtol, 4))),
+                        note="own BSM revaluation at the next weekday 09:15 IST; assumes no holiday in between")
+                decay_parts.append((want, dtol))
+        else:
+            decay_parts.append(None)
+        if iv_reply is not None and t > 0:
             rep.data_rows.setdefault("D-B35/36 greek unit", {})[f"leg{i + 1}"] = {
                 "reply_delta": c.get("delta"),
                 "ours_per_unit_delta": round(g["delta"], 4),
                 "ours_per_position_delta": round(g["delta"] * qty, 4),
             }
+
+    total_cells = _cells(est, "TOTAL") or {}
+    if decay_parts and all(part is not None for part in decay_parts):
+        rep.add("TOTAL decay (sum of the legs)", total_cells.get("decay"),
+                round(sum(part[0] for part in decay_parts), 4),
+                Decimal(str(round(sum(part[1] for part in decay_parts), 4))))
+    elif decay_ok and any(leg.get("iv") is None for leg in legs):
+        rep.add("TOTAL decay absent (a leg has none: never a partial sum)",
+                ABSENT if total_cells.get("decay") is None else total_cells.get("decay"), ABSENT)
 
     # Estimated-Now scenario points; the payoff table's Estimated Now cells by the same model (GC-UI step 4)
     _model_points(rep, "[estimated_now] payoff", (est.get("payoff") or {}).get("points") or [], legs, leg_model,

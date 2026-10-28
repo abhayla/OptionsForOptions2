@@ -56,14 +56,16 @@ from ofo.errors.explanations import HEALTH_LABEL_TEXT, ExplanationText, render_e
 from dataclasses import dataclass, replace as _replace
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from enum import Enum
-from typing import Sequence
+from typing import Final, Sequence
 
 import datetime
 
 from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.display import format_points, format_rupees
 from ofo.engine.inputs import LegInput
-from ofo.engine.model import ModelInputs, leg_greeks_unrounded
+from ofo.engine.model import ModelInputs, leg_decay_unrounded, leg_greeks_unrounded
+from ofo.market_calendar import next_open as _next_open
+from ofo.engine.money_summary import net_price_per_unit
 from ofo.engine.legs import Action, Instrument, live_pnl
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
 from ofo.scenario.levels import LevelSet
@@ -268,6 +270,29 @@ def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs,
     return leg_greeks_unrounded(inputs, leg), None
 
 
+#: ``build_table(decay_until=...)`` default: the next market open after the valuation, from the market calendar.
+_FROM_CALENDAR: Final = object()
+
+
+def _leg_unit_decay(leg: LegInput, inputs: ModelInputs,
+                    until: datetime.datetime | None) -> tuple[Decimal | None, ExplanationText | None]:
+    """GC-UI D-B34: the leg's UNSIGNED, UNROUNDED per-unit Decay from the engine, or None with a reason (a futures
+    leg: a true 0; no IV: the existing reason; no next open: absent, never 0)."""
+    if leg.instrument is not Instrument.FUT and leg.iv is None:
+        return None, _r("no_iv")
+    if until is None:
+        return None, _r("no_next_open")
+    return leg_decay_unrounded(inputs, leg, until), None
+
+
+def _decay_cell(unit: Decimal | None, reason: ExplanationText | None, action: Action | None, quantity: int) -> Cell:
+    """A leg's Decay cell: position = per-unit x quantity x sign (like theta), rounded once; per_unit signed (F-2)."""
+    if unit is None or action is None:
+        return _greek_cell(None, None, None, reason, places=2)
+    raw = _signed(unit, action, quantity)
+    return _greek_cell(_round_greek(raw), None, _signed(unit, action, 1), None, places=2, unrounded=raw)
+
+
 def _signed(value: Decimal, action: Action, quantity: int) -> Decimal:
     sign = Decimal(1) if action is Action.BUY else Decimal(-1)
     return value * sign * quantity
@@ -301,7 +326,7 @@ def _iv_cell(leg: LegInput) -> Cell:
 
 def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
              scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None",
-             supplied: Greeks | None = None) -> Row:
+             supplied: Greeks | None = None, decay_until: datetime.datetime | None = None) -> Row:
     core = leg.leg
     entry_value = core.entry_price * core.quantity
     current_value = core.ltp * core.quantity if core.ltp is not None else None
@@ -352,6 +377,7 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
                                      None if vendor is None else vendor.theta,
                                      None if signed_unit is None else signed_unit.theta, greek_reason,
                                     places=2, unrounded=None if raw_position is None else raw_position.theta),
+        ColumnId.DECAY: _decay_cell(*_leg_unit_decay(leg, inputs, decay_until), core.action, core.quantity),
         ColumnId.VEGA: _greek_cell(None if position is None else position.vega,
                                     None if vendor is None else vendor.vega,
                                     None if signed_unit is None else signed_unit.vega, greek_reason,
@@ -400,12 +426,12 @@ def _net_per_unit_cell(legs: Sequence[LegInput], price: str, has_futures: bool) 
     prices = [getattr(leg, price) for leg in legs]
     if any(p is None for p in prices):
         return _net_premium_cell(None, _r("not_all_ltp"))
-    return _net_premium_cell(sum(((p if leg.action is Action.SELL else -p) for leg, p in zip(legs, prices, strict=True)),
-                                 Decimal(0)))
+    return _net_premium_cell(net_price_per_unit(legs, prices))  # ADR-008: the sum is the engine's
 
 
 def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,
-               health: "StrategyHealth | None", supplied: Sequence[Greeks | None]) -> Row:
+               health: "StrategyHealth | None", supplied: Sequence[Greeks | None],
+               decay_until: datetime.datetime | None = None) -> Row:
     legs = inputs.legs
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
@@ -463,6 +489,7 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
                                     unrounded=None if not every_leg_has_greeks else raw_totals["theta"]),
         ColumnId.VEGA: _greek_cell(greek_values["vega"], None, None, greek_reason, places=2,
                                     unrounded=None if not every_leg_has_greeks else raw_totals["vega"]),
+        ColumnId.DECAY: _total_decay_cell(legs, inputs, decay_until),
     }
     for i, level in enumerate(level_columns):
         if scenario is None or not scenario.available or scenario.totals is None:
@@ -481,6 +508,18 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
         status = render_explanation("cell_health", health=health)
         cells[ColumnId.STATUS] = Cell(status, status, CellKind.TEXT)
     return Row(TOTAL_ROW_ID, cells)
+
+
+def _total_decay_cell(legs: Sequence[LegInput], inputs: ModelInputs, until: datetime.datetime | None) -> Cell:
+    """TOTAL Decay: the sum of the legs' UNROUNDED position Decay, rounded once; absent when any leg's is absent
+    (never a partial sum): "not every leg has an implied volatility", or no next open."""
+    raw = Decimal(0)
+    for leg in legs:
+        unit, reason = _leg_unit_decay(leg, inputs, until)
+        if unit is None:
+            return _greek_cell(None, None, None, _r("not_all_iv") if until is not None else reason, places=2)
+        raw += _signed(unit, leg.action, leg.quantity)
+    return _greek_cell(_round_greek(raw), None, None, None, places=2, unrounded=raw)
 
 
 def _checked_leg_greeks(inputs: ModelInputs, leg_greeks: Sequence[Greeks | None] | None) -> list[Greeks | None]:
@@ -506,6 +545,7 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
     leg_statuses: Sequence["LegStatus | None"] | None = None,
     strategy_health: StrategyHealth | None = None,
     leg_greeks: Sequence[Greeks | None] | None = None,
+    decay_until: object = _FROM_CALENDAR,
 ) -> Table:
     """Build the one strategy table (AC-1): a row per leg, a TOTAL row, columns in the AC-2 locked order.
 
@@ -550,6 +590,10 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
             raise ValueError("scenario was computed over a different level set")
 
     supplied = _checked_leg_greeks(inputs, leg_greeks)
+    # GC-UI D-B34: Decay runs to the next market open after the valuation (None: the calendar has no answer)
+    until = _next_open(inputs.inputs.valuation_time) if decay_until is _FROM_CALENDAR else decay_until
+    if until is not None and not isinstance(until, datetime.datetime):
+        raise ValueError(f"decay_until must be a datetime or None, got {until!r}")
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
@@ -561,10 +605,10 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
     columns += [ColumnSpec(cid, HEADER_LABELS[cid], _trailing_kind(cid)) for cid in TRAILING_COLUMNS]
 
     rows = [
-        _leg_row(i, leg, inputs, level_columns, scenario, i - 1, statuses[i - 1], supplied[i - 1])
+        _leg_row(i, leg, inputs, level_columns, scenario, i - 1, statuses[i - 1], supplied[i - 1], until)
         for i, leg in enumerate(inputs.legs, start=1)
     ]
-    rows.append(_total_row(inputs, level_set, scenario, strategy_health, supplied))
+    rows.append(_total_row(inputs, level_set, scenario, strategy_health, supplied, until))
     return Table(tuple(columns), tuple(rows), inputs.underlying, inputs.spot_level, inputs.spot_at, inputs.label)
 
 
@@ -586,6 +630,7 @@ def _leading_kind(cid: ColumnId) -> CellKind:
         ColumnId.DELTA: CellKind.GREEK,
         ColumnId.GAMMA: CellKind.GREEK,
         ColumnId.THETA: CellKind.GREEK,
+        ColumnId.DECAY: CellKind.GREEK,
         ColumnId.VEGA: CellKind.GREEK,
     }[cid]
 

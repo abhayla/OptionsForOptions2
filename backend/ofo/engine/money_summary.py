@@ -36,6 +36,12 @@ def net_premium_per_unit(legs: Sequence[Any]) -> Decimal | None:
     return abs(sum((_signed(leg, leg.entry_price) for leg in legs), Decimal(0)))
 
 
+def net_price_per_unit(legs: Sequence[Any], prices: Sequence[Decimal]) -> Decimal:
+    """Sells plus, buys minus, of one per-unit price per leg (``prices`` parallel to ``legs``): the TOTAL row's net
+    per-unit Entry / LTP (GC-UI D-B28). Positive = credit. The caller decides when the figure applies."""
+    return sum((_signed(leg, p) for leg, p in zip(legs, prices, strict=True)), Decimal(0))
+
+
 def intrinsic_and_time(legs: Sequence[Any], spot: Decimal) -> tuple[Decimal, Decimal]:
     """Over the option legs (all with an LTP): intrinsic = max(spot - strike, 0) for a call, max(strike - spot, 0) for a
     put; time = ltp - intrinsic; each x quantity; bought +, sold -. A futures leg adds nothing."""

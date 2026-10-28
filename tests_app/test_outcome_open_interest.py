@@ -121,6 +121,41 @@ def test_flag_off_has_no_open_interest_key(provider):
     assert "open_interest" not in _body(provider, S54)
 
 
+def test_one_strike_without_a_usable_quote_is_null_with_a_dash_never_0(monkeypatch):
+    """REQ-083 AC-6 ("never draws zero-height bars as if OI were zero"), round 3's surviving mutant M2: inside the range,
+    22700 CE has NO quote and 22700 PE has a STALE one while every other strike is quoted. Those two sides are null
+    with the dash; the neighbours keep their own real OI; the block stays available."""
+    import dataclasses as _dc  # noqa: PLC0415
+
+    from ofo.rules.inputs import DataHealth  # noqa: PLC0415
+    from ofo_app.outcome_oi import oi_of  # noqa: PLC0415
+
+    market = _market()
+    real = market.option_chain_snapshot
+    hole = Decimal("22700")
+
+    def with_a_hole(underlying, expiry):
+        out = []
+        for q in real(underlying, expiry):
+            if q.strike == hole and q.instrument_type.value == "CE":
+                continue  # no quote at all
+            out.append(_dc.replace(q, health=DataHealth.STALE) if q.strike == hole else q)
+        return out
+
+    monkeypatch.setattr(market, "option_chain_snapshot", with_a_hole)
+    oi = _body(market, S54, open_interest=True)["open_interest"]
+    assert oi["available"] is True
+    rows = {Decimal(r["strike"]): r for r in oi["rows"]}
+    gap = rows[hole]
+    dash = render_explanation("cell_dash")
+    assert (gap["call_oi"], gap["call_oi_display"]) == (None, dash)  # missing quote: null, never 0
+    assert (gap["put_oi"], gap["put_oi_display"]) == (None, dash)  # unusable quote: null, never 0
+    chain = _chain_oi(market)
+    for k in (Decimal("22650"), Decimal("22750")):
+        assert rows[k]["call_oi"] == chain[(k, "CE")] is not None and rows[k]["put_oi"] == chain[(k, "PE")]
+    assert oi_of(None) is None and oi_of(None, closed=True) is None  # the shared rule itself
+
+
 def test_a_real_oi_of_zero_shows_0_not_a_dash(provider):
     """A real 0 (20200 CE on 13-Oct carries oi 0 in the replay) is a count: "0", never dropped or dashed."""
     body = _body(provider, S54, open_interest=True, range_start="20000", range_end="21500")
