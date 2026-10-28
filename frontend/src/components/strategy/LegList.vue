@@ -79,7 +79,7 @@ const priceText = (l, i) => typedText.value[i] ?? l.planned_entry ?? ''
 const onPriceInput = (i, text) => {
   typedText.value = { ...typedText.value, [i]: text }
 }
-// D-A12: the Hedge mark lives in the strike's tooltip and screen-reader text; D-A16: the strike opens that leg in the drawer
+// D-A12 kept (REQ-076 AC-8): a small visible "H" (named Hedge) sits inside the strike box, and Hedge is also in the strike's tooltip; D-A16: the strike opens that leg in the drawer
 const isHedge = (l) => l.hedge === true && !someLeftOut.value
 const strikeTitle = (l) => (isHedge(l) ? 'Hedge. Edit this leg' : 'Edit this leg')
 // Revision 1 (REQ-077 AC-1, AC-6, AC-7): a second line only when something must stay visible
@@ -167,11 +167,11 @@ function setMultiplier(index) {
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
       <div class="leg-grid grid items-center whitespace-nowrap text-xs text-ink-muted max-[639px]:hidden" :style="{ ...cardPadding, ...gridStyle }" aria-hidden="true" data-testid="leg-table-head">
-        <span></span><span class="text-center">B/S</span><span>Expiry</span><span class="text-center">Strike</span><span class="text-center">Type</span><span class="text-center">Lots</span><span class="flex items-center justify-end gap-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span v-if="anyMoved" class="text-warn" title="Price has moved" data-testid="price-moved-head"><Icon name="info" :size="12" /></span></span><span></span><span></span>
+        <span></span><span class="text-center">B/S</span><span>Expiry</span><span class="text-center">Strike</span><span class="text-center">Type</span><span class="text-center">Lots</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span v-if="anyMoved" class="text-warn" title="Price has moved" data-testid="price-moved-head"><Icon name="info" :size="12" /></span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
         <li
-          v-for="(leg, i) in legs" :key="leg.id ?? i" class="border-t border-line py-1" :style="cardPadding"
+          v-for="(leg, i) in legs" :key="leg.id ?? i" class="border-t border-line py-0" :style="cardPadding"
           :class="leg.included === false ? 'text-ink-muted opacity-60' : ''" :title="leg.included === false ? LEFT_OUT_LABEL : undefined"
           :data-testid="'leg-row'" :data-index="i" :data-included="leg.included === false ? 'false' : 'true'"
           :data-instrument-id="leg.instrument_id" :data-action="leg.action" :data-lots="leg.lots" :data-entry="leg.planned_entry ?? ''"
@@ -183,8 +183,8 @@ function setMultiplier(index) {
             <span class="flex h-8 items-stretch overflow-hidden rounded border border-line" data-testid="strike-stepper">
               <template v-if="canStep(leg)">
                 <button type="button" class="h-8 w-8 shrink-0 border-r border-line" aria-label="Previous strike" data-testid="strike-minus" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
-                <button type="button" class="num min-w-0 flex-1 text-center" :title="strikeTitle(leg)" :aria-label="`Edit ${legName(leg)}`" data-testid="edit-leg" @click="emit('edit-leg', i)">
-                  <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span><span v-if="isHedge(leg)" class="sr-only" data-testid="hedge-mark">Hedge</span>
+                <button type="button" class="num relative min-w-0 flex-1 text-center" :title="strikeTitle(leg)" :aria-label="`Edit ${legName(leg)}`" data-testid="edit-leg" @click="emit('edit-leg', i)">
+                  <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span><span v-if="isHedge(leg)" class="absolute left-0.5 top-0 rounded-sm bg-accent px-0.5 text-[9px] font-semibold leading-3 text-white" title="Hedge" aria-label="Hedge" data-testid="hedge-mark">H</span>
                 </button>
                 <button type="button" class="h-8 w-8 shrink-0 border-l border-line" aria-label="Next strike" data-testid="strike-plus" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
               </template>
