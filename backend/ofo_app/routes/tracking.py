@@ -335,7 +335,9 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                         now: Annotated[AnswerClock, Depends(get_answer_clock)],
                         threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingOut:
     """REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from
-    the same market context as the start. Any named leg not live refuses the whole exit (nothing stored). The store
+    the same market context as the start. Any named leg not live refuses the whole exit (nothing stored): a contract no
+    longer live answers tracking_contract_not_live (it never comes back), a live contract whose price is stale or
+    missing answers tracking_exit_prices_not_live (AC-5: try again when prices update). The store
     re-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once."""
     stored = await _load(db, user_ref, strategy_id)
     tracking = await tracking_store.load(db, strategy_id)
@@ -349,7 +351,9 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
         raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
     legs, reasons = await _entry_legs(db, tracking)
     if any(reasons[i] is not None for i in body.legs):
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)  # never priced from another contract
+        # Review M2: a retired / delisted / token-reassigned contract never comes back, so "try again" cannot work;
+        # Start tracking's refusal (never priced from another contract), nothing stored.
+        raise StrategyRefused("tracking_contract_not_live", Failure.CONFLICT)
     named = [legs[i] for i in body.legs]
     snapshot = await _snapshot(ctx, feed, stored.saved.definition.underlying, [leg.instrument_id for leg in named])
     try:

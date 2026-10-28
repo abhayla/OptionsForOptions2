@@ -8,19 +8,24 @@ to 45.15 / 14.95 / 70.75 / 30.80. By hand: (39.15 - 45.15) x 65 = -390.00; (14.9
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo.tracking import paper
 from ofo_app import strategy_store as store
-from ofo_app import tracking_store
+from ofo_app import tracked_contracts, tracking_store
 from ofo_app.routes import tracking as tracking_routes
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
-from test_strategy_store import _client, _saved_in
+from test_execution_plan_store import _remove_own_rows
+from test_strategy_store import WING, _client, _saved_in, _user, _with_draft
 from test_strategy_tracking import (
+    _DELIST,
     _RETIRE,
+    _REUSE,
     IDS,
     _frame,
     _setup,
@@ -224,6 +229,38 @@ async def test_exit_refused_when_a_named_leg_is_not_live_and_nothing_is_stored(d
     assert await _exits(db, ids[0]) == []
 
 
+@pytest.mark.parametrize(("sqls", "state"), [((_DELIST, _REUSE), "token_reassigned"), ((_RETIRE,), "contract_retired"),
+                                             ((_DELIST,), "contract_delisted")])
+async def test_exit_of_a_leg_whose_contract_is_not_live_is_refused_contract_not_live_never_try_again(db, sqls, state):
+    """Review M2: a retired / delisted / token-reassigned contract never comes back, so "try again when prices update"
+    would be a lie. The exit answers Start tracking's tracking_contract_not_live (409, STRATEGY_VALIDATION_414) and
+    stores nothing; the feed still quotes the old token at 45.15, which is never used."""
+    app, ids, *_ = await _tracked(db)
+    leg0 = (await _leg_contracts(db, ids[0]))[0]
+    for sql in sqls:
+        await db.execute(text(sql), {"id": leg0})
+    assert (await tracked_contracts.resolve_one(db, leg0)).state == state
+    async with _client(app) as c:
+        refused = await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0, 1]})
+    assert refused.status_code == HTTPStatus.CONFLICT
+    body = refused.json()
+    assert body["code"] == "STRATEGY_VALIDATION_414" and "no longer a live contract" in body["what_happened"]
+    assert "try again" not in refused.text.lower()
+    assert await _exits(db, ids[0]) == []
+
+
+async def test_exit_of_a_live_contract_whose_price_is_stale_keeps_the_ac5_try_again_answer(db):
+    """AC-5's words stay for a LIVE contract whose price is stale (it can update): 433, nothing stored."""
+    app, ids, _provider, clock, last = await _tracked(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    async with _client(app) as c:
+        refused = await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0]})
+    assert refused.status_code == HTTPStatus.CONFLICT
+    assert refused.json()["code"] == "STRATEGY_VALIDATION_433"
+    assert "Prices are not live; try again when they update" in refused.text
+    assert await _exits(db, ids[0]) == []
+
+
 async def test_a_leg_exits_once(db):
     app, ids, *_ = await _tracked(db)
     async with _client(app) as c:
@@ -272,3 +309,84 @@ async def test_paper_exit_rows_are_append_only(db, sql):
         await db.execute(text(sql), {"i": ids[0]})
     await nested.rollback()
     assert await _exits(db, ids[0]) == [(0, D("45.15"))]
+
+
+# --- review M4: the batch catalogue answer and the exit race, kept in the suite ---------------------------------------
+
+_REUSE_OF = ("INSERT INTO public.catalogue_contracts (exchange_segment, exchange_token, name, expiry, strike, "
+             "instrument_type) SELECT exchange_segment, exchange_token, name, DATE '2026-11-24', :strike, "
+             "instrument_type FROM public.catalogue_contracts WHERE id = :id")
+
+
+async def test_batched_resolve_gives_exactly_resolve_ones_answers_for_every_catalogue_state(db):
+    """F-3's batched tracked_contracts.resolve (two queries) must answer as resolve_one (one contract at a time) for
+    every state: live, retired, delisted, token reassigned, retired-then-reused (retired wins), a duplicate id and an
+    id no contract has."""
+    _app, stored, *_ = await _setup(db)
+    c0, c1, c2, c3 = stored.saved.contract_ids
+    live = (await _contract_ids(db))[WING]
+    await db.execute(text(_RETIRE), {"id": c0})
+    await db.execute(text(_DELIST), {"id": c1})
+    await db.execute(text(_DELIST), {"id": c2})
+    await db.execute(text(_REUSE_OF), {"id": c2, "strike": 26000})
+    await db.execute(text(_RETIRE), {"id": c3})
+    await db.execute(text(_REUSE_OF), {"id": c3, "strike": 26100})
+    ids = [live, c0, c1, c2, c3, c0, 2**62]
+    batched = await tracked_contracts.resolve(db, ids)
+    one_by_one = [await tracked_contracts.resolve_one(db, i) for i in ids]
+
+    def shape(c):
+        return (c.contract_id, c.state, c.feed_key, c.identity, c.stored is None)
+
+    assert [c.state for c in batched] == ["live", "contract_retired", "contract_delisted", "token_reassigned",
+                                          "contract_retired", "contract_retired", "contract_missing"]
+    assert [shape(c) for c in batched] == [shape(c) for c in one_by_one]
+    assert batched[0].feed_key is not None and all(c.feed_key is None for c in batched[1:])
+
+
+async def _remove_tracked_rows(admin_engine, user_ref: str, contract_ids: list[int]) -> None:
+    """This test's committed tracking rows, removed as the owner with the insert-only guards off inside one
+    transaction (the house pattern, test_execution_plan_store._remove_own_rows), children first; then that helper
+    removes the strategy, its history and the catalogue rows."""
+    async with admin_engine.connect() as conn:  # noqa: SIM117
+        async with conn.begin():
+            mine = "(SELECT id FROM public.strategies WHERE user_ref = :u)"
+            for table in ("strategy_tracking_exits", "strategy_tracking_legs", "strategy_tracking"):
+                await conn.execute(text(f'ALTER TABLE public."{table}" DISABLE TRIGGER USER'))
+                await conn.execute(text(f"DELETE FROM public.{table} WHERE strategy_id IN {mine}"),  # noqa: S608
+                                   {"u": user_ref})
+                await conn.execute(text(f'ALTER TABLE public."{table}" ENABLE TRIGGER USER'))
+    await _remove_own_rows(admin_engine, contract_ids, user_ref)
+
+
+async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_already_exited(app_engine, admin_engine):
+    """Two connections exit leg 0 at once: the strategy's row lock makes the second wait for the first; once the first
+    commits, the second answers ALREADY_EXITED and exactly one exit row (the first's price, 11.00) is stored."""
+    user = _user()
+    at = datetime.datetime(2026, 10, 8, 3, 50, tzinfo=datetime.UTC)
+    contract_ids: list[int] = []
+    try:
+        async with app_engine.connect() as setup:  # noqa: SIM117 - the transaction needs the connection
+            async with setup.begin():
+                _, stored = await _with_draft(setup, user)
+                contract_ids = list((await _contract_ids(setup)).values())
+                entry = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity,
+                                          D("10.00"), at)
+                         for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
+                await tracking_store.start(setup, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
+        async with app_engine.connect() as first, app_engine.connect() as second:
+            t1, t2 = await first.begin(), await second.begin()
+            await tracking_store.exit_legs(first, user, stored.id, [(0, D("11.00"), at)])
+            waiter = asyncio.create_task(tracking_store.exit_legs(second, user, stored.id, [(0, D("12.00"), at)]))
+            await asyncio.sleep(1.0)
+            assert not waiter.done(), "the second exit must wait for the first transaction's row lock"
+            await t1.commit()
+            with pytest.raises(store.StrategyStoreError) as refused:
+                await asyncio.wait_for(waiter, 10)
+            assert refused.value.code == tracking_store.ALREADY_EXITED
+            await t2.rollback()
+            rows = (await first.execute(text("SELECT leg_index, exit_price FROM public.strategy_tracking_exits "
+                                             "WHERE strategy_id = :i"), {"i": stored.id})).all()
+            assert [(int(r[0]), r[1]) for r in rows] == [(0, D("11.00"))]
+    finally:
+        await _remove_tracked_rows(admin_engine, user, contract_ids)

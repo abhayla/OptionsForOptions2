@@ -80,6 +80,13 @@ class TrackedLeg:
     price_at: datetime.datetime
 
 
+def is_live(price: Price) -> bool:
+    """The ONE predicate every paper decision uses (entry, exit, unbooked, total, pause): the answer's STATE is live.
+    Never "a price is present": a stale answer may one day carry its last price for display, and that price must never
+    be computed with (REQ-109 AC-5; GC-BP step 8 review M1)."""
+    return price.state == LIVE
+
+
 class PricesNotLive(ValueError):
     """A paper entry was asked for while a leg's price is stale or missing (REQ-109 AC-5): nothing is stored."""
 
@@ -119,7 +126,7 @@ def capture_entry(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg]) -> tuple
     if not legs:
         raise ValueError("a paper entry needs at least one leg")
     prices = [leg_price(snapshot, leg.instrument_id) for leg in legs]
-    not_live = [p for p in prices if p.state != LIVE]
+    not_live = [p for p in prices if not is_live(p)]
     if not_live:
         raise PricesNotLive(not_live)
     return tuple(TrackedLeg(leg.instrument_id, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity,
@@ -178,7 +185,7 @@ def exit_prices_now(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg]) -> tup
     if not legs:
         raise ValueError("a paper exit needs at least one leg")
     prices = tuple(leg_price(snapshot, leg.instrument_id) for leg in legs)
-    not_live = [p for p in prices if p.state != LIVE]
+    not_live = [p for p in prices if not is_live(p)]
     if not_live:
         raise PricesNotLive(not_live)
     return prices
@@ -223,17 +230,17 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
     if snapshot is None and open_legs:
         raise ValueError("an open leg needs a market snapshot")
     prices = tuple(_leg_answer(snapshot, leg, reasons[i], i in exits) for i, leg in enumerate(legs))
-    split = pnl_split(legs, {i: prices[i].price for i in open_legs if prices[i].price is not None}, exits)
+    split = pnl_split(legs, {i: prices[i].price for i in open_legs if is_live(prices[i])}, exits)
     if snapshot is None:
         return TrackingView(False, None, split.total, None, prices, None, None, (), split.booked, split.unbooked, True)
     contract_reason = next((reasons[i] for i in open_legs if reasons[i] is not None), None)
     paused = split.unbooked is None
-    known = [prices[i].at for i in open_legs if prices[i].state != LIVE and prices[i].at is not None]
+    known = [prices[i].at for i in open_legs if not is_live(prices[i]) and prices[i].at is not None]
     index = index_price(snapshot)
     still_open = [legs[i] for i in open_legs]
     breakevens = entry_breakevens(still_open) if still_open else None
     detections: tuple[Detection, ...] = ()
-    if index.state == LIVE and contract_reason is None and still_open:
+    if is_live(index) and contract_reason is None and still_open:
         detections = detect_near_levels(short_strike_levels=short_strikes(still_open), breakevens=breakevens or (),
                                         index_level=index.price, threshold_percent=threshold_percent)
     reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
