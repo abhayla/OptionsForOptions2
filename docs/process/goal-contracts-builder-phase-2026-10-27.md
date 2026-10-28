@@ -37,6 +37,25 @@ REQ-030 AC-13 queued for GC-B13; hover B / S moved to GC-B14; G-101 (UI-207) add
 
 ---
 
+## Re-ordered by the owner, 2026-10-28 (supersedes the written B2..B17 order)
+
+Owner pick (question tool, ~10:45 IST): "A: Speed, what-if, positions, LAND". Chosen from a trader's view; scope stays
+ADR-165. Order after GC-BM and GC-BP (`goal-contract-GC-BP-2026-10-28.md`):
+
+1. GC-B2: leg edit within 1,000 ms p95 (REQ-078 AC-1).
+2. GC-B6 (rest: GC-BM did G-051) then GC-B7: what-if target date / price and the payoff and SD tables (REQ-083, REQ-084, REQ-137).
+3. GC-B16 then GC-B17: real Zerodha positions listed and loaded into the builder, analyse only (REQ-141).
+4. LAND: one "ready to land" goal, outside market hours: openapi drift, Playwright for changed pages, ruff_ratchet,
+   coverage, prepush.py, ONE push of `build/gcbm-must-have`, ONE PR (GC-BM + GC-BP + 1-3), CI, merge.py.
+   Goals 1-3 follow GC-BP's no-push / no-PR / no-CI rule (owner, 2026-10-28: market hours are for building and
+   live testing); each stacks local commits on the same branch.
+5. GC-B13 then GC-B14: Option Chain picks into the builder and the chain layout (REQ-030).
+6. GC-B10: POP and breakeven percent (REQ-082).
+7. Adjustment suggestions (ADR-165 (6), REQ-045 / REQ-046; not yet a contract here): needs the owner's first
+   playbook before its core can be proven; ask for it early, do not wait until step 7.
+8. Later: GC-B3, B4, B5, B8, B9, B11, B12, B15 (minus rows GC-BM already did: G-024, G-065, G-070, G-075).
+   Visual parity stays listed, not fixed (owner, 2026-10-28: functional only).
+
 ## 1. Rules for every contract here
 
 - One contract per fresh session. Start from the newest handover block and run the item rows top to bottom.
