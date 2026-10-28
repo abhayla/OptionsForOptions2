@@ -570,7 +570,9 @@ def test_d3_whole_rupee_rule(value, signed, text):
     [
         ("22400", "22712", f"22,400 ({M}1.4%)"),
         ("23000", "22712", "23,000 (+1.3%)"),
-        ("22687.8", "22698.85", "22,688 (0.0%)"),  # rounds to 0.0: no sign
+        ("22687.8", "22698.85", f"22,688 ({M}0.0%)"),  # F-4: -0.0487% rounds to 0.0, the sign stays (REQ-153 AC-1)
+        ("22700.4", "22698.85", "22,700 (+0.0%)"),  # F-4: +0.0068% likewise
+        ("22698.85", "22698.85", "22,699 (0.0%)"),  # a true zero: no sign (REQ-152 AC-4)
         ("20010", "20000", "20,010 (+0.1%)"),  # exactly 0.05: half-up gives 0.1 (half-even would give 0.0)
         ("19990", "20000", f"19,990 ({M}0.1%)"),
         ("22688", None, "22,688"),  # no usable spot: the level alone
@@ -648,3 +650,102 @@ def test_d9_real_sensex_bull_put_spread_minus_zero_and_negative_value_all_match(
     assert shown["[estimated_now] summary.time_value_display"] == M + "1,586"
     bad = [f.name for f in rows.values() if f.verdict != u.MATCH]
     assert not bad, bad
+
+
+# ---------------------------------------------------------------- GC-UI C-4: the stated pricing basis after hours
+
+CLOSED = FIX / "closed_s54"  # REAL reply 17:13 IST after the close: "estimated from spot", every quote stale (funds redacted)
+
+
+def _closed():
+    return u.load_replay(CLOSED)
+
+
+def _iv_rows(rep):
+    return {f.name: f for f in rep.figures if " iv (" in f.name}
+
+
+def test_c4_closed_reply_every_model_figure_matches_on_the_stated_basis():
+    est, atx, before, after, fut = _closed()
+    rep = run(est, atx, before, after, fut)
+    c = exact_counts(rep)
+    assert c[u.MISMATCH] == 0, [(f.name, f.ours, f.independent) for f in rep.figures
+                                 if f.verdict == u.MISMATCH and not is_display_row(f.name)][:5]
+    assert c[u.MATCH] > 100
+    ivs = _iv_rows(rep)
+    assert len(ivs) == 2 and all(f.verdict == u.MATCH for f in ivs.values())
+    used = rep.data_rows["D-B35/36 iv basis"]["leg1"]
+    assert used["used"] == "ltp, q=0 (spot fallback)" and used["stated_basis"] == "SPOT_FALLBACK"
+    basis = [f for f in rep.figures if f.name.startswith("pricing basis")]
+    assert basis and all(f.verdict == u.MATCH for f in basis)
+
+
+def test_c4_an_altered_iv_is_still_flagged():
+    est, atx, before, after, fut = _closed()
+    est = copy.deepcopy(est)
+    est["legs"][0]["iv"] = f"{float(est['legs'][0]['iv']) + 0.01:.6f}"
+    v = verdicts(run(est, atx, before, after, fut))
+    assert [k for k, x in v.items() if " iv (" in k and x == u.MISMATCH] and "leg1" in str(
+        [k for k, x in v.items() if " iv (" in k and x == u.MISMATCH])
+
+
+def test_c4_stated_parity_on_stale_quotes_is_flagged():
+    est, atx, before, after, fut = _closed()
+    after = {e: dict(c, greeks_basis="PARITY") for e, c in after.items()}
+    est = dict(est, output_label=None)
+    v = verdicts(run(est, atx, before, after, fut))
+    assert any(k.startswith("pricing basis") and x == u.MISMATCH for k, x in v.items())
+
+
+def test_c4_stated_spot_fallback_on_live_quotes_is_flagged():
+    est, atx, before, after, fut = fixture()
+    after = {e: dict(c, greeks_basis="SPOT_FALLBACK") for e, c in after.items()}
+    v = verdicts(run(est, atx, before, after, fut))
+    assert any(k.startswith("pricing basis") and x == u.MISMATCH for k, x in v.items())
+
+
+def test_c4_live_reply_is_unchanged_mid_and_parity():
+    est, atx, before, after, fut = fixture()
+    rep = run(est, atx, before, after, fut)
+    assert exact_counts(rep)[u.MISMATCH] == 0
+    used = rep.data_rows["D-B35/36 iv basis"]["leg1"]["used"]
+    assert used == "mid, parity q"
+    assert all(f.verdict == u.MATCH for f in rep.figures if f.name.startswith("pricing basis"))
+
+
+def _leg(ltp):
+    return {"ltp": ltp}
+
+
+@pytest.mark.parametrize(
+    ("quote", "ltp", "expect"),
+    [
+        ({"bid": "10", "ask": "12", "health": "available"}, "11.5", (11.0, "mid")),  # both sides live: mid
+        ({"bid": "10", "ask": None, "health": "available"}, "11.5", (11.5, "ltp")),  # one side live: the LTP
+        ({"bid": None, "ask": "12", "health": "available"}, "11.5", (11.5, "ltp")),
+        ({"bid": "10", "ask": "12", "health": "stale"}, "11.5", (11.5, "ltp")),  # none live (stale): the LTP
+        ({"bid": "12", "ask": "10", "health": "available"}, "11.5", (11.5, "ltp")),  # crossed: the LTP
+        ({"bid": "10", "ask": "12", "health": "stale"}, None, (None, None)),  # no LTP, nothing live: not checkable
+        ({"bid": "10", "ask": "12", "health": "available"}, None, (11.0, "mid")),
+        ({}, "11.5", (11.5, "ltp")),
+        ({"bid": "10", "ask": "12"}, "11.5", (11.0, "mid")),  # no health key: an old reply, treated as live
+    ],
+)
+def test_c4_iv_price_answer_states(quote, ltp, expect):
+    assert u.iv_price(_leg(ltp), quote) == expect
+
+
+def test_c4_no_ltp_and_stale_makes_the_iv_not_checkable():
+    est, atx, before, after, fut = _closed()
+    est = copy.deepcopy(est)
+    est["legs"][0]["ltp"] = None
+    v = verdicts(run(est, atx, before, after, fut))
+    iv1 = [x for k, x in v.items() if " iv (" in k and k.startswith("leg1")]
+    assert iv1 == [u.NOT_CHECKABLE]
+
+
+def test_c4_f4_old_server_text_is_flagged_on_the_real_closed_reply():
+    est, atx, before, after, fut = _closed()
+    rep = run(est, atx, before, after, fut)
+    row = _disp_rows(rep)["[estimated_now] summary.breakevens_display[0]"]
+    assert row.verdict == u.MISMATCH and row.independent == f"22,688 ({M}0.0%)"
