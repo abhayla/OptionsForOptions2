@@ -11,7 +11,7 @@ import money from './fixtures/outcome-money-condor.json'
 const drawn = vi.hoisted(() => [])
 vi.mock('chart.js/auto', () => ({ default: class { constructor(_ctx, config) { drawn.push(config) } destroy() {} } }))
 import ChartCard from '@/components/strategy/ChartCard.vue'
-import { compactRows, greekRows, payoffLevelRows } from '@/lib/chartCard'
+import { GREEK_DECIMALS, compactRows, fixedText, greekRows, payoffLevelRows } from '@/lib/chartCard'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
@@ -135,7 +135,8 @@ describe('Greeks and Strategy chart tabs', () => {
     expect(all(w, 'greeks-head').map((h) => h.text())).toEqual(['Delta', 'Gamma', 'Theta', 'Vega', 'IV'])
     for (const row of real.table.rows) {
       const tr = w.find(`[data-testid="greeks-row"][data-row="${row.row_id}"]`)
-      for (const id of ['delta', 'gamma', 'theta', 'vega', 'iv']) expect(tr.find(`[data-field="${id}"]`).text()).toBe(row.cells[id].display)
+      expect(tr.find('[data-field="iv"]').text()).toBe(row.cells.iv.display)
+      for (const id of ['delta', 'gamma', 'theta', 'vega']) expect(tr.find(`[data-field="${id}"]`).text()).toBe(fixedText(row.cells[id].per_unit, GREEK_DECIMALS[id]))
     }
     w.unmount()
   })
@@ -160,6 +161,56 @@ describe('Greeks and Strategy chart tabs', () => {
 
   it('a reply table without the compact columns gives no compact rows (the full table stays one switch away)', () => {
     expect(compactRows({ columns: [], rows: [] })).toBeNull()
+  })
+})
+
+// GC-UI step 2 (D-B36 / D-B37 / D-B35; REQ-084 AC-8, REQ-145 AC-3): one Per unit / Per position toggle on Greeks.
+describe('D-B36 / D-B37 / D-B35: the Greeks tab toggle and the IV string', () => {
+  const cellOf = (w, row, id) => w.find(`[data-testid="greeks-row"][data-row="${row}"] [data-field="${id}"]`).text()
+  it('default Per unit prints per_unit (delta/theta/vega 2 dp, gamma 4 dp); Total has no per_unit so shows an em dash', async () => {
+    const w = card()
+    await t(w, 'tab-greeks').trigger('click')
+    expect(t(w, 'greeks-unit-toggle').exists()).toBe(true)
+    expect(t(w, 'greeks-unit-toggle').findAll('button')).toHaveLength(2)
+    expect(cellOf(w, '1', 'delta')).toBe('0.21')
+    expect(cellOf(w, '1', 'gamma')).toBe('0.0009')
+    expect(cellOf(w, 'TOTAL', 'delta')).toBe('—')
+    expect(cellOf(w, 'TOTAL', 'gamma')).toBe('—')
+    expect(t(w, 'greeks-mode-heading').text()).toBe('Per unit')
+    w.unmount()
+  })
+  it('Per position prints the cell value (server number) at the same precision, heading names the units', async () => {
+    const w = card()
+    await t(w, 'tab-greeks').trigger('click')
+    await t(w, 'greeks-mode-position').trigger('click')
+    expect(cellOf(w, '1', 'delta')).toBe('-13.64')
+    expect(cellOf(w, '1', 'gamma')).toBe('-0.0565')
+    expect(cellOf(w, 'TOTAL', 'delta')).toBe('2.96')
+    expect(t(w, 'greeks-mode-heading').text()).toBe('Per position, 65 units')
+    await t(w, 'greeks-mode-unit').trigger('click')
+    expect(cellOf(w, '1', 'delta')).toBe('0.21')
+    w.unmount()
+  })
+  it('IV prints the server display string as is in both modes; null/empty/dash show an em dash, never 0 or NaN', async () => {
+    const rows = real.table.rows.map((r, i) => {
+      const cells = { ...r.cells }
+      if (i === 0) cells.iv = { ...cells.iv, value: '0.160347', display: '16.03%' }
+      if (i === 1) cells.delta = { ...cells.delta, per_unit: '' }
+      if (i === 2) cells.delta = { ...cells.delta, per_unit: null, value: null }
+      if (i === 3) cells.delta = { ...cells.delta, per_unit: 'n/a' }
+      return { ...r, cells }
+    })
+    const w = card({ ...real.table, rows })
+    await t(w, 'tab-greeks').trigger('click')
+    expect(cellOf(w, '1', 'iv')).toBe('16.03%')
+    expect(cellOf(w, '2', 'delta')).toBe('—')
+    expect(cellOf(w, '3', 'delta')).toBe('—')
+    expect(cellOf(w, '4', 'delta')).toBe('—')
+    await t(w, 'greeks-mode-position').trigger('click')
+    expect(cellOf(w, '1', 'iv')).toBe('16.03%')
+    expect(cellOf(w, '3', 'delta')).toBe('—')
+    expect(t(w, 'greeks-table').text()).not.toMatch(/NaN/)
+    w.unmount()
   })
 })
 

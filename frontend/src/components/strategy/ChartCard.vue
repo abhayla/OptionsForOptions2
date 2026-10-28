@@ -11,7 +11,7 @@
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
 <script setup>
-import { computed, useId } from 'vue'
+import { computed, ref, useId } from 'vue'
 import Card from '@/components/common/Card.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import { panelId, tabId } from '@/components/common/tabIds.js'
@@ -20,7 +20,7 @@ import EmptyState from '@/components/states/EmptyState.vue'
 import PayoffChart from './PayoffChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import { strikeLabel } from '@/lib/displayFormat'
-import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekRows, payoffLevelRows, signOf } from '@/lib/chartCard'
+import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, signOf } from '@/lib/chartCard'
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -52,6 +52,7 @@ const tab = defineModel('tab', { type: String, default: 'payoff' })
 const payoffView = defineModel('payoffView', { type: String, default: 'graph' })
 const fullTable = defineModel('fullTable', { type: Boolean, default: false }) // ADR-194 (1): the compact view is the default
 
+const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table))
 const greeks = computed(() => greekRows(props.table))
 const levels = computed(() => payoffLevelRows(props.table))
@@ -151,6 +152,25 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
 
     <!-- Greeks -->
     <div v-show="tab === 'greeks'" role="tabpanel" v-bind="link(VIEW, 'greeks')" class="p-4" data-testid="panel-greeks">
+      <div v-if="greeks" class="mb-3 flex items-center justify-between gap-3">
+        <span class="text-sm text-ink-muted" data-testid="greeks-mode-heading">{{ greekModeHeading(greeks, greekMode) }}</span>
+        <div role="group" aria-label="Greeks units" class="inline-flex overflow-hidden rounded border border-line text-sm" data-testid="greeks-unit-toggle">
+          <button
+            type="button"
+            :aria-pressed="greekMode === 'unit' ? 'true' : 'false'"
+            :class="['px-3 py-1', greekMode === 'unit' ? 'bg-accent-soft font-semibold' : '']"
+            data-testid="greeks-mode-unit"
+            @click="greekMode = 'unit'"
+          >Per unit</button>
+          <button
+            type="button"
+            :aria-pressed="greekMode === 'position' ? 'true' : 'false'"
+            :class="['px-3 py-1', greekMode === 'position' ? 'bg-accent-soft font-semibold' : '']"
+            data-testid="greeks-mode-position"
+            @click="greekMode = 'position'"
+          >Per position</button>
+        </div>
+      </div>
       <table v-if="greeks" class="w-full text-sm" data-testid="greeks-table">
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
@@ -168,7 +188,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                 <Chip kind="opt" :label="r.parts.instrument" />
               </span>
             </td>
-            <td v-for="c in GREEK_COLUMNS" :key="c.id" class="py-1.5 text-right tabular-nums" :data-field="c.id" data-testid="greeks-cell">{{ r.values[c.id].display }}</td>
+            <td v-for="c in GREEK_COLUMNS" :key="c.id" class="py-1.5 text-right tabular-nums" :data-field="c.id" data-testid="greeks-cell">{{ greekText(r.values[c.id], c.id, greekMode) }}</td>
           </tr>
         </tbody>
       </table>
