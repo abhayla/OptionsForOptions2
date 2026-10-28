@@ -299,6 +299,7 @@ class CellOut(ApiModel):
     reason: CatalogueText | None
     side: Literal["Cr", "Dr"] | None
     per_unit: Money | None
+    per_unit_display: CatalogueText | None
     vendor: Money | None
 
 
