@@ -33,8 +33,29 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
+import test_leg_picker_routes as lp  # noqa: E402
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo.engine.legs import Instrument  # noqa: E402
+from ofo.errors import render  # noqa: E402
+from ofo.instruments.models import InstrumentId  # noqa: E402
+from ofo.market_calendar import is_market_open  # noqa: E402
+from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.marketdata.quote import priced  # noqa: E402
+from ofo.rules.inputs import DataHealth  # noqa: E402
+from ofo_app import live_market  # noqa: E402
+from ofo_app.live_push import LiveFeed  # noqa: E402
+from ofo_app.main import create_app  # noqa: E402
+from ofo_app.routes import execute, leg_picker  # noqa: E402
+from ofo_app.routes.outcome import (  # noqa: E402
+    MarketContext,
+    MarketState,
+    get_answer_clock,
+    get_market_context,
+    get_streaming,
+    label_time,
+)
+from ofo_app.routes.planned_entry import get_live_feed  # noqa: E402
 
 RATE = Decimal("0.065")
 CONDOR = (("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY"), ("NSE_FO:44604", "SELL"), ("NSE_FO:44595", "BUY"))
@@ -52,10 +73,6 @@ def _replayed():
 
 
 def _app(provider, clock):
-    from ofo_app.main import create_app
-    from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context, get_streaming
-    from ofo_app.routes.planned_entry import get_live_feed
-
     app = create_app()
     app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, clock, RATE)
     app.dependency_overrides[get_answer_clock] = lambda: clock
@@ -101,7 +118,7 @@ async def test_after_close_the_outcome_is_computed_from_the_last_prices_labelled
     out, last = await _outcome_at(AFTER_CLOSE)
     assert out["state"] == "COMPUTED", (out["state"], out["status_label"])
     assert out["market_closed"] is True
-    assert datetime.datetime.fromisoformat(out["last_price_at"]) == last
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) == _own_time(last)
     assert out["summary"] is not None and out["payoff"] is not None and out["payoff"]["points"]
     assert out["status_label"] is None  # never REQ-049 AC-5's "disconnected" text: a closed market is expected silence
     assert out["output_label"] in (None, "estimated from spot")  # never "stale since HH:MM IST"
@@ -125,7 +142,7 @@ async def test_after_close_the_numbers_equal_those_at_the_same_prices_in_hours()
 async def test_weekend_is_the_same_as_after_the_close():
     out, last = await _outcome_at(SATURDAY)
     assert out["state"] == "COMPUTED" and out["market_closed"] is True
-    assert datetime.datetime.fromisoformat(out["last_price_at"]) == last
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) == _own_time(last)
     assert out["status_label"] is None and all(leg["label"] is None for leg in out["legs"])
 
 
@@ -173,8 +190,6 @@ async def test_after_close_a_contract_with_no_held_price_stays_unpriced_with_the
 @pytest.mark.parametrize("at", [AFTER_CLOSE, SATURDAY])
 def test_a_closed_market_quote_is_never_available(at):
     """ADR-015: the held price is a planning price, never live: no order path that requires AVAILABLE accepts it."""
-    from ofo.marketdata.quote import priced
-    from ofo.rules.inputs import DataHealth
 
     provider, _clock, _last = _replayed()
     quotes = provider.book.quotes(at)
@@ -203,9 +218,6 @@ async def test_after_close_the_outcome_names_a_leg_with_no_held_price_and_gives_
 def test_after_close_the_execute_market_gate_refuses_with_the_req_056_text(at):
     """ADR-200 (3) / ADR-119: Execute's market check is the shared calendar; closed -> the gate refuses with the
     catalogue text, whatever prices the builder shows."""
-    from ofo.errors import render
-    from ofo.market_calendar import is_market_open
-    from ofo_app.routes import execute
 
     assert execute.market_open is is_market_open
     assert execute.market_open(at) is False and execute.market_open(IN_HOURS) is True
@@ -217,10 +229,6 @@ def test_after_close_a_held_last_close_never_reaches_an_execute_order_price(monk
     """The Execute price source (``LiveDepthQuotes``, the basket's per-leg price) on the provider that prices the
     builder after hours: no leg quote at all, so no order or basket can be priced from the last close. In hours the
     same provider gives one (the recorded frames are full frames), so the refusal is the closed market's."""
-    from ofo.instruments.models import InstrumentId
-    from ofo_app import live_market
-    from ofo_app.routes import execute
-    from ofo_app.routes.outcome import MarketContext
 
     provider, clock, _last = _replayed()
     monkeypatch.setattr(live_market, "current_context", lambda: MarketContext(provider, clock, RATE))
@@ -237,11 +245,6 @@ def test_after_close_a_held_last_close_never_reaches_an_execute_order_price(monk
 def _picker(at: datetime.datetime, health):
     """The leg-picker fakes (tests_app/test_leg_picker_routes.py) with every quote at ``health`` and the feed clock at
     ``at``: the FakeProvider keeps no FeedState, so the ADR-119 calendar answers (``market_closed_for``)."""
-    import test_leg_picker_routes as lp
-    from ofo.engine.legs import Instrument
-    from ofo.marketdata.fanout import FanOut
-    from ofo_app.live_push import LiveFeed
-    from ofo_app.routes.outcome import MarketContext
 
     provider, _ = lp.priced_provider(spot_health=health)
     for (strike, kind), (ltp, oi) in lp.PRICES.items():
@@ -259,8 +262,6 @@ def _picker(at: datetime.datetime, health):
     (AFTER_CLOSE, "unhealthy", False),  # an unsound quote never counts, closed or not
 ])
 def test_the_strike_drawer_prices_the_last_close_after_hours_only(at, health, shown):
-    from ofo.rules.inputs import DataHealth
-    from ofo_app.routes import leg_picker
 
     lp, feed = _picker(at, DataHealth(health))
     try:
@@ -279,3 +280,87 @@ def test_the_strike_drawer_prices_the_last_close_after_hours_only(at, health, sh
     else:
         assert ltps == []
         assert fut.ltp is None and fut.ltp_reason == "FEED_STALE"
+
+
+# ---- fix round 1 (Tier A finding 2, ADR-200 (4)): the label time is the quotes' own time, never a frame's ------------
+
+def _own_time(_last) -> datetime.datetime:
+    """The latest own last-price time among the quotes the condor answer uses (its four legs and the NIFTY spot)."""
+    provider, _clock, _ = _replayed()
+    used = [provider.book.get(iid, IN_HOURS) for iid, _ in CONDOR] + [provider.underlying_quote("NIFTY")]
+    return max(q.timestamp for q in used if q is not None)
+
+
+def test_label_time_is_the_latest_quote_time_not_the_reconnect_frame():
+    """Attack 3: quotes at 15:29:58 and 15:29:40, a reconnect frame at 21:05 -> the label is 15:29:58."""
+    state = MarketState(closed=True, last_price_at=datetime.datetime(2026, 10, 8, 21, 5, tzinfo=IST))
+    times = [datetime.datetime(2026, 10, 8, 15, 29, 58, tzinfo=IST),
+             datetime.datetime(2026, 10, 8, 15, 29, 40, tzinfo=IST)]
+    assert label_time(state, times) == times[0]
+    assert label_time(state, []) is None  # no quote time: none invented (never the frame time)
+    live = MarketState(closed=False, last_price_at=datetime.datetime(2026, 10, 8, 11, 0, 1, tzinfo=IST))
+    assert label_time(live, times) == live.last_price_at  # in hours unchanged: the feed's last price frame
+
+
+async def test_outcome_after_a_reconnect_frame_is_labelled_with_the_quotes_own_time():
+    """Attack 3 through the route on the real replay: a 21:05 price frame time on the feed never labels the banner."""
+    provider, clock, last = _replayed()
+    body = _condor(provider, AFTER_CLOSE)
+    reconnect = datetime.datetime(2026, 10, 8, 21, 5, tzinfo=IST)
+    provider.feed._last_tick_frame = reconnect  # simulates a price frame arriving after hours
+    clock.now = AFTER_CLOSE
+    async with AsyncClient(transport=ASGITransport(app=_app(provider, clock)), base_url="http://test") as ac:
+        out = (await ac.post("/api/strategies/outcome", json=body)).json()
+    assert out["market_closed"] is True
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) == _own_time(last)
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) != reconnect
+
+
+async def test_a_five_day_old_quote_is_priced_and_labelled_with_its_own_time():
+    """Attack 4: an older-session price (4 days 9 h; the recorded contracts expire 13 Oct, so 12 Oct 18:00 is the
+    latest closed instant they still price) is still the last close: priced, labelled with its own time."""
+    later = datetime.datetime(2026, 10, 12, 18, 0, tzinfo=IST)
+    out, last = await _outcome_at(later)
+    assert out["state"] == "COMPUTED" and out["market_closed"] is True
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) == _own_time(last)
+
+
+async def test_after_close_planned_entry_carries_the_close_time_adr_197():
+    """ADR-197: an entry captured after hours carries ``close_at`` = the quote's own time ("Close, <time>")."""
+    body, provider, _last = await _capture_at(AFTER_CLOSE)
+    for entry, (iid, _action) in zip(body["entries"], CONDOR, strict=True):
+        assert datetime.datetime.fromisoformat(entry["close_at"]) == provider.book.get(iid, IN_HOURS).timestamp
+
+
+async def test_in_hours_planned_entry_has_no_close_time():
+    body, _provider, _last = await _capture_at(IN_HOURS)
+    assert body["entries"] and all(e["planned_entry"] is not None and e["close_at"] is None for e in body["entries"])
+
+
+# ---- fix round 1 (Tier A finding 4): in hours an AVAILABLE quote with LTP 0 keeps its OI -----------------------------
+
+@pytest.mark.parametrize(("at", "oi"), [(IN_HOURS, 500), (AFTER_CLOSE, None)])
+def test_an_available_zero_ltp_quote_keeps_its_oi_in_hours_only(at, oi):
+    """Attack 5: in hours an AVAILABLE quote with LTP 0 and OI 500 -> oi 500 (as before F-18); after hours unchanged
+    (a zero last close is no price, so no OI from it)."""
+    health = DataHealth.AVAILABLE if at == IN_HOURS else DataHealth.STALE
+    _lp, feed = _picker(at, health)
+    c = _lp.cid("22500", "CE")
+    feed.ctx.provider.quotes[c] = _lp.quote(c, Instrument.CE, Decimal("22500"), "0", oi=500, health=health)
+    try:
+        out = leg_picker.strikes_answer(feed, "NIFTY", _lp.EXPIRY, 10, _lp.catalogue(), lambda: at)
+    finally:
+        leg_picker.LEASE.release()
+    cell = next(x for x in _lp.cells(out) if x.instrument_id == c)
+    assert (cell.ltp, cell.oi) == (None, oi)
+
+
+@pytest.mark.parametrize(("at", "closed"), [(AFTER_CLOSE, True), (IN_HOURS, False)])
+def test_the_drawer_carries_the_label_time_after_hours_only(at, closed):
+    _lp, feed = _picker(at, DataHealth.STALE if closed else DataHealth.AVAILABLE)
+    try:
+        out = leg_picker.strikes_answer(feed, "NIFTY", _lp.EXPIRY, 10, _lp.catalogue(), lambda: at)
+    finally:
+        leg_picker.LEASE.release()
+    assert out.market_closed is closed
+    assert (out.last_price_at is not None) is closed

@@ -60,6 +60,9 @@ class PlannedEntryOut(ApiModel):
     captured_at: datetime.datetime | None
     source: Literal["ltp", "mid"] | None
     reason_code: Reason | None
+    #: ADR-197: set only for an entry captured outside market hours from the last close: the quote's OWN last-price
+    #: time (the screen captions it "Close, <time>"); None in market hours
+    close_at: datetime.datetime | None = None
 
 
 class PlannedEntriesOut(ApiModel):
@@ -143,6 +146,7 @@ async def planned_entry(body: PlannedEntryIn,
     unpriced = [i for i, p in priced_by_id.items() if p is None]
     if unpriced and feed is not None:
         valuation, snapshot, priced_by_id = await hold_until_priced(feed, ctx, body.underlying, ids, unpriced)
+    closed = market_state(ctx, valuation).closed  # the same one market-state answer the capture read used
     entries = []
     for iid in ids:
         leg = snapshot.legs[iid]
@@ -155,7 +159,9 @@ async def planned_entry(body: PlannedEntryIn,
         if priced is None:
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
-            entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source))
+            close_at = leg.quote.timestamp if closed and leg.quote is not None else None  # ADR-197: the close's time
+            entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source,
+                                  close_at=close_at))
     return PlannedEntriesOut.model_validate({"entries": entries, "answered_at": answered_at})
 
 

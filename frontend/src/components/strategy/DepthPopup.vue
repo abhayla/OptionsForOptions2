@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
+import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { DEPTH_NOT_AVAILABLE, DEPTH_REFRESH_MS, dayStatsReasonText, depthReasonText, shown } from '@/lib/legPicker'
 
 const props = defineProps({
@@ -73,6 +74,8 @@ const levels = computed(() => {
       <h3 class="truncate font-medium">Market depth{{ title ? `: ${title}` : '' }}</h3>
       <button type="button" data-testid="depth-close" class="text-accent" @click="emit('close')">Close</button>
     </div>
+    <!-- ADR-200 (2): the held after-hours depth sits under the one market-closed banner, the quote's own time -->
+    <MarketClosedBanner v-if="answer?.market_closed === true" class="mt-2" :prices-at="answer.last_price_at" />
     <p v-if="!loaded" data-testid="depth-loading">Reading depth...</p>
     <template v-else-if="available">
       <dl class="mt-2 grid grid-cols-4 gap-2" data-testid="depth-day">

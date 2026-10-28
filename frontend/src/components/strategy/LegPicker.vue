@@ -10,7 +10,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
-import { contractName, daysByExpiry, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
+import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import { capturedCaption, contractName, daysByExpiry, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
 import {
   DEFAULT_STRIKE_WIDTH,
@@ -335,7 +336,7 @@ async function capture(id, und) {
     const found = res.data.entries.find((e) => instrumentId(e.exchange_segment, e.exchange_token) === id)
     if (found && found.planned_entry != null && found.captured_at != null) {
       return { planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source, reason_code: null,
-               checked_at: res.data.answered_at ?? null }
+               close_at: found.close_at ?? null, checked_at: res.data.answered_at ?? null } // ADR-197: close_at = the close's own time
     }
     return { planned_entry: null, captured_at: null, source: null, reason_code: found?.reason_code ?? 'no_live_price',
              checked_at: res.data.answered_at ?? null }
@@ -359,7 +360,7 @@ async function save() {
   try {
     // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
     const pricing = old && old.instrument_id === id && old.planned_entry != null
-      ? { planned_entry: old.planned_entry, captured_at: old.captured_at, source: old.source, reason_code: null }
+      ? { planned_entry: old.planned_entry, captured_at: old.captured_at, source: old.source, reason_code: null, close_at: old.close_at ?? null }
       : await capture(id, und)
     const leg = {
       id: old ? old.id : nextId++,
@@ -518,6 +519,8 @@ defineExpose({ startEdit, showStrikes })
         <p v-else-if="strikesFailed" data-testid="strikes-error">The strikes could not be read right now.</p>
         <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
         <template v-else>
+          <!-- ADR-200 (2): after hours every cell is the last close, under the one market-closed banner -->
+          <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" />
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
@@ -660,7 +663,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
           :data-captured="l.captured_at ?? ''" :data-strike="l.strike ?? ''" :data-type="l.instrument_type" :data-expiry="l.expiry">
         <span>{{ l.action }} {{ l.lots }} lot, <span data-testid="leg-name">{{ legName(l) }}</span></span>
         <span v-if="l.planned_entry != null" data-testid="leg-entry">planned entry {{ l.planned_entry }}</span>
-        <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ istTime(l.captured_at) }}</span>
+        <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">{{ l.close_at ? capturedCaption(l.captured_at, undefined, l.close_at) : `captured ${istTime(l.captured_at)}` }}</span>
         <span v-if="l.not_live" data-testid="leg-not-live" :data-reason="l.reason_code">{{ LEG_NOT_LIVE_LABEL }}</span>
         <span v-else-if="l.planned_entry == null" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
         <template v-if="l.planned_entry == null && l.reason_code === 'needs_reprice'">

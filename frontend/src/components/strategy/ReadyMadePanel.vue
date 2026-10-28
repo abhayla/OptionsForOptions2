@@ -70,7 +70,7 @@ async function priced(legs, und) {
       legs: legs.map((l) => {
         const found = entries.find((e) => instrumentId(e.exchange_segment, e.exchange_token) === l.instrument_id)
         if (found && found.planned_entry != null && found.captured_at != null) {
-          return { ...l, planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source ?? l.source, reason_code: null, checked_at: res.data.answered_at ?? null }
+          return { ...l, planned_entry: found.planned_entry, captured_at: found.captured_at, close_at: found.close_at ?? null, source: found.source ?? l.source, reason_code: null, checked_at: res.data.answered_at ?? null }
         }
         return { ...l, reason_code: found?.reason_code ?? 'no_live_price', checked_at: res.data.answered_at ?? null }
       }),

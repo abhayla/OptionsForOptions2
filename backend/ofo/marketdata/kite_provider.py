@@ -138,6 +138,11 @@ class KiteProvider(MarketDataProvider):
         """ADR-080 (3): the 5-level depth the Execute price walks, or None (see ``QuoteBook.latest_depth``)."""
         return self.book.latest_depth(instrument_id, self._now() if now is None else now)
 
+    def held_quote_time(self, instrument_id: str, now: datetime.datetime | None = None) -> datetime.datetime | None:
+        """ADR-200 (4): the held quote's own time (exchange time), for the market-closed label only."""
+        quote = self.book.get(instrument_id, self._now() if now is None else now)
+        return None if quote is None else quote.timestamp
+
     def depth_after_close(self, instrument_id: str, now: datetime.datetime | None = None):
         """READ-ONLY popup (REQ-080 AC-7, ADR-200 (1)): see ``QuoteBook.depth_after_close``; never an order input."""
         return self.book.depth_after_close(instrument_id, self._now() if now is None else now)

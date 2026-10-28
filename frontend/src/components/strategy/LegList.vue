@@ -74,10 +74,12 @@ const needsSecondLine = (l, i) => l.included === false || l.typed === true || !!
 const entryLabel = (l) => (l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_LABEL)
 // REQ-077 AC-1: a captured price (not typed, not moved) shows its capture time as a small caption under the price
 const showsCaption = (l) => l.typed !== true && !moved(l) && !unpriced(l)
-const capturedText = (l) => `${l.typed === true ? 'typed' : 'captured'} ${istTime(l.captured_at)}`
+// ADR-197: a captured (not typed) entry taken from the last close reads "Close, <the quote's own time>"
+const closeAt = (l) => (l.typed === true ? null : l.close_at ?? null)
+const capturedText = (l) => (closeAt(l) ? capturedCaption(l.captured_at, undefined, closeAt(l)) : `${l.typed === true ? 'typed' : 'captured'} ${istTime(l.captured_at)}`)
 // Review 3 (REQ-077 AC-1): the caption names the capture and carries the date unless it is today (India time), so a draft
 // reopened from yesterday never reads as a price taken today
-const caption = (l) => capturedCaption(l.captured_at)
+const caption = (l) => capturedCaption(l.captured_at, undefined, closeAt(l))
 
 function confirmClear() {
   confirmingClear.value = false
