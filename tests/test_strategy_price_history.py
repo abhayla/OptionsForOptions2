@@ -23,6 +23,7 @@ LEG_ID, FUT_ID = "NSE_FO:25000CE", "NSE_FO:NIFTYFUT"
 LEG_BARS = parse_candles((FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8"), LEG_ID)
 FUT_BARS = parse_candles((FIX / "minute-NIFTY26NOVFUT-2026-10-14.json").read_text(encoding="utf-8"), FUT_ID)
 AT_0915 = datetime.datetime(2026, 10, 14, 9, 15, tzinfo=IST)
+MINUTES_ON_14_OCT, MINUTES_ON_TWO_DAYS = 375, 750
 GAPS_ON_14_OCT = 83  # counted from the two recorded bodies: 375 future minutes, 292 leg minutes, all inside the 375
 
 
@@ -44,7 +45,7 @@ def _closes(bars):
 def test_core_real_bodies_one_leg_buy():
     minutes = [b.minute for b in FUT_BARS]
     series = combined_price_series([BUY1], [_closes(LEG_BARS)], minutes)
-    assert len(minutes) == 375 and minutes[0] == AT_0915
+    assert len(minutes) == MINUTES_ON_14_OCT and minutes[0] == AT_0915
     assert series[0] == Decimal("-5.4") and type(series[0]) is Decimal
     assert FUT_BARS[0].close == Decimal("22841.1") and type(FUT_BARS[0].close) is Decimal
     assert sum(v is None for v in series) == GAPS_ON_14_OCT
@@ -58,7 +59,7 @@ def test_core_chart_points_on_real_bodies():
     assert first.t == AT_0915 and first.strategy == Decimal("-5.4") and first.future == Decimal("22841.1")
     assert ph.strategy_display(first.strategy) == "-5.40" and ph.future_display(first.future) == "22,841.10"
     assert sum(p.strategy is None for p in chart.points) == GAPS_ON_14_OCT
-    assert len(chart.points) == 375 and chart.as_of == datetime.datetime(2026, 10, 14, 15, 29, tzinfo=IST)
+    assert len(chart.points) == MINUTES_ON_14_OCT and chart.as_of == datetime.datetime(2026, 10, 14, 15, 29, tzinfo=IST)
     assert chart.notes == () and chart.state is ph.State.AVAILABLE
 
 
@@ -103,7 +104,7 @@ def test_window_is_the_last_n_trading_days_of_the_future():
     fut = FUT_BARS + _shift(FUT_BARS, 1) + _shift(FUT_BARS, 2)
     leg = LEG_BARS + _shift(LEG_BARS, 1) + _shift(LEG_BARS, 2)
     chart = ph.build_chart([BUY1], [leg], fut, leg_labels=["25000 CE"], days=2)
-    assert chart.points[0].t == AT_0915 + datetime.timedelta(days=1) and len(chart.points) == 750
+    assert chart.points[0].t == AT_0915 + datetime.timedelta(days=1) and len(chart.points) == MINUTES_ON_TWO_DAYS
 
 
 def test_a_leg_listed_inside_the_window_starts_it_with_a_note():

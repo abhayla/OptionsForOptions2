@@ -56,7 +56,7 @@ def future_display(value: Decimal) -> str:
     return render_explanation("cell_points", value=value)
 
 
-def build_chart(legs: Sequence[Any], leg_bars: Sequence[Sequence[MinuteBar]], future_bars: Sequence[MinuteBar], *,
+def build_chart(legs: Sequence[Any], leg_bars: Sequence[Sequence[MinuteBar]], future_bars: Sequence[MinuteBar], *,  # noqa: PLR0913 - keyword-only options
                 leg_labels: Sequence[str], days: int, invert: bool = False) -> Chart:
     """``legs`` carry ``action`` and ``lots``; ``leg_bars`` and ``leg_labels`` are parallel to them."""
     for label, bars in zip(leg_labels, leg_bars, strict=True):

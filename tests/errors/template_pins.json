@@ -1762,5 +1762,49 @@
   "explanation:table_reason_no_next_open": {
     "sha256": "48c157cc19cad9bf8b679b6915a7b36bdfe7a8bb63f22f877cd40e650565133b",
     "reviewed": "pending owner read"
+  },
+  "price_history_held": {
+    "sha256": "bd852f13bbb86d1127fade396f69dc41fda161599a8120ab2e1e084f12956518",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_source": {
+    "sha256": "b57458a9bfcb533307d093b630d55df236c9793c6ebcde8cabf15267bb7586a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_future_label": {
+    "sha256": "ce1cb4bacf69f424c56caa410cdca12cbb90935c8452d8694888ae0f9a74ab91",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_leg_listed_from": {
+    "sha256": "f30a4f14fb980b7cc544ad576d894ec05c0b7974e238b59f9ee8807037f3ebd6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_leg_ended_on": {
+    "sha256": "eeff18ad9a87d929d4e87508c396530496bfa6e127ede5932786dda24fc04019",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_leg_not_listed": {
+    "sha256": "cf40d061b7368c99fff949014dd08e857271d7dd4b5cc55adb42a5f8a22e79de",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_no_future_candles": {
+    "sha256": "efc612a3c582ba19eb20b6c7c6492c82d234da9554135d168f74cfcf24c3710d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_all_gaps": {
+    "sha256": "32fcdea20ac40ac148afd73b59bb558b72749bf0db1b296afa86f08942ee6235",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_no_session": {
+    "sha256": "b0a216a985a34af0042b89276c31fefd61eb74d8dc5545f1a890e61ab3cedcd7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_kite_refused": {
+    "sha256": "80f65a17387d6dcf0b9b9868a12cc31035bc799e755f23633e4ae43a7f98d2ab",
+    "reviewed": "pending owner read"
+  },
+  "explanation:price_history_future_not_in_catalogue": {
+    "sha256": "7af90edc8a06603d8091d549d959998216381fdc6da95a5665015f25200499ab",
+    "reviewed": "pending owner read"
   }
 }
