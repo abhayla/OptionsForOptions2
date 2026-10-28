@@ -61,8 +61,9 @@ Attribution rule, per contract ``c`` that is not pending (``b`` = Zerodha's net,
 Inputs (finding ``caller-supplied-verdict-trusted``, run-discipline B8): the caller passes only the account (database
 connection + user), Zerodha's net, Zerodha's order book, the standalone map and ``at``. EVERY strategy of the account
 and ALL of each one's stored plans are read HERE through the store reader (``strategy_store.list_strategies`` +
-``execution_plan_store.plans_for``), so no plan or strategy can be left out by a caller; a reader whose calls are not
-those two store functions is refused unless ``APP_ENV`` is exactly ``test`` (review round 2 MINOR 1). Held units are
+``execution_plan_store.plans_for_strategies``, one read for every strategy: GC-BP F-3), so no plan or strategy can be
+left out by a caller; a reader whose calls are not those two
+store functions is refused unless ``APP_ENV`` is exactly ``test`` (review round 2 MINOR 1). Held units are
 computed HERE, never accepted; compare is called HERE. Zerodha's net and order book are what the reply adapter parsed
 (``kite_replies.positions_from_reply(...).net``, ``kite_replies.orders_from_reply``), validated again here; this
 module imports no Kite module (REQ-063 AC-1). A strategy that holds nothing (no fills, every fill closed, exited) has
@@ -94,7 +95,7 @@ from ofo_app.strategy_store import StrategySummary
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the reconcile key (execute_plan.contract_key)
 ListStrategies = Callable[[object, str], Awaitable[Sequence[StrategySummary]]]
-PlansFor = Callable[[object, str, int], Awaitable[Sequence[StoredPlan]]]
+PlansForStrategies = Callable[[object, str, Sequence[int]], Awaitable[Mapping[int, Sequence[StoredPlan]]]]
 
 #: The actor recorded on the in-memory record compare reads (never stored; the record lives for one comparison).
 _ACTOR = "reconcile_attribution"
@@ -131,11 +132,12 @@ class OrderRow(Protocol):
 
 @dataclass(frozen=True)
 class StoreReader:
-    """The read seam: every strategy of a user, and every stored plan of one strategy. The defaults are the stores the
-    routes use; a test injects a fake with the same two calls (accepted only under ``APP_ENV=test``)."""
+    """The read seam: every strategy of a user, and every stored plan of each listed strategy in ONE call (GC-BP F-3:
+    a fixed number of queries, never one round trip per strategy). The defaults are the stores the routes use; a test
+    injects a fake with the same two calls (accepted only under ``APP_ENV=test``)."""
 
     list_strategies: ListStrategies = strategy_store.list_strategies
-    plans_for: PlansFor = execution_plan_store.plans_for
+    plans_for_strategies: PlansForStrategies = execution_plan_store.plans_for_strategies
 
 
 @dataclass(frozen=True)
@@ -390,12 +392,27 @@ def standalone_unseen(raw_net: Mapping[ContractKey, int], held: Mapping[str, Map
     return unseen
 
 
+def _listed(summaries: Sequence[object]) -> dict[int, StrategySummary]:
+    """The store's listing by strategy id, in listing order: a StrategySummary each, a positive int id, once each."""
+    seen: dict[int, StrategySummary] = {}
+    for summary in summaries:
+        if not isinstance(summary, StrategySummary):
+            raise AttributionError(f"the store listed {summary!r}, not a StrategySummary")
+        strategy_id = summary.id
+        if isinstance(strategy_id, bool) or not isinstance(strategy_id, int) or strategy_id <= 0:
+            raise AttributionError(f"a strategy id must be a positive int, got {strategy_id!r}")
+        if strategy_id in seen:
+            raise AttributionError(f"the store listed strategy {strategy_id} twice")
+        seen[strategy_id] = summary
+    return seen
+
+
 def _check_reader(reader: object) -> StoreReader:
     """Only the stores the routes use read the plans, except a test fake under ``APP_ENV`` exactly ``test``."""
     if type(reader) is not StoreReader:
         raise AttributionError(f"sources must carry a StoreReader, got {reader!r}")
     is_default = (reader.list_strategies is strategy_store.list_strategies
-                  and reader.plans_for is execution_plan_store.plans_for)
+                  and reader.plans_for_strategies is execution_plan_store.plans_for_strategies)
     if not is_default and app_env() != _TEST_ENV:
         raise AttributionError("a store reader other than the plan and strategy stores is accepted only under "
                                "APP_ENV=test")
@@ -433,17 +450,14 @@ async def attribute_and_compare(
     known: dict[str, dict[ContractKey, int]] = {}
     underlyings: dict[str, str] = {}
     pending: dict[ContractKey, list[Pending]] = {}
-    seen: set[int] = set()
-    for summary in summaries:
-        if not isinstance(summary, StrategySummary):
-            raise AttributionError(f"the store listed {summary!r}, not a StrategySummary")
-        strategy_id = summary.id
-        if isinstance(strategy_id, bool) or not isinstance(strategy_id, int) or strategy_id <= 0:
-            raise AttributionError(f"a strategy id must be a positive int, got {strategy_id!r}")
-        if strategy_id in seen:
-            raise AttributionError(f"the store listed strategy {strategy_id} twice")
-        seen.add(strategy_id)
-        plans = await reader.plans_for(account.conn, account.user_ref, strategy_id)
+    seen = _listed(summaries)
+    # ONE read for every listed strategy's plans (GC-BP F-3); only ids the user's own listing gave are asked for.
+    by_strategy = await reader.plans_for_strategies(account.conn, account.user_ref, list(seen)) if seen else {}
+    if not isinstance(by_strategy, Mapping) or set(by_strategy) != set(seen):
+        raise AttributionError(f"the store must answer the plans of exactly strategies {sorted(seen)}, got "
+                               f"{by_strategy!r}")
+    for strategy_id, summary in seen.items():
+        plans = by_strategy[strategy_id]
         units, waiting = _strategy_units(strategy_id, summary.underlying, plans, book, catalogue)
         known[str(strategy_id)], underlyings[str(strategy_id)] = units, summary.underlying
         for key, entries in waiting.items():
