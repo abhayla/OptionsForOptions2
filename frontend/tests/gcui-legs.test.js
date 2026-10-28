@@ -23,7 +23,7 @@ import LegList from '@/components/strategy/LegList.vue'
 import StrategyControls from '@/components/strategy/StrategyControls.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { PLANNED_ENTRY_LABEL, shiftText } from '@/lib/legEdit'
+import { LEG_ROW_COLUMNS, PLANNED_ENTRY_LABEL, shiftText } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -135,15 +135,51 @@ describe('D-A06..D-A16: the legs card rows', () => {
     }
     w.unmount()
   })
-  it('D-A12: no visible "H" chip; "Hedge" is in the hedged strike\'s tooltip and screen-reader text', () => {
+  it('D-A12 kept: REQ-076 AC-8 - a VISIBLE Hedge mark on the protective leg (present), none on the other (absent); tooltip text stays', () => {
     const w = list()
-    const hedged = row(w, 1).find('[data-testid="edit-leg"]')
-    expect(hedged.attributes('title')).toContain('Hedge')
-    expect(row(w, 1).find('[data-testid="hedge-mark"]').classes()).toContain('sr-only')
-    expect(row(w, 1).find('[data-testid="hedge-mark"]').text()).toBe('Hedge')
+    const mark = row(w, 1).find('[data-testid="hedge-mark"]')
+    expect(mark.exists()).toBe(true)
+    expect(mark.classes()).not.toContain('sr-only')
+    expect(mark.classes()).not.toContain('hidden')
+    expect(mark.text()).toBe('H') // visible letter
+    expect(mark.attributes('aria-label')).toBe('Hedge')
+    expect(mark.attributes('title')).toBe('Hedge')
+    expect(row(w, 1).find('[data-testid="strike-stepper"]').find('[data-testid="hedge-mark"]').exists()).toBe(true) // inline in the strike cell: no extra line
+    expect(all(w, 'leg-second-line')).toHaveLength(0)
+    expect(row(w, 1).find('[data-testid="edit-leg"]').attributes('title')).toContain('Hedge')
     expect(row(w, 0).find('[data-testid="hedge-mark"]').exists()).toBe(false)
     expect(row(w, 0).find('[data-testid="edit-leg"]').attributes('title')).not.toContain('Hedge')
-    expect([...w.element.querySelectorAll('span')].some((s) => s.textContent.trim() === 'H' && !s.classList.contains('sr-only'))).toBe(false)
+    w.unmount()
+  })
+  it('ADR-195: with any leg unticked the Hedge mark is gone from every leg', () => {
+    const w = list({ legs: S54().map((l, i) => (i === 0 ? { ...l, included: false } : l)) })
+    expect(all(w, 'hedge-mark')).toHaveLength(0)
+    expect(row(w, 1).find('[data-testid="edit-leg"]').attributes('title')).not.toContain('Hedge')
+    w.unmount()
+  })
+  it('column heads: same grid template as the rows (LEG_ROW_COLUMNS), no truncating class on any head, a gap before Planned entry', () => {
+    const w = list()
+    const head = t(w, 'leg-table-head')
+    expect(head.attributes('style')).toContain(row(w, 0).find('[data-testid="leg-row-line"]').attributes('style'))
+    expect(head.attributes('style')).toContain(`${LEG_ROW_COLUMNS[0]}px ${LEG_ROW_COLUMNS[1]}px ${LEG_ROW_COLUMNS[2]}px minmax(${LEG_ROW_COLUMNS[3]}px, 1fr)`)
+    for (const h of head.element.querySelectorAll('*')) {
+      expect(h.classList.contains('truncate')).toBe(false)
+      expect(h.classList.contains('overflow-hidden')).toBe(false)
+      expect(h.classList.contains('text-ellipsis')).toBe(false)
+    }
+    expect(head.classes()).toContain('whitespace-nowrap')
+    expect(t(w, 'price-head').classes()).toContain('pl-1') // never touches the Lots head
+    expect(LEG_ROW_COLUMNS[6]).toBeGreaterThanOrEqual(96) // room for "Planned entry" + the moved icon
+    expect(LEG_ROW_COLUMNS[5]).toBeGreaterThanOrEqual(48) // "Lots" head and "1 lot" cell
+    w.unmount()
+  })
+  it('row height: the li adds no vertical padding around the 36 px (h-9) line, so a moved leg is ~36 px, not 45', () => {
+    const w = list()
+    for (const r of all(w, 'leg-row')) {
+      expect(r.classes()).not.toContain('py-1')
+      expect(r.classes()).toContain('py-0')
+      expect(r.find('[data-testid="leg-row-line"]').classes()).toContain('h-9')
+    }
     w.unmount()
   })
   it('D-A14: the planned entry is the box\'s value in normal ink; Enter with no typing sends nothing; a typed price is sent as typed; Reset stays in the menu', async () => {

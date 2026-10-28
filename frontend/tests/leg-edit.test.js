@@ -204,9 +204,9 @@ describe('LegList rows (screens 011, 012)', () => {
     await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
     expect(t(w, 'shape-name').text()).toContain('Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(1)
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('Hedge') // GC-UI 3a D-A12: no visible chip; screen-reader text + the strike's tooltip
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').attributes('aria-label')).toBe('Hedge') // D-A12 kept: REQ-076 AC-8, a visible "H" named Hedge + the strike's tooltip
     expect(row(w, 0).find('[data-testid="edit-leg"]').attributes('title')).toContain('Hedge')
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').classes()).toContain('sr-only')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').classes()).not.toContain('sr-only')
     expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
     expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
   })
