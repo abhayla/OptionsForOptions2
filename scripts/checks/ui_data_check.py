@@ -750,6 +750,41 @@ def check_per_unit_signs(rep, view, reply) -> int:
     return added
 
 
+def check_total_per_unit_greeks(rep, view, reply) -> int:
+    """GC-UI T-1: the TOTAL row's per-unit Greek (delta, gamma, theta, decay, vega) = the sum over leg rows of
+    (lots / gcd of all lots) x the leg row's own signed per_unit (already signed: never negated again), within the
+    4 dp print of each term; absent when any leg row has no per-unit figure (never a partial sum). Quantities share
+    the lot size, so quantity / gcd(quantities) is the lot weight. Reads only the reply's own cells."""
+    rows = (reply.get("table") or {}).get("rows") or []
+    legs = [r["cells"] for r in rows if r.get("row_id") != "TOTAL"]
+    total = next((r["cells"] for r in rows if r.get("row_id") == "TOTAL"), None)
+    qtys = [(c.get("quantity") or {}).get("value") for c in legs]
+    if total is None or not legs or any(q is None or int(q) <= 0 for q in qtys):
+        rep.skip(f"[{view}] total per-unit Greeks", "no TOTAL row, no legs or a leg without a quantity")
+        return 0
+    divisor = 0
+    for q in qtys:
+        divisor = math.gcd(divisor, int(q))
+    weights = [Decimal(int(q) // divisor) for q in qtys]
+    added = 0
+    for gk in (*GREEK_KEYS, "decay"):
+        cell = total.get(gk) or {}
+        units = [(c.get(gk) or {}).get("per_unit") for c in legs]
+        if any(u is None for u in units):
+            if gk == "decay":
+                continue  # decay's absent states (no IV, holiday) are the Decay rule's own, with its notes
+            rep.add(f"[{view}] total {gk} per unit (absent: a leg has none)",
+                    ABSENT if cell.get("per_unit") is None else cell.get("per_unit"), ABSENT,
+                    )
+        else:
+            expected = sum((w * Decimal(str(u)) for w, u in zip(weights, units, strict=True)), Decimal(0))
+            rep.add(f"[{view}] total {gk} per unit = lot-weighted sum of the legs' per units",
+                    cell.get("per_unit"), expected, Decimal("0.00005") * (sum(weights) + 1),
+                    note="legs' per units already carry the side's sign")
+        added += 1
+    return added
+
+
 # ---------------------------------------------------------------- round 4: OI rows, TOTAL net per-unit, Decay
 SESSION_OPEN = dt.time(9, 15)
 ABSENT = "absent"
@@ -858,6 +893,7 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             check_per_unit_signs(rep, view, reply)
             check_displays(rep, view, reply)
             check_total_net_per_unit(rep, view, reply)
+            check_total_per_unit_greeks(rep, view, reply)
             check_open_interest(rep, view, reply, chains_before, chains_after)
     if (both or {}).get("state") == "COMPUTED":
         check_open_interest(rep, "both", both, chains_before, chains_after)

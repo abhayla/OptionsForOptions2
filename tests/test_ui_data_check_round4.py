@@ -172,3 +172,25 @@ def test_an_unavailable_oi_block_must_have_no_rows_and_flag_off_adds_nothing():
     rep = u.Report("t")
     u.check_open_interest(rep, "v", {}, CHAIN, {})
     assert rep.figures == []
+
+
+def test_total_per_unit_greeks_match_a_real_reply_and_flag_tampered_or_partial_ones(real):
+    """GC-UI T-1: the checker's own weighted sum of the legs' per units equals the TOTAL row's; a tampered total, a
+    SELL leg negated twice and a partial total (a leg without a figure but a total with one) are each flagged."""
+    reply, _snap = real
+
+    def run(r):
+        rep = u.Report("t")
+        assert u.check_total_per_unit_greeks(rep, "estimated_now", r) == 5
+        return rep
+
+    good = run(reply)
+    assert _verdicts(good, "total delta per unit") and set(_verdicts(good, "per unit")) == {u.MATCH}
+    bad = copy.deepcopy(reply)
+    total = next(r["cells"] for r in bad["table"]["rows"] if r["row_id"] == "TOTAL")
+    total["delta"]["per_unit"] = str(Decimal(total["delta"]["per_unit"]) + Decimal("0.01"))
+    assert u.MISMATCH in _verdicts(run(bad), "total delta per unit")
+    partial = copy.deepcopy(reply)
+    leg1 = next(r["cells"] for r in partial["table"]["rows"] if r["row_id"] == "1")
+    leg1["vega"]["per_unit"] = None  # the total still shows a figure: a partial sum
+    assert u.MISMATCH in _verdicts(run(partial), "total vega per unit")

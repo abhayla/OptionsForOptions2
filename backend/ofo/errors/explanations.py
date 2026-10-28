@@ -691,6 +691,18 @@ class ExpiryDate(SlotType):
         return value.isoformat()
 
 
+class DayMonth(SlotType):
+    """A contract date as day and month, no year: exactly a `datetime.date`, printed "24 Nov" (REQ-146 AC-5)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "DayMonth")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        return f"{value.day:02d} {value.strftime('%b')}"
+
+
 def _cell_enums() -> tuple[type, ...]:
     from ofo.engine.legs import Action, Instrument
     from ofo.table.model import LegStatus
@@ -1216,8 +1228,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     # GC-UI step 5 (REQ-091 AC-2..AC-5, ADR-203, F-64): the Strategy Chart's source, future label, notes and reasons
     ExplanationTemplate("price_history_source", "values_seen", "Kite historical 1-minute candles"),
-    ExplanationTemplate("price_history_future_label", "values_seen", "{underlying} FUT {expiry}",
-                        {"underlying": UnderlyingName, "expiry": ExpiryDate}),
+    ExplanationTemplate("price_history_future_label", "values_seen", "{underlying} {expiry} FUT",
+                        {"underlying": UnderlyingName, "expiry": DayMonth}),
     ExplanationTemplate("price_history_leg_listed_from", "values_seen", "{leg} listed from {date}; showing {days} days",
                         {"leg": LegRef, "date": ExpiryDate, "days": Days}),
     ExplanationTemplate("price_history_leg_ended_on", "values_seen",
