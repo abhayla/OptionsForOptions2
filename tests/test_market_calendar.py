@@ -8,8 +8,15 @@ import datetime
 import json
 
 import pytest
-from ofo.market_calendar import (DATA_FILE, MarketStatus, is_market_open, last_close, market_status, next_open,
-                                 price_time)
+from ofo.market_calendar import (
+    DATA_FILE,
+    MarketStatus,
+    is_market_open,
+    last_close,
+    market_status,
+    next_open,
+    price_time,
+)
 from ofo.timeutil import IST
 
 

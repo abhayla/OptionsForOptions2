@@ -12,10 +12,8 @@ import datetime
 import struct
 
 import pytest
-
-from ofo.marketdata.kite_provider import IST, KiteProvider
-
 from _kite_fixture import FIXTURES, Clock, all_instrument_ids, listed, new_provider, recorded_frames
+from ofo.marketdata.kite_provider import IST, KiteProvider
 
 NIFTY_INDEX_TOKEN = 256265  # NSE_INDEX:1001 in the catalogue fixture
 OPTION_TOKEN = 11421186  # NSE_FO:44614, NIFTY 22550 CE
@@ -103,7 +101,7 @@ def test_replayed_in_hours_recording_price_at_equals_timestamp_on_every_tick():
         for quote in provider.on_frame(frame, at):
             assert quote.price_at == quote.timestamp, quote.instrument_id
             seen += 1
-    assert seen > 100
+    assert seen > 100  # noqa: PLR2004 - the recording holds hundreds of ticks; a replay that priced none proves nothing
 
 
 def test_the_real_15_07_20_full_packet_keeps_its_own_time():

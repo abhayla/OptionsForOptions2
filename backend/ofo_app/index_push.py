@@ -69,7 +69,8 @@ def _row(ctx: MarketContext, underlying: Underlying, instrument_id: str | None,
     quote = None if instrument_id is None else ctx.provider.underlying_quote(underlying)
     if quote is not None and quote.instrument_id != instrument_id:  # never another instrument's quote as this index's
         quote = None
-    at = None if quote is None else quote.timestamp
+    # ADR-200 (2): closed, the row's time is when its price was made (the session close), never a frame's arrival
+    at = None if quote is None else (quote.price_at if closed else quote.timestamp)
     if not held:  # not held: the last value time only, never a number from a socket that is down (REQ-049 AC-4)
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=at, health=None)
     if quote is None:  # unknown index or no quote: shown as unavailable, no number (REQ-072 AC-2 "missing ... as such")

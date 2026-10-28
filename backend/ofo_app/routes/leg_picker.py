@@ -80,7 +80,7 @@ _PERCENT = Decimal(100)
 ListReason = Literal["CATALOGUE_UNREADABLE", "CATALOGUE_EMPTY", "EXPIRY_UNKNOWN", "NOT_CONNECTED", "SPOT_MISSING",
                      "FEED_STALE", "WAITING_FOR_PRICES", "SOME_PRICES_MISSING"]
 #: Why one contract's depth cannot be shown (REQ-080 AC-8).
-DepthReason = Literal["NO_SESSION", "FEED_STALE", "NOT_STREAMING", "NO_DEPTH_RECEIVED", "DEPTH_EMPTY"]
+DepthReason = Literal["NO_SESSION", "FEED_STALE", "NOT_STREAMING", "NO_DEPTH_RECEIVED", "DEPTH_EMPTY", "MARKET_CLOSED"]
 #: What the strikes list is centred on (REQ-080 AC-5).
 Centre = Literal["LIVE_SPOT", "LAST_KNOWN_SPOT", "MIDDLE_STRIKE"]
 #: Why one future has no price (None when it has one). NOT_OFFERED only for a provider with no futures quote at all.
@@ -429,7 +429,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
                                  pe=sides.get("PE")))
     reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
     if closed:  # ADR-200 (4): the label time is the used quotes' own time (in hours: no banner, no time)
-        head["last_price_at"] = label_time(mstate, (q.timestamp for q in (*usable, engine_spot) if q is not None))
+        head["last_price_at"] = label_time(mstate, (q.price_at for q in (*usable, engine_spot) if q is not None))
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)
@@ -564,38 +564,49 @@ def _paise(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
+def _day_fields(day: DayStatsAnswer) -> dict[str, Any]:
+    """The four day values and the last trade time of ``day`` (null with ``day_stats_reason`` when it has none)."""
+    stats = day.stats
+    return {
+        "day_open": None if stats is None else _paise(stats.day_open),
+        "day_high": None if stats is None else _paise(stats.day_high),
+        "day_low": None if stats is None else _paise(stats.day_low),
+        "prev_close": None if stats is None else _paise(stats.prev_close),
+        "last_trade_at": None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
+            stats.last_trade_ts, IST),
+        "day_stats_reason": day.reason}
+
+
 def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime.datetime, *,  # noqa: PLR0913
                market_closed: bool = False, last_price_at: datetime.datetime | None = None) -> DepthOut:
-    stats = day.stats
-    last_trade = None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
-        stats.last_trade_ts, IST)
     return DepthOut(
         state="AVAILABLE", reason=None, instrument_id=instrument_id,
         bids=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.bids],
         asks=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.asks],
-        day_open=None if stats is None else _paise(stats.day_open),
-        day_high=None if stats is None else _paise(stats.day_high),
-        day_low=None if stats is None else _paise(stats.day_low),
-        prev_close=None if stats is None else _paise(stats.prev_close),
-        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at, market_closed=market_closed,
-        last_price_at=last_price_at)
+        read_at=read_at, market_closed=market_closed, last_price_at=last_price_at, **_day_fields(day))
 
 
-def _held_after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime) -> DepthOut | None:
-    """ADR-200 (1)/(2), REQ-080 AC-7 (read-only): outside market hours the popup shows the last depth snapshot and day
-    values held for the contract, with ``market_closed`` true (the screen's one banner, never "not fresh"). None in
-    market hours, or when the provider holds nothing sound: the live rules below then answer as before."""
-    if not market_state(feed.ctx, read_at).closed or feed.ctx.provider.status().session_ended:
+def _after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime) -> DepthOut | None:
+    """ADR-200 (1)/(2), REQ-080 AC-7 (read-only), GC-BM F-20: while the market is closed the depth answer is ALWAYS
+    the market-closed state (``market_closed`` true, the screen's one banner), never a live-rule reason such as
+    FEED_STALE ("not fresh"): the held last depth and day values when the provider holds a sound snapshot; else no
+    levels with the reason MARKET_CLOSED, plus the day values when held and the price's own time (Kite's book is empty
+    before the open). A session that ended or a contract nobody streams holds nothing: MARKET_CLOSED, no values.
+    None only in market hours: the live rules below then answer as before."""
+    if not market_state(feed.ctx, read_at).closed:
         return None
-    if feed.fanout.subscriber_count(instrument_id) == 0:
-        return None
-    held = feed.ctx.provider.depth_after_close(instrument_id, read_at)  # the interface method (base: None)
-    if held is None or held[0] is None or (not held[0].bids and not held[0].asks):
-        return None
-    depth, stats = held
+    provider = feed.ctx.provider
+    if provider.status().session_ended or feed.fanout.subscriber_count(instrument_id) == 0:
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at).model_copy(update={"market_closed": True})
+    held = provider.depth_after_close(instrument_id, read_at)  # the interface method (base: None)
+    depth, stats = (None, None) if held is None else held
+    # ADR-200 (2): the price's own time (the session close outside hours), never a frame's
+    own_at = provider.held_quote_time(instrument_id, read_at)
     day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
-    # ADR-200 (4): the quote's own time, never a frame's
-    own_at = feed.ctx.provider.held_quote_time(instrument_id, read_at)
+    if depth is None or (not depth.bids and not depth.asks):
+        fields = _day_fields(day) if stats is not None else {}
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at).model_copy(
+            update={"market_closed": True, "last_price_at": own_at, **fields})
     return _depth_out(instrument_id, depth, day, read_at, market_closed=True, last_price_at=own_at)
 
 
@@ -610,7 +621,7 @@ def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) ->
         return _not_available(instrument_id, "NO_SESSION", now())
     ctx = feed.ctx
     read_at = ctx.clock()
-    held = _held_after_close(feed, instrument_id, read_at)
+    held = _after_close(feed, instrument_id, read_at)
     if held is not None:
         return held
     blocker = _depth_blocker(feed, instrument_id)

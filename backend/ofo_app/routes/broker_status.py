@@ -28,6 +28,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.broker.session import EndReason
+from ofo.market_calendar import price_time
 from ofo.marketdata.disconnect import market_closed_error
 from ofo.marketdata.feed_health import (
     FEED_CAPPED,
@@ -139,7 +140,9 @@ def build_status(session: tuple[datetime.datetime, bool] | None, last_read: date
 def _closed_text(live: StatusOut, last_price_at: datetime.datetime | None) -> Any:
     if live.fix != "live_feed_market_closed" or last_price_at is None:
         return None
-    return market_closed_error(last_price_at)
+    # ADR-200 (2): the label is when that price was made (the session close), never the frame's arrival time
+    made_at = price_time(last_price_at)
+    return None if made_at is None else market_closed_error(made_at)
 
 
 @router.get("/api/broker/status", response_model=BrokerStatusOut)
