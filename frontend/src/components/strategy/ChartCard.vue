@@ -67,7 +67,9 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
   <Card class="mt-4" flush data-testid="chart-card">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
       <Tabs v-model="tab" :tabs="TABS" variant="segmented" label="Chart views" :id-prefix="VIEW" />
-      <slot name="controls" />
+      <!-- D-B33 / D-B38: the At Expiry / Estimated Now switch and the range drive the Payoff tab only (the P&L Table and
+           Greeks cells are now-values). v-show keeps a typed From / To when the user comes back. -->
+      <div v-show="tab === 'payoff'" data-testid="scenario-controls-slot"><slot name="controls" /></div>
     </div>
 
     <!-- Payoff -->

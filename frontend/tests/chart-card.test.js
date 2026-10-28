@@ -162,3 +162,27 @@ describe('Greeks and Strategy chart tabs', () => {
     expect(compactRows({ columns: [], rows: [] })).toBeNull()
   })
 })
+
+// GC-UI step 2 (D-B33 / D-B38): the At Expiry / Estimated Now switch and the range drive the Payoff tab only; the
+// P&L Table and Greeks cells are now-values and identical under both views (measured 13:40 IST).
+describe('D-B33 / D-B38: the scenario controls show on the Payoff tab only', () => {
+  const withControls = () =>
+    mount(ChartCard, {
+      attachTo: document.body,
+      props: { points: real.payoff.points, spot: real.spot_level, table: real.table },
+      slots: { controls: '<div data-testid="scenario-controls">At Expiry / Estimated Now</div>' },
+    })
+  it('shown on Payoff, hidden on P&L Table and Greeks, back on Payoff', async () => {
+    const w = withControls()
+    expect(shown(w, 'scenario-controls-slot')).toBe(true)
+    await t(w, 'tab-pnl').trigger('click')
+    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    await t(w, 'tab-greeks').trigger('click')
+    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    await t(w, 'tab-strategy-chart').trigger('click')
+    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    await t(w, 'tab-payoff').trigger('click')
+    expect(shown(w, 'scenario-controls-slot')).toBe(true)
+    w.unmount()
+  })
+})
