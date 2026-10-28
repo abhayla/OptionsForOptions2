@@ -1,6 +1,6 @@
 """REQ-081 (W-154): the Builder money figures (ofo.outcome.money) on the real 2026-10-15 condor and the AC-3 example.
 
-Core: net premium Get 4364.75 (67.15 per unit), max profit 4149.80 / max loss 8850.20 with charges 214.95, Reward/Risk
+Core: net premium Get 4364.75 (67.15 per unit), max profit 4149.79 / max loss 8850.21 with charges 214.96, Reward/Risk
 0.47 and Risk/Reward 2.13 on the recorded condor of tests/outcome/test_charges_in_sentences.py.
 Proof: test_core_figures_of_the_real_condor below; the expected numbers are the spec's (REQ-081 AC-1, AC-4).
 """
@@ -64,7 +64,7 @@ def test_core_figures_of_the_real_condor():
     m = strategy_metrics(Strategy(legs()))
     assert (m.max_profit, m.max_loss) == (MAX_PROFIT_BEFORE, MAX_LOSS_BEFORE)
     rr = money.reward_risk(m.max_profit - charges, m.max_loss + charges)
-    assert (rr.reward_risk, rr.risk_reward, rr.reason) == (D("0.47"), D("2.13"), None)  # 4149.80/8850.20, inverse
+    assert (rr.reward_risk, rr.risk_reward, rr.reason) == (D("0.47"), D("2.13"), None)  # 4149.79/8850.21, inverse
 
 
 # --- net premium (attack 1) -------------------------------------------------------------------------------------
@@ -231,9 +231,9 @@ def test_replay_condor_without_rates_has_no_ratio_and_with_rates_keeps_054_186(r
     _d, priced = outcome_of(replayed, RATES)
     p = priced.summary
     assert (p.reward_risk, p.risk_reward, p.reward_risk_reason) == (D("0.54"), D("1.86"), None)
-    # hand: 4539.66 / 8460.34 = 0.5366 -> 0.54 ; inverse 1.8636 -> 1.86
-    # these replay prices give the round trip 215.09: the sum of the shown parts (F-1; was 215.10, exact sum rounded UP)
-    assert (p.max_profit, p.max_loss) == (D("4754.75") - D("215.09"), D("8245.25") + D("215.09"))
+    # hand: 4539.65 / 8460.35 = 0.5366 -> 0.54 ; inverse 1.8636 -> 1.86
+    # these replay prices give the exact round trip rounded UP, 215.10 (ADR-082 line 39)
+    assert (p.max_profit, p.max_loss) == (D("4754.75") - D("215.10"), D("8245.25") + D("215.10"))
 
 
 def test_ratio_is_never_taken_from_the_figures_before_charges(replayed):
@@ -277,9 +277,9 @@ def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):
     body = outcome_to_dict(out)
     b = body["charges_breakdown"]
     items = sum((D(b[k]) for k in ("brokerage", "stt", "exchange_transaction", "sebi", "stamp", "gst")), D(0))
-    assert D(b["total"]) == out.summary.charges == D("215.09")  # sum of the shown parts (F-1)
+    assert D(b["total"]) == out.summary.charges == D("215.10")  # exact sum rounded UP; items may differ by paise
     assert abs(items - D(b["total"])) <= 2 * D("0.01")
-    assert "about ₹215.09 of" in out.summary.what_can_i_lose and "about ₹215.09 of" in out.summary.what_can_i_make
+    assert "about ₹215.10 of" in out.summary.what_can_i_lose and "about ₹215.10 of" in out.summary.what_can_i_make
     assert D(body["summary"]["max_loss"]) == D("8245.25") + D(b["total"])
 
 
@@ -289,4 +289,4 @@ def test_the_breakdown_names_exercise_stt_with_rate_and_condition_but_no_figure(
     assert b["exercise_stt_rate"] == "0.0015"
     assert b["exercise_stt_note"] == ("STT on exercise: 0.15% of the value of a bought option that finishes in the "
                                       "money. It depends on where the index settles, so it is not in this total.")
-    assert "exercise_stt_amount" not in b and b["total"] == "215.09"
+    assert "exercise_stt_amount" not in b and b["total"] == "215.10"
