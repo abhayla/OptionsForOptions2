@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from ofo.broker import rate_limit
 from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import open_url as kite_open_url
+from ofo.broker.kite_http import KiteReadError
 from ofo.broker.kite_http import read_text as kite_read_text
 from ofo.history.bars import MinuteBar
 from ofo.history.candles import parse_candles
@@ -38,7 +39,9 @@ def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
         return exc.code, ""
     except rate_limit.KiteBusy:  # refused at once, nothing sent (REQ-118 AC-3): the day stays PROVISIONAL
         return 429, ""
-    except (URLError, TimeoutError, OSError) as exc:  # KiteReadError is an OSError
+    except KiteReadError as exc:  # F3: a body cut short or not UTF-8: its original class name only
+        raise CandleFetchError(f"transport error: {exc.cause}") from None
+    except (URLError, TimeoutError, OSError) as exc:
         # F3: a body cut short (IncompleteRead, an HTTPException) or not UTF-8 is a refusal, never a 500
         raise CandleFetchError(f"transport error: {type(exc).__name__}") from None
 

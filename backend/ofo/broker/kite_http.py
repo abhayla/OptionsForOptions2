@@ -211,7 +211,12 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
 
 
 class KiteReadError(OSError):
-    """A response body that could not be read whole or decoded (cut short, or not UTF-8); names no URL or token."""
+    """A response body that could not be read whole or decoded (cut short, or not UTF-8); names no URL or token.
+    ``cause`` is the class name of the original failure (the only thing a caller logs)."""
+
+    def __init__(self, cause: str) -> None:
+        super().__init__(f"response body unreadable: {cause}")
+        self.cause = cause
 
 
 def read_text(response) -> str:
@@ -220,7 +225,7 @@ def read_text(response) -> str:
     try:
         return response.read().decode("utf-8")
     except (_urllib_request.http.client.HTTPException, UnicodeDecodeError) as exc:
-        raise KiteReadError(f"response body unreadable: {type(exc).__name__}") from None
+        raise KiteReadError(type(exc).__name__) from None
 
 
 __all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "QUOTE_INSTRUMENT", "KiteCallRefused", "KiteReadError", "check_call",
