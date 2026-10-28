@@ -158,14 +158,22 @@ export const shown = (value) => (value == null || value === '' ? PRICE_MISSING :
 export const OI_MISSING = '—'
 /** GC-UI D-C27 (S-032): the open interest is a CONTRACT COUNT, not money, written in Indian units: 1.23Cr from 1,00,00,000,
  *  74.9L from 1,00,000, Indian digit grouping ("62,075") below. A display form only; the count is the server's. */
-export function oiCompact(oi) {
-  if (oi == null || oi === '') return OI_MISSING
-  const n = Number(oi)
-  if (!Number.isFinite(n)) return OI_MISSING
-  const lakh = n / 100000
-  if (n >= 10000000 || (n >= 100000 && lakh.toFixed(1) === '100.0')) return `${(n / 10000000).toFixed(2)}Cr`
-  if (n >= 100000) return `${lakh.toFixed(1)}L`
-  return n.toLocaleString('en-IN')
+export function oiCompact(count) {
+  const text = count == null ? '' : String(count).trim().replace(/\.0+$/, '')
+  if (!/^\d+$/.test(text)) return OI_MISSING
+  const whole = BigInt(text)
+  // whole / unit rounded to `places` decimals, as text; integer arithmetic only, so no float noise at a .5 edge
+  const inUnit = (unit, places) => {
+    const scale = 10n ** BigInt(places)
+    const rounded = (whole * scale * 2n + unit) / (unit * 2n)
+    const frac = String(rounded % scale).padStart(places, '0')
+    return { rounded, text: `${rounded / scale}.${frac}` }
+  }
+  const lakh = inUnit(100000n, 1)
+  if (whole >= 10000000n || (whole >= 100000n && lakh.rounded >= 1000n)) return `${inUnit(10000000n, 2).text}Cr`
+  if (whole >= 100000n) return `${lakh.text}L`
+  const plain = String(whole) // below 1,00,000: Indian grouping is the last three digits, then pairs
+  return plain.length > 3 ? `${plain.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${plain.slice(-3)}` : plain
 }
 
 /** The lots selector's choices. Lots mode lists 1, 2, 3 ...; quantity mode lists multiples of the lot size the server
