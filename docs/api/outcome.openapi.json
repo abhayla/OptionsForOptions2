@@ -602,6 +602,15 @@
             ],
             "title": "Planned Entry"
           },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
+          },
           "captured_at": {
             "type": "string",
             "format": "date-time",
@@ -617,6 +626,15 @@
               }
             ],
             "title": "Ltp"
+          },
+          "ltp_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Display"
           },
           "iv": {
             "anyOf": [
@@ -718,6 +736,24 @@
               }
             ],
             "title": "Ask"
+          },
+          "bid_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid Display"
+          },
+          "ask_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Display"
           },
           "health": {
             "anyOf": [
@@ -932,6 +968,15 @@
               }
             ],
             "title": "Per Unit"
+          },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
           },
           "text": {
             "anyOf": [

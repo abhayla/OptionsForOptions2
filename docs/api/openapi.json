@@ -1837,6 +1837,15 @@
             ],
             "title": "Planned Entry"
           },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
+          },
           "price_reason": {
             "anyOf": [
               {
@@ -2861,6 +2870,15 @@
             ],
             "title": "Ask"
           },
+          "ask_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Display"
+          },
           "bid": {
             "anyOf": [
               {
@@ -2871,6 +2889,15 @@
               }
             ],
             "title": "Bid"
+          },
+          "bid_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid Display"
           },
           "health": {
             "anyOf": [
@@ -3047,6 +3074,15 @@
               }
             ],
             "title": "Per Unit"
+          },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
           },
           "reason": {
             "anyOf": [
@@ -4355,7 +4391,8 @@
               "all_gaps",
               "no_session",
               "broker_refused",
-              "future_not_in_catalogue"
+              "future_not_in_catalogue",
+              "quantity_not_whole_lots"
             ],
             "title": "State",
             "type": "string"
@@ -6102,6 +6139,15 @@
             ],
             "title": "Current Price"
           },
+          "current_price_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price Display"
+          },
           "entry_at": {
             "format": "date-time",
             "title": "Entry At",
@@ -6110,6 +6156,9 @@
           "entry_price": {
             "title": "Entry Price",
             "type": "string"
+          },
+          "entry_price_display": {
+            "title": "Entry Price Display"
           },
           "exit_price": {
             "anyOf": [
@@ -6121,6 +6170,15 @@
               }
             ],
             "title": "Exit Price"
+          },
+          "exit_price_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price Display"
           },
           "exited_at": {
             "anyOf": [
@@ -6255,6 +6313,7 @@
           "expiry",
           "quantity",
           "entry_price",
+          "entry_price_display",
           "entry_at",
           "current_price",
           "price_state",
@@ -6756,6 +6815,15 @@
             ],
             "title": "Ltp"
           },
+          "ltp_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Display"
+          },
           "planned_entry": {
             "anyOf": [
               {
@@ -6766,6 +6834,15 @@
               }
             ],
             "title": "Planned Entry"
+          },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
           },
           "quantity": {
             "anyOf": [
