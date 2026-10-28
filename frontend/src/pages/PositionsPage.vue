@@ -13,6 +13,7 @@ import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tabs from '@/components/common/Tabs.vue'
+import EmptyState from '@/components/states/EmptyState.vue'
 import { panelId, tabId } from '@/components/common/tabIds.js'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
@@ -72,9 +73,10 @@ onMounted(async () => {
           </li>
         </ul>
       </div>
-      <p v-if="!result.strategies.length && !result.has_outside" class="mt-2" data-testid="positions-empty">
-        Zerodha shows no open positions, and none of your strategies holds any.
-      </p>
+      <!-- GC-UI D-C40 (Sensibull 050): the shared empty state; the title is new text (owner read), the line is ours as before. -->
+      <div v-if="!result.strategies.length && !result.has_outside" class="mt-2" data-testid="positions-empty">
+        <EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
+      </div>
       <p v-else-if="!result.strategies.length" class="mt-2" data-testid="positions-no-strategy">
         None of your strategies holds a position.
       </p>

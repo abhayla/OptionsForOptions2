@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('REQ-079 AC-2: the list by market view with an expiry picker', () => {
   it('groups the catalogue templates into Bullish / Bearish / Neutral / Other', () => {
-    expect(VIEW_GROUPS.map((g) => g.title)).toEqual(['Bullish', 'Bearish', 'Neutral', 'Other'])
+    expect(VIEW_GROUPS.map((g) => g.title)).toEqual(['Bullish', 'Bearish', 'Neutral', 'Others'])
     expect(VIEW_GROUPS.map((g) => templatesInGroup(TEMPLATES, g).map((t) => t.id))).toEqual([
       ['bull_call_spread'], ['bear_put_spread'], ['iron_condor'], ['long_straddle']])
   })
@@ -323,7 +323,7 @@ describe('W-192 UI-111: the Ready-made tab layout (chips, expiry on the right, 4
   it('shows the four view chips with the selected one accent-filled, and the shape cards in a 4-per-row grid by name', async () => {
     const w = await panel()
     const chips = VIEW_GROUPS.map((g) => w.get(`[data-testid="rm-group-${g.key}"]`))
-    expect(chips.map((c) => c.text())).toEqual(['Bullish', 'Bearish', 'Neutral', 'Other'])
+    expect(chips.map((c) => c.text())).toEqual(['Bullish', 'Bearish', 'Neutral', 'Others'])
     expect(chips[0].attributes('aria-pressed')).toBe('true')
     expect(chips[0].classes()).toContain('bg-accent')
     expect(chips[1].classes()).not.toContain('bg-accent')

@@ -5,8 +5,8 @@
      ("Replace the N legs in the builder?"); legs are never cleared without that answer. Loaded legs carry the server's
      label until their strike is edited (then the row is replaced and the label goes with it).
      W-192 UI-111 (Sensibull 010, 105): chip filters by market view (selected = accent fill), the expiry select on the right,
-     and a grid of shape cards, 4 per row, each carrying the shape name only (no static payoff-shape table exists, and the
-     browser draws no payoff of its own). The underlying is Region A's (prop), not a select of this tab. -->
+     and a grid of square shape cards, 4 per row, each with a static payoff-shape icon (GC-UI D-C04: artwork by template id,
+     nothing computed) above the name; a hint line with a Learn link sits under the chips (D-C02). The underlying is Region A's (prop), not a select of this tab. -->
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -15,7 +15,8 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { instrumentId } from '@/lib/legPicker'
-import { QUICK_PICK_DISTANCES, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
+import { LEARN_LINK_TEXT, LEARN_PATH, QUICK_PICK_DISTANCES, READY_MADE_HINT, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
+import ShapeIcon from '@/components/strategy/ShapeIcon.vue'
 
 const props = defineProps({
   legs: { type: Array, default: () => [] },
@@ -136,11 +137,16 @@ onMounted(async () => {
         </select>
       </label>
     </div>
+    <p class="mt-2 text-sm text-ink-muted" data-testid="rm-hint">{{ READY_MADE_HINT }}
+      <RouterLink :to="LEARN_PATH" class="ml-2 text-accent underline" data-testid="rm-learn-link">{{ LEARN_LINK_TEXT }}</RouterLink></p>
     <ul class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="rm-templates">
       <li v-for="t in shown" :key="t.id" class="min-w-0">
         <button
-          type="button" class="flex h-16 w-full items-center justify-center rounded-lg border border-line bg-surface p-2 text-center text-[13px] leading-4 font-medium text-ink hover:border-accent disabled:opacity-40"
-          :disabled="busy || !expiry" :data-testid="`rm-template-${t.id}`" @click="loadTemplate(t.id)">{{ t.name }}</button>
+          type="button" class="flex aspect-[100/95] w-full flex-col items-center justify-center gap-1 rounded-lg border border-line bg-surface p-2 text-center text-[13px] leading-4 font-medium text-ink hover:border-accent disabled:opacity-40"
+          :disabled="busy || !expiry" :data-testid="`rm-template-${t.id}`" @click="loadTemplate(t.id)">
+          <ShapeIcon :id="t.id" />
+          <span data-testid="rm-card-name">{{ t.name }}</span>
+        </button>
       </li>
     </ul>
 
