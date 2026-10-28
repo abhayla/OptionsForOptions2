@@ -43,32 +43,20 @@ function viewRows(table, valueIds) {
       values: Object.fromEntries(valueIds.map((id) => [id, {
         display: display(row, id),
         value: row.cells?.[id]?.value ?? null,
-        perUnit: row.cells?.[id]?.per_unit ?? null,
+        perUnitDisplay: row.cells?.[id]?.per_unit_display ?? null,
       }])),
     }
   })
 }
 
-// REQ-084 AC-8 / sb-05: decimals of a Greek as printed. Formatting a server number, not computing one.
-export const GREEK_DECIMALS = { delta: 2, gamma: 4, theta: 2, vega: 2 }
+// REQ-084 AC-8 / sb-05, REQ-145 AC-3: the Greeks tab prints only server-made text; the browser formats no number.
 const DASH = '—'
 
-/** A server number string rounded to `dp` decimals for print; null, empty, a dash or non-numeric text give "—" (never 0 or NaN). */
-export function fixedText(raw, dp) {
-  const s = String(raw ?? '').trim()
-  if (!s || s === DASH || !/^[+-]?(\d+\.?\d*|\.\d+)$/.test(s)) return DASH
-  const out = Number(s).toFixed(dp)
-  return /^-0(\.0+)?$/.test(out) ? out.slice(1) : out
-}
-
-/** One Greeks cell as printed. mode 'unit' reads the server's per_unit, 'position' the server's value; IV is its own
- *  display string in both modes (REQ-145 AC-3: the browser only prints the string). */
+/** One Greeks cell as printed. mode 'unit' prints the server's `per_unit_display`, 'position' the cell's `display`
+ *  (IV's `display` in both modes). Null, missing or empty text gives "—". */
 export function greekText(cell, id, mode) {
-  if (id === 'iv') {
-    const s = String(cell?.display ?? '').trim()
-    return s || DASH
-  }
-  return fixedText(mode === 'unit' ? cell?.perUnit : cell?.value, GREEK_DECIMALS[id])
+  const s = String((mode === 'unit' && id !== 'iv' ? cell?.perUnitDisplay : cell?.display) ?? '').trim()
+  return s || DASH
 }
 
 /** The Greeks column-heading note: "Per unit", or "Per position, N units" when every leg row carries the same quantity. */

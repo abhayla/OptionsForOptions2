@@ -11,7 +11,7 @@ import money from './fixtures/outcome-money-condor.json'
 const drawn = vi.hoisted(() => [])
 vi.mock('chart.js/auto', () => ({ default: class { constructor(_ctx, config) { drawn.push(config) } destroy() {} } }))
 import ChartCard from '@/components/strategy/ChartCard.vue'
-import { GREEK_DECIMALS, compactRows, fixedText, greekRows, payoffLevelRows } from '@/lib/chartCard'
+import { compactRows, greekRows, payoffLevelRows } from '@/lib/chartCard'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
@@ -21,6 +21,31 @@ const card = (table = real.table, extra = {}) =>
 const AC2_ORDER = ['leg', 'action', 'instrument', 'expiry', 'strike', 'quantity', 'entry_price', 'ltp', 'entry_value', 'current_value',
   'unrealized_pnl', 'pnl_percent', 'iv', 'delta', 'gamma', 'theta', 'vega']
 const withoutTotal = { ...real.table, rows: real.table.rows.filter((r) => r.row_id !== 'TOTAL') }
+
+
+// What the server sends on each Greek cell now: `display` = per-position text, `per_unit_display` = per-unit text, and
+// the IV `display` as a percent. Literal strings; the browser prints them as they are (REQ-145 AC-3).
+const SERVER_TEXT = {
+  1: { unit: ['0.63', '0.0008', '-0.12', '0.05'], pos: ['40.79', '0.0520', '-7.80', '3.25'], iv: '16.03%' },
+  2: { unit: ['0.08', '0.0011', '-0.09', '0.04'], pos: ['5.20', '0.0715', '-5.85', '2.60'], iv: '12.46%' },
+  3: { unit: ['-0.35', '0.0010', '-0.10', '0.04'], pos: ['-22.75', '0.0650', '-6.50', '2.60'], iv: '12.80%' },
+  4: { unit: ['-0.18', '0.0009', '-0.11', '0.05'], pos: ['-11.70', '0.0585', '-7.15', '3.25'], iv: '13.52%' },
+  TOTAL: { unit: null, pos: ['2.96', '0.0001', '-0.02', '0.01'], iv: null },
+}
+const GREEK_IDS = ['delta', 'gamma', 'theta', 'vega']
+const serverGreekTable = (table = real.table) => ({
+  ...table,
+  rows: table.rows.map((r) => {
+    const x = SERVER_TEXT[r.row_id]
+    if (!x) return r
+    const cells = { ...r.cells }
+    GREEK_IDS.forEach((id, i) => {
+      cells[id] = { ...cells[id], display: x.pos[i], per_unit_display: x.unit ? x.unit[i] : null }
+    })
+    cells.iv = { ...cells.iv, display: x.iv ?? '—' }
+    return { ...r, cells }
+  }),
+})
 
 beforeEach(() => { drawn.length = 0 })
 
@@ -129,14 +154,15 @@ describe('Payoff tab: Graph and Table (UI-121, REQ-137 kept separate)', () => {
 })
 
 describe('Greeks and Strategy chart tabs', () => {
-  it('Greeks: per-leg Delta, Gamma, Theta, Vega, IV as sent', async () => {
-    const w = card()
+  it('Greeks: per-leg Delta, Gamma, Theta, Vega, IV printed exactly as the server sent them (Per unit)', async () => {
+    const table = serverGreekTable()
+    const w = card(table)
     await t(w, 'tab-greeks').trigger('click')
     expect(all(w, 'greeks-head').map((h) => h.text())).toEqual(['Delta', 'Gamma', 'Theta', 'Vega', 'IV'])
-    for (const row of real.table.rows) {
+    for (const row of table.rows) {
       const tr = w.find(`[data-testid="greeks-row"][data-row="${row.row_id}"]`)
       expect(tr.find('[data-field="iv"]').text()).toBe(row.cells.iv.display)
-      for (const id of ['delta', 'gamma', 'theta', 'vega']) expect(tr.find(`[data-field="${id}"]`).text()).toBe(fixedText(row.cells[id].per_unit, GREEK_DECIMALS[id]))
+      for (const id of GREEK_IDS) expect(tr.find(`[data-field="${id}"]`).text()).toBe(row.cells[id].per_unit_display ?? '—')
     }
     w.unmount()
   })
@@ -167,48 +193,59 @@ describe('Greeks and Strategy chart tabs', () => {
 // GC-UI step 2 (D-B36 / D-B37 / D-B35; REQ-084 AC-8, REQ-145 AC-3): one Per unit / Per position toggle on Greeks.
 describe('D-B36 / D-B37 / D-B35: the Greeks tab toggle and the IV string', () => {
   const cellOf = (w, row, id) => w.find(`[data-testid="greeks-row"][data-row="${row}"] [data-field="${id}"]`).text()
-  it('default Per unit prints per_unit (delta/theta/vega 2 dp, gamma 4 dp); Total has no per_unit so shows an em dash', async () => {
-    const w = card()
+  it('default Per unit prints per_unit_display as sent; Total has none so shows an em dash', async () => {
+    const w = card(serverGreekTable())
     await t(w, 'tab-greeks').trigger('click')
     expect(t(w, 'greeks-unit-toggle').exists()).toBe(true)
     expect(t(w, 'greeks-unit-toggle').findAll('button')).toHaveLength(2)
-    expect(cellOf(w, '1', 'delta')).toBe('0.21')
-    expect(cellOf(w, '1', 'gamma')).toBe('0.0009')
+    expect(cellOf(w, '1', 'delta')).toBe('0.63')
+    expect(cellOf(w, '1', 'gamma')).toBe('0.0008')
     expect(cellOf(w, 'TOTAL', 'delta')).toBe('—')
     expect(cellOf(w, 'TOTAL', 'gamma')).toBe('—')
     expect(t(w, 'greeks-mode-heading').text()).toBe('Per unit')
     w.unmount()
   })
-  it('Per position prints the cell value (server number) at the same precision, heading names the units', async () => {
-    const w = card()
+  it('Per position prints the cell display as sent, heading names the units', async () => {
+    const w = card(serverGreekTable())
     await t(w, 'tab-greeks').trigger('click')
     await t(w, 'greeks-mode-position').trigger('click')
-    expect(cellOf(w, '1', 'delta')).toBe('-13.64')
-    expect(cellOf(w, '1', 'gamma')).toBe('-0.0565')
+    expect(cellOf(w, '1', 'delta')).toBe('40.79')
+    expect(cellOf(w, '1', 'gamma')).toBe('0.0520')
     expect(cellOf(w, 'TOTAL', 'delta')).toBe('2.96')
     expect(t(w, 'greeks-mode-heading').text()).toBe('Per position, 65 units')
     await t(w, 'greeks-mode-unit').trigger('click')
-    expect(cellOf(w, '1', 'delta')).toBe('0.21')
+    expect(cellOf(w, '1', 'delta')).toBe('0.63')
     w.unmount()
   })
-  it('IV prints the server display string as is in both modes; null/empty/dash show an em dash, never 0 or NaN', async () => {
-    const rows = real.table.rows.map((r, i) => {
+  it('the browser formats nothing: an unrounded server string prints as is', async () => {
+    const t0 = serverGreekTable()
+    const rows = t0.rows.map((r) => (r.row_id === '1' ? { ...r, cells: { ...r.cells, delta: { ...r.cells.delta, per_unit_display: '0.6300000' } } } : r))
+    const w = card({ ...t0, rows })
+    await t(w, 'tab-greeks').trigger('click')
+    expect(cellOf(w, '1', 'delta')).toBe('0.6300000')
+    w.unmount()
+  })
+  it('IV prints the server display in both modes; null / empty / dash / missing show an em dash, never 0 or NaN', async () => {
+    const t0 = serverGreekTable()
+    const rows = t0.rows.map((r, i) => {
       const cells = { ...r.cells }
-      if (i === 0) cells.iv = { ...cells.iv, value: '0.160347', display: '16.03%' }
-      if (i === 1) cells.delta = { ...cells.delta, per_unit: '' }
-      if (i === 2) cells.delta = { ...cells.delta, per_unit: null, value: null }
-      if (i === 3) cells.delta = { ...cells.delta, per_unit: 'n/a' }
+      if (i === 1) cells.delta = { ...cells.delta, per_unit_display: '' }
+      if (i === 2) cells.delta = { ...cells.delta, per_unit_display: null, display: null }
+      if (i === 3) cells.delta = { ...cells.delta, per_unit_display: '—', display: '—' }
+      if (i === 0) cells.vega = { ...cells.vega, per_unit_display: undefined }
       return { ...r, cells }
     })
-    const w = card({ ...real.table, rows })
+    const w = card({ ...t0, rows })
     await t(w, 'tab-greeks').trigger('click')
     expect(cellOf(w, '1', 'iv')).toBe('16.03%')
+    expect(cellOf(w, '1', 'vega')).toBe('—')
     expect(cellOf(w, '2', 'delta')).toBe('—')
     expect(cellOf(w, '3', 'delta')).toBe('—')
     expect(cellOf(w, '4', 'delta')).toBe('—')
     await t(w, 'greeks-mode-position').trigger('click')
     expect(cellOf(w, '1', 'iv')).toBe('16.03%')
     expect(cellOf(w, '3', 'delta')).toBe('—')
+    expect(cellOf(w, '2', 'delta')).toBe('5.20')
     expect(t(w, 'greeks-table').text()).not.toMatch(/NaN/)
     w.unmount()
   })
