@@ -209,4 +209,5 @@ margin sentence "which already includes the premium of the legs you buy" (s54, t
 
 | Row / item | Why (evidence) | What is left |
 |---|---|---|
+| D-A09 expiry cell (3a) | After round 2/2 (8c0c9484, merged c265c88a), Chrome ~15:35 IST: leg rows 37 px (target met), heads unclipped, Hedge H visible; but the leg's expiry text is clipped to "3 Nov (6 days" in the 84 px Expiry column (same class as D-C21) | Widen the Expiry column or show "3 Nov" with the days in its tooltip; one-line change + Chrome re-check; needs a third touch (owner's call) |
 | D-C27 (drawer columns) | Two rounds: r1 widened columns (558 px in 473), r2 compact OI + tighter grid (475 px in 473, Chrome 15:27 IST); the component's own width sum counts the flexible LTP column at its minimum | One gap or a 2 px column trim, then a Chrome re-measure (scrollWidth <= clientWidth); next goal or step 7 if the owner accepts a third touch |
