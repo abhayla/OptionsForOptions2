@@ -42,6 +42,7 @@ ALLOWED_IMPORTERS = frozenset({
     # strategy_price_history; no other history screen is allowed.
     "ofo.outcome.price_history",    # the chart's points from minute bars (pure)
     "ofo_app.strategy_price_history",  # the chart's reads (KiteHistory) for GET /strategies/{id}/price-history
+    "ofo_app.price_history_source",    # S5-1: wires kite_history.owner_minute_reader to that route (adapter side)
 })
 # frontend/src may request or import no history at all.
 ALLOWED_FRONTEND: frozenset[str] = frozenset()
@@ -61,6 +62,9 @@ ALLOWED_FRONTEND_WORDS = frozenset({
 # other file, any other history literal in this file, a concatenated or imported one, all still fail.
 ALLOWED_FRONTEND_PATHS = frozenset({
     ("lib/strategyActivity.js", "/strategies/${id}/history"),
+    # ADR-203 (2): the builder's Strategy Chart ONLY (REQ-091 AC-1 SPEC CHANGE), behind the held flag
+    # strategy_price_history; exact file + literal, every other history request still fails
+    ("components/strategy/StrategyPriceChart.vue", "/strategies/${props.strategyId}/price-history"),
 })
 
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
@@ -529,7 +533,11 @@ def test_a_concatenated_or_imported_history_in_the_activity_file_is_still_flagge
 
 
 def test_removing_the_exemption_makes_the_repo_scan_fail_on_the_activity_file(monkeypatch):
-    """The exemption is load-bearing and is the only one: with it gone the real activity file is flagged."""
-    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL)} == ALLOWED_FRONTEND_PATHS
+    """The exemptions are load-bearing and are the only ones (the activity file; ADR-203's Strategy Chart): with them
+    gone both real files are flagged."""
+    chart = ("components/strategy/StrategyPriceChart.vue", "/strategies/${props.strategyId}/price-history")
+    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL), chart} == ALLOWED_FRONTEND_PATHS
     monkeypatch.setattr(sys.modules[__name__], "ALLOWED_FRONTEND_PATHS", frozenset())
-    assert _ACTIVITY_FILE in scan_frontend(FRONTEND_SRC)
+    flagged = scan_frontend(FRONTEND_SRC)
+    assert _ACTIVITY_FILE in flagged
+    assert chart[0] in flagged
