@@ -688,6 +688,107 @@ describe('REQ-080 strikes tab (W-147)', () => {
     expect(t(w, 'picker-done').text()).toBe('Done')
   })
 
+  // GC-BP F-2 (REQ-080 AC-3 "Done adds them all"): a change of expiry or width keeps every pick; only an underlying change clears.
+  // 27 Oct has its own tokens (45000 + ...), so a 22550 CE on each expiry is a different contract with its own expiry.
+  const tok27 = (i, side) => 45000 + 2 * i + (side === 'pe' ? 1 : 0)
+  const catalogue27 = {
+    underlying: 'NIFTY',
+    contracts: GRID.flatMap((strike, i) => ['ce', 'pe'].map((side) => ({
+      contract_id: tok27(i, side), exchange_segment: 'NSE_FO', exchange_token: tok27(i, side), instrument_type: side.toUpperCase(),
+      expiry: '2026-10-27', strike, lot_size: 65, symbol: `NIFTY26OCT27${strike}${side.toUpperCase()}`,
+    }))),
+  }
+  const strikes27 = () => strikesAnswer({
+    expiry: '2026-10-27',
+    rows: GRID.map((strike, i) => ({
+      strike, is_atm: strike === '22550.00',
+      ce: { ...cell(i, 'ce'), instrument_id: `NSE_FO:${tok27(i, 'ce')}` }, pe: { ...cell(i, 'pe'), instrument_id: `NSE_FO:${tok27(i, 'pe')}` },
+    })),
+  })
+  function setUp27() {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-27'] = catalogue27
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = strikes27()
+    answers['POST /strategies/planned-entry'] = entryFor({})
+  }
+  async function pickAcrossExpiries(w) {
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click') // Sell 13 Oct 22550 CE
+    await openStrikes(w, '2026-10-27')
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-buy"]').trigger('click') // Buy 27 Oct 22550 CE
+  }
+
+  it('GC-BP F-2 core: Sell 22550 CE on one expiry, switch expiry, Buy 22550 CE there, Done emits TWO legs with their own expiries', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await pickAcrossExpiries(w)
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.expiry, l.action, l.contract_id, l.instrument_id, l.strike, l.instrument_type]))
+      .toEqual([['2026-10-13', 'SELL', 44004, 'NSE_FO:44004', '22550.00', 'CE'], ['2026-10-27', 'BUY', 45004, 'NSE_FO:45004', '22550.00', 'CE']])
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(2)
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+  })
+
+  it('GC-BP F-2: the footer counts the picks of every expiry, and coming back to an expiry shows its pick as selected', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await pickAcrossExpiries(w)
+    expect(t(w, 'picker-count').text()).toBe('2 selected')
+    await openStrikes(w, '2026-10-13')
+    expect(t(w, 'picker-count').text()).toBe('2 selected')
+    expect(sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('GC-BP F-2: a change of width keeps the picks; its lots are kept too', async () => {
+    answers[STRIKES_URL(20)] = strikesAnswer({ width: 20 })
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'pick-width').setValue('20')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('1 selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44002', 'BUY'], ['NSE_FO:44005', 'SELL']])
+  })
+
+  it('GC-BP F-2: a change of underlying still clears every pick (a strategy has one underlying)', async () => {
+    answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-15'] = { underlying: 'SENSEX', contracts: [] }
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    expect(t(w, 'picker-count').text()).toBe('1 selected')
+    await t(w, 'pick-underlying').setValue('SENSEX')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
+  })
+
+  it('GC-BP F-2: a pick with no stored contract still refuses Done and adds nothing (fail closed)', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await openStrikes(w, '2026-10-27')
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [] }
+    // a pick on a cell whose contract the catalogue does not list (27 Oct list is replaced after the cell is shown)
+    w.vm.$.setupState.contracts = []
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(t(w, 'done-error').exists()).toBe(true)
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
+  })
+
   it('attack 1: a leg picked on a strike with no price is still added and shows the reprice prompt', async () => {
     answers['POST /strategies/planned-entry'] = entryFor({})
     const w = mountPicker()

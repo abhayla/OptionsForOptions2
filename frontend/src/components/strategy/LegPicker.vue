@@ -153,6 +153,9 @@ const futuresData = ref(null)
 const futuresFailed = ref(false)
 const picked = ref({}) // instrument_id -> 'BUY' | 'SELL'
 const cellLots = ref({}) // instrument_id -> lots chosen in that cell
+// GC-BP F-2: the contract is stored AT the pick, so Done never depends on the expiry list on screen (a pick made on another
+// expiry or width is still a leg). instrument_id -> catalogue contract, or null when the list did not carry it at that moment.
+const pickedContracts = ref({})
 const doneError = ref('')
 const depthFor = ref(null) // the leg whose depth popup is open
 let stSeq = 0
@@ -218,14 +221,19 @@ const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / 
 const itm = computed(() => itmSides(strikesData.value?.rows))
 const COLUMN_LABEL = Object.freeze({ delta: 'Delta', ltp: 'LTP', oi: 'OI', iv: 'IV' })
 
-// A new underlying, expiry or width is a new list: the old one and its selections go before the new read starts.
+// A new underlying, expiry or width is a new list: the old one goes before the new read starts. GC-BP F-2: the picks stay
+// across an expiry or width change (each carries its own contract, Done adds them all); only a new UNDERLYING clears them,
+// since a strategy has one underlying.
 watch([underlying, expiry, width], () => {
   stSeq++
   strikesData.value = null
   strikesFailed.value = false
+  if (tab.value === 'strikes' && props.active) loadStrikes()
+})
+watch(underlying, () => {
   picked.value = {}
   cellLots.value = {}
-  if (tab.value === 'strikes' && props.active) loadStrikes()
+  pickedContracts.value = {}
 })
 watch(underlying, () => {
   fuSeq++
@@ -278,24 +286,31 @@ function choose(id, side) {
   if (next[id] === side) delete next[id]
   else next[id] = side
   picked.value = next
+  if (!(id in next)) { const { [id]: _c, ...rest } = pickedContracts.value; pickedContracts.value = rest }
+  else if (!pickedContracts.value[id]) pickedContracts.value = { ...pickedContracts.value, [id]: contractByInstrumentId(contracts.value, id) ?? null }
 }
+/** The contract stored at the pick; a pick made before the list carried it falls back to the list on screen (else null). */
+const contractOfPick = (id) => pickedContracts.value[id] ?? contractByInstrumentId(contracts.value, id)
 const lotsOf = (id) => cellLots.value[id] ?? 1
 /** Drop one selection (from the selection list): Done then no longer adds it. */
 function unpick(id) {
   const { [id]: _side, ...rest } = picked.value
   const { [id]: _lots, ...restLots } = cellLots.value
+  const { [id]: _pc, ...restContracts } = pickedContracts.value
   picked.value = rest
   cellLots.value = restLots
+  pickedContracts.value = restContracts
 }
 /** Clear All (REQ-080 AC-3): the whole selection and its lots go; nothing is added or sent. */
 function clearAll() {
   picked.value = {}
   cellLots.value = {}
+  pickedContracts.value = {}
   doneError.value = ''
 }
 /** Every leg Done will add, as the user reads it: contract, side, lots. */
 const selection = computed(() => Object.keys(picked.value).map((id) => {
-  const c = contractByInstrumentId(contracts.value, id)
+  const c = contractOfPick(id)
   const name = c ? contractName({ underlying: underlying.value, expiry: c.expiry, instrument_type: c.instrument_type, strike: c.strike }) : id
   return { id, name, action: picked.value[id], lots: lotsOf(id) }
 }))
@@ -393,7 +408,7 @@ function remove(leg) {
 async function done() {
   const ids = Object.keys(picked.value)
   if (busy.value || !ids.length) return
-  const chosen = ids.map((id) => ({ id, c: contractByInstrumentId(contracts.value, id), action: picked.value[id], lots: lotsOf(id) }))
+  const chosen = ids.map((id) => ({ id, c: contractOfPick(id), action: picked.value[id], lots: lotsOf(id) }))
   if (chosen.some((x) => !x.c || !lotsValid(String(x.lots)))) {
     doneError.value = 'Contract details are not available for every selected contract, so nothing was added.'
     return
@@ -402,6 +417,7 @@ async function done() {
   busy.value = true
   picked.value = {} // picks made while the entries are captured belong to the next batch
   cellLots.value = {}
+  pickedContracts.value = {}
   await addChosen(chosen, underlying.value)
   emit('done')
 }
