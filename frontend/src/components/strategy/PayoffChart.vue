@@ -33,7 +33,7 @@
         <button type="button" class="border-l border-line px-2 py-0.5 hover:text-ink" aria-label="Zoom in: a narrower range" data-testid="payoff-zoom-in" @click="askZoom('in')">Zoom in</button>
       </div>
     </div>
-    <p v-if="notes.length" class="mb-1 text-xs text-ink-muted" data-testid="payoff-curve-note">{{ notes.join(' ') }}</p>
+    <p v-if="notes.length" class="mb-1 text-xs text-ink-muted" data-testid="payoff-curve-note">{{ notes.join('; ') }}</p>
     <p v-if="!points0.length && unavailableReason" class="mb-2 text-sm text-ink-muted" data-testid="payoff-unavailable">{{ unavailableReason }}</p>
     <div
       ref="plot"
@@ -97,7 +97,8 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
 import { hatchPattern, pointSigns, segmentColour } from '@/lib/payoffRegions'
-import { groupMoney } from '@/lib/displayFormat'
+import { groupMoney, strikeLabel } from '@/lib/displayFormat'
+import { oiCompact } from '@/lib/legPicker'
 
 // GC-BM F-11: the pixel half of the zero-crossing colour (ADR-008 drawing exception): red below the pixel row of 0,
 // green above it, one gradient across the segment that changes sign. Null when the chart has no drawable area.
@@ -147,9 +148,15 @@ const notes = computed(() => {
   const c = props.curves
   if (!c) return []
   const out = VIEWS.flatMap((v) => [c[v] && !c[v].available ? c[v].unavailable_reason : null, c[v]?.available ? c[v].output_label : null])
-  return [...new Set(out.filter(Boolean))]
+  // GC-UI b2 (b1 defect, Chrome 20:5x IST): each curve carries its own label, so "stale since 17:35 IST" and "stale since
+  // 17:35 IST; estimated from spot" printed the stale part twice. Each "; " part is shown once, in the order sent.
+  const parts = out.filter(Boolean).flatMap((s) => String(s).split(';').map((p) => p.trim()).filter(Boolean))
+  return [...new Set(parts)]
 })
 const oiBars = computed(() => (props.oi?.available && props.oi.rows?.length ? props.oi.rows : null))
+// GC-UI b2 (b1 defect, Chrome): the OI right axis printed raw counts ("8,000,000"); it now prints the contract count in
+// the drawer's compact Indian units (80.0L, 1.00Cr) - the same helper, a display form of a count, not money
+const oiTick = (value) => oiCompact(value)
 const sdBands = computed(() => (props.sd?.available ? props.sd.bands ?? [] : []))
 const sdText = computed(() => {
   if (!props.sd) return ''
@@ -243,7 +250,7 @@ const createChart = () => {
         // D-B08: no x title; D-B11 / AC-7: the domain is the first and last SENT level, never wider
         x: { type: 'linear', min: firstLevel(), max: lastLevel(), display: true, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
         y: { display: true, title: { display: true, text: 'Profit / loss', font: { size: 11 } }, grid: grid ? { color: grid } : {}, ticks: { font: { size: 10 } } },
-        y1: { display: !!bars, position: 'right', beginAtZero: true, title: { display: !!bars, text: 'Open Interest', font: { size: 11 } }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
+        y1: { display: !!bars, position: 'right', beginAtZero: true, title: { display: !!bars, text: 'Open Interest', font: { size: 11 } }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 }, callback: oiTick } },
       },
     },
     plugins: [marks],
@@ -342,7 +349,7 @@ const oiStrip = computed(() => {
   if (!rows) return ''
   const at = hovered.value ? hovered.value.level : props.spot ? Number(props.spot) : null
   const r = rows[at === null ? 0 : nearestBy(rows, at, (x) => x.strike)]
-  return `OI data at ${r.strike} | Call OI ${r.call_oi_display} | Put OI ${r.put_oi_display}`
+  return `OI data at ${strikeLabel(r.strike)} | Call OI ${r.call_oi_display} | Put OI ${r.put_oi_display}`
 })
 
 // ---- D-B10 / AC-7: Zoom asks the engine for a new range on the reply's own grid; nothing is drawn by the browser ----
