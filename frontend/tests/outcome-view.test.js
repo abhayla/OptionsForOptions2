@@ -111,8 +111,10 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
   it('AC-1: the payoff is drawn from the answer points, and the scenario table has the API columns, with no click', async () => {
     const w = await openBuilder(WITH_MARGIN, MARGIN_ON)
     expect(drawn).toHaveLength(1)
-    expect(drawn[0].data.labels).toEqual(real.payoff.points.map((p) => p.level))
-    expect(t(w, 'payoff-first').text()).toBe(real.payoff.points[0].level)
+    expect(drawn[0].data.datasets[0].data.map((d) => d.x)).toEqual(real.payoff.points.map((p) => Number(p.level)))
+    // GC-UI b1 D-B11: the axis spans the first and last sent level; the duplicate range line under it is gone
+    expect(drawn[0].options.scales.x.min).toBe(Number(real.payoff.points[0].level))
+    expect(t(w, 'payoff-first').exists()).toBe(false)
     expect(t(w, 'strategy-table').exists()).toBe(true)
     expect(w.findAll('[data-testid="col-head"]')).toHaveLength(real.table.columns.length)
     w.unmount()

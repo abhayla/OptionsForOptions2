@@ -6,6 +6,10 @@ export const VIEWS = [
   { key: 'estimated_now', label: 'Estimated Now' },
 ]
 
+/** GC-UI b1 (REQ-083 AC-1, AC-4, AC-5): the chart's blocks every outcome request asks for, REST and live alike: both
+ *  curves of ONE engine reply (never two calls for different edits, REQ-034 AC-8), the SD bands and the OI bars. */
+export const CHART_FLAGS = Object.freeze({ both_views: true, sd_bands: true, open_interest: true })
+
 /** The default pick: At Expiry, the server's own range. */
 export const DEFAULT_CHOICE = Object.freeze({ view: 'at_expiry', rangeStart: '', rangeEnd: '' })
 

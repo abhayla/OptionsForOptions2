@@ -161,7 +161,7 @@ const chartCanvas = ref(null)
 let chartInstance = null
 const drawTick = ref(0) // bumped after each draw, so the DOM marks re-read the new scale
 
-const ariaLabel = computed(() => `Payoff chart: ${shown.value.map((c) => c.label).join(' and ') || 'no curve'}` + (props.spot ? `; current price ${props.spot}` : ''))
+const ariaLabel = computed(() => `Payoff chart: ${shown.value.map((c) => c.label).join(' and ') || 'no curve'}${props.spot ? `; current price ${props.spot}` : ''}`)
 
 // Colours come from the design tokens (style.css), read at draw time; '' falls back to chart.js defaults (jsdom).
 const token = (name) => (typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '')
@@ -205,11 +205,13 @@ const createChart = () => {
   const colours = { profit: token('--color-profit'), loss: token('--color-loss'), flat: token('--color-ink-muted') || '#5b6470' }
   const grid = token('--color-line')
   const bars = oiBars.value
+  // beside the expiry curve the estimate is one accent line; drawn alone it keeps the profit / loss colours
+  const accent = (c) => c.view === 'estimated_now' && shown.value.length > 1
   const curveSets = shown.value.map((c, i) => ({
     type: 'line', curve: c.view, label: c.label || 'P&L', data: lineData(c.points), borderWidth: 2, pointRadius: 0,
     pointHoverRadius: 4, tension: 0, spanGaps: false, order: 1,
-    borderColor: c.view === 'estimated_now' ? token('--color-accent') || '#2f5bff' : colours.profit,
-    segment: c.view === 'estimated_now' ? undefined : { borderColor: segmentColour(pointSigns(c.points), colours, (chart) => crossingGradient(chart, colours)) },
+    borderColor: accent(c) ? token('--color-accent') || '#2f5bff' : colours.profit,
+    segment: accent(c) ? undefined : { borderColor: segmentColour(pointSigns(c.points), colours, (chart) => crossingGradient(chart, colours)) },
     // D-B15: only the first curve's zones are hatched (at expiry when it is drawn), so two fills never overlap
     fill: i === 0 ? { target: 'origin', above: hatchPattern(document, colours.profit || token('--color-profit-soft')), below: hatchPattern(document, colours.loss || token('--color-loss-soft')) } : false,
   }))
@@ -298,8 +300,8 @@ const hovered = computed(() => {
   const p = index.value === null ? null : points0.value[index.value]
   if (!p) return null
   const pct = pctFromSpot(p.level)
-  const lines = [...shown.value]
-    .sort((a, b) => HOVER_ORDER.indexOf(a.view) - HOVER_ORDER.indexOf(b.view))
+  const lvl = Number(p.level)
+  const lines = HOVER_ORDER.flatMap((v) => shown.value.filter((c) => c.view === v))
     .flatMap((c) => {
       // the same computed level on that curve (same reply, same levels); a curve without it shows no line
       const q = c.points.find((x) => x.level === p.level)
@@ -308,7 +310,7 @@ const hovered = computed(() => {
       const pnl = (c.table ? props.pnlText?.[q.level] : null) ?? q.display ?? groupMoney(q.pnl)
       return [{ view: c.view, label: c.label, pnl }]
     })
-  return { title: `At ${groupMoney(p.level)}${pct ? ` (${pct})` : ''}`, lines, x: pixelAt(Number(p.level)), area: areaOf(), level: Number(p.level) }
+  return { title: `At ${groupMoney(p.level)}${pct ? ` (${pct})` : ''}`, lines, x: pixelAt(lvl), area: areaOf(), level: lvl }
 })
 // The tooltip's left edge, kept inside the chart area at both ends.
 const tipLeft = computed(() => {

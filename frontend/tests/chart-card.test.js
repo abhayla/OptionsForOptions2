@@ -130,8 +130,10 @@ describe('Payoff tab: Graph and Table (UI-121, REQ-137 kept separate)', () => {
     for (const ds of cfg.data.datasets) expect(ds.data.map((d) => d.x)).toEqual(real.payoff.points.map((p) => Number(p.level)))
     // G-051: the canvas tooltip is off; the DOM tooltip (tests/payoff-hover.test.js) shows the sent strings
     expect(cfg.options.plugins.tooltip).toEqual({ enabled: false })
-    expect(cfg.plugins.map((p) => p.id)).toContain('spotLine')
-    expect(t(w, 'payoff-legend-spot').text()).toContain(real.spot_level)
+    // GC-UI b1 D-B12: one labelled current-price marker (the line is drawn by the marks plugin), no legend duplicate
+    expect(cfg.plugins.map((p) => p.id)).toContain('payoffMarks')
+    expect(t(w, 'payoff-current-price').text()).toBe(`Current price: ${real.spot_level}`)
+    expect(t(w, 'payoff-legend-spot').exists()).toBe(false)
     expect(t(w, 'payoff-graph').text()).not.toContain('%') // the reply carries no percent from spot, so none is shown
     w.unmount()
   })
@@ -263,16 +265,41 @@ describe('D-B33 / D-B38: the scenario controls show on the Payoff tab only', () 
       slots: { controls: '<div data-testid="scenario-controls">At Expiry / Estimated Now</div>' },
     })
   it('shown on Payoff, hidden on P&L Table and Greeks, back on Payoff', async () => {
+    // GC-UI b1 D-B04: the controls sit in the Payoff panel's one header row, so they hide with that panel
     const w = withControls()
-    expect(shown(w, 'scenario-controls-slot')).toBe(true)
+    const header = t(w, 'payoff-header')
+    expect(t(w, 'panel-payoff').find('[data-testid="payoff-header"]').exists()).toBe(true)
+    expect(header.find('[data-testid="scenario-controls-slot"]').exists()).toBe(true)
+    expect(header.find('[role="tablist"]').exists()).toBe(true) // the sub-tabs share the row
+    expect(shown(w, 'panel-payoff')).toBe(true)
     await t(w, 'tab-pnl').trigger('click')
-    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    expect(shown(w, 'panel-payoff')).toBe(false)
     await t(w, 'tab-greeks').trigger('click')
-    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    expect(shown(w, 'panel-payoff')).toBe(false)
     await t(w, 'tab-strategy-chart').trigger('click')
-    expect(shown(w, 'scenario-controls-slot')).toBe(false)
+    expect(shown(w, 'panel-payoff')).toBe(false)
     await t(w, 'tab-payoff').trigger('click')
-    expect(shown(w, 'scenario-controls-slot')).toBe(true)
+    expect(shown(w, 'panel-payoff')).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('GC-UI b1 D-B01 / D-B02: tab labels follow the reference (RD-123)', () => {
+  it('"Payoff Graph | P&L Table | Greeks | Strategy Chart", sub-tabs "Payoff Graph | Payoff Table"', () => {
+    const w = card()
+    const tabs = w.findAll('[role="tablist"]')
+    expect(tabs[0].findAll('[role="tab"]').map((b) => b.text())).toEqual(['Payoff Graph', 'P&L Table', 'Greeks', 'Strategy Chart'])
+    expect(tabs[1].findAll('[role="tab"]').map((b) => b.text())).toEqual(['Payoff Graph', 'Payoff Table'])
+    w.unmount()
+  })
+  it('the card hands the reply blocks to the graph and passes its zoom up', async () => {
+    const extra = { curves: { at_expiry: { available: true, points: real.payoff.points }, estimated_now: { available: false, points: [], unavailable_reason: 'x' } },
+      breakevens: ['22650'], sd: null, oi: null, zoom: { step: '100', start: '21500', end: '23500' } }
+    const w = card(real.table, extra)
+    const chart = w.findComponent({ name: 'PayoffChart' })
+    expect(chart.props()).toMatchObject(extra)
+    await t(w, 'payoff-zoom-in').trigger('click')
+    expect(w.emitted('zoom')).toEqual([[{ rangeStart: '22000', rangeEnd: '23000' }]])
     w.unmount()
   })
 })

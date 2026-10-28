@@ -45,7 +45,7 @@ import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
-import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
+import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
@@ -140,7 +140,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), fallback, seq: mine.seq }, { signal: mine.signal })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
     // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
     // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
@@ -215,7 +215,7 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ...choiceFields(choice.value) })
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS })
   else live.stop()
 }
 
@@ -471,6 +471,13 @@ const setChoice = (next) => {
   load()
   syncLive()
 }
+// GC-UI b1 D-B10 (REQ-083 AC-7): the graph's Zoom is a new range pick; the engine sends the points for it
+const zoomTo = (range) => setChoice({ ...choice.value, ...range })
+// the reply's scenario grid a zoom stays on (null: no zoom offered, nothing guessed)
+const zoomGrid = computed(() => {
+  const sc = data.value?.scenario
+  return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
+})
 onBeforeUnmount(() => {
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
@@ -713,6 +720,12 @@ const pricesStamp = computed(() => {
             :legs="data.legs ?? null"
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+            :curves="data.curves ?? null"
+            :breakevens="data.summary.breakevens ?? []"
+            :sd="data.standard_deviation ?? null"
+            :oi="data.open_interest ?? null"
+            :zoom="zoomGrid"
+            @zoom="zoomTo"
           >
             <template #controls>
               <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
