@@ -107,9 +107,10 @@ ADR-206), CI, `merge.py`, the deferred issues, the regenerated `views/spec-diges
 
 ## Running at handover
 
-API (PID 8724, port 8765) and Vite (PID 27948, port 5174) were STOPPED by Claude Code at ~19:45 IST because the PC was
-critically low on memory; the next session starts both with the contract's "Running the app" commands (check
-`netstat -ano` first). Viewer PID 31380 (port 8799) was not stopped. 19 GC-UI worktrees
+The API (PID 8724, port 8765) was STOPPED by Claude Code at ~19:45 IST because the PC was critically low on memory;
+Vite (PID 27948, port 5174) and the viewer (PID 31380, port 8799) were still listening afterwards (only Vite's
+launching shell was stopped). The next session checks `netstat -ano`, starts the API with the contract's "Running the
+app" command, then restarts Vite (it reads the API's route list at start). 19 GC-UI worktrees
 `OptionsForOptions2-gcui-*` are merged into build/gcbm-must-have and stay until the land goal (wt-rm refuses branches
 not on main without -Discard); never `rm -rf` them (their frontend\node_modules are JUNCTIONS to the gcbm install).
 
