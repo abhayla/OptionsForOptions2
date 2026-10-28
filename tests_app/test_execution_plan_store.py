@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from ofo.engine.legs import Action
@@ -28,9 +29,10 @@ from ofo.execution.basket import make_tag
 from ofo.strategy import stored_form as sf
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
+from ofo_app import reconcile_attribution as ra
 from ofo_app import strategy_store as store
-from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
-from sqlalchemy import text
+from ofo_app.catalogue_store import apply_update, load_catalogue, parse_rows_naming_the_row
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -672,3 +674,137 @@ async def test_the_database_guards_the_filled_quantity(app_engine, admin_engine)
         await _two_leg_plan(owner)
         params = {**params, "s": owner.strategy_id, "tag": f"OFS{owner.strategy_id}V1L2"}
         await _refused_sql(owner.conn, insert_filled, PLAN_GUARD_SQLSTATE, params)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# GC-BP F-3: every plan of many strategies in a fixed number of queries (GET /positions took 13-18 s at ~47
+# strategies: 1 + ~3 queries per strategy over a 136 ms link)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class _Queries:
+    """Counts the statements the engine sends while the block runs (SQLAlchemy before_cursor_execute)."""
+
+    def __init__(self, engine) -> None:
+        self.target, self.count = engine.sync_engine, 0
+
+    def _seen(self, *_args) -> None:
+        self.count += 1
+
+    def __enter__(self):
+        event.listen(self.target, "before_cursor_execute", self._seen)
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        event.remove(self.target, "before_cursor_execute", self._seen)
+
+
+TWO_LEG = 2  # _mixed_strategies: the kind holding one open two-leg plan
+MAX_POSITIONS_QUERIES = 6  # list strategies + owned, orders, symbols, plans (+ slack): never per strategy
+
+
+async def _mixed_strategies(tx: _Tx, count: int) -> list[int]:
+    """``count`` strategies of tx.user (tx.strategy_id first), plans by position modulo 4: 0 = entry closed filled +
+    exit open (two plans, mixed statuses), 1 = no plan, 2 = one open two-leg plan (two instruments), 3 = one plan
+    closed nothing_placed."""
+    ids = [tx.strategy_id] + [await _new_strategy(tx.conn, tx.user, catalogue=False) for _ in range(count - 1)]
+    second = _instrument_of(SYMBOLS[1])
+    for n, sid in enumerate(ids):
+        kind = n % 4
+        if kind in (0, 3):
+            await plans.record_plan(tx.conn, tx.user, sid, 1, "ENTRY", (_order(sid, 1, "BUY", "5.45"),))
+            await _close(tx.conn, tx.user, sid, 1, "filled" if kind == 0 else "nothing_placed")
+        if kind == 0:
+            await plans.record_plan(tx.conn, tx.user, sid, 2, "EXIT", (_order(sid, 2, "SELL", "3.10"),))
+        if kind == TWO_LEG:
+            await plans.record_plan(tx.conn, tx.user, sid, 1, "ENTRY", (
+                _order(sid, 1, "BUY", "5.45"),
+                _order(sid, 1, "SELL", "4.00", leg=1, instrument_id=second, tradingsymbol=SYMBOLS[1])))
+    return ids
+
+
+async def test_f3_batched_read_equals_plans_for_per_strategy(app_engine):
+    """F-3 equivalence: plans_for_strategies answers exactly what plans_for answers per strategy (same plans, same
+    order, same orders and symbols), keys in the asked order, () for a strategy with no plan; no ids -> {}."""
+    async with _Tx(app_engine) as tx:
+        ids = await _mixed_strategies(tx, 6)
+        asked = [ids[3], ids[0], ids[5], ids[1], ids[2], ids[4]]
+        batched = await plans.plans_for_strategies(tx.conn, tx.user, asked)
+        assert list(batched) == asked
+        assert batched == {sid: await plans.plans_for(tx.conn, tx.user, sid) for sid in asked}
+        assert batched[ids[1]] == () and [p.plan_number for p in batched[ids[0]]] == [1, 2]
+        assert [(o.leg_index, o.tradingsymbol) for o in batched[ids[2]][0].orders] == [(0, SYMBOLS[0]),
+                                                                                      (1, SYMBOLS[1])]
+        assert await plans.plans_for_strategies(tx.conn, tx.user, []) == {}
+
+
+async def test_f3_batched_read_refuses_like_plans_for(app_engine):
+    """F-3 REQ-125: another user's, a missing or a malformed strategy id among the asked ids is not_found, exactly as
+    plans_for refuses it; an order whose instrument has no Zerodha symbol is bad_plan, as plans_for."""
+    async with _Tx(app_engine) as tx:
+        ids = await _mixed_strategies(tx, 2)
+        for who, asked in [("someone-else", ids), (tx.user, [ids[0], ids[1] + 10**6]), (tx.user, [ids[0], 0]),
+                           (tx.user, [True])]:
+            await _refused(plans.NOT_FOUND, plans.plans_for_strategies(tx.conn, who, asked))
+
+
+class _SymbolRows:
+    """A connection fake answering only the batched symbol query with fixed catalogue rows (no database)."""
+
+    def __init__(self, rows) -> None:
+        self.rows, self.calls = rows, 0
+
+    async def execute(self, statement, params):
+        assert statement is plans._SYMBOLS_MANY
+        self.calls += 1
+        return SimpleNamespace(all=lambda: [r for r in self.rows if r.exchange_token in params["toks"]])
+
+
+def _row(seg: str, tok: int, symbol: str, live: bool) -> SimpleNamespace:
+    return SimpleNamespace(exchange_segment=seg, exchange_token=tok, broker_symbol=symbol, live=live)
+
+
+@pytest.mark.parametrize("ids, rows, message", [
+    (["NFO-OPT:1", "bad", "NFO-OPT:2"], [_row("NFO-OPT", 1, "A", True)], "'bad' is not"),  # malformed id, in turn
+    (["NFO-OPT:2", "bad"], [], "'NFO-OPT:2' has 0"),  # an earlier id with no row fails first
+    (["NFO-OPT:1"], [_row("NFO-OPT", 1, "A", False), _row("NFO-OPT", 1, "B", False)], "has 2"),  # two, none live
+    (["NFO-OPT:1"], [_row("BFO-OPT", 1, "A", True)], "has 0"),  # same token, other segment: not this instrument
+])
+async def test_f3_batched_symbols_refuse_like_zerodha_symbol(ids, rows, message):
+    """F-3 answer state "a plan row that cannot be read": the one-query symbol read refuses as bad_plan exactly where
+    a zerodha_symbol loop over the same ids would, first failure first (route: strategy_stored_unreadable)."""
+    with pytest.raises(plans.PlanStoreError, match=message) as err:
+        await plans._symbols_of(_SymbolRows(rows), ids)
+    assert err.value.code == plans.BAD_PLAN
+
+
+async def test_f3_batched_symbols_one_query_live_first():
+    """F-3: every id in one query; a live symbol wins over a retired one, as zerodha_symbol picks."""
+    conn = _SymbolRows([_row("NFO-OPT", 1, "OLD", False), _row("NFO-OPT", 1, "NEW", True),
+                        _row("NFO-OPT", 2, "B", True)])
+    assert await plans._symbols_of(conn, ["NFO-OPT:2", "NFO-OPT:1", "NFO-OPT:2"]) == {"NFO-OPT:2": "B",
+                                                                                    "NFO-OPT:1": "NEW"}
+    assert conn.calls == 1
+    assert await plans._symbols_of(conn, []) == {} and conn.calls == 1
+
+
+async def test_f3_attribution_query_count_does_not_grow_with_strategies(app_engine):
+    """F-3 detection for the class: attribute_and_compare (the GET /positions read) sends the same number of
+    statements for 2 strategies as for 6 (old code: 1 + ~3 per strategy), and still counts every strategy's plans."""
+    def clock():
+        return datetime.now(IST)
+
+    counts, held = {}, {}
+    for k in (2, 6):
+        async with _Tx(app_engine) as tx:
+            ids = await _mixed_strategies(tx, k)
+            sources = ra.Sources(await load_catalogue(tx.conn), clock)
+            with _Queries(app_engine) as seen:
+                result = await ra.attribute_and_compare(ra.Account(tx.conn, tx.user), {}, {}, (), sources,
+                                                        at=clock())
+            counts[k] = seen.count
+            held[k] = {int(sid) for sid in result.held} | {int(p.strategy_id) for e in result.pending.values()
+                                                            for p in e}
+            expected = {sid for n, sid in enumerate(ids) if n % 4 in (0, 2)}  # a fill or an open plan
+            assert held[k] == expected
+    assert counts[2] == counts[6] <= MAX_POSITIONS_QUERIES, counts
