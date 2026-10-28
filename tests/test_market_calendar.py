@@ -8,7 +8,8 @@ import datetime
 import json
 
 import pytest
-from ofo.market_calendar import DATA_FILE, MarketStatus, is_market_open, market_status, next_open
+from ofo.market_calendar import (DATA_FILE, MarketStatus, is_market_open, last_close, market_status, next_open,
+                                 price_time)
 from ofo.timeutil import IST
 
 
@@ -82,3 +83,23 @@ def test_ac12_data_file_names_source_date_and_the_two_named_holidays() -> None:
     assert raw["source"].startswith("https://www.nseindia.com/") and raw["fetched"] == "2026-10-19"
     named = dict(raw["holidays"]["2026"])
     assert named["2026-10-20"] == "Dussehra" and named["2026-11-10"] == "Diwali-Balipratipada"
+
+
+@pytest.mark.parametrize("when,expected", [
+    (at(28, 7, 46, 28), at(27, 15, 30)),  # before the open: yesterday's close
+    (at(27, 15, 30), at(27, 15, 30)),  # exactly the close: that close
+    (at(27, 15, 29, 59), at(26, 15, 30)),  # in hours: the latest close at or before (Mon 26th)
+    (at(27, 17, 35, 6), at(27, 15, 30)),  # Kite's post-close stamp
+    (at(21, 7, 46), at(19, 15, 30)),  # the day after the Tue 20 Oct Dussehra holiday
+    (at(31, 11), at(30, 15, 30)),  # Saturday
+    (at(1, 8, month=11), at(30, 15, 30)),  # Sunday
+])
+def test_last_close_is_the_mirror_of_next_open(when, expected) -> None:
+    """GC-BM F-19 (ADR-200 (2)): 15:30 IST of the latest trading day whose close is at or before ``when``."""
+    assert last_close(when) == expected
+
+
+def test_last_close_and_price_time_without_calendar_data_are_none() -> None:
+    jan = datetime.datetime(2027, 1, 4, 7, 46, tzinfo=IST)
+    assert last_close(jan) is None and price_time(jan) is None
+    assert price_time(at(28, 10)) == at(28, 10)  # in hours: the time itself

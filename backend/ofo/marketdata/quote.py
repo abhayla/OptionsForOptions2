@@ -15,6 +15,7 @@ import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from ofo.market_calendar import price_time
 from ofo.engine.legs import Instrument, require_price
 from ofo.rules.inputs import DataHealth
 
@@ -119,6 +120,11 @@ class NormalizedQuote:
     source: SourceMetadata
     health: DataHealth
     validation_errors: tuple[str, ...] = field(default=(), init=False)
+    #: ADR-200 (2), GC-BM F-19: when the price was MADE, the time every market-closed label prints. In market hours it
+    #: is ``timestamp``; outside them the close (15:30 IST) of the session the price belongs to (a frame's arrival time
+    #: or Kite's post-close stamp is never a price time); None when the calendar has no data for that date. Derived
+    #: here, never passed in, so every provider gets the same answer. ``timestamp`` itself is never changed.
+    price_at: datetime.datetime | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         _require_nonempty(self.instrument_id, "instrument_id")
@@ -176,6 +182,7 @@ class NormalizedQuote:
 
         if not isinstance(self.timestamp, datetime.datetime) or self.timestamp.tzinfo is None:
             raise ValueError(f"timestamp must be a timezone-aware datetime, got {self.timestamp!r}")
+        object.__setattr__(self, "price_at", price_time(self.timestamp))
 
         if not isinstance(self.source, SourceMetadata):
             raise ValueError(f"source must be a SourceMetadata, got {self.source!r}")
