@@ -964,6 +964,137 @@
         "title": "NetPremiumOut",
         "description": "REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a\nleg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the\nlegs' quantities differ."
       },
+      "OiRowOut": {
+        "properties": {
+          "strike": {
+            "type": "string",
+            "title": "Strike"
+          },
+          "call_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi"
+          },
+          "call_oi_display": {
+            "title": "Call Oi Display"
+          },
+          "put_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi"
+          },
+          "put_oi_display": {
+            "title": "Put Oi Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strike",
+          "call_oi",
+          "call_oi_display",
+          "put_oi",
+          "put_oi_display"
+        ],
+        "title": "OiRowOut",
+        "description": "One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / \"0\"."
+      },
+      "OpenInterestOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "expiry_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Note"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "read_at_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At Display"
+          },
+          "contracts": {
+            "type": "integer",
+            "title": "Contracts"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OiRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "unavailable_reason",
+          "expiry",
+          "expiry_note",
+          "read_at",
+          "read_at_display",
+          "contracts",
+          "rows"
+        ],
+        "title": "OpenInterestOut",
+        "description": "REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason."
+      },
       "OutcomeRequest": {
         "properties": {
           "underlying": {
@@ -1069,6 +1200,12 @@
             "type": "boolean",
             "title": "Sd Bands",
             "description": "REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day horizon, the days to expiry when fewer)",
+            "default": false
+          },
+          "open_interest": {
+            "type": "boolean",
+            "title": "Open Interest",
+            "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
             "default": false
           }
         },
@@ -1290,6 +1427,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/StandardDeviationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_interest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenInterestOut"
               },
               {
                 "type": "null"
