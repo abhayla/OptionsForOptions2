@@ -121,6 +121,7 @@ const DEPTH_REASON_TEXT = Object.freeze({
   NOT_STREAMING: 'This contract is not streaming.',
   NO_DEPTH_RECEIVED: 'No depth has been received for this contract yet.',
   DEPTH_EMPTY: 'The depth the feed sent is empty.',
+  MARKET_CLOSED: 'The market is closed. No depth is held from the last session.',
 })
 const DAY_STATS_REASON_TEXT = Object.freeze({
   NOT_OFFERED: 'The data provider does not send day figures.',

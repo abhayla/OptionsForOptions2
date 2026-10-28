@@ -33,20 +33,30 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
+import struct  # noqa: E402
+
+import test_drawer_after_hours as dah  # noqa: E402
 import test_leg_picker_routes as lp  # noqa: E402
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, listed, new_provider, replay  # noqa: E402
 from ofo.engine.legs import Instrument  # noqa: E402
 from ofo.errors import render  # noqa: E402
 from ofo.instruments.models import InstrumentId  # noqa: E402
 from ofo.market_calendar import is_market_open  # noqa: E402
+from ofo.marketdata.disconnect import market_closed_error  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
+from ofo.marketdata.feed_health import FEED_MARKET_CLOSED  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.marketdata.quote import priced  # noqa: E402
 from ofo.rules.inputs import DataHealth  # noqa: E402
-from ofo_app import live_market  # noqa: E402
+from ofo_app import (  # noqa: E402
+    index_push,
+    live_market,
+)
+from ofo_app.chain_push import ChainRequest, chain_answer  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import execute, leg_picker  # noqa: E402
+from ofo_app.routes.broker_status import build_status  # noqa: E402
 from ofo_app.routes.outcome import (  # noqa: E402
     MarketContext,
     MarketState,
@@ -364,3 +374,96 @@ def test_the_drawer_carries_the_label_time_after_hours_only(at, closed):
         leg_picker.LEASE.release()
     assert out.market_closed is closed
     assert (out.last_price_at is not None) is closed
+
+
+# ---- GC-BM F-19 (round 3 of the label-time class, ADR-200 (2)): before the open, every label is the session close ----
+# Live 2026-10-28 07:46-07:52 IST: the banner said "Prices are from 28 Oct 2026, 07:46:17 IST" and entries "Close, 28
+# Oct 2026, 07:47:44 IST": Kite's pre-open snapshot packets carry no exchange time, so ``timestamp`` is the frame's
+# ARRIVAL time. Here: the real 2026-10-08 session replayed, then at Fri 2026-10-09 07:46:28 IST (before the open) every
+# held contract gets a quote-mode packet (44 bytes, no exchange time) and the NIFTY index a 28-byte packet, both
+# carrying the held last price - the live shape. Every label must read 08 Oct 2026, 15:30 IST.
+
+PRE_OPEN = datetime.datetime(2026, 10, 9, 7, 46, 28, tzinfo=IST)
+SESSION_CLOSE = datetime.datetime(2026, 10, 8, 15, 30, tzinfo=IST)
+CHAIN_EXPIRY = datetime.date(2026, 10, 13)
+
+
+def _pre_open_frame(provider) -> bytes:
+    packets = []
+    for iid, token in provider._token_of.items():
+        held = provider.book.get(iid, IN_HOURS)
+        if held is None or held.ltp is None:
+            continue
+        paise = int(held.ltp * 100)
+        if held.instrument_type is None:  # an index: the 28-byte packet, no exchange time
+            packets.append(struct.pack(">7i", token, paise, paise, paise, paise, paise, 0))
+        else:  # a contract: the 44-byte quote packet, no exchange time
+            packets.append(struct.pack(">11i", token, paise, 1, paise, held.volume or 0, 0, 0, paise, paise, paise,
+                                       paise))
+    out = len(packets).to_bytes(2, "big")
+    for p in packets:
+        out += len(p).to_bytes(2, "big") + p
+    return out
+
+
+def _pre_open():
+    provider, clock, _last = _replayed()
+    clock.now = PRE_OPEN
+    assert provider.on_frame(_pre_open_frame(provider), PRE_OPEN)  # the snapshot lands in the book
+    held = provider.book.get(CONDOR[0][0], PRE_OPEN)
+    assert held.timestamp == PRE_OPEN and held.price_at == SESSION_CLOSE  # the shape the live miss had
+    return provider, clock
+
+
+async def test_pre_open_outcome_and_planned_entry_are_labelled_with_the_session_close():
+    provider, clock = _pre_open()
+    body = _condor(provider, PRE_OPEN)
+    async with AsyncClient(transport=ASGITransport(app=_app(provider, clock)), base_url="http://test") as ac:
+        out = (await ac.post("/api/strategies/outcome", json=body)).json()
+        entries = (await ac.post("/api/strategies/planned-entry",
+                                 json={"underlying": "NIFTY", "instrument_ids": [i for i, _ in CONDOR]})).json()
+    assert out["market_closed"] is True
+    assert datetime.datetime.fromisoformat(out["last_price_at"]) == SESSION_CLOSE
+    assert entries["entries"]
+    assert all(datetime.datetime.fromisoformat(e["close_at"]) == SESSION_CLOSE for e in entries["entries"])
+
+
+def test_pre_open_index_and_chain_are_labelled_with_the_session_close():
+    provider, clock = _pre_open()
+    ctx = MarketContext(provider, clock, RATE)
+    idx = index_push.indices_answer(ctx, live=True, now=clock)
+    nifty = next(r for r in idx.indices if r.underlying == "NIFTY")
+    assert (idx.market_closed, idx.last_price_at, nifty.at) == (True, SESSION_CLOSE, SESSION_CLOSE)
+    for live in (True, False):
+        chain = chain_answer(ctx, ChainRequest(underlying="NIFTY", expiry=CHAIN_EXPIRY),
+                             dah._catalogue(listed()), None, live=live, now=clock)
+        assert (chain.market_closed, chain.spot_at, chain.last_price_at) == (True, SESSION_CLOSE, SESSION_CLOSE)
+
+
+def test_pre_open_broker_status_text_shows_the_session_close_not_the_frame_time():
+    """The broker status reads the feed's last PRICE frame time (07:46:28 here); its closed text shows the close."""
+    provider, _clock = _pre_open()
+    assert provider.feed.last_price_at == PRE_OPEN
+    status = build_status((PRE_OPEN - datetime.timedelta(hours=1), False), None, live_market.LIVE, FEED_MARKET_CLOSED,
+                          market_is_open=False, last_price_at=provider.feed.last_price_at)
+    assert status.live_market_closed is not None
+    assert status.live_market_closed.what_happened == market_closed_error(SESSION_CLOSE).what_happened
+    assert "07:46" not in status.live_market_closed.what_happened
+
+
+def test_pre_open_strikes_and_depth_popup_are_labelled_with_the_session_close():
+    provider, clock = _pre_open()
+    feed = LiveFeed(MarketContext(provider, clock, RATE), FanOut(provider))
+    try:
+        out = leg_picker.strikes_answer(feed, "NIFTY", CHAIN_EXPIRY, 10, dah._catalogue(listed()), clock)
+    finally:
+        leg_picker.LEASE.release()
+    assert (out.market_closed, out.last_price_at) == (True, SESSION_CLOSE)
+    held = CONDOR[0][0]
+    handle = feed.fanout.subscribe(lambda _q: None, [held], max_queue=1)
+    try:
+        depth = leg_picker.depth_answer(feed, held, clock)
+    finally:
+        feed.fanout.unsubscribe(handle)
+    assert (depth.market_closed, depth.last_price_at) == (True, SESSION_CLOSE)
+    assert depth.reason != "FEED_STALE"

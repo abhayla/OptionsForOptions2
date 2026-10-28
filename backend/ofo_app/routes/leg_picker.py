@@ -544,10 +544,13 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
 
 # ---- the depth read -------------------------------------------------------------------------------------------------
 
-def _not_available(instrument_id: str, reason: DepthReason, read_at: datetime.datetime) -> DepthOut:
-    return DepthOut(state="NOT_AVAILABLE", reason=reason, instrument_id=instrument_id, bids=[], asks=[], day_open=None,
-                    day_high=None, day_low=None, prev_close=None, last_trade_at=None, day_stats_reason=None,
-                    read_at=read_at)
+def _not_available(instrument_id: str, reason: DepthReason, read_at: datetime.datetime, **closed: Any) -> DepthOut:
+    """No levels, with the reason. ``closed`` (market-closed answers only): ``market_closed``, ``last_price_at`` and
+    the held day values."""
+    fields: dict[str, Any] = {"day_open": None, "day_high": None, "day_low": None, "prev_close": None,
+                              "last_trade_at": None, "day_stats_reason": None, **closed}
+    return DepthOut(state="NOT_AVAILABLE", reason=reason, instrument_id=instrument_id, bids=[], asks=[],
+                    read_at=read_at, **fields)
 
 
 def _depth_blocker(feed: LiveFeed, instrument_id: str) -> DepthReason | None:
@@ -597,7 +600,7 @@ def _after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime)
         return None
     provider = feed.ctx.provider
     if provider.status().session_ended or feed.fanout.subscriber_count(instrument_id) == 0:
-        return _not_available(instrument_id, "MARKET_CLOSED", read_at).model_copy(update={"market_closed": True})
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at, market_closed=True)
     held = provider.depth_after_close(instrument_id, read_at)  # the interface method (base: None)
     depth, stats = (None, None) if held is None else held
     # ADR-200 (2): the price's own time (the session close outside hours), never a frame's
@@ -605,8 +608,8 @@ def _after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime)
     day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
     if depth is None or (not depth.bids and not depth.asks):
         fields = _day_fields(day) if stats is not None else {}
-        return _not_available(instrument_id, "MARKET_CLOSED", read_at).model_copy(
-            update={"market_closed": True, "last_price_at": own_at, **fields})
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at, market_closed=True, last_price_at=own_at,
+                              **fields)
     return _depth_out(instrument_id, depth, day, read_at, market_closed=True, last_price_at=own_at)
 
 
