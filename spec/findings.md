@@ -944,3 +944,17 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Total = sum of legs. Not measured: an iron condor (REQ-145 AC-1 names one; the definition does not depend on the
   shape) and a weekend gap (Friday -> Monday open, where the study says actual decay is 1/3 to 2/3 of the shown figure).
   Status: **measured on Sensibull logged out (form + definition only, never used to check our numbers)**.
+
+## F-64 - Kite's historical minute candles cover the Strategy Chart's 10-day window for a leg and the future, but an option leg misses about 5% of the future's minutes and prices arrive as JSON numbers
+- Measured 2026-10-28 ~21:45 IST (GC-UI step 5 core proof, after hours) on the owner's own Kite Connect session read
+  from the encrypted store (`history_finalize.stored_credentials`), through the app's allow-listed door
+  (`GET /instruments/historical/{token}/minute`, `oi=1`), 2026-10-14 09:15 to 2026-10-28 15:30 IST: NIFTY26N0325000CE
+  (token 13908994) 3,638 candles, first `2026-10-14T09:15 5.4`, last `2026-10-28T15:29 close 0.65`; NIFTY26NOVFUT
+  (token 15736578) 3,840 candles, first `2026-10-14T09:15 open 22900`, last `2026-10-28T15:29 close 22775`. 10 trading
+  days. The leg lacks 202 of the future's 3,840 minutes (5.3%) and has none the future lacks; prices are JSON numbers
+  (here `int` for 22900, floats elsewhere, F-33), so the server must read them through `Decimal(str(x))` (ADR-008).
+- Only the `minute` interval is on the Kite allow-list (`ofo/broker/kite_endpoints.py`, `ofo_app/kite_history.py`);
+  `60minute` and `day` are refused before sending. REQ-091 AC-2 allows 1-minute bars, so no allow-list change is needed.
+- Bears on REQ-091 AC-2 (1-minute bars over the window), AC-4 (a minute where any leg has no candle is a gap, never
+  interpolated: with one illiquid leg about 1 minute in 20 is a gap, and with four legs more), AC-5 (listing date), and
+  ADR-203 (1). Status: **measured once, one leg + the future; a 4-leg strategy and a far-OTM leg not measured**.
