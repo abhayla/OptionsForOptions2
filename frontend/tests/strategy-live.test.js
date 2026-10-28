@@ -901,12 +901,16 @@ describe('REQ-135 AC-3: one Prices-as-of stamp from last_price_at, never a refre
     w.unmount()
   })
 
-  it('a stale answer shows its data-health label in place of the time', async () => {
+  // GC-UI step 3b (D-A42, ADR-202 (3)): the answer's output label is never silent (ADR-061), but it is shown ONCE, as
+  // the small label beside the summary figures it qualifies; the foot stamp keeps the true price time (last_price_at).
+  it('a stale answer shows its data-health label once, beside the summary figures; the stamp keeps the price time', async () => {
     const w = await open({ ...FRESH, output_label: 'Prices are 4 minutes old' })
-    expect(stamp(w).text()).toBe('Prices are 4 minutes old')
-    expect(stamp(w).attributes('data-kind')).toBe('health')
-    expect(w.text()).not.toContain('Prices as of')
-    w.unmount()
+    try {
+      expect(w.find('[data-testid="output-label"]').text()).toBe('Prices are 4 minutes old')
+      expect(w.text().match(/Prices are 4 minutes old/g)).toHaveLength(1)
+      expect(stamp(w).text()).toBe('Prices as of 10:15:00 IST')
+      expect(stamp(w).attributes('data-kind')).toBe('time')
+    } finally { w.unmount() }
   })
 
   it('a stale leg label (staleLegs) also replaces the time', async () => {
