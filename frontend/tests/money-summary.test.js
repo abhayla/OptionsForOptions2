@@ -8,52 +8,75 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import MoneySummary from "@/components/strategy/MoneySummary.vue";
 import SummaryCards from "@/components/strategy/SummaryCards.vue";
-import { maxLine, istTime, groupMoney } from "@/lib/displayFormat";
+import { istTime, groupMoney } from "@/lib/displayFormat";
+import { summaryFigure } from "@/lib/summaryFigures";
 import CONDOR from "./fixtures/outcome-money-condor.json";
 import NO_RATES from "./fixtures/outcome-money-no-rates.json";
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`);
+// GC-UI step 3b: the props exactly as StrategyBuilderPage passes them (server display strings + the exact values for "?")
 const cardProps = (o) => ({
-  maxProfit: maxLine(o.summary, "profit"),
-  maxLoss: maxLine(o.summary, "loss"),
-  breakevens: o.summary.breakevens,
+  maxProfit: summaryFigure(o.summary, "profit"),
+  maxLoss: summaryFigure(o.summary, "loss"),
+  maxProfitExact: o.summary.max_profit ?? null,
+  maxLossExact: o.summary.max_loss ?? null,
+  breakevens: o.summary.breakevens_display ?? [],
+  breakevensExact: o.summary.breakevens ?? [],
   rewardRisk: o.summary.reward_risk ?? null,
   rewardRiskReason: o.summary.reward_risk_reason ?? null,
   riskReward: o.summary.risk_reward ?? null,
-  timeValue: o.summary.time_value ?? null,
-  intrinsicValue: o.summary.intrinsic_value ?? null,
+  timeValue: o.summary.time_value_display ?? null,
+  timeValueExact: o.summary.time_value ?? null,
+  intrinsicValue: o.summary.intrinsic_value_display ?? null,
+  intrinsicValueExact: o.summary.intrinsic_value ?? null,
   valueLabel: o.summary.value_label ?? null,
   valueReason: o.summary.value_reason ?? null,
   fundsShare: o.summary.funds_share ?? null,
 });
+// ADR-202 (1): a figure's sentences, funds line and exact value are lines of its "?"; this opens it and reads them.
+async function hintLines(w, fig) {
+  const hint = w.find(`[data-testid="figure-hint"][data-figure="${fig}"]`);
+  if (!hint.exists()) throw new Error(`no "?" for ${fig}`);
+  await hint.find('[data-testid="figure-hint-mark"]').trigger("click");
+  const lines = hint.findAll('[data-testid="figure-hint-line"]').map((l) => l.text());
+  expect(hint.find('[role="tooltip"]').exists()).toBe(true);
+  await hint.find('[data-testid="figure-hint-mark"]').trigger("click");
+  return lines;
+}
+const fundsLineOf = (share) =>
+  `Percentages are of Rs ${groupMoney(share.funds)} available funds, read ${istTime(share.read_at)}`;
 const money = (o) => ({
   netPremium: o.summary.net_premium ?? null,
   charges: o.charges_breakdown ?? null,
 });
 
 describe("core: the real reply is printed as sent", () => {
-  it("net premium text, per unit, ratios, values, percentages and funds line equal the server strings", () => {
+  it("net premium text, per unit, ratios, values, percentages and funds line equal the server strings", async () => {
     const s = CONDOR.summary;
     const m = mount(MoneySummary, { props: money(CONDOR) });
-    expect(t(m, "net-premium-text").text()).toBe(s.net_premium.text);
-    expect(t(m, "net-premium-text").text()).toBe("Get ₹4,754.75");
+    // REQ-152 AC-1/AC-3: the server's side word + whole-rupee display; its exact sentence is in the net premium "?"
+    expect(t(m, "net-premium-text").text()).toBe(`Get ${s.net_premium.amount_display}`);
+    expect(t(m, "net-premium-text").text()).toBe("Get 4,755");
+    expect(await hintLines(m, "net_premium")).toEqual(["Get ₹4,754.75"]);
+    expect(s.net_premium.text).toBe("Get ₹4,754.75");
     expect(t(m, "net-premium-per-unit").text()).toBe(
       `(${s.net_premium.per_unit} per unit)`,
     );
     const c = mount(SummaryCards, { props: cardProps(CONDOR) });
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
     expect(s.reward_risk).toBe("0.54");
-    expect(t(c, "time-value").text()).toBe(groupMoney(s.time_value));
-    expect(t(c, "intrinsic-value").text()).toBe(groupMoney(s.intrinsic_value));
-    expect(t(c, "value-label").text()).toBe("value of the options, not P&L");
-    expect(t(c, "max-profit").attributes("data-raw")).toBe(s.max_profit);
+    expect(t(c, "time-value").text()).toBe(s.time_value_display);
+    expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value_display);
+    expect(await hintLines(c, "time_value")).toEqual(["value of the options, not P&L", `Exact value: ${s.time_value}`]);
+    expect(t(c, "max-profit").text()).toBe(s.max_profit_display);
     expect(t(c, "max-profit-percent").text()).toBe(
       s.funds_share.max_profit_text,
     );
     expect(t(c, "max-loss-percent").text()).toBe(s.funds_share.max_loss_text);
-    expect(t(c, "funds-line").text()).toBe(
-      `Percentages are of Rs ${groupMoney(s.funds_share.funds)} available funds, read ${istTime(s.funds_share.read_at)}`,
-    );
+    // REQ-081 AC-10 (as changed by ADR-202 (1)): the funds line, words unchanged, in BOTH maxima's "?"
+    const fl = fundsLineOf(s.funds_share);
+    expect(await hintLines(c, "max_profit")).toEqual([fl, `Exact value: ${s.max_profit}`]);
+    expect(await hintLines(c, "max_loss")).toEqual([fl, `Exact value: ${s.max_loss}`]);
   });
 
   it("the switch only chooses which server string is shown", async () => {
@@ -69,26 +92,32 @@ describe("core: the real reply is printed as sent", () => {
 });
 
 describe("every state of every figure", () => {
-  it("no rate table: no breakdown, no Charges action, the rupee figures and net premium stay", () => {
+  it("no rate table: no breakdown, no Charges action, the rupee figures and net premium stay", async () => {
     expect(NO_RATES.charges_breakdown).toBeNull();
     const m = mount(MoneySummary, { props: money(NO_RATES) });
     expect(t(m, "charges-action").exists()).toBe(false);
-    expect(t(m, "net-premium-text").text()).toBe(
-      NO_RATES.summary.net_premium.text,
-    );
+    const np = NO_RATES.summary.net_premium;
+    expect(np.amount_display).toBeTruthy();
+    expect(t(m, "net-premium-text").text()).toBe(`${np.side === "get" ? "Get" : "Pay"} ${np.amount_display}`);
+    expect(await hintLines(m, "net_premium")).toEqual([np.text]);
     const c = mount(SummaryCards, { props: cardProps(NO_RATES) });
     expect(t(c, "max-profit-percent").text()).toBe("708% of funds");
-    expect(t(c, "funds-line").text()).toContain("Rs 671.50 available funds");
+    expect((await hintLines(c, "max_profit"))[0]).toContain("Rs 671.50 available funds");
   });
 
-  it("no funds read: no percentages, no funds line, rupee figures stay", () => {
+  it("no funds read: no percentages, no funds line, rupee figures stay", async () => {
     const c = mount(SummaryCards, {
       props: { ...cardProps(CONDOR), fundsShare: null },
     });
-    for (const id of ["max-profit-percent", "max-loss-percent", "funds-line"])
+    for (const id of ["max-profit-percent", "max-loss-percent"])
       expect(t(c, id).exists()).toBe(false);
-    expect(t(c, "max-profit").attributes("data-raw")).toBe(CONDOR.summary.max_profit);
-    expect(c.text()).not.toContain("%");
+    for (const fig of ["max_profit", "max_loss"])
+      expect((await hintLines(c, fig)).some((l) => l.includes("Percentages are of")), fig).toBe(false);
+    expect(t(c, "max-profit").text()).toBe(CONDOR.summary.max_profit_display);
+    expect(t(c, "max-loss").text()).toBe(CONDOR.summary.max_loss_display);
+    // the only "%" left is the breakeven's distance from spot (REQ-153), never a share of funds
+    expect(c.text()).not.toContain("of funds");
+    expect(c.text().replace(t(c, "breakevens").text(), "")).not.toContain("%");
   });
 
   it("Unlimited side: the figure says Unlimited and no percentage is drawn for it", () => {
@@ -104,7 +133,7 @@ describe("every state of every figure", () => {
         fundsShare: share,
       },
     });
-    expect(t(c, "max-profit").attributes("data-raw")).toBe("Unlimited");
+    expect(t(c, "max-profit").text()).toBe("Unlimited");
     expect(t(c, "max-profit-percent").exists()).toBe(false);
     expect(t(c, "max-loss-percent").text()).toBe(share.max_loss_text);
   });
@@ -143,10 +172,11 @@ describe("every state of every figure", () => {
       side: "pay",
       per_unit: null,
       text: "Pay ₹3,334.50",
+      amount_display: "3,335", // serialize.py _net_premium: whole rupees, half-up
       reason: null,
     };
     const m = mount(MoneySummary, { props: { netPremium: np, charges: null } });
-    expect(t(m, "net-premium-text").text()).toBe("Pay ₹3,334.50");
+    expect(t(m, "net-premium-text").text()).toBe("Pay 3,335");
     expect(t(m, "net-premium-per-unit").exists()).toBe(false);
   });
 
@@ -285,31 +315,37 @@ describe("W-193: the summary card (Region E)", () => {
       expect(t(c, id).exists(), id).toBe(true);
     expect(t(c, "summary-block-margin").find('[data-testid="margin-slot"]').exists()).toBe(true);
     const s = CONDOR.summary;
-    expect(t(c, "max-profit").attributes("data-raw")).toBe(s.max_profit);
-    expect(t(c, "max-loss").attributes('data-raw')).toBe(s.max_loss);
-    expect(t(c, "breakevens").text()).toBe(groupMoney(s.breakevens.join(", ")));
+    expect(t(c, "max-profit").text()).toBe(s.max_profit_display);
+    expect(t(c, "max-loss").text()).toBe(s.max_loss_display);
+    expect(t(c, "breakevens").text()).toBe(s.breakevens_display.join(", "));
     expect(t(c, "reward-risk").text()).toBe(s.reward_risk);
-    expect(t(c, "time-value").text()).toBe(groupMoney(s.time_value));
-    expect(t(c, "intrinsic-value").text()).toBe(groupMoney(s.intrinsic_value));
+    expect(t(c, "time-value").text()).toBe(s.time_value_display);
+    expect(t(c, "intrinsic-value").text()).toBe(s.intrinsic_value_display);
   });
 
-  it("Revision 1 M1 (REQ-034 AC-7): the three plain sentences stay VISIBLE under their figures, outside any tooltip", () => {
+  // REQ-034 AC-7 as changed by ADR-204 (SPEC CHANGE, GC-UI step 3b): the three plain sentences are the FIRST line of
+  // their figure's "?", verbatim and whole; they are no longer a visible paragraph.
+  it("REQ-034 AC-7 (ADR-204): each plain sentence is the first line of its figure's ?, verbatim", async () => {
     const c = full(CONDOR);
-    for (const [id, text] of [
-      ["sum-make", CONDOR.summary.what_can_i_make],
-      ["sum-lose", CONDOR.summary.what_can_i_lose],
-      ["sum-start", CONDOR.summary.where_do_i_start_losing],
+    for (const [fig, text] of [
+      ["max_profit", CONDOR.summary.what_can_i_make],
+      ["max_loss", CONDOR.summary.what_can_i_lose],
+      ["breakeven_expiry", CONDOR.summary.where_do_i_start_losing],
     ]) {
-      expect(t(c, id).attributes('data-full') ?? t(c, id).text(), id).toBe(text);
-      expect(t(c, id).element.closest('[role="tooltip"]'), id).toBeNull();
-      expect(t(c, id).classes(), id).toContain("text-[13px]");
+      expect(text, fig).toBeTruthy();
+      expect((await hintLines(c, fig))[0], fig).toBe(text);
     }
+    for (const id of ["sum-make", "sum-lose", "sum-start"]) expect(t(c, id).exists(), id).toBe(false);
   });
 
-  it("Revision 1 M3 (REQ-081 AC-10): the funds caption is visible in Block 1, under the figures", () => {
+  it("REQ-081 AC-10 (ADR-202 (1)): the funds caption is in Block 1, in the ? of both maxima", async () => {
     const c = full(CONDOR);
-    expect(t(c, "summary-block-outcome").find('[data-testid="funds-line"]').exists()).toBe(true);
-    expect(t(c, "funds-line").element.closest('[role="tooltip"]')).toBeNull();
+    const block = t(c, "summary-block-outcome");
+    const fl = fundsLineOf(CONDOR.summary.funds_share);
+    for (const fig of ["max_profit", "max_loss"]) {
+      expect(block.find(`[data-testid="figure-hint"][data-figure="${fig}"]`).exists(), fig).toBe(true);
+      expect(await hintLines(block, fig), fig).toContain(fl);
+    }
   });
 
   it("UI-116: soft profit / loss pills; Unlimited is shown as the word", () => {
@@ -360,9 +396,14 @@ describe("W-193: the summary card (Region E)", () => {
 });
 
 describe('#582 item 3: Time value and Intrinsic value are grouped like the other figures', () => {
-  it('prints the server text with Indian grouping, a negative one too', () => {
-    const c = mount(SummaryCards, { props: { ...cardProps(CONDOR), timeValue: '12345.60', intrinsicValue: '-1234567.50' } });
-    expect(t(c, "time-value").text()).toBe("12,345.60");
-    expect(t(c, "intrinsic-value").text()).toBe("-12,34,567.50");
+  // REQ-152 AC-1: the Indian grouping is now made by the server (time_value_display); the browser prints it as sent
+  // and puts the exact value in the "?" (AC-3).
+  it('prints the server text with Indian grouping, a negative one too', async () => {
+    const c = mount(SummaryCards, { props: { ...cardProps(CONDOR),
+      timeValue: '+12,346', timeValueExact: '12345.60', intrinsicValue: '\u221212,34,568', intrinsicValueExact: '-1234567.50' } });
+    expect(t(c, "time-value").text()).toBe("+12,346");
+    expect(t(c, "intrinsic-value").text()).toBe("\u221212,34,568");
+    expect(await hintLines(c, "time_value")).toContain("Exact value: 12345.60");
+    expect(await hintLines(c, "intrinsic_value")).toContain("Exact value: -1234567.50");
   });
 });
