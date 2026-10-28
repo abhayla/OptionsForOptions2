@@ -36,6 +36,7 @@ import {
   offeredTypes,
   selectedContract,
   shown,
+  oiCompact,
 } from '@/lib/legPicker'
 
 const props = defineProps({
@@ -206,16 +207,19 @@ function tick() {
 // W-195 (UI-202, UI-205): the view switch picks which of the server's columns each side shows (S-032/S-033); the Greeks
 // view shows Delta and IV only, since Theta/Vega/Gamma are not in this reply (REQ-084). Settings holds the width and size.
 const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['ltp', 'oi'], greeks: ['delta', 'iv'] })
-// D-C27: wide enough for a 4 dp Delta and a 2 dp IV with a gap, so no two values touch
-const COLUMN_WIDTH = Object.freeze({ delta: '48px', ltp: 'minmax(44px,1fr)', oi: '54px', iv: '46px' })
-const ACT_WIDTH = '28px'
+// D-C27 round 2: the LTP view's widths and the 3 px gap add up to 464 px, inside the 470 px the 1536 x 864 drawer panel allows
+// (round 1 widened columns without adding the total up and the grid scrolled sideways). Delta takes a 7-character
+// "-0.4920", the OI a compact "1.23Cr" (oiCompact), the B / S pair two 12 px buttons.
+const COLUMN_WIDTH = Object.freeze({ delta: '44px', ltp: 'minmax(42px,1fr)', oi: '40px', iv: '36px' })
+const ACT_WIDTH = '26px'
+const STRIKE_WIDTH = '58px'
 const view = ref('ltp')
 const settingsOpen = ref(false)
 const columns = computed(() => VIEW_COLUMNS[view.value])
 const sideColumns = (side) => (side === 'ce' ? [...columns.value, 'act'] : ['act', ...[...columns.value].reverse()])
 const gridStyle = computed(() => {
   const widths = columns.value.map((c) => COLUMN_WIDTH[c])
-  return { gridTemplateColumns: [...widths, ACT_WIDTH, '58px', ACT_WIDTH, ...[...widths].reverse()].join(' ') }
+  return { gridTemplateColumns: [...widths, ACT_WIDTH, STRIKE_WIDTH, ACT_WIDTH, ...[...widths].reverse()].join(' ') }
 })
 // the qty sub-row sits under its own side, on the row's second line
 const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / span ${columns.value.length + 1}` : `span ${columns.value.length + 1} / -1` })
@@ -542,13 +546,13 @@ defineExpose({ startEdit, showStrikes })
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
-          <div class="mt-2 grid items-end gap-x-1.5 border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
+          <div class="mt-2 grid items-end gap-x-[3px] border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
             <span class="text-center">Strike</span>
             <span v-for="col in sideColumns('pe')" :key="`pe-${col}`">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
           </div>
           <div
-            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-1.5 border-b border-line text-[11px] tabular-nums num"
+            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-[3px] border-b border-line text-[11px] tabular-nums num"
             :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" :style="gridStyle" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'"
           >
             <template v-for="side in ['ce', 'pe']" :key="side">
@@ -560,19 +564,19 @@ defineExpose({ startEdit, showStrikes })
               <div class="contents" :data-testid="`cell-${side}`">
                 <template v-if="row[side]">
                   <div
-                    v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center px-0.5"
+                    v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center"
                     :class="[side === 'ce' ? 'justify-end' : 'justify-start', itm[ri]?.[side] && col !== 'act' ? 'bg-warn-soft' : '']"
                   >
                     <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
                     <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
                     <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
-                    <!-- UI-202: the OI as the server sent it; no bar (a bar width would be a browser calculation, ADR-008) -->
-                    <span v-else-if="col === 'oi'" class="text-ink-muted" data-testid="cell-oi">{{ shown(row[side].oi) }}</span>
+                    <!-- UI-202: the OI count in Indian units (oiCompact); no bar (a bar width would be a browser calculation, ADR-008) -->
+                    <span v-else-if="col === 'oi'" class="text-ink-muted" data-testid="cell-oi">{{ oiCompact(row[side].oi) }}</span>
                     <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
                         v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
-                        class="h-4 w-3.5 rounded text-[10px] font-semibold focus:opacity-100"
+                        class="h-4 w-3 rounded text-[10px] font-semibold focus:opacity-100"
                         :class="picked[row[side].instrument_id] === sd[0]
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
                           : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"

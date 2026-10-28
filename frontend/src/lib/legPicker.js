@@ -154,6 +154,20 @@ export function centreText(strikes, timeText) {
 /** A price-like cell value as shown: the server's string, or '-' when it sent none. */
 export const shown = (value) => (value == null || value === '' ? PRICE_MISSING : String(value))
 
+/** The shared dash for an answer with no value (S-032): the OI shows it for null, undefined, empty and non-numbers. */
+export const OI_MISSING = '—'
+/** GC-UI D-C27 (S-032): the open interest is a CONTRACT COUNT, not money, written in Indian units: 1.23Cr from 1,00,00,000,
+ *  74.9L from 1,00,000, Indian digit grouping ("62,075") below. A display form only; the count is the server's. */
+export function oiCompact(oi) {
+  if (oi == null || oi === '') return OI_MISSING
+  const n = Number(oi)
+  if (!Number.isFinite(n)) return OI_MISSING
+  const lakh = n / 100000
+  if (n >= 10000000 || (n >= 100000 && lakh.toFixed(1) === '100.0')) return `${(n / 10000000).toFixed(2)}Cr`
+  if (n >= 100000) return `${lakh.toFixed(1)}L`
+  return n.toLocaleString('en-IN')
+}
+
 /** The lots selector's choices. Lots mode lists 1, 2, 3 ...; quantity mode lists multiples of the lot size the server
  *  sent for that contract (REQ-080 AC-4), none when it sent no usable lot size. `value` is always a whole number of lots. */
 export function lotChoices(mode, lotSize) {
