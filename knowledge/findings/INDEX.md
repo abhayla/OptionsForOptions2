@@ -2,7 +2,7 @@
 
 # Findings index
 
-126 finding(s), generated from `knowledge/findings/*.json`.
+127 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -25,6 +25,7 @@
 | ci-apt-mirror-stall | A CI step that installs system packages with apt on a hosted runner can spend its whole timeout on one stalled mirror download, because apt's default per-request timeout is long and it retries the same slow fetch; the job fails red with no code defect, and a re-run is the only recovery unless apt is told to fail over fast. | guarded | occurrences, scope, spec_ref |
 | ci-path-filter-misses-dependency-change | A CI workflow limited by a path filter to the files of one layer never runs when a change lands only in a layer that layer imports; the dependency change breaks its tests on main with no red check anywhere, and every later PR that does touch the filtered paths inherits failures it did not cause. | unguarded | occurrences, scope, spec_ref |
 | client-message-resets-rate-limit | A per-stream rate limit that is reset whenever the client sends a message lets any client bypass it by re-sending, turning a server-paced push into client-driven work. | unguarded | occurrences, scope, spec_ref |
+| closed-market-label-time-from-frame | A market-closed label states a price time taken from a field that records when a frame ARRIVED (or when the broker stamped a post-close packet) instead of when the price was made; outside market hours every price was made at the close of its session, so any label built from arrival or packet time tells the user a false time (e.g. 'Prices are from 28 Oct 07:46' for the 27 Oct close). | unguarded | occurrences, scope, spec_ref |
 | daily-list-trims-far-strikes-trips-truncation-guard | A truncation guard on a reference-data reload that judges a shrunk list by a percentage (of the index, or of one expiry) refuses a legitimate daily trim of far-from-the-money members, because the source drops only the far end of every expiry at once; the refused reload leaves the catalogue not same-day and a downstream gate then refuses every action that needs a same-day list. | unguarded | occurrences, scope, spec_ref |
 | daily-load-misses-intraday-additions | Any reference-data load that runs once a day assumes the source list is fixed for the day; when the source adds members during the day (new strikes, new contracts), everything listed after the load is missing from the catalogue until the next day, and anything keyed on it (subscriptions, strategies, validations) refuses or ignores those members. | unguarded | occurrences, scope, spec_ref |
 | date-stamp-typed-from-memory | Any date or time written into a status document, decision row or file name from the author's sense of 'today' instead of the system clock drifts; a long session that crosses midnight, or one that plans for 'tomorrow morning', stamps the future, and every reader then trusts a date that did not happen yet. | unguarded | occurrences, scope, spec_ref |

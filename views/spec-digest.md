@@ -4,11 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (194)
+## Decisions (196)
 
-- Older decisions: 154 rows, ADR-1..ADR-157 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
-- ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
+- Older decisions: 156 rows, ADR-1..ADR-159 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138;…]
 - ADR-161 2026-10-21: SPEC CHANGE to ADR-001 and ADR-102. [refines ADR-001; refines ADR-102]
 - ADR-162 2026-10-21: Refines ADR-153 and changes ADR-009 for exits. [refines ADR-153; refines ADR-009; refines ADR-017…]
@@ -47,6 +45,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
 - ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
 - ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
+- ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
+- ADR-200 2026-10-27: (1) The after-hours builder is ADR-197, unchanged: outside market hours the builder captures planne… [clarifies ADR-197 ("last close", its label time);…]
 
 ## Requirements (145)
 
