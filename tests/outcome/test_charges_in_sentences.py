@@ -13,16 +13,18 @@ The charges are hand-computed HERE from F-35's published rates (brokerage 20 per
 calculator. Hand total for the 8 orders: premium 22,067.50 (11,033.75 each side) -> brokerage 160 + STT 16.550625 +
 exchange 7.84058275 + SEBI 0.0220675 + stamp 0.3310125 + GST 30.215277045 = 214.959564795.
 (ADR-082's "about 221.18" is twice Kite's 4 ENTRY rows, 110.5879, which puts STT on the exit buys too; the opposite-side
-exits carry STT on the sold-back longs instead, so the exact figure is 214.96. See the builder report.)
+exits carry STT on the sold-back longs instead, so the exact figure is 214.96; shown as 214.95 since F-1:
+parts rounded, total = their sum.) See the builder report.)
 """
 import json
 from datetime import date
+from decimal import ROUND_HALF_UP
 from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges, to_paise_up
+from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import render_explanation
 
@@ -44,7 +46,8 @@ CONDOR = (
     (Action.BUY, Instrument.PE, "22550", "34.00"),
 )
 HAND_TOTAL = D("214.959564795")
-HAND_PAISE = D("214.96")  # HAND_TOTAL rounded UP to the paisa (ADR-082 (2)): the value the API carries
+HAND_PAISE = D("214.95")  # sum of the shown parts, each rounded half-up, GST on the rounded parts (F-1; was 214.96,
+# the exact HAND_TOTAL rounded UP once, whose parts did not add up): the value the API carries
 MAX_LOSS_BEFORE = D("8635.25")
 MAX_PROFIT_BEFORE = D("4364.75")
 
@@ -75,6 +78,20 @@ def hand_round_trip(rows) -> D:
     return total
 
 
+def hand_shown(orders) -> D:
+    """F-1: the shown total of ``orders`` [(side, price)]: each component summed and rounded half-up to the paisa, GST =
+    18% of the rounded brokerage + transaction + SEBI, rounded; total = sum of the rounded parts."""
+    paisa = D("0.01")
+    sums = {k: D("0") for k in ("brokerage", "stt", "txn", "sebi", "stamp")}
+    for side, price in orders:
+        h = hand(side, D(price))
+        for k in sums:
+            sums[k] += h[k]
+    r = {k: v.quantize(paisa, rounding=ROUND_HALF_UP) for k, v in sums.items()}
+    gst = ((r["brokerage"] + r["txn"] + r["sebi"]) * D("0.18")).quantize(paisa, rounding=ROUND_HALF_UP)
+    return sum(r.values(), D("0")) + gst
+
+
 def test_hand_computation_equals_the_literal_total():
     assert hand_round_trip(CONDOR) == HAND_TOTAL
 
@@ -99,18 +116,18 @@ def test_the_core_sentences():
     loss = MAX_LOSS_BEFORE + HAND_PAISE
     profit = MAX_PROFIT_BEFORE - HAND_PAISE
     assert (render_explanation("summary_lose_at_most_with_charges", amount=loss, charges=HAND_PAISE)
-            == "At most ₹8,850.21 at expiry, including about ₹214.96 of charges and taxes.")
+            == "At most ₹8,850.20 at expiry, including about ₹214.95 of charges and taxes.")
     assert (render_explanation("summary_make_at_most_with_charges", amount=profit, charges=HAND_PAISE)
-            == "At most ₹4,149.79 at expiry, including about ₹214.96 of charges and taxes.")
+            == "At most ₹4,149.80 at expiry, including about ₹214.95 of charges and taxes.")
 
 
 # --- guards: each is red under its named mutation -------------------------------------------------------------------
 
 def test_guard_each_leg_is_entry_plus_opposite_exit_at_the_same_price():
     one_leg = round_trip_charges(legs()[:1], "NIFTY", RATES)  # mutation: exit at another price / same side -> red
-    assert one_leg == to_paise_up(hand("SELL", D("53.30"))["total"] + hand("BUY", D("53.30"))["total"])
+    assert one_leg == hand_shown([("SELL", "53.30"), ("BUY", "53.30")])
     one_buy = round_trip_charges(legs()[1:2], "NIFTY", RATES)
-    assert one_buy == to_paise_up(hand("BUY", D("17.30"))["total"] + hand("SELL", D("17.30"))["total"])
+    assert one_buy == hand_shown([("BUY", "17.30"), ("SELL", "17.30")])
 
 
 def test_guard_entries_only_is_half_a_round_trip():
@@ -169,11 +186,10 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     d, out = outcome_of(replayed, RATES)
     assert out.state is OutcomeState.COMPUTED, out.reason
     rows = [("SELL" if p.action is Action.SELL else "BUY", p.planned_entry) for p in d.legs]
-    charges = D("0")
+    orders = []
     for side, price in rows:
-        other = "SELL" if side == "BUY" else "BUY"
-        charges += hand(side, price)["total"] + hand(other, price)["total"]
-    charges = to_paise_up(charges)  # ADR-082 (2): the API carries the charges rounded UP to the paisa
+        orders += [(side, price), ("SELL" if side == "BUY" else "BUY", price)]
+    charges = hand_shown(orders)  # F-1: the API carries the sum of the shown parts
     s = out.summary
     assert s.charges == charges and not s.charges_unavailable
     assert s.max_loss == D("8245.25") + charges  # charges ADDED to the loss (mutation: subtracted -> red)
@@ -333,7 +349,7 @@ def test_the_real_15_oct_condor_sentence_then_the_line():
     line = exercise_stt_line(legs())
     assert line == EXERCISE_STT_LINE
     assert join_explanations([sentence, line], " ") == (
-        f"At most ₹8,850.21 at expiry, including about ₹214.96 of charges and taxes. {EXERCISE_STT_LINE}")
+        f"At most ₹8,850.20 at expiry, including about ₹214.95 of charges and taxes. {EXERCISE_STT_LINE}")
 
 
 def test_the_replay_condor_max_loss_sentence_is_followed_by_the_line(replayed):
