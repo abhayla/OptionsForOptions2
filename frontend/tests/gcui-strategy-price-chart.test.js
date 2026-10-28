@@ -120,6 +120,23 @@ describe('answer states print their reason instead of a chart', () => {
     await flushPromises()
     expect(t(w, 'price-chart-error').text()).toContain('Something went wrong')
   })
+  // S5-3: a cold open waits on several Kite calls; the global 10 s client timeout cancelled it (pending owner read: the sentence)
+  it('S5-3: the request pins its own 60 s timeout (the global default stays 10 s)', async () => {
+    await mountChart(real)
+    expect(get.mock.calls[0][1].timeout).toBe(60000)
+  })
+  it('S5-3: a timeout prints its own sentence, not the generic failure', async () => {
+    get.mockRejectedValue({ status: null, code: 'ECONNABORTED', message: 'Something went wrong. Please try again.' })
+    const w = mount(StrategyPriceChart, { props: { strategyId: 56 } })
+    await flushPromises()
+    expect(t(w, 'price-chart-error').text()).toBe('The strategy chart is taking longer than usual. Please try again in a moment.')
+  })
+  it('S5-3: a 500 keeps the generic message', async () => {
+    get.mockRejectedValue({ status: 500, message: 'Something went wrong. Please try again.' })
+    const w = mount(StrategyPriceChart, { props: { strategyId: 56 } })
+    await flushPromises()
+    expect(t(w, 'price-chart-error').text()).toBe('Something went wrong. Please try again.')
+  })
   it('an unsaved strategy has no id to ask for: says so, makes no request', async () => {
     const w = mount(StrategyPriceChart, { props: { strategyId: null } })
     await flushPromises()

@@ -35,6 +35,10 @@ import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import { INVERT_LABEL, LEFT_AXIS_TITLE, LOADING, SWITCHED_OFF, UNSAVED, asOfText, pointText, reasonOf, seriesOf } from '@/lib/priceChart'
 
+// S5-3: a cold open waits on several Kite calls one after another; the client's global 10 s would cancel it.
+const PRICE_HISTORY_TIMEOUT_MS = 60000
+const TIMED_OUT = 'The strategy chart is taking longer than usual. Please try again in a moment.' // pending owner read
+
 const props = defineProps({
   strategyId: { type: Number, default: null }, // the saved strategy's id; null = not saved, nothing to ask
   active: { type: Boolean, default: true }, // the tab is open: ask only then (the card keeps panels mounted)
@@ -115,7 +119,7 @@ async function load() {
   held.value = ''
   error.value = ''
   try {
-    const { data } = await api.get(`/strategies/${props.strategyId}/price-history`, { params: { invert: invert.value } })
+    const { data } = await api.get(`/strategies/${props.strategyId}/price-history`, { params: { invert: invert.value }, timeout: PRICE_HISTORY_TIMEOUT_MS })
     if (mine !== seq) return // a newer request is out: the older answer is dropped
     reply.value = data
   } catch (e) {
@@ -123,6 +127,7 @@ async function load() {
     reply.value = null
     drop()
     if (e?.status === 409) held.value = e?.parts?.what_happened || SWITCHED_OFF
+    else if (e?.code === 'ECONNABORTED') error.value = TIMED_OUT
     else error.value = e?.message || 'Something went wrong. Please try again.'
   } finally {
     if (mine === seq) loading.value = false
