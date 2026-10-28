@@ -415,7 +415,7 @@ async def test_leg_pnl_all_live_each_leg_has_its_figure_and_they_add_to_the_tota
         row = (await c.get("/tracking")).json()["strategies"][0]
         one = (await c.get(f"/strategies/{ids[0]}/tracking")).json()
     assert [f[0] for f in _pnl_fields(row)] == HAND and {f[1] for f in _pnl_fields(row)} == {"unbooked"}
-    assert [f[2] for f in _pnl_fields(row)] == ["\u2212390", "+130", "+780", "\u2212325"]
+    assert [f[2] for f in _pnl_fields(row)] == ["\u2212390.00", "+130.00", "+780.00", "\u2212325.00"]
     assert _sum(row) == Decimal(row["total"]) == Decimal("195.00")
     assert _pnl_fields(one) == _pnl_fields(row) and _sum(one) == Decimal(one["paper_pnl"])
 
@@ -446,7 +446,7 @@ async def test_leg_pnl_paused_has_no_open_figure_never_zero_and_the_exited_leg_k
         assert (await c.post(f"/strategies/{ids[0]}/tracking/exit", json={"legs": [0]})).status_code == HTTPStatus.OK
         clock.now = last + datetime.timedelta(minutes=10)
         row = (await c.get("/tracking")).json()["strategies"][0]
-    assert _pnl_fields(row) == [("-390.00", "booked", "\u2212390"), (None, None, None), (None, None, None),
+    assert _pnl_fields(row) == [("-390.00", "booked", "\u2212390.00"), (None, None, None), (None, None, None),
                                 (None, None, None)]
 
 
