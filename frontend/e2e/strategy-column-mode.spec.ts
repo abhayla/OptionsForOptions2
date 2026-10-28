@@ -40,12 +40,11 @@ test('AC-6: At Expiry is the default; Estimated Now is labelled and keeps the ra
   await expect(page.getByTestId('view-estimated_now')).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByTestId('scenario-label')).toHaveCount(0)
 
-  // pick a range, then switch the column
-  await page.getByTestId('range-start').fill('22800')
-  await page.getByTestId('range-end').fill('23600')
+  // pick a range with the graph's Zoom (GC-UI b1 D-B10: the From / To inputs are gone), then switch the column
   const picked = outcomePost(page)
-  await page.getByTestId('range-apply').click()
+  await page.getByTestId('payoff-zoom-in').click()
   const atExpiry: Outcome = await (await picked).json()
+  expect(atExpiry.scenario.customised).toBe(true)
 
   const switched = outcomePost(page)
   await page.getByTestId('view-estimated_now').click()
@@ -53,12 +52,12 @@ test('AC-6: At Expiry is the default; Estimated Now is labelled and keeps the ra
   expect(now.scenario.view).toBe('estimated_now')
   expect(now.scenario.kind).toBe('estimate')
   expect(now.scenario.levels.map((l: { level: string }) => l.level)).toEqual(atExpiry.scenario.levels.map((l: { level: string }) => l.level))
-  expect([now.scenario.step, now.scenario.start, now.scenario.end]).toEqual(['100', '22800', '23600'])
+  expect([now.scenario.step, now.scenario.start, now.scenario.end]).toEqual([atExpiry.scenario.step, atExpiry.scenario.start, atExpiry.scenario.end])
   await expect(page.getByTestId('view-estimated_now')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('scenario-label')).toHaveText(now.scenario.label) // the server's estimate wording
   expect(now.scenario.label.length).toBeGreaterThan(0)
   expect(now.scenario.label).not.toBe(atExpiry.scenario.label)
-  await expect(page.getByTestId('range-start')).toHaveValue('22800') // the pick stayed on screen
+  expect(now.scenario.customised).toBe(true) // the zoomed range stayed across the switch
   await page.screenshot({ path: `screenshots/strategy-column-mode-${info.project.name}.png`, fullPage: true })
 
   const back = outcomePost(page)
