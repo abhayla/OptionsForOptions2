@@ -596,7 +596,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     body["answered_at"] = answered_at
     state = market_state(ctx, answered_at)
     body["market_closed"] = state.closed
-    body["last_price_at"] = label_time(state, (q.timestamp for q in used_quotes if q is not None))
+    body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one

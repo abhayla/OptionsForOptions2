@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from ofo.engine.legs import Instrument, require_price
+from ofo.market_calendar import price_time
 from ofo.rules.inputs import DataHealth
 
 MAX_VOLUME = 10**12  # absurd-size guard; no real instrument trades this many units in a session
@@ -183,3 +184,12 @@ class NormalizedQuote:
             raise ValueError(f"health must be a DataHealth, got {self.health!r}")
 
         object.__setattr__(self, "validation_errors", tuple(errors))
+
+    @property
+    def price_at(self) -> datetime.datetime | None:
+        """ADR-200 (2), GC-BM F-19: when the price was MADE, the time every market-closed label prints. In market hours
+        it is ``timestamp``; outside them the close (15:30 IST) of the session the price belongs to (a frame's arrival
+        time or Kite's post-close stamp is never a price time); None when the calendar has no data for that date.
+        Derived from ``timestamp``, never passed in, so every provider gets the same answer; ``timestamp`` itself
+        (liveness, bars, the in-hours rules) is never changed."""
+        return price_time(self.timestamp)

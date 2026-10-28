@@ -1327,7 +1327,8 @@
                   "FEED_STALE",
                   "NOT_STREAMING",
                   "NO_DEPTH_RECEIVED",
-                  "DEPTH_EMPTY"
+                  "DEPTH_EMPTY",
+                  "MARKET_CLOSED"
                 ],
                 "type": "string"
               },

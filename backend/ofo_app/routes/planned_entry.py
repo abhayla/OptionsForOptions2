@@ -116,7 +116,7 @@ def _closed_label(entry: PlannedEntry | None, quote: NormalizedQuote | None, clo
     planned-entry route and the leg-edit re-capture read entries from here (``_read``)."""
     if entry is None or not closed or quote is None:
         return entry
-    return dataclasses.replace(entry, close_at=quote.timestamp)
+    return dataclasses.replace(entry, close_at=quote.price_at)
 
 
 async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],

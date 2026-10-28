@@ -79,7 +79,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
+from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
 from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
@@ -433,11 +433,15 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
     state = market_state(ctx, answered_at)
+    # ADR-200 (2): closed, the spot's time and the banner's time are when the price was made (the session close),
+    # never the feed's last frame time nor a frame's arrival time; in hours both are unchanged
+    spot_at = None if spot_quote is None else (spot_quote.price_at if state.closed else spot_quote.timestamp)
+    shown_at = label_time(state, (spot_at,))
     if ctx is None or not live:
         return ChainOut(state="NOT_CONNECTED", underlying=req.underlying, expiry=req.expiry, spot=None,
-                        spot_at=None if spot_quote is None else spot_quote.timestamp, spot_health=None,
+                        spot_at=spot_at, spot_health=None,
                         atm_strike=None, rows_missing=None, rows=[], answered_at=answered_at,
-                        market_closed=state.closed, last_price_at=state.last_price_at, greeks_basis=None,
+                        market_closed=state.closed, last_price_at=shown_at, greeks_basis=None,
                         greeks_missing=None, greeks_label=None)
     spot = live_spot(ctx, req.underlying)
     grid = strike_grid(catalogue)
@@ -450,13 +454,13 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
     return ChainOut(
         state="LIVE", underlying=req.underlying, expiry=req.expiry,
         spot=None if spot is None else spot.quantize(PAISE),
-        spot_at=None if spot_quote is None else spot_quote.timestamp,
+        spot_at=spot_at,
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
         rows=[] if model is None or window is None else _rows(
             ctx, req, catalogue, window, slow, unknown, model, None if spot is None else atm_strike(grid, spot)),
-        answered_at=answered_at, market_closed=state.closed, last_price_at=state.last_price_at,
+        answered_at=answered_at, market_closed=state.closed, last_price_at=shown_at,
         greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing,
         greeks_label=None if model is None else model.label)
 

@@ -134,6 +134,63 @@ def test_in_hours_a_stale_depth_popup_still_says_feed_stale():
     assert (out.state, out.reason, out.market_closed) == ("NOT_AVAILABLE", "FEED_STALE", False)
 
 
+def _empty_book_depth_at(at: datetime.datetime, *, streamed: bool = True):
+    """GC-BM F-20: the session connected, the contract held by the popup, but NO packet ever received (Kite's book is
+    empty before the open, live 2026-10-28 07:52, NSE_FO:53701)."""
+    provider, clock, _items = new_provider()
+    provider.subscribe([HELD])
+    provider.on_connected(at)
+    clock.now = at
+    feed = LiveFeed(MarketContext(provider, clock, RATE), FanOut(provider))
+    handle = feed.fanout.subscribe(lambda _q: None, [HELD], max_queue=1) if streamed else None
+    try:
+        return leg_picker.depth_answer(feed, HELD, clock)
+    finally:
+        if handle is not None:
+            feed.fanout.unsubscribe(handle)
+
+
+PRE_OPEN = datetime.datetime(2026, 10, 28, 7, 52, tzinfo=IST)
+
+
+@pytest.mark.parametrize("at", [PRE_OPEN, AFTER_CLOSE])
+@pytest.mark.parametrize("streamed", [True, False])
+def test_closed_market_with_an_empty_book_is_the_market_closed_state_never_feed_stale(at, streamed):
+    """ADR-200 (2) / F-20: closed -> market_closed true, reason MARKET_CLOSED, no levels; never "not fresh"."""
+    out = _empty_book_depth_at(at, streamed=streamed)
+    assert (out.state, out.reason, out.market_closed) == ("NOT_AVAILABLE", "MARKET_CLOSED", True)
+    assert out.bids == [] and out.asks == [] and out.last_price_at is None  # no price held: no time invented
+
+
+def test_in_hours_an_empty_book_is_unchanged():
+    out = _empty_book_depth_at(IN_HOURS_LATE.replace(hour=10))
+    assert out.market_closed is False and out.reason != "MARKET_CLOSED"
+
+
+def test_closed_market_with_a_held_price_but_no_depth_keeps_day_values_and_the_close_time():
+    """Before the open the held quote is a 44-byte quote packet (no depth, no exchange time): no levels, the day
+    values it carries, and the price's own time = the previous session's close."""
+    provider, clock, _items = new_provider()
+    provider.subscribe([HELD])
+    provider.on_connected(PRE_OPEN)
+    full = next(f for _at, f in recorded_frames() if provider._token_of[HELD].to_bytes(4, "big") in f)
+    token = provider._token_of[HELD]
+    at = full.find(token.to_bytes(4, "big"))
+    quote_packet = full[at:at + 44]
+    clock.now = PRE_OPEN
+    provider.on_frame((1).to_bytes(2, "big") + (44).to_bytes(2, "big") + quote_packet, PRE_OPEN)
+    feed = LiveFeed(MarketContext(provider, clock, RATE), FanOut(provider))
+    handle = feed.fanout.subscribe(lambda _q: None, [HELD], max_queue=1)
+    try:
+        out = leg_picker.depth_answer(feed, HELD, clock)
+    finally:
+        feed.fanout.unsubscribe(handle)
+    assert out.market_closed is True and out.reason != "FEED_STALE"
+    assert out.last_price_at == datetime.datetime(2026, 10, 27, 15, 30, tzinfo=IST)
+    if out.state == "NOT_AVAILABLE":
+        assert out.reason == "MARKET_CLOSED" and out.day_open is not None
+
+
 def test_after_close_the_execute_depth_still_refuses():
     """The order path's depth (``latest_depth``, read by ``LiveDepthQuotes``) stays live-only after the close."""
     provider, clock, _items = new_provider()

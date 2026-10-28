@@ -136,4 +136,29 @@ def next_open(now: datetime.datetime, holidays: Holidays | None = None) -> datet
     return None
 
 
-__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "is_market_open", "market_status", "next_open"]
+def last_close(now: datetime.datetime, holidays: Holidays | None = None) -> datetime.datetime | None:
+    """The mirror of ``next_open`` (ADR-200 (2)): 15:30 IST of the latest trading day whose close is at or before
+    ``now``; None when the search reaches a year with no data (the answer would be a guess)."""
+    local = _local(now)
+    table = _table(holidays)
+    for offset in range(_LOOKAHEAD_DAYS + 1):
+        day = local.date() - datetime.timedelta(days=offset)
+        status = _day_status(day, table)
+        if status is MarketStatus.NO_CALENDAR:
+            return None
+        closes = datetime.datetime.combine(day, SESSION_CLOSE, IST)
+        if status is None and closes <= local:
+            return closes
+    return None
+
+
+def price_time(at: datetime.datetime, holidays: Holidays | None = None) -> datetime.datetime | None:
+    """ADR-200 (2): the time a price seen at ``at`` was made. In market hours that is ``at`` itself; outside them it
+    is the close of the session the price belongs to (``last_close``), or None when the calendar cannot say."""
+    if is_market_open(at, holidays):
+        return at
+    return last_close(at, holidays)
+
+
+__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "is_market_open", "last_close", "market_status", "next_open",
+           "price_time"]
