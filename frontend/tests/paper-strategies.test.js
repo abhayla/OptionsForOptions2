@@ -36,6 +36,16 @@ const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
 const gets = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/tracking').length
 
+// GC-UI 6d D-C50: a leg is exited by ticking it and pressing Exit (n) in the action column
+async function exitLeg(w, i) {
+  await t(w, `select-leg-48-${i}`).setValue(true)
+  await t(w, 'exit-selected-48').trigger('click')
+}
+async function exitAll(w) {
+  for (const b of w.findAll('input[type="checkbox"]')) await b.setValue(true)
+  await t(w, 'exit-selected-48').trigger('click')
+}
+
 async function show() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -59,12 +69,12 @@ describe('PaperStrategies: the real reply', () => {
     expect(t(w, 'paper-group-name').text()).toBe('GCBP P3 IC')
     expect(w.findAll('[data-testid="paper-leg"]')).toHaveLength(4)
     expect(t(w, 'paper-total').text()).toBe('+71.50')
-    expect(t(w, 'paper-booked').text()).toBe('+0.00')
+    expect(t(w, 'paper-booked').text()).toBe('0.00') // D-C53: a true zero has no sign
     expect(t(w, 'paper-unbooked').text()).toBe('+71.50')
     expect(t(w, 'paper-group').text()).toContain('Paper')
     expect(t(w, 'paper-open-builder').attributes('href')).toBe('/strategy/builder?strategy=48')
     const first = w.findAll('[data-testid="paper-leg"]')[0].text()
-    expect(first).toContain('Buy')
+    expect(first).toContain('B 3 Nov 22300 PE')
     expect(first).toContain('3 Nov')
     expect(first).toContain('22300')
     expect(first).toContain('114.25')
@@ -104,14 +114,14 @@ describe('PaperStrategies: answer states', () => {
     const w = await show()
     expect(t(w, 'paper-state').text()).toContain('prices not live, as of 28 Oct 2026, 11:00:00 IST')
     expect(t(w, 'paper-pause-reason').text()).toBe('price_stale')
-    expect(t(w, 'paper-total').text()).toBe('-')
-    expect(t(w, 'paper-unbooked').text()).toBe('-')
+    expect(t(w, 'paper-total').text()).toBe('—')
+    expect(t(w, 'paper-unbooked').text()).toBe('—')
   })
   it('not connected', async () => {
     answers['GET /tracking'] = ok(list(item({ state: 'NOT_CONNECTED', total: null, unbooked: null })))
     const w = await show()
     expect(t(w, 'paper-state').text()).toBe(NOT_CONNECTED_TEXT)
-    expect(t(w, 'paper-total').text()).toBe('-')
+    expect(t(w, 'paper-total').text()).toBe('—')
   })
   it('exited: Exited line, exit prices, no Exit buttons', async () => {
     const out = (i) => leg(i, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null })
@@ -177,7 +187,7 @@ describe('PaperStrategies: Paper exit', () => {
       return Promise.resolve({ data: {} })
     }
     const w = await show()
-    await t(w, 'exit-leg-48-2').trigger('click')
+    await exitLeg(w, 2)
     expect(t(w, 'exit-confirm-text').text()).toContain('Paper exit - no order is sent')
     expect(t(w, 'exit-confirm-text').text()).toContain('22500')
     expect(calls.some((c) => c[0] === 'POST')).toBe(false)
@@ -194,8 +204,8 @@ describe('PaperStrategies: Paper exit', () => {
     answers['GET /tracking'] = ok(list(item({ legs })))
     answers['POST /strategies/48/tracking/exit'] = ok({})
     const w = await show()
-    expect(has(w, 'exit-leg-48-1')).toBe(false)
-    await t(w, 'exit-all-48').trigger('click')
+    expect(has(w, 'select-leg-48-1')).toBe(false)
+    await exitAll(w)
     await t(w, 'exit-confirm').trigger('click')
     await flushPromises()
     expect(calls.find((c) => c[0] === 'POST')[2]).toEqual({ legs: [0, 2] })
@@ -203,7 +213,7 @@ describe('PaperStrategies: Paper exit', () => {
   it('cancel posts nothing', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     const w = await show()
-    await t(w, 'exit-all-48').trigger('click')
+    await exitAll(w)
     await t(w, 'exit-cancel').trigger('click')
     expect(has(w, 'exit-confirm')).toBe(false)
     expect(calls.some((c) => c[0] === 'POST')).toBe(false)
@@ -212,7 +222,7 @@ describe('PaperStrategies: Paper exit', () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live; try again when they update' } })
     const w = await show()
-    await t(w, 'exit-leg-48-0').trigger('click')
+    await exitLeg(w, 0)
     await t(w, 'exit-confirm').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-exit-error').text()).toBe('Prices are not live; try again when they update')
@@ -223,13 +233,12 @@ describe('PaperStrategies: Paper exit', () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     answers['POST /strategies/48/tracking/exit'] = () => new Promise(() => {})
     const w = await show()
-    await t(w, 'exit-leg-48-0').trigger('click')
+    await exitLeg(w, 0)
     await t(w, 'exit-confirm').trigger('click')
     await flushPromises()
-    expect(t(w, 'exit-leg-48-1').attributes('disabled')).toBeDefined()
-    expect(t(w, 'exit-all-48').attributes('disabled')).toBeDefined()
+    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeDefined()
     expect(t(w, 'exit-confirm').attributes('disabled')).toBeDefined()
-    await t(w, 'exit-leg-48-1').trigger('click')
+    await exitLeg(w, 1)
     expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(1)
   })
 })
@@ -238,14 +247,14 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
   it('R1-5: each per-leg Exit button is named by its leg', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     const w = await show()
-    expect(t(w, 'exit-leg-48-0').attributes('aria-label')).toBe('Exit Buy 22300 PE 3 Nov')
-    expect(t(w, 'exit-leg-48-1').attributes('aria-label')).toBe('Exit Sell 22400 PE 3 Nov')
+    expect(t(w, 'select-leg-48-0').attributes('aria-label')).toBe('Select Buy 22300 PE 3 Nov')
+    expect(t(w, 'select-leg-48-1').attributes('aria-label')).toBe('Select Sell 22400 PE 3 Nov')
   })
   it('R1-4: a read that changes the list drops an open confirm whose leg is no longer open', async () => {
     let reply = REAL_REPLY
     answers['GET /tracking'] = () => Promise.resolve({ data: reply })
     const w = await show()
-    await t(w, 'exit-leg-48-0').trigger('click')
+    await exitLeg(w, 0)
     expect(has(w, 'exit-confirm')).toBe(true)
     const out = (i) => leg(i, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null })
     reply = list(item({ legs: [out(0), leg(1), leg(2), leg(3)] }))
@@ -257,11 +266,11 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
     answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
     answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
     const w = await show()
-    await t(w, 'exit-leg-48-0').trigger('click')
+    await exitLeg(w, 0)
     await t(w, 'exit-confirm').trigger('click')
     await flushPromises()
     expect(has(w, 'paper-exit-error')).toBe(true)
-    await t(w, 'exit-leg-48-1').trigger('click')
+    await exitLeg(w, 1)
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     fail = false
@@ -274,10 +283,10 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
     const w = await show()
-    await t(w, 'exit-leg-48-0').trigger('click')
+    await exitLeg(w, 0)
     await t(w, 'exit-confirm').trigger('click')
     await flushPromises()
-    await t(w, 'exit-leg-48-1').trigger('click')
+    await exitLeg(w, 1)
     await t(w, 'exit-cancel').trigger('click')
     expect(has(w, 'paper-exit-error')).toBe(false)
   })

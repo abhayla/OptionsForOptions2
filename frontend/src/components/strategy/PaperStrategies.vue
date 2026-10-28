@@ -5,7 +5,7 @@
      strategies. A failed or unreadable read shows no figure. Nothing here reaches Execute (REQ-109 AC-3): the exit is a
      paper exit and sends no order. -->
 <template>
-  <section class="text-sm" data-testid="paper-strategies">
+  <section :class="['text-sm', compact ? '' : 'rounded-lg border-2 border-dashed border-accent p-3']" data-testid="paper-strategies">
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
@@ -31,37 +31,45 @@
       <div v-for="g in items" :key="g.id" class="mt-3 rounded-lg border border-line p-3" data-testid="paper-group" :data-strategy="g.id">
         <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
         <template v-else>
-          <div class="flex flex-wrap items-center gap-3">
-            <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
-            <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
-            <RouterLink :to="{ path: '/strategy/builder', query: { strategy: String(g.id) } }" class="text-accent underline" data-testid="paper-open-builder">Open in Builder</RouterLink>
+          <!-- GC-UI 6d D-C44 (S-090): name, "N of N positions" (open of all), then Total / Unbooked / Booked P&L as labelled columns -->
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
+              <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
+              <p class="text-xs text-ink-muted" data-testid="paper-count">{{ openLegs(g).length }} of {{ g.legs.length }} positions</p>
+            </div>
+            <dl class="flex flex-wrap gap-6" data-testid="paper-figures">
+              <div v-for="f in figures" :key="f.field" class="text-right">
+                <dt class="text-xs text-ink-muted" data-testid="paper-figure-label">{{ f.label }}</dt>
+                <dd class="text-lg font-semibold" :class="toneOf(g[f.field])" :data-testid="f.testid">{{ pnlText(g[f.field]) }}</dd>
+              </div>
+            </dl>
           </div>
           <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
           <p v-if="g.pauseReason" class="text-ink-muted" data-testid="paper-pause-reason">{{ g.pauseReason }}</p>
-          <dl class="mt-2 flex flex-wrap gap-4 border-2 border-dashed rounded-lg p-2" data-testid="paper-figures">
-            <div><dt class="inline">Paper total: </dt><dd class="inline font-semibold" data-testid="paper-total">{{ g.total ?? '-' }}</dd></div>
-            <div><dt class="inline">Booked: </dt><dd class="inline" data-testid="paper-booked">{{ g.booked ?? '-' }}</dd></div>
-            <div><dt class="inline">Unbooked: </dt><dd class="inline" data-testid="paper-unbooked">{{ g.unbooked ?? '-' }}</dd></div>
-          </dl>
-          <table v-if="g.legs.length" class="mt-2 w-full text-left">
-            <thead>
-              <tr><th>Leg</th><th>Expiry</th><th>Strike</th><th>Qty</th><th>Paper entry</th><th>LTP / exit</th><th /></tr>
-            </thead>
-            <tbody>
-              <tr v-for="l in g.legs" :key="l.key" data-testid="paper-leg" :data-leg="l.index">
-                <td>{{ l.action }} {{ l.instrument }}</td>
-                <td>{{ expiryText(l.expiry) }}</td>
-                <td>{{ strikeLabel(l.strike) }}</td>
-                <td>{{ l.quantity }}</td>
-                <td>{{ l.entry }}</td>
-                <td>{{ l.exited ? `Exited at ${l.exitPrice}` : (l.current ?? '-') }}</td>
-                <td>
-                  <button v-if="!l.exited" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-leg-${g.id}-${l.index}`" :disabled="busy" :aria-label="`Exit ${l.action} ${strikeLabel(l.strike)} ${l.instrument} ${expiryText(l.expiry)}`" @click="ask(g, [l.index])">Exit</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <button v-if="openLegs(g).length" type="button" class="mt-2 rounded border border-line px-3 py-1" :data-testid="`exit-all-${g.id}`" :disabled="busy" @click="ask(g, openLegs(g))">Exit all</button>
+          <div class="mt-2 flex gap-3">
+            <table v-if="g.legs.length" class="w-full min-w-0 flex-1 text-left">
+              <thead>
+                <tr><th class="w-6"><span class="sr-only">Select</span></th><th>Instrument</th><th>Qty</th><th>Paper entry</th><th>LTP / exit</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="l in g.legs" :key="l.key" data-testid="paper-leg" :data-leg="l.index">
+                  <td>
+                    <input v-if="!l.exited" type="checkbox" :checked="isTicked(g.id, l.index)" :data-testid="`select-leg-${g.id}-${l.index}`" :aria-label="`Select ${legName(l)}`" @change="tick(g.id, l.index, $event.target.checked)" />
+                  </td>
+                  <td data-testid="paper-instrument"><span class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ l.action === 'Buy' ? 'B' : l.action === 'Sell' ? 'S' : l.action }}</span> <span>{{ instrumentCell(l) }}</span></td>
+                  <td data-testid="paper-qty">{{ qtyText(l) }}</td>
+                  <td>{{ l.entry }}</td>
+                  <td>{{ l.exited ? `Exited at ${l.exitPrice}` : (l.current ?? '-') }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- D-C50: the action column. No Add Orders and no Convert To Real Trades (ADR-165). -->
+            <div class="flex w-36 shrink-0 flex-col gap-2" data-testid="paper-actions">
+              <RouterLink :to="{ path: '/strategy/builder', query: { strategy: String(g.id) } }" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
+              <button v-if="openLegs(g).length" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
+            </div>
+          </div>
           <div v-if="confirm && confirm.id === g.id" class="mt-2 rounded bg-amber-50 p-2" role="group" aria-label="Confirm paper exit">
             <p data-testid="exit-confirm-text">Paper exit - no order is sent. Exit {{ confirm.names }} at the current paper price?</p>
             <button type="button" class="mr-2 rounded border border-line px-3 py-1" data-testid="exit-confirm" :disabled="busy" @click="doExit">Confirm paper exit</button>
@@ -80,13 +88,35 @@ import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { readTrackingItem } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
-import { expiryWithDays, strikeLabel } from '@/lib/displayFormat'
+import { expiryWithDays, instrumentText, strikeLabel } from '@/lib/displayFormat'
+import { signOf } from '@/lib/chartCard'
 
 defineProps({ compact: { type: Boolean, default: false } })
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER ='Paper trades - not real money'
 const EMPTY = 'No paper strategies yet. Save a strategy in the builder, then press Start tracking.'
 const expiryText = (e) => expiryWithDays(e, null)
+const NO_FIGURE = '—'
+const figures = [
+  { field: 'total', label: 'Total P&L', testid: 'paper-total' },
+  { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked' },
+  { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
+]
+// D-C53 (REQ-109 AC-2, REQ-152 AC-4): the server's text to the paisa; a true zero has no sign, a missing figure is a dash
+// (the reason is the state line under the header). D-C54: the colour follows the server's sign, read from its text.
+const pnlText = (v) => (v === null || v === undefined ? NO_FIGURE : /^[+-]0\.00$/.test(v) ? '0.00' : v)
+const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, ''))] ?? ''
+// D-C48: "3 Nov 23000 CE" (a FUT leg "3 Nov FUT"); the Qty is signed from the server's side, nothing is computed
+const instrumentCell = (l) => instrumentText({ expiry: l.expiry, strike: l.strike, instrument: l.instrument }, null)
+const qtyText = (l) => (l.action === 'Sell' ? `-${l.quantity}` : `${l.quantity}`)
+const legName = (l) => `${l.action} ${strikeLabel(l.strike)} ${l.instrument} ${expiryText(l.expiry)}`
+const ticks = ref({})
+const isTicked = (id, i) => !!ticks.value[id]?.includes(i)
+function tick(id, i, on) {
+  const rest = (ticks.value[id] ?? []).filter((x) => x !== i)
+  ticks.value = { ...ticks.value, [id]: on ? [...rest, i] : rest }
+}
+const tickedOpen = (g) => g.legs.filter((l) => !l.exited && isTicked(g.id, l.index)).map((l) => l.index)
 
 const items = ref(null)
 const errorParts = ref(null)
