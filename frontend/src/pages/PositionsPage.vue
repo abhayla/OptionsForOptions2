@@ -13,6 +13,7 @@ import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tabs from '@/components/common/Tabs.vue'
+import { panelId, tabId } from '@/components/common/tabIds.js'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
@@ -55,7 +56,8 @@ onMounted(async () => {
     <h1 class="text-xl font-semibold" data-testid="page-title">{{ route.meta.title }}</h1>
     <!-- GC-BP step 6 (ADR-201 (2)): "Positions" = this page as it was; "Paper" = the shared paper list, which loads by
          itself and is never held up by the Zerodha read. Paper figures never appear in the Positions tab. -->
-    <Tabs v-model="tab" class="mt-2" :tabs="POSITION_TABS" label="Positions or paper trades" />
+    <Tabs v-model="tab" class="mt-2" :tabs="POSITION_TABS" label="Positions or paper trades" id-prefix="positions" />
+    <div :id="panelId('positions', tab)" role="tabpanel" :aria-labelledby="tabId('positions', tab)">
     <PaperStrategies v-if="tab === 'paper'" class="mt-2" data-testid="positions-paper" />
     <template v-else>
     <p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>
@@ -105,5 +107,6 @@ onMounted(async () => {
       </p>
     </div>
     </template>
+    </div>
   </section>
 </template>

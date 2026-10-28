@@ -68,6 +68,17 @@ describe('Positions page tabs', () => {
       expect(calls.some((c) => c[1] === '/tracking')).toBe(false)
     })
   }
+  it('R1-5: each tab\'s aria-controls names a real tabpanel, labelled by that tab (selected tab: Positions, then Paper)', async () => {
+    answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
+    answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
+    const w = await page('/p')
+    for (const key of ['positions', 'paper']) {
+      if (key === 'paper') { await t(w, 'tab-paper').trigger('click'); await flushPromises() }
+      const panel = w.get(`#${t(w, `tab-${key}`).attributes('aria-controls')}`)
+      expect(panel.attributes('role')).toBe('tabpanel')
+      expect(panel.attributes('aria-labelledby')).toBe(t(w, `tab-${key}`).attributes('id'))
+    }
+  })
   it('the Paper tab shows the list and none of it appears in the Positions tab', async () => {
     answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })

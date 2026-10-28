@@ -240,3 +240,19 @@ describe('TrackingPanel refresh (GC-BP F-1)', () => {
     expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +2.00')
   })
 })
+
+describe('TrackingPanel first read (GC-BP step 8 R1-2)', () => {
+  it('strategy 7\'s slow first read landing after the user opened 8 never sets 7\'s figure under 8', async () => {
+    let release7
+    answers['GET /strategies/7/tracking'] = () => new Promise((r) => { release7 = () => r({ data: body({ paper_pnl: '700.00' }) }) })
+    answers['GET /strategies/8/tracking'] = () => Promise.reject({ status: 404, parts: null })
+    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
+    await flushPromises()
+    await w.setProps({ savedId: 8, savedRevision: 1 })
+    await flushPromises()
+    release7()
+    await flushPromises()
+    expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
+    expect(w.find('[data-testid="start-tracking"]').exists()).toBe(true) // 8 is untracked, as its own read said
+  })
+})
