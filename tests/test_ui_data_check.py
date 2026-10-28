@@ -172,6 +172,27 @@ def test_max_profit_and_loss_include_charges():
     assert figs["max_loss (incl. charges)"].independent == "5847.79"  # 5,707.00 + 140.79
 
 
+def test_c1_total_pnl_percent_basis_is_unrealized_over_max_loss():
+    """C-1: REQ-035 owner Q233: TOTAL P&L % = unrealized P&L / max loss; the leg rows keep unrealized / entry value."""
+    est, atx, b, a, f = fixture()
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    tot = figs["[estimated_now] total pnl_percent"]
+    assert "max loss" in tot.note and "Q233" in tot.note
+    pnl = Decimal(figs["[estimated_now] total unrealized_pnl"].independent)
+    dp = len(str(tot.ours).split(".")[1]) if tot.ours and "." in str(tot.ours) else 0
+    expected = (pnl / Decimal("5707.00") * 100).quantize(Decimal(1).scaleb(-dp), rounding="ROUND_HALF_UP")
+    assert tot.independent == str(expected)  # 5,707.00 = the s54 spread's pre-charges max loss
+
+
+def test_c2_margin_needed_is_not_checkable_never_matched():
+    est, atx, b, a, f = fixture()
+    figs = {x.name: x for x in run(est, atx, b, a, f).figures}
+    if (est.get("margin") or {}).get("needed") is not None:
+        assert figs["margin needed"].verdict == u.NOT_CHECKABLE and "option_premium" in figs["margin needed"].note
+    else:
+        assert "margin needed" not in figs
+
+
 # ---------------------------------------------------------------- independence
 
 

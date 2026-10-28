@@ -426,10 +426,12 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             rep.add(
                 f"[{view}] total pnl_percent",
                 pct,
-                (tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
-                note=f"ours = unrealized / net entry value, at the reply's {dp} dp",
-                alt=(tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
-                alt_label="unrealized / pre-charges max loss",
+                # C-1: REQ-035 owner Q233 "TOTAL P&L % = unrealized P&L / max loss" ("-" when unlimited, zero or
+                # mixed expiries, Q242); the leg rows keep their own basis (unrealized / the leg's entry value)
+                (tot_pnl / risk_base * 100).quantize(q_, rounding=ROUND_HALF_UP) if risk_base else None,
+                note=f"ours = unrealized / pre-charges max loss (REQ-035 Q233), at the reply's {dp} dp",
+                alt=(tot_pnl / abs(tot_entry) * 100).quantize(q_, rounding=ROUND_HALF_UP) if tot_entry else None,
+                alt_label="unrealized / net entry value (the old, wrong basis)",
             )
 
     # --- strategy-level exact money (section 3)
@@ -551,6 +553,11 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
 
     # --- margin (D-A47): recorded, not a figure check
     m = est.get("margin") or {}
+    # C-2: needed = broker_needed + the ADR-094 top-up max(0, qty x planned price - option_premium) per BUY leg; the
+    # per-leg option_premium is not in the reply, so `needed` cannot be derived independently: never matched.
+    if m.get("needed") is not None:
+        rep.skip("margin needed", "needs each BUY leg's Zerodha option_premium (ADR-094 top-up), not in the reply",
+                 m.get("needed"))
     rep.data_rows["D-A47"] = {
         "needed": m.get("needed"),
         "broker_needed": m.get("broker_needed"),
