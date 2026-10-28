@@ -916,3 +916,16 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   existing staleness setting (`FEED_STALE`, ADR-015 "an implementation setting"), the outcome answers not-connected
   "Waiting for the first live price"; past it with no price, the stale alarm returns. Not a rule change.
   Status: **measured on recorded data, reproduced by the row 24 checker (3 tests red on the base, green after)**.
+
+## F-62 - Zerodha's basket margin reply carries no buy-first figure, so REQ-142 "Funds needed" cannot be taken from it
+- Measured 2026-10-28 (GC-UI step 3b, D-A38) on four recorded buy-only basket replies in the tests_app fixtures and on
+  strategy 54's live outcome (NIFTY 3 Nov 22600 / 22800 CE bull call spread, 1 lot): the basket reply holds only
+  `initial` and `final` totals, per-order margins and each BUY order's `option_premium`; `final.total` already
+  includes the premium and the hedge benefit, and nothing in the reply depends on the ORDER the legs are placed in.
+  For buy-only baskets `final.total` = `initial.total` = the sum of `option_premium` (REQ-142 AC-3 holds); for strategy
+  54 our `needed` = Zerodha's `final.total` = 33,324.84 (top-up 0).
+- Bears on: REQ-142 (statement: the buy-first figure "comes from the server, from Zerodha's margin reply for the same
+  legs"): no field of that reply gives it. Not measured: three fresh live reads of a bull call spread, a short iron
+  condor and a long straddle (REQ-142 AC-1) - the conclusion rests on the reply's structure, which a fresh read does
+  not change. Nothing built; D-A38 parked in the GC-UI contract.
+  Status: **open for owner decision** (keep REQ-142 and find another source, or drop the row).
