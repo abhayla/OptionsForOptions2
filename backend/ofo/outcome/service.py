@@ -219,6 +219,10 @@ class Outcome:
     centre_label: ExplanationText | None = None  # FROM_ENTRIES only: where the level grid is centred, and why
     # ADR-167 (2): the round trip by component; None = no rate set / not priced
     charges_breakdown: ChargesBreakdown | None = None
+    # GC-UI step 4 (REQ-083 AC-1/AC-2, D-B06/D-B14), only when both views were asked for: each view's values over the
+    # SAME graph levels (At Expiry first), and the other view's values on the table's columns (``on_levels``)
+    curves: tuple[ScenarioValues, ...] = ()
+    other_view: ScenarioValues | None = None
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
@@ -568,6 +572,20 @@ def _graph_points(graph: ScenarioValues) -> tuple[tuple[Decimal, Decimal], ...]:
     return tuple(zip(graph.levels, graph.totals, strict=True))
 
 
+def _other(view: View) -> View:
+    return View.ESTIMATED_NOW if view is View.AT_EXPIRY else View.AT_EXPIRY
+
+
+def _both(graph: ScenarioValues, other_graph: ScenarioValues,
+          level_set: LevelSet) -> tuple[tuple[ScenarioValues, ...], ScenarioValues]:
+    """REQ-083 AC-1: the two views over the one graph level set, At Expiry first, and the other view cut to the table's
+    columns. Both come from :func:`scenario_values` on the same inputs and levels; nothing here prices a level."""
+    if graph.levels != other_graph.levels:
+        raise ValueError("the two curves were computed on different levels")
+    pair = (graph, other_graph) if graph.view is View.AT_EXPIRY else (other_graph, graph)
+    return pair, on_levels(other_graph, level_set)
+
+
 def _no_current(level_set: LevelSet) -> LevelSet:
     """The centre is not a market price: no column of the grid is marked CURRENT."""
     cols = []
@@ -580,7 +598,8 @@ def _no_current(level_set: LevelSet) -> LevelSet:
 
 def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None, stored,  # noqa: PLR0913
                  valuation: datetime.datetime, *, view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
-                 rates: ChargeRates | None = None, override: RangeOverride | None = None) -> Outcome | None:
+                 rates: ChargeRates | None = None, override: RangeOverride | None = None,
+                 both_views: bool = False) -> Outcome | None:
     """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
     from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
@@ -624,11 +643,17 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     graph = scenario_values(graph_level_set(level_set, model), model, View.AT_EXPIRY,
                             rates=None if charges is None else rates)
     values = on_levels(graph, level_set)  # the table's columns (Q33D = C); the graph keeps the strikes (F-8)
-    shown = values
-    if view is View.ESTIMATED_NOW:
-        shown = ScenarioValues(view, LABELS[view], "estimate", values.levels, False,
-                               render_explanation("outcome_from_entries_no_estimate"), None, None,
-                               spot_level=values.spot_level, spot_at=values.spot_at)
+
+    def no_estimate(levels):
+        return ScenarioValues(View.ESTIMATED_NOW, LABELS[View.ESTIMATED_NOW], "estimate", levels, False,
+                              render_explanation("outcome_from_entries_no_estimate"), None, None,
+                              spot_level=values.spot_level, spot_at=values.spot_at)
+
+    shown = no_estimate(values.levels) if view is View.ESTIMATED_NOW else values
+    curves, other = ((), None)
+    if both_views:  # Estimated Now needs live prices: its curve is unavailable with the same reason
+        curves, other = _both(graph, no_estimate(graph.levels), level_set)
+        other = values if view is View.ESTIMATED_NOW else other
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
     points = _graph_points(graph) if shown.available else ()
@@ -641,14 +666,16 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
-        charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre))
+        charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
+        curves=curves, other_view=other)
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                   rates: ChargeRates | None = None,
-                  override: RangeOverride | None = None, shared: FeedScope | None = None) -> Outcome:
+                  override: RangeOverride | None = None, shared: FeedScope | None = None,
+                  both_views: bool = False) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
@@ -666,7 +693,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return not_connected(definition, snapshot)
     if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
         return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
-                             override=override)
+                             override=override, both_views=both_views)
                 or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
@@ -759,8 +786,13 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     breakdown = _charges_breakdown(model, definition.underlying, rates)
     charges = None if breakdown is None else breakdown.total
     # the ONE computation (AC-8)
-    graph = scenario_values(graph_level_set(level_set, model), model, view, rates=None if charges is None else rates)
+    graph_levels = graph_level_set(level_set, model)
+    graph = scenario_values(graph_levels, model, view, rates=None if charges is None else rates)
     values = on_levels(graph, level_set)  # the table's columns (Q33D = C); the graph keeps the strikes (F-8)
+    curves, other = ((), None)
+    if both_views:  # REQ-083 AC-1: the other view from the same engine, on the same graph levels and inputs
+        curves, other = _both(graph, scenario_values(graph_levels, model, _other(view),
+                                                     rates=None if charges is None else rates), level_set)
     table = build_table(model, level_set=level_set, scenario=values,
                         leg_greeks=_shared_leg_greeks(model, snapshot, shared))
     points = _graph_points(graph)
@@ -775,4 +807,4 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         payoff_points=points,
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
-        charges_breakdown=breakdown)
+        charges_breakdown=breakdown, curves=curves, other_view=other)

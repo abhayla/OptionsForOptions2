@@ -128,6 +128,20 @@ def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 
+def _points(levels, totals) -> list[dict[str, Any]]:
+    """Payoff points with their server display text (the table cells' rupee format, GC-BM F-8): the browser never
+    formats or computes a money value (ADR-008)."""
+    return [{"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
+            for lvl, p in zip(levels, totals, strict=True)]
+
+
+def _curve(v: Any) -> dict[str, Any]:
+    """REQ-083 AC-1/AC-3: one view's curve; unavailable -> no points and the engine's reason."""
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason, "output_label": v.output_label,
+            "points": _points(v.levels, v.totals) if v.available and v.totals is not None else []}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -143,9 +157,13 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         }
         # GC-BM F-8: a graph point can be a strike that is no table column, so each point carries its own display
         # text (the table cells' rupee format), and the browser never formats or computes a money value (ADR-008)
-        payoff = {"view": v.view.value, "points": [
-            {"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
-            for lvl, p in out.payoff_points]}
+        payoff = {"view": v.view.value, "points": _points(*zip(*out.payoff_points, strict=True))
+                  if out.payoff_points else []}
+        if out.other_view is not None:  # both views asked for: the other view's totals on the table's levels
+            o = out.other_view
+            scenario["other"] = {"view": o.view.value, "label": o.label, "kind": o.kind, "available": o.available,
+                                 "unavailable_reason": o.unavailable_reason, "output_label": o.output_label,
+                                 "totals": None if o.totals is None else [_s(x) for x in o.totals]}
     if out.summary is not None:
         s = out.summary
         summary = {
@@ -177,6 +195,8 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
         "charges_breakdown": _breakdown(out.charges_breakdown),
     }
+    if out.curves:  # both views asked for (REQ-083 AC-1): absent otherwise, so today's replies keep their keys
+        body["curves"] = {c.view.value: _curve(c) for c in out.curves}
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     return body

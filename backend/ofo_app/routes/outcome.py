@@ -246,6 +246,10 @@ class OutcomeRequest(BaseModel):
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
     seq: RequestSeq | None = None  # REQ-119 AC-1 (REST) / REQ-133 AC-2 (the live push): echoed unchanged
+    both_views: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in "
+                    "`curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -333,6 +337,18 @@ class LevelOut(ApiModel):
     zero_pnl: bool
 
 
+class ScenarioOtherOut(ApiModel):
+    """REQ-083 AC-1 (both views asked for): the other view's totals on the scenario table's own levels."""
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+    output_label: CatalogueText | None
+    totals: list[Money] | None
+
+
+
 class ScenarioOut(ApiModel):
     view: ViewCode
     label: CatalogueText
@@ -346,6 +362,7 @@ class ScenarioOut(ApiModel):
     start: Money
     end: Money
     customised: bool  # true when the user's range was used, false for the computed default range
+    other: ScenarioOtherOut | None = None  # both_views only (absent otherwise)
 
 
 class PointOut(ApiModel):
@@ -358,6 +375,22 @@ class PayoffOut(ApiModel):
     view: ViewCode
     points: list[PointOut]
 
+
+class CurveOut(ApiModel):
+    """REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason."""
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+    output_label: CatalogueText | None
+    points: list[PointOut]
+
+
+class CurvesOut(ApiModel):
+    """REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``)."""
+    at_expiry: CurveOut
+    estimated_now: CurveOut
 
 class NetPremiumOut(ApiModel):
     """REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a
@@ -501,6 +534,8 @@ class OutcomeResponse(ApiModel):
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
     charges_breakdown: ChargesBreakdownOut | None = None  # REQ-081 AC-2 / ADR-167 (2)
+    #: GC-UI step 4 (REQ-083 AC-1): both curves on the same levels, keyed by view; absent unless ``both_views``
+    curves: CurvesOut | None = None
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -581,7 +616,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         answered_at = now()
         config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
-                            override=override)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            override=override, both_views=req.both_views)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
@@ -597,12 +632,12 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         elif live_blocked:
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+                                config=config, override=override, both_views=req.both_views)
                    or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override, shared=shared)
+                                config=config, override=override, shared=shared, both_views=req.both_views)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
