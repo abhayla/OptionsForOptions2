@@ -181,7 +181,18 @@ on unrounded parts) -> real defect F-1.
 | F-1 (re-classed) | 2 | NOT a server defect. ADR-082 (1): "every amount is exact Decimal; STT and stamp duty are not rounded at order level (as Kite's order-level charges reply, F-35)"; its worked example rounds the exact total once (214.95956479500 -> 214.96). The round-1 per-part rounding fix (fd25009c) was an unapproved SPEC CHANGE and is reverted (02e4b968). Rounded lines can therefore differ from the total by 1-2 paise; a note explaining that is a product-wording question for the owner (asked) | Checker defect C-3 | 02e4b968 (revert) | outcome tests 177 passed after revert |
 | C-1 | 1 | Checker computed TOTAL P&L % on net entry value | Checker defect: spec basis is max loss (REQ-035 Q233) | 77666b86 | replay: s54 126/0/1; mutant survived (debit spread cannot tell the bases apart) -> credit case in round 2a |
 | C-2 | 1 | Checker did not model the ADR-094 top-up in margin needed | Checker defect: needed marked not checkable (per-leg option_premium not in the reply) | 77666b86 | replay counts above |
-| C-3 | 2 | Checker expected charge lines to add up to the total | Checker defect: must follow ADR-082 (1) exact amounts | (round 2a) | |
+| C-3 | 2 | Checker expected charge lines to add up to the total | Checker defect: must follow ADR-082 (1) exact amounts; owner 14:2x kept it, no note (ADR-205) | 36c07515 | replay run1: 0 mismatches on all 3; live run2 0 |
+| F-2 | 2 | Live screen 14:52: Greeks "Per unit" shows the SOLD 22800 CE delta +0.42 while "Per position" is negative: the toggle flips a sign | Class: every per-unit Greek on a SELL leg; RCA: per_unit is the contract Greek, unsigned; REQ-084 AC-8 per position = per unit x lot size x lots | (build/gcui-sign) | |
+| F-3 | 2 | Live screen 14:55: drawer Futures tab "23 Nov Forward used for pricing 22815.45 (estimated from spot)" beside the 23 Nov future 22789.90; after D-C33 a 23 Nov leg is priced on parity, so the label is false for every expiry the drawer does not have open | Class: every option expiry on the Futures tab (1 of 18 on parity); RCA: the futures lease holds futures + index only | (build/gcui-fwd) | |
+| D-C27 r1 | 2 | Live screen 14:52: values no longer touch, but the strikes grid is 558 px in a 473 px panel: horizontal scroll, Put LTP / Put Delta cut | Round 1 widened columns without a total-width check (jsdom cannot measure) | (build/gcui-drawer, round 2/2) | |
+
+Step 2 live proof (API restarted on 9cc7ac58, PID 30792; Vite PID 4100; 14:50 IST): checker run2 live, all replies
+COMPUTED with no "estimated from spot" label: s54 126/0/1, condor 155/0/1, calendar 68/0/7 (not checkable = calendar
+expiry figures, ADR-143, and margin needed, C-2). Screen (Chrome, 1536 x 864): amber "estimated from spot" banner gone;
+switch only on Payoff (D-B33/B38); "Planned entry" heading (D-B51); IV "15.63%"; Greeks per unit 2 dp, gamma 4 dp;
+margin sentence "which already includes the premium of the legs you buy" (s54, top-up 0) and "adds about Rs 1,069.25"
+(condor); breakeven "before about Rs 140.79 of charges and taxes"; add-by-contract form gone. Full vitest 79 files /
+1285 passed.
 | P-1 | 2 | Orchestrator miss: decided the charges rounding rule as "spec silent" without grepping ADR-082 for rounding (spec-first R1 skipped); a builder found it | Process: R1 grep by every key term (here: round, paisa, GST) before a technical call that touches shown money | - | recorded; the R2 business/technical split also applies: money shown = owner's call |
 | D-C33 | 2 | Every leg expiry in market hours priced on the spot fallback | RCA: the strategy socket subscribed only legs + index, so parity never had 3 two-sided strikes; fix holds the 5 nearest strikes CE+PE per leg expiry (+10 contracts per expiry on the feed) | 1c65f911 | recorded 2026-10-08 frames; live re-run after merge |
 
