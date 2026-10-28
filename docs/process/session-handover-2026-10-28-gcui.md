@@ -34,8 +34,10 @@ NIFTY with both curves + step 50 + SD: s54 539/0/1, condor 641/0/1, calendar 390
 checkable); SENSEX bull put 73000/73200 PE 29 Oct: plain 233/0/1 (twice), with both curves 644/0/1. Live in market hours
 (15:24 IST) before step 3b/4: 158/0/1, 219/0/1, 100/0/7. Paper P&L moved live 1,124.50 -> 1,179.75 (15:25:03 -> :16).
 Full vitest after the last frontend merge: 83 files / 1328 tests passed. Full non-DB backend suite on 1187d6e6:
-7582 passed, 1 failed (the pin test, then fixed), 4 skipped; a run on 84a27aa7 was still going at handover
-(log D:\Abhay\scratch\gcui-checker\backend-full-s4.log) - READ IT FIRST next session.
+7582 passed, 1 failed (the pin test, then fixed), 4 skipped. The run on 84a27aa7 finished: 7657 passed, 7 failed,
+4 skipped - all 7 in tests/errors/test_outcome_slots_closed.py (the new `summary_paisa_signed` slot type `SignedPaisa`
+was not on the closed-slot allow-list); fixed right after c45a5adb, `tests/errors` 690 passed. The post-merge full
+backend run caught it (the builder ran only the pin tests): keep running it after every backend merge.
 
 ## PENDING (contract order)
 

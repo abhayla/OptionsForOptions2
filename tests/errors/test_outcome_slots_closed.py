@@ -24,6 +24,7 @@ CLOSED_SLOT_TYPES = frozenset({
     ex.Rupees, ex.Points, ex.SignedAmount, ex.Amount, ex.HourMinute, ex.ClockSeconds, ex.UnderlyingName,
     ex.InstrumentRef, ex.LevelRegions, ex.LegRef, ex.LegRefs, ex.HealthWord, ex.ExpiryDate, ex.CellText,
     ex.WholeRupees, ex.SignedWholeRupees, ex.WholePoints, ex.SignedPercent,  # REQ-152/153: Decimal-only, closed
+    ex.SignedPaisa,  # REQ-109 AC-2 (GC-UI D-B48): per-leg paper P&L to the paisa; Decimal-only via Rupees.validate
     ex.Explained, ex.ScenarioViewLabel, ex.ColumnLabel, ex.HealthLabel, ex.ExceptLevels,
 })
 
