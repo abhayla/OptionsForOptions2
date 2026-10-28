@@ -13,7 +13,8 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor.json'
-import { DEFAULT_CHOICE, choiceFields, isPoints, matchesChoice, rangeIsComplete } from '@/lib/scenarioChoice'
+import PayoffChart from '@/components/strategy/PayoffChart.vue'
+import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, isPoints, matchesChoice, rangeIsComplete } from '@/lib/scenarioChoice'
 
 describe('AC-4: the request fields of a pick', () => {
   it('an empty pick adds nothing to the request (At Expiry is the server default)', () => {
@@ -69,24 +70,26 @@ describe('AC-4 and AC-6 on the page', () => {
     await flushPromises()
     return w
   }
-  const applyRange = async (w, from, to) => {
-    await w.get('[data-testid="range-start"]').setValue(from)
-    await w.get('[data-testid="range-end"]').setValue(to)
-    await w.get('[data-testid="range-apply"]').trigger('click')
+  // GC-UI b1 D-B10: the range is now the graph's Zoom (PayoffChart emits the new range; the server draws it)
+  const zoom = async (w, from, to) => {
+    w.findComponent(PayoffChart).vm.$emit('zoom', { rangeStart: from, rangeEnd: to })
     await flushPromises()
   }
   beforeEach(() => { apiCalls.length = 0 })
 
-  it('the first request is the default one: At Expiry, no range, and there is no step control', async () => {
+  it('the first request is the default one: At Expiry, no range, no step control, and the chart flags', async () => {
     const w = await openPage()
     expect(['view', 'step', 'range_start', 'range_end'].some((k) => k in apiCalls[0].body)).toBe(false)
     expect(w.find('[data-testid="step-select"]').exists()).toBe(false)
+    // REQ-083 AC-1 / AC-4 / AC-5: both curves of ONE reply, the SD bands and the OI bars are asked for every time
+    expect(apiCalls[0].body).toMatchObject(CHART_FLAGS)
+    expect(CHART_FLAGS).toEqual({ both_views: true, sd_bands: true, open_interest: true })
   })
 
-  it('a range is sent, and switching the column keeps it', async () => {
+  it('a zoom range is sent, and switching the column keeps it', async () => {
     const w = await openPage()
-    await applyRange(w, '22800', '23600')
-    expect(apiCalls.at(-1).body).toMatchObject({ range_start: '22800', range_end: '23600' })
+    await zoom(w, '22800', '23600')
+    expect(apiCalls.at(-1).body).toMatchObject({ range_start: '22800', range_end: '23600', ...CHART_FLAGS })
     expect(apiCalls.at(-1).body.view).toBeUndefined()
     expect('step' in apiCalls.at(-1).body).toBe(false)
     await w.get('[data-testid="view-estimated_now"]').trigger('click')
@@ -98,27 +101,19 @@ describe('AC-4 and AC-6 on the page', () => {
     expect(apiCalls.at(-1).body.view).toBeUndefined()
   })
 
-  it('half a range cannot be applied and sends nothing new', async () => {
+  it('D-B10: no From / To / Apply range / Default range controls; the chart gets the reply grid to zoom on', async () => {
     const w = await openPage()
-    const before = apiCalls.length
-    await w.get('[data-testid="range-start"]').setValue('22800')
-    expect(w.get('[data-testid="range-apply"]').attributes('disabled')).toBeDefined()
-    await w.get('[data-testid="range-apply"]').trigger('click')
-    await flushPromises()
-    expect(apiCalls.length).toBe(before)
-    expect(w.get('[data-testid="range-hint"]').text()).toContain('both')
+    for (const id of ['range-start', 'range-end', 'range-apply', 'range-reset']) expect(w.find(`[data-testid="${id}"]`).exists()).toBe(false)
+    expect(w.text()).not.toMatch(/Apply range|Default range/)
+    expect(w.findComponent(PayoffChart).props('zoom')).toEqual({ step: real.scenario.step, start: real.scenario.start, end: real.scenario.end })
   })
 
-  it('Default range clears the range and keeps the column', async () => {
+  it('a zoom keeps the column', async () => {
     const w = await openPage()
     await w.get('[data-testid="view-estimated_now"]').trigger('click')
     await flushPromises()
-    await applyRange(w, '22800', '23600')
-    await w.get('[data-testid="range-reset"]').trigger('click')
-    await flushPromises()
-    const body = apiCalls.at(-1).body
-    expect(body.view).toBe('estimated_now')
-    expect('range_start' in body).toBe(false)
+    await zoom(w, '22800', '23600')
+    expect(apiCalls.at(-1).body).toMatchObject({ view: 'estimated_now', range_start: '22800', range_end: '23600' })
   })
 
   it('the estimate label (the server text) shows only on Estimated Now', async () => {

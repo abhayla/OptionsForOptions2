@@ -109,11 +109,12 @@ test('every number on the screen equals the API response text for the condor', a
   expect(start[0]).toContain('22,326.85')
   expect(start[0]).toContain('22,873.15')
 
-  // 4. the chart's end labels are the API's first and last payoff levels (on the chart card's Payoff tab)
+  // 4. the chart is on the chart card's Payoff tab with the reply's labelled current price (GC-UI b1 D-B11 / D-B12:
+  //    the duplicate first / last range line under the axis is gone; the axis is fitted to the sent points)
   await page.getByTestId('tab-payoff').click()
   await expect(page.getByTestId('payoff-chart')).toBeVisible()
-  await expect(page.getByTestId('payoff-first')).toHaveText(api.payoff.points[0].level)
-  await expect(page.getByTestId('payoff-last')).toHaveText(api.payoff.points[api.payoff.points.length - 1].level)
+  await expect(page.getByTestId('payoff-first')).toHaveCount(0)
+  if (api.spot_level) await expect(page.getByTestId('payoff-current-price')).toHaveText(`Current price: ${api.spot_level}`)
   await page.screenshot({ path: `screenshots/strategy-computed-${info.project.name}.png`, fullPage: true })
 })
 

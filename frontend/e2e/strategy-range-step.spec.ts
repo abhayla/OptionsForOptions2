@@ -1,5 +1,5 @@
-// W-090 core proof (REQ-034 AC-4; ADR-042): on the recorded 2026-10-08 replay the user sets the NIFTY range
-// 22,800-23,600 (the step stays the Admin 100). The scenario columns on the screen are exactly the levels the outcome API
+// W-090 core proof (REQ-034 AC-4; ADR-042): on the recorded 2026-10-08 replay the user zooms the NIFTY range with
+// the graph's Zoom (GC-UI b1; the step stays the Admin 100). The scenario columns on the screen are exactly the levels the outcome API
 // returned for that pick; the 9 grid levels (22800, 22900 ... 23600) are all there, the live level is still inserted
 // (AC-2), and a range off the 100-point grid is answered with the catalogue error, never a silent default.
 // REPLAY_URL: a preview whose /api proxy points at an API started with APP_ENV=test and OUTCOME_REPLAY=1.
@@ -40,24 +40,25 @@ async function openCondor(page: Page, request: APIRequestContext) {
 
 const outcomePost = (page: Page) => page.waitForResponse((r) => r.url().includes('/api/strategies/outcome') && r.request().method() === 'POST')
 
-async function applyPick(page: Page, start: string, end: string) {
-  await page.getByTestId('range-start').fill(start)
-  await page.getByTestId('range-end').fill(end)
+// GC-UI b1 D-B10: the From / To inputs are gone; the range is picked with the graph's Zoom, which stays on the reply grid
+async function zoomPick(page: Page, dir: 'in' | 'out') {
   const responded = outcomePost(page)
-  await page.getByTestId('range-apply').click()
+  await page.getByTestId(`payoff-zoom-${dir}`).click()
   const res = await responded
   return { status: res.status(), api: (await res.json()) as Outcome }
 }
 
-test('AC-4: range 22,800-23,600 gives exactly the Admin-step grid, with the live level still inserted', async ({ page, request }, info) => {
+test('AC-4: a zoomed range gives exactly the Admin-step grid, with the live level still inserted', async ({ page, request }, info) => {
   await openCondor(page, request)
-  const { status, api } = await applyPick(page, '22800', '23600')
+  const { status, api } = await zoomPick(page, 'in')
   expect(status).toBe(200)
+  expect(api.scenario.customised).toBe(true)
   const levels: string[] = api.scenario.levels.map((l: { level: string }) => l.level)
-  const grid = Array.from({ length: 9 }, (_, k) => String(22800 + 100 * k)) // 800 / 100 + 1 at the NIFTY Admin step 100, hand-computed
+  const [step, start, end] = [api.scenario.step, api.scenario.start, api.scenario.end].map(Number)
+  expect(step).toBe(100) // the NIFTY Admin step
+  const grid = Array.from({ length: (end - start) / step + 1 }, (_, k) => String(start + step * k))
   for (const g of grid) expect(levels, `grid level ${g}`).toContain(g)
-  expect(levels).toContain(api.spot_level) // AC-2: the live level is shown although 22,800 is above it
-  expect([api.scenario.step, api.scenario.start, api.scenario.end]).toEqual(['100', '22800', '23600'])
+  expect(levels).toContain(api.spot_level) // AC-2: the live level is still inserted
 
   await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
   // the screen draws exactly those columns, in the API's order, and the TOTAL row shows the API's text for each
@@ -73,18 +74,19 @@ test('AC-4: range 22,800-23,600 gives exactly the Admin-step grid, with the live
   await page.screenshot({ path: `screenshots/strategy-range-step-${info.project.name}.png`, fullPage: true })
 })
 
-test('AC-4: a range off the 100-point grid is answered with the catalogue error, not a default', async ({ page, request }) => {
+// GC-UI b1: the screen can no longer type an off-grid range (Zoom stays on the reply grid), so the server's refusal is
+// proven on the API directly, and the screen's zoom in then out is proven to come back to a computed answer.
+test('AC-4: a range off the 100-point grid is answered with the catalogue error, not a default', async ({ request }) => {
+  const draft = await condorDraft(request)
+  const res = await request.post(`${REPLAY_URL}/api/strategies/outcome`, { data: { ...draft, range_start: '22850', range_end: '23600' } })
+  expect(res.status()).toBe(422) // 22850 is not on the 100-point grid (AC-5)
+})
+
+test('AC-4: zoom in then out stays on the grid and stays computed', async ({ page, request }) => {
   await openCondor(page, request)
-  const responded = outcomePost(page)
-  await page.getByTestId('range-start').fill('22850') // not on the 100-point grid (AC-5)
-  await page.getByTestId('range-end').fill('23600')
-  await page.getByTestId('range-apply').click()
-  const res = await responded
-  expect(res.status()).toBe(422)
-  await expect(page.getByTestId('state-error')).toBeVisible()
-  // the pick can be undone from the same screen
-  const again = outcomePost(page)
-  await page.getByTestId('range-reset').click()
-  expect((await again).status()).toBe(200)
+  expect((await zoomPick(page, 'in')).status).toBe(200)
+  const { status, api } = await zoomPick(page, 'out')
+  expect(status).toBe(200)
+  expect(Number(api.scenario.start) % Number(api.scenario.step)).toBe(0)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
 })

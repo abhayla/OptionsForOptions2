@@ -1,33 +1,45 @@
 <!-- Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/components/strategy/PayoffChart.vue (ADR-047).
      Changed: props are the outcome API's payoff points (level and pnl strings, as given) instead of number arrays;
-     the tooltip and the end labels show the API's own strings; the numbers handed to chart.js are for drawing only.
+     the tooltip shows the API's own strings; the numbers handed to chart.js are for drawing only.
      This file is on the no-client-maths scan's allowlist by name for that reason (tests/strategy-table.test.js).
-     W-194 (ADR-193 UI-121, UI study Region F, Revision 1; Sensibull S-012, S-015): restyled for the chart card. The
-     expiry line is coloured by sign with a soft fill (token colours), a dashed vertical line marks the reply's spot with
-     a label box holding the reply's own spot text, and a legend sits top right. Hover snaps to the nearest level the
-     server SENT (chart.js 'nearest' on x over the sent points only) and shows that point's own strings: never an
-     interpolated level, never a derived percent (the reply carries none).
-     G-051 (REQ-083 AC-2; Sensibull S-122): the hover is now this component's own DOM tooltip (chart.js's canvas one is
-     off), so mouse AND keyboard reach it and a test can read it. It snaps to the nearest level the server SENT (a tie
-     takes the lower level) and shows "At <level> (<+/-x.x%>)" and one line per curve the reply carries, labelled by
-     the reply's view, with the money text the table shows for that level (prop pnlText, the reply's own display
-     strings) or, without it, the point's own pnl string regrouped by groupMoney. No money value is parsed for display
-     or computed between points (ADR-008). The % from spot is the one browser-computed figure: a ratio of two index
-     levels the reply sent (the reply carries no per-point percent), never money. A vertical guide line marks the
-     hovered level; the tooltip is clamped inside the chart area. -->
+     W-194 / GC-BM F-8, F-11: the expiry line is coloured by sign, a crossing segment split at the zero pixel.
+     G-051 (REQ-083 AC-2): the hover is this component's own DOM tooltip (mouse and keyboard); it snaps to the nearest
+     level the server SENT (a tie takes the lower level). No money value is parsed for display or computed between
+     points (ADR-008). The % from spot is the one browser-computed figure: a ratio of two index levels the reply sent
+     (the point shape is level / pnl / display: the reply carries no per-point percent), never money.
+     GC-UI step 4 round b1 (REQ-083 AC-1..AC-7; Sensibull 012, 017, 018, 019, sb-02, layout only; our tokens):
+       - both curves of ONE reply (`curves`, asked with both_views) on one chart, legend "At expiry" / "Estimated now"
+         (REQ-083 AC-1 wording); a curve the reply marks unavailable is not drawn and its reason (for a calendar,
+         ADR-143's line, which the server sends as the at-expiry reason) or its output label is shown small;
+       - the hover shows both curves' own display strings at the nearest computed level, estimated first (AC-2);
+       - no x-axis title (it was false on the Estimated curve), y titles "Profit / loss" and, with bars, "Open Interest";
+       - the x domain is the first and last sent level (AC-7: the browser never extends a curve); Zoom in / out asks
+         the engine for a wider or narrower range on the reply's own grid (start, end, step);
+       - one solid "Current price: <spot>" marker, a mark at each summary.breakevens level;
+       - hatched profit / loss zones; call / put OI bars per strike on the right axis, a null side draws no bar (AC-6),
+         an "OI data at" strip that follows the hovered strike; SD band lines with a -2SD..2SD top axis (Fixed). -->
 <template>
   <figure class="h-full" data-testid="payoff-chart">
-    <div class="mb-2 flex items-center justify-end gap-4 text-xs text-ink-muted" data-testid="payoff-legend">
-      <span class="flex items-center gap-1"><span class="inline-block h-0.5 w-3 bg-profit"></span> Profit</span>
-      <span class="flex items-center gap-1"><span class="inline-block h-0.5 w-3 bg-loss"></span> Loss</span>
-      <span v-if="spot" class="flex items-center gap-1" data-testid="payoff-legend-spot"><span class="inline-block w-3 border-t border-dashed border-ink-muted"></span> Spot {{ spot }}</span>
+    <div class="mb-1 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-muted">
+      <div class="flex flex-wrap items-center gap-4" data-testid="payoff-legend">
+        <span v-for="c in shown" :key="c.view" class="flex items-center gap-1">
+          <span :class="['inline-block h-0.5 w-4', c.view === 'estimated_now' ? 'bg-accent' : 'bg-profit']"></span>
+          <span data-testid="payoff-legend-curve">{{ c.label }}</span>
+        </span>
+        <span v-if="sdText" data-testid="payoff-sd-mode">{{ sdText }}</span>
+      </div>
+      <div v-if="zoom && points0.length" role="group" aria-label="Zoom" class="inline-flex overflow-hidden rounded border border-line" data-testid="payoff-zoom">
+        <button type="button" class="px-2 py-0.5 hover:text-ink" aria-label="Zoom out: a wider range" data-testid="payoff-zoom-out" @click="askZoom('out')">Zoom out</button>
+        <button type="button" class="border-l border-line px-2 py-0.5 hover:text-ink" aria-label="Zoom in: a narrower range" data-testid="payoff-zoom-in" @click="askZoom('in')">Zoom in</button>
+      </div>
     </div>
-    <p v-if="!points.length && unavailableReason" class="mb-2 text-sm text-ink-muted" data-testid="payoff-unavailable">{{ unavailableReason }}</p>
+    <p v-if="notes.length" class="mb-1 text-xs text-ink-muted" data-testid="payoff-curve-note">{{ notes.join(' ') }}</p>
+    <p v-if="!points0.length && unavailableReason" class="mb-2 text-sm text-ink-muted" data-testid="payoff-unavailable">{{ unavailableReason }}</p>
     <div
       ref="plot"
-      class="relative h-64 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      class="relative h-72 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       tabindex="0"
-      :aria-label="points.length ? 'Payoff chart: use the left and right arrow keys to read each index level' : undefined"
+      :aria-label="points0.length ? 'Payoff chart: use the left and right arrow keys to read each index level' : undefined"
       data-testid="payoff-plot"
       @mousemove="onMove"
       @mouseleave="hide"
@@ -36,6 +48,20 @@
       @keydown="onKey"
     >
       <canvas ref="chartCanvas" role="img" :aria-label="ariaLabel"></canvas>
+      <span
+        v-for="b in sdMarks"
+        :key="b.label"
+        class="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-ink-muted"
+        :style="{ left: `${b.x}px` }"
+        :data-level="b.level"
+        data-testid="payoff-sd-label"
+      >{{ b.label }}</span>
+      <div
+        v-if="spotMark"
+        class="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap rounded border border-line bg-surface px-1.5 text-[11px] text-ink"
+        :style="{ left: `${spotMark.x}px`, top: `${spotMark.top}px` }"
+        data-testid="payoff-current-price"
+      >Current price: {{ spot }}</div>
       <div
         v-if="hovered"
         class="pointer-events-none absolute w-px border-l border-dashed border-ink"
@@ -56,18 +82,21 @@
         </div>
       </div>
     </div>
-    <figcaption class="mt-1 flex justify-between text-xs text-ink-muted">
-      <span data-testid="payoff-first">{{ points[0]?.level }}</span>
-      <span>Index level at expiry</span>
-      <span data-testid="payoff-last">{{ points[points.length - 1]?.level }}</span>
-    </figcaption>
+    <div v-if="oi" class="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-ink-muted">
+      <template v-if="oiBars">
+        <span class="tabular-nums text-ink" data-testid="payoff-oi-strip">{{ oiStrip }}</span>
+        <span v-if="oi.read_at_display" data-testid="payoff-oi-read-at">{{ oi.read_at_display }}</span>
+        <span v-if="oi.expiry_note" data-testid="payoff-oi-expiry-note">{{ oi.expiry_note }}</span>
+      </template>
+      <span v-else data-testid="payoff-oi-unavailable">{{ oi.unavailable_reason ? `${OI_NONE}: ${oi.unavailable_reason}` : OI_NONE }}</span>
+    </div>
   </figure>
 </template>
 
 <script setup>
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
-import { pointSigns, segmentColour } from '@/lib/payoffRegions'
+import { hatchPattern, pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney } from '@/lib/displayFormat'
 
 // GC-BM F-11: the pixel half of the zero-crossing colour (ADR-008 drawing exception): red below the pixel row of 0,
@@ -86,120 +115,152 @@ function crossingGradient(chart, colours) {
 }
 
 const props = defineProps({
-  points: { type: Array, default: () => [] }, // [{ level: '22500', pnl: '1234.50' }] as the API sent them
-  spot: { type: String, default: '' }, // the reply's spot_level text, as sent ('' = no spot line)
-  view: { type: String, default: '' }, // the reply's payoff.view: which curve the points are ('' = unknown: no P&L line)
-  pnlText: { type: Object, default: null }, // { [level]: the reply's display string for that level } (the table's)
+  points: { type: Array, default: () => [] }, // the reply's payoff.points: drawn only when the reply has no `curves`
+  spot: { type: String, default: '' }, // the reply's spot_level text, as sent ('' = no marker)
+  view: { type: String, default: '' }, // the reply's payoff.view: names the one line of a reply without `curves`
+  pnlText: { type: Object, default: null }, // { [level]: the table's display string } for the one line of `points`
   unavailableReason: { type: String, default: null }, // the reply's scenario.unavailable_reason when it has no curve
+  curves: { type: Object, default: null }, // the reply's `curves` (both_views): { at_expiry, estimated_now }
+  breakevens: { type: Array, default: () => [] }, // the reply's summary.breakevens (index levels as text)
+  sd: { type: Object, default: null }, // the reply's standard_deviation block (sd_bands)
+  oi: { type: Object, default: null }, // the reply's open_interest block (open_interest)
+  zoom: { type: Object, default: null }, // { step, start, end } of the reply's scenario: the grid a zoom stays on
 })
+const emit = defineEmits(['zoom'])
 
-// The reply's view decides the line's label; a view with no label here shows no line rather than a guessed one.
-const VIEW_LABELS = { at_expiry: 'At expiry', estimated_now: 'Estimated now' }
+// REQ-083 AC-1 wording ("At expiry", "Estimated on <date>", "now" until a target date exists: REQ-084, Later)
+const CURVE_LABELS = { at_expiry: 'At expiry', estimated_now: 'Estimated now' }
+const VIEWS = ['at_expiry', 'estimated_now']
+const HOVER_ORDER = ['estimated_now', 'at_expiry'] // AC-2's example: the estimate first, then at expiry
+const OI_NONE = 'OI not available for this expiry' // REQ-083 AC-6
+
+// The curves to draw: the reply's `curves` (each only when available with points), else its one payoff line.
+const shown = computed(() => {
+  const c = props.curves
+  if (c) return VIEWS.filter((v) => c[v]?.available && c[v].points?.length).map((v) => ({ view: v, label: CURVE_LABELS[v], points: c[v].points }))
+  return props.points.length ? [{ view: props.view, label: CURVE_LABELS[props.view] ?? '', points: props.points, table: true }] : []
+})
+// The levels the hover walks: the first drawn curve's (the server sends both curves on the same levels).
+const points0 = computed(() => shown.value[0]?.points ?? [])
+// Small text under the legend: an unavailable curve's reason (a calendar: ADR-143's line) and a curve's output label.
+const notes = computed(() => {
+  const c = props.curves
+  if (!c) return []
+  const out = VIEWS.flatMap((v) => [c[v] && !c[v].available ? c[v].unavailable_reason : null, c[v]?.available ? c[v].output_label : null])
+  return [...new Set(out.filter(Boolean))]
+})
+const oiBars = computed(() => (props.oi?.available && props.oi.rows?.length ? props.oi.rows : null))
+const sdBands = computed(() => (props.sd?.available ? props.sd.bands ?? [] : []))
+const sdText = computed(() => {
+  if (!props.sd) return ''
+  if (!props.sd.available) return props.sd.reason ? `SD bands: ${props.sd.reason}` : ''
+  return props.sd.horizon_days ? `SD Fixed, ${props.sd.horizon_days} days` : 'SD Fixed'
+})
 
 const chartCanvas = ref(null)
 let chartInstance = null
+const drawTick = ref(0) // bumped after each draw, so the DOM marks re-read the new scale
 
-const ariaLabel = computed(() => 'Profit and loss at expiry across index levels' + (props.spot ? `; spot ${props.spot}` : ''))
+const ariaLabel = computed(() => `Payoff chart: ${shown.value.map((c) => c.label).join(' and ') || 'no curve'}${props.spot ? `; current price ${props.spot}` : ''}`)
 
 // Colours come from the design tokens (style.css), read at draw time; '' falls back to chart.js defaults (jsdom).
 const token = (name) => (typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '')
 
 // Drawing only: chart.js needs numbers to place a point. Nothing here is displayed.
-// GC-BM F-8 (Sensibull S-012): ONE continuous line through every sent point (no null, so no gap where the P&L
-// changes sign between two sent points, e.g. Estimated Now, which has no 0-P&L level). Each segment is coloured from
-// the signs of its two SENT strings (signOf reads text, no number is compared): profit, loss, or neither for a run at
-// 0.00 (issue 297 item 4: the 0.00 plateau is on neither line). A segment that crosses zero takes a vertical gradient
-// split at the zero pixel, so the part above the axis is green and the part below red; a pixel, never a money value.
 const lineData = (points) => points.map((p) => ({ x: Number(p.level), y: Number(p.pnl) }))
+const barData = (rows, side) => rows.map((r) => ({ x: Number(r.strike), y: r[side] ?? null })) // null: no bar, never 0
 
-// The spot marker: a dashed vertical line at the reply's spot and a small box with the reply's own spot text.
-const spotLine = {
-  id: 'spotLine',
+// The spot line (solid) and the SD band lines (dashed); their words are DOM marks in the template.
+const marks = {
+  id: 'payoffMarks',
   afterDatasetsDraw(chart) {
-    if (!props.spot) return
-    const x = chart.scales.x.getPixelForValue(Number(props.spot))
     const { top, bottom, left, right } = chart.chartArea
-    if (!(x >= left && x <= right)) return
     const ctx = chart.ctx
-    const ink = token('--color-ink-muted') || '#5b6470'
-    ctx.save()
-    ctx.setLineDash([4, 4])
-    ctx.strokeStyle = ink
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(x, top)
-    ctx.lineTo(x, bottom)
-    ctx.stroke()
-    ctx.setLineDash([])
-    const text = props.spot
-    ctx.font = '11px sans-serif'
-    const w = ctx.measureText(text).width + 8
-    ctx.fillStyle = token('--color-surface') || '#ffffff'
-    ctx.strokeStyle = ink
-    ctx.fillRect(x - w / 2, top, w, 16)
-    ctx.strokeRect(x - w / 2, top, w, 16)
-    ctx.fillStyle = token('--color-ink') || '#1b1f24'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(text, x, top + 8)
-    ctx.restore()
+    const at = (level) => chart.scales.x.getPixelForValue(Number(level))
+    const line = (x, colour, dash) => {
+      if (!(x >= left && x <= right)) return
+      ctx.save()
+      ctx.setLineDash(dash)
+      ctx.strokeStyle = colour
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x, top)
+      ctx.lineTo(x, bottom)
+      ctx.stroke()
+      ctx.restore()
+    }
+    for (const b of sdBands.value) line(at(b.level), token('--color-ink-subtle') || '#8a929c', [3, 3])
+    if (props.spot) line(at(props.spot), token('--color-ink') || '#1b1f24', [])
   },
 }
 
 const createChart = () => {
-  // G-065 round 2 (REQ-148 AC-6): the previous reply's curve goes FIRST, so a reply with no curve for its view (At
-  // Expiry on legs of two expiries) never leaves the old line on screen
+  // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
+  // old line on screen
   if (chartInstance) chartInstance.destroy()
   chartInstance = null
-  if (!chartCanvas.value || !props.points.length) return
+  if (!chartCanvas.value || !points0.value.length) return
 
   const ctx = chartCanvas.value.getContext ? chartCanvas.value.getContext('2d') : null
   const colours = { profit: token('--color-profit'), loss: token('--color-loss'), flat: token('--color-ink-muted') || '#5b6470' }
   const grid = token('--color-line')
+  const bars = oiBars.value
+  // beside the expiry curve the estimate is one accent line; drawn alone it keeps the profit / loss colours
+  const accent = (c) => c.view === 'estimated_now' && shown.value.length > 1
+  const curveSets = shown.value.map((c, i) => ({
+    type: 'line', curve: c.view, label: c.label || 'P&L', data: lineData(c.points), borderWidth: 2, pointRadius: 0,
+    pointHoverRadius: 4, tension: 0, spanGaps: false, order: 1,
+    borderColor: accent(c) ? token('--color-accent') || '#2f5bff' : colours.profit,
+    segment: accent(c) ? undefined : { borderColor: segmentColour(pointSigns(c.points), colours, (chart) => crossingGradient(chart, colours)) },
+    // D-B15: only the first curve's zones are hatched (at expiry when it is drawn), so two fills never overlap
+    fill: i === 0 ? { target: 'origin', above: hatchPattern(document, colours.profit || token('--color-profit-soft')), below: hatchPattern(document, colours.loss || token('--color-loss-soft')) } : false,
+  }))
+  const beSet = props.breakevens.length
+    ? [{ type: 'line', label: 'Breakeven', data: props.breakevens.map((b) => ({ x: Number(b), y: 0 })), showLine: false, pointRadius: 5, pointStyle: 'triangle', pointBackgroundColor: token('--color-ink') || '#1b1f24', order: 0 }]
+    : []
+  const oiSets = bars
+    ? [
+        { type: 'bar', label: 'Call OI', yAxisID: 'y1', data: barData(bars, 'call_oi'), backgroundColor: token('--color-loss-soft') || '#fceded', borderColor: colours.loss, borderWidth: 1, barThickness: 6, order: 3 },
+        { type: 'bar', label: 'Put OI', yAxisID: 'y1', data: barData(bars, 'put_oi'), backgroundColor: token('--color-profit-soft') || '#e7f6ee', borderColor: colours.profit, borderWidth: 1, barThickness: 6, order: 3 },
+      ]
+    : []
 
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: props.points.map((p) => p.level),
-      datasets: [
-        {
-          label: 'P&L', data: lineData(props.points), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0,
-          spanGaps: false, borderColor: colours.profit,
-          segment: { borderColor: segmentColour(pointSigns(props.points), colours, (chart) => crossingGradient(chart, colours)) },
-          fill: { target: 'origin', above: token('--color-profit-soft'), below: token('--color-loss-soft') },
-        },
-      ],
-    },
+    data: { datasets: [...curveSets, ...beSet, ...oiSets] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
       parsing: true,
-      // Hover snaps to the nearest SENT level on x: only the API's points exist in the data, so no level in between.
+      layout: { padding: { top: 22 } }, // room for the SD top axis and the current-price box
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: { enabled: false }, // G-051: the DOM tooltip in the template (mouse and keyboard) replaces it
       },
       scales: {
-        x: { type: 'linear', display: true, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
-        y: { display: true, grid: grid ? { color: grid } : {}, ticks: { font: { size: 10 } } },
+        // D-B08: no x title; D-B11 / AC-7: the domain is the first and last SENT level, never wider
+        x: { type: 'linear', min: firstLevel(), max: lastLevel(), display: true, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+        y: { display: true, title: { display: true, text: 'Profit / loss', font: { size: 11 } }, grid: grid ? { color: grid } : {}, ticks: { font: { size: 10 } } },
+        y1: { display: !!bars, position: 'right', beginAtZero: true, title: { display: !!bars, text: 'Open Interest', font: { size: 11 } }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
       },
     },
-    plugins: [spotLine],
+    plugins: [marks],
   })
+  drawTick.value++
 }
 
-// ---- G-051 hover: snap to a SENT point and show its strings ----
+// ---- hover: snap to a SENT point and show its strings ----
 const plot = ref(null)
 const tipEl = ref(null)
-const index = ref(null) // the hovered point's index in props.points, or null
+const index = ref(null) // the hovered point's index in points0, or null
 const tipWidth = ref(0)
 
 const box = () => plot.value?.getBoundingClientRect?.() ?? { left: 0, width: 0, height: 0 }
 const areaOf = () => chartInstance?.chartArea ?? { left: 0, right: box().width, top: 0, bottom: box().height }
-const firstLevel = () => Number(props.points[0].level)
-const lastLevel = () => Number(props.points[props.points.length - 1].level)
+const firstLevel = () => Number(points0.value[0].level)
+const lastLevel = () => Number(points0.value[points0.value.length - 1].level)
 // The index level under a canvas x pixel (chart.js's own scale; a linear stand-in over the sent range when none).
 const levelAt = (x) => {
   const sx = chartInstance?.scales?.x
@@ -214,16 +275,18 @@ const pixelAt = (level) => {
   const span = lastLevel() - firstLevel()
   return span ? a.left + ((level - firstLevel()) / span) * (a.right - a.left) : a.left
 }
-// The nearest SENT level to a value; an exact tie takes the lower level. Selection only: no value is made up.
-const nearestIndex = (value) => {
+// The index in `list` of the entry whose level is nearest `value`; an exact tie takes the lower level. Selection
+// only (index levels and strikes, never money): no value is made up.
+const nearestBy = (list, value, levelOf) => {
   let best = null
-  props.points.forEach((p, i) => {
-    const lv = Number(p.level)
+  list.forEach((p, i) => {
+    const lv = Number(levelOf(p))
     const d = Math.abs(lv - value)
     if (best === null || d < best.d || (d === best.d && lv < best.lv)) best = { i, d, lv }
   })
   return best ? best.i : null
 }
+const nearestIndex = (value) => nearestBy(points0.value, value, (p) => p.level)
 // The % of an index level from spot, one decimal: a ratio of two reply levels, not money. '' when there is no spot.
 const pctFromSpot = (level) => {
   const spot = Number(props.spot)
@@ -234,19 +297,20 @@ const pctFromSpot = (level) => {
 }
 
 const hovered = computed(() => {
-  const p = index.value === null ? null : props.points[index.value]
+  const p = index.value === null ? null : points0.value[index.value]
   if (!p) return null
   const pct = pctFromSpot(p.level)
-  const label = VIEW_LABELS[props.view]
-  // the table's display string for this level (same reply); else the point's own display text (a strike level,
-  // GC-BM F-8, is no table column); else its pnl text, regrouped as text only
-  const pnl = props.pnlText?.[p.level] ?? p.display ?? groupMoney(p.pnl)
-  return {
-    title: `At ${groupMoney(p.level)}${pct ? ` (${pct})` : ''}`,
-    lines: label ? [{ view: props.view, label, pnl }] : [],
-    x: pixelAt(Number(p.level)),
-    area: areaOf(),
-  }
+  const lvl = Number(p.level)
+  const lines = HOVER_ORDER.flatMap((v) => shown.value.filter((c) => c.view === v))
+    .flatMap((c) => {
+      // the same computed level on that curve (same reply, same levels); a curve without it shows no line
+      const q = c.points.find((x) => x.level === p.level)
+      if (!q || !c.label) return []
+      // a one-line reply prefers the table's display string for the level (same reply); else the point's own
+      const pnl = (c.table ? props.pnlText?.[q.level] : null) ?? q.display ?? groupMoney(q.pnl)
+      return [{ view: c.view, label: c.label, pnl }]
+    })
+  return { title: `At ${groupMoney(p.level)}${pct ? ` (${pct})` : ''}`, lines, x: pixelAt(lvl), area: areaOf(), level: lvl }
 })
 // The tooltip's left edge, kept inside the chart area at both ends.
 const tipLeft = computed(() => {
@@ -255,6 +319,49 @@ const tipLeft = computed(() => {
   const w = tipWidth.value
   return Math.max(h.area.left, Math.min(h.x - w / 2, h.area.right - w))
 })
+
+// ---- DOM marks over the canvas (their words; the lines are drawn by the marks plugin) ----
+const inArea = (x) => {
+  const a = areaOf()
+  return x >= a.left && x <= a.right
+}
+const sdMarks = computed(() => {
+  void drawTick.value
+  if (!points0.value.length) return []
+  return sdBands.value.map((b) => ({ label: b.label, level: b.level, x: pixelAt(Number(b.level)) })).filter((b) => inArea(b.x))
+})
+const spotMark = computed(() => {
+  void drawTick.value
+  if (!props.spot || !points0.value.length) return null
+  const x = pixelAt(Number(props.spot))
+  return inArea(x) ? { x, top: areaOf().top } : null
+})
+// D-B17: the OI row of the hovered strike (nearest listed strike), else the one nearest spot, else the first.
+const oiStrip = computed(() => {
+  const rows = oiBars.value
+  if (!rows) return ''
+  const at = hovered.value ? hovered.value.level : props.spot ? Number(props.spot) : null
+  const r = rows[at === null ? 0 : nearestBy(rows, at, (x) => x.strike)]
+  return `OI data at ${r.strike} | Call OI ${r.call_oi_display} | Put OI ${r.put_oi_display}`
+})
+
+// ---- D-B10 / AC-7: Zoom asks the engine for a new range on the reply's own grid; nothing is drawn by the browser ----
+const zoomRange = (dir) => {
+  const step = Number(props.zoom?.step)
+  const s = Number(props.zoom?.start)
+  const e = Number(props.zoom?.end)
+  if (!(step > 0) || !(e > s)) return null
+  const k = Math.max(1, Math.floor((e - s) / step / 4)) // a quarter of the range, in whole steps
+  const ns = dir === 'in' ? s + k * step : s - k * step
+  const ne = dir === 'in' ? e - k * step : e + k * step
+  if (!(ne - ns >= 2 * step) || !(ns > 0)) return null
+  return { rangeStart: String(ns), rangeEnd: String(ne) }
+}
+const askZoom = (dir) => {
+  const r = zoomRange(dir)
+  if (r) emit('zoom', r)
+}
+
 const show = (i) => {
   index.value = i
   nextTick(() => {
@@ -266,22 +373,22 @@ const hide = () => {
 }
 const startIndex = () => nearestIndex(props.spot ? Number(props.spot) : firstLevel())
 const onMove = (e) => {
-  if (!props.points.length) return hide()
+  if (!points0.value.length) return hide()
   show(nearestIndex(levelAt(e.clientX - box().left)))
 }
 const onFocus = () => {
-  if (props.points.length) show(startIndex())
+  if (points0.value.length) show(startIndex())
 }
 const onKey = (e) => {
-  if (!props.points.length || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+  if (!points0.value.length || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
   e.preventDefault()
   const from = index.value ?? startIndex()
-  show(Math.max(0, Math.min(props.points.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))
+  show(Math.max(0, Math.min(points0.value.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))
 }
 
 // A new reply (or none: NOT_CONNECTED) drops the hover, so no number from an older answer stays on screen.
-watch(() => props.points, hide)
-watch(() => [props.points, props.spot], createChart, { deep: true })
+watch(points0, hide)
+watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi], createChart, { deep: true })
 onMounted(createChart)
 onUnmounted(() => {
   if (chartInstance) chartInstance.destroy()

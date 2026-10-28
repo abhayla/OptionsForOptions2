@@ -30,17 +30,24 @@ const props = defineProps({
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
   unavailableReason: { type: String, default: null }, // the reply's reason when the selected view has no curve
+  // GC-UI b1 (REQ-083): the reply's both-curves, SD and OI blocks, its breakevens and its scenario grid, for the graph
+  curves: { type: Object, default: null },
+  breakevens: { type: Array, default: () => [] },
+  sd: { type: Object, default: null },
+  oi: { type: Object, default: null },
+  zoom: { type: Object, default: null },
 })
+const emit = defineEmits(['zoom']) // D-B10: the graph's Zoom asks the page for a new range (the server draws it)
 
 const TABS = [
-  { key: 'payoff', label: 'Payoff' },
+  { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
   { key: 'pnl', label: 'P&L Table' },
   { key: 'greeks', label: 'Greeks' },
-  { key: 'strategy-chart', label: 'Strategy chart' },
+  { key: 'strategy-chart', label: 'Strategy Chart' },
 ]
 const PAYOFF_VIEWS = [
-  { key: 'graph', label: 'Graph' },
-  { key: 'table', label: 'Table' },
+  { key: 'graph', label: 'Payoff Graph' }, // D-B02 (Sensibull 012, 017)
+  { key: 'table', label: 'Payoff Table' },
 ]
 // The view choice is a model the page owns, so a recompute (which remounts the numbers block) keeps the user's tab.
 // Review 6: the prefixes that link the view tabs and the Payoff sub-tabs to their panels
@@ -68,16 +75,22 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
   <Card class="mt-4" flush data-testid="chart-card">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
       <Tabs v-model="tab" :tabs="TABS" variant="segmented" label="Chart views" :id-prefix="VIEW" />
-      <!-- D-B33 / D-B38: the At Expiry / Estimated Now switch and the range drive the Payoff tab only (the P&L Table and
-           Greeks cells are now-values). v-show keeps a typed From / To when the user comes back. -->
-      <div v-show="tab === 'payoff'" data-testid="scenario-controls-slot"><slot name="controls" /></div>
     </div>
 
     <!-- Payoff -->
     <div v-show="tab === 'payoff'" role="tabpanel" v-bind="link(VIEW, 'payoff')" class="p-4" data-testid="panel-payoff">
-      <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" class="mb-3" :id-prefix="SUB" />
+      <!-- GC-UI b1 D-B04 (Sensibull 012): ONE header row, sub-tabs left, controls right. Both curves show on the graph
+           (D-B06), so the At Expiry / Estimated Now switch now picks only the table's scenario columns (REQ-034 AC-6
+           keeps it, compact); the range is the graph's Zoom (D-B10). D-B33 / D-B38: Payoff tab only (inside its panel). -->
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3" data-testid="payoff-header">
+        <Tabs v-model="payoffView" :tabs="PAYOFF_VIEWS" label="Payoff views" :id-prefix="SUB" />
+        <div data-testid="scenario-controls-slot"><slot name="controls" /></div>
+      </div>
       <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
-        <PayoffChart :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason" />
+        <PayoffChart
+          :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
+          :curves="curves" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
+        />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <table v-if="levels" class="w-full text-sm">
