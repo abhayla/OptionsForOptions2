@@ -141,6 +141,24 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
 - Every functional step passes: U-1 NIFTY 22749.75 with the banner on the EMPTY page (round-1 fix live) | U-2 defaults SENSEX 29 Oct, NIFTY 3 Nov | U-3/U-4 all priced | U-5 drawer 3 Nov, 21 rows, drawer banner shown | U-6 ATM 0.5255 201.40 ... | U-7 picks priced | U-8 future (29 Dec, the 27 Oct monthly has expired) | U-9..U-16 as before (condor MP 4,661.67 on this morning's snapshot) | U-12 mixed expiry Not available, no 500 | U-17 10/10 | U-19..U-24 | U-25..U-29 (saved 44, copy 45) | U-31 | U-32 only the tracking 404s.
 - FAIL: every time label (F-19) and the depth popup (F-20). U-27 shows "captured 07:51:23" on the reopened saved strategy: the PARKED item (needs a migration), as expected.
 
+### Session break, 2026-10-28 08:20 IST (context full; continue in a fresh session)
+- F-19/F-20 round 3 merged into build/gcbm-must-have (d06f4672): price_at = session close outside market hours
+  (market_calendar.last_close / price_time), every closed-market label reads it; depth popup answers MARKET_CLOSED
+  when closed. Builder: 12 red first; mutations caught.
+- Orchestrator after the merge: domain suite (tests/test_*.py + errors + marketdata + outcome) 1938 passed / 3 skipped;
+  db_run_fresh on 11 route files 1 failed / 261 passed. The failure: tests_app/test_market_closed_answers.py:84
+  `assert _instant(chain["last_price_at"]) == frame_at` -> None: the Saturday case pinned the chain label to the FRAME
+  time, which ADR-200 (2) forbids. Fix the assertion to the ADR-200 rule (session close, or None with no priced quote).
+- NOT yet done after the merge: full vitest; builder leftovers (popup no-levels branch hides the day values; one F-20
+  test does not reach the empty-book path - tighten; broker-status text "Prices are from 03:30:00 PM" has no date ->
+  deferred issue 8); restart API + vite (kill the running 8765/5174 by PID first); re-walk the label surfaces + depth
+  popup (expect "27 Oct 2026, 15:30 IST" and "Close, 27 Oct 2026, 15:30 IST"); after 09:15 the in-hours check (live
+  prices, NO banner, captions "captured HH:MM:SS"); then step 9: ruff ratchet + coverage + openapi drift, local
+  Playwright (copy of e2e_local2.sh: run inside db_run_fresh, loads the main .env keys except DATABASE/APP_ENV/LIVE_MARKET,
+  plain API 8000 + replay API 8001 + previews 4173-4175, kill by PID), prepush.py with the servers STOPPED, ONE push,
+  ONE PR (no closing keywords; Spec-deviation block; deferred issues 1-8 via gh_issue.py app ... --stage), CI,
+  merge.py <pr> --reviewed-sha <sha>; then wt-rm.ps1 for the gcbm-* worktrees once merged on origin/main.
+
 ## Visual differences for the owner (not fixed here)
 
 | U-step | Ours | Sensibull (screen) | Existing gap row |
