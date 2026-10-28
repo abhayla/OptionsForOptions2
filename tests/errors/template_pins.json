@@ -1344,7 +1344,7 @@
     "reviewed": "pending owner read"
   },
   "labels:table_reason": {
-    "sha256": "54d0280fafbfe6ac4a2516d49f6a8bae4eca9c4b83956eb6c4bd16cec3dc2214",
+    "sha256": "a0927e963e75a2c5ef23357c6f561405de5c013ecc4989b2d4844becfd3c8ae5",
     "reviewed": "pending owner read"
   },
   "labels:level_region": {
@@ -1753,6 +1753,10 @@
   },
   "explanation:outcome_oi_no_strikes": {
     "sha256": "d2534a53ef8371ce2ba9ec3cf412e75e15a431ced74974acd25233d725e7da6a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:table_reason_not_same_quantity": {
+    "sha256": "a247bad73d07ffc21c27df538642c5f315cc7f9e8e9476f5779b111e4d9ee6dc",
     "reviewed": "pending owner read"
   }
 }

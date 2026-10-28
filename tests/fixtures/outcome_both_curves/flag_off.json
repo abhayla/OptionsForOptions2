@@ -1669,13 +1669,13 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹76.70 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "76.70",
        "vendor": null
       },
       "entry_value": {
@@ -1749,13 +1749,13 @@
        "vendor": null
       },
       "ltp": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹76.70 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "76.70",
        "vendor": null
       },
       "pnl_percent": {
@@ -3657,13 +3657,13 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹76.70 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "76.70",
        "vendor": null
       },
       "entry_value": {
@@ -3737,13 +3737,13 @@
        "vendor": null
       },
       "ltp": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹76.70 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "76.70",
        "vendor": null
       },
       "pnl_percent": {
@@ -5702,13 +5702,13 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹62.40 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "62.40",
        "vendor": null
       },
       "entry_value": {
@@ -5782,13 +5782,13 @@
        "vendor": null
       },
       "ltp": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹62.40 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "62.40",
        "vendor": null
       },
       "pnl_percent": {
@@ -7747,13 +7747,13 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹62.40 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "62.40",
        "vendor": null
       },
       "entry_value": {
@@ -7827,13 +7827,13 @@
        "vendor": null
       },
       "ltp": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹62.40 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "62.40",
        "vendor": null
       },
       "pnl_percent": {
@@ -9742,13 +9742,13 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "—",
-       "kind": "text",
+       "display": "₹62.40 Dr",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
-       "side": null,
-       "value": null,
+       "reason": null,
+       "side": "Dr",
+       "value": "62.40",
        "vendor": null
       },
       "entry_value": {
@@ -9823,10 +9823,10 @@
       },
       "ltp": {
        "display": "—",
-       "kind": "text",
+       "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
-       "reason": "not applicable",
+       "reason": "not every leg has an LTP",
        "side": null,
        "value": null,
        "vendor": null

@@ -747,6 +747,7 @@ TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "no_lower_be": "no lower breakeven",
     "no_upper_be": "no upper breakeven",
     "no_health": "no strategy health was given",
+    "not_same_quantity": "the legs have different quantities, so there is no single per-unit figure",
 })
 
 
