@@ -654,7 +654,8 @@ def test_d9_real_sensex_bull_put_spread_minus_zero_and_negative_value_all_match(
 
 # ---------------------------------------------------------------- GC-UI C-4: the stated pricing basis after hours
 
-CLOSED = FIX / "closed_s54"  # REAL reply 17:13 IST after the close: "estimated from spot", every quote stale (funds redacted)
+# REAL reply 17:13 IST after the close: "estimated from spot", every quote stale (funds redacted)
+CLOSED = FIX / "closed_s54"
 
 
 def _closed():
@@ -675,7 +676,7 @@ def test_c4_closed_reply_every_model_figure_matches_on_the_stated_basis():
     ivs = _iv_rows(rep)
     assert len(ivs) == 2 and all(f.verdict == u.MATCH for f in ivs.values())
     used = rep.data_rows["D-B35/36 iv basis"]["leg1"]
-    assert used["used"] == "ltp, q=0 (spot fallback)" and used["stated_basis"] == "SPOT_FALLBACK"
+    assert used["used"] == "mid, q=0 (spot fallback)" and used["stated_basis"] == "SPOT_FALLBACK"
     basis = [f for f in rep.figures if f.name.startswith("pricing basis")]
     assert basis and all(f.verdict == u.MATCH for f in basis)
 
@@ -723,9 +724,11 @@ def _leg(ltp):
         ({"bid": "10", "ask": "12", "health": "available"}, "11.5", (11.0, "mid")),  # both sides live: mid
         ({"bid": "10", "ask": None, "health": "available"}, "11.5", (11.5, "ltp")),  # one side live: the LTP
         ({"bid": None, "ask": "12", "health": "available"}, "11.5", (11.5, "ltp")),
-        ({"bid": "10", "ask": "12", "health": "stale"}, "11.5", (11.5, "ltp")),  # none live (stale): the LTP
+        ({"bid": "10", "ask": "12", "health": "stale"}, "11.5", (11.0, "mid")),  # stale but two-sided: still the mid
+        ({"bid": "0", "ask": "12", "health": "available"}, "11.5", (11.5, "ltp")),  # a 0 side is no live side
+        ({"bid": "0", "ask": "0", "health": "stale"}, "11.5", (11.5, "ltp")),  # none live: the LTP
         ({"bid": "12", "ask": "10", "health": "available"}, "11.5", (11.5, "ltp")),  # crossed: the LTP
-        ({"bid": "10", "ask": "12", "health": "stale"}, None, (None, None)),  # no LTP, nothing live: not checkable
+        ({"bid": "0", "ask": "0", "health": "stale"}, None, (None, None)),  # no LTP, nothing live: not checkable
         ({"bid": "10", "ask": "12", "health": "available"}, None, (11.0, "mid")),
         ({}, "11.5", (11.5, "ltp")),
         ({"bid": "10", "ask": "12"}, "11.5", (11.0, "mid")),  # no health key: an old reply, treated as live
@@ -735,10 +738,11 @@ def test_c4_iv_price_answer_states(quote, ltp, expect):
     assert u.iv_price(_leg(ltp), quote) == expect
 
 
-def test_c4_no_ltp_and_stale_makes_the_iv_not_checkable():
+def test_c4_no_live_side_and_no_ltp_makes_the_iv_not_checkable():
     est, atx, before, after, fut = _closed()
     est = copy.deepcopy(est)
     est["legs"][0]["ltp"] = None
+    est["leg_quotes"][0]["bid"] = "0"
     v = verdicts(run(est, atx, before, after, fut))
     iv1 = [x for k, x in v.items() if " iv (" in k and k.startswith("leg1")]
     assert iv1 == [u.NOT_CHECKABLE]
