@@ -45,9 +45,10 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracking } from '@/lib/tracking'
+import { START_TRACKING_LABEL, readTracking } from '@/lib/tracking'
+import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -94,26 +95,17 @@ async function start() {
   }
 }
 
-// GC-BP F-1: while tracked, re-read every TRACKING_REFRESH_MS. One read at a time; an answer for a strategy no longer
-// shown is dropped; a failed read shows no figure (an old figure is never left on screen as if current).
-let reading = false
-async function refresh() {
-  const id = props.savedId
-  if (status.value !== 'tracked' || reading || !id) return
-  reading = true
-  try {
-    const { data } = await api.get(`/strategies/${id}/tracking`)
-    if (id !== props.savedId) return
+// GC-BP F-1 (the one shared loop, usePaperRefresh): while tracked, re-read every TRACKING_REFRESH_MS.
+usePaperRefresh({
+  key: () => props.savedId,
+  enabled: () => status.value === 'tracked',
+  read: async (id) => (await api.get(`/strategies/${id}/tracking`)).data,
+  onData: (data) => {
     error.value = ''
     view.value = readTracking(data)
-  } catch (e) {
-    if (id === props.savedId) failed(e)
-  } finally {
-    reading = false
-  }
-}
-const timer = setInterval(refresh, TRACKING_REFRESH_MS)
-onBeforeUnmount(() => clearInterval(timer))
+  },
+  onError: failed,
+})
 
 watch(() => props.savedId, load, { immediate: true })
 </script>

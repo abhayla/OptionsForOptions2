@@ -319,7 +319,7 @@ id="strategy-name" v-model="nameText" data-testid="name-input" type="text" class
         <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
         <router-link to="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</router-link>
       </div>
-      <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked"><EmptyState icon="pulse" title="No tracked strategies here" message="Strategies you track appear in My Strategies." /></slot></div>
+      <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked" :active="tab === 'tracked'"><EmptyState icon="pulse" title="No tracked strategies here" message="Strategies you track appear in My Strategies." /></slot></div>
     </div>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>

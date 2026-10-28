@@ -2,6 +2,7 @@
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
 import { istTime } from '@/lib/displayFormat'
+import { plainName } from '@/lib/saveDraft'
 
 /** ADR-166: the action's label on every screen (owner decision; change it here only). */
 export const START_TRACKING_LABEL = 'Start tracking'
@@ -40,12 +41,13 @@ export function signedRupees(text) {
   return `${minus && !zero ? '-' : '+'}${groupIndian(String(BigInt(whole)))}.${paise}`
 }
 
-const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED'])
+const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
 const INVALID = Object.freeze({ kind: 'invalid', text: UNREADABLE_TEXT, figure: null, legs: [], detections: [] })
 
-/** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | invalid. */
+/** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | exited | invalid.
+ *  booked / unbooked are the server's strings, signed for display (null when absent or unreadable). */
 export function readTracking(body) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
@@ -74,5 +76,59 @@ export function readTracking(body) {
   if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
   const signed = signedRupees(body.paper_pnl)
   if (signed === null) return INVALID
-  return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, legs, detections }
+  const booked = signedRupees(body.booked)
+  const unbooked = signedRupees(body.unbooked)
+  if (body.state === 'EXITED') return { kind: 'exited', text: `${PAPER_PNL_PREFIX}${signed} - exited`, figure: signed, booked, unbooked, legs, detections }
+  return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, booked, unbooked, legs, detections }
+}
+
+export const EXITED_TEXT = 'Exited'
+const money = (v) => v === null || v === undefined || signedRupees(v) !== null
+
+/** GC-BP step 6: one item of GET /tracking for the Paper list. Fail closed: an item whose state, money strings or legs do
+ *  not read is {readable:false} (shown with UNREADABLE_TEXT and no figure), never dropped. Money is the server's string
+ *  only re-grouped; nothing is summed here (ADR-008). Total / unbooked may be null only when prices are not live. */
+export function readTrackingItem(item, index = 0) {
+  const bad = (id) => ({ readable: false, id: id ?? `unreadable-${index}`, text: UNREADABLE_TEXT })
+  if (!item || typeof item !== 'object') return bad(null)
+  const id = Number.isInteger(item.strategy_id) ? item.strategy_id : null
+  if (id === null || !STATES.has(item.state) || !Array.isArray(item.legs)) return bad(id)
+  if (!money(item.total) || !money(item.booked) || !money(item.unbooked) || signedRupees(item.booked) === null) return bad(id)
+  if ((item.state === 'LIVE' || item.state === 'EXITED') && signedRupees(item.total) === null) return bad(id)
+  if (item.state === 'LIVE' && signedRupees(item.unbooked) === null) return bad(id)
+  const legs = []
+  for (const l of item.legs) {
+    if (!l || !Number.isInteger(l.leg_index) || typeof l.action !== 'string' || typeof l.instrument !== 'string') return bad(id)
+    const exited = l.exit_price !== null && l.exit_price !== undefined
+    legs.push({
+      key: `${l.leg_index}`,
+      index: l.leg_index,
+      action: l.action === 'BUY' ? 'Buy' : l.action === 'SELL' ? 'Sell' : l.action,
+      instrument: l.instrument,
+      strike: l.strike,
+      expiry: l.expiry,
+      quantity: l.quantity,
+      entry: l.entry_price,
+      current: l.price_state === 'live' ? l.current_price : null,
+      exited,
+      exitPrice: exited ? l.exit_price : null,
+    })
+  }
+  let stateText = ''
+  if (item.state === 'PAUSED') stateText = pausedText(item.as_of)
+  else if (item.state === 'NOT_CONNECTED') stateText = NOT_CONNECTED_TEXT
+  else if (item.state === 'EXITED') stateText = EXITED_TEXT
+  return {
+    readable: true,
+    id,
+    name: plainName(item.name),
+    underlying: item.underlying,
+    state: item.state,
+    stateText,
+    pauseReason: item.state === 'PAUSED' ? item.pause_reason ?? null : null,
+    total: signedRupees(item.total),
+    booked: signedRupees(item.booked),
+    unbooked: signedRupees(item.unbooked),
+    legs,
+  }
 }

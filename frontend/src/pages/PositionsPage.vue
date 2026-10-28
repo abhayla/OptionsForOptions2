@@ -12,11 +12,15 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import Tabs from '@/components/common/Tabs.vue'
+import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 
 const route = useRoute()
+const POSITION_TABS = [{ key: 'positions', label: 'Positions' }, { key: 'paper', label: 'Paper' }]
+const tab = ref(route.query.tab === 'paper' ? 'paper' : 'positions')
 // W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said
 // the order path is on; off, the strategy is named in plain text.
 const orderPathOn = useOrderPath()
@@ -49,6 +53,11 @@ onMounted(async () => {
   <section class="p-4" data-testid="positions-page" :data-view="view">
     <p class="text-xs text-ink-muted">{{ route.meta.parent }}</p>
     <h1 class="text-xl font-semibold" data-testid="page-title">{{ route.meta.title }}</h1>
+    <!-- GC-BP step 6 (ADR-201 (2)): "Positions" = this page as it was; "Paper" = the shared paper list, which loads by
+         itself and is never held up by the Zerodha read. Paper figures never appear in the Positions tab. -->
+    <Tabs v-model="tab" class="mt-2" :tabs="POSITION_TABS" label="Positions or paper trades" />
+    <PaperStrategies v-if="tab === 'paper'" class="mt-2" data-testid="positions-paper" />
+    <template v-else>
     <p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>
     <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="positions-error" />
     <div v-else-if="result" class="mt-2 text-sm">
@@ -95,5 +104,6 @@ onMounted(async () => {
         <a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="underline" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>
       </p>
     </div>
+    </template>
   </section>
 </template>
