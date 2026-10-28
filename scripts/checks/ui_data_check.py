@@ -361,6 +361,46 @@ def _q_band(chain, fb, fa, qb, t, r) -> dict:
     return {"q_mid": r - math.log(fmid / s) / t, "q_hi": r - math.log((fmid - half) / s) / t, "F_band_points": half}
 
 
+GREEK_KEYS = ("delta", "gamma", "theta", "vega")
+
+
+def check_per_unit_signs(rep, view, reply) -> int:
+    """GC-UI F-2: for every leg row and Greek, per_unit x quantity == the per-position value, sign included
+    (a SELL leg's per unit is negative like its per position). Needs no market data and no model: a reply's own
+    cells only. Tolerance: the 4 dp print of per_unit x quantity, plus the 4 dp of the value. A null per_unit or
+    value is not compared here (the answer states are checked elsewhere). Returns the figures added."""
+    added = 0
+    for row in (reply.get("table") or {}).get("rows") or []:
+        cells = row.get("cells") or {}
+        qty = (cells.get("quantity") or {}).get("value")
+        if row.get("row_id") == "TOTAL" or qty is None:
+            continue
+        for gk in GREEK_KEYS:
+            cell = cells.get(gk) or {}
+            if cell.get("value") is None or cell.get("per_unit") is None:
+                continue
+            q = Decimal(str(qty))
+            rep.add(
+                f"[{view}] leg{row['row_id']} {gk} per_unit x quantity = per position (signed)",
+                cell["value"],
+                Decimal(str(cell["per_unit"])) * q,
+                abs(q) * Decimal("0.00005") + Decimal("0.0001"),
+                note="signed: SELL per unit is negative like its per position",
+            )
+            added += 1
+            shown = cell.get("per_unit_display")
+            if shown is not None:
+                rep.add(
+                    f"[{view}] leg{row['row_id']} {gk} per_unit_display = per_unit",
+                    cell["per_unit"],
+                    shown,
+                    Decimal("0.0051"),
+                    note="the printed per unit equals per_unit to its print places",
+                )
+                added += 1
+    return added
+
+
 def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=RISK_FREE_RATE) -> Report:
     """est / atx: the outcome replies for view=estimated_now / at_expiry; chains_*: {expiry: chain reply}."""
     rep = Report(name)
@@ -370,6 +410,9 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
             rep.skip(f"[{view}] every figure", f"reply state {state} ({(reply or {}).get('reason')})")
     if (est or {}).get("state") != "COMPUTED":
         return rep
+    for view, reply in (("estimated_now", est), ("at_expiry", atx)):
+        if (reply or {}).get("state") == "COMPUTED":
+            check_per_unit_signs(rep, view, reply)
     legs = est.get("legs") or []
     for i, leg in enumerate(legs):
         for key in ("strike", "expiry", "quantity", "planned_entry", "instrument", "action"):

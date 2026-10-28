@@ -7,6 +7,7 @@ import ast
 import copy
 import datetime as dt
 import importlib.util
+import json
 import math
 import os
 import sys
@@ -430,3 +431,51 @@ def test_no_chain_for_an_expiry_makes_model_figures_not_checkable():
     v = verdicts(rep)
     assert v["model figures (IV, Greeks, Estimated Now)"] == u.NOT_CHECKABLE
     assert rep.counts()[u.MISMATCH] == 0
+
+
+# ---------------------------------------------------------------- GC-UI F-2: per unit carries the leg sign
+
+
+def _s54_old_reply():
+    return json.loads((FIX / "s54_estimated_now_table_unsigned.json").read_text(encoding="utf-8"))
+
+
+def _sign_check(reply):
+    rep = u.Report("t")
+    u.check_per_unit_signs(rep, "estimated_now", reply)
+    return rep
+
+
+def _signed_copy(reply):
+    """What the fixed server sends: SELL rows have per_unit and per_unit_display negated."""
+    fixed = copy.deepcopy(reply)
+    for row in fixed["table"]["rows"]:
+        if (row["cells"].get("action") or {}).get("value") == "SELL":
+            for gk in u.GREEK_KEYS:
+                cell = row["cells"][gk]
+                if cell.get("per_unit") is not None:
+                    cell["per_unit"] = str(-Decimal(cell["per_unit"]))
+                    shown = cell["per_unit_display"]
+                    cell["per_unit_display"] = shown[1:] if shown.startswith("-") else "-" + shown
+    return fixed
+
+
+def test_f2_recorded_unsigned_s54_reply_flags_every_sell_greek_and_buy_legs_pass():
+    rep = _sign_check(_s54_old_reply())
+    bad = [f.name for f in rep.figures if f.verdict == u.MISMATCH]
+    assert len(bad) == 4, bad  # the 4 Greeks of SELL leg 2 (per_unit_display agrees with the old unsigned per_unit)
+    assert all("leg2" in n for n in bad)
+    assert not [f for f in rep.figures if "leg1" in f.name and f.verdict != u.MATCH]
+
+
+def test_f2_signed_s54_reply_passes():
+    rep = _sign_check(_signed_copy(_s54_old_reply()))
+    assert rep.counts()[u.MISMATCH] == 0
+    assert rep.counts()[u.MATCH] == 16
+
+
+def test_f2_total_row_and_null_per_unit_are_not_compared():
+    reply = _signed_copy(_s54_old_reply())
+    reply["table"]["rows"][1]["cells"]["delta"]["per_unit"] = None
+    rep = _sign_check(reply)
+    assert not [f for f in rep.figures if "TOTAL" in f.name or "leg2 delta" in f.name]

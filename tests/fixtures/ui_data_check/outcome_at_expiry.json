@@ -936,7 +936,7 @@
       "kind": "greek",
       "reason": null,
       "side": null,
-      "per_unit": "0.4581799991272041",
+      "per_unit": "-0.4581799991272041",
       "vendor": null
      },
      "gamma": {
@@ -945,7 +945,7 @@
       "kind": "greek",
       "reason": null,
       "side": null,
-      "per_unit": "0.0008749734360911558",
+      "per_unit": "-0.0008749734360911558",
       "vendor": null
      },
      "theta": {
@@ -954,7 +954,7 @@
       "kind": "greek",
       "reason": null,
       "side": null,
-      "per_unit": "-16.78963733685643",
+      "per_unit": "16.78963733685643",
       "vendor": null
      },
      "vega": {
@@ -963,7 +963,7 @@
       "kind": "greek",
       "reason": null,
       "side": null,
-      "per_unit": "11.631619734854977",
+      "per_unit": "-11.631619734854977",
       "vendor": null
      },
      "21700": {

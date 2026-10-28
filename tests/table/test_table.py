@@ -183,7 +183,7 @@ def test_fix_round_unrounded_leg_greeks_sum_exactly_to_total(golden, golden_scen
     table = build_table(golden, level_set=level_set, scenario=values)
     for cid in GREEK_COLUMNS:
         raw_sum = sum(
-            (table.rows[i].cell(cid).per_unit * GOLDEN_SIGNS[i] * GOLDEN_QTY for i in range(4)), D(0)
+            (table.rows[i].cell(cid).per_unit * GOLDEN_QTY for i in range(4)), D(0)  # per_unit is signed (GC-UI F-2)
         )
         assert raw_sum.quantize(D("0.0001"), rounding=ROUND_HALF_EVEN) == table.rows[-1].cell(cid).value, cid
 
@@ -204,8 +204,8 @@ def test_fix_round_futures_leg_delta_is_position_level_and_included_in_total():
     assert row.cell(ColumnId.VEGA).value == D("0")
     total = table.rows[-1]
     assert total.cell(ColumnId.DELTA).value == D("-75")
-    # per-unit for a futures leg (secondary field): +1 magnitude, direction applied like any other leg.
-    assert row.cell(ColumnId.DELTA).per_unit == D("1")
+    # per-unit for a futures leg (secondary field): 1 magnitude, signed by the leg's direction (GC-UI F-2): SELL = -1.
+    assert row.cell(ColumnId.DELTA).per_unit == D("-1")
 
 
 def test_ac6_vendor_greek_is_a_reference_field_never_the_value(golden_scenario):

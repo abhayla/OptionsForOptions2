@@ -84,3 +84,38 @@ def test_all_options_total_row_has_a_display_and_no_per_unit():
     first = leg1[next(k for k in leg1 if k != TOTAL_ROW_ID)]
     assert first[str(ColumnId.IV)]["display"] == "16.03%"
     assert first[str(ColumnId.DELTA)]["per_unit_display"] is not None
+
+
+# ---- GC-UI F-2: per-unit Greeks carry the leg's buy / sell sign, like per position ------------------------------
+# RCA: _leg_row passed the UNSIGNED contract Greek to _greek_cell as the per-unit figure while the per-position
+# value is per_unit x quantity x (+1 BUY / -1 SELL), so a SELL leg printed per unit +0.42 beside per position -27.24
+# (REAL reply a_debit_spread_s54, leg 2: SELL NIFTY26N0322800CE x 65, iv 0.151825, entry 106.60).
+
+_GREEKS = (ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA)
+
+
+def _s54_sell_row():
+    leg = nifty_leg(Action.SELL, Instrument.CE, "22800", "106.60", ltp="133.6", iv="0.151825", quantity=65)
+    return build_table(nifty_input([leg])).rows[0]
+
+
+def test_core_sell_leg_delta_per_unit_is_negative_and_times_quantity_equals_value():
+    delta = _cell(_s54_sell_row().cell(ColumnId.DELTA))
+    assert D(delta["per_unit"]) < 0
+    assert delta["per_unit_display"].startswith("-")
+    assert abs(D(delta["per_unit"]) * 65 - D(delta["value"])) <= D("0.0033")  # 65 x 0.00005 + 4 dp value
+
+
+def test_every_greek_on_a_sell_leg_per_unit_times_quantity_equals_value_sign_included():
+    row = _s54_sell_row()
+    for cid in _GREEKS:
+        cell = _cell(row.cell(cid))
+        assert abs(D(cell["per_unit"]) * 65 - D(cell["value"])) <= D("0.0033"), cid
+        assert (D(cell["per_unit"]) < 0) == (D(cell["value"]) < 0), cid
+        assert (D(cell["per_unit_display"]) < 0) == (D(cell["value"]) < 0), cid
+
+
+def test_buy_leg_per_unit_is_unchanged_positive_delta():
+    leg = nifty_leg(Action.BUY, Instrument.CE, "22600", "81.30", ltp="85", iv="0.160347", quantity=65)
+    cell = _cell(build_table(nifty_input([leg])).rows[0].cell(ColumnId.DELTA))
+    assert D(cell["per_unit"]) > 0 and D(cell["value"]) > 0
