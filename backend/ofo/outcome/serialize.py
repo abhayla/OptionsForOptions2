@@ -128,6 +128,60 @@ def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
 
 
+def _points(levels, totals) -> list[dict[str, Any]]:
+    """Payoff points with their server display text (the table cells' rupee format, GC-BM F-8): the browser never
+    formats or computes a money value (ADR-008)."""
+    return [{"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
+            for lvl, p in zip(levels, totals, strict=True)]
+
+
+def _curve(v: Any) -> dict[str, Any]:
+    """REQ-083 AC-1/AC-3: one view's curve; unavailable -> no points and the engine's reason."""
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason, "output_label": v.output_label,
+            "points": _points(v.levels, v.totals) if v.available and v.totals is not None else []}
+
+
+def _view_head(v: Any) -> dict[str, Any]:
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason}
+
+
+def _payoff_table(t: Any) -> dict[str, Any]:
+    """REQ-137 AC-1: one row per level, each view's P&L with its display text (None where the view is unavailable)."""
+    cols = {v.view: (v.totals if v.available else None) for v in t.views}
+
+    def cell(view, i):
+        totals = cols.get(view)
+        if totals is None:
+            return None
+        return {"pnl": _s(totals[i]), "display": render_explanation("cell_rupees", amount=totals[i])}
+
+    from ofo.scenario.views import View  # late: the module's imports stay the outcome's own
+    return {"step": _s(t.step), "available": t.unavailable_reason is None,
+            "unavailable_reason": t.unavailable_reason, "columns": [_view_head(v) for v in t.views],
+            "rows": [{"level": _s(lvl), "level_display": render_explanation("cell_points", value=lvl),
+                      "nearest_spot": lvl == t.nearest_spot, "estimated_now": cell(View.ESTIMATED_NOW, i),
+                      "at_expiry": cell(View.AT_EXPIRY, i)} for i, lvl in enumerate(t.levels)]}
+
+
+def _sd(sd: Any) -> dict[str, Any]:
+    """REQ-083 AC-4 / REQ-137 AC-3: the SD table rows and the four band levels, both from the same rows."""
+    rows = [{"sd": r.sd, "label": render_explanation("sd_label", n=r.sd), "move": _s(r.move),
+             "percent": _s(r.percent), "lower": _s(r.lower), "upper": _s(r.upper),
+             "move_display": render_explanation("sd_move", points=r.move, percent=r.percent),
+             "lower_display": render_explanation("cell_number", value=r.lower),
+             "upper_display": render_explanation("cell_number", value=r.upper)} for r in sd.rows]
+    bands = []
+    if len(sd.rows) == 2:
+        one, two = sd.rows
+        for n, level in ((-2, two.lower), (-1, one.lower), (1, one.upper), (2, two.upper)):
+            bands.append({"sd": n, "label": render_explanation("sd_label", n=n), "level": _s(level),
+                          "display": render_explanation("cell_number", value=level)})
+    return {"available": sd.available, "reason": sd.reason, "horizon_days": sd.horizon_days, "iv": _s(sd.iv),
+            "spot": _s(sd.spot), "rows": rows, "bands": bands}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -143,9 +197,13 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         }
         # GC-BM F-8: a graph point can be a strike that is no table column, so each point carries its own display
         # text (the table cells' rupee format), and the browser never formats or computes a money value (ADR-008)
-        payoff = {"view": v.view.value, "points": [
-            {"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
-            for lvl, p in out.payoff_points]}
+        payoff = {"view": v.view.value, "points": _points(*zip(*out.payoff_points, strict=True))
+                  if out.payoff_points else []}
+        if out.other_view is not None:  # both views asked for: the other view's totals on the table's levels
+            o = out.other_view
+            scenario["other"] = {"view": o.view.value, "label": o.label, "kind": o.kind, "available": o.available,
+                                 "unavailable_reason": o.unavailable_reason, "output_label": o.output_label,
+                                 "totals": None if o.totals is None else [_s(x) for x in o.totals]}
     if out.summary is not None:
         s = out.summary
         summary = {
@@ -177,6 +235,12 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
         "charges_breakdown": _breakdown(out.charges_breakdown),
     }
+    if out.curves:  # both views asked for (REQ-083 AC-1): absent otherwise, so today's replies keep their keys
+        body["curves"] = {c.view.value: _curve(c) for c in out.curves}
+    if out.payoff_table is not None:  # REQ-137 AC-1: a step or both views asked for
+        body["payoff_table"] = _payoff_table(out.payoff_table)
+    if out.standard_deviation is not None:  # REQ-083 AC-4 / REQ-137 AC-3: sd_bands asked for
+        body["standard_deviation"] = _sd(out.standard_deviation)
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     return body

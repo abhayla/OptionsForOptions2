@@ -757,3 +757,150 @@ def test_c4_f4_old_server_text_is_flagged_on_the_real_closed_reply():
     rep = run(est, atx, before, after, fut)
     row = _disp_rows(rep)["[estimated_now] summary.breakevens_display[0]"]
     assert row.verdict == u.MISMATCH and row.independent == f"22,688 ({M}0.0%)"
+
+
+# ---------------------------------------------------------------- GC-UI step 4: second curve, payoff table, SD block
+# Fixtures: strategy 54's shape on the real recorded 2026-10-08 NIFTY replay, asked through this tree's app in-process
+# (two single views + one call with both_views, sd_bands and payoff_step 50 / absent). No database: no charge rates,
+# so the summary's max profit / loss differ by the charges (an artefact of the no-database run, not a new figure).
+
+BOTH = FIX / "both_s54_replay"
+BOTH_DEFAULT = FIX / "both_s54_replay_default"
+
+
+def _both(d=BOTH):
+    est, atx, before, after, fut = u.load_replay(d)
+    both, step = u.load_both(d)
+    return est, atx, before, after, fut, both, step
+
+
+def _run_both(est, atx, before, after, fut, both, step):
+    return u.check_outcome("t", est, atx, before, after, fut, both=both, step_asked=step)
+
+
+def _both_rows(rep):
+    return {f.name: f for f in rep.figures if f.name.startswith("[both]")}
+
+
+@pytest.mark.parametrize("d", [BOTH, BOTH_DEFAULT])
+def test_s4_real_reply_every_new_figure_matches(d):
+    rep = _run_both(*_both(d))
+    rows = _both_rows(rep)
+    assert len(rows) > 100
+    assert {f.verdict for f in rows.values()} == {u.MATCH}, [f for f in rows.values() if f.verdict != u.MATCH][:3]
+    model = [k for k in rows if k.startswith("[both] payoff_table estimated_now @")]
+    assert len(model) == len(_both(d)[5]["payoff_table"]["rows"])  # every Estimated Now cell re-priced by own BSM
+    for key in ("[both] SD 1 move", "[both] SD bands", "[both] curves.estimated_now = the estimated_now single-view "
+                "points", "[both] curves on the same levels", "[both] payoff_table levels"):
+        assert key in rows
+
+
+def test_s4_default_step_is_the_strike_step_and_the_admin_step_is_flagged():
+    """REQ-137 AC-1: absent payoff_step -> NIFTY 50; a reply at the Admin step (100, round 1) is flagged."""
+    est, atx, before, after, fut, both, step = _both(BOTH_DEFAULT)
+    assert step is None and both["payoff_table"]["step"] == "50"
+    bad = copy.deepcopy(both)
+    bad["payoff_table"]["step"] = "100"
+    bad["payoff_table"]["rows"] = bad["payoff_table"]["rows"][::2]
+    rows = _both_rows(_run_both(est, atx, before, after, fut, bad, None))
+    assert rows["[both] payoff_table step (asked, else the strike step)"].verdict == u.MISMATCH
+    assert rows["[both] payoff_table levels"].verdict == u.MISMATCH
+
+
+def _tampered(change):
+    est, atx, before, after, fut, both, step = _both()
+    both = copy.deepcopy(both)
+    change(both)
+    return {k: f.verdict for k, f in _both_rows(_run_both(est, atx, before, after, fut, both, step)).items()}
+
+
+def _bump(cell, key="pnl", by="0.01"):
+    cell[key] = f"{Decimal(cell[key]) + Decimal(by):f}"
+
+
+@pytest.mark.parametrize(
+    ("change", "flagged"),
+    [
+        (lambda b: _bump(b["curves"]["estimated_now"]["points"][3]),
+         "[both] curves.estimated_now = the estimated_now single-view points"),
+        (lambda b: _bump(b["curves"]["at_expiry"]["points"][3]), "[both] curves.at_expiry @21800"),
+        (lambda b: _bump(b["curves"]["estimated_now"]["points"][0], "level", "50"), "[both] curves on the same levels"),
+        (lambda b: _bump(b["payoff_table"]["rows"][5]["at_expiry"]), "[both] payoff_table at_expiry @21750"),
+        (lambda b: _bump(b["payoff_table"]["rows"][7]["estimated_now"], by="5"),
+         "[both] payoff_table estimated_now @21850"),
+        (lambda b: b["payoff_table"]["rows"][0].update(nearest_spot=True), "[both] payoff_table nearest_spot row"),
+        (lambda b: _bump(b["standard_deviation"]["rows"][0], "move", "0.1"), "[both] SD 1 move"),
+        (lambda b: _bump(b["standard_deviation"]["rows"][1], "upper", "0.1"), "[both] SD 2 upper"),
+        (lambda b: b["standard_deviation"].update(horizon_days=7), "[both] standard_deviation horizon_days"),
+        (lambda b: _bump(b["standard_deviation"]["bands"][0], "level", "0.1"), "[both] SD bands"),
+        (lambda b: b["payoff_table"]["rows"][2]["at_expiry"].update(display="₹1.00"),
+         "[both] payoff_table at_expiry display @21600"),
+        (lambda b: b["standard_deviation"]["rows"][0].update(move_display="329.4 (1.4%)"),
+         "[both] SD 1 move_display"),
+    ],
+)
+def test_s4_one_altered_new_figure_is_flagged(change, flagged):
+    v = _tampered(change)
+    assert v[flagged] == u.MISMATCH
+    # the altered figure, and at most its own list compare and its display row: never a spray of other rows
+    assert sum(1 for x in v.values() if x == u.MISMATCH) <= 3, [k for k, x in v.items() if x == u.MISMATCH]
+
+
+def test_s4_sd_from_252_days_is_flagged():
+    """The trading-day basis (sqrt(days / 252)) instead of section 4's calendar days / 365 is a different figure."""
+    est, atx, before, after, fut, both, step = _both()
+    sd = copy.deepcopy(both)
+    s = sd["standard_deviation"]
+    spot, iv, days = Decimal(s["spot"]), Decimal(s["iv"]), s["horizon_days"]
+    m = spot * iv * (Decimal(days) / Decimal(252)).sqrt()
+    s["rows"][0]["move"] = f"{m.quantize(Decimal('0.1')):f}"
+    assert _both_rows(_run_both(est, atx, before, after, fut, sd, step))["[both] SD 1 move"].verdict == u.MISMATCH
+
+
+def test_s4_sd_rule_is_the_formula_written_out():
+    rows = u.sd_rows(Decimal("22533.25"), Decimal("0.1249035"), 5)
+    one = Decimal("22533.25") * Decimal("0.1249035") * (Decimal(5) / Decimal(365)).sqrt()
+    assert rows[0]["move"] == one.quantize(Decimal("0.1")) and rows[1]["move"] == (2 * one).quantize(Decimal("0.1"))
+    assert u.sd_horizon(dt.datetime(2026, 10, 8, 9, 20, tzinfo=u.IST), ["2026-10-19"]) == 7
+    assert u.sd_horizon(dt.datetime(2026, 10, 8, 9, 20, tzinfo=u.IST), ["2026-10-13", "2026-10-19"]) == 5
+    assert u.sd_horizon(dt.datetime(2026, 10, 13, 15, 0, tzinfo=u.IST), ["2026-10-13"]) == 1
+
+
+@pytest.mark.parametrize(("value", "text"), [(Decimal("-4056"), "\N{MINUS SIGN}₹4,056.00"), (Decimal("8944"), "₹8,944.00"),
+                                             (Decimal("0"), "₹0.00"), (Decimal("123456.785"), "₹1,23,456.79")])
+def test_s4_rupee_cell_rule(value, text):
+    assert u.display_rupees(value) == text
+
+
+def test_s4_answer_states():
+    est, atx, before, after, fut, both, step = _both()
+    # flags off: no both reply -> no new figure rows at all (today's report unchanged)
+    assert not _both_rows(u.check_outcome("t", est, atx, before, after, fut))
+    # SD without IV / spot: unavailable with a reason and no rows is a match; rows shown anyway is a mismatch
+    off = copy.deepcopy(both)
+    off["standard_deviation"] = {"available": False, "reason": "x", "horizon_days": None, "iv": None, "spot": None,
+                                 "rows": [], "bands": []}
+    r = _both_rows(_run_both(est, atx, before, after, fut, off, step))
+    assert r["[both] standard_deviation unavailable has a reason and no rows"].verdict == u.MATCH
+    off["standard_deviation"]["rows"] = both["standard_deviation"]["rows"]
+    r = _both_rows(_run_both(est, atx, before, after, fut, off, step))
+    assert r["[both] standard_deviation unavailable has a reason and no rows"].verdict == u.MISMATCH
+    # Estimated Now unavailable (no live prices) / calendar At Expiry (ADR-143): an empty column is a match, a value
+    # in an unavailable column is a mismatch; the unavailable curve is not checkable, never matched
+    for view in ("estimated_now", "at_expiry"):
+        un = copy.deepcopy(both)
+        next(c for c in un["payoff_table"]["columns"] if c["view"] == view).update(available=False,
+                                                                                   unavailable_reason="x")
+        un["curves"][view]["available"] = False
+        for row in un["payoff_table"]["rows"]:
+            row[view] = None
+        r = _both_rows(_run_both(est, atx, before, after, fut, un, step))
+        assert r[f"[both] curves.{view}"].verdict == u.NOT_CHECKABLE
+        empty = [f for k, f in r.items() if k.endswith("empty (column unavailable)")]
+        assert empty and {f.verdict for f in empty} == {u.MATCH}
+        un["payoff_table"]["rows"][0][view] = both["payoff_table"]["rows"][0][view]
+        r = _both_rows(_run_both(est, atx, before, after, fut, un, step))
+        assert r[f"[both] payoff_table {view} @21500 empty (column unavailable)"].verdict == u.MISMATCH
+    # a both reply that is not computed: one not-checkable row, never a match
+    r = _both_rows(_run_both(est, atx, before, after, fut, {"state": "REFUSED", "reason": "r"}, step))
+    assert [f.verdict for f in r.values()] == [u.NOT_CHECKABLE]
