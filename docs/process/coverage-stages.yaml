@@ -485,6 +485,13 @@ issues:
   "#587": S6.4  # Pre-push gate: vitest related misses disk-reading tests (N1), plus N3-N5 minors from the round-2 review
   "#588": S6.4  # Chain: moneyness filter empties the table when the spot drops (N2, REQ-072 AC-2)
   "#592": S6.4  # G-069 phone width: no Sensibull phone study, so no verdict; our top bar is clipped at 390 px (GC-B1 item 6 PARKED)
+  "#596": S6.4  # Builder: a saved strategy reopened later loses the close label (shows 'captured <time>' not 'Close, <date>, <time> IST')
+  "#597": S6.4  # Option Chain still defaults to its first listed expiry after the close on an expiry day
+  "#598": S6.4  # ADR-008 money scan: two MINOR gaps left after GC-BM review round 2
+  "#599": S6.4  # Market calendar holds 2026 only: from 2027-01-01 the closed-market rule misjudges trading days
+  "#600": S6.4  # leg-edit echoes a client-sent close_at for legs it does not re-capture
+  "#601": S6.4  # After hours the strike drawer's first open fills prices about 4 s late
+  "#602": S6.4  # Broker status text 'Prices are from 03:30:00 PM' carries no date
 
 # Work items whose status is not done.
 work_items:

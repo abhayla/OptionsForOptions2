@@ -159,6 +159,25 @@ with the Sensibull screen named and write pass / FAIL / visual-only.
   ONE PR (no closing keywords; Spec-deviation block; deferred issues 1-8 via gh_issue.py app ... --stage), CI,
   merge.py <pr> --reviewed-sha <sha>; then wt-rm.ps1 for the gcbm-* worktrees once merged on origin/main.
 
+### Session 2026-10-28 08:56 IST onward (fresh session)
+- Leftovers done (29459cb0): tests_app/test_market_closed_answers.py Saturday chain label = None (the recorded frame holds
+  no NIFTY index quote; ADR-200 (2)), 3/3; depth popup with no levels now shows the held day values (2 vitest red
+  first, then 15/15); the F-20 empty-book test asserts NOT_AVAILABLE / MARKET_CLOSED / day values 46.25, 52.80, 53.70
+  unconditionally; db_run_fresh on test_drawer_after_hours + test_market_closed_answers + test_builder_after_hours 46
+  passed. Full vitest 1217/1217 (before the 2 new tests).
+- Real-app walk before the open (09:09-09:11, API `LIVE_MARKET=1 APP_ENV=development` via dev_run.py, vite with
+  `OFO_API_TARGET=http://127.0.0.1:8765`): banner "Market closed. Prices are from 27 Oct 2026, 15:30:00 IST."; the
+  ?template=iron_condor legs priced from the close, each caption "Close, 27 Oct 2026, 15:30:00 IST"; depth popup =
+  banner + day values (134.00 / 147.30 / 77.50 / 95.10) + "The market is closed. No depth is held from the last
+  session."; chain and strikes REST label 2026-10-27T15:30+05:30. PASS (walk6-preopen-depth-0911.png).
+- In-hours check (09:16): indices LIVE, market_closed false; builder: no banner, 4 legs live-priced, captions
+  "captured 28 Oct 2026, 09:16:16 IST", "Price has moved since ..." lines (REQ-077 AC-1); depth popup 5 levels, no
+  banner. PASS.
+- Step 9 so far: ruff ratchet OK (no rule rose), openapi no drift, coverage OK. Deferred issues filed: #596 (1, parked),
+  #597 (2), #598 (4, incl. PayoffChart.vue scan skip), #599 (5), #600 (6), #601 (7), #602 (8); item 3 added to #497.
+- Launch note: the first restart missed `OFO_API_TARGET` (vite proxied to 8000: 500s), then `LIVE_MARKET` and
+  `APP_ENV` (no feed, no ready-made cards). Not app defects; the launch line above is the right one.
+
 ## Visual differences for the owner (not fixed here)
 
 | U-step | Ours | Sensibull (screen) | Existing gap row |
