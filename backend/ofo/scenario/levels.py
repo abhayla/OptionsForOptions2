@@ -308,4 +308,8 @@ def move_from_spot(level: Decimal, spot: Decimal | None) -> tuple[Decimal | None
     with localcontext(prec=_MOVE_PRECISION):
         pct = (level - spot) * 100 / spot
     shown = pct.quantize(_TENTH, ROUND_HALF_UP)
-    return pct, ("0.0%" if shown == 0 else f"{shown:+}%")
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415 - late, as ofo.outcome.serialize does
+
+    if shown == 0:  # the signed template would print "+0.0%"
+        return pct, render_explanation("cell_percent", value=abs(shown))
+    return pct, render_explanation("cell_percent_signed", value=shown)

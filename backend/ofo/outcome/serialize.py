@@ -157,7 +157,7 @@ def _payoff_table(t: Any) -> dict[str, Any]:
             return None
         return {"pnl": _s(totals[i]), "display": render_explanation("cell_rupees", amount=totals[i])}
 
-    from ofo.scenario.levels import move_from_spot  # D-B26: REQ-137 AC-2 "Show %", computed by the server
+    from ofo.scenario.levels import move_from_spot  # noqa: PLC0415 - late like View below (D-B26, REQ-137 AC-2)
     from ofo.scenario.views import View  # late: the module's imports stay the outcome's own
 
     def row(i, lvl):
