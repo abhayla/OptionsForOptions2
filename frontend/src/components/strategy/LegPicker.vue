@@ -642,8 +642,8 @@ defineExpose({ startEdit, showStrikes })
 
     <!-- A leg by its contract: the Edit / Reprice form for a leg already in the strategy (the page's Edit opens it), and a
          second way to add one. The order and wording of its choices are the catalogue's. -->
-    <div class="rounded border border-line p-3" :class="editing ? 'order-first border-accent' : ''" data-testid="picker-by-contract">
-      <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg by contract' }}</h2>
+    <div v-if="editing" class="order-first rounded border border-accent border-line p-3" data-testid="picker-by-contract">
+      <h2 class="text-sm font-medium">Edit leg</h2>
       <form class="mt-2 flex flex-wrap items-end gap-2" @submit.prevent>
         <label class="flex flex-col">Type
           <select class="rounded border border-line px-1" data-testid="pick-type" :value="type" @change="onType($event.target.value)">
@@ -666,7 +666,7 @@ defineExpose({ startEdit, showStrikes })
         <label class="flex flex-col">Lots
           <input v-model.number="lots" class="w-16 rounded border border-line px-1" data-testid="pick-lots" inputmode="numeric" />
         </label>
-        <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">{{ editing ? 'Save leg' : 'Add' }}</button>
+        <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">Save leg</button>
         <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
       </form>
       <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>

@@ -65,6 +65,7 @@ beforeEach(() => {
     'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', expiries: ['2026-10-15'] },
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-13': NIFTY_13,
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-27': NIFTY_27,
+    'GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10': pkStrikes(),
   }
 })
 
@@ -78,53 +79,67 @@ function mountPicker(initial = []) {
   return w
 }
 
+// GC-UI step 2 (D-C31): a leg is added only through the strike table's B / S buttons and Done; the by-contract form is
+// the Edit / Reprice path only. These strikes are the four recorded NIFTY 13-Oct contracts of NIFTY_13 above.
+const PK_ROWS = [['22200.00', 'PE', 44595], ['22400.00', 'PE', 44604], ['22800.00', 'CE', 44624], ['23000.00', 'CE', 44632]]
+const pkCell = (token) => ({ instrument_id: `NSE_FO:${token}`, lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null })
+const pkStrikes = () => ({
+  state: 'LIVE', reason: null, underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: '22533.25', spot_at: AT, centre: 'LIVE_SPOT',
+  atm_strike: '22800.00', answered_at: AT, market_closed: false,
+  rows: PK_ROWS.map(([strike, type, token]) => ({ strike, is_atm: false, ce: type === 'CE' ? pkCell(token) : null, pe: type === 'PE' ? pkCell(token) : null })),
+})
+const PK_URL = 'GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'
+
+/** Choose a contract the only way the page offers: B or S on its cell in the strike table (lots from the cell's own select). */
 async function pick(w, { expiry = '2026-10-13', type, strike, action = 'SELL', lots = '1' }) {
-  await t(w, 'pick-expiry').setValue(expiry)
+  answers[PK_URL] = pkStrikes()
+  if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') { // on the page the picker is a drawer
+    await t(w, 'add-edit').trigger('click')
+    await flushPromises()
+  }
+  if (t(w, 'pick-expiry').element.value !== expiry) await t(w, 'pick-expiry').setValue(expiry)
   await flushPromises()
-  await t(w, 'pick-type').setValue(type)
-  if (strike) await t(w, 'pick-strike').setValue(strike)
-  await t(w, 'pick-action').setValue(action)
-  await t(w, 'pick-lots').setValue(lots)
+  const side = w.find(`[data-testid="strike-row"][data-strike="${strike}"] [data-testid="cell-${type.toLowerCase()}"]`)
+  await side.find(`[data-testid="cell-${action === 'BUY' ? 'buy' : 'sell'}"]`).trigger('click')
+  if (lots !== '1') await side.find('[data-testid="cell-lots"]').setValue(lots)
 }
 
 describe('only offered contracts are selectable', () => {
-  it('offers the underlyings, then the expiries and strikes the API sent, in the API order', async () => {
+  it('offers the underlyings, then the expiries and the strike table the API sent, in the API order', async () => {
+    answers[PK_URL] = pkStrikes()
     const w = mountPicker()
     await flushPromises()
     expect(options(w, 'pick-underlying')).toEqual(['NIFTY', 'SENSEX'])
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
     expect(calls.filter((x) => x.url.startsWith('/catalogue/')).map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries', '/catalogue/NIFTY/contracts?expiry=2026-10-13']) // G-070: opens on the nearest expiry
-    await t(w, 'pick-expiry').setValue('2026-10-13')
-    await flushPromises()
-    expect(calls.filter((x) => x.url.startsWith('/catalogue/')).at(-1).url).toBe('/catalogue/NIFTY/contracts?expiry=2026-10-13') // the picker's own strikes read follows it
-    expect(options(w, 'pick-type')).toEqual(['CE', 'PE'])
-    await t(w, 'pick-type').setValue('PE')
-    expect(options(w, 'pick-strike')).toEqual(['22200.00', '22400.00'])
-    await t(w, 'pick-type').setValue('CE')
-    expect(options(w, 'pick-strike')).toEqual(['22800.00', '23000.00'])
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(PK_ROWS.map((r) => r[0]))
+    expect(t(w, 'picker-by-contract').exists()).toBe(false) // no add-by-contract form
+    expect(t(w, 'pick-type').exists()).toBe(false)
   })
 
-  it('changing the underlying asks the API again and clears the expiry, so an old contract cannot be added', async () => {
+  it('changing the underlying asks the API again and clears the expiry and the picks, so an old contract cannot be added', async () => {
+    answers[PK_URL] = pkStrikes()
     const w = mountPicker()
     await flushPromises()
-    await t(w, 'pick-expiry').setValue('2026-10-13')
-    await flushPromises()
+    await pick(w, { type: 'CE', strike: '22800.00' })
+    expect(t(w, 'picker-count').text()).toBe('1 selected')
     await t(w, 'pick-underlying').setValue('SENSEX')
     await flushPromises()
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-15'])
     expect(t(w, 'pick-expiry').element.value).toBe('2026-10-15') // G-070: the new underlying's nearest expiry
-    expect(options(w, 'pick-type')).toEqual([])
-    expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
+    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
   })
 
   it('an expiry with no contracts offers nothing and cannot be added', async () => {
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [] }
+    answers[PK_URL] = { ...pkStrikes(), state: 'NOT_LIVE', reason: 'NO_CONTRACTS', rows: [] }
     const w = mountPicker()
     await flushPromises()
     await t(w, 'pick-expiry').setValue('2026-10-13')
     await flushPromises()
-    expect(options(w, 'pick-type')).toEqual([])
-    expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
   })
 
   it('a catalogue failure shows the four-part message and offers nothing', async () => {
@@ -139,13 +154,19 @@ describe('only offered contracts are selectable', () => {
 })
 
 describe('FUT has no strike', () => {
-  it('a FUT is added without a strike and is sent to the planned-entry API by its joined id', async () => {
+  it('a FUT is added without a strike through the Futures tab Buy, and is sent to the planned-entry API by its joined id', async () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(48704, '24750.50')] }
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = {
+      state: 'LIVE', reason: null, underlying: 'NIFTY', spot: '22533.25', answered_at: AT,
+      futures: [{ expiry: '2026-10-27', instrument_id: 'NSE_FO:48704', lot_size: 65, ltp: '24750.50', health: 'available', ltp_reason: null }],
+      forwards: [],
+    }
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { expiry: '2026-10-27', type: 'FUT', action: 'BUY' })
+    await w.findAll('[role="tab"]').find((x) => /future/i.test(x.text())).trigger('click')
+    await flushPromises()
     expect(t(w, 'pick-strike').exists()).toBe(false)
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'future-buy').trigger('click')
     await flushPromises()
     const post = calls.find((x) => x.method === 'POST')
     expect(post.body).toEqual({ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] })
@@ -161,17 +182,24 @@ describe('lots validation', () => {
     for (const bad of ['', '0', '-1', '1.5', '10001', '01', ' 1', '1e2', 'abc', null, undefined]) expect(lotsValid(bad)).toBe(false)
   })
 
-  it('the Add button stays disabled for bad lots and nothing is sent', async () => {
+  it('the Save leg button (Edit) stays disabled for bad lots and nothing is sent', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [entry(44624, '104.65')] }
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { type: 'CE', strike: '22800.00', lots: '0' })
+    await pick(w, { type: 'CE', strike: '22800.00' })
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    const posts = () => calls.filter((x) => x.method === 'POST').length
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'pick-lots').setValue('0')
     expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
     expect(t(w, 'lots-error').exists()).toBe(true)
     await t(w, 'pick-lots').setValue('10001')
     expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
     await t(w, 'pick-lots').setValue('3')
     expect(t(w, 'add-leg').attributes('disabled')).toBeUndefined()
-    expect(calls.some((x) => x.method === 'POST')).toBe(false)
+    expect(posts()).toBe(1) // only the capture at Done
   })
 })
 
@@ -181,7 +209,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00', lots: '2' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg).toMatchObject({ underlying: 'NIFTY', instrument_id: instrumentId('NSE_FO', 44624), symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT })
@@ -195,7 +223,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg.planned_entry).toBeNull()
@@ -208,7 +236,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg.planned_entry).toBeNull()
@@ -222,7 +250,7 @@ describe('edit and remove', () => {
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     return w
   }
@@ -285,28 +313,23 @@ describe('edit and remove', () => {
 })
 
 describe('a late async reply never overwrites newer user state', () => {
-  it('a leg is saved from what was picked at the click; picks made while the entry is being captured survive', async () => {
+  it('a leg is added from what was picked at Done; picks made while the entry is being captured survive', async () => {
     let release
     answers['POST /strategies/planned-entry'] = () => new Promise((res) => { release = () => res({ data: { entries: [entry(44624, '104.65')] } }) })
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { type: 'CE', strike: '22800.00', action: 'SELL', lots: '1' })
-    await t(w, 'add-leg').trigger('click')
+    await pick(w, { type: 'CE', strike: '22800.00', action: 'SELL' })
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     // while the capture is pending the user picks the next leg
-    await t(w, 'pick-type').setValue('PE')
-    await t(w, 'pick-strike').setValue('22400.00')
-    await t(w, 'pick-action').setValue('BUY')
-    await t(w, 'pick-lots').setValue('3')
+    await pick(w, { type: 'PE', strike: '22400.00', action: 'BUY', lots: '3' })
     release()
     await flushPromises()
     const [leg] = w.props('legs')
     expect(w.props('legs')).toHaveLength(1)
     expect(leg).toMatchObject({ instrument_id: instrumentId('NSE_FO', 44624), action: 'SELL', lots: 1, instrument_type: 'CE', planned_entry: '104.65' })
-    expect(t(w, 'pick-type').element.value).toBe('PE')
-    expect(t(w, 'pick-strike').element.value).toBe('22400.00')
-    expect(t(w, 'pick-action').element.value).toBe('BUY')
-    expect(t(w, 'pick-lots').element.value).toBe('3')
+    expect(t(w, 'picker-count').text()).toBe('1 selected')
+    expect(t(w, 'selection-side').text()).toBe('BUY')
   })
 
   it('the Builder ignores an outcome answer that arrives after every leg was removed', async () => {
@@ -319,7 +342,7 @@ describe('a late async reply never overwrites newer user state', () => {
     const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('loading')
     await t(w, 'remove-leg').trigger('click')
@@ -355,7 +378,7 @@ describe('legs added quickly in sequence are all kept', () => {
     for (const [i, [type, strike, action]] of legsAdded.entries()) {
       if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') await t(w, 'add-edit').trigger('click')
       await pick(w, { type, strike, action })
-      await t(w, 'add-leg').trigger('click')
+      await t(w, 'picker-done').trigger('click')
       await flushPromises()
       captures.shift()() // this leg's capture answers while every earlier outcome / shape read is still unanswered
       await flushPromises()
@@ -425,7 +448,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/outcome'] = OUTCOME_NOT_CONNECTED
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00', lots: '2' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
@@ -443,7 +466,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(44624, null)] }
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(calls.some((x) => x.url === '/strategies/outcome')).toBe(false)
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('unpriced')
@@ -455,7 +478,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(44624, null)] }
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     await t(w, 'remove-leg').trigger('click')
     await flushPromises()
