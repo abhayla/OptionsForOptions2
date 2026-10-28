@@ -31,8 +31,8 @@ from ofo.execution.margin_gate import (
     MARGIN_BUSY_CODE,
     MarginReplyError,
     MarginVerdict,
+    basket_requirement,
     check_margin,
-    required_from_basket_reply,
 )
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
@@ -109,12 +109,14 @@ class OrderMargin:
 class BasketMargin:
     """The basket's margin. `zerodha_total` is Zerodha's own ``final.total`` (after the hedge benefit); show it only as
     "Zerodha says". `required_total` is what the check needs: that figure plus the ADR-094 top-up for option BUY legs
-    up to their limit price (never below `zerodha_total`)."""
+    up to their limit price (never below `zerodha_total`). `top_up` is that ADR-094 top-up alone, as computed for
+    `required_total` (GC-UI D-A47: the Builder's sentence names it only when above 0)."""
 
     zerodha_total: Decimal
     required_total: Decimal
     initial_total: Decimal
     orders: tuple[OrderMargin, ...]
+    top_up: Decimal
 
 
 def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
@@ -194,10 +196,11 @@ class KiteMargin:
         body = "[" + ", ".join(o.as_json() for o in orders) + "]"
         data = self._data("POST", BASKET_PATH, body, {"Content-Type": "application/json"})
         try:
-            required_total = required_from_basket_reply(data, orders)
+            final_total, top_up = basket_requirement(data, orders)  # ADR-094, computed once (GC-UI D-A47)
         except MarginReplyError:
             raise KiteMarginError("kite_margin_no_figure") from None
-        final = data.get("final")  # a dict with a numeric total: required_from_basket_reply just read it
+        required_total = final_total + top_up  # exactly required_from_basket_reply's sum
+        final = data.get("final")  # a dict with a numeric total: basket_requirement just read it
         zerodha_total = _money(final.get("total") if isinstance(final, dict) else None)
         initial = data.get("initial")
         rows = data.get("orders")
@@ -207,7 +210,7 @@ class KiteMargin:
                           for r in rows if isinstance(r, dict))
         if len(per_order) != len(rows):
             raise KiteMarginError("kite_margin_no_figure")
-        return BasketMargin(zerodha_total, required_total, _money(initial.get("total")), per_order)
+        return BasketMargin(zerodha_total, required_total, _money(initial.get("total")), per_order, top_up)
 
 
 def kite_headers(api_key: str, access_token: str) -> dict[str, str]:

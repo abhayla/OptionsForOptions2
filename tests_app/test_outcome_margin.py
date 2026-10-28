@@ -109,14 +109,15 @@ def source(transport, session=OWNER_SESSION, **kw) -> OutcomeMargin:
     return OutcomeMargin(holder, open_client, clock=lambda: CHECKED_AT, **kw)
 
 
-def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account") -> str:
-    """The catalogue sentence: Zerodha's own figure as Zerodha's, ours as an estimate (REQ-055 AC-3)."""
-    return (f"Zerodha's own margin figure is {theirs}. With the premium at your planned entry prices, about {ours} is "
-            f"needed (an estimate); {have} is available in {where}.")
+def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account", added: str = "₹656.50") -> str:
+    """The catalogue sentence with an ADR-094 top-up (GC-UI D-A47): Zerodha's own figure as Zerodha's, the top-up
+    named, ours as an estimate (REQ-055 AC-3). The recorded strangle's top-up is 7,065.50 - 6,409 = 656.50."""
+    return (f"Zerodha's own margin figure is {theirs}; your planned entry prices are above Zerodha's, which adds about "
+            f"{added}, so about {ours} is needed (an estimate); {have} is available in {where}.")
 
 
-def _short_line(theirs: str, ours: str, have: str) -> str:
-    return _own_line(theirs, ours, have, "your account") + " " + SHORT_WAYS
+def _short_line(theirs: str, ours: str, have: str, added: str = "₹656.50") -> str:
+    return _own_line(theirs, ours, have, "your account", added) + " " + SHORT_WAYS
 
 
 # ---- the core proof -----------------------------------------------------------------------------------------------
@@ -221,7 +222,8 @@ async def test_an_unknown_session_is_read_but_never_cached() -> None:
     ("68498.85000000001", "68498.85", ("68498.86", "68498.85"), True),  # Kite's float noise errs on the safe side
 ])
 def test_shortfall_compares_the_figures_shown(needed, available, shown, short) -> None:
-    m = outcome_margin.margin_checked(Decimal(needed), Decimal(available), CHECKED_AT, Decimal(needed))
+    m = outcome_margin.margin_checked(Decimal(needed), Decimal(available), CHECKED_AT, Decimal(needed),
+                                      Decimal(0))
     assert (str(m.needed), str(m.available)) == shown and m.shortfall is short
 
 
@@ -264,9 +266,11 @@ async def test_099_kites_float_noise_is_not_a_shortfall_on_the_screen() -> None:
 
 
 def test_enough_funds_is_no_shortfall() -> None:
-    m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT, Decimal("6409"))
+    m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT, Decimal("6409"),
+        Decimal("656.50"))
     assert m.shortfall is False and str(m.available) == "7065.50"
-    short = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.49"), CHECKED_AT, Decimal("6409"))
+    short = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.49"), CHECKED_AT, Decimal("6409"),
+        Decimal("656.50"))
     assert short.shortfall is True
 
 
@@ -459,11 +463,13 @@ def replies(funds_text: str | None = None, basket_text: str | None = None):
 
 
 def test_shortfall_reason_carries_both_figures_to_the_paisa_only_when_short() -> None:
-    equal = outcome_margin.margin_checked(Decimal("100.00"), Decimal("100.00"), CHECKED_AT, Decimal("90"))
+    equal = outcome_margin.margin_checked(Decimal("100.00"), Decimal("100.00"), CHECKED_AT, Decimal("90"),
+        Decimal("10.00"))
     assert equal.shortfall is False and equal.shortfall_reason is None
-    paisa = outcome_margin.margin_checked(Decimal("100.00"), Decimal("99.99"), CHECKED_AT, Decimal("90"))
+    paisa = outcome_margin.margin_checked(Decimal("100.00"), Decimal("99.99"), CHECKED_AT, Decimal("90"),
+        Decimal("10.00"))
     assert paisa.shortfall is True
-    assert str(paisa.shortfall_reason) == _short_line("₹90.00", "₹100.00", "₹99.99")
+    assert str(paisa.shortfall_reason) == _short_line("₹90.00", "₹100.00", "₹99.99", "₹10.00")
 
 
 async def test_the_execute_gate_and_the_builder_line_share_one_ways_forward_sentence() -> None:

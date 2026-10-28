@@ -7,10 +7,15 @@ from ofo.errors.explanations import EXPLANATIONS
 
 
 def test_builder_margin_lines_say_planned_entry_prices() -> None:
-    for tid in ("outcome_margin_checked", "outcome_margin_short"):
+    """GC-UI D-A47: only the top-up wordings name the planned entry prices; none says "limit prices"."""
+    for tid in ("outcome_margin_checked_top_up", "outcome_margin_short_top_up"):
         text = EXPLANATIONS[tid].text
         assert "planned entry prices" in text
         assert "limit prices" not in text
+    for tid in ("outcome_margin_checked", "outcome_margin_short"):  # top-up 0: no addition is named
+        text = EXPLANATIONS[tid].text
+        assert "already includes the premium of the legs you buy" in text
+        assert "limit prices" not in text and "adds" not in text and "{needed}" not in text
 
 
 def test_execute_gate_margin_line_keeps_limit_prices() -> None:
