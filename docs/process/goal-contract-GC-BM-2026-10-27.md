@@ -191,17 +191,32 @@ builders run only targeted tests. Then one full local pass, one push, one PR, on
 need market hours (09:15-15:30 IST) and my cached Kite token; never press an order button.
 ```
 
-## Handover at 17:10 IST, 2026-10-27 (market closed; next session or this one at 09:15 on 2026-10-28)
+## Handover, 2026-10-28 06:40 IST
 
-- DONE (closing prices, LIVE_MARKET=1 + the walkthrough launcher, ofo_dev): steps 0, 2-6 built and checked; F-1, F-8, F-10,
-  F-11, F-12 fixed; walk 1 and walk 2 recorded above. Local branch head is in `git log -1`; full vitest 1181/1181.
-- PENDING, in order: (1) 09:15 LIVE walk 3, full U-list (dev server: `npx vite --port 5174` in this worktree's frontend
-  with OFO_API_TARGET=http://127.0.0.1:8765; API: `LIVE_MARKET=1 APP_ENV=development python <main>/scripts/orchestrator/dev_run.py . python -m uvicorn ...`
-  WITHOUT the closing-price launcher once the market is open); include F-2 (blank leg rows, seen once) and F-3 (drawer
-  strikes ~30 s, 10+ repeated reads) live, and the after-close items in the owner list; (2) any new functional FAIL -> F-row
-  -> step 7 -> walk again; (3) step 9 final gate with servers STOPPED, one combined review (Opus for G-065, G-051, F-8;
-  Sonnet for the rest), one push, one PR, CI, merge.py; (4) step 10 handover docs in the same PR.
-- Builder worktrees -gcbm-g065/-g070/-g024/-g051/-f1/-f8 stay until main has the merge (wt-rm.ps1 needs the sha on origin/main).
-- Spec note for the owner list: scenario-calculations section 3 says futures add 0 to net premium; REQ-081 AC-1 says a
-  futures leg makes net premium "-" (the screen follows REQ-081). Futures charges are not priced (charges/round_trip.py:
-  options-only rate table), labelled on screen.
+- DONE: steps 0-8. The 5 must-have rows (G-065, G-070, G-075, G-024, G-051) and F-1, F-8, F-10..F-18 fixed with failing
+  tests first; owner decisions ADR-199 (expiry default rolls after the close on an expiry day) and ADR-200 (builds
+  ADR-197 now; "last close" defined; real-app closing-price walks prove this contract). Walk 4 on the real app after
+  hours: CLEAN, U-1..U-32. Review round 1 + round 2: Tier A (Opus) PASS, Tier B (Sonnet) PASS. Local: full vitest
+  1217/1217, ruff ratchet OK, coverage OK, openapi no drift, after-hours / drawer / execute / catalogue route tests green
+  on db_run_fresh (throwaway databases; ofo_test is dirty, see below). Gap list re-verdicts written (G-070, G-075
+  matches; G-024, G-051, G-065 differs with reasons) and the counts recounted.
+- PENDING: walk 5 on the FINAL code (the review fixes changed the labels and the close caption after walk 4) and a
+  short in-hours check after 09:15 (live prices, no banner); then step 9: Playwright for the changed pages, prepush with
+  the servers stopped, ONE push, ONE PR, CI, merge.py; deferred issues filed (list below).
+- BLOCKED: the Kite access token expired at 06:00 IST (Kite's daily expiry); the API logs "no active Kite session".
+  Needs one owner login in a PRIVATE window: http://127.0.0.1:8765/broker/zerodha/login (the API runs on 8765).
+- PARKED: the ADR-197 close label on a SAVED strategy reopened later (needs a migration: 0011 / 0024 allow only fixed
+  leg keys; migrations need draft-PR CI under ADR-191 (2)); after two fix rounds it ships listed. The screen then reads
+  "captured <time>" instead of "Close, <date>, <time> IST" - the numbers are right.
+- NEXT: after this PR merges, GC-B2 (docs/process/goal-contracts-builder-phase-2026-10-27.md), owner sets it as /goal.
+
+Deferred issues to file with the PR (gh_issue.py app ... --stage):
+1. Close label on reopened saved strategies (the PARKED item above; migration + save/load paths).
+2. Option Chain still defaults to its first listed expiry after the close (ADR-199 consequence; chain phase).
+3. ofo_test on the VPS holds old rows (catalogue 1,085 from 2026-10-21, broker_sessions 507, audit 365, strategies 40):
+   decide wipe or retire; DB tests now use db_run_fresh.py.
+4. ADR-008 scan MINORs left after round 2: two apostrophes on one template line hide money maths between them; a unary
+   minus (`-p.pnl`) passes.
+5. Market calendar holds 2026 only: from 2027-01-01 the closed-market rule would misjudge trading days.
+6. leg-edit echoes a client-sent close_at for legs it does not re-capture (caption only).
+7. After hours the drawer's first open fills prices ~4 s late (new contracts' snapshots arrive late).

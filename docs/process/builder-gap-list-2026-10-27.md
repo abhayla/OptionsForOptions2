@@ -50,7 +50,7 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-021 | S-107 | B. Money row | "Price Get 92.7  Premium Get 6,026  Charges" | "Net premium: Get ₹14,023.75 (215.75 per unit)  Charges" (gap-builder-condor.png) | differs | REQ-081 AC-1; documented: REQ-152 (number format) (Draft, 2026-10-27) | row 26 |
 | G-022 | S-022 | B. Charges | Modal: total, breakdown, disclaimer | Modal: Total Rs 263.88, Brokerage 160.00, STT 47.50, Exchange 22.50, GST 32.86, Stamp 0.95, SEBI 0.06, STT-on-exercise note (gap-builder-charges.png) | matches | REQ-081 | - |
 | G-023 | S-107 | B. Action row | Add/Edit, Add to Drafts, Trade All, "..." | Add/Edit, Save, "..." (gap-builder-condor.png) | differs | ADR-165 (no Trade All); Add to Drafts: next phase (section 4) | - |
-| G-024 | S-023, S-115 | B. "..." menu | Save, Save As, Share > (Facebook, Twitter, WhatsApp, Telegram, Copy Link) | "More actions" on the unsaved 4-leg strategy opens an empty menu (snapshot 09:48:46: `menu` with no items) | differs | REQ-134 (Save As, rename), REQ-086 (share link) | rows 29, 44 |
+| G-024 | S-023, S-115 | B. "..." menu | Save, Save As, Share > (Facebook, Twitter, WhatsApp, Telegram, Copy Link) | GC-BM (2026-10-27/28, walk 4 19:16-19:21 IST, real app): "..." offers Save, Save As (pre-fill "GCBM walk4 copy"), Rename, History, Start tracking on a saved strategy; Save and Save As on an unsaved one; disabled with no legs; no Share (ADR-196 (4)) | differs | REQ-134 (Save As, rename), REQ-086 (share link) | GC-BM |
 | G-025 | S-010, S-112..S-114, S-242 | B. Manual P/L row | Checkbox "Manual P/L" + "Add Manual P/L" dialog | No manual P&L row (gap-builder-empty.png) | missing | REQ-089 | row 39 (in this phase: P3) |
 | G-026 | S-024 | B. Depth popover | OHLC + 5 bid/offer levels | "Market depth: NIFTY 3 Nov 22300 PE": Open/High/Low/Prev close, 5 levels Bids/Qty/Offers/Qty, last trade and read time (gap-builder-depth.png) | matches | REQ-080 AC-7 | - |
 | G-027 | S-209, catalogue 010-039 | B. Price refresh | "Prices last updated at" + Refresh button, auto every 30 s | Prices stream live (planned 70.10, "now" moved 69.9 -> 68.15 -> 72.2 within minutes); no refresh button seen (gap-builder-condor-full.png) | differs | REQ-135 (stamp), REQ-113 | - |
@@ -77,7 +77,7 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-048 | S-012, S-018, S-246 | F. SD bands | -2SD..2SD on the top axis; SD Fixed / Dynamic menu | None (gap-builder-condor-full.png) | missing | REQ-083, REQ-138 | rows 36, 40 |
 | G-049 | S-012, S-019, S-214 | F. OI bars | Call/put OI bars behind the curve, "OI data at 22950" strip, Open Interest menu (OI or OI change, which expiries) | None (gap-builder-condor-full.png) | missing | REQ-083 | row 36 |
 | G-050 | S-012 | F. Current price marker | "Current price: 22971.30" | Dashed line with label "22743.1" and legend "Spot 22748.55" (gap-builder-condor-full.png) | matches | REQ-034 | - |
-| G-051 | S-122 | F. Hover tooltip | "When price is at 23,480 +2.2% / Expected P&L ... / Expiry date ..." | Hovering the chart centre added no tooltip text to the chart figure (evaluate 09:49:40) | missing | REQ-083 | row 36 |
+| G-051 | S-122 | F. Hover tooltip | "When price is at 23,480 +2.2% / Expected P&L ... / Expiry date ..." | GC-BM: hover snaps to the nearest point the engine sent, incl. every strike (F-8): "At 22,600 (-0.7%) / At expiry Rs 3,116.75", equal to the payoff table; one P&L line only (both curves need REQ-083 AC-1) | differs | REQ-083 | GC-BM |
 | G-052 | S-012, S-123 | F. Projected P&L badge | "Projected profit: 7,714 (+22%)" with model tooltip | None (gap-builder-condor-full.png) | missing | REQ-083, REQ-084; documented: REQ-144 (Draft, 2026-10-27) | rows 36, 37 |
 | G-053 | S-012 | F. Zoom | Zoom Out / Zoom In buttons | From / To boxes, "Apply range", "Default range"; a second "21700 ... 23700" line under the axis (gap-builder-condor-full.png) | differs | REQ-034 | row 22; new |
 | G-054 | S-020, S-021 | F. What-if sliders | NIFTY Target slider + box; Date slider "4D to expiry" with < >; each with Reset | None (gap-builder-condor-full.png) | missing | REQ-084 | row 37 |
@@ -91,7 +91,7 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 | G-062 | S-013 | G. Target day futures prices | Future price per expiry on the target day | None | missing | REQ-084; documented: REQ-147 (Draft, 2026-10-27) | row 37 |
 | G-063 | S-013 | G. Standard deviation table | 1SD 448.8 pts 2% -> range; 2SD 897.5 3.9% | None | missing | REQ-137 | row 38 |
 | G-064 | S-234 | Warnings / Insights drawer | "Insights" link opens "Your warnings" chips | No warnings link on the hedged iron condor; an unhedged case was not built today | unmeasured | REQ-085 | row 31, #558 (parked) |
-| G-065 | S-104 | Calendar / mixed expiry | Label "2 selected", Width/Hedge disabled, expiry line curved | Leg 4 moved to 9 Nov: leg-edit and outcome answer 500 ("ERR-AF82B977"), summary and chart gone, the leg shows raw "2026-11-09", header still "4 selected"; Width / Hedge disabled (gcb1-G-065.png, 11:38 IST; issue #586) | differs | REQ-076, REQ-078; documented: REQ-148 (Draft, 2026-10-27) | GC-B3, #586 |
+| G-065 | S-104 | Calendar / mixed expiry | Label "2 selected", Width/Hedge disabled, expiry line curved | GC-BM: leg 4 moved to 9 Nov answers (no 500): "9 Nov (13 days)", Max loss / profit / breakeven "Not available" with the ADR-143 line, "Width and Hedge need one expiry.", At Expiry chart shows the ADR-143 reason (our rule), Estimated Now drawn; futures on another expiry the same | differs | REQ-076, REQ-078; documented: REQ-148 (Draft, 2026-10-27) | GC-BM |
 | G-066 | S-233 | Futures leg | Buy Future loads with margin, Max Profit/Loss Unlimited | Known: a future added from the Futures tab gets no planned entry and every number disappears (walkthrough 2026-10-27 I-12 FAIL) | differs | REQ-080 AC-9 | #583 (I-12) |
 | G-067 | catalogue 010-039 | Layout: editor stays in view | Left column scrolls on its own while the chart scrolls | Left column stayed in view while the right column scrolled to the P&L table (gap-builder-pnl-table.png) | matches | UI study b.1 | - |
 | G-068 | none | Unsaved strategy after a reload | Not studied | After a reload the 4-leg unsaved strategy was gone: "No draft strategy is open" (evaluate 09:50:46) | unmeasured (Sensibull side not studied) | REQ-154 | new |
@@ -101,12 +101,12 @@ Owner row = row of `docs/process/builder-sequence-2026-10-22.md`, an issue, or "
 
 | Gap id | Sensibull screen(s) | Region / feature | Sensibull does | OFO2 today | Verdict | Spec | Owner row |
 |---|---|---|---|---|---|---|---|
-| G-070 | S-032 | Opening state | Opens on the nearest expiry with strikes already listed | Opens with "Expiry" unselected: "Choose an expiry to see its strikes." (gap-drawer-strikes.png) | differs | REQ-080; documented: REQ-150 AC-4 (Draft, 2026-10-27) | new |
+| G-070 | S-032 | Opening state | Opens on the nearest expiry with strikes already listed | GC-BM: Add/Edit opens on the strategy's expiry (3 Nov) with 21 strike rows, or the server default when there are no legs (ADR-199), on the strategy's underlying (F-14) | matches | REQ-080; documented: REQ-150 AC-4 (Draft, 2026-10-27) | GC-BM |
 | G-071 | S-032 | Header | Underlying search "NIFTY 22970.35 +0.36%", chart, Info, close | Native selects NIFTY and expiry (label cut: "3 Nov (7 days"), Settings, close; spot as a text line "Index 22752.90, read 27 Oct 2026, 09:45:44 IST" (gap-drawer-strikes-3nov.png) | differs | REQ-080, REQ-139 | row 41; new |
 | G-072 | S-032, S-037, S-038 | Tabs | Straddles / Strangles / Strikes / Futures | Strikes / Futures only (gap-drawer-strikes.png) | missing | REQ-079 | row 55 |
 | G-073 | S-036 | Tab switch confirm | "You are changing strategy type from Strikes to Straddles" Cancel / Proceed | No quick-pick tabs, so nothing to confirm | missing | REQ-079, UI study UI-201 | row 55 |
 | G-074 | S-032 | Strike table columns | Delta / Call LTP / Call OI bar / Strike / IV / Put OI bar / Put LTP / Delta | Call Delta / Call LTP / Call OI / Call IV / Strike / Put IV / Put OI / Put LTP / Put Delta; OI as raw numbers ("1764750"), no bars; two IV columns; strikes "22300.00" (gap-drawer-strikes-3nov.png) | differs | REQ-080 AC-2, UI study UI-202; layout: UI-202 (ADR-193) | row 19; new |
-| G-075 | S-032 | Table fits the drawer | Every value in its own column | Values run together ("0.8211613.50" = delta + LTP; "1068275" over the next cell) and Put LTP is cut ("225.0") in the 520 px drawer (gap-drawer-strikes-3nov.png) | differs | REQ-080; layout: UI-202 (ADR-193) | new (walkthrough 2026-10-27 display list) |
+| G-075 | S-032 | Table fits the drawer | Every value in its own column | GC-BM: one value per cell at 520 px in the LTP, OI and Greeks views (check g075-check.cjs: bad 0, 21 rows each) | matches | REQ-080; layout: UI-202 (ADR-193) | GC-BM |
 | G-076 | S-032 | ITM / ATM marks | ITM halves shaded, ATM strike highlighted | ITM halves shaded cream, ATM row highlighted with an "ATM" tag (gap-drawer-strikes-3nov.png) | matches | REQ-080 | - |
 | G-077 | S-032, S-033 | LTP / OI / Greeks views | Three column sets | OI view: Call LTP, Call OI, Strike, Put OI, Put LTP (ATM 327.15, 63765, 22750, 73515, 251.60); Greeks view: Call Delta, Call IV, Strike, Put IV, Put Delta (ATM 0.5472, 16.77, 22750, 16.80, -0.4533); no theta, vega or gamma (gcb1-G-077-oi.png, gcb1-G-077-greeks.png, 11:39 IST) | differs (Greeks view lacks theta / vega / gamma; OI view not compared, S-033 OI not opened) | REQ-080, REQ-084 (theta, vega, gamma); documented: REQ-150 (Draft, 2026-10-27) | row 19, row 37; GC-B11 |
 | G-078 | S-032 | Pick B / S per strike | B / S on row hover, Qty row under a picked side | B / S on hover; after a pick a "Lots [1 v]" row appears under that strike (gap-drawer-4picks.png) | matches | REQ-080 AC-3/AC-4 | - |
@@ -150,12 +150,12 @@ Draft Portfolios 084-092, 118, 220-224; OI pages 140-144, 214; IV chart 151; opt
 
 | Screen | Rows | matches | differs | missing | n-a | unmeasured |
 |---|---|---|---|---|---|---|
-| Builder (G-001..G-069) | 69 | 15 | 34 | 17 | 0 | 3 |
-| Strike drawer (G-070..G-084, G-101) | 16 | 2 | 10 | 3 | 0 | 1 |
+| Builder (G-001..G-069) | 69 | 15 | 35 | 16 | 0 | 3 |
+| Strike drawer (G-070..G-084, G-101) | 16 | 4 | 8 | 3 | 0 | 1 |
 | Option Chain (G-085..G-100) | 16 | 0 | 6 | 7 | 1 | 2 |
-| **Total** | **101** | **17** | **50** | **27** | **1** | **6** |
+| **Total** | **101** | **19** | **49** | **26** | **1** | **6** |
 
-Counted by a script over the verdict cell of each G-row (first word). G-098 counts as missing against our own REQ-031.
+Counted by a script over the verdict cell of each G-row (first word); recounted 2026-10-28 after the GC-BM re-verdicts of G-024, G-051, G-065, G-070, G-075. G-098 counts as missing against our own REQ-031.
 Measured live in GC-B1 item 6 (2026-10-27 11:37-11:39 IST, main's code, owner's Kite session; screenshots
 `.playwright-mcp/gcb1-*.png`): G-016 differs, G-017 matches, G-065 differs (a 500, issue #586), G-069 differs
 (Sensibull has a dedicated phone layout, captured 14:11 IST as study screenshot 250; ours squeezes the desktop one), G-077 differs (it had been counted "matches" unopened), G-083
