@@ -31,17 +31,14 @@ async function seedCatalogue(page: Page) {
 }
 
 // The expiry is chosen once by the caller: saving a leg keeps it (and its contracts), so it is not re-selected here.
+// D-C31: a leg is added only through B / S on the strike table and Done (the by-contract form is the Edit path only).
 async function addLeg(page: Page, type: string, strike: string, action: string) {
   const rows = page.getByTestId('leg-row')
-  await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
+  await openAddEdit(page) // W-192: the picker sits behind Add/Edit once legs exist
   const before = await rows.count()
-  await page.getByTestId('pick-type').selectOption(type)
-  // wait for the API's strikes: the select is disabled until they arrive
-  await expect(page.getByTestId('pick-strike')).toBeEnabled()
-  await expect(page.getByTestId('pick-strike').locator(`option[value="${strike}"]`)).toBeAttached()
-  await page.getByTestId('pick-strike').selectOption(strike)
-  await page.getByTestId('pick-action').selectOption(action)
-  await page.getByTestId('add-leg').click()
+  const cell = page.locator(`[data-testid="strike-row"][data-strike="${strike}"] [data-testid="cell-${type.toLowerCase()}"]`)
+  await cell.getByTestId(action === 'BUY' ? 'cell-buy' : 'cell-sell').click()
+  await page.getByTestId('picker-done').click()
   // the capture has finished and the form is free for the next leg. 15 s, as in the edit test below: CI #581's trace showed the 4th
   // planned-entry request still unanswered 6 s after it was sent, queued behind a 5.2 s outcome reply on the replay API (late, not
   // lost: tests/leg-picker.test.js "legs added quickly in sequence are all kept" pins that every leg is kept)
@@ -53,12 +50,10 @@ test('four picked legs are priced by the real outcome route on the recorded fram
   await page.goto(`${REPLAY_URL}/strategy/builder`)
   await openAddEdit(page) // W-195: the picker is the left drawer behind Add/Edit
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'no-draft')
-  await expect(page.getByTestId('pick-strike')).toBeVisible()
   await expect(page.getByTestId('pick-expiry')).toContainText('13 Oct') // REQ-148 AC-2: never raw ISO
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
-  await page.getByTestId('pick-type').selectOption('CE')
-  // only the two offered CE strikes are choices
-  await expect(page.getByTestId('pick-strike').locator('option:not([value=""])')).toHaveText(['22800', '23000']) // #582 item 7: a strike prints without ".00"; the option VALUE stays '22800.00'
+  await expect(page.getByTestId('strike-row').first()).toBeVisible() // the strike table is the only way to add a leg
+  await expect(page.getByTestId('picker-by-contract')).toHaveCount(0) // no add-by-contract form
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await addLeg(page, 'CE', '23000.00', 'BUY')
   await addLeg(page, 'PE', '22400.00', 'SELL')
@@ -78,7 +73,7 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
-  await page.getByTestId('edit-leg').click()
+  await page.getByTestId('edit-leg').click() // the by-contract form is the Edit / Reprice path
   await expect(page.getByTestId('pick-strike')).toHaveValue('22800.00')
   await page.getByTestId('pick-strike').selectOption('23000.00')
   await page.getByTestId('add-leg').click()

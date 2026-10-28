@@ -20,7 +20,7 @@
       <p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p>
       <table v-if="view.legs.length" class="mt-2 text-sm">
         <thead>
-          <tr><th>Leg</th><th>Entry</th><th>LTP</th></tr>
+          <tr><th>Leg</th><th>Paper entry</th><th>LTP</th></tr>
         </thead>
         <tbody>
           <tr v-for="leg in view.legs" :key="leg.key" data-testid="tracking-leg">

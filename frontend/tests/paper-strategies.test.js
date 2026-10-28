@@ -68,6 +68,8 @@ describe('PaperStrategies: the real reply', () => {
     expect(first).toContain('3 Nov')
     expect(first).toContain('22300')
     expect(first).toContain('114.25')
+    expect(t(w, 'paper-group').findAll('th').map((h) => h.text())).toContain('Paper entry') // D-B51
+    expect(t(w, 'paper-group').findAll('th').map((h) => h.text())).not.toContain('Entry')
     expect(first).toContain('113.60')
   })
   it('REQ-109 AC-3: nothing links to /execute and there is no Execute button', async () => {

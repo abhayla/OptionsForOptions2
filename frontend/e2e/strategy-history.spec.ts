@@ -31,15 +31,13 @@ async function addLeg(page: Page, type: string, action: string, strikeIndex: num
   const rows = page.getByTestId('leg-row')
   await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
-  await page.getByTestId('pick-type').selectOption(type)
-  await expect(page.getByTestId('pick-strike')).toBeEnabled()
-  const strikes = page.getByTestId('pick-strike').locator('option:not([value=""])')
-  const count = await strikes.count()
+  // D-C31: B / S on the strike table, then Done
+  const strikeRows = page.getByTestId('strike-row')
+  await expect(strikeRows.first()).toBeVisible()
+  const count = await strikeRows.count()
   expect(count).toBeGreaterThan(strikeIndex + 2)
-  await page.getByTestId('pick-strike').selectOption(await strikes.nth(Math.floor(count / 2) + strikeIndex).getAttribute('value') as string)
-  await page.getByTestId('pick-action').selectOption(action)
-  await page.getByTestId('pick-lots').fill('1')
-  await page.getByTestId('add-leg').click()
+  await strikeRows.nth(Math.floor(count / 2) + strikeIndex).getByTestId(`cell-${type.toLowerCase()}`).getByTestId(action === 'BUY' ? 'cell-buy' : 'cell-sell').click()
+  await page.getByTestId('picker-done').click()
   await expect(rows).toHaveCount(before + 1)
 }
 

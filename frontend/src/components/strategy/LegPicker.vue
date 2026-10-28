@@ -206,15 +206,16 @@ function tick() {
 // W-195 (UI-202, UI-205): the view switch picks which of the server's columns each side shows (S-032/S-033); the Greeks
 // view shows Delta and IV only, since Theta/Vega/Gamma are not in this reply (REQ-084). Settings holds the width and size.
 const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['ltp', 'oi'], greeks: ['delta', 'iv'] })
-const COLUMN_WIDTH = Object.freeze({ delta: '42px', ltp: 'minmax(0,1fr)', oi: '58px', iv: '32px' })
-const ACT_WIDTH = '30px'
+// D-C27: wide enough for a 4 dp Delta and a 2 dp IV with a gap, so no two values touch
+const COLUMN_WIDTH = Object.freeze({ delta: '48px', ltp: 'minmax(44px,1fr)', oi: '54px', iv: '46px' })
+const ACT_WIDTH = '28px'
 const view = ref('ltp')
 const settingsOpen = ref(false)
 const columns = computed(() => VIEW_COLUMNS[view.value])
 const sideColumns = (side) => (side === 'ce' ? [...columns.value, 'act'] : ['act', ...[...columns.value].reverse()])
 const gridStyle = computed(() => {
   const widths = columns.value.map((c) => COLUMN_WIDTH[c])
-  return { gridTemplateColumns: [...widths, ACT_WIDTH, '56px', ACT_WIDTH, ...[...widths].reverse()].join(' ') }
+  return { gridTemplateColumns: [...widths, ACT_WIDTH, '58px', ACT_WIDTH, ...[...widths].reverse()].join(' ') }
 })
 // the qty sub-row sits under its own side, on the row's second line
 const subRowStyle = (side) => ({ gridRow: '2', gridColumn: side === 'ce' ? `1 / span ${columns.value.length + 1}` : `span ${columns.value.length + 1} / -1` })
@@ -541,13 +542,13 @@ defineExpose({ startEdit, showStrikes })
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="strikesData.spot && strikesData.centre === 'LIVE_SPOT'" class="text-ink-muted" data-testid="strikes-spot">Index {{ strikesData.spot }}, read {{ istTime(strikesData.answered_at) }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
-          <div class="mt-2 grid items-end gap-x-0.5 border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
+          <div class="mt-2 grid items-end gap-x-1.5 border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
             <span class="text-center">Strike</span>
             <span v-for="col in sideColumns('pe')" :key="`pe-${col}`">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
           </div>
           <div
-            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-0.5 border-b border-line text-[11px] tabular-nums num"
+            v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-1.5 border-b border-line text-[11px] tabular-nums num"
             :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" :style="gridStyle" data-testid="strike-row" :data-strike="row.strike" :data-atm="row.is_atm ? 'true' : 'false'"
           >
             <template v-for="side in ['ce', 'pe']" :key="side">
@@ -641,8 +642,8 @@ defineExpose({ startEdit, showStrikes })
 
     <!-- A leg by its contract: the Edit / Reprice form for a leg already in the strategy (the page's Edit opens it), and a
          second way to add one. The order and wording of its choices are the catalogue's. -->
-    <div class="rounded border border-line p-3" :class="editing ? 'order-first border-accent' : ''" data-testid="picker-by-contract">
-      <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg by contract' }}</h2>
+    <div v-if="editing" class="order-first rounded border border-accent border-line p-3" data-testid="picker-by-contract">
+      <h2 class="text-sm font-medium">Edit leg</h2>
       <form class="mt-2 flex flex-wrap items-end gap-2" @submit.prevent>
         <label class="flex flex-col">Type
           <select class="rounded border border-line px-1" data-testid="pick-type" :value="type" @change="onType($event.target.value)">
@@ -665,7 +666,7 @@ defineExpose({ startEdit, showStrikes })
         <label class="flex flex-col">Lots
           <input v-model.number="lots" class="w-16 rounded border border-line px-1" data-testid="pick-lots" inputmode="numeric" />
         </label>
-        <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">{{ editing ? 'Save leg' : 'Add' }}</button>
+        <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">Save leg</button>
         <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
       </form>
       <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>

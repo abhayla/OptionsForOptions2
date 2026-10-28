@@ -428,7 +428,7 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     expect(row(w, 1).find('[data-testid="leg-block"]').text()).toBe(reason)
     expect(row(w, 0).find('[data-testid="leg-block"]').exists()).toBe(false)
   })
-  it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> empty form, Add adds nothing of A', async () => {
+  it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> the form is gone, nothing of A is added', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624,
       instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }] }
@@ -447,10 +447,8 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     await t(w, 'remove-leg').trigger('click')
     await flushPromises()
     expect(all(w, 'leg-row')).toHaveLength(0)
-    expect(w.find('[data-testid="picker-by-contract"] h2').text()).toBe('Add a leg by contract')
-    expect([t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value, t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['', '', 'SELL', '1'])
-    const add = t(w, 'add-leg')
-    if (add.exists() && !add.element.disabled) await add.trigger('click')
+    expect(t(w, 'picker-by-contract').exists()).toBe(false) // no edit form left, and no add-by-contract form to replace it
+    expect(t(w, 'add-leg').exists()).toBe(false)
     await flushPromises()
     expect(w.findComponent({ name: 'LegPicker' }).props('legs')).toHaveLength(0)
   })

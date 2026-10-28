@@ -6,9 +6,9 @@ import { isCurrentColumn } from '@/lib/strategyTable'
 
 export const TOTAL_ROW_ID = 'TOTAL'
 
-/** The compact P&L view's value columns (ADR-194 (1)), in its order: Entry, LTP, P&L, P&L %. */
+/** The compact P&L view's value columns (ADR-194 (1)), in its order: Planned entry, LTP, P&L, P&L %. */
 export const COMPACT_COLUMNS = [
-  { id: 'entry_price', label: 'Entry' },
+  { id: 'entry_price', label: 'Planned entry' },
   { id: 'ltp', label: 'LTP' },
   { id: 'unrealized_pnl', label: 'P&L' },
   { id: 'pnl_percent', label: 'P&L %' },
@@ -40,9 +40,31 @@ function viewRows(table, valueIds) {
       isTotal,
       side: isTotal ? null : (row.cells?.action?.value ?? null),
       parts: Object.fromEntries(INSTRUMENT_PARTS.map((id) => [id, display(row, id)])),
-      values: Object.fromEntries(valueIds.map((id) => [id, { display: display(row, id), value: row.cells?.[id]?.value ?? null }])),
+      values: Object.fromEntries(valueIds.map((id) => [id, {
+        display: display(row, id),
+        value: row.cells?.[id]?.value ?? null,
+        perUnitDisplay: row.cells?.[id]?.per_unit_display ?? null,
+      }])),
     }
   })
+}
+
+// REQ-084 AC-8 / sb-05, REQ-145 AC-3: the Greeks tab prints only server-made text; the browser formats no number.
+const DASH = '—'
+
+/** One Greeks cell as printed. mode 'unit' prints the server's `per_unit_display`, 'position' the cell's `display`
+ *  (IV's `display` in both modes). Null, missing or empty text gives "—". */
+export function greekText(cell, id, mode) {
+  const s = String((mode === 'unit' && id !== 'iv' ? cell?.perUnitDisplay : cell?.display) ?? '').trim()
+  return s || DASH
+}
+
+/** The Greeks column-heading note: "Per unit", or "Per position, N units" when every leg row carries the same quantity. */
+export function greekModeHeading(rows, mode) {
+  if (mode === 'unit') return 'Per unit'
+  const qty = new Set((rows ?? []).filter((r) => !r.isTotal).map((r) => r.parts.quantity))
+  const only = qty.size === 1 ? [...qty][0] : ''
+  return only && only !== DASH ? `Per position, ${only} units` : 'Per position'
 }
 
 /** ADR-194 (1): one row per leg plus the reply's own TOTAL row when it sent one (never a browser sum). Null when the
