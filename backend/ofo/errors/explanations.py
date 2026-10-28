@@ -428,7 +428,7 @@ class WholePoints(SlotType):
 
 
 class SignedPercent(SlotType):
-    """REQ-153: a percent to one decimal, half-up, with "+" / U+2212; zero is "0.0" with no sign."""
+    """REQ-153: a percent to one decimal, half-up, with "+" / U+2212; only a true zero is "0.0" with no sign (F-4)."""
 
     @staticmethod
     def validate(value: object) -> None:

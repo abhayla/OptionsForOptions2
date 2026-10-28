@@ -80,19 +80,29 @@ def format_whole_points(level: Decimal) -> str:
     return _group_indian(f"{_finite(level, 'level').quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")
 
 
-def breakeven_percent(level: Decimal, spot: Decimal | None) -> Decimal | None:
-    """REQ-153 AC-1: (level - spot) / spot x 100 to one decimal, half-up; None when there is no usable spot (None or
-    not above 0), so the caller shows the level alone."""
+def breakeven_percent_exact(level: Decimal, spot: Decimal | None) -> Decimal | None:
+    """REQ-153 AC-1: (level - spot) / spot x 100, NOT rounded, so a percent that rounds to 0.0 keeps its sign (F-4);
+    None when there is no usable spot (None or not above 0), so the caller shows the level alone."""
     value = _finite(level, "level")
     if spot is None or _finite(spot, "spot") <= 0:
         return None
-    return ((value - spot) / spot * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return (value - spot) / spot * 100
+
+
+def breakeven_percent(level: Decimal, spot: Decimal | None) -> Decimal | None:
+    """The breakeven percent to one decimal, half-up (None when there is no usable spot)."""
+    exact = breakeven_percent_exact(level, spot)
+    return None if exact is None else exact.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
 
 def format_signed_percent(percent: Decimal) -> str:
-    """A percent with one decimal and a sign: ``+0.9``, ``−0.1``; zero is ``0.0`` with no sign (REQ-153 AC-1)."""
-    value = _finite(percent, "percent").quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-    return f"{0:.1f}" if value == 0 else f"{MINUS if value < 0 else '+'}{abs(value)}"
+    """A percent with one decimal and a sign: ``+0.9``, ``−0.1``. Only a true zero is ``0.0`` with no sign; a non-zero
+    figure that rounds to 0.0 keeps its sign, ``−0.0`` / ``+0.0`` (REQ-153 AC-1, F-4). Pass the UNROUNDED figure."""
+    raw = _finite(percent, "percent")
+    value = raw.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    if raw == 0:
+        return f"{0:.1f}"
+    return f"{MINUS if raw < 0 else '+'}{abs(value)}"
 
 
 def format_approx_rupees(amount: Decimal) -> str:
