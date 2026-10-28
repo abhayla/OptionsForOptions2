@@ -17,14 +17,18 @@ export const COMPACT_COLUMNS = [
   { id: 'pnl_percent', label: 'P&L %' },
 ]
 
-/** The Greeks tab's per-leg columns (ADR-194 (2)), in its order. */
+/** The Greeks tab's per-leg columns (ADR-194 (2)) in REQ-145 AC-2's order (D-B34, Sensibull 015 / sb-05): Delta, Theta,
+ *  Decay, Gamma, Vega, IV - whatever order the reply's own columns come in. */
 export const GREEK_COLUMNS = [
   { id: 'delta', label: 'Delta' },
-  { id: 'gamma', label: 'Gamma' },
   { id: 'theta', label: 'Theta' },
+  { id: 'decay', label: 'Decay' },
+  { id: 'gamma', label: 'Gamma' },
   { id: 'vega', label: 'Vega' },
   { id: 'iv', label: 'IV' },
 ]
+// a reply made before the Decay column (REQ-145) still fills the Greeks tab; its Decay cells print the em dash
+const OPTIONAL_GREEK_IDS = new Set(['decay'])
 
 // The instrument parts of a leg (the B/S chip, quantity, expiry, strike, type), all as the table sent them.
 const INSTRUMENT_PARTS = ['action', 'quantity', 'expiry', 'strike', 'instrument']
@@ -97,7 +101,8 @@ export function compactRows(table, legs = null) {
  *  carries no Greek columns (the Greeks tab then shows its empty state). */
 export function greekRows(table, legs = null) {
   const ids = GREEK_COLUMNS.map((c) => c.id)
-  if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
+  const needed = ids.filter((id) => !OPTIONAL_GREEK_IDS.has(id))
+  if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...needed])) return null
   return viewRows(table, ids, legs)
 }
 
@@ -115,6 +120,32 @@ export function payoffLevelRows(table) {
     value: total.cells?.[c.id]?.value ?? null,
     current: isCurrentColumn(c),
   }))
+}
+
+/** REQ-137 AC-1 (D-B24): the payoff table's intervals the server accepts, in index points. */
+export const PAYOFF_STEPS = ['10', '25', '50', '100']
+
+/** D-B24 / D-B25 / D-B26 (REQ-137 AC-1): the reply's own `payoff_table`, as printed. Columns in the server's order with
+ *  its labels; one row per server row with each column's `display` ("—" when the cell is null); the row the server marks
+ *  `nearest_spot` flagged. No percent: the reply carries none, so Show % is not built (ADR-008). Null when the reply has
+ *  no `payoff_table` block (an older reply: the page falls back to the scenario-level rows). */
+export function payoffStepTable(pt) {
+  if (!pt || typeof pt !== 'object') return null
+  if (pt.available === false || !Array.isArray(pt.rows) || !Array.isArray(pt.columns)) {
+    return { available: false, reason: pt.unavailable_reason ?? null, step: pt.step ?? null, columns: [], rows: [], notes: [] }
+  }
+  const columns = pt.columns.map((c) => ({ view: c.view, label: c.label ?? c.view, available: c.available !== false, reason: c.unavailable_reason ?? null }))
+  const rows = pt.rows.map((r) => ({
+    level: r.level,
+    levelText: r.level_display ?? r.level,
+    current: r.nearest_spot === true,
+    cells: Object.fromEntries(columns.map((c) => {
+      const cell = r[c.view]
+      return [c.view, { text: String(cell?.display ?? '').trim() || DASH, value: cell?.pnl ?? null }]
+    })),
+  }))
+  const notes = columns.filter((c) => !c.available).map((c) => `${c.label}: ${c.reason ?? 'not available'}`)
+  return { available: true, reason: null, step: pt.step == null ? null : String(pt.step), columns, rows, notes }
 }
 
 /** The sign of a reply value string, read from its text: 'loss', 'profit' or '' (zero, empty or not a number). */

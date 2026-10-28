@@ -16,8 +16,16 @@ export function isCurrentColumn(column) {
   return Array.isArray(column.markers) && column.markers.includes('CURRENT')
 }
 
-/** The text of a cell exactly as the API sent it ('' when the row has no such cell). */
+import { expiryText, strikeLabel } from '@/lib/displayFormat'
+
+/** The text of a cell as the API sent it ('' when the row has no such cell). Two text-only re-spellings, no number read
+ *  (GC-UI b2 carry-over): the contract date as day and month ("2026-10-13" -> "13 Oct", REQ-146 AC-5) and the strike
+ *  without its grouping comma or trailing zeros ("22,600" -> "22600", REQ-151 AC-1, AC-2); text that is not a date or a
+ *  plain decimal (the TOTAL row's dash) stays as sent. */
 export function cellText(row, column) {
   const cell = row.cells[column.id]
-  return cell ? cell.display : ''
+  if (!cell) return ''
+  if (column.id === 'expiry') return expiryText(cell.display) ?? cell.display
+  if (column.id === 'strike') return strikeLabel(String(cell.display ?? '').replace(/,/g, ''))
+  return cell.display
 }

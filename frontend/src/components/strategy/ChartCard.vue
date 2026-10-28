@@ -6,7 +6,7 @@
        - P&L Table (ADR-194): compact per-leg view first (Instrument | Planned entry | LTP | P&L | P&L %, the reply's own TOTAL
          row only when it sent one); a "Full table" switch on the same tab shows the REQ-035 StrategyTable unchanged,
          with the Bid/Ask Details block under it.
-       - Greeks: per-leg Delta, Gamma, Theta, Vega, IV as the reply carries them, else the shared EmptyState.
+       - Greeks: per-leg Delta, Theta, Decay, Gamma, Vega, IV (REQ-145 AC-2 order) as the reply carries them, else the shared EmptyState.
        - Strategy chart: EmptyState (REQ-091 held for display rights).
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
@@ -17,9 +17,12 @@ import Tabs from '@/components/common/Tabs.vue'
 import { panelId, tabId } from '@/components/common/tabIds.js'
 import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
+import FigureHint from '@/components/common/FigureHint.vue'
 import PayoffChart from './PayoffChart.vue'
 import StrategyTable from './StrategyTable.vue'
-import { COMPACT_COLUMNS, GREEK_COLUMNS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, signOf } from '@/lib/chartCard'
+import {
+  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
+} from '@/lib/chartCard'
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -36,8 +39,12 @@ const props = defineProps({
   sd: { type: Object, default: null },
   oi: { type: Object, default: null },
   zoom: { type: Object, default: null },
+  // GC-UI b2 D-B24 / D-B25 (REQ-137 AC-1): the reply's `payoff_table` (rows at the server's step, both columns)
+  payoffTable: { type: Object, default: null },
 })
-const emit = defineEmits(['zoom']) // D-B10: the graph's Zoom asks the page for a new range (the server draws it)
+// D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
+// makes the rows)
+const emit = defineEmits(['zoom', 'payoff-step'])
 
 const TABS = [
   { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
@@ -63,6 +70,8 @@ const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or
 const compact = computed(() => compactRows(props.table, props.legs))
 const greeks = computed(() => greekRows(props.table, props.legs))
 const levels = computed(() => payoffLevelRows(props.table))
+const stepTable = computed(() => payoffStepTable(props.payoffTable))
+const pickStep = (e) => emit('payoff-step', e.target.value)
 // G-051: the chart's tooltip shows, per level, the same display string as the Table row (one reply feeds both).
 const pnlByLevel = computed(() => (levels.value ? Object.fromEntries(levels.value.map((r) => [r.id, r.pnl])) : null))
 
@@ -93,7 +102,57 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
-        <table v-if="levels" class="w-full text-sm">
+        <!-- GC-UI b2 D-B24 / D-B25 / D-B26 (Sensibull 017): the server's payoff_table at the chosen interval, both columns
+             (target date = now until B6/B7, and at expiry), the row nearest spot highlighted. No Show % switch: the
+             reply carries no percent and the browser computes none (ADR-008). An older reply with no payoff_table
+             falls back to the scenario-level rows below. -->
+        <template v-if="stepTable">
+          <div class="mb-2 flex items-center justify-end gap-2 text-sm text-ink-muted">
+            <label class="flex items-center gap-2">
+              Interval
+              <select
+                :value="stepTable.step ?? ''"
+                class="rounded border border-line bg-surface px-2 py-0.5 text-ink"
+                data-testid="payoff-step"
+                @change="pickStep"
+              >
+                <option v-for="s in PAYOFF_STEPS" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </label>
+          </div>
+          <table v-if="stepTable.available" class="w-full text-sm" data-testid="payoff-step-table">
+            <thead>
+              <tr class="border-b border-line text-left text-ink-muted">
+                <th scope="col" class="py-2 font-medium" data-testid="payoff-step-head">Index level</th>
+                <th v-for="c in stepTable.columns" :key="c.view" scope="col" class="py-2 text-right font-medium" data-testid="payoff-step-head">{{ c.label }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="r in stepTable.rows"
+                :key="r.level"
+                :class="['border-b border-line', r.current ? 'bg-accent-soft font-semibold' : '']"
+                :data-current="r.current ? 'true' : 'false'"
+                data-testid="payoff-step-row"
+              >
+                <td class="py-1.5" data-testid="payoff-step-level">{{ r.levelText }}</td>
+                <td
+                  v-for="c in stepTable.columns"
+                  :key="c.view"
+                  :class="['py-1.5 text-right tabular-nums', toneOf(r.cells[c.view].value)]"
+                  :data-field="c.view"
+                >{{ r.cells[c.view].text }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="stepTable.available && stepTable.notes.length" class="mt-2 text-xs text-ink-muted" data-testid="payoff-step-note">{{ stepTable.notes.join('; ') }}</p>
+          <EmptyState
+            v-if="!stepTable.available"
+            :message="stepTable.reason ? `The payoff table is not available: ${stepTable.reason}` : 'The payoff table is not in this answer.'"
+            data-testid="payoff-table-empty"
+          />
+        </template>
+        <table v-else-if="levels" class="w-full text-sm">
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
               <th scope="col" class="py-2 font-medium">{{ table.scenario_heading?.[0] ?? 'Index level' }}</th>
@@ -185,7 +244,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
             <th scope="col" class="py-2 font-medium">Instrument</th>
-            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}</th>
+            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay'" id="decay" /></th>
           </tr>
         </thead>
         <tbody>

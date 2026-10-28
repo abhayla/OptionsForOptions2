@@ -1,7 +1,16 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istTime } from '@/lib/displayFormat'
+import { instrumentText, istTime, strikeLabel } from '@/lib/displayFormat'
+
+/** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
+ *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
+export const LEG_PNL_MISSING = '—'
+const legPnlText = (leg) => {
+  const text = typeof leg?.pnl_text === 'string' ? leg.pnl_text.trim() : ''
+  if (!text) return LEG_PNL_MISSING
+  return leg.pnl_kind === 'booked' ? `${text} booked` : text
+}
 import { plainName } from '@/lib/saveDraft'
 
 /** ADR-166: the action's label on every screen (owner decision; change it here only). */
@@ -65,6 +74,7 @@ export function readTracking(body, replyLegs = null) {
     entry: leg.entry_price,
     current: leg.price_state === 'live' ? leg.current_price : null,
     exitPrice: leg.exit_price ?? null, // REQ-109 AC-4: set once the leg is paper-exited
+    pnl: legPnlText(leg),
   }))
   // an answer carrying a detection this screen cannot name is unreadable as a whole: never silently dropped
   if (!Array.isArray(body.detections)) return INVALID
@@ -83,7 +93,8 @@ export function readTracking(body, replyLegs = null) {
         threshold: `${d.threshold_percent}%`,
         at: istTime(d.at),
         // GC-UI D-B50 (ADR-202 (1), ADR-204): one visible line, the rest of REQ-046 AC-1's Layer 1 behind the "?"
-        line: `${PLATFORM_DETECTION_LABEL}: ${condition}: ${d.level}, ${distance} away`,
+        // REQ-151 AC-2: the strike the server sent ("22400.00") trims only its trailing zeros -> "22400"
+        line: `${PLATFORM_DETECTION_LABEL}: ${condition}: ${strikeLabel(d.level)}, ${distance} away`,
         details: [`Index: ${d.index_level}`, `Distance: ${distance}`, `Threshold: ${d.threshold_percent}%`, `As of ${istTime(d.at)}`],
       }
     })

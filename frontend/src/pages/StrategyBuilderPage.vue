@@ -19,6 +19,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ChartCard from '@/components/strategy/ChartCard.vue'
+import LowerCard from '@/components/strategy/LowerCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
@@ -473,6 +474,8 @@ const setChoice = (next) => {
 }
 // GC-UI b1 D-B10 (REQ-083 AC-7): the graph's Zoom is a new range pick; the engine sends the points for it
 const zoomTo = (range) => setChoice({ ...choice.value, ...range })
+// GC-UI b2 D-B24 (REQ-137 AC-1): the payoff table's interval menu is a pick too; the engine makes the rows at that step
+const stepTo = (payoffStep) => setChoice({ ...choice.value, payoffStep })
 // the reply's scenario grid a zoom stays on (null: no zoom offered, nothing guessed)
 const zoomGrid = computed(() => {
   const sc = data.value?.scenario
@@ -725,7 +728,9 @@ const pricesStamp = computed(() => {
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
             :zoom="zoomGrid"
+            :payoff-table="data.payoff_table ?? null"
             @zoom="zoomTo"
+            @payoff-step="stepTo"
           >
             <template #controls>
               <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
@@ -734,6 +739,7 @@ const pricesStamp = computed(() => {
               <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
             </template>
           </ChartCard>
+          <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
           <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" :legs="data.legs ?? null" />
         </div>

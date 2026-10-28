@@ -88,7 +88,9 @@ describe('TrackingPanel', () => {
     // GC-UI D-B49 / D-B39: one value per column, the instrument as "<lots> x <D Mon> <strike> <type>" (no ".00"), prices as sent
     expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', '45.15'], ['S 1 x 3 Nov 22400 PE', '82.75', '-']])
     // D-B51: the price stored at Start tracking is the Paper entry (the P&L Table's column is the Planned entry)
-    expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP'])
+    // GC-UI b2 D-B48: the per-leg P&L column; these legs carry no pnl_text, so it prints the em dash (never a browser sum)
+    expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP', 'P&L'])
+    expect(w.findAll('[data-testid="tracking-leg-pnl"]').map((c) => c.text())).toEqual(['—', '—'])
   })
 
   it('REQ-045 AC-1 / REQ-046 AC-1 (ADR-204, D-B50): one visible line per detection; the Layer 1 facts sit behind its "?"', async () => {
@@ -96,7 +98,7 @@ describe('TrackingPanel', () => {
     const w = await panel()
     const d = w.get('[data-testid="detection"]')
     expect(d.text()).toContain('Adjustment opportunity detected')
-    expect(d.get('[data-testid="detection-line"]').text()).toBe('Adjustment opportunity detected: Index is near a short strike: 22400.00, 133.25 points (0.59%) away')
+    expect(d.get('[data-testid="detection-line"]').text()).toBe('Adjustment opportunity detected: Index is near a short strike: 22400, 133.25 points (0.59%) away') // REQ-151 AC-2
     // nothing else is visible until the "?" is opened
     expect(d.text()).not.toContain('Threshold')
     expect(d.text()).not.toContain('As of')
@@ -110,7 +112,7 @@ describe('TrackingPanel', () => {
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
     const w = await panel()
     const heads = w.findAll('[data-testid="tracking-view"] th')
-    expect(heads.map((h) => h.attributes('scope'))).toEqual(['col', 'col', 'col'])
+    expect(heads.map((h) => h.attributes('scope'))).toEqual(['col', 'col', 'col', 'col'])
     expect(heads.slice(1).every((h) => h.classes().includes('text-right'))).toBe(true)
     const cells = w.findAll('[data-testid="tracking-leg"]')[0].findAll('td')
     expect(cells.slice(1).every((c) => c.classes().includes('text-right') && c.classes().includes('tabular-nums'))).toBe(true)
