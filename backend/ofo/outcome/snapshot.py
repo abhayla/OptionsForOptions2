@@ -87,6 +87,49 @@ def _forward(chain, spot, expiry, at, where):
     return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, instant, rate))
 
 
+#: D-C33 (GC-UI checker 2026-10-28): the strikes nearest the money held per leg expiry, CE and PE each, so the chain an
+#: outcome hands to ``parity_forward`` has ADR-061's 3+ two-sided strikes (5 leaves room for 2 one-sided or crossed).
+#: Feed load: 2 x 5 = 10 contracts per distinct leg expiry of a followed strategy (a calendar: 20), shared on the one
+#: fan-out with every other holder (the strike drawer's lease holds the same contracts when it is open).
+FORWARD_STRIKES = 5
+
+
+def forward_strike_ids(master, underlying: str, legs: list[str], spot: Decimal | None,
+                       n: int = FORWARD_STRIKES) -> list[str]:
+    """The CE and PE ids of the ``n`` strikes nearest the money of every leg expiry of ``legs`` (instrument ids).
+
+    The money is ``spot`` when there is a live one, else the middle leg strike of that expiry (the index may not stream
+    yet when the strategy is first followed). An unknown leg, a future, an expired or other-underlying leg adds
+    nothing; the legs themselves are not repeated. Pure: the caller holds the ids on the feed (D-C33's RCA: the live
+    provider's chain snapshot is the book, which holds only subscribed contracts, so with only the legs held the
+    forward fell back to spot while the chain was live)."""
+    by_id = {contract_id(lc): lc for lc in master}
+    leg_strikes: dict[datetime.date, list[Decimal]] = {}
+    for iid in legs:
+        lc = by_id.get(iid)
+        if lc is None or lc.contract.name != underlying or lc.contract.expiry is None:
+            continue
+        if lc.contract.instrument_type not in (Instrument.CE.value, Instrument.PE.value) or lc.contract.strike is None:
+            continue
+        leg_strikes.setdefault(lc.contract.expiry, []).append(lc.contract.strike)
+    pairs: dict[tuple[datetime.date, Decimal, str], str] = {}
+    for iid, lc in by_id.items():
+        c = lc.contract
+        if (c.name == underlying and c.expiry in leg_strikes and c.strike is not None
+                and c.instrument_type in (Instrument.CE.value, Instrument.PE.value)):
+            pairs[(c.expiry, c.strike, c.instrument_type)] = iid
+    out: list[str] = []
+    for expiry, strikes in sorted(leg_strikes.items()):
+        centre = spot if spot is not None else sorted(strikes)[len(strikes) // 2]
+        listed = sorted({k for (e, k, _t) in pairs if e == expiry}, key=lambda k: (abs(k - centre), k))
+        for k in listed[:n]:
+            for t in (Instrument.CE.value, Instrument.PE.value):
+                iid = pairs.get((expiry, k, t))
+                if iid is not None and iid not in legs and iid not in out:
+                    out.append(iid)
+    return out
+
+
 def snapshot_instant(clock: datetime.datetime, quotes) -> datetime.datetime:
     """The one instant of an answer: the latest frame time among the quotes actually read, never later than ``clock``.
     Every figure (IV, Greeks, forward, the strategy's P&L) is valued at it, so two readers of one snapshot share every
