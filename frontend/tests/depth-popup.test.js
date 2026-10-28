@@ -236,6 +236,9 @@ describe('no order from the picker or the popup (AC-3, AC-7; ADR-002)', () => {
       expect(source).not.toMatch(/api\.(put|delete|patch)\(/)
     }
     expect(popupSource).not.toMatch(/api\.post\(/)
-    expect([...pickerSource.matchAll(/api\.post\(\s*'([^']+)'/g)].map((m) => m[1])).toEqual(['/strategies/planned-entry'])
+    // GC-UI 6c (D-C08, D-C24): the Straddles / Strangles tabs call the existing quick pick, which places strikes by a fixed
+    // rule and answers legs ("Nothing is saved and no order is touched", backend/ofo_app/routes/ready_made.py) - not an order
+    expect([...pickerSource.matchAll(/api\.post\(\s*'([^']+)'/g)].map((m) => m[1]).sort())
+      .toEqual(['/strategies/planned-entry', '/strategies/quick-pick'])
   })
 })
