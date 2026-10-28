@@ -118,6 +118,19 @@ def strikes(reply):
     return [int(float(leg["strike"])) for leg in reply["legs"]]
 
 
+def test_leg_edit_sends_planned_entry_display_at_two_decimals_for_a_one_decimal_price():
+    """Review fix 3 (REQ-152 AC-2/AC-3, ADR-008): a typed planned entry of 99.8 leaves as the canonical 99.80 AND as the
+    server's own text "99.80" in planned_entry_display, so the browser prints a text and formats nothing."""
+    typed = legs()
+    typed[0]["planned_entry"] = "99.8"
+    status, reply = post({"legs": typed, "edit": {"control": "step", "index": 2, "direction": 1}})
+    assert status == HTTP_OK
+    assert reply["legs"][0]["planned_entry"] == "99.80"
+    assert reply["legs"][0]["planned_entry_display"] == "99.80"
+    assert all(isinstance(leg["planned_entry_display"], str) and len(leg["planned_entry_display"].split(".")[1]) == 2
+               for leg in reply["legs"])
+
+
 def test_core_step_recaptures_only_the_stepped_leg_with_a_new_capture_time():
     """REQ-076 AC-1/AC-2 (core): + on SELL 23400 CE gives 23450 CE priced 88.00 captured at the new time; the other
     legs keep their planned entries and capture time; the reply's outcome is built from the new legs."""
