@@ -1,0 +1,1297 @@
+{
+ "templates": [
+  {
+   "id": "bull_call_spread",
+   "name": "Bull Call Spread",
+   "description": "Buy a call and sell a call at a higher strike, both the same expiry.",
+   "level": "Beginner",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bull_put_spread",
+   "name": "Bull Put Spread",
+   "description": "Sell a put and buy a put at a lower strike, both the same expiry.",
+   "level": "Beginner",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "income",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "synthetic_long",
+   "name": "Long Synthetic Future",
+   "description": "Buy a call and sell a put at the same strike and expiry; the combined payoff moves like the underlying.",
+   "level": "Advanced",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bear_put_spread",
+   "name": "Bear Put Spread",
+   "description": "Buy a put and sell a put at a lower strike, both the same expiry.",
+   "level": "Beginner",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bear_call_spread",
+   "name": "Bear Call Spread",
+   "description": "Sell a call and buy a call at a higher strike, both the same expiry.",
+   "level": "Beginner",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "income",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "synthetic_short",
+   "name": "Short Synthetic Future",
+   "description": "Buy a put and sell a call at the same strike and expiry; the combined payoff moves opposite the underlying.",
+   "level": "Advanced",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "iron_condor",
+   "name": "Short Iron Condor",
+   "description": "Sell a put and a call at two different strikes, the put below the call, and buy a put and a call the same number of steps further out on each side, all the same expiry: a bull put spread plus a bear call spread.",
+   "level": "Intermediate",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "iron_butterfly",
+   "name": "Iron Butterfly",
+   "description": "Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps away on each side, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "short_straddle",
+   "name": "Short Straddle",
+   "description": "Sell a call and a put at the at-the-money strike, the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "short_strangle",
+   "name": "Short Strangle",
+   "description": "Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "jade_lizard",
+   "name": "Jade Lizard",
+   "description": "Sell an out-of-the-money put, sell an out-of-the-money call and buy a call at a higher strike, all the same expiry; there is no upside breakeven when the combined credit exceeds the call spread's width.",
+   "level": "Advanced",
+   "views": [
+    "range-bound",
+    "bullish"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "long_straddle",
+   "name": "Long Straddle",
+   "description": "Buy a call and a put at the at-the-money strike, the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile"
+   ],
+   "objectives": [
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "long_strangle",
+   "name": "Long Strangle",
+   "description": "Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile"
+   ],
+   "objectives": [
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "reverse_iron_condor",
+   "name": "Long Iron Condor",
+   "description": "Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the same number of steps further out on each side, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile"
+   ],
+   "objectives": [
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "covered_call",
+   "name": "Covered Call",
+   "description": "Hold a futures position and sell an out-of-the-money call against it, the same expiry (this platform models \"own the underlying\" as a futures leg, ADR-041; no single-stock leg exists here).",
+   "level": "Intermediate",
+   "views": [
+    "range-bound",
+    "bullish"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "FUT",
+     "strike_steps": null,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "cash_secured_put",
+   "name": "Cash-Secured Put",
+   "description": "Sell an out-of-the-money put, holding cash or margin against the full exposure; cash-settled at expiry (no shares are bought or delivered on NIFTY/SENSEX index options).",
+   "level": "Intermediate",
+   "views": [
+    "bullish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "calendar_spread",
+   "name": "Long Calendar with Calls",
+   "description": "Sell a near-expiry call and buy a call at the same strike on a later expiry.",
+   "level": "Advanced",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income",
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "next",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "diagonal_spread",
+   "name": "Diagonal Spread",
+   "description": "Buy a call on a later expiry and sell a near-expiry call at a higher strike.",
+   "level": "Advanced",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income",
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "next",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "butterfly_spread",
+   "name": "Bull Butterfly",
+   "description": "Buy a call, sell two calls a number of strike steps above it, and buy a call the same number of steps above those, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "ratio_backspread_call",
+   "name": "Call Ratio Back Spread",
+   "description": "Sell one call and buy two calls at a higher strike, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bullish",
+    "volatile"
+   ],
+   "objectives": [
+    "directional",
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    }
+   ]
+  },
+  {
+   "id": "ratio_backspread_put",
+   "name": "Put Ratio Back Spread",
+   "description": "Sell one put and buy two puts at a lower strike, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bearish",
+    "volatile"
+   ],
+   "objectives": [
+    "directional",
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    }
+   ]
+  },
+  {
+   "id": "buy_call",
+   "name": "Buy Call",
+   "description": "Buy a single call, one expiry.",
+   "level": "Beginner",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "sell_call",
+   "name": "Sell Call",
+   "description": "Sell a single call, one expiry.",
+   "level": "Advanced",
+   "views": [
+    "bearish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "buy_put",
+   "name": "Buy Put",
+   "description": "Buy a single put, one expiry.",
+   "level": "Beginner",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional",
+    "hedge"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "sell_put_atm",
+   "name": "Sell Put",
+   "description": "Sell a put at the at-the-money strike, one expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bullish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "buy_future",
+   "name": "Buy Future",
+   "description": "Buy one futures contract, one expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "FUT",
+     "strike_steps": null,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "sell_future",
+   "name": "Sell Future",
+   "description": "Sell one futures contract, one expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "FUT",
+     "strike_steps": null,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bull_condor",
+   "name": "Bull Condor",
+   "description": "Buy a call, sell a call and another call at the next two strikes up, and buy a call at the strike after that, evenly spaced, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 10,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 15,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 20,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bear_condor",
+   "name": "Bear Condor",
+   "description": "Buy a put, sell a put and another put at the next two strikes down, and buy a put at the strike after that, evenly spaced, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -10,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -15,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -20,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "bear_butterfly",
+   "name": "Bear Butterfly",
+   "description": "Buy a put, sell two puts a number of strike steps below it, and buy a put the same number of steps below those, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "long_calendar_puts",
+   "name": "Long Calendar with Puts",
+   "description": "Sell a near-expiry put and buy a put at the same strike on a later expiry.",
+   "level": "Advanced",
+   "views": [
+    "bearish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income",
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "next",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "range_forward",
+   "name": "Range Forward",
+   "description": "Buy an out-of-the-money call and sell an out-of-the-money put, both the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bullish"
+   ],
+   "objectives": [
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "risk_reversal",
+   "name": "Risk Reversal",
+   "description": "Sell an out-of-the-money call and buy an out-of-the-money put, both the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bearish"
+   ],
+   "objectives": [
+    "directional",
+    "hedge"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "batman",
+   "name": "Batman",
+   "description": "Buy a call and sell two calls a number of strike steps above it, then buy a put and sell two puts the same number of steps below it, all the same expiry: a call ratio spread above and a put ratio spread below.",
+   "level": "Advanced",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    }
+   ]
+  },
+  {
+   "id": "double_plateau",
+   "name": "Double Plateau",
+   "description": "A bull condor of calls together with a bear condor of puts at lower strikes, each evenly spaced, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "range-bound"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 10,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 15,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 20,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -5,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -10,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -15,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -20,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "reverse_jade_lizard",
+   "name": "Reverse Jade Lizard",
+   "description": "Sell an out-of-the-money call, sell an out-of-the-money put and buy a put at a lower strike, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "range-bound",
+    "bearish"
+   ],
+   "objectives": [
+    "income"
+   ],
+   "legs": [
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -2,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "call_ratio_spread",
+   "name": "Call Ratio Spread",
+   "description": "Buy one call and sell two calls at a higher strike, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bullish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    }
+   ]
+  },
+  {
+   "id": "put_ratio_spread",
+   "name": "Put Ratio Spread",
+   "description": "Buy one put and sell two puts at a lower strike, all the same expiry.",
+   "level": "Advanced",
+   "views": [
+    "bearish",
+    "range-bound"
+   ],
+   "objectives": [
+    "income",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    }
+   ]
+  },
+  {
+   "id": "long_iron_butterfly",
+   "name": "Long Iron Butterfly",
+   "description": "Buy a call and a put at the at-the-money strike, and sell a put and a call the same number of steps away on each side, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile"
+   ],
+   "objectives": [
+    "volatility"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "PE",
+     "strike_steps": -4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "SELL",
+     "instrument": "CE",
+     "strike_steps": 4,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "strap",
+   "name": "Strap",
+   "description": "Buy two calls and one put at the at-the-money strike, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile",
+    "bullish"
+   ],
+   "objectives": [
+    "volatility",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    },
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  },
+  {
+   "id": "strip",
+   "name": "Strip",
+   "description": "Buy two puts and one call at the at-the-money strike, all the same expiry.",
+   "level": "Intermediate",
+   "views": [
+    "volatile",
+    "bearish"
+   ],
+   "objectives": [
+    "volatility",
+    "directional"
+   ],
+   "legs": [
+    {
+     "action": "BUY",
+     "instrument": "PE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 2
+    },
+    {
+     "action": "BUY",
+     "instrument": "CE",
+     "strike_steps": 0,
+     "expiry_slot": "near",
+     "quantity_multiplier": 1
+    }
+   ]
+  }
+ ]
+}
