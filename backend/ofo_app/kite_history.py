@@ -9,6 +9,7 @@ error -> ``CandleFetchError`` (the caller keeps the day PROVISIONAL); a malforme
 from __future__ import annotations
 
 import datetime
+import http.client
 import logging
 from typing import Any, Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
@@ -37,7 +38,8 @@ def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
         return exc.code, ""
     except rate_limit.KiteBusy:  # refused at once, nothing sent (REQ-118 AC-3): the day stays PROVISIONAL
         return 429, ""
-    except (URLError, TimeoutError, OSError) as exc:
+    except (URLError, TimeoutError, OSError, http.client.HTTPException, UnicodeDecodeError) as exc:
+        # F3: a body cut short (IncompleteRead, an HTTPException) or not UTF-8 is a refusal, never a 500
         raise CandleFetchError(f"transport error: {type(exc).__name__}") from None
 
 

@@ -170,7 +170,7 @@ class Plan:
     reader: ReaderFactory
 
 
-async def prepare(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract], underlying: str, *,
+async def prepare(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract], underlying: str, *,  # noqa: PLR0913 - one seam each
                   reader: ReaderFactory | None, finder: FutureFinder) -> Plan | Answer:
     """The DB phase: the future pick. Answers at once (no Kite call) when there is no future or no session."""
     future = await finder(db, underlying)

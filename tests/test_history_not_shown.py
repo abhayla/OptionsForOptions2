@@ -373,8 +373,9 @@ def test_no_route_or_app_entry_is_allow_listed_and_the_list_has_no_stale_entry()
     """AC-1: the allow-list names no route module and not the app's main, and every entry is a real module."""
     assert not [m for m in ALLOWED_IMPORTERS if m.startswith("ofo_app.routes") or m == "ofo_app.main"]
     # F2: exactly one route may reach the chain, for ADR-203's chart only, and only through the named chain modules
-    assert ROUTE_DOOR == {"ofo_app.routes.strategies": frozenset(
+    named = {"ofo_app.routes.strategies": frozenset(
         {"ofo_app.strategy_price_history", "ofo_app.price_history_source", "ofo.outcome.price_history"})}
+    assert named == ROUTE_DOOR
     assert all(t in ALLOWED_IMPORTERS for t in ROUTE_DOOR["ofo_app.routes.strategies"])
     assert (BACKEND / "ofo_app" / "routes" / "strategies.py").exists()
     assert list((BACKEND / "ofo_app" / "routes").glob("*.py")), "routes folder not found: the scan would be vacuous"

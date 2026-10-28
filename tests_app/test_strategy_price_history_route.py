@@ -12,7 +12,9 @@ Real PostgreSQL only (ADR-048); every test rolls back.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
+import http.client
 import io
 import os
 import threading
@@ -23,7 +25,7 @@ from pathlib import Path
 import pytest
 from ofo.timeutil import IST
 from ofo_app import broker_token_store as tokens
-from ofo_app import held_switches, kite_history
+from ofo_app import catalogue_store, held_switches, kite_history
 from ofo_app import strategy_price_history as sph
 from ofo_app import strategy_store as store
 from ofo_app.broker_config import load_broker_config
@@ -454,3 +456,90 @@ async def test_f1_a_fetch_past_the_deadline_answers_broker_refused(app_engine, a
     assert (body["state"], body["reason"]) == ("broker_refused",
                                                "Zerodha did not return the price history. Try again later.")
     assert seen  # Kite was called; the deadline, not a refusal, ended it
+
+
+# ---- F3: a body cut short or not UTF-8 is a refusal at the transport, never a 500 ---------------------------------
+
+class _Response:
+    status = 200
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def read(self):
+        raise self._exc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"{\"status\": \"succ", 900),
+                                 UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")])
+def test_f3_a_cut_or_undecodable_body_is_a_candle_fetch_error(monkeypatch, caplog, exc):
+    monkeypatch.setattr(kite_history, "kite_open_url", lambda url, **kw: _Response(exc))
+    with pytest.raises(kite_history.CandleFetchError) as refused:
+        kite_history.urllib_transport("https://api.kite.trade/instruments/historical/1/minute",
+                                      {"Authorization": f"token k:{SECRET}"})
+    assert str(refused.value) == f"transport error: {type(exc).__name__}"  # the class name only
+    assert SECRET not in str(refused.value) and SECRET not in caplog.text
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"", 10),
+                                 UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")])
+async def test_f3_the_chart_answers_broker_refused_on_those_errors(app_engine, monkeypatch, exc):
+    monkeypatch.setattr(kite_history, "kite_open_url", lambda url, **kw: _Response(exc))
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            resp = await _get(conn, user, stored.id, transport=kite_history.urllib_transport)
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert resp.json()["state"] == "broker_refused"
+        finally:
+            await trans.rollback()
+
+
+# ---- F4: a saved quantity that is not a whole number of lots at today's lot size ----------------------------------
+
+@pytest.mark.parametrize("lot_size", [30, 75])  # saved 65 = 1 lot of 65: 65 / 30 leaves 5; 65 / 75 is 0 lots
+async def test_f4_a_quantity_that_is_not_whole_lots_is_a_named_state(app_engine, monkeypatch, lot_size):
+    real = catalogue_store.load_contracts
+
+    async def relisted(db, ids):
+        found = await real(db, ids)
+        return {cid: dataclasses.replace(item, listed=dataclasses.replace(
+            item.listed, contract=dataclasses.replace(item.listed.contract, lot_size=lot_size)))
+            for cid, item in found.items()}
+    monkeypatch.setattr(catalogue_store, "load_contracts", relisted)
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            seen: list[str] = []
+            resp = await _get(conn, user, stored.id, transport=_standard(seen))
+            body = resp.json()
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert (body["available"], body["state"], body["points"]) == (False, "quantity_not_whole_lots", [])
+            assert body["reason"].endswith(": the saved quantity is not a whole number of lots at today's lot size.")
+            assert seen == []  # refused before any Kite call; never a silent floor
+        finally:
+            await trans.rollback()
+
+
+# ---- F7: the chart cache drops expired entries on every write and keeps at most CACHE_MAX_ENTRIES -----------------
+
+def test_f7_the_cache_evicts_expired_and_caps_its_size(monkeypatch):
+    monkeypatch.setattr(sph, "CACHE_MAX_ENTRIES", 3)
+    day = datetime.date(2026, 10, 14)
+    for i in range(3):
+        sph._remember((f"old{i}", day, day), float(i), [], float(i))
+    sph._remember(("new", day, day), sph.CACHE_SECONDS + 1.5, [], sph.CACHE_SECONDS + 1.5)
+    assert sorted(k[0] for k in sph._cache) == ["new", "old2"]  # 0 and 1 expired (>= 300 s old) and were dropped
+    for i in range(4):
+        at = sph.CACHE_SECONDS + 2 + i
+        sph._remember((f"fresh{i}", day, day), at, [], at)
+    assert len(sph._cache) == 3  # noqa: PLR2004 - the cap
+    assert sorted(k[0] for k in sph._cache) == ["fresh1", "fresh2", "fresh3"]  # the oldest went first
