@@ -46,7 +46,8 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
-import { istClock, istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import { istClock, istTime, nameFromPool } from '@/lib/displayFormat'
+import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -499,8 +500,6 @@ const ratioFlipped = ref(false)
 const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
-const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
-const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 const legQuoteRows = computed(() => legQuotes(data.value))
@@ -522,7 +521,8 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 const pricesStamp = computed(() => {
   const d = data.value
   if (!d || fromEntries.value || d.market_closed || live.reconnecting.value) return null
-  const label = d.output_label || staleLegs.value[0]?.label
+  // D-A42: the output label is shown once, beside the summary figures; only a stale leg's label stands in for the time
+  const label = staleLegs.value[0]?.label
   if (label) return { kind: 'health', text: label }
   const at = istClock(d.last_price_at)
   return at ? { kind: 'time', text: `Prices as of ${at} IST` } : null
@@ -655,12 +655,13 @@ const pricesStamp = computed(() => {
         </div>
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
-          <!-- UI study Region E: the data-health strip at the top of the summary. W-193 (I-9): the data label (for example
-               "estimated from spot") is no longer a bare floating line: it is named here as the price data label (ADR-061:
-               never silent) and is also the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
-          <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[13px]" data-testid="data-health">
+          <!-- UI study Region E: the data-health strip at the top of the summary, now only for stale legs and the
+               from-entries labels. GC-UI step 3b (D-A42, ADR-202 (3)): the price data label ("estimated from spot",
+               ADR-061: never silent) is one small label inside the summary beside the figures it qualifies
+               (SummaryCards estimateLabel), not a full-width banner, and is not repeated in the foot stamp. It is also
+               the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
+          <div v-if="staleLegs.length || (fromEntries && (data.status_label || data.centre_label || (data.scenario && !data.scenario.available)))" class="mt-4 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[13px]" data-testid="data-health">
             <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
-            <p v-if="data.output_label"><span class="text-ink-muted">Price data: </span><span data-testid="output-label">{{ data.output_label }}</span></p>
             <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
             <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
             <ul v-if="staleLegs.length">
@@ -671,16 +672,22 @@ const pricesStamp = computed(() => {
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
-            :max-profit="maxProfit"
-            :max-loss="maxLoss"
-            :breakevens="data.summary.breakevens"
+            :max-profit="summaryFigure(data.summary, 'profit')"
+            :max-loss="summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="data.summary.max_profit ?? null"
+            :max-loss-exact="data.summary.max_loss ?? null"
+            :breakevens="data.summary.breakevens_display ?? []"
+            :breakevens-exact="data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"
             :where-i-start-losing="data.summary.where_do_i_start_losing"
             :reward-risk="data.summary.reward_risk ?? null"
             :reward-risk-reason="data.summary.reward_risk_reason ?? null"
-            :time-value="data.summary.time_value ?? null"
-            :intrinsic-value="data.summary.intrinsic_value ?? null"
+            :time-value="data.summary.time_value_display ?? null"
+            :time-value-exact="data.summary.time_value ?? null"
+            :intrinsic-value="data.summary.intrinsic_value_display ?? null"
+            :intrinsic-value-exact="data.summary.intrinsic_value ?? null"
+            :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
             :value-reason="data.summary.value_reason ?? null"

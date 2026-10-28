@@ -11,9 +11,14 @@
 // marks are gone). The server's sentence naming Zerodha's figure and ours apart stays visible under them. On a shortfall
 // the block gets a 4 px loss-coloured left border and one line; the server's four-part message is drawn ONCE, as a second
 // root that the summary card's grid places under all three blocks (so it is never repeated beside the figures).
-// "Funds needed" is absent: the reply has no such figure yet (REQ-081).
-import { computed } from 'vue'
-import { istTime, groupMoney } from '@/lib/displayFormat'
+// "Funds needed" is absent: the reply has no such figure yet (REQ-081; D-A38 parked, finding F-62).
+// GC-UI step 3b (ADR-202 (1), (4), ADR-204): the two figures are the server's REQ-152 display strings (`needed_display`,
+// `available_display`, '-' when absent), the exact values and the "Checked at" read time sit in the figures' "?"
+// (D-A40), and the shortfall is ONE visible line with the server's full message behind More (D-A41); the full-width
+// paragraph under the summary is gone.
+import { computed, ref } from 'vue'
+import { istTime } from '@/lib/displayFormat'
+import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import { MARGIN_LINE_HIDDEN_REASON, capabilityOn } from '@/lib/brokerCapabilities'
 import FigureHint from '@/components/common/FigureHint.vue'
 
@@ -34,6 +39,8 @@ const hasServerMessage = computed(() => typeof props.margin.shortfall_reason ===
 const shortfallText = computed(() => (hasServerMessage.value ? props.margin.shortfall_reason : FALLBACK_SHORTFALL))
 // I-8: the server's shortfall message already carries both figures, so the figures sentence is not printed a second time.
 const showFigures = computed(() => !(short.value && hasServerMessage.value))
+const openShort = ref(false)
+const checkedAtLine = computed(() => `Checked at ${istTime(props.margin.checked_at)}`)
 </script>
 
 <template>
@@ -47,29 +54,31 @@ const showFigures = computed(() => !(short.value && hasServerMessage.value))
     <h3 class="text-[13px] font-semibold text-ink" data-testid="funds-margins-title">Funds &amp; Margins</h3>
     <p v-if="!quoteOn" class="mt-1 text-[13px] text-ink-muted" data-testid="margin-hidden-reason">{{ MARGIN_LINE_HIDDEN_REASON }}</p>
     <template v-else-if="checked">
-      <dl class="mt-1">
-        <div class="flex h-7 items-center justify-between gap-2">
-          <dt class="flex items-center text-ink-muted">Margin needed<FigureHint id="margin_needed" /></dt>
-          <dd class="num font-medium text-ink" data-testid="margin-needed" :data-raw="margin.needed">{{ groupMoney(margin.needed) }}</dd>
+      <dl class="mt-0.5 text-[13px]">
+        <div class="flex min-h-6 items-center justify-between gap-2">
+          <dt class="flex items-center text-ink-muted">Margin needed<FigureHint id="margin_needed" :lines="[exactLine(margin.needed)]" /></dt>
+          <dd class="num font-medium text-ink" data-testid="margin-needed" :data-raw="margin.needed">{{ displayOrDash(margin.needed_display) }}</dd>
         </div>
-        <div class="flex h-7 items-center justify-between gap-2">
-          <dt class="flex items-center text-ink-muted">Margin available<FigureHint id="margin_available" /></dt>
-          <dd class="num font-medium text-ink" data-testid="margin-available" :data-raw="margin.available">{{ groupMoney(margin.available) }}</dd>
+        <div class="flex min-h-6 items-center justify-between gap-2">
+          <dt class="flex items-center text-ink-muted">Margin available<FigureHint id="margin_available" :lines="[checkedAtLine, exactLine(margin.available)]" /></dt>
+          <dd class="num font-medium text-ink" data-testid="margin-available" :data-raw="margin.available">{{ displayOrDash(margin.available_display) }}</dd>
         </div>
       </dl>
-      <p v-if="short" class="mt-1 text-[13px] font-medium text-loss" data-testid="margin-short-line">Not enough funds for this strategy</p>
+      <!-- D-A41 (ADR-202 (4), money safety): the warning stays visible in ONE line; the server's full message (both
+           figures and the ways forward) is one tap away behind More, every word kept -->
+      <div v-if="short" class="mt-0.5 text-[13px] text-loss" data-testid="margin-shortfall">
+        <p class="flex flex-wrap items-baseline gap-x-1">
+          <span class="font-medium" data-testid="margin-short-line">Not enough funds for this strategy</span>
+          <button type="button" class="text-xs underline" :aria-expanded="openShort ? 'true' : 'false'" data-testid="margin-shortfall-more" @click="openShort = !openShort">{{ openShort ? 'Less' : 'More' }}</button>
+        </p>
+        <p v-if="openShort" class="mt-0.5 text-xs" data-testid="margin-shortfall-text">{{ shortfallText }}</p>
+      </div>
       <!-- row 26f (issue #561): the funds_needed mark sits with the server's figures sentence (its "is needed" figure) -->
-      <div v-if="showFigures" class="mt-1 flex items-start text-xs text-ink-muted">
+      <div v-if="showFigures" class="mt-0.5 flex items-start text-xs text-ink-muted">
         <p data-testid="margin-figures">{{ margin.reason }}</p>
         <FigureHint id="funds_needed" />
       </div>
-      <p class="mt-1 text-xs text-ink-subtle" data-testid="margin-checked-at">Checked at {{ istTime(margin.checked_at) }}</p>
     </template>
     <p v-else class="mt-1 text-[13px] text-ink-muted" data-testid="margin-text">{{ margin.reason }}</p>
   </div>
-  <p
-    v-if="!pending && short"
-    class="col-span-full min-w-0 break-words border-t border-line pt-3 text-[13px] text-loss"
-    data-testid="margin-shortfall"
-  >{{ shortfallText }}</p>
 </template>

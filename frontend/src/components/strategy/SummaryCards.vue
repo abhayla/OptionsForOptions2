@@ -1,48 +1,44 @@
 <!-- REQ-135: the old 'last updated' clock is gone (one 'Prices as of' stamp on the page); the extras row is new.
      Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/components/strategy/SummaryCards.vue (ADR-047).
      Changed: every prop is the outcome API's string or sentence, shown as given (the legacy formatNum rounding is
-     removed); the plain-language sentence stays visible under each figure (REQ-034 AC-7); a ratio is shown only as the
-     server's string (the browser computes none).
-     W-193 (ADR-193 UI study b.1 Region E, UI-116..UI-120, Revision 1 M1/M3): ONE card, three blocks split by 1 px lines.
-     Block 1: Max Profit / Max Loss soft pills (percent of funds as the server's text), the plain sentences visible in 13 px
-     muted text under them (the technical definition is in each "?"), the funds caption (REQ-081 AC-10), Breakeven with a
-     Target | Expiry switch (Expiry = the server's breakevens; Target disabled until REQ-084 sends target-date figures).
-     Block 2: Reward/Risk with the 1/x switch, POP (slot `pop`, absent while held), Time value, Intrinsic value.
-     Block 3: slot `margin` (MarginLine: Funds & Margins; its shortfall message spans the card's full width once).
-     The yellow index-level card is gone (yellow is a health colour, ADR-049; the spot is in the underlying bar). -->
+     removed); a ratio is shown only as the server's string (the browser computes none).
+     W-193 (ADR-193 UI study b.1 Region E): ONE card, three blocks split by 1 px lines. Block 2: Reward/Risk with the 1/x
+     switch, POP (slot `pop`, absent while held), Time value, Intrinsic value. Block 3: slot `margin` (MarginLine).
+     GC-UI step 3b (ADR-202 (1), ADR-204; Sensibull screens 011, 107, 124-128, 240): every money figure is the server's
+     REQ-152 display string as sent ("+7,152", "−5,848"); Max Profit / Max Loss are small signed pills with the server's
+     percent text inline (REQ-081 AC-9); the plain-language sentences (REQ-034 AC-7), the funds line (REQ-081 AC-10) and
+     the exact value (REQ-152 AC-3) sit in each figure's "?", words unchanged; Breakeven reads
+     "Breakeven [Target | Expiry] (?)" then the server's small value with its percent from spot (REQ-153); the
+     "value of the options, not P&L" caption is in the Time value / Intrinsic value "?"; "estimated from spot" (ADR-061)
+     is one small label beside the figures it qualifies (`estimateLabel`, the reply's output_label). -->
 <template>
   <section
-    class="@container rounded-lg border border-line bg-surface p-4"
+    class="@container rounded-lg border border-line bg-surface px-4 py-3"
     aria-label="Strategy summary"
     data-testid="summary-cards"
   >
-    <div class="grid grid-cols-1 gap-4 @2xl:grid-cols-3 @2xl:gap-0">
+    <div class="grid grid-cols-1 gap-3 @2xl:grid-cols-3 @2xl:gap-0">
       <!-- Block 1: Max Profit, Max Loss, Breakeven -->
       <div class="min-w-0 @2xl:pr-4" data-testid="summary-block-outcome">
+        <p v-if="estimateLabel" class="mb-1 inline-block rounded bg-warn-soft px-1.5 text-[11px] text-ink" data-testid="output-label">{{ estimateLabel }}</p>
         <div class="grid grid-cols-2 gap-3">
           <div class="min-w-0">
-            <span class="flex items-center text-[13px] text-ink-muted">Max Profit<FigureHint id="max_profit" /></span>
-            <div class="mt-1 inline-flex flex-wrap items-baseline gap-1 rounded-md bg-profit-soft px-2 py-1 text-profit">
-              <span class="num text-base font-semibold" data-testid="max-profit" :data-raw="maxProfit">{{ groupMoney(maxProfit) }}</span>
+            <span class="flex items-center text-xs text-ink-muted">Max Profit<FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
+            <div class="mt-0.5 inline-flex flex-wrap items-baseline gap-1 rounded bg-profit-soft px-1.5 py-0.5 text-profit" data-testid="max-profit-pill">
+              <span class="num text-sm font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
               <span v-if="fundsShare?.max_profit_text" class="text-xs">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
-            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-make" :data-full="whatCanIMake">{{ shown('make', whatCanIMake) }}<button v-if="hasMore(whatCanIMake)" type="button" class="ml-1 text-accent underline" :aria-expanded="open.make ? 'true' : 'false'" data-testid="sum-make-more" @click="open.make = !open.make">{{ open.make ? 'Less' : 'More' }}</button></p>
           </div>
           <div class="min-w-0">
-            <span class="flex items-center text-[13px] text-ink-muted">Max Loss<FigureHint id="max_loss" /></span>
-            <div class="mt-1 inline-flex flex-wrap items-baseline gap-1 rounded-md bg-loss-soft px-2 py-1 text-loss">
-              <span class="num text-base font-semibold" data-testid="max-loss" :data-raw="maxLoss">{{ groupMoney(maxLoss) }}</span>
+            <span class="flex items-center text-xs text-ink-muted">Max Loss<FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
+            <div class="mt-0.5 inline-flex flex-wrap items-baseline gap-1 rounded bg-loss-soft px-1.5 py-0.5 text-loss" data-testid="max-loss-pill">
+              <span class="num text-sm font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
               <span v-if="fundsShare?.max_loss_text" class="text-xs">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
-            <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-lose" :data-full="whatCanILose">{{ shown('lose', whatCanILose) }}<button v-if="hasMore(whatCanILose)" type="button" class="ml-1 text-accent underline" :aria-expanded="open.lose ? 'true' : 'false'" data-testid="sum-lose-more" @click="open.lose = !open.lose">{{ open.lose ? 'Less' : 'More' }}</button></p>
           </div>
         </div>
-        <!-- REQ-081 AC-10 (Revision 1 M3): the funds the percentages are of, and when Zerodha was read; visible -->
-        <p v-if="fundsShare" class="mt-2 min-w-0 break-words text-xs text-ink-muted" data-testid="funds-line">
-          Percentages are of Rs {{ groupMoney(fundsShare.funds) }} available funds, read {{ istTime(fundsShare.read_at) }}
-        </p>
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <span class="flex items-center text-[13px] text-ink-muted">Breakeven<FigureHint id="breakeven_expiry" /></span>
+        <div class="mt-2 flex flex-wrap items-center gap-2" data-testid="breakeven-row">
+          <span class="text-xs text-ink-muted">Breakeven</span>
           <div class="inline-flex rounded-md border border-line text-xs" role="group" aria-label="Breakeven at">
             <Tooltip text="Needs a target date: breakevens on a target date are not worked out yet." label="Target (not available: needs a target date)">
               <template #trigger>
@@ -51,17 +47,17 @@
             </Tooltip>
             <button type="button" class="rounded-r-md bg-accent-soft px-2 py-0.5 font-medium text-accent" aria-pressed="true" data-testid="breakeven-expiry">Expiry</button>
           </div>
+          <FigureHint id="breakeven_expiry" :lines="[whereIStartLosing, exactLine(breakevensExact.join(', '))]" />
         </div>
-        <div class="num mt-1 text-sm font-semibold text-ink" data-testid="breakevens">{{ breakevens.length ? groupMoney(breakevens.join(', ')) : '-' }}</div>
-        <p class="mt-1 text-[13px] text-ink-muted" data-testid="sum-start">{{ whereIStartLosing }}</p>
+        <div class="num mt-0.5 text-[13px] text-ink" data-testid="breakevens">{{ breakevens.length ? breakevens.join(', ') : '-' }}</div>
       </div>
 
       <!-- Block 2: Reward/Risk, POP, Time value, Intrinsic value (REQ-135 AC-4 / REQ-081 AC-3, AC-4: the server's strings,
            '-' with the server's reason when absent; an absent figure is not zero) -->
       <div class="min-w-0 @2xl:border-l @2xl:border-line @2xl:px-4" data-testid="summary-block-ratios">
-        <dl v-if="showRatio || showValues" class="text-sm" data-testid="summary-extras">
-          <div v-if="showRatio" class="py-1">
-            <div class="flex min-h-7 items-center justify-between gap-2">
+        <dl v-if="showRatio || showValues" class="text-[13px]" data-testid="summary-extras">
+          <div v-if="showRatio">
+            <div class="flex min-h-6 items-center justify-between gap-2">
               <dt class="flex items-center text-ink-muted">
                 <span data-testid="ratio-label">{{ flipped ? 'Risk/Reward' : 'Reward/Risk' }}</span>
                 <FigureHint v-if="!flipped" id="reward_risk" />
@@ -80,22 +76,21 @@
           </div>
           <slot name="pop" />
           <div v-if="showValues" data-testid="value-split">
-            <div class="flex min-h-7 items-center justify-between gap-2">
-              <dt class="flex items-center text-ink-muted">Time value<FigureHint v-if="timeValue != null" id="time_value" /></dt>
-              <dd class="num font-medium text-ink" data-testid="time-value">{{ groupMoney(timeValue) ?? '-' }}</dd>
+            <div class="flex min-h-6 items-center justify-between gap-2">
+              <dt class="flex items-center text-ink-muted">Time value<FigureHint v-if="timeValue != null" id="time_value" :lines="[valueLabel, exactLine(timeValueExact)]" /></dt>
+              <dd class="num font-medium text-ink" data-testid="time-value">{{ displayOrDash(timeValue) }}</dd>
             </div>
-            <div class="flex min-h-7 items-center justify-between gap-2">
-              <dt class="flex items-center text-ink-muted">Intrinsic value<FigureHint v-if="intrinsicValue != null" id="intrinsic_value" /></dt>
-              <dd class="num font-medium text-ink" data-testid="intrinsic-value">{{ groupMoney(intrinsicValue) ?? '-' }}</dd>
+            <div class="flex min-h-6 items-center justify-between gap-2">
+              <dt class="flex items-center text-ink-muted">Intrinsic value<FigureHint v-if="intrinsicValue != null" id="intrinsic_value" :lines="[valueLabel, exactLine(intrinsicValueExact)]" /></dt>
+              <dd class="num font-medium text-ink" data-testid="intrinsic-value">{{ displayOrDash(intrinsicValue) }}</dd>
             </div>
-            <p v-if="valueLabel" class="text-xs text-ink-muted" data-testid="value-label">{{ valueLabel }}</p>
             <p v-if="valueReason" class="text-xs text-ink-muted" data-testid="value-reason">{{ valueReason }}</p>
           </div>
         </dl>
         <slot v-else name="pop" />
       </div>
 
-      <!-- Block 3: Funds & Margins (MarginLine); its shortfall message is a second root that spans all three blocks -->
+      <!-- Block 3: Funds & Margins (MarginLine) -->
       <div class="contents" data-testid="summary-block-margin">
         <slot name="margin" />
       </div>
@@ -104,33 +99,41 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed } from 'vue'
 import { istTime, groupMoney } from '@/lib/displayFormat'
+import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 const props = defineProps({
-  maxProfit: { type: String, default: '-' },
+  maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
   maxLoss: { type: String, default: '-' },
-  breakevens: { type: Array, default: () => [] },
+  maxProfitExact: { type: String, default: null }, // summary.max_profit as sent, for the "?" (REQ-152 AC-3)
+  maxLossExact: { type: String, default: null },
+  breakevens: { type: Array, default: () => [] }, // summary.breakevens_display as sent ("22,688 (−0.1%)")
+  breakevensExact: { type: Array, default: () => [] }, // summary.breakevens as sent
   whatCanIMake: { type: String, default: '' },
   whatCanILose: { type: String, default: '' },
   whereIStartLosing: { type: String, default: '' },
   rewardRisk: { type: String, default: null },
   rewardRiskReason: { type: String, default: null },
-  timeValue: { type: String, default: null },
-  intrinsicValue: { type: String, default: null },
+  timeValue: { type: String, default: null }, // summary.time_value_display as sent
+  timeValueExact: { type: String, default: null },
+  intrinsicValue: { type: String, default: null }, // summary.intrinsic_value_display as sent
+  intrinsicValueExact: { type: String, default: null },
   riskReward: { type: String, default: null },
   valueLabel: { type: String, default: null },
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless Zerodha's funds were read)
+  estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)
 })
+// REQ-081 AC-10: the funds the percentages are of and when Zerodha was read, words unchanged, now in the "?" of both
+// figures (ADR-202 (1)); absent with the percentages when funds could not be read. The funds figure has no server display
+// string, so its digits are only regrouped as text (groupMoney, never parsed).
+const fundsLine = computed(() => (props.fundsShare
+  ? `Percentages are of Rs ${groupMoney(props.fundsShare.funds)} available funds, read ${istTime(props.fundsShare.read_at)}`
+  : null))
 // which of the server's two ratio strings is shown; never a calculation. A model the page owns (review 2), so a recompute
 // keeps the user's 1/x choice; without a v-model it is this card's own state.
-// REQ-034 AC-7: the plain sentence stays visible; only its first sentence shows until "More" (text split, nothing computed)
-const open = reactive({ make: false, lose: false })
-const firstSentence = (t) => /^.*?[.!?](?=\s|$)/s.exec(t ?? '')?.[0] ?? t ?? ''
-const hasMore = (t) => typeof t === 'string' && firstSentence(t).length < t.trim().length
-const shown = (key, t) => (open[key] || !hasMore(t) ? t : firstSentence(t))
 const flipped = defineModel('flipped', { type: Boolean, default: false })
 const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)
 const showValues = computed(() => props.timeValue != null || props.intrinsicValue != null || props.valueReason != null)
