@@ -1,10 +1,10 @@
 """GC-UI D-B48 core proof (REQ-109 AC-2, AC-4; ADR-008): each tracked leg carries its own paper P&L from the one engine
 (ofo.tracking.paper.paper_pnl on that single leg), and the legs' figures add up to the strategy's paper total exactly.
 
-Real numbers: strategy 54's recorded tracking reply (2026-10-28 13:40 IST), NIFTY 3 Nov bull call spread, 65 units a leg:
+Real numbers: strategy 54's recorded tracking reply (2026-10-28 13:40 IST), NIFTY 3 Nov bull call spread, 65 a leg:
 BUY 22600 CE entry 193.70, LTP 271.45; SELL 22800 CE entry 106.35, LTP 156.90; recorded total 1768.00 (unbooked).
-By hand: BUY (271.45 - 193.70) x 65 = 77.75 x 65 = +5,053.75; SELL (106.35 - 156.90) x 65 = -50.55 x 65 = -3,285.75;
-sum +1,768.00.
+By hand: BUY (271.45 - 193.70) x 65 = 77.75 x 65 = +5,053.75;
+SELL (106.35 - 156.90) x 65 = -50.55 x 65 = -3,285.75; sum +1,768.00.
 """
 from __future__ import annotations
 
@@ -61,12 +61,6 @@ def test_a_leg_in_both_maps_or_unknown_is_refused():
         paper.leg_pnls(S54, {0: LTP[0]}, {0: D("1.00")})
     with pytest.raises(ValueError, match="leg"):
         paper.leg_pnls(S54, {5: LTP[0]}, {})
-
-
-@pytest.mark.parametrize(("value", "text"), [(D("5053.75"), "+5,053.75"), (D("-3285.75"), "\u22123,285.75"),
-                                             (D("0"), "0.00"), (D("1234567.5"), "+12,34,567.50")])
-def test_display_text_is_signed_to_the_paisa_with_indian_grouping(value, text):
-    assert paper.pnl_text(value) == text
 
 
 def test_recorded_reply_numbers_match_the_engine():

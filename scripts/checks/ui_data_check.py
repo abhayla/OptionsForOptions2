@@ -992,6 +992,12 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
             booked += pnl
         else:
             unbooked += pnl
+        # D-B48: the reply's own per-leg figure against this checker's (px - entry) x qty, sign by side; a reply with
+        # no per-leg figure is a mismatch (a missing value never matches), and an exited leg must say "booked"
+        rep.add(f"paper leg{i + 1} pnl", leg.get("pnl"), money(pnl))
+        rep.add(
+            f"paper leg{i + 1} pnl kind", leg.get("pnl_kind"), "booked" if leg.get("exit_price") else "unbooked"
+        )
         planned = planned_legs[i]["planned_entry"] if i < len(planned_legs) else None
         rows[f"leg{i + 1}"] = {
             "planned_entry": planned,

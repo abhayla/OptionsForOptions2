@@ -757,3 +757,51 @@ def test_c4_f4_old_server_text_is_flagged_on_the_real_closed_reply():
     rep = run(est, atx, before, after, fut)
     row = _disp_rows(rep)["[estimated_now] summary.breakevens_display[0]"]
     assert row.verdict == u.MISMATCH and row.independent == f"22,688 ({M}0.0%)"
+
+
+# ---------------------------------------------------------------- GC-UI D-B48: per-leg paper P&L (independent rule)
+
+
+def paper_reply():
+    """Strategy 54's recorded tracking reply (2026-10-28): BUY 22600 CE 193.70 -> 271.45, SELL 22800 CE 106.35 ->
+    156.90, 65 a leg; by hand +5053.75 and -3285.75, total 1768.00."""
+    base = {"quantity": 65, "exit_price": None, "pnl_kind": "unbooked"}
+    return {
+        "strategy_id": 54,
+        "state": "LIVE",
+        "paper_pnl": "1768.00",
+        "booked": "0.00",
+        "unbooked": "1768.00",
+        "legs": [
+            base | {"action": "BUY", "entry_price": "193.70", "current_price": "271.45", "pnl": "5053.75"},
+            base | {"action": "SELL", "entry_price": "106.35", "current_price": "156.90", "pnl": "-3285.75"},
+        ],
+    }
+
+
+def test_paper_leg_pnl_recorded_reply_matches():
+    rep = u.check_paper(paper_reply(), [])
+    assert rep.counts()[u.MISMATCH] == 0
+    assert verdicts(rep)["paper leg1 pnl"] == u.MATCH and verdicts(rep)["paper leg2 pnl"] == u.MATCH
+
+
+@pytest.mark.parametrize(("leg_no", "wrong"), [(1, "5053.76"), (2, "3285.75"), (2, "-3285.76")])
+def test_paper_leg_pnl_tamper_is_flagged(leg_no, wrong):
+    reply = paper_reply()
+    reply["legs"][leg_no - 1]["pnl"] = wrong
+    assert verdicts(u.check_paper(reply, []))[f"paper leg{leg_no} pnl"] == u.MISMATCH
+
+
+def test_paper_leg_pnl_missing_never_matches():
+    reply = paper_reply()
+    del reply["legs"][0]["pnl"]
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl"] != u.MATCH
+
+
+def test_paper_leg_pnl_exited_leg_is_valued_at_its_exit_price_and_must_say_booked():
+    reply = paper_reply()
+    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_kind": "booked", "current_price": None}
+    reply |= {"paper_pnl": "2323.75", "booked": "5609.50", "unbooked": "-3285.75"}
+    assert u.check_paper(reply, []).counts()[u.MISMATCH] == 0
+    reply["legs"][0]["pnl_kind"] = "unbooked"
+    assert verdicts(u.check_paper(reply, []))["paper leg1 pnl kind"] == u.MISMATCH

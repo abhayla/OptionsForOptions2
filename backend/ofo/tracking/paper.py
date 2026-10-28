@@ -38,7 +38,6 @@ from decimal import Decimal
 from typing import Literal
 
 from ofo.adjustment.detection import Detection, detect_near_levels, short_strikes
-from ofo.engine.display import MINUS, format_rupees
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import MultiExpiryError, strategy_metrics
 from ofo.engine.strategy import Strategy
@@ -161,7 +160,7 @@ def booked_pnl(legs: Sequence[TrackedLeg], exit_prices: Mapping[int, Decimal]) -
 
 def leg_pnl(leg: TrackedLeg, price: Decimal) -> Decimal:
     """GC-UI D-B48: one leg's paper P&L by the same engine call as the total (``paper_pnl`` on that single leg), at its
-    live price (open) or its exit price (exited, booked). Exact Decimal; never rounded here, so legs add to the total."""
+    live price (open) or its exit price (exited, booked). Exact Decimal, never rounded, so legs add to the total."""
     return paper_pnl([leg], [price])
 
 
@@ -178,14 +177,6 @@ def leg_pnls(legs: Sequence[TrackedLeg], open_prices: Mapping[int, Decimal],
         raise ValueError(f"no such leg among {len(legs)}: {sorted(unknown)}")
     priced = {**open_prices, **exit_prices}
     return tuple(None if i not in priced else leg_pnl(leg, priced[i]) for i, leg in enumerate(legs))
-
-
-def pnl_text(value: Decimal) -> str:
-    """Display text of a paper P&L figure, to the paisa: ``+5,053.75``, ``−3,285.75``, ``0.00`` (display only; the
-    exact Decimal travels beside it). Indian grouping and the minus sign come from ofo.engine.display."""
-    amount = value.quantize(PAISE)
-    body = format_rupees(abs(amount)).removeprefix("₹")
-    return f"+{body}" if amount > 0 else f"{MINUS}{body}" if amount < 0 else body
 
 
 @dataclass(frozen=True)
