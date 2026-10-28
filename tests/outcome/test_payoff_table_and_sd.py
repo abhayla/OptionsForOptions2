@@ -11,12 +11,13 @@ independently in Decimal, never a Sensibull number."""
 from __future__ import annotations
 
 import dataclasses
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 import pytest
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import StrategyDefinition, service
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.scenario.levels import move_from_spot
 from outcome._both_curves_cases import CALENDAR, S54, as_json, definition, entries_outcome, market, outcome, snapshot
 from outcome.test_same_engine import VALUATION
 
@@ -183,3 +184,35 @@ def test_sd_does_not_change_the_default_range(provider):
     on, off = _body(provider, sd_bands=True), _body(provider)
     on.pop("standard_deviation")
     assert on == off
+
+
+# ---- D-B26 (REQ-137 AC-2 "Show %"): each row's move from spot in percent, computed by the server --------------------
+
+def test_move_pct_is_the_acs_own_example():
+    pct, display = move_from_spot(Decimal("23450"), Decimal("22966"))
+    with localcontext(prec=50):
+        assert pct == (Decimal("23450") - Decimal("22966")) * 100 / Decimal("22966")
+    assert display == "+2.1%"  # REQ-137 AC-2's own example: 23,450 = +2.1%
+    assert move_from_spot(Decimal("22966"), Decimal("22966")) == (Decimal(0), "0.0%")  # a true zero has no sign
+    assert move_from_spot(Decimal("22500"), Decimal("22966"))[1] == "-2.0%"
+    assert move_from_spot(Decimal("22965"), Decimal("22966"))[1] == "0.0%"  # rounds to zero: never "-0.0%"
+    assert move_from_spot(Decimal("22500"), None) == (None, None)
+
+
+def test_payoff_rows_carry_move_pct_from_the_same_spot(provider):
+    body = _body(provider, payoff_step=Decimal(50))
+    rows = body["payoff_table"]["rows"]
+    spot = Decimal(body["spot_level"])
+    for r in rows:
+        with localcontext(prec=50):
+            exact = (Decimal(r["level"]) - spot) * 100 / spot
+        assert Decimal(r["move_pct"]) == exact
+        shown = exact.quantize(TENTH, ROUND_HALF_UP)
+        assert r["move_pct_display"] == ("0.0%" if shown == 0 else f"{shown:+}%")
+    near = next(r for r in rows if r["nearest_spot"])
+    assert abs(Decimal(near["move_pct"])) == min(abs(Decimal(r["move_pct"])) for r in rows)
+
+
+def test_payoff_rows_move_pct_null_without_a_spot(provider):
+    fe = as_json(outcome_to_dict(entries_outcome(provider, S54, payoff_step=Decimal(25))))["payoff_table"]
+    assert fe["rows"] and all(r["move_pct"] is None and r["move_pct_display"] is None for r in fe["rows"])

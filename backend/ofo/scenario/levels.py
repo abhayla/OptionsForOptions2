@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, localcontext
 from enum import Enum
 from typing import Final
 
@@ -293,3 +293,19 @@ def first_multiple_at_or_above(start: Decimal, step: Decimal) -> Decimal:
     """REQ-137 AC-1: the first index level that is a multiple of ``step`` at or above ``start`` (index points, not
     rupees): the payoff table's first row."""
     return (start / step).to_integral_value(rounding=ROUND_CEILING) * step
+
+
+_TENTH: Final = Decimal("0.1")
+_MOVE_PRECISION: Final = 50
+
+
+def move_from_spot(level: Decimal, spot: Decimal | None) -> tuple[Decimal | None, str | None]:
+    """REQ-137 AC-2 "Show %" (D-B26): a payoff-table level's move from spot in percent, (level - spot) x 100 / spot,
+    exact; and its display, signed to one decimal half-up ("+2.1%", "-2.0%"; a figure that rounds to zero is "0.0%",
+    never "-0.0%"). No spot (an answer without a live index price): (None, None)."""
+    if spot is None:
+        return None, None
+    with localcontext(prec=_MOVE_PRECISION):
+        pct = (level - spot) * 100 / spot
+    shown = pct.quantize(_TENTH, ROUND_HALF_UP)
+    return pct, ("0.0%" if shown == 0 else f"{shown:+}%")

@@ -157,12 +157,17 @@ def _payoff_table(t: Any) -> dict[str, Any]:
             return None
         return {"pnl": _s(totals[i]), "display": render_explanation("cell_rupees", amount=totals[i])}
 
+    from ofo.scenario.levels import move_from_spot  # D-B26: REQ-137 AC-2 "Show %", computed by the server
     from ofo.scenario.views import View  # late: the module's imports stay the outcome's own
+
+    def row(i, lvl):
+        pct, pct_display = move_from_spot(lvl, t.spot)
+        return {"level": _s(lvl), "level_display": render_explanation("cell_points", value=lvl),
+                "nearest_spot": lvl == t.nearest_spot, "move_pct": _s(pct), "move_pct_display": pct_display,
+                "estimated_now": cell(View.ESTIMATED_NOW, i), "at_expiry": cell(View.AT_EXPIRY, i)}
     return {"step": _s(t.step), "available": t.unavailable_reason is None,
             "unavailable_reason": t.unavailable_reason, "columns": [_view_head(v) for v in t.views],
-            "rows": [{"level": _s(lvl), "level_display": render_explanation("cell_points", value=lvl),
-                      "nearest_spot": lvl == t.nearest_spot, "estimated_now": cell(View.ESTIMATED_NOW, i),
-                      "at_expiry": cell(View.AT_EXPIRY, i)} for i, lvl in enumerate(t.levels)]}
+            "rows": [row(i, lvl) for i, lvl in enumerate(t.levels)]}
 
 
 def _sd(sd: Any) -> dict[str, Any]:
