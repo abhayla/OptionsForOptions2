@@ -126,16 +126,47 @@ the same legs; the browser console has no uncaught error. Plus these cross-check
 - PX-3: after a Paper exit, that strategy's P&L stays frozen across two readings.
 - PX-4: reload the page; every paper strategy and its entry prices come back the same.
 
+## Walk 1 results (step 2, 2026-10-28 10:16-10:52 IST, live market, owner's Chrome)
+
+Every P-row built as a user would, Saved, Start tracking pressed; paper P&L hand-checked against entry and LTP per leg.
+The Paper tab does not exist yet (step 6), so its checks wait for walk 2.
+
+| P | Strategy id | Built | Numbers checked by hand | Tracked (first reading) | Result |
+|---|---|---|---|---|---|
+| P-1 | 46 | Ready-made Bull Call Spread 22550/22750 CE 3 Nov | breakeven 22,631.9 | 3.25 (10:18:27) | pass after F-1 |
+| P-2 | 47 | Quick pick Sell Straddle 22500 | breakevens 22,088.55 / 22,911.45 | -42.25 (10:31:46) | pass; O-1 on the first click |
+| P-3 | 48 | Ready-made Short Iron Condor 22300/22400 PE, 22600/22700 CE | credit 77.20; BE 22,322.8 / 22,677.2; max loss 1,756.75 | -55.25 | pass |
+| P-4 | 49 | Drawer 2 B + 2 S, 22750 CE at 2 lots | debit 36.95; BE 22,886.95; max loss 9,186.48 | +26.00; reload +315.25 (2-lot leg qty 130) | pass |
+| P-5 | 50 | Drawer Buy 22550 CE | BE 22,733.65 | +16.25 | pass |
+| P-6 | 51 | Drawer calendar Sell 3 Nov / Buy 9 Nov 22550 CE | max P/L 'can't be estimated' (ADR-143 (1), REQ-148 AC-4/6) | -87.75 | pass after F-2 (two drawer passes worked before it) |
+| P-7 | 52 | SENSEX quick pick Sell Strangle 200 pts: 72600 PE / 73000 CE 29 Oct | BE 71,981.4 / 73,618.6 | -15.00 | pass |
+| P-8 | 53 | SENSEX ready-made Bear Put Spread 72800/72400 PE | debit 175.30; BE 72,624.7 | +45.00 | pass |
+| PX-1 | - | /positions/current-positions | - | - | FAIL: F-3 |
+| PX-4 | 49, 51 | reload ?strategy= | same legs, lots, planned entries, tracked entries | - | pass |
+
+Observations, not reproduced (re-checked in walk 2; an F-row if seen again): O-1 the first Straddle click (P-2) showed 'could not get an answer' and the API logged no quick-pick request; the second click worked. Likely the same 10 s client timeout as F-3 while the 145-query attribution or a cold start held the server (unproven). O-2 the browser saw 503 on one POST /strategies/outcome that the API logged as 200 (unproven); outcome requests ending with status 0 are the page cancelling a superseded request.
+
 ## Found in the walks (steps 2 and 7)
 
 | F | P-step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
 | F-1 | step 1 (P-1) | TrackingPanel showed -120.25 at 10:21:57 IST while GET answered -188.50: the paper figure and leg LTPs never changed after the page opened | RCA: `TrackingPanel.vue` read GET /tracking once, on strategy-id change, with no re-read. Class: every screen showing a paper P&L figure (today 1: TrackingPanel; step 6's Paper tab and the Tracked tab must reuse the same refresh). Fix: re-read every `TRACKING_REFRESH_MS` = 5000 (the strike picker's rate; spec silent, searched refresh/seconds/tick in REQ-109, REQ-033) while tracked, one read at a time, late answers for another strategy dropped, a failed read shows no figure. 7 tests red first (5 failed on old code), 4 mutants each killed. Detection: the P-list now reads the screen twice, not only the API | see git log (GC-BP F-1) | 10:24:34 -104.00 -> 10:24:43 -84.50 on screen, owner's Chrome |
+| F-2 | P-6 | Drawer: Sell 3 Nov 22550 CE, change the drawer expiry to 9 Nov, Buy 22550 CE: footer '1 selected', Done added only the 9 Nov leg; the user's first pick vanished with no message | RCA: `LegPicker.vue` cleared picks on any expiry/width change because Done looked contracts up in the list on screen. Class: every pick made before an expiry or width change (before: lost; after: kept); an underlying change still clears. Fix: the contract is stored at the pick (`pickedContracts`). 5 tests, 3 red first. Detection: the leg-picker tests now pin cross-expiry Done | e810a5f2 | 10:52 live: '1 selected' -> '2 selected', Done added 3 Nov 22550 CE (199.65) + 9 Nov 22550 CE (289.35) |
+| F-3 | PX-1 | Real Positions page /positions/current-positions: 'The page could not get an answer from the server' every time; the same GET by hand: 200 in 14.06 / 15.31 / 18.50 / 13.06 s; the client gives up at 10 s (api.js:46) | RCA (measured): attribute_and_compare makes 145 DB queries for ~47 strategies (StoreReader: plans_for per strategy, ~3 queries each) at 136 ms per round trip over the tunnel = 10.6-12.0 s; Zerodha is cached 45 s and the session dependency answers in 0.74 s. In production (DB on the same host) about 0.2 s, but the count grows with every strategy and breaks every local walk. Class: per-strategy query loops on every attribute_and_compare caller. Fix: batched plan read (Tier A, Opus builder) | in progress | - |
 
 ## Visual differences for the owner (not fixed here)
 
 | P-step | Ours | Sensibull (screen) | Gap row |
 |---|---|---|---|
+| P-1 | Save's name field has no accessible label (screen readers and test tools miss it) | named dialog | - |
+| P-1 | Paper panel: Entry and LTP columns run together ('187.35182.8') | spaced columns (090-092) | - |
+| P-1..P-8 | Summary says 'Price data: estimated from spot' in market hours: the builder reads only its legs, so IV/Greeks use the spot fallback forward (ADR-061, labelled as required) | ATM IV from the full chain | accuracy note |
+| P-4 | Drawer: Call Delta and Call LTP digits run together ('0.8389564.35') | separate cells | G-075 (re-check) |
+| P-4 | '2 lot' (should be '2 lots'); drawer Lots select has no accessible label | 'Lots 2' | - |
+| P-4, P-6 | Paper panel shows no quantity and no expiry per leg (P-6's two legs both read '22550.00 CE') | qty + expiry per leg (090-092) | step 6 shows both |
+| P-6 | Calendar max profit / loss / breakeven 'can't be estimated' (spec: ADR-143 (1)) | model estimate, e.g. max loss -7,730 (108) | spec choice |
+| P-8 | '(1 days)' | '1 day' | - |
+| PX-1 | Top 'Positions' opens a placeholder hub with 4 links | lands on positions | - |
 
 ## Rules for the run
 
