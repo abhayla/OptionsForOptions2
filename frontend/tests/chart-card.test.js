@@ -34,7 +34,7 @@ describe('ADR-194 (1): the P&L Table tab opens compact (core)', () => {
     expect(shown(w, 'compact-view')).toBe(true)
     expect(shown(w, 'full-view')).toBe(false)
     expect(t(w, 'full-table-switch').element.checked).toBe(false)
-    expect(all(w, 'compact-head').map((h) => h.text())).toEqual(['Entry', 'LTP', 'P&L', 'P&L %'])
+    expect(all(w, 'compact-head').map((h) => h.text())).toEqual(['Planned entry', 'LTP', 'P&L', 'P&L %'])
     w.unmount()
   })
 

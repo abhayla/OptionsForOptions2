@@ -75,6 +75,8 @@ describe('TrackingPanel', () => {
     expect(w.get('[data-testid="paper-pnl"]').text()).toBe(`${PAPER_PNL_PREFIX}+1,240.50`)
     const rows = w.findAll('[data-testid="tracking-leg"]').map((r) => r.findAll('td').map((c) => c.text()))
     expect(rows).toEqual([['SELL 22800.00 CE', '39.15', '45.15'], ['SELL 22400.00 PE', '82.75', '-']])
+    // D-B51: the price stored at Start tracking is the Paper entry (the P&L Table's column is the Planned entry)
+    expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP'])
   })
 
   it('REQ-045 AC-1 / REQ-046 AC-1: a detection shows the label and its Layer 1 facts', async () => {

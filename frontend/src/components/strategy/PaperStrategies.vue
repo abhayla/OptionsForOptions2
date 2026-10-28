@@ -28,7 +28,7 @@
           </dl>
           <table v-if="g.legs.length" class="mt-2 w-full text-left">
             <thead>
-              <tr><th>Leg</th><th>Expiry</th><th>Strike</th><th>Qty</th><th>Entry</th><th>LTP / exit</th><th /></tr>
+              <tr><th>Leg</th><th>Expiry</th><th>Strike</th><th>Qty</th><th>Paper entry</th><th>LTP / exit</th><th /></tr>
             </thead>
             <tbody>
               <tr v-for="l in g.legs" :key="l.key" data-testid="paper-leg" :data-leg="l.index">

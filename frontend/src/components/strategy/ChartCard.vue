@@ -3,7 +3,7 @@
      switch and range (REQ-034 AC-6) sit in the card header because they drive both the graph and the full table.
        - Payoff: sub-tabs Graph (the PayoffChart) and Table (the scenario levels the reply sent, as rows; the CURRENT row
          highlighted; REQ-137's interval chooser and Show % are not built yet).
-       - P&L Table (ADR-194): compact per-leg view first (Instrument | Entry | LTP | P&L | P&L %, the reply's own TOTAL
+       - P&L Table (ADR-194): compact per-leg view first (Instrument | Planned entry | LTP | P&L | P&L %, the reply's own TOTAL
          row only when it sent one); a "Full table" switch on the same tab shows the REQ-035 StrategyTable unchanged,
          with the Bid/Ask Details block under it.
        - Greeks: per-leg Delta, Gamma, Theta, Vega, IV as the reply carries them, else the shared EmptyState.

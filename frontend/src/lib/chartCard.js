@@ -6,9 +6,9 @@ import { isCurrentColumn } from '@/lib/strategyTable'
 
 export const TOTAL_ROW_ID = 'TOTAL'
 
-/** The compact P&L view's value columns (ADR-194 (1)), in its order: Entry, LTP, P&L, P&L %. */
+/** The compact P&L view's value columns (ADR-194 (1)), in its order: Planned entry, LTP, P&L, P&L %. */
 export const COMPACT_COLUMNS = [
-  { id: 'entry_price', label: 'Entry' },
+  { id: 'entry_price', label: 'Planned entry' },
   { id: 'ltp', label: 'LTP' },
   { id: 'unrealized_pnl', label: 'P&L' },
   { id: 'pnl_percent', label: 'P&L %' },
