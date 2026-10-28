@@ -15,6 +15,8 @@ const OLD_BLOCK = ['advanced', 'details'].join('_')
 const LEVEL_KEY = ['ux', 'level'].join('_')
 const LEVEL_ATTR = ['data', 'ux'].join('-')
 const OLD_LEVEL = ['gui', 'ded'].join('')
+// the old level words as level labels; "Standard Deviation" (the lower card's heading, D-B45) is not a level label
+const LEVEL_WORDS = [/\bGuided\b/, /\bStandard\b(?!\s+Deviation)/, /\bAdvanced\b/, /Detail level/]
 const ids = (cols) => cols.map((c) => c.id)
 const without = (r) => {
   const { leg_quotes: _drop, ...rest } = r
@@ -98,11 +100,20 @@ describe('ADR-168: one full builder screen, no level switch', () => {
     const header = w.find('[data-testid="strategy-builder"]').text()
     const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
     expect(heading).toBe('Details: bid and ask per leg')
-    for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
-      expect(header).not.toContain(word)
-      expect(heading).not.toContain(word)
+    // GC-UI step 5: the lower card's own heading "Standard Deviation" (D-B45) is a different thing from the old level
+    // control, so "Standard" is banned as a LEVEL label only: not when "Deviation" follows it.
+    for (const re of LEVEL_WORDS) {
+      expect(header).not.toMatch(re)
+      expect(heading).not.toMatch(re)
     }
     w.unmount()
+  })
+  it('attack 4 still fires: a planted "Standard" level label is caught, the heading "Standard Deviation" is not', () => {
+    const planted = ['Detail level: Standard', 'Standard', 'Standard view', 'Level Standard']
+    for (const text of planted) expect(LEVEL_WORDS.some((re) => re.test(text))).toBe(true)
+    expect(LEVEL_WORDS.some((re) => re.test('Standard Deviation'))).toBe(false)
+    expect(LEVEL_WORDS.some((re) => re.test('Standard  Deviation'))).toBe(false)
+    for (const word of ['Guided', 'Advanced', 'Detail level']) expect(LEVEL_WORDS.some((re) => re.test(`x ${word}`))).toBe(true)
   })
 })
 

@@ -139,13 +139,16 @@ export function payoffStepTable(pt) {
     level: r.level,
     levelText: r.level_display ?? r.level,
     current: r.nearest_spot === true,
+    pctText: String(r.move_pct_display ?? '').trim() || DASH, // D-B26: the server's own text ("+2.1%"), absent / null = the dash
+    hasPct: r.move_pct_display !== undefined,
     cells: Object.fromEntries(columns.map((c) => {
       const cell = r[c.view]
       return [c.view, { text: String(cell?.display ?? '').trim() || DASH, value: cell?.pnl ?? null }]
     })),
   }))
   const notes = columns.filter((c) => !c.available).map((c) => `${c.label}: ${c.reason ?? 'not available'}`)
-  return { available: true, reason: null, step: pt.step == null ? null : String(pt.step), columns, rows, notes }
+  // the Show % switch exists only when the reply's rows carry the field (an older reply has none)
+  return { available: true, reason: null, step: pt.step == null ? null : String(pt.step), columns, rows, notes, hasPct: rows.some((r) => r.hasPct) }
 }
 
 /** The sign of a reply value string, read from its text: 'loss', 'profit' or '' (zero, empty or not a number). */

@@ -182,11 +182,12 @@ describe('Greeks and Strategy chart tabs', () => {
     w.unmount()
   })
 
-  it('Strategy chart: an empty state (REQ-091 held)', async () => {
+  it('Strategy chart: the price chart body, no longer the coming-soon state (GC-UI step 5; unsaved = nothing to ask)', async () => {
     const w = card()
     await t(w, 'tab-strategy-chart').trigger('click')
     expect(shown(w, 'panel-strategy-chart')).toBe(true)
-    expect(t(w, 'strategy-chart-empty').exists()).toBe(true)
+    expect(t(w, 'strategy-chart-empty').exists()).toBe(false)
+    expect(t(w, 'price-chart-unsaved').exists()).toBe(true)
     w.unmount()
   })
 

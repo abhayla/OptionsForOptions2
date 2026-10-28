@@ -70,7 +70,7 @@ describe('core: D-B34 the Greeks tab columns follow REQ-145 AC-2 with Decay', ()
 
 // D-B24 / D-B25 / D-B26 (REQ-137 AC-1): the Payoff Table view lists the server's `payoff_table` rows - the recorded s54
 // reply asked with payoff_step 50 (tests/fixtures/ui_data_check/both_s54_replay/outcome_both.json, repo root).
-// Show % is NOT built: PayoffRowOut carries no percent field, and the browser computes no percent (ADR-008).
+// Show % (D-B26) prints the server's move_pct_display; the recorded reply predates the field, so those tests add test strings.
 describe('D-B24 / D-B25 / D-B26: the Payoff Table from the server rows, interval menu, both columns', () => {
   const pt = recorded.payoff_table
   const open = (payoffTable = pt) => card(s54, { payoffTable, payoffView: 'table' })
@@ -93,8 +93,22 @@ describe('D-B24 / D-B25 / D-B26: the Payoff Table from the server rows, interval
     const near = rows.filter((r) => r.attributes('data-current') === 'true')
     expect(near.map((r) => r.find('[data-testid="payoff-step-level"]').text())).toEqual(['22,550'])
   })
-  it('no Show % switch (the reply has no percent field)', () => {
+  it('no Show % switch when no row carries move_pct_display (an older reply)', () => {
     expect(open().text()).not.toMatch(/Show %/)
+    expect(t(open(), 'show-pct-switch').exists()).toBe(false)
+  })
+  it('Show % adds one column of the server text per row; absent / null prints the dash; off by default', async () => {
+    const pct = ['-4.5%', '+2.1%', null] // test strings in the server's format; row 3 onward carry no field value
+    const rows = pt.rows.map((r, i) => ({ ...r, move_pct_display: i < 3 ? pct[i] : undefined }))
+    const w = open({ ...pt, rows })
+    expect(all(w, 'payoff-step-pct')).toHaveLength(0)
+    await t(w, 'show-pct-switch').setValue(true)
+    const cells = all(w, 'payoff-step-pct').map((c) => c.text())
+    expect(cells).toHaveLength(41)
+    expect(cells.slice(0, 4)).toEqual(['-4.5%', '+2.1%', '—', '—'])
+    expect(t(w, 'payoff-step-pct-head').text()).toBe('Move from spot')
+    await t(w, 'show-pct-switch').setValue(false)
+    expect(all(w, 'payoff-step-pct')).toHaveLength(0)
   })
   it('a column the server marks unavailable prints the dash and its reason, never a number', () => {
     const reason = 'no implied volatility for this leg'
