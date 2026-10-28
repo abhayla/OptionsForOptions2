@@ -7,7 +7,7 @@
          row only when it sent one); a "Full table" switch on the same tab shows the REQ-035 StrategyTable unchanged,
          with the Bid/Ask Details block under it.
        - Greeks: per-leg Delta, Theta, Decay, Gamma, Vega, IV (REQ-145 AC-2 order) as the reply carries them, else the shared EmptyState.
-       - Strategy chart: EmptyState (REQ-091 held for display rights).
+       - Strategy chart: StrategyPriceChart (REQ-091; D-B40 / D-B41), asked only once the tab is open.
      Every value is a reply string (lib/chartCard.js); nothing is computed here (ADR-008). Panels stay mounted (v-show),
      so the chart draws once and switching tabs never re-asks the server. -->
 <script setup>
@@ -19,6 +19,7 @@ import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import PayoffChart from './PayoffChart.vue'
+import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import {
   COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
@@ -41,6 +42,8 @@ const props = defineProps({
   zoom: { type: Object, default: null },
   // GC-UI b2 D-B24 / D-B25 (REQ-137 AC-1): the reply's `payoff_table` (rows at the server's step, both columns)
   payoffTable: { type: Object, default: null },
+  // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
+  savedId: { type: Number, default: null },
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
 // makes the rows)
@@ -66,6 +69,7 @@ const tab = defineModel('tab', { type: String, default: 'payoff' })
 const payoffView = defineModel('payoffView', { type: String, default: 'graph' })
 const fullTable = defineModel('fullTable', { type: Boolean, default: false }) // ADR-194 (1): the compact view is the default
 
+const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's move_pct_display per row
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table, props.legs))
 const greeks = computed(() => greekRows(props.table, props.legs))
@@ -103,11 +107,15 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <!-- GC-UI b2 D-B24 / D-B25 / D-B26 (Sensibull 017): the server's payoff_table at the chosen interval, both columns
-             (target date = now until B6/B7, and at expiry), the row nearest spot highlighted. No Show % switch: the
-             reply carries no percent and the browser computes none (ADR-008). An older reply with no payoff_table
+             (target date = now until B6/B7, and at expiry), the row nearest spot highlighted. Show % (D-B26) only prints the
+             server's move_pct_display; the browser computes no percent (ADR-008). An older reply with no payoff_table
              falls back to the scenario-level rows below. -->
         <template v-if="stepTable">
-          <div class="mb-2 flex items-center justify-end gap-2 text-sm text-ink-muted">
+          <div class="mb-2 flex items-center justify-end gap-4 text-sm text-ink-muted">
+            <label v-if="stepTable.hasPct" class="flex items-center gap-2">
+              <input v-model="showPct" type="checkbox" role="switch" :aria-checked="showPct ? 'true' : 'false'" data-testid="show-pct-switch" />
+              Show %
+            </label>
             <label class="flex items-center gap-2">
               Interval
               <select
@@ -125,6 +133,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
               <tr class="border-b border-line text-left text-ink-muted">
                 <th scope="col" class="py-2 font-medium" data-testid="payoff-step-head">Index level</th>
                 <th v-for="c in stepTable.columns" :key="c.view" scope="col" class="py-2 text-right font-medium" data-testid="payoff-step-head">{{ c.label }}</th>
+                <th v-if="showPct && stepTable.hasPct" scope="col" class="py-2 text-right font-medium" data-testid="payoff-step-pct-head">Move from spot</th>
               </tr>
             </thead>
             <tbody>
@@ -142,6 +151,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                   :class="['py-1.5 text-right tabular-nums', toneOf(r.cells[c.view].value)]"
                   :data-field="c.view"
                 >{{ r.cells[c.view].text }}</td>
+                <td v-if="showPct && stepTable.hasPct" class="py-1.5 text-right tabular-nums" data-testid="payoff-step-pct">{{ r.pctText }}</td>
               </tr>
             </tbody>
           </table>
@@ -265,7 +275,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
 
     <!-- Strategy chart (REQ-091 held for display rights) -->
     <div v-show="tab === 'strategy-chart'" role="tabpanel" v-bind="link(VIEW, 'strategy-chart')" class="p-4" data-testid="panel-strategy-chart">
-      <EmptyState message="The strategy chart is coming soon." data-testid="strategy-chart-empty" />
+      <StrategyPriceChart :strategy-id="savedId" :active="tab === 'strategy-chart'" />
     </div>
   </Card>
 </template>

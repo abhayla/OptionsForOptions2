@@ -64,7 +64,10 @@ describe('core: D-B43 / D-B45 the lower card prints the TOTAL row Greeks and the
 
 describe('answer states', () => {
   it('TOTAL Greek cell with no per-unit text: a dash in Per unit, never a number or 0', () => {
-    const w = lower(s54) // recorded TOTAL has per_unit_display null
+    // since T-1 the server sends per_unit / per_unit_display on the TOTAL cells; this case is the reply WITHOUT them
+    const bare = structuredClone(s54)
+    for (const r of bare.table.rows.filter((x) => x.row_id === 'TOTAL')) for (const id of IDS) { delete r.cells[id].per_unit; delete r.cells[id].per_unit_display }
+    const w = lower(bare)
     expect(all(w, 'lower-greek-value').map((v) => v.text())).toEqual(['—', '—', '—', '—', '—'])
   })
 
