@@ -87,7 +87,7 @@ describe('D-C12 row actions', () => {
   it('a pencil and a bin per row, shown on hover (hover classes); a bin click asks the existing confirm and does not open the row', async () => {
     const w = await bar([summary(2)])
     const row = w.get('[data-testid="saved-draft-row"]')
-    expect(row.get('[data-testid="rename-draft-2"]').attributes('aria-label')).toBe('Rename strategy')
+    expect(row.get('[data-testid="rename-draft-2"]').attributes('aria-label')).toBe('Rename Plan 2')
     expect(row.get('[data-testid="actions-2"]').classes().join(' ')).toContain('group-hover:')
     await row.get('[data-testid="delete-2"]').trigger('click')
     expect(w.find('[data-testid="delete-confirm-box"]').exists()).toBe(true)

@@ -314,7 +314,7 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
     </div>
     <slot name="after-actions" />
     <!-- GC-UI 6b D-C16 (S-116): the centred modal; Cancel + a primary Save; the 20-character limit and the counter are unchanged -->
-    <Modal :open="!!asking" :title="NAME_TITLES[asking] ?? 'Save New Strategy'" data-testid="name-modal" @close="cancelName">
+    <Modal :open="!!asking" :title="NAME_TITLES[asking] ?? 'Save New Strategy'" fallback-focus="[data-testid='save-draft']" data-testid="name-modal" @close="cancelName">
       <form id="strategy-name-form" class="text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
         <label class="block font-medium" for="strategy-name">Strategy Name</label>
         <input
@@ -356,9 +356,9 @@ v-for="d in recentDrafts" :key="d.id" class="group flex min-h-14 cursor-pointer 
             </button>
             <span v-if="trackedText(d.tracked)" class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-tracked">{{ trackedText(d.tracked) }}</span>
             <span
-class="flex shrink-0 items-center gap-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100" :class="deleteFlow.confirming === d.id ? '!opacity-100' : ''"
+class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100" :class="deleteFlow.confirming === d.id ? '!opacity-100' : ''"
                   :data-testid="`actions-${d.id}`" @click.stop @keydown.enter.stop>
-              <button type="button" class="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:text-ink" aria-label="Rename strategy" title="Rename" :disabled="busy" :data-testid="`rename-draft-${d.id}`" @click="renameRow(d)"><Icon name="pencil" :size="16" /></button>
+              <button type="button" class="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:text-ink" :aria-label="`Rename ${strategyLabel(d, `Draft ${d.id}`)}`" title="Rename" :disabled="busy" :data-testid="`rename-draft-${d.id}`" @click="renameRow(d)"><Icon name="pencil" :size="16" /></button>
               <DraftDelete :row="d" :flow="deleteFlow" icon />
             </span>
           </li>
