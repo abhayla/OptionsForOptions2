@@ -15,7 +15,7 @@ const MIXED = {
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 
 describe('REQ-148 AC-4: no single maximum reads Not available with the ADR-143 line', () => {
-  it('Max Loss and Max Profit read "Not available", the lose line is the ADR-143 line, no NaN, "-" or "0"', () => {
+  it('Max Loss and Max Profit read "Not available", the lose line is the ADR-143 line, no NaN, "-" or "0"', async () => {
     const w = mount(SummaryCards, { props: {
       maxProfit: maxLine(MIXED, 'profit'), maxLoss: maxLine(MIXED, 'loss'), breakevens: MIXED.breakevens,
       whatCanILose: MIXED.what_can_i_lose, whatCanIMake: MIXED.what_can_i_make,
@@ -24,7 +24,10 @@ describe('REQ-148 AC-4: no single maximum reads Not available with the ADR-143 l
       expect(t(w, id).text()).toBe(MAX_NOT_AVAILABLE)
       expect(t(w, id).text()).not.toMatch(/^(-|0|NaN)$/)
     }
-    expect(t(w, 'sum-lose').attributes('data-full')).toBe(WORST)
+    // GC-UI step 3b (REQ-034 AC-7, ADR-204): the ADR-143 line is the first line of the Max Loss "?", verbatim
+    const hint = w.find('[data-testid="figure-hint"][data-figure="max_loss"]')
+    await hint.find('[data-testid="figure-hint-mark"]').trigger('click')
+    expect(hint.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())).toEqual([WORST])
     expect(w.text()).not.toMatch(/NaN/)
   })
 
