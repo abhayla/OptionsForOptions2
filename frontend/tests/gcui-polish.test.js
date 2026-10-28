@@ -84,12 +84,21 @@ describe('D-A29: summary pills carry the percent inline at a small height', () =
       expect(p.find(`[data-testid="${fig}"]`).exists()).toBe(true)
       expect(p.find(`[data-testid="${pct}"]`).exists()).toBe(true)
       const cls = p.classes().join(' ')
-      expect(cls).toContain('flex-nowrap')
+      expect(cls).toContain('flex-col') // GC-UI D-PX item 2: the percent is a smaller second line inside the pill
       expect(cls).toContain('whitespace-nowrap')
-      expect(cls).toContain('h-6')
       expect(cls).not.toMatch(/(^| )flex-wrap( |$)/)
     }
     expect(t(w, 'max-profit-percent').text()).toBe('9% of funds')
+  })
+  it('D-PX item 2: both pills sit in ONE non-wrapping row container (side by side, as Sensibull sb-01)', () => {
+    const w = mount(SummaryCards, { props })
+    const row = t(w, 'summary-pills-row')
+    expect(row.exists()).toBe(true)
+    expect(row.find('[data-testid="max-profit-pill"]').exists()).toBe(true)
+    expect(row.find('[data-testid="max-loss-pill"]').exists()).toBe(true)
+    expect(row.classes()).toContain('flex-nowrap')
+    expect(row.classes()).not.toContain('flex-wrap')
+    expect(t(w, 'summary-block-outcome').find('[data-testid="summary-pills-row"]').exists()).toBe(true) // the left column
   })
 })
 
