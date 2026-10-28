@@ -50,6 +50,11 @@ const markOf = (w, id) =>
   w.find(`[data-figure="${id}"] [data-testid="figure-hint-mark"]`);
 const textOf = (w, id) =>
   w.find(`[data-figure="${id}"] [data-testid="figure-hint-text"]`);
+// GC-UI step 3b (ADR-202 (1)): an open "?" holds the catalogue definition first, then the figure's own lines
+const defOf = (w, id) =>
+  w.find(`[data-figure="${id}"] [data-testid="figure-hint-definition"]`);
+const linesOf = (w, id) =>
+  w.findAll(`[data-figure="${id}"] [data-testid="figure-hint-line"]`).map((l) => l.text());
 const hintIds = (w) =>
   w
     .findAll('[data-testid="figure-hint"]')
@@ -230,7 +235,8 @@ describe("REQ-136 AC-1: marks on the figures that exist today", () => {
       /^Zerodha's own margin figure is \S+ With the premium at your planned entry prices, about \S+ is needed \(an estimate\); \S+ is available in your Zerodha account\.$/,
     );
     await markOf(w, "margin_needed").trigger("focus");
-    expect(textOf(w, "margin_needed").text()).toBe(FIGURES.margin_needed.text);
+    expect(defOf(w, "margin_needed").text()).toBe(FIGURES.margin_needed.text);
+    expect(linesOf(w, "margin_needed")).toEqual([`Exact value: ${MARGIN.enough.needed}`]);
     await markOf(w, "funds_needed").trigger("focus");
     expect(textOf(w, "funds_needed").text()).toBe(FIGURES.funds_needed.text);
   });
@@ -317,8 +323,10 @@ describe("REQ-081 (issue #561): marks on net premium, charges and funds needed",
     expect(hintIds(w)).toEqual(["net_premium", "charges"]);
     for (const id of ["net_premium", "charges"]) {
       await markOf(w, id).trigger("focus");
-      expect(textOf(w, id).text(), id).toBe(FIGURES[id].text);
+      expect(defOf(w, id).text(), id).toBe(FIGURES[id].text);
     }
+    // REQ-152 AC-3: the server's exact net premium sentence is the line after the definition
+    expect(linesOf(w, "net_premium")).toEqual([MONEY.summary.net_premium.text]);
   });
 
   it("an absent net premium or breakdown leaves no orphan mark", () => {
@@ -362,13 +370,17 @@ describe("REQ-136 AC-3: the standing note under the summary", () => {
     expect(t(w, "summary-cards").element.nextElementSibling).toBe(info.element);
     expect(info.element.contains(note.element)).toBe(true);
     expect(info.find("details").exists()).toBe(false);
-    expect(info.find("button").exists()).toBe(false);
-    expect(info.find("[aria-expanded]").exists()).toBe(false);
-    expect(t(w, "planning-note").text()).toBe(
+    // GC-UI step 3b (ADR-202 (5), D-A43): the only control in the note is its "?" mark; nothing collapses the note
+    const marks = info.findAll('[data-testid="figure-hint-mark"]');
+    expect(marks).toHaveLength(1);
+    expect(info.findAll("button")).toHaveLength(1);
+    expect(info.findAll("[aria-expanded]").map((e) => e.attributes("data-testid"))).toEqual(["figure-hint-mark"]);
+    // the planning sentence (ADR-003) is the note's "?" line, words unchanged
+    await marks[0].trigger("click");
+    expect(linesOf(info, "important_info")).toEqual([
       "A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.",
-    );
+    ]);
     expect(w.findAll('[data-testid="projections-note"]')).toHaveLength(1);
-    expect(w.findAll('[data-testid="planning-note"]')).toHaveLength(1);
     w.unmount();
   });
 
@@ -390,7 +402,8 @@ describe("REQ-136 AC-3: the standing note under the summary", () => {
       "margin_available",
     ])
       expect(ids).toContain(id);
-    expect(t(w, "max-profit").text()).toContain(real.summary.max_profit);
+    // REQ-152 AC-1: the server's display string, as sent
+    expect(t(w, "max-profit").text()).toBe(real.summary.max_profit_display);
     w.unmount();
   });
 });
@@ -405,7 +418,7 @@ describe("W-193: the builder page summary card", () => {
     expect(card.find('[data-testid="margin"]').exists()).toBe(true);
     expect(card.find('[data-testid="margin-needed"]').attributes("data-raw")).toBe(MARGIN.enough.needed);
     expect(card.find('[data-testid="margin-available"]').attributes('data-raw')).toBe(MARGIN.enough.available);
-    expect(card.find('[data-testid="max-profit"]').text()).toBe(real.summary.max_profit);
+    expect(card.find('[data-testid="max-profit"]').text()).toBe(real.summary.max_profit_display);
     expect(t(w, "spot-level").exists()).toBe(false);
     // the summary card comes before the chart and the table in the right column
     const order = t(w, "numbers").element.innerHTML;
@@ -415,11 +428,14 @@ describe("W-193: the builder page summary card", () => {
 
   it("UI-119 / I-8: a shortfall draws the message once on the whole page, under the three blocks", async () => {
     const w = await openBuilder({ ...real, margin: MARGIN.short });
+    // GC-UI step 3b (ADR-202 (4), D-A41): the warning is ONE visible line, the server's full message behind More
     expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1);
-    expect(t(w, "margin-shortfall").text()).toBe(MARGIN.short.shortfall_reason);
-    expect(t(w, "margin-shortfall").classes()).toContain("col-span-full");
+    expect(w.findAll('[data-testid="margin-short-line"]')).toHaveLength(1);
+    expect(t(w, "margin-short-line").text()).toBe("Not enough funds for this strategy");
     expect(t(w, "summary-cards").find('[data-testid="margin-shortfall"]').exists()).toBe(true);
     expect(t(w, "margin").attributes("data-short")).toBe("true");
+    await t(w, "margin-shortfall-more").trigger("click");
+    expect(t(w, "margin-shortfall-text").text()).toBe(MARGIN.short.shortfall_reason);
     expect(w.text().split("Reduce the quantity").length - 1).toBe(1);
     w.unmount();
   });
@@ -442,6 +458,8 @@ describe("W-193: the builder page summary card", () => {
     const w = await openBuilder({ ...real, margin: MARGIN.enough });
     expect(t(w, "page-title").classes()).toContain("sr-only");
     const sentence = "This is for planning, not a recommendation.";
+    // ADR-202 (5): the sentence is in the Important info "?" only (once on the page when it is open)
+    await t(w, "important-info").find('[data-testid="figure-hint-mark"]').trigger("click");
     expect(w.text().split(sentence).length - 1).toBe(1);
     expect(t(w, "important-info").text()).toContain(sentence);
     w.unmount();
@@ -450,8 +468,13 @@ describe("W-193: the builder page summary card", () => {
   it("I-9: the data label is named in the data-health strip and is the tooltip beside the Estimated Now switch", async () => {
     const label = "estimated from spot";
     const w = await openBuilder({ ...real, output_label: label, margin: MARGIN.enough });
+    // GC-UI step 3b (D-A42, ADR-202 (3), ADR-061 never silent): one small label inside the summary, beside the figures,
+    // not a full-width banner and not repeated in the foot stamp
+    expect(w.findAll('[data-testid="output-label"]')).toHaveLength(1);
     expect(t(w, "output-label").text()).toBe(label);
-    expect(t(w, "output-label").element.parentElement.textContent).toBe(`Price data: ${label}`);
+    expect(t(w, "summary-block-outcome").find('[data-testid="output-label"]').exists()).toBe(true);
+    expect(t(w, "data-health").exists()).toBe(false);
+    expect(w.text().split(label).length - 1).toBe(1);
     const note = t(w, "estimate-note");
     expect(note.exists()).toBe(true);
     await note.get('[data-testid="tooltip-trigger"]').trigger("click");
