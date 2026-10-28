@@ -1,0 +1,17 @@
+{
+ "state": "LIVE",
+ "underlying": "SENSEX",
+ "expiry": "2026-10-29",
+ "spot": "73246.03",
+ "spot_at": "2026-10-28T15:30:00+05:30",
+ "spot_health": "stale",
+ "atm_strike": "73200.00",
+ "rows_missing": null,
+ "rows": [],
+ "answered_at": "2026-10-28T17:06:29.229760+05:30",
+ "market_closed": true,
+ "last_price_at": "2026-10-28T15:30:00+05:30",
+ "greeks_basis": "SPOT_FALLBACK",
+ "greeks_missing": null,
+ "greeks_label": "stale since 17:06 IST"
+}

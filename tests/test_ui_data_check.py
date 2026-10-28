@@ -635,3 +635,14 @@ def test_d8_per_unit_display_and_total_row_ties():
     cell["value"], cell["display"] = "12.0450", "12.04"
     ok = verdicts(run(tie, atx, before, after, fut))
     assert ok["[estimated_now] TOTAL delta display"] == u.MATCH
+
+
+def test_d9_real_sensex_bull_put_spread_minus_zero_and_negative_value_all_match():
+    est, atx, before, after, fut = u.load_replay(FIX / "display_sensex_bps")
+    rows = _disp_rows(run(est, atx, before, after, fut))
+    shown = {k: f.ours for k, f in rows.items() if k.startswith("[estimated_now] summary.")}
+    assert shown["[estimated_now] summary.max_loss_display"] == M + "2,530"
+    assert shown["[estimated_now] summary.intrinsic_value_display"] == "0"  # a true zero: no sign
+    assert shown["[estimated_now] summary.time_value_display"] == M + "1,586"
+    bad = [f.name for f in rows.values() if f.verdict != u.MATCH]
+    assert not bad, bad
