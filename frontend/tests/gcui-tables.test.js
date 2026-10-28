@@ -39,8 +39,9 @@ describe('core: D-B34 the Greeks tab columns follow REQ-145 AC-2 with Decay', ()
     const leg1 = rowOf(s54, '1')
     expect(cellsOf(all(w, 'greeks-row')[0])).toEqual([...ids.map((id) => leg1[id].per_unit_display), leg1.iv.display])
     expect(cellsOf(all(w, 'greeks-row')[0])[2]).toBe('-12.69') // Decay per unit, leg 1 (recorded)
-    // the Total row has no per-unit text from the server: an em dash, never a browser division
-    expect(cellsOf(all(w, 'greeks-row')[2]).slice(0, 5)).toEqual(['—', '—', '—', '—', '—'])
+    // the Total row prints the server's own per_unit_display (T-1), read from the fixture; never a browser division
+    const totalCells = rowOf(s54, 'TOTAL')
+    expect(cellsOf(all(w, 'greeks-row')[2]).slice(0, 5)).toEqual(ids.map((id) => totalCells[id].per_unit_display))
     await t(w, 'greeks-mode-position').trigger('click')
     const total = rowOf(s54, 'TOTAL')
     expect(cellsOf(all(w, 'greeks-row')[2])).toEqual([...ids.map((id) => total[id].display), '—'])
