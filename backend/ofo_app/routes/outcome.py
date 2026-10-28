@@ -364,6 +364,7 @@ class NetPremiumOut(ApiModel):
     leg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the
     legs' quantities differ."""
     amount: Money | None
+    amount_display: CatalogueText | None = None  # REQ-152: whole rupees, Indian grouping, no sign ("5,707"); null = absent
     side: Literal["get", "pay"] | None
     per_unit: Money | None
     text: CatalogueText | None
@@ -402,6 +403,11 @@ class SummaryOut(ApiModel):
     where_do_i_start_losing: CatalogueText
     max_profit: Money | None
     max_loss: Money | None
+    # REQ-152 AC-1/AC-3/AC-4: the server's whole-rupee text (half-up, Indian grouping, "+" profit, U+2212 loss); null =
+    # absent/unlimited (the reason or the unlimited flag is beside it); the exact value stays in the field above
+    max_profit_display: CatalogueText | None = None
+    max_loss_display: CatalogueText | None = None
+    breakevens_display: list[CatalogueText] = []  # REQ-153 AC-1: "22,688 (−0.1%)", same order as ``breakevens``
     max_profit_unlimited: bool
     max_loss_unlimited: bool
     breakevens: list[Money]
@@ -414,7 +420,9 @@ class SummaryOut(ApiModel):
     reward_risk: Money | None = None
     reward_risk_reason: CatalogueText | None = None
     time_value: Money | None = None
+    time_value_display: CatalogueText | None = None
     intrinsic_value: Money | None = None
+    intrinsic_value_display: CatalogueText | None = None
     # REQ-081 (W-154): null = absent; the reason text says why (never "0.00" for an absent figure)
     risk_reward: Money | None = None
     value_label: CatalogueText | None = None
@@ -430,6 +438,10 @@ class MarginOut(ApiModel):
     needed: Money | None = None  # OUR figure: Zerodha's basket figure + the ADR-094 top-up, to the paisa
     broker_needed: Money | None = None  # Zerodha's own final.total (0 for a closing basket); only when CHECKED
     available: Money | None = None  # Zerodha's available funds, to the paisa
+    # REQ-152 AC-1: whole rupees, Indian grouping, unsigned; null whenever the matching figure is null
+    needed_display: CatalogueText | None = None
+    broker_needed_display: CatalogueText | None = None
+    available_display: CatalogueText | None = None
     checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
     shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)
     shortfall_reason: CatalogueText | None = None  # REQ-055 AC-4: only when CHECKED and short, with the ways forward

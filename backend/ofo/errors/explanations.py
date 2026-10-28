@@ -388,6 +388,58 @@ class Rupees(SlotType):
         return format_rupees(value)
 
 
+class WholeRupees(SlotType):
+    """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_rupees  # late: display imports this module
+        return format_whole_rupees(value, signed=False)
+
+
+class SignedWholeRupees(SlotType):
+    """REQ-152: a summary money figure in whole rupees, Indian grouping, "+" on profit, U+2212 on loss, "0" for zero."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_rupees  # late: display imports this module
+        return format_whole_rupees(value, signed=True)
+
+
+class WholePoints(SlotType):
+    """REQ-152 / D-A04: an index level in whole points with Indian grouping and no currency sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_points  # late: display imports this module
+        return format_whole_points(value)
+
+
+class SignedPercent(SlotType):
+    """REQ-153: a percent to one decimal, half-up, with "+" / U+2212; zero is "0.0" with no sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_percent  # late: display imports this module
+        return format_signed_percent(value)
+
+
 class Points(SlotType):
     """An index level in points, a finite `Decimal`, Indian grouping and no currency sign (display rules)."""
 
@@ -1091,6 +1143,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("scenario_header_zero_pnl", "values_seen", "0-P&L {level}", {"level": Points}),
     ExplanationTemplate("scenario_header_current_zero_pnl", "values_seen", "CURRENT 0-P&L {level}",
                         {"level": Points}),
+    ExplanationTemplate("summary_whole_rupees", "values_seen", "{amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("summary_whole_rupees_signed", "values_seen", "{amount}", {"amount": SignedWholeRupees}),
+    ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
+    ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
+                        {"level": WholePoints, "percent": SignedPercent}),
     ExplanationTemplate("cell_dash", "values_seen", "\u2014"),
     ExplanationTemplate("cell_rupees", "values_seen", "{amount}", {"amount": Rupees}),
     ExplanationTemplate("cell_rupees_cr", "values_seen", "{amount} Cr", {"amount": Rupees}),

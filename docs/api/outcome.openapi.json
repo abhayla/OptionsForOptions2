@@ -739,6 +739,33 @@
             ],
             "title": "Available"
           },
+          "needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed Display"
+          },
+          "broker_needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed Display"
+          },
+          "available_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Display"
+          },
           "checked_at": {
             "anyOf": [
               {
@@ -787,6 +814,15 @@
               }
             ],
             "title": "Amount"
+          },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
           },
           "side": {
             "anyOf": [
@@ -1361,6 +1397,30 @@
             ],
             "title": "Max Loss"
           },
+          "max_profit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Display"
+          },
+          "max_loss_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Display"
+          },
+          "breakevens_display": {
+            "items": {},
+            "type": "array",
+            "title": "Breakevens Display",
+            "default": []
+          },
           "max_profit_unlimited": {
             "type": "boolean",
             "title": "Max Profit Unlimited"
@@ -1452,6 +1512,15 @@
             ],
             "title": "Time Value"
           },
+          "time_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Display"
+          },
           "intrinsic_value": {
             "anyOf": [
               {
@@ -1462,6 +1531,15 @@
               }
             ],
             "title": "Intrinsic Value"
+          },
+          "intrinsic_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value Display"
           },
           "risk_reward": {
             "anyOf": [

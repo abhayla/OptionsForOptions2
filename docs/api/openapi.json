@@ -2945,6 +2945,15 @@
             ],
             "title": "Amount"
           },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
           "per_unit": {
             "anyOf": [
               {
@@ -5955,6 +5964,15 @@
             ],
             "title": "Available"
           },
+          "available_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Display"
+          },
           "broker_needed": {
             "anyOf": [
               {
@@ -5965,6 +5983,15 @@
               }
             ],
             "title": "Broker Needed"
+          },
+          "broker_needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed Display"
           },
           "checked_at": {
             "anyOf": [
@@ -5988,6 +6015,15 @@
               }
             ],
             "title": "Needed"
+          },
+          "needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed Display"
           },
           "reason": {
             "title": "Reason"
@@ -6034,6 +6070,12 @@
             "title": "Breakevens",
             "type": "array"
           },
+          "breakevens_display": {
+            "default": [],
+            "items": {},
+            "title": "Breakevens Display",
+            "type": "array"
+          },
           "charges": {
             "anyOf": [
               {
@@ -6071,6 +6113,15 @@
             ],
             "title": "Intrinsic Value"
           },
+          "intrinsic_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value Display"
+          },
           "lower_be": {
             "anyOf": [
               {
@@ -6093,6 +6144,15 @@
             ],
             "title": "Max Loss"
           },
+          "max_loss_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Display"
+          },
           "max_loss_unlimited": {
             "title": "Max Loss Unlimited",
             "type": "boolean"
@@ -6107,6 +6167,15 @@
               }
             ],
             "title": "Max Profit"
+          },
+          "max_profit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Display"
           },
           "max_profit_unlimited": {
             "title": "Max Profit Unlimited",
@@ -6170,6 +6239,15 @@
               }
             ],
             "title": "Time Value"
+          },
+          "time_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Display"
           },
           "upper_be": {
             "anyOf": [
