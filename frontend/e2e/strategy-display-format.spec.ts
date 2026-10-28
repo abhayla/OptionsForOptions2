@@ -49,12 +49,10 @@ test('legs are named by contract, times are IST words, and no raw id or ISO time
     const rows = page.getByTestId('leg-row')
     const before = await rows.count()
     await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
-    await page.getByTestId('pick-type').selectOption('CE')
-    await expect(page.getByTestId('pick-strike')).toBeEnabled()
-    await expect(page.getByTestId('pick-strike').locator(`option[value="${strike}"]`)).toBeAttached()
-    await page.getByTestId('pick-strike').selectOption(strike)
-    await page.getByTestId('pick-action').selectOption(action)
-    await page.getByTestId('add-leg').click()
+    // D-C31: B / S on the strike table, then Done
+    const cell = page.locator(`[data-testid="strike-row"][data-strike="${strike}"] [data-testid="cell-ce"]`)
+    await cell.getByTestId(action === 'BUY' ? 'cell-buy' : 'cell-sell').click()
+    await page.getByTestId('picker-done').click()
     await expect(rows).toHaveCount(before + 1)
   }
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')

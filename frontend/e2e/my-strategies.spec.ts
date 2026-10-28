@@ -36,13 +36,11 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
     (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)
   await page.getByTestId('pick-expiry').selectOption(expiry)
-  await page.getByTestId('pick-type').selectOption('CE')
-  await expect(page.getByTestId('pick-strike')).toBeEnabled()
-  const strikes = page.getByTestId('pick-strike').locator('option:not([value=""])')
-  await page.getByTestId('pick-strike').selectOption(await strikes.nth(Math.floor((await strikes.count()) / 2)).getAttribute('value') as string)
-  await page.getByTestId('pick-action').selectOption('SELL')
-  await page.getByTestId('pick-lots').fill('1')
-  await page.getByTestId('add-leg').click()
+// D-C31: a leg is added only through B / S on the strike table and Done (the by-contract form is the Edit path only).
+  const strikeRows = page.getByTestId('strike-row')
+  await expect(strikeRows.first()).toBeVisible()
+  await strikeRows.nth(Math.floor((await strikeRows.count()) / 2)).getByTestId('cell-ce').getByTestId('cell-sell').click()
+  await page.getByTestId('picker-done').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
   await page.getByTestId('save-draft').click()
   await page.getByTestId('name-input').fill(NAME) // REQ-134 AC-1: the first Save asks for a name
