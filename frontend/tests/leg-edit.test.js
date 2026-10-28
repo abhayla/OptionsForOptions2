@@ -204,8 +204,9 @@ describe('LegList rows (screens 011, 012)', () => {
     await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
     expect(t(w, 'shape-name').text()).toContain('Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(1)
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('H') // W-192 UI-105: a 10 px "H" badge
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').attributes('aria-label')).toBe('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('Hedge') // GC-UI 3a D-A12: no visible chip; screen-reader text + the strike's tooltip
+    expect(row(w, 0).find('[data-testid="edit-leg"]').attributes('title')).toContain('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').classes()).toContain('sr-only')
     expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
     expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
   })
@@ -862,14 +863,14 @@ describe('W-192 ADR-195: with any leg unticked the label shows only the count, n
       expect(t(w, `${id}-reason`).text()).toBe(UNTICKED_CONTROL_REASON)
     }
     expect(t(w, 'shift-plus').attributes('disabled')).toBeUndefined()
-    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('some')
+    expect(t(w, 'tick-all').attributes('data-state')).toBe('some')
     // ticking every leg again restores the server's name, marks and controls
     await w.setProps({ legs: condorLegs() })
     expect(t(w, 'shape-name').text()).toContain('Short Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(2)
     expect(t(w, 'width-plus').attributes('disabled')).toBeUndefined()
     expect(t(w, 'hedge-plus').attributes('disabled')).toBeUndefined()
-    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('all')
+    expect(t(w, 'tick-all').attributes('data-state')).toBe('all')
     w.unmount()
   })
 })
@@ -882,7 +883,7 @@ describe('W-192 UI-104 (I-7): one leg row per leg that never wraps at the 480 px
     const lines = all(w, 'leg-row-line')
     expect(lines).toHaveLength(4)
     for (const line of lines) {
-      expect(line.classes()).toEqual(expect.arrayContaining(['grid', 'h-7', 'whitespace-nowrap'])) // one 28 px line, nothing wraps
+      expect(line.classes()).toEqual(expect.arrayContaining(['grid', 'h-9', 'whitespace-nowrap'])) // GC-UI 3a D-A09: one 36 px line, nothing wraps
       expect(line.attributes('style')).toContain(`${LEG_ROW_COLUMNS[0]}px ${LEG_ROW_COLUMNS[1]}px ${LEG_ROW_COLUMNS[2]}px minmax(${LEG_ROW_COLUMNS[3]}px, 1fr)`)
     }
     // the words that wrapped rows in the walkthrough are no longer visible row text (I-7): icons, a menu or screen-reader text
@@ -923,10 +924,12 @@ describe('W-192 Revision 1 (REQ-077 AC-1, AC-6, AC-7): a visible second line onl
     expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
     w.unmount()
   })
-  it('a moved price shows the marker with both prices as visible text (AC-6)', () => {
+  it('a moved price shows a dot on its price box with the AC-6 sentence in its tooltip, no second line (ADR-202 (2), GC-UI 3a D-A15)', () => {
     const legs = condorLegs()
     const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' } } })
-    expect(row(w, 0).find('[data-testid="leg-second-line"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')
+    expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
+    expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved-dot"]').exists()).toBe(true)
+    expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')
     w.unmount()
   })
   it('a leg saved without an entry shows the ADR-085 message and a Reprice button on the second line (AC-7)', async () => {

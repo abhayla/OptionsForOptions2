@@ -256,14 +256,16 @@ onMounted(refresh)
 
 <template>
   <section data-testid="save-draft-bar">
-    <div class="-mt-4 flex h-12 items-center gap-2 rounded-b-lg border border-line bg-surface px-3 text-sm" data-testid="action-row">
+    <!-- GC-UI 3a D-A22 (ADR-165): equal full-height buttons across the card - Add/Edit, Save (filled, in the slot Trade All
+         leaves), a square "..."; the strategy's name is the card title, so it is not repeated here -->
+    <div class="-mt-4 flex min-h-14 items-center gap-2 rounded-b-lg border border-line bg-surface px-3 py-2 text-sm" data-testid="action-row">
       <slot name="add-edit" />
       <button
-type="button" data-testid="save-draft" class="rounded bg-accent px-3 py-1 font-medium text-white disabled:opacity-50"
+type="button" data-testid="save-draft" class="h-10 flex-1 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
               :disabled="!canSave" @click="save">Save</button>
       <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button
-ref="menuButton" type="button" class="rounded border border-line px-2 py-1" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
+ref="menuButton" type="button" class="flex h-10 w-10 items-center justify-center rounded-lg border border-line" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
                 aria-label="More actions" data-testid="more-menu" :disabled="!hasMenu" @click="menuOpen ? closeMenu() : (menuOpen = true)"><Icon name="more" :size="16" /></button>
         <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button
@@ -278,7 +280,6 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
           <slot name="menu" :close="closeMenu" />
         </span>
       </span>
-      <span v-if="current" class="ml-auto truncate text-ink-muted" data-testid="current-name">{{ strategyLabel(current, `Draft ${current.id}`) }}</span>
       <span v-if="savedId" class="truncate" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>

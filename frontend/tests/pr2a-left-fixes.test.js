@@ -74,19 +74,21 @@ describe('W-192 review fixes: left-column labels are visible text, not a tooltip
     expect(row(w, 1).find('[data-testid="leg-typed-line"]').text()).toContain(YOUR_PRICE_LABEL)
   })
 
-  it('ADR-195: a disabled Width / Hedge shows its reason as visible text under the controls', () => {
+  it('ADR-195 + ADR-202 (1) (GC-UI 3a D-A19): a disabled Width / Hedge is greyed with its reason verbatim in its box tooltip, no visible line', () => {
     const props = { legs: condorLegs((i) => (i === 3 ? { included: false } : {})), hasReply: true, shapeName: 'x', controls: controlsFrom(rec.read) }
     const w = mount(LegList, { props })
     for (const id of ['width', 'hedge']) {
-      expect(t(w, `${id}-reason-visible`).text()).toContain(UNTICKED_CONTROL_REASON)
-      expect(t(w, `${id}-reason-visible`).classes()).toContain('text-xs')
+      expect(t(w, `${id}-reason-visible`).exists()).toBe(false)
+      expect(t(w, `${id}-stepper`).attributes('title')).toBe(UNTICKED_CONTROL_REASON)
+      expect(t(w, `${id}-reason`).text()).toBe(UNTICKED_CONTROL_REASON)
     }
   })
 
-  it('the tick-all state is an indicator with an aria-label, never an input', () => {
+  it('GC-UI 3a D-A07: the tick-all is a real checkbox carrying the state and an aria-label', () => {
     const w = mount(LegList, { props: { legs: condorLegs((i) => (i === 3 ? { included: false } : {})) } })
-    const el = t(w, 'tick-all-state')
-    expect(el.element.tagName).not.toBe('INPUT')
+    const el = t(w, 'tick-all')
+    expect(el.element.tagName).toBe('INPUT')
+    expect(el.element.indeterminate).toBe(true)
     expect(el.attributes('data-state')).toBe('some')
     expect(el.attributes('aria-label')).toMatch(/^Some legs selected/)
   })
