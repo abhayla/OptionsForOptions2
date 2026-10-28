@@ -116,7 +116,7 @@ describe('the request carries one edit and nothing computed', () => {
     expect(body.edit).toEqual({ control: 'step', index: 1, direction: -1 })
     expect(Object.keys(body).sort()).toEqual(['edit', 'legs', 'underlying'])
     expect(body.legs.map((l) => Object.keys(l).sort())).toEqual(Array(4).fill(
-      ['action', 'base_lots', 'captured_at', 'included', 'instrument_id', 'lots', 'planned_entry', 'typed']))
+      ['action', 'base_lots', 'captured_at', 'close_at', 'included', 'instrument_id', 'lots', 'planned_entry', 'typed'])) // close_at: ADR-197
   })
   it('an edit missing its fields, an unknown control or a leg with no id builds nothing (no guess)', () => {
     expect(buildEditRequest('NIFTY', legs, { control: 'step', index: 0 })).toBeNull()

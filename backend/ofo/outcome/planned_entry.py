@@ -11,6 +11,7 @@ gives ``None``. Standard library only; the route only calls this.
 """
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
@@ -23,6 +24,8 @@ from ofo.money import PAISE as _CENT
 class PlannedEntry:
     price: Decimal
     source: Literal["ltp", "mid"]
+    #: ADR-197: set by the capture outside market hours: the quote's own last-price time (the "Close, <time>" label)
+    close_at: datetime.datetime | None = None
 
 
 def planned_entry_of(quote: NormalizedQuote | None, *, market_closed: bool = False) -> PlannedEntry | None:

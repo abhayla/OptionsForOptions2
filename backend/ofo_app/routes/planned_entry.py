@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.outcome.planned_entry import planned_entry_of
+from ofo.outcome.planned_entry import PlannedEntry, planned_entry_of
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from ofo_app import live_market
@@ -102,9 +104,19 @@ def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
     snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
     closed = market_state(ctx, valuation).closed  # the ONE market-state answer (ADR-119), at the read's instant
-    priced = {i: planned_entry_of(snapshot.legs[i].quote, market_closed=closed)
+    priced = {i: _closed_label(planned_entry_of(snapshot.legs[i].quote, market_closed=closed), snapshot.legs[i].quote,
+                               closed)
               for i in ids if snapshot.legs[i].problem is None}
     return valuation, snapshot, priced
+
+
+def _closed_label(entry: PlannedEntry | None, quote: NormalizedQuote | None, closed: bool) -> PlannedEntry | None:
+    """ADR-197: the ONE place a capture learns it is the close. Outside market hours a priced entry carries the quote's
+    own last-price time (``close_at``); in market hours, or with no price, it is returned unchanged. Both the
+    planned-entry route and the leg-edit re-capture read entries from here (``_read``)."""
+    if entry is None or not closed or quote is None:
+        return entry
+    return dataclasses.replace(entry, close_at=quote.timestamp)
 
 
 async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
@@ -146,7 +158,6 @@ async def planned_entry(body: PlannedEntryIn,
     unpriced = [i for i, p in priced_by_id.items() if p is None]
     if unpriced and feed is not None:
         valuation, snapshot, priced_by_id = await hold_until_priced(feed, ctx, body.underlying, ids, unpriced)
-    closed = market_state(ctx, valuation).closed  # the same one market-state answer the capture read used
     entries = []
     for iid in ids:
         leg = snapshot.legs[iid]
@@ -159,9 +170,8 @@ async def planned_entry(body: PlannedEntryIn,
         if priced is None:
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
-            close_at = leg.quote.timestamp if closed and leg.quote is not None else None  # ADR-197: the close's time
             entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source,
-                                  close_at=close_at))
+                                  close_at=priced.close_at))  # ADR-197: set by _read's _closed_label only
     return PlannedEntriesOut.model_validate({"entries": entries, "answered_at": answered_at})
 
 

@@ -183,3 +183,32 @@ describe('ADR-197: an entry captured after hours is captioned as the close with 
     expect(emitted.at(-1)[0].close_at).toBe(QUOTE_AT)
   })
 })
+
+describe('ADR-197 round 2: the close label survives a leg edit and a draft link', () => {
+  const base = { instrument_id: 'NSE_FO:44002', action: 'SELL', lots: 1, planned_entry: '151.30', captured_at: '2026-10-08T18:55:36+05:30' }
+
+  it('a leg-edit request sends each leg\'s close_at back; the reply\'s close_at becomes the leg\'s', async () => {
+    const { buildEditRequest, applyEditReply } = await import('@/lib/legEdit')
+    const req = buildEditRequest('NIFTY', [{ ...base, close_at: QUOTE_AT }], { control: 'reset_prices' })
+    expect(req.legs[0].close_at).toBe(QUOTE_AT)
+    const inHours = buildEditRequest('NIFTY', [{ ...base }], { control: 'reset_prices' })
+    expect(inHours.legs[0].close_at).toBeNull()
+    const recaptured = '2026-10-08T15:29:59+05:30'
+    const after = applyEditReply([{ ...base, close_at: QUOTE_AT }], { legs: [{ ...base, captured_at: '2026-10-08T19:00:00+05:30', close_at: recaptured, price_source: 'captured' }] })
+    expect(after[0].close_at).toBe(recaptured)
+    const live = applyEditReply([{ ...base }], { legs: [{ ...base, close_at: null, price_source: 'captured' }] })
+    expect(live[0].close_at).toBeNull()
+  })
+
+  it('a draft link reopened later keeps the close label of each leg', async () => {
+    answers['POST /strategies/outcome'] = { state: 'NOT_CONNECTED', status_label: 'x', legs: [], underlying: 'NIFTY' }
+    answers['GET /api/market/indices'] = indices(true)
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify({ underlying: 'NIFTY', legs: [{ ...base, close_at: QUOTE_AT }] }) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true, LegPicker: true } } })
+    await flushPromises()
+    expect(w.text()).toContain('Close, 8 Oct 2026, 15:29:58 IST')
+    expect(w.text()).not.toContain('captured 18:55:36')
+  })
+})

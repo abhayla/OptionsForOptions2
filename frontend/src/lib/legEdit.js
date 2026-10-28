@@ -72,6 +72,7 @@ export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
       base_lots: l.base_lots ?? l.lots,
       planned_entry: l.planned_entry ?? null,
       captured_at: l.captured_at ?? null,
+      close_at: l.close_at ?? null, // ADR-197: sent back as is; the server keeps it on a leg it does not re-capture
       included: l.included !== false,
       typed: l.typed === true,
     })),
@@ -91,8 +92,8 @@ export function applyEditReply(prev, reply) {
       id: old.id ?? `edit-${i}`,
       underlying: old.underlying,
       instrument_id: r.instrument_id,
-      // ADR-197: the close label stays only on the same capture; a re-captured entry has no close time from this reply
-      close_at: same && r.captured_at === old.captured_at ? old.close_at ?? null : null,
+      // ADR-197: the close label of the entry, as the reply sent it
+      close_at: r.close_at ?? null, // the server's answer: kept, re-captured after hours, or none
       contract_id: r.contract_id ?? null, // the server's id for THIS contract (a stepped leg's new one); null = not savable
       lot_size: r.lot_size ?? null,
       symbol: same ? old.symbol ?? null : null,

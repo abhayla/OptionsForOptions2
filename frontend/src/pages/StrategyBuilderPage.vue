@@ -88,6 +88,7 @@ function legsFromQuery() {
     lots: l.lots,
     planned_entry: l.planned_entry,
     captured_at: l.captured_at ?? null,
+    close_at: typeof l.close_at === 'string' ? l.close_at : null, // ADR-197: a draft link keeps the close label
     source: null,
   }))
 }

@@ -1569,6 +1569,18 @@
             ],
             "title": "Captured At"
           },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
+          },
           "included": {
             "default": true,
             "title": "Included",
@@ -1650,6 +1662,18 @@
               }
             ],
             "title": "Captured At"
+          },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
           },
           "contract_id": {
             "anyOf": [
