@@ -536,3 +536,96 @@ async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_d
     async def work():
         return await _strategy_out(db, await store.confirm_version(db, user_ref, strategy_id, number))
     return await _run(db, work, form_status=409)
+
+
+# --- GC-UI step 5 (D-B40 / D-B41; REQ-091 AC-1..AC-6, ADR-203, F-64): the Strategy Chart's data ----------------------
+
+PRICE_HISTORY_HELD = "price_history_held"
+PriceHistoryState = Literal["available", "leg_not_listed", "no_future_candles", "all_gaps", "no_session",
+                            "kite_refused", "future_not_in_catalogue"]
+
+
+def require_price_history() -> None:
+    """REQ-091 AC-1 (SPEC CHANGE by ADR-203): the held flag ``strategy_price_history``; off -> 409, before any read."""
+    from ofo_app import held_switches  # noqa: PLC0415 - one reader of the held flags
+
+    if not held_switches.held_on(held_switches.STRATEGY_PRICE_HISTORY):
+        raise StrategyRefused(PRICE_HISTORY_HELD, Failure.CONFLICT)
+
+
+def get_history_opener() -> Any:
+    from ofo_app.strategy_price_history import kite_history_for  # noqa: PLC0415 - a Kite door loads only on use
+    return kite_history_for
+
+
+def get_future_finder() -> Any:
+    from ofo_app.strategy_price_history import nearest_future  # noqa: PLC0415
+    return nearest_future
+
+
+def get_history_now() -> datetime.datetime:
+    from ofo.timeutil import IST  # noqa: PLC0415
+    return datetime.datetime.now(IST)
+
+
+class PriceValueOut(ApiModel):
+    value: Money
+    display: CatalogueText
+
+
+class PricePointOut(ApiModel):
+    t: datetime.datetime
+    strategy: Optional[PriceValueOut]  # noqa: UP045 - None = a gap (a leg had no candle that minute, REQ-091 AC-4)
+    future: PriceValueOut
+
+
+class PriceHistoryOut(ApiModel):
+    available: bool
+    state: PriceHistoryState
+    reason: Optional[CatalogueText]  # noqa: UP045
+    source: CatalogueText
+    future_label: Optional[CatalogueText]  # noqa: UP045
+    as_of: Optional[datetime.datetime]  # noqa: UP045 - the newest point's time (ADR-015)
+    notes: list[CatalogueText]
+    points: list[PricePointOut]
+
+
+@router.get("/strategies/{strategy_id}/price-history", response_model=PriceHistoryOut,
+            dependencies=[Depends(require_price_history)])
+async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam each
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        opener: Annotated[Any, Depends(get_history_opener)], finder: Annotated[Any, Depends(get_future_finder)],
+        now: Annotated[datetime.datetime, Depends(get_history_now)],
+        invert: Annotated[bool, Query()] = False, days: Annotated[int, Query(ge=1, le=15)] = 10) -> PriceHistoryOut:
+    """The strategy's combined net price per unit per minute beside the index future (REQ-091 AC-2..AC-5). Another
+    user's strategy answers exactly as a missing one (store.load is owner-scoped). Prices only, no P&L (AC-6)."""
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+    from ofo.outcome import price_history as ph  # noqa: PLC0415
+
+    from ofo_app import catalogue_store  # noqa: PLC0415
+    from ofo_app import strategy_price_history as sph  # noqa: PLC0415
+
+    async def work():
+        stored = await store.load(db, user_ref, strategy_id)
+        found = await catalogue_store.load_contracts(db, stored.saved.contract_ids)
+        listed = []
+        for cid in stored.saved.contract_ids:
+            item = found[cid]
+            if isinstance(item, Exception):
+                raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
+            listed.append(item.listed)
+        definition = stored.saved.definition
+        legs = [sph.ChartLeg(leg.action, leg.quantity // lc.contract.lot_size)  # saved quantity is lots x lot size
+                for leg, lc in zip(definition.legs, listed, strict=True)]
+        return await sph.answer(db, legs, listed, definition.underlying, days=days, invert=invert, now=now,
+                                opener=opener, finder=finder)
+    ans = await _run(db, work, form_status=409)
+    chart = ans.chart
+    points = [] if chart is None or ans.state != "available" else [
+        PricePointOut(t=p.t, future=PriceValueOut(value=p.future, display=ph.future_display(p.future)),
+                      strategy=None if p.strategy is None else PriceValueOut(
+                          value=p.strategy, display=ph.strategy_display(p.strategy)))
+        for p in chart.points]
+    return PriceHistoryOut(available=ans.state == "available", state=ans.state, reason=ans.reason,
+                           source=render_explanation("price_history_source"), future_label=ans.future_label,
+                           as_of=None if not points else chart.as_of, notes=list(ans.notes), points=points)

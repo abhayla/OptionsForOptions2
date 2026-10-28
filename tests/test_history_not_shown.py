@@ -38,6 +38,10 @@ ALLOWED_IMPORTERS = frozenset({
     "ofo_app.history_finalize",     # the finaliser job entry point (python -m ofo_app.history_finalize)
     "ofo_app.history_store",        # PostgreSQL store, used by the finaliser
     "ofo_app.kite_history",         # Kite historical client, used by the finaliser
+    # ADR-203 (2) lifts the hold for the builder's Strategy Chart ONLY (REQ-091 AC-1 SPEC CHANGE), behind the held flag
+    # strategy_price_history; no other history screen is allowed.
+    "ofo.outcome.price_history",    # the chart's points from minute bars (pure)
+    "ofo_app.strategy_price_history",  # the chart's reads (KiteHistory) for GET /strategies/{id}/price-history
 })
 # frontend/src may request or import no history at all.
 ALLOWED_FRONTEND: frozenset[str] = frozenset()

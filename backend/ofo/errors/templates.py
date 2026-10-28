@@ -1011,6 +1011,11 @@ _READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Strikes are never placed from an old value, so none were placed.",
           "Loading a ready-made shape or a quick pick.",
           "Wait for the live data to return, then try again.", {"underlying": Underlying}),
+    # GC-UI step 5 (REQ-091 AC-1, ADR-203): the Strategy Chart's data route while its held flag is off
+    _gate("price_history_held", _UI, 104,
+          "The strategy chart is not available.",
+          "No price history was read.", "Opening the strategy chart.",
+          "Use the payoff chart and the P&L table instead."),
 )
 
 # --- W-148 (REQ-076 AC-1, AC-2): a refused leg edit (strike step, typed price). The whole edit is refused and nothing

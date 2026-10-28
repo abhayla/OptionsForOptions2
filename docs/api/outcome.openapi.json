@@ -1581,6 +1581,26 @@
             "type": "boolean",
             "title": "Nearest Spot"
           },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
           "estimated_now": {
             "anyOf": [
               {
@@ -1608,6 +1628,8 @@
           "level",
           "level_display",
           "nearest_spot",
+          "move_pct",
+          "move_pct_display",
           "estimated_now",
           "at_expiry"
         ],

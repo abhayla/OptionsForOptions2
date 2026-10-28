@@ -247,6 +247,7 @@ class PayoffTable:
     nearest_spot: Decimal | None  # the row highlighted; None when the answer has no live index price
     views: tuple[ScenarioValues, ...] = ()  # Estimated Now first, then At Expiry (the screen's column order)
     unavailable_reason: ExplanationText | None = None
+    spot: Decimal | None = None  # D-B26: the same spot ``nearest_spot`` is picked from; each row's move % uses it
 
 
 @dataclass(frozen=True)
@@ -669,7 +670,7 @@ def payoff_table(level_set: LevelSet, model: ModelInputs, step: Decimal | None, 
         else:
             views.append(scenario_values(table_set, model, v, rates=rates))
     nearest = None if spot is None or not levels else min(levels, key=lambda x: (abs(x - spot), x))
-    return PayoffTable(step, levels, nearest, tuple(views))
+    return PayoffTable(step, levels, nearest, tuple(views), spot=spot)
 
 
 def _other(view: View) -> View:

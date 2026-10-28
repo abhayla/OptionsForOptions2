@@ -422,6 +422,8 @@ class PayoffRowOut(ApiModel):
     level: Money
     level_display: CatalogueText
     nearest_spot: bool
+    move_pct: Money | None  # D-B26 / REQ-137 AC-2: (level - spot) x 100 / spot; None without a live index price
+    move_pct_display: CatalogueText | None  # "+2.1%" (signed, one decimal; a true zero "0.0%"), from the server
     estimated_now: PayoffCellOut | None  # None: that view is unavailable (its column carries the reason)
     at_expiry: PayoffCellOut | None
 
