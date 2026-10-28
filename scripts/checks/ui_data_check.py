@@ -58,6 +58,7 @@ CHARGE_RATES = {
     "stt_sell_rate": Decimal("0.0015"),
     "stt_exercise_rate": Decimal("0.0015"),
     "transaction_rate_nse_fo": Decimal("0.0003553"),
+    "transaction_rate_bse_fo": Decimal("0.000325"),  # migration 0012: "BSE 0.0325% of premium" (SENSEX options)
     "sebi_rate": Decimal("0.000001"),
     "stamp_buy_rate": Decimal("0.00003"),
     "gst_rate": Decimal("0.18"),
@@ -656,14 +657,16 @@ def round_trip_charges(legs, rates=CHARGE_RATES) -> dict:
     the total is the exact sum rounded UP to the paisa once (ADR-082 worked example "214.95956479500 rounded up";
     the run1 replies discriminate: condor exact 263.140937 -> 263.15, calendar 172.670651 -> 172.68, so ROUND_UP,
     not half-up). The parts returned here are EXACT; compare a shown part within HALF_PAISA of them."""
-    turnover = sell_side = buy_side = Decimal(0)
+    turnover = sell_side = buy_side = exch = Decimal(0)
     for leg in legs:
         v = D(leg["planned_entry"]) * D(leg["quantity"])
         turnover += 2 * v
         sell_side += v
         buy_side += v
+        # ADR-082 (1): exchange transaction charges per exchange - a BSE_FO contract (SENSEX) at the BSE rate
+        bse = str(leg.get("instrument_id", "")).startswith("BSE_FO:")
+        exch += rates["transaction_rate_bse_fo" if bse else "transaction_rate_nse_fo"] * 2 * v
     brokerage = rates["brokerage_per_order"] * 2 * len(legs)
-    exch = rates["transaction_rate_nse_fo"] * turnover
     sebi = rates["sebi_rate"] * turnover
     parts = {
         "brokerage": brokerage,
