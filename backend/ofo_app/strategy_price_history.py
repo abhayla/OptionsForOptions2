@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import logging
 import time
+import weakref
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +30,12 @@ from ofo.timeutil import IST
 
 log = logging.getLogger("ofo_app.strategy_price_history")
 CACHE_SECONDS = 300.0
+#: F7: the most (contract, window) entries kept; expired entries are dropped on every write, then the oldest
+CACHE_MAX_ENTRIES = 256
+#: F1: the whole Kite phase of one chart request ends by this deadline (below the browser's 60 s) -> broker_refused
+FETCH_DEADLINE_SECONDS = 45.0
+#: F1: at most this many minute-candle calls in flight at once in this process, whatever the number of chart requests
+MAX_CONCURRENT_FETCHES = 2
 MAX_DAYS = 15
 #: calendar days fetched for N trading days: weekends plus room for exchange holidays (one call: Kite's minute limit is
 #: 60 days per call, F-64)
@@ -44,8 +51,36 @@ HistoryOpener = Callable[[Any], Awaitable[ReaderFactory | None]]
 #: (db, underlying) -> the nearest not-yet-expired monthly future of the stored catalogue, or None
 FutureFinder = Callable[[Any, str], Awaitable[ListedContract | None]]
 Clock = Callable[[], float]
+_Key = tuple[str, datetime.date, datetime.date]
 
-_cache: dict[tuple[str, datetime.date, datetime.date], tuple[float, list[MinuteBar]]] = {}
+_cache: dict[_Key, tuple[float, list[MinuteBar]]] = {}
+#: F1 single-flight: the one in-flight fetch per (contract, window); a second request for the same key awaits it
+_in_flight: dict[_Key, asyncio.Task[list[MinuteBar]]] = {}
+_gates: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
+_joined = 0
+
+
+def joined_in_flight() -> int:
+    """How many times a request joined another request's in-flight fetch instead of calling Kite (for tests)."""
+    return _joined
+
+
+def _gate() -> asyncio.Semaphore:
+    """The process-wide cap, one semaphore per event loop (a semaphore is bound to the loop that first waits on it)."""
+    loop = asyncio.get_running_loop()
+    gate = _gates.get(loop)
+    if gate is None:
+        gate = _gates[loop] = asyncio.Semaphore(MAX_CONCURRENT_FETCHES)
+    return gate
+
+
+def _remember(key: _Key, at: float, bars: list[MinuteBar], now: float) -> None:
+    """F7: writes one entry, dropping every expired entry first, then the oldest beyond ``CACHE_MAX_ENTRIES``."""
+    for old in [k for k, (t, _) in _cache.items() if now - t >= CACHE_SECONDS]:
+        del _cache[old]
+    _cache[key] = (at, bars)
+    while len(_cache) > CACHE_MAX_ENTRIES:
+        del _cache[min(_cache, key=lambda k: _cache[k][0])]
 
 
 @dataclass(frozen=True)
@@ -88,19 +123,56 @@ async def nearest_future(db: Any, underlying: str) -> ListedContract | None:
 
 async def _bars(fetch: Fetcher, iid: str, start: datetime.datetime, end: datetime.datetime,
                 clock: Clock) -> list[MinuteBar]:
+    """One contract's bars: the cache, else the in-flight fetch of the same key, else ONE new fetch (single-flight),
+    run in a thread under the process-wide cap. The fetch task is shielded: a request that gives up (deadline) does not
+    cancel it for the others, and its answer still fills the cache."""
+    global _joined  # noqa: PLW0603 - a test counter
     key = (iid, start.date(), end.date())
     hit = _cache.get(key)
     if hit is not None and clock() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    bars = await asyncio.to_thread(fetch, iid, start, end)
-    _cache[key] = (clock(), bars)
-    return bars
+    task = _in_flight.get(key)
+    if task is not None:
+        _joined += 1
+        return await asyncio.shield(task)
+
+    async def run() -> list[MinuteBar]:
+        try:
+            async with _gate():
+                bars = await asyncio.to_thread(fetch, iid, start, end)
+            now = clock()
+            _remember(key, now, bars, now)
+            return bars
+        finally:
+            _in_flight.pop(key, None)  # same step as the cache write: no window with neither
+
+    task = asyncio.ensure_future(run())
+    task.add_done_callback(_retrieve)
+    _in_flight[key] = task
+    return await asyncio.shield(task)
 
 
-async def answer(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract], underlying: str, *,  # noqa: PLR0913 - one seam each
-                 days: int, invert: bool, now: datetime.datetime, reader: ReaderFactory | None,
-                 finder: FutureFinder, clock: Clock = time.monotonic) -> Answer:
-    """``reader`` was opened by the caller BEFORE anything touched ``db`` (``HistoryOpener``); None = no session."""
+def _retrieve(task: asyncio.Task[Any]) -> None:
+    """A fetch every waiter gave up on still has its error read (never 'exception was never retrieved')."""
+    if not task.cancelled():
+        task.exception()
+
+
+@dataclass(frozen=True)
+class Plan:
+    """Everything the Kite phase needs, read from the database BEFORE any vendor call (F1): the route commits and
+    releases its connection between ``prepare`` and ``fetch``."""
+
+    legs: tuple[Any, ...]
+    listed: tuple[ListedContract, ...]
+    future: ListedContract
+    future_label: Any
+    reader: ReaderFactory
+
+
+async def prepare(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract], underlying: str, *,
+                  reader: ReaderFactory | None, finder: FutureFinder) -> Plan | Answer:
+    """The DB phase: the future pick. Answers at once (no Kite call) when there is no future or no session."""
     future = await finder(db, underlying)
     if future is None:
         return Answer("future_not_in_catalogue", render_explanation("price_history_future_not_in_catalogue"))
@@ -108,17 +180,25 @@ async def answer(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract],
                                       expiry=future.contract.expiry)
     if reader is None:
         return Answer("no_session", render_explanation("price_history_no_session"), future_label)
-    fetch = reader([*listed, future])
+    return Plan(tuple(legs), tuple(listed), future, future_label, reader)
+
+
+async def fetch(plan: Plan, *, days: int, invert: bool, now: datetime.datetime,
+                clock: Clock = time.monotonic) -> Answer:
+    """The Kite phase: NO database handle here. The whole phase ends by ``FETCH_DEADLINE_SECONDS``."""
+    get = plan.reader([*plan.listed, plan.future])
     end = now.astimezone(IST)
     start = datetime.datetime.combine(end.date() - datetime.timedelta(days=_CALENDAR_SPAN[days]), datetime.time(9),
                                       tzinfo=IST)
+    ids = [instrument_id(lc) for lc in plan.listed] + [instrument_id(plan.future)]
     try:
-        leg_bars = [await _bars(fetch, instrument_id(lc), start, end, clock) for lc in listed]
-        future_bars = await _bars(fetch, instrument_id(future), start, end, clock)
-    except (CandleError, RuntimeError) as exc:  # CandleFetchError is a RuntimeError; the message carries no token
+        bars = await asyncio.wait_for(asyncio.gather(*(_bars(get, i, start, end, clock) for i in ids)),
+                                      FETCH_DEADLINE_SECONDS)
+    except (CandleError, RuntimeError, TimeoutError) as exc:  # CandleFetchError is a RuntimeError; no token in it
         log.warning("strategy price history: kite refused: %s", type(exc).__name__)
-        return Answer("broker_refused", render_explanation("price_history_kite_refused"), future_label)
-    chart = ph.build_chart(legs, leg_bars, future_bars, leg_labels=[label(lc) for lc in listed], days=days,
+        return Answer("broker_refused", render_explanation("price_history_kite_refused"), plan.future_label)
+    leg_bars, future_bars = bars[:-1], bars[-1]
+    chart = ph.build_chart(plan.legs, leg_bars, future_bars, leg_labels=[label(lc) for lc in plan.listed], days=days,
                            invert=invert)
     notes = tuple(_note(n) for n in chart.notes)
     if chart.state is ph.State.LEG_NOT_LISTED:
@@ -129,7 +209,18 @@ async def answer(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract],
         reason = render_explanation("price_history_all_gaps")
     else:
         reason = None
-    return Answer(chart.state.value, reason, future_label, chart, notes)
+    return Answer(chart.state.value, reason, plan.future_label, chart, notes)
+
+
+async def answer(db: Any, legs: Sequence[Any], listed: Sequence[ListedContract], underlying: str, *,  # noqa: PLR0913 - one seam each
+                 days: int, invert: bool, now: datetime.datetime, reader: ReaderFactory | None,
+                 finder: FutureFinder, clock: Clock = time.monotonic) -> Answer:
+    """``prepare`` then ``fetch`` with no commit between: only for a caller holding no pooled connection. The route
+    does NOT use this; it commits and releases its connection between the two phases (F1)."""
+    plan = await prepare(db, legs, listed, underlying, reader=reader, finder=finder)
+    if isinstance(plan, Answer):
+        return plan
+    return await fetch(plan, days=days, invert=invert, now=now, clock=clock)
 
 
 def _note(note: tuple[Any, ...]) -> Any:

@@ -1806,5 +1806,9 @@
   "explanation:price_history_future_not_in_catalogue": {
     "sha256": "7af90edc8a06603d8091d549d959998216381fdc6da95a5665015f25200499ab",
     "reviewed": "pending owner read"
+  },
+  "explanation:price_history_quantity_not_whole_lots": {
+    "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
+    "reviewed": "pending owner read"
   }
 }

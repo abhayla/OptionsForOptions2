@@ -1245,6 +1245,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Zerodha did not return the price history. Try again later."),
     ExplanationTemplate("price_history_future_not_in_catalogue", "values_seen",
                         "No index future is listed in the stored instrument list."),
+    # GC-UI step 9 F4: a saved leg's quantity is not a whole number of lots at today's lot size (lot size changed)
+    ExplanationTemplate("price_history_quantity_not_whole_lots", "values_seen",
+                        "{leg}: the saved quantity is not a whole number of lots at today's lot size.",
+                        {"leg": LegRef}),
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),

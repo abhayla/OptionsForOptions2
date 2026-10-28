@@ -11,8 +11,11 @@ Real PostgreSQL only (ADR-048); every test rolls back.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import io
+import os
+import threading
 from decimal import Decimal
 from http import HTTPStatus
 from pathlib import Path
@@ -30,7 +33,7 @@ from ofo_app.kite_history import KiteHistory
 from ofo_app.live_market import OWNER_REF
 from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import (
     WING,
@@ -334,3 +337,120 @@ async def test_s5_1_a_token_store_error_answers_no_session_with_its_code_never_5
     assert ended is None and real_kite_transport == []
     assert "store refused: token_read_needs_fresh_connection" in caplog.text  # the reason, by code only
     assert SECRET not in resp.text and SECRET not in caplog.text
+
+
+# ---- F1 (GC-UI step 9 review round 1): no request DB connection is held while Kite answers --------------------------
+# A REAL pooled engine (the API's shape: QueuePool, overflow 0) runs the production route; Kite's transport is a fake
+# that BLOCKS until the test releases it. While it blocks, the pool must show 0 connections checked out and another
+# DB request on the same pool must complete. Before the fix the route kept its connection until every call returned.
+
+def _pooled(size: int):
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is unset")
+    return create_async_engine(url, pool_size=size, max_overflow=0, pool_timeout=5,
+                               connect_args={"server_settings": {"jit": "off"}})
+
+
+def _blocking_transport(started, release, seen: list[str]):
+    answer = _standard([])
+
+    def fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:
+        seen.append(url)
+        started.set()
+        release.wait(20)
+        return answer(url, headers)
+    return fetch
+
+
+@pytest.fixture
+def blocking_kite(monkeypatch):
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())
+    started, release, seen = threading.Event(), threading.Event(), []
+    monkeypatch.setattr(kite_history, "urllib_transport", _blocking_transport(started, release, seen))
+    yield started, release, seen
+    release.set()
+
+
+async def _seeded(app_engine, admin_engine, run):
+    user = _user()
+    cids, session_id = [], None
+    try:
+        sid, cids, session_id = await _committed_seed(app_engine, user, session=SECRET)
+        return await run(user, sid)
+    finally:
+        await _remove_seed(admin_engine, user, cids, session_id)
+
+
+def _pooled_app(pooled, user):
+    app = _app(async_sessionmaker(pooled, class_=AsyncSession, expire_on_commit=False), user)
+    app.dependency_overrides[strategy_routes.get_history_now] = lambda: NOW
+    return app
+
+
+async def test_f1_no_connection_is_held_while_kite_answers(app_engine, admin_engine, blocking_kite):
+    started, release, seen = blocking_kite
+    pooled = _pooled(1)  # ONE connection: a held connection would starve every other request
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            chart = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history"))
+            assert await asyncio.to_thread(started.wait, 15), "Kite was never called"
+            held = pooled.pool.checkedout()
+            async with pooled.connect() as conn:  # another request's DB work on the same one-connection pool
+                other = await asyncio.wait_for(conn.scalar(text("SELECT 1")), 4)
+            release.set()
+            resp = await chart
+        return held, other, resp
+    try:
+        held, other, resp = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    assert held == 0, f"{held} connection(s) held while Kite answers"
+    assert other == 1
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.json()["state"] == "available" and len(seen) == 5  # noqa: PLR2004
+
+
+async def test_f1_two_identical_requests_share_one_fetch_per_contract(app_engine, admin_engine, blocking_kite):
+    started, release, seen = blocking_kite
+    pooled = _pooled(2)
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            first = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history"))
+            assert await asyncio.to_thread(started.wait, 15)
+            second = asyncio.create_task(ac.get(f"/strategies/{sid}/price-history?invert=true"))
+            for _ in range(200):  # until the second request has joined the first's in-flight fetch
+                if sph.joined_in_flight():
+                    break
+                await asyncio.sleep(0.02)
+            release.set()
+            return await first, await second
+    try:
+        one, two = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    assert one.json()["state"] == two.json()["state"] == "available"
+    assert sph.joined_in_flight() >= 1
+    assert len(seen) == 5 and len(set(seen)) == 5  # noqa: PLR2004 - 4 legs + the future, each fetched ONCE
+
+
+async def test_f1_a_fetch_past_the_deadline_answers_broker_refused(app_engine, admin_engine, blocking_kite,
+                                                                   monkeypatch):
+    _, _, seen = blocking_kite
+    monkeypatch.setattr(sph, "FETCH_DEADLINE_SECONDS", 0.5)
+    pooled = _pooled(1)
+
+    async def run(user, sid):
+        async with _client(_pooled_app(pooled, user)) as ac:
+            return await ac.get(f"/strategies/{sid}/price-history")
+    try:
+        resp = await _seeded(app_engine, admin_engine, run)
+    finally:
+        await pooled.dispose()
+    body = resp.json()
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert (body["state"], body["reason"]) == ("broker_refused",
+                                               "Zerodha did not return the price history. Try again later.")
+    assert seen  # Kite was called; the deadline, not a refusal, ended it
