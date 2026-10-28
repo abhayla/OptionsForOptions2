@@ -15,7 +15,8 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
 - **AC-6, Greeks are POSITION-level, one unit throughout the table** (round-2 fix, verifier finding: leg cells were
   per-unit while the TOTAL row was position-level — two units in one column is the defect). A leg's Delta/Gamma/
   Theta/Vega cell is the platform Black-Scholes per-unit Greek x quantity x sign (+1 BUY / -1 SELL) — the same
-  sign convention as ``position_pnl``. The per-unit Black-Scholes value is kept as ``Cell.per_unit``, SIGNED by the leg's direction since GC-UI F-2 (per_unit x quantity == value), a
+  sign convention as ``position_pnl``. The per-unit Black-Scholes value is kept as ``Cell.per_unit``, SIGNED by
+  the leg's direction since GC-UI F-2 (per_unit x quantity == value), a
   secondary field for Advanced display. A futures leg has no Black-Scholes Greeks, but it is not excluded from the
   total (the round-2 bug): its per-unit Delta is 1 (a future's linear payoff has slope 1), Gamma/Theta/Vega 0, so a
   SELL 75 x FUT leg's Delta cell and its share of TOTAL Delta are both -75. Its IV cell stays "—" (a futures leg
