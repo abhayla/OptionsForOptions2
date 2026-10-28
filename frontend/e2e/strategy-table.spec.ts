@@ -37,10 +37,6 @@ async function condorDraft(request: APIRequestContext) {
   return { underlying: 'NIFTY', legs: probe.legs.map((l, i) => ({ ...l, planned_entry: out.legs[i].ltp })) }
 }
 
-// the page groups money with Indian separators (groupMoney, REQ-081); the spec applies the same rule to the API text, importing nothing from the app
-const grouped = (t: string) =>
-  t.replace(/(?<![\d.,])(\d{4,})(?![\d,])/g, (w) => `${w.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${w.slice(-3)}`)
-
 function builderUrl(base: string, draft: unknown) {
   const q = new URLSearchParams({ draft: JSON.stringify(draft) })
   return `${base}/strategy/builder?${q.toString()}`
@@ -85,21 +81,33 @@ test('every number on the screen equals the API response text for the condor', a
   expect(api.summary.max_profit).toBe('4539.65')
   expect(api.summary.max_loss).toBe('8460.35')
   expect(api.summary.breakevens).toEqual(['22326.85', '22873.15'])
-  await expect(page.getByTestId('max-profit')).toHaveText(grouped(api.summary.max_profit))
-  await expect(page.getByTestId('max-loss')).toHaveText(grouped(api.summary.max_loss))
-  await expect(page.getByTestId('breakevens')).toHaveText(grouped(api.summary.breakevens.join(', ')))
+  // GC-UI step 3b (REQ-152 AC-1..AC-3): the figures are the server's display strings; the exact values are in each "?"
+  await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit_display)
+  await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss_display)
+  await expect(page.getByTestId('breakevens')).toHaveText(api.summary.breakevens_display.join(', '))
   await expect(page.getByTestId('underlying-spot')).toHaveText(api.spot_level) // W-193: the yellow level card is gone (UI-120)
-  await expect(page.getByTestId('sum-lose')).toHaveAttribute('data-full', api.summary.what_can_i_lose) // the card shows the first sentence until More (REQ-034 AC-7)
-  if (await page.getByTestId('sum-lose-more').count()) await page.getByTestId('sum-lose-more').click()
-  await expect(page.getByTestId('sum-lose')).toContainText(grouped(api.summary.what_can_i_lose))
-  await expect(page.getByTestId('sum-make')).toHaveAttribute('data-full', api.summary.what_can_i_make) // the card shows the first sentence until More (REQ-034 AC-7)
-  if (await page.getByTestId('sum-make-more').count()) await page.getByTestId('sum-make-more').click()
-  await expect(page.getByTestId('sum-make')).toContainText(grouped(api.summary.what_can_i_make))
-  await expect(page.getByTestId('sum-make')).toContainText('4,539.65')
-  await expect(page.getByTestId('sum-lose')).toContainText('8,460.35')
-  await expect(page.getByTestId('sum-lose')).toContainText('215.10')
-  await expect(page.getByTestId('sum-start')).toContainText('22,326.85')
-  await expect(page.getByTestId('sum-start')).toContainText('22,873.15')
+  // REQ-034 AC-7 as changed by ADR-204: each plain sentence is the first line of its figure's "?", words unchanged
+  const hintLines = async (fig: string) => {
+    const hint = page.locator(`[data-testid="figure-hint"][data-figure="${fig}"]`)
+    await hint.getByTestId('figure-hint-mark').click()
+    const lines = await hint.getByTestId('figure-hint-line').allTextContents()
+    await hint.getByTestId('figure-hint-mark').click()
+    return lines
+  }
+  const lose = await hintLines('max_loss')
+  expect(lose[0]).toBe(api.summary.what_can_i_lose)
+  expect(lose).toContain(`Exact value: ${api.summary.max_loss}`)
+  const make = await hintLines('max_profit')
+  expect(make[0]).toBe(api.summary.what_can_i_make)
+  expect(make).toContain(`Exact value: ${api.summary.max_profit}`)
+  const start = await hintLines('breakeven_expiry')
+  expect(start[0]).toBe(api.summary.where_do_i_start_losing)
+  // the sentences still carry the condor's figures, the charges 215.10 included (ADR-082 (2))
+  expect(make[0]).toContain('4,539.65')
+  expect(lose[0]).toContain('8,460.35')
+  expect(lose[0]).toContain('215.10')
+  expect(start[0]).toContain('22,326.85')
+  expect(start[0]).toContain('22,873.15')
 
   // 4. the chart's end labels are the API's first and last payoff levels (on the chart card's Payoff tab)
   await page.getByTestId('tab-payoff').click()
