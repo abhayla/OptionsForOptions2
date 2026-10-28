@@ -208,6 +208,13 @@ need market hours (09:15-15:30 IST) and my cached Kite token; never press an ord
 - PARKED: the ADR-197 close label on a SAVED strategy reopened later (needs a migration: 0011 / 0024 allow only fixed
   leg keys; migrations need draft-PR CI under ADR-191 (2)); after two fix rounds it ships listed. The screen then reads
   "captured <time>" instead of "Close, <date>, <time> IST" - the numbers are right.
+- Local Playwright (2026-10-28 ~07:00 IST, db_run_fresh throwaway DB, plain API 8000 + replay API 8001, previews 4173-4175,
+  the CI env keys loaded from the main .env, never printed): builder specs 78 passed / 8 skipped / 2 failed -> the 2 were
+  one stale assertion (leg-picker.spec.ts:57 pinned raw "2026-10-13", REQ-148 AC-2 makes it "13 Oct"), fixed e7d82f4d,
+  re-run 8/8. Whole suite: 264 passed / 20 skipped / 6 failed = health.spec (database: ok), strategy-table.spec:85
+  (max profit 4754.75 vs 4539.65, i.e. no charges) and leg-picker.spec:68 under full-suite load; the first two fail
+  IDENTICALLY on main (f27e7b54) in the same local set-up (no pinned catalogue date / seeded data as CI has), and
+  leg-picker passed alone. Branch-attributable e2e failures: 0. CI decides the rest.
 - NEXT: after this PR merges, GC-B2 (docs/process/goal-contracts-builder-phase-2026-10-27.md), owner sets it as /goal.
 
 Deferred issues to file with the PR (gh_issue.py app ... --stage):
