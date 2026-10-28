@@ -32,8 +32,17 @@ from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from test_strategy_followups import _ConnMaker
-from test_strategy_store import (WING, _app, _client, _fixture_rows, _ids, _remove_own_rows, _saved_in, _user,
-                                 _with_draft)
+from test_strategy_store import (
+    WING,
+    _app,
+    _client,
+    _fixture_rows,
+    _ids,
+    _remove_own_rows,
+    _saved_in,
+    _user,
+    _with_draft,
+)
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_history"
 LEG_BODY = (FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8")
