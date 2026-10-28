@@ -1,0 +1,197 @@
+{
+ "state": "LIVE",
+ "reason": null,
+ "underlying": "NIFTY",
+ "spot": "22698.85",
+ "futures": [
+  {
+   "expiry": "2026-11-23",
+   "instrument_id": "NSE_FO:61471",
+   "lot_size": 65,
+   "ltp": null,
+   "health": null,
+   "ltp_reason": "NO_QUOTE"
+  },
+  {
+   "expiry": "2026-12-29",
+   "instrument_id": "NSE_FO:58875",
+   "lot_size": 65,
+   "ltp": null,
+   "health": null,
+   "ltp_reason": "NO_QUOTE"
+  },
+  {
+   "expiry": "2027-01-25",
+   "instrument_id": "NSE_FO:54749",
+   "lot_size": 65,
+   "ltp": null,
+   "health": null,
+   "ltp_reason": "NO_QUOTE"
+  }
+ ],
+ "forwards": [
+  {
+   "expiry": "2026-11-03",
+   "forward": "22722.87",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2026-11-09",
+   "forward": "22747.16",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2026-11-17",
+   "forward": "22779.59",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2026-11-23",
+   "forward": "22803.94",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2026-12-01",
+   "forward": "22836.45",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2026-12-29",
+   "forward": "22950.61",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2027-01-25",
+   "forward": "23061.22",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2027-03-30",
+   "forward": "23325.56",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2027-06-29",
+   "forward": "23706.64",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2027-09-28",
+   "forward": "24093.95",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2027-12-28",
+   "forward": "24487.59",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2028-06-27",
+   "forward": "25294.25",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2028-12-26",
+   "forward": "26127.49",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2029-06-26",
+   "forward": "26988.18",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2029-12-24",
+   "forward": "27872.26",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2030-06-25",
+   "forward": "28795.56",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2030-12-31",
+   "forward": "29781.24",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  },
+  {
+   "expiry": "2031-06-24",
+   "forward": "30723.97",
+   "source": "spot_fallback",
+   "label": "estimated from spot",
+   "strikes_used": 0,
+   "reason": null,
+   "spot_health": "stale"
+  }
+ ],
+ "answered_at": "2026-10-28T16:58:49.550206+05:30"
+}

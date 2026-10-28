@@ -51,6 +51,19 @@ def verdicts(rep):
     return {f.name: f.verdict for f in rep.figures}
 
 
+def is_display_row(name):
+    return "display" in name and "= per_unit" not in name
+
+
+def exact_counts(rep):
+    """Counts without the display-string rows: the older recorded fixtures predate the server's display keys."""
+    c = {u.MATCH: 0, u.MISMATCH: 0, u.NOT_CHECKABLE: 0}
+    for f in rep.figures:
+        if not is_display_row(f.name):
+            c[f.verdict] += 1
+    return c
+
+
 # ---------------------------------------------------------------- maths
 
 
@@ -296,8 +309,8 @@ def test_checker_imports_nothing_from_the_app():
 
 def test_real_reply_baseline_all_match():
     rep = run(*fixture())
-    c = rep.counts()
-    assert c[u.MISMATCH] == 0, [f for f in rep.figures if f.verdict == u.MISMATCH]
+    c = exact_counts(rep)
+    assert c[u.MISMATCH] == 0, [f for f in rep.figures if f.verdict == u.MISMATCH and not is_display_row(f.name)]
     assert c[u.MATCH] > 100
 
 
@@ -335,7 +348,7 @@ def test_tamper_expiry_payoff_point_flagged():
     p["pnl"] = str(Decimal(p["pnl"]) - Decimal("0.01"))
     tam = verdicts(run(est, atx2, b, a, f))
     assert tam[f"[at_expiry] payoff @{p['level']}"] == u.MISMATCH
-    assert sum(v == u.MISMATCH for v in tam.values()) == 1
+    assert sum(v == u.MISMATCH for k, v in tam.items() if not is_display_row(k)) == 1
 
 
 def test_estimated_now_uses_the_parity_q():
@@ -430,7 +443,7 @@ def test_no_chain_for_an_expiry_makes_model_figures_not_checkable():
     rep = run(est, atx, {}, {}, f)
     v = verdicts(rep)
     assert v["model figures (IV, Greeks, Estimated Now)"] == u.NOT_CHECKABLE
-    assert rep.counts()[u.MISMATCH] == 0
+    assert exact_counts(rep)[u.MISMATCH] == 0
 
 
 # ---------------------------------------------------------------- GC-UI F-2: per unit carries the leg sign
@@ -479,3 +492,159 @@ def test_f2_total_row_and_null_per_unit_are_not_compared():
     reply["table"]["rows"][1]["cells"]["delta"]["per_unit"] = None
     rep = _sign_check(reply)
     assert not [f for f in rep.figures if "TOTAL" in f.name or "leg2 delta" in f.name]
+
+
+# ---------------------------------------------------------------- display strings (GC-UI checker, REQ-152/153/145)
+
+M = "\N{MINUS SIGN}"  # U+2212, the server's minus on summary money and breakevens
+DISP = FIX / "display_s54"  # REAL live s54 reply, funds redacted; summary display keys as the HEAD serializer mints
+
+
+def _disp():
+    return u.load_replay(DISP)
+
+
+def _disp_rows(rep):
+    return {f.name: f for f in rep.figures if "display" in f.name}
+
+
+def test_d1_real_reply_has_a_verdict_row_for_every_display_string_and_all_match():
+    est, atx, before, after, fut = _disp()
+    rep = run(est, atx, before, after, fut)
+    rows = _disp_rows(rep)
+    assert rows["[estimated_now] summary.max_profit_display"].ours == "+7,152"
+    assert rows["[estimated_now] summary.max_profit_display"].independent == "+7,152"
+    for name in (
+        "summary.max_loss_display",
+        "summary.time_value_display",
+        "summary.intrinsic_value_display",
+        "summary.breakevens_display[0]",
+        "summary.net_premium.amount_display",
+        "margin.needed_display",
+        "margin.broker_needed_display",
+        "margin.available_display",
+        "leg1 iv display",
+        "leg1 delta display",
+        "leg1 gamma per_unit_display",
+        "TOTAL theta display",
+    ):
+        assert any(n.endswith(name) for n in rows), name
+    bad = [f for f in rows.values() if f.verdict != u.MATCH]
+    assert not bad, [(f.name, f.ours, f.independent) for f in bad]
+    assert len(rows) >= 2 * 25  # per view: 4 summary + breakeven + net + 3 margin + 2 legs x 9 + 4 TOTAL greeks
+
+
+def test_d2_one_character_changed_is_flagged_alone():
+    est, atx, before, after, fut = _disp()
+    base = verdicts(run(est, atx, before, after, fut))
+    bad = copy.deepcopy(est)
+    assert bad["summary"]["max_profit_display"] == "+7,152"
+    bad["summary"]["max_profit_display"] = "+7,153"
+    now = verdicts(run(bad, atx, before, after, fut))
+    changed = {k for k in now if now[k] != base.get(k)}
+    assert changed == {"[estimated_now] summary.max_profit_display"}
+    assert now["[estimated_now] summary.max_profit_display"] == u.MISMATCH
+
+
+@pytest.mark.parametrize(
+    ("value", "signed", "text"),
+    [
+        ("7152.21", True, "+7,152"),
+        ("-5847.79", True, M + "5,848"),
+        ("189000", False, "1,89,000"),  # Indian grouping
+        ("6024.50", True, "+6,025"),  # half-up, not half-even
+        ("-104.50", True, M + "105"),
+        ("0", True, "0"),  # a true zero: no sign
+        ("-0.40", True, "0"),  # rounds to zero: no sign, no "-0"
+        ("0.40", True, "0"),
+        ("5707.00", False, "5,707"),
+        ("12345678", True, "+1,23,45,678"),
+    ],
+)
+def test_d3_whole_rupee_rule(value, signed, text):
+    assert u.display_whole(Decimal(value), signed=signed) == text
+
+
+@pytest.mark.parametrize(
+    ("level", "spot", "text"),
+    [
+        ("22400", "22712", f"22,400 ({M}1.4%)"),
+        ("23000", "22712", "23,000 (+1.3%)"),
+        ("22687.8", "22698.85", "22,688 (0.0%)"),  # rounds to 0.0: no sign
+        ("20010", "20000", "20,010 (+0.1%)"),  # exactly 0.05: half-up gives 0.1 (half-even would give 0.0)
+        ("19990", "20000", f"19,990 ({M}0.1%)"),
+        ("22688", None, "22,688"),  # no usable spot: the level alone
+        ("22688", "0", "22,688"),
+    ],
+)
+def test_d4_breakeven_rule(level, spot, text):
+    assert u.display_breakeven(Decimal(level), None if spot is None else Decimal(spot)) == text
+
+
+@pytest.mark.parametrize(
+    ("kind", "value", "text"),
+    [
+        ("iv", "0.183667", "18.37%"),  # REQ-145 AC-3
+        ("iv", "0.160347", "16.03%"),
+        ("iv", "0.14765", "14.77%"),  # tie at the 3rd dp: half-up
+        ("delta", "40.0974", "40.10"),
+        ("delta", "-28.0536", "-28.05"),
+        ("theta", "-0.0004", "0.00"),  # never "-0.00"
+        ("gamma", "0.0580", "0.0580"),
+        ("vega", "0.125", "0.13"),  # half-up
+    ],
+)
+def test_d5_iv_and_greek_rule(kind, value, text):
+    assert u.display_cell(kind, Decimal(value)) == text
+
+
+def _verdict(shown, exact, expected):
+    return u.check_text(u.Report("t"), "x", shown, exact, expected).verdict
+
+
+def test_d6_answer_states():
+    assert _verdict("+7,152", Decimal("7152.21"), "+7,152") == u.MATCH  # present
+    assert _verdict(None, None, None) == u.MATCH  # null text, null exact
+    assert _verdict("—", None, None) == u.MATCH  # the dash a cell prints for no value
+    assert _verdict(None, Decimal("7152.21"), "+7,152") == u.MISMATCH  # text missing while the exact exists
+    assert _verdict("+7,152", None, None) == u.MISMATCH  # text where there is no figure
+    assert _verdict("0", Decimal("0"), "0") == u.MATCH  # zero
+    assert _verdict("+0", Decimal("0"), "0") == u.MISMATCH  # zero with a sign
+
+
+def test_d7_null_text_with_exact_present_is_flagged_in_a_reply():
+    est, atx, before, after, fut = _disp()
+    bad = copy.deepcopy(est)
+    bad["summary"]["net_premium"]["amount_display"] = None
+    bad["table"]["rows"][0]["cells"]["iv"]["display"] = None
+    now = verdicts(run(bad, atx, before, after, fut))
+    base = verdicts(run(est, atx, before, after, fut))
+    assert {k for k in now if now[k] != base.get(k)} == {
+        "[estimated_now] summary.net_premium.amount_display",
+        "[estimated_now] leg1 iv display",
+    }
+
+
+def test_d8_per_unit_display_and_total_row_ties():
+    est, atx, before, after, fut = _disp()
+    bad = copy.deepcopy(est)
+    bad["table"]["rows"][1]["cells"]["theta"]["per_unit_display"] = "15.73"  # exact 15.7355 shows 15.74
+    now = verdicts(run(bad, atx, before, after, fut))
+    assert now["[estimated_now] leg2 theta per_unit_display"] == u.MISMATCH
+    # a 4 dp position value on the half step may be a rounding either side of the server's unrounded figure
+    tie = copy.deepcopy(est)
+    cell = tie["table"]["rows"][-1]["cells"]["delta"]
+    cell["value"], cell["display"] = "12.0450", "12.04"
+    ok = verdicts(run(tie, atx, before, after, fut))
+    assert ok["[estimated_now] TOTAL delta display"] == u.MATCH
+
+
+def test_d9_real_sensex_bull_put_spread_minus_zero_and_negative_value_all_match():
+    est, atx, before, after, fut = u.load_replay(FIX / "display_sensex_bps")
+    rows = _disp_rows(run(est, atx, before, after, fut))
+    shown = {k: f.ours for k, f in rows.items() if k.startswith("[estimated_now] summary.")}
+    assert shown["[estimated_now] summary.max_loss_display"] == M + "2,530"
+    assert shown["[estimated_now] summary.intrinsic_value_display"] == "0"  # a true zero: no sign
+    assert shown["[estimated_now] summary.time_value_display"] == M + "1,586"
+    bad = [f.name for f in rows.values() if f.verdict != u.MATCH]
+    assert not bad, bad
