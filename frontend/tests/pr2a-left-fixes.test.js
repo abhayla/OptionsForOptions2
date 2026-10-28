@@ -132,7 +132,11 @@ describe('W-192 review fixes: a closed menu returns focus to its trigger; an out
       expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
       expect(document.activeElement).toBe(trigger.element)
     }
-    await trigger.trigger('click'); await t(w, 'rename-open').trigger('click'); await flushPromises(); check()
+    // GC-UI 6b D-C16: Rename opens the modal, so focus goes to the name field (not the trigger); Cancel closes it
+    await trigger.trigger('click'); await t(w, 'rename-open').trigger('click'); await flushPromises()
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    expect(document.activeElement).toBe(t(w, 'name-input').element)
+    await t(w, 'name-cancel').trigger('click'); await flushPromises()
     document.activeElement.blur()
     await trigger.trigger('click'); await trigger.trigger('keydown', { key: 'Escape' }); await flushPromises(); check()
     document.activeElement.blur()

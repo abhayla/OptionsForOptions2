@@ -602,7 +602,7 @@ const pricesStamp = computed(() => {
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
           <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
-          <template #tracked="{ active }"><PaperStrategies v-if="active" /></template>
+          <template #tracked="{ active }"><PaperStrategies v-if="active" compact /></template>
         </SaveDraftBar>
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->

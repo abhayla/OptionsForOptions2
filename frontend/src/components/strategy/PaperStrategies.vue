@@ -10,6 +10,23 @@
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
     <p v-else-if="!items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
+    <!-- GC-UI 6b D-C14 (ADR-201 (2); S-118): the builder's Paper tab is a compact list - name, legs count, the server's paper total
+         (a dash and the reason when there is none), a link to Positions > Paper for that strategy. The full cards stay on Positions. -->
+    <ul v-else-if="compact" class="mt-2" data-testid="paper-compact">
+      <li v-for="g in items" :key="g.id" class="border-b border-line py-2" data-testid="paper-compact-row" :data-strategy="g.id">
+        <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
+        <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
+            <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ g.legs.length }} {{ g.legs.length === 1 ? 'leg' : 'legs' }}</span>
+          </span>
+          <span class="shrink-0 text-right">
+            <span class="block font-semibold" data-testid="paper-total">{{ g.total ?? '-' }}</span>
+            <span v-if="g.total === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
+          </span>
+        </RouterLink>
+      </li>
+    </ul>
     <template v-else>
       <div v-for="g in items" :key="g.id" class="mt-3 rounded-lg border border-line p-3" data-testid="paper-group" :data-strategy="g.id">
         <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
@@ -65,7 +82,9 @@ import { readTrackingItem } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { expiryWithDays, strikeLabel } from '@/lib/displayFormat'
 
-const BANNER = 'Paper trades - not real money'
+defineProps({ compact: { type: Boolean, default: false } })
+const NO_TOTAL = 'No paper total yet: prices are not live'
+const BANNER ='Paper trades - not real money'
 const EMPTY = 'No paper strategies yet. Save a strategy in the builder, then press Start tracking.'
 const expiryText = (e) => expiryWithDays(e, null)
 

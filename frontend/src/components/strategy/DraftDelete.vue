@@ -2,6 +2,7 @@
      Delete appears only when the server said can_delete is true; otherwise the refusal text takes its place (a missing field is
      false). The flow (confirm, Undo, errors) is one object made by useDeleteFlow in lib/strategyActivity.js. -->
 <script setup>
+import Icon from "@/components/common/Icon.vue";
 import {
   DELETE_CONFIRM_TEXT,
   DELETE_REFUSED_TEXT,
@@ -11,6 +12,8 @@ import {
 defineProps({
   row: { type: Object, required: true },
   flow: { type: Object, required: true },
+  // GC-UI 6b D-C12: the Builder's Saved rows show a bin icon (named "Delete") instead of the text link
+  icon: { type: Boolean, default: false },
 });
 </script>
 
@@ -19,7 +22,9 @@ defineProps({
     v-if="!canDelete(row)"
     class="text-ink-muted"
     data-testid="delete-refused"
-    >{{ DELETE_REFUSED_TEXT }}</span
+    :title="icon ? DELETE_REFUSED_TEXT : undefined"
+    ><template v-if="icon"><Icon name="trash" :size="16" /></template
+    ><template v-else>{{ DELETE_REFUSED_TEXT }}</template></span
   >
   <button
     v-else-if="flow.confirming !== row.id"
@@ -27,9 +32,12 @@ defineProps({
     class="underline"
     :disabled="flow.busy"
     :data-testid="`delete-${row.id}`"
+    :aria-label="icon ? 'Delete' : undefined"
+    :title="icon ? 'Delete' : undefined"
     @click="flow.ask(row.id)"
   >
-    Delete
+    <Icon v-if="icon" name="trash" :size="16" />
+    <template v-else>Delete</template>
   </button>
   <span
     v-else

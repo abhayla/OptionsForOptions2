@@ -46,7 +46,8 @@ describe('Save Draft bar', () => {
     answers['GET /strategies'] = { strategies: [{ id: 7, underlying: 'NIFTY', updated_at: '2026-10-15T06:29:59Z' }] }
     const w = mount(SaveDraftBar, { props: { legs: [] } })
     await flushPromises()
-    expect(t(w, 'saved-draft-row').text()).toContain('Draft 7, NIFTY, updated 15 Oct 2026, 11:59:59 IST')
+    // GC-UI 6b D-C11: the row is two lines (name, legs); the updated time moved to the row's tooltip
+    expect(t(w, 'open-draft-7').attributes('title')).toBe('NIFTY, updated 15 Oct 2026, 11:59:59 IST')
   })
 
   // W-192 (ADR-193 UI-108, UI-112): Save in the action row, Save As / Rename in the "..." menu, the list in the Saved tab
@@ -60,7 +61,7 @@ describe('Save Draft bar', () => {
     expect(t(w, 'tab-panel-saved').isVisible()).toBe(true)
     expect(w.findAll('[data-testid="saved-draft-row"]').map((r) => r.attributes('data-current'))).toHaveLength(10)
     await t(w, 'saved-search').setValue('sensex')
-    expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12, SENSEX, updated 15 Oct 2026, 11:59:59 IST'])
+    expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12'])
     await t(w, 'saved-search').setValue('no such plan')
     expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches.')
     w.unmount()
