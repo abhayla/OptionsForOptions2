@@ -404,7 +404,11 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
       </template>
     </Modal>
     <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" @confirm="confirmPaper" @cancel="paperOpen = false" />
-    <p v-if="paperToast !== null" role="status" class="mt-2 flex flex-wrap items-center gap-3 rounded-lg bg-ink-overlay px-4 py-2.5 text-sm text-surface" data-testid="paper-toast">
+    <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
+         the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
+         it could be in the page but outside the visible area; its state lives here and survives the ?strategy=N route change
+         (tests/paper-toast-save-first.test.js). -->
+    <p v-if="paperToast !== null" role="status" class="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-lg bg-ink-overlay px-4 py-2.5 text-sm text-surface shadow" data-testid="paper-toast" data-placement="viewport">
       <span data-testid="paper-toast-message">{{ PAPER_ADDED_TEXT }}</span>
       <button type="button" class="font-semibold text-accent-soft underline" data-testid="paper-open-builder" @click="openInBuilder">Open in Builder</button>
       <router-link to="/positions/current-positions?tab=paper" class="font-semibold text-accent-soft underline" data-testid="paper-open-positions">Open Paper positions</router-link>
