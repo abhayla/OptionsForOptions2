@@ -58,6 +58,17 @@ API: `python scripts/orchestrator/dev_run.py` from the run tree on ofo_dev with 
 | L4 | after L3 | Move `knowledge/findings/paper-plan-diverges-from-position.json` to `guarded`, naming the checker check (`--paper-orders`) and the Drafts Mode diff test; regenerate its index with the repo's regen script | file diff + regen exit 0 | Not started |
 | L5 | before 15:30 | Handover: DONE / PENDING / BLOCKED / PARKED / OWED-AT-LAND / NEXT appended to this file and to GC-TP's handover; memory note; lock removed | commit on build/gctp | Not started |
 
+Live checks added from the GC-TP session 2 review (each: record what is seen; a defect gets the defect-fix contract in a
+sub-worktree, max 2 rounds, else PARKED):
+- R-26 (MAJOR candidate): during live pushes, move the Target slider on a strategy in the builder; do the target figures
+  (P&L at target, badge, breakeven at target) arrive within ~2 s and stay? If they never arrive or flicker to stale, it
+  is the push cancelling the target request (StrategyBuilderPage.vue onPush -> guard.cancel('outcome')).
+- R-24: before 09:15 arm a leg stop on a paper leg whose LTP is far from yesterday's close; at 09:15-09:20 confirm it does
+  not fire on yesterday's price before the option's first trade of the day.
+- R-19a / R-19b / R-18 live: move %, days to expiry and the projected badge move with the index; paper cards show
+  Breakeven / Max / Greeks with live prices; "Add Booked P&L" on strategy 63 shows "includes +Rs 962.00 booked" and the
+  figures change by exactly the booked amount when switched off (checker `--target-level ... --booked`).
+
 Owed after this contract (not in it): NIFTY 3 Nov expiry settlement proof (after 15:45 Mon 3 Nov: each settle price =
 intrinsic from NSE's published close, checked by the checker); migration 0031 (drop the 0021 / 0027 tracking tables) and
 the removal of the 11 merged session-1 worktrees (`wt-rm.ps1` refuses until the work is on origin/main) at land; land
