@@ -87,7 +87,7 @@ def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
 def _funds_share(f: money.FundsShare | None) -> dict[str, Any] | None:
     if f is None:
         return None
-    return {"funds": _s(f.funds), "read_at": _t(f.read_at), "max_profit_percent": _s(f.max_profit_percent),
+    return {"margin_needed": _s(f.margin_needed), "read_at": _t(f.read_at), "max_profit_percent": _s(f.max_profit_percent),
             "max_loss_percent": _s(f.max_loss_percent), "max_profit_text": f.max_profit_text,
             "max_loss_text": f.max_loss_text}
 

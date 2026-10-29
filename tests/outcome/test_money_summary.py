@@ -32,7 +32,8 @@ from test_charges_in_sentences import (
 )
 
 Q = 65
-FUNDS = D("50000")
+FUNDS = D("50000")  # available funds: never the percent basis since ADR-207 (8)
+NEEDED = D("61163")  # F-70: strategy 63's margin needed (Zerodha's basket figure)
 CHECKED_AT = datetime.datetime(2026, 10, 26, 10, 36, tzinfo=datetime.UTC)
 
 
@@ -40,6 +41,7 @@ CHECKED_AT = datetime.datetime(2026, 10, 26, 10, 36, tzinfo=datetime.UTC)
 class FakeMargin:
     state: str = "CHECKED"
     available: object = FUNDS
+    needed: object = NEEDED
     checked_at: object = CHECKED_AT
 
 
@@ -182,34 +184,42 @@ def summary_of(profit, loss):
     return MiniSummary(profit, loss)
 
 
-def test_adr164_example_percentages():
-    f = money.funds_share(D("4500"), D("9222"), FakeMargin())
-    assert (f.max_profit_percent, f.max_loss_percent) == (D("9"), D("18"))
-    assert (f.max_profit_text, f.max_loss_text) == ("9% of funds", "18% of funds")
-    assert (f.funds, f.read_at) == (FUNDS, CHECKED_AT)
+def test_f70_strategy_63_percentages_are_of_the_margin_needed():
+    # REQ-081 AC-9 (ADR-207 (8)): max profit 4,274 and max loss 2,226 with margin needed 61,163 -> 7.0% and 3.6%
+    # (of the 50,000 available funds they would read 8.5% and 4.5%: the basis is the margin needed, never funds)
+    f = money.funds_share(D("4274"), D("2226"), FakeMargin())
+    assert (f.max_profit_percent, f.max_loss_percent) == (D("7.0"), D("3.6"))
+    assert (f.max_profit_text, f.max_loss_text) == ("7.0% of margin needed", "3.6% of margin needed")
+    assert (f.margin_needed, f.read_at) == (NEEDED, CHECKED_AT)
+
+
+def test_available_funds_play_no_part():
+    assert money.funds_share(D("4274"), D("2226"), FakeMargin(available=None)).max_profit_percent == D("7.0")
+    assert money.funds_share(D("4274"), D("2226"), FakeMargin(needed=None)) is None  # funds read, margin not: absent
 
 
 @pytest.mark.parametrize("margin", [
     FakeMargin(state="NOT_AVAILABLE_YET"), FakeMargin(state="UNREADABLE"), FakeMargin(state="NO_BASKET"),
-    FakeMargin(available=D("0")), FakeMargin(available=D("-5")), FakeMargin(available="50000"),
-    FakeMargin(available=D("NaN")), FakeMargin(available=None), FakeMargin(checked_at=None),
+    FakeMargin(needed=D("0")), FakeMargin(needed=D("-5")), FakeMargin(needed="61163"),
+    FakeMargin(needed=D("NaN")), FakeMargin(needed=None), FakeMargin(checked_at=None),
 ])
-def test_no_percentage_unless_checked_with_positive_decimal_funds(margin):
+def test_no_percentage_unless_checked_with_a_positive_decimal_margin_needed(margin):
     assert money.funds_share(D("4500"), D("9222"), margin) is None
     summary = summary_of(D("4500"), D("9222"))
     assert money.with_funds(summary, margin) is summary  # the rupee figures stay, nothing added
 
 
-def test_unlimited_side_has_no_percentage_and_small_ones_say_less_than_one():
-    f = money.funds_share(None, D("100"), FakeMargin())
-    assert (f.max_profit_percent, f.max_profit_text) == (None, None) and f.max_loss_text == "less than 1% of funds"
-    assert money.funds_share(D("0"), D("500"), FakeMargin()).max_profit_text == "0% of funds"
+def test_unlimited_side_has_no_percentage_and_small_ones_say_less_than_a_tenth():
+    f = money.funds_share(None, D("50"), FakeMargin())  # 50 / 61,163 = 0.08%
+    assert (f.max_profit_percent, f.max_profit_text) == (None, None)
+    assert f.max_loss_text == "less than 0.1% of margin needed"
+    assert money.funds_share(D("0"), D("500"), FakeMargin()).max_profit_text == "0.0% of margin needed"
     assert money.funds_share(D("-1"), D("500"), FakeMargin()).max_profit_text is None
 
 
 def test_with_funds_sets_the_share_on_a_summary():
-    out = money.with_funds(summary_of(D("4500"), D("9222")), FakeMargin())
-    assert out.funds_share.max_loss_percent == D("18")
+    out = money.with_funds(summary_of(D("4274"), D("2226")), FakeMargin())
+    assert out.funds_share.max_loss_percent == D("3.6")
 
 
 def test_catalogue_wording_has_none_of_the_advice_words():
@@ -261,15 +271,15 @@ def test_time_value_uses_the_live_price_not_the_planned_entry():
     assert (v.intrinsic, v.time) == (D("4995.25"), D("6704.75"))
 
 
-def test_a_share_under_one_percent_sends_percent_null_with_the_text():
-    f = money.funds_share(D("100"), D("200"), FakeMargin())  # 0.2% and 0.4% of 50000
+def test_a_share_under_a_tenth_of_a_percent_sends_percent_null_with_the_text():
+    f = money.funds_share(D("10"), D("20"), FakeMargin())  # 0.016% and 0.033% of 61,163
     assert (f.max_profit_percent, f.max_loss_percent) == (None, None)
-    assert f.max_profit_text == f.max_loss_text == "less than 1% of funds"
+    assert f.max_profit_text == f.max_loss_text == "less than 0.1% of margin needed"
 
 
-def test_whole_percent_rounds_half_up():
-    f = money.funds_share(D("1250"), D("4250"), FakeMargin())  # 2.5% -> 3 and 8.5% -> 9 (half-even would give 2 and 8)
-    assert (f.max_profit_percent, f.max_loss_percent) == (D("3"), D("9"))
+def test_one_decimal_percent_rounds_half_up():
+    f = money.funds_share(D("2.5"), D("8.5"), FakeMargin(needed=D("1000")))  # 0.25 -> 0.3, 0.85 -> 0.9 (half-even: 0.2, 0.8)
+    assert (f.max_profit_percent, f.max_loss_percent) == (D("0.3"), D("0.9"))
 
 
 def test_the_sentences_and_ratios_use_the_one_shown_total(replayed):

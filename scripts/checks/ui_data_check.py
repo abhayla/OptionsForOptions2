@@ -1029,22 +1029,14 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
                 summ.get("risk_reward"),
                 (ml / mp).quantize(PAISA, rounding=ROUND_HALF_UP) if mp else None,
             )
+        # REQ-081 AC-9 (ADR-207 (8)): the percentages are of the margin needed, to one decimal, half-up
         fs = summ.get("funds_share") or {}
-        funds = D(fs.get("funds"))
-        if funds and mp is not None:
-            rep.add(
-                "funds_share max_profit_percent",
-                fs.get("max_profit_percent"),
-                (mp / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP),
-                note="whole percent",
-            )
-        if funds and ml is not None:
-            rep.add(
-                "funds_share max_loss_percent",
-                fs.get("max_loss_percent"),
-                (ml / funds * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP),
-                note="whole percent",
-            )
+        base = D(fs.get("margin_needed"))
+        for label, side in (("max_profit_percent", mp), ("max_loss_percent", ml)):
+            if base and side is not None:
+                rep.add(f"funds_share {label}", fs.get(label),
+                        (side / base * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP),
+                        note="percent of margin needed")
         # D-A46
         be_incl = breakevens(legs, offset=ch["total"])
         rep.data_rows["D-A46"] = {

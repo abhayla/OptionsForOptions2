@@ -2771,12 +2771,12 @@
    "amount_display": "4,755"
   },
   "funds_share": {
-   "funds": "671.50",
+   "margin_needed": "7065.50",
    "read_at": "2026-10-16T06:38:52Z",
-   "max_profit_percent": "708",
-   "max_loss_percent": "1228",
-   "max_profit_text": "708% of funds",
-   "max_loss_text": "1228% of funds"
+   "max_profit_percent": "67.3",
+   "max_loss_percent": "116.7",
+   "max_profit_text": "67.3% of margin needed",
+   "max_loss_text": "116.7% of margin needed"
   },
   "max_profit_display": "+4,755",
   "max_loss_display": "−8,245",
