@@ -1,22 +1,22 @@
-"""GET /paper/strategies, GET /paper/strategies/{id}, POST /paper/strategies/{id}/orders: the paper order book (GC-TP 1b).
+"""GET /paper/strategies, GET /paper/strategies/{id}, POST /paper/strategies/{id}/orders: the paper book (GC-TP 1b).
 
 Spec basis: REQ-109 AC-1 (typed paper prices), AC-4 ("The one engine derives the net position per contract from the
-orders"), AC-5 (a stale or missing price pauses unbooked and total); ADR-207 (paper trading the Sensibull Draft Portfolio
-way, Net Positions | Orderbook, screens 274-279); ADR-008 (the browser formats nothing: every money field goes out as
-an exact Decimal string beside the server's own text).
+orders"), AC-5 (a stale or missing price pauses unbooked and total); ADR-207 (paper trading the Sensibull Draft
+Portfolio way, Net Positions | Orderbook, screens 274-279); ADR-008 (the browser formats nothing: every money field
+goes out as an exact Decimal string beside the server's own text).
 
-- The figures come only from ofo.tracking.orderbook.net_positions over the stored orders (paper_store). This module adds
-  no arithmetic of its own. An average that does not divide out evenly is exact in the engine and SHOWN rounded to the
-  paisa (``average`` and ``average_text``); booked / unbooked / total are the engine's exact values.
+- The figures come only from ofo.tracking.orderbook.net_positions over the stored orders (paper_store). This module
+  adds no arithmetic of its own. An average that does not divide out evenly is exact in the engine and SHOWN rounded to
+  the paisa (``average`` and ``average_text``); booked / unbooked / total are the engine's exact values.
 - Prices of open contracts come from the same market context as the tracking routes, through
   ofo_app.tracked_contracts.resolve (a stored contract id reaches a feed key only there). A contract that is not live,
-  or whose price is stale or missing, has no unbooked figure, and the strategy's unbooked and total are absent with the
-  pause reason (AC-5). Booked is always known.
-- POST takes typed prices (AC-1): each must be above 0 and a multiple of 0.05; an exit may not exceed the open quantity;
-  only the kinds open, add and exit are accepted from a request (settle and stop are server-only). All orders of one call
-  are stored in one transaction (paper_store.place) or none are.
-- Answer states: no such strategy or another user's -> 404; a strategy with no orders -> 404 on GET; an empty order list,
-  a bad price or kind -> 422 with the reason text.
+  or whose price is stale or missing, has no unbooked figure, and the strategy's unbooked and total are absent with
+  the pause reason (AC-5). Booked is always known.
+- POST takes typed prices (AC-1): each must be above 0 and a multiple of 0.05; an exit may not exceed the open
+  quantity; only the kinds open, add and exit are accepted from a request (settle and stop are server-only). All
+  orders of one call are stored in one transaction (paper_store.place) or none are.
+- Answer states: no such strategy or another user's -> 404; a strategy with no orders -> 404 on GET; an empty order
+  list, a bad price or kind -> 422 with the reason text.
 - This module imports nothing from the order path (tests_app/test_paper_order_door.py walks its import graph).
 The user comes from the session (``current_user_ref``), never from the request.
 """
@@ -167,7 +167,7 @@ def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
 
 
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
-    """The contracts with a non-zero net quantity (priced without any live price: the quantity does not depend on it)."""
+    """The contracts with a non-zero net quantity (the quantity does not depend on any live price)."""
     return [int(p.instrument_id) for p in net_positions(_paper(orders), {}).positions if p.net_quantity != 0]
 
 
@@ -196,7 +196,8 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
     underlying, instrument, strike, expiry = _identity(found)
     average = None if p.average is None else p.average.quantize(PAISE, rounding=ROUND_HALF_UP)
     live = price is not None and paper.is_live(price)
-    return {"contract_id": found.contract_id, "contract_text": describe_contract((underlying, instrument, strike, expiry)),
+    text_ = describe_contract((underlying, instrument, strike, expiry))
+    return {"contract_id": found.contract_id, "contract_text": text_,
             "instrument": instrument.value, "strike": strike, "expiry": expiry, "net_quantity": p.net_quantity,
             "average": average, "average_text": price_text(average),
             "ltp": price.price if live and price is not None else None,
@@ -261,8 +262,8 @@ async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
         raise refused_answer(exc, 409) from None
 
 
-async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder], ctx: MarketContext | None,
-                feed: LiveFeed | None, answered_at: datetime.datetime) -> PaperBookOut:
+async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
+                ctx: MarketContext | None, feed: LiveFeed | None, answered_at: datetime.datetime) -> PaperBookOut:
     ids = sorted({o.order.contract_id for o in orders})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     open_ids = _open_ids(orders)
@@ -292,7 +293,7 @@ async def get_paper_strategy(strategy_id: int,  # noqa: PLR0913 - FastAPI depend
 
 
 @router.get("/paper/strategies", response_model=PaperListOut)
-async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - FastAPI dependencies
+async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
                                 user_ref: Annotated[str, Depends(current_user_ref)],
                                 ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                                 feed: Annotated[LiveFeed | None, Depends(get_live_feed)],

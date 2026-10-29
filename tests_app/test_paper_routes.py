@@ -3,12 +3,13 @@ POST /paper/strategies/{id}/orders, on the recorded replay market, real PostgreS
 
 Core proof: strategy 48 of the real fixture tests/fixtures/paper/before-2026-10-29.json (4 legs, one exited) is seeded
 as orders - one `open` per leg at its entry price, one `exit` for the exited leg at its exit price - and the reply's
-booked / unbooked / total equal the fixture's to the paisa at the fixture's current prices. The fixture's legs sit on the
-test catalogue's four condor contracts in leg order (the fixture's own contracts are not in the test catalogue).
+booked / unbooked / total equal the fixture's to the paisa at the fixture's current prices. The fixture's legs sit on
+the test catalogue's four condor contracts in leg order (the fixture's own contracts are not in the test catalogue).
 """
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import json
 import pathlib
 from decimal import Decimal
@@ -16,15 +17,15 @@ from http import HTTPStatus
 
 import pytest
 from ofo_app import paper_store
+from sqlalchemy import text
 from test_strategy_store import _client
 from test_strategy_tracking import _DELIST, _RETIRE, IDS, _frame, _setup
-from sqlalchemy import text
 
 D = Decimal
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests/fixtures/paper/before-2026-10-29.json"
 AT = datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC)
-MINUS = "−"
+MINUS = chr(0x2212)  # the server's minus on money text
 
 
 @pytest.fixture
@@ -41,9 +42,12 @@ def _new(contract: int, side: str, qty: int, price: str, kind: str = "open") -> 
     return paper_store.NewOrder(contract, side, qty, D(price), kind, AT)
 
 
+FIXTURE_STRATEGY = 48  # 4 legs, one exited (the real paper strategy of 2026-10-29)
+
+
 def _strategy_48() -> dict:
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    return next(s for s in data["strategies"] if s["strategy_id"] == 48)
+    return next(s for s in data["strategies"] if s["strategy_id"] == FIXTURE_STRATEGY)
 
 
 async def _seed_fixture(db):
@@ -75,8 +79,9 @@ async def test_core_strategy_48_net_positions_equal_the_fixture_to_the_paisa(db)
         reply = await c.get(f"/paper/strategies/{stored.id}")
     assert reply.status_code == HTTPStatus.OK, reply.text
     body = reply.json()
-    assert (D(body["booked"]), D(body["unbooked"]), D(body["total"])) == (
-        D(fixture["booked"]), D(fixture["unbooked"]), D(fixture["total"])) == (D("-1504.75"), D("10361.00"), D("8856.25"))
+    shown = (D(body["booked"]), D(body["unbooked"]), D(body["total"]))
+    assert shown == (D(fixture["booked"]), D(fixture["unbooked"]), D(fixture["total"]))
+    assert shown == (D("-1504.75"), D("10361.00"), D("8856.25"))
     assert (body["state"], body["pause_reason"]) == ("LIVE", None)
     assert (body["booked_text"], body["unbooked_text"], body["total_text"]) == (
         MINUS + "1,504.75", "+10,361.00", "+8,856.25")
@@ -85,8 +90,30 @@ async def test_core_strategy_48_net_positions_equal_the_fixture_to_the_paisa(db)
         pos = by_contract[stored.saved.contract_ids[i]]
         figure = pos["booked"] if leg["pnl_kind"] == "booked" else pos["unbooked"]
         assert D(figure) == D(leg["pnl"]), (i, pos)
-        assert pos["net_quantity"] == (0 if leg["exit_price"] else leg["quantity"] * (1 if leg["action"] == "BUY" else -1))
+        sign = 1 if leg["action"] == "BUY" else -1
+        assert pos["net_quantity"] == (0 if leg["exit_price"] else leg["quantity"] * sign)
     assert [o["kind"] for o in body["orders"]] == ["open"] * 4 + ["exit"]
+
+
+def _checker():
+    spec = importlib.util.spec_from_file_location("ui_data_check_routes", ROOT / "scripts/checks/ui_data_check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def test_core_the_independent_checker_recomputes_the_same_figures_from_the_orderbook_rows(db):
+    """The checker (imports nothing from the app) rebuilds net, average, booked, unbooked and total from the reply's
+    orderbook rows and live prices alone: every figure matches, none is skipped."""
+    app, stored, *_ = await _seed_fixture(db)
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    rep = _checker().check_paper_orders(body)
+    counts = rep.counts()
+    assert counts["mismatch"] == 0 and counts["not checkable"] == 0 and counts["match"] > 30, rep.figures  # noqa: PLR2004
+    totals = {f.name: f.independent for f in rep.figures}
+    assert (totals["strategy booked"], totals["strategy unbooked"], totals["strategy total"]) == (
+        "-1504.75", "10361.00", "8856.25")
 
 
 # --- answer states ----------------------------------------------------------------------------------------------------
@@ -98,13 +125,13 @@ async def test_missing_strategy_and_no_orders_and_another_users_strategy_are_404
         assert (await c.get("/paper/strategies/999999999")).status_code == HTTPStatus.NOT_FOUND
         assert (await c.get(f"/paper/strategies/{stored.id}")).status_code == HTTPStatus.NOT_FOUND  # no orders yet
         post = await c.post("/paper/strategies/999999999/orders", json={"orders": [
-            {"contract_id": stored.saved.contract_ids[0], "side": "BUY", "quantity": 65, "price": "10.00", "kind": "open"}]})
+            _order(stored.saved.contract_ids[0], "BUY", 65, "10.00")]})
         assert post.status_code == HTTPStatus.NOT_FOUND
     await paper_store.place(db, stored.user_ref, stored.id, [_new(stored.saved.contract_ids[0], "BUY", 65, "10.00")])
     async with _client(other) as c:
         assert (await c.get(f"/paper/strategies/{stored.id}")).status_code == HTTPStatus.NOT_FOUND
         posted = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
-            {"contract_id": stored.saved.contract_ids[0], "side": "BUY", "quantity": 1, "price": "10.00", "kind": "open"}]})
+            _order(stored.saved.contract_ids[0], "BUY", 1, "10.00")]})
         assert posted.status_code == HTTPStatus.NOT_FOUND
         assert (await c.get("/paper/strategies")).json()["strategies"] == []
     assert await _count(db, stored.id) == 1
@@ -157,9 +184,9 @@ async def test_a_fully_exited_strategy_is_exited_and_needs_no_price(db):
 # --- the list ---------------------------------------------------------------------------------------------------------
 
 async def test_list_is_newest_first_with_net_per_contract_and_the_three_figures(db):
-    app, stored, *_rest, fixture = await _seed_fixture(db)
-    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
+    app, stored, *_ = await _seed_fixture(db)
     from ofo_app import strategy_store as store  # noqa: PLC0415
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
 
     newer = await store.save_draft(db, stored.user_ref, await _saved_in(db, stored.user_ref, await _ids(db)))
     await paper_store.place(db, stored.user_ref, newer.id, [_new(newer.saved.contract_ids[0], "BUY", 65, "10.00")])
@@ -270,6 +297,6 @@ async def test_an_uneven_average_is_shown_to_the_paisa_and_the_figures_stay_exac
     async with _client(app) as c:
         body = (await c.get(f"/paper/strategies/{stored.id}")).json()
     pos = body["positions"][0]
-    assert (pos["net_quantity"], pos["average"], pos["average_text"]) == (3, "100.02", "100.02")  # 300.05 / 3 = 100.0166..
+    assert (pos["net_quantity"], pos["average"], pos["average_text"]) == (3, "100.02", "100.02")  # 300.05 / 3
     ltp = D(pos["ltp"])
     assert D(pos["unbooked"]) == ltp * 3 - D("300.05") and D(pos["total"]) == D(pos["booked"]) + D(pos["unbooked"])
