@@ -134,6 +134,9 @@ def _share(amount: Any, base: Any) -> tuple[Any, ExplanationText | None]:
     return pct, render_explanation("money_margin_percent", pct=pct)
 
 
+share_of = _share  # GC-TP R-19a: the Projected badge uses the same percent, rounding and "less than 0.1%" rule
+
+
 def funds_share(max_profit: Any, max_loss: Any, margin: Any) -> FundsShare | None:
     """Present ONLY when the margin block is CHECKED with a finite positive Decimal margin needed and a read time; every
     other state (no session, failed read, unreadable, no basket, busy, a closing basket's 0, not a Decimal) gives None:

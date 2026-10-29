@@ -1095,6 +1095,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"value": TargetValue}),
     ExplanationTemplate("target_greeks_no_time_left", "values_seen",
                         "No Greeks at expiry: the options have no time left."),
+    # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
+    ExplanationTemplate("target_badge_profit", "values_seen", "Projected profit: {amount}", {"amount": Rupees}),
+    ExplanationTemplate("target_badge_loss", "values_seen", "Projected loss: {amount}", {"amount": Rupees}),
+    ExplanationTemplate("target_badge_zero", "values_seen", "Projected P&L: {amount}", {"amount": Rupees}),
+    ExplanationTemplate("target_badge_unavailable", "values_seen", "Projected figure not available"),
+    ExplanationTemplate("target_badge_no_target", "values_seen", "No target is set."),
+    ExplanationTemplate("target_badge_percent_unavailable", "values_seen",
+                        "% of margin needed not available: Zerodha margin could not be read"),
+    ExplanationTemplate("target_days_to_expiry", "values_seen", "{days}D to expiry", {"days": Days}),
+    ExplanationTemplate("target_move_no_spot", "values_seen",
+                        "The move from spot is not available: there is no live index price."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),

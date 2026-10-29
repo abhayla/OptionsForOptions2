@@ -15,6 +15,7 @@ from ofo.outcome import money
 from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Outcome, OutcomeLeg
 from ofo.outcome.target import TargetOffer
+from ofo.outcome.target_badge import badge, days_fields, move_fields
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts
 from ofo.timeutil import days_to_expiry
@@ -160,13 +161,16 @@ def _limits(lim: Any) -> dict[str, Any]:
     return {"min": _s(lim.min), "max": _s(lim.max), "step": _s(lim.step), "at_min": lim.at_min, "at_max": lim.at_max}
 
 
-def _target(t: Any) -> dict[str, Any]:
+def _target(t: Any, margin: Any = None) -> dict[str, Any]:
     """REQ-084 AC-1/AC-2/AC-4: the what-if target's limits, the clamped inputs and every engine figure there. A target
-    nobody asked for (``TargetOffer``) is the limits alone (and the date's reason when it has one)."""
+    nobody asked for (``TargetOffer``) is the limits alone (and the date's reason when it has one), plus the captions
+    (move from spot of the spot itself, days to expiry) and the badge's not-available text (R-19a, REQ-144 AC-4)."""
     if isinstance(t, TargetOffer):
         offer: dict[str, Any] = {"limits": _limits(t.limits)}
         if t.at_refused_reason is not None:
             offer["at_refused_reason"] = t.at_refused_reason
+        offer.update(move_fields(t.spot, t.spot), **days_fields(t.days))
+        offer["badge"] = badge(t, margin)
         return offer
     pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
     greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
@@ -178,7 +182,8 @@ def _target(t: Any) -> dict[str, Any]:
             "output_label": t.output_label, "pnl": pnl,
             "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
             "breakevens_reason": t.breakevens_reason,
-            "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks}
+            "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks,
+            **move_fields(t.level, t.spot), **days_fields(t.days), "badge": badge(t, margin)}
 
 
 def _view_head(v: Any) -> dict[str, Any]:
@@ -288,5 +293,5 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     if out.target is not None:  # REQ-084 AC-4: the limits alone unless a target level or time was sent
-        body["target"] = _target(out.target)
+        body["target"] = _target(out.target, out.margin)
     return body

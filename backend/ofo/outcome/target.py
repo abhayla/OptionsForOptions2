@@ -35,6 +35,7 @@ from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues, View, scenario_values
 from ofo.table.model import FUTURES_PER_UNIT_GREEKS, position_greeks, round_greek
+from ofo.timeutil import IST
 
 ClampCode = Literal["before_now", "after_first_expiry"]
 GreeksGap = Literal["no_time_left"]
@@ -67,6 +68,8 @@ class TargetOffer:
 
     limits: TargetLimits
     at_refused_reason: ExplanationText | None
+    spot: Decimal | None = None  # the live index price (None: none, so no move from spot)
+    days: int | None = None  # whole IST calendar days from now to the first expiry (None: not known)
 
 
 @dataclass(frozen=True)
@@ -101,6 +104,8 @@ class Target:
     breakevens_reason: ExplanationText | None
     curve: ScenarioValues | None
     greeks: TargetGreeks | None
+    spot: Decimal | None = None  # R-19a: the live index price the move is from (None: unknown, never an old one)
+    days: int | None = None  # R-19a: whole IST calendar days from the target date to the first expiry, 0 or more
 
     @property
     def level_clamp_text(self) -> ExplanationText | None:
@@ -142,6 +147,12 @@ def clamp_at(at: datetime.datetime | None, now: datetime.datetime,
     if at > last:
         return last, "after_first_expiry"
     return at, None
+
+
+def days_to(model: ModelInputs, at: datetime.datetime) -> int:
+    """Whole IST calendar days from ``at`` to the strategy's FIRST expiry date: 0 on expiry day, never negative."""
+    expiry = first_close(model).astimezone(IST).date()
+    return max((expiry - at.astimezone(IST).date()).days, 0)
 
 
 def _at_expiry_pnl(model: ModelInputs, level: Decimal) -> Decimal | None:
@@ -187,12 +198,15 @@ def target_offer(model: ModelInputs, step: Decimal, *, live: bool) -> TargetOffe
     """The slider limits of an answer where no target was asked: the level range, and the date range now .. first expiry
     close when the estimate can be made (live data and every option leg's IV); else the AC-7 reason for the date."""
     limits = target_limits(model.spot_level, step)
+    spot = model.spot_level if live else None  # entries: the level is the grid's centre, not a live price
+    days = days_to(model, model.inputs.valuation_time)
     if not live:
-        return TargetOffer(limits, render_explanation("outcome_from_entries_no_estimate"))
+        return TargetOffer(limits, render_explanation("outcome_from_entries_no_estimate"), spot, days)
     reason = _missing_iv_reason(model)
     if reason is not None:
-        return TargetOffer(limits, reason)
-    return TargetOffer(dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model)), None)
+        return TargetOffer(limits, reason, spot, days)
+    return TargetOffer(dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model)), None,
+                       spot, days)
 
 
 def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step: Decimal) -> Target:
@@ -201,7 +215,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = _missing_iv_reason(model)
     if reason is not None:  # AC-7: no IV: At Expiry P&L at the level; the time is refused
-        return _exact_only(limits, level, level_clamped, model, reason)
+        return _exact_only(limits, level, level_clamped, model, reason, model.spot_level)
     limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
     label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
@@ -213,14 +227,15 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
         pnl=estimate(model, level, at).total,
         breakevens=_breakevens(model, curve, at) if single else None,
         breakevens_reason=None if single else render_explanation("mixed_expiry_worst_case"),
-        curve=curve, greeks=_greeks(model, level, at))
+        curve=curve, greeks=_greeks(model, level, at), spot=model.spot_level, days=days_to(model, at))
 
 
 def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model: ModelInputs,
-                reason: ExplanationText) -> Target:
+                reason: ExplanationText, spot: Decimal | None) -> Target:
     return Target(limits=limits, level=level, level_clamped=level_clamped, at=None, at_clamped=False, clamp=None,
                   at_refused_reason=reason, kind="exact", model=None, output_label=model.data_label,
-                  pnl=_at_expiry_pnl(model, level), breakevens=None, breakevens_reason=None, curve=None, greeks=None)
+                  pnl=_at_expiry_pnl(model, level), breakevens=None, breakevens_reason=None, curve=None, greeks=None,
+                  spot=spot, days=days_to(model, model.inputs.valuation_time))  # the time is refused: days from now
 
 
 def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
@@ -228,4 +243,4 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
     same centre the levels use); the time input is refused with the no-live-prices reason."""
     limits = target_limits(model.spot_level, step)
     level, level_clamped = _level(ask, model.spot_level, limits)
-    return _exact_only(limits, level, level_clamped, model, render_explanation("outcome_from_entries_no_estimate"))
+    return _exact_only(limits, level, level_clamped, model, render_explanation("outcome_from_entries_no_estimate"), None)
