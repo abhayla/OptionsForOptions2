@@ -37,7 +37,7 @@ const props = defineProps({
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'saved', 'renamed', 'deleted'])
+const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
 
 const drafts = ref([])
 const busy = ref(false)
@@ -299,7 +299,11 @@ const paperTarget = ref(null)
 const paperToast = ref(null) // the strategy id the toast's "Open in Builder" reopens, or null
 let paperToastTimer = null
 const tickedLegs = computed(() => props.legs.filter((l) => l.included !== false))
-const canAddToPaper = computed(() => !props.paperMode && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+// GC-TP step 3c: once the orders are recorded this plan must not record them again; the page enters Drafts Mode (paperMode) after
+// re-reading the book. If that re-read fails the lock stays until another strategy is opened or the page is reloaded.
+const paperRecorded = ref(false)
+watch(() => props.current?.id, () => { paperRecorded.value = false })
+const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
 async function startPaper() {
   if (!canAddToPaper.value) return
@@ -336,10 +340,12 @@ async function confirmPaper(orders) {
   paperError.value = ''
   try {
     await addToPaper(api, paperTarget.value, orders)
+    paperRecorded.value = true
     paperOpen.value = false
     paperToast.value = paperTarget.value
     clearTimeout(paperToastTimer)
     paperToastTimer = setTimeout(() => { paperToast.value = null }, PAPER_TOAST_MS)
+    emit('paper-added', paperTarget.value)
   } catch (e) {
     paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing is recorded locally on any refusal
   } finally {
@@ -404,7 +410,11 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
       </template>
     </Modal>
     <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" @confirm="confirmPaper" @cancel="paperOpen = false" />
-    <p v-if="paperToast !== null" role="status" class="mt-2 flex flex-wrap items-center gap-3 rounded-lg bg-ink-overlay px-4 py-2.5 text-sm text-surface" data-testid="paper-toast">
+    <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
+         the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
+         it could be in the page but outside the visible area; its state lives here and survives the ?strategy=N route change
+         (tests/paper-toast-save-first.test.js). -->
+    <p v-if="paperToast !== null" role="status" class="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-lg bg-ink-overlay px-4 py-2.5 text-sm text-surface shadow" data-testid="paper-toast" data-placement="viewport">
       <span data-testid="paper-toast-message">{{ PAPER_ADDED_TEXT }}</span>
       <button type="button" class="font-semibold text-accent-soft underline" data-testid="paper-open-builder" @click="openInBuilder">Open in Builder</button>
       <router-link to="/positions/current-positions?tab=paper" class="font-semibold text-accent-soft underline" data-testid="paper-open-positions">Open Paper positions</router-link>

@@ -402,6 +402,7 @@ APP_MODELS = (
     "ofo_app.routes.paper.PaperNetOut",
     "ofo_app.routes.paper.PaperOrderOut",
     "ofo_app.routes.paper.PaperStrategyOut",
+    "ofo_app.routes.paper.PaperTotalsOut",
     "ofo_app.routes.paper.TriggerOut",
     "ofo_app.routes.paper.TriggersOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",

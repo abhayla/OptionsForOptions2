@@ -41,7 +41,7 @@ _CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp(
                "AND fired_at IS NULL AND cancelled_at IS NULL RETURNING id")
 _ALERT = text("INSERT INTO public.paper_alerts (strategy_id, trigger_id, title, body) "
               "VALUES (:sid, :tid, :title, :body) RETURNING id")
-_ALERTS = text("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at "
+_ALERTS = text("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
                "FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
                "WHERE s.user_ref = :user_ref ORDER BY a.id DESC LIMIT :limit")
 _UNREAD = text("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
@@ -75,6 +75,7 @@ class AlertRow:
     title: str
     body: str
     read_at: datetime.datetime | None
+    strategy_name: str | None = None  # GC-TP step 4a: the strategy's saved name (shown through strategy_name_shown)
 
 
 def _trigger(r: Any) -> Trigger:
@@ -135,7 +136,8 @@ async def add_alert(conn: Any, strategy_id: int, trigger_id: int, title: str, bo
 
 async def alerts(conn: Any, user_ref: str, limit: int = 100) -> tuple[list[AlertRow], int]:
     """The user's newest alerts first (at most ``limit``) and the user's unread count."""
-    rows = [AlertRow(int(r.id), int(r.strategy_id), int(r.trigger_id), r.created_at, r.title, r.body, r.read_at)
+    rows = [AlertRow(int(r.id), int(r.strategy_id), int(r.trigger_id), r.created_at, r.title, r.body, r.read_at,
+                     r.name)
             for r in (await conn.execute(_ALERTS, {"user_ref": user_ref, "limit": limit})).all()]
     unread = int((await conn.execute(_UNREAD, {"user_ref": user_ref})).scalar_one())
     return rows, unread

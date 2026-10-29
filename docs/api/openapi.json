@@ -24,6 +24,9 @@
             "title": "Strategy Id",
             "type": "integer"
           },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
           "title": {
             "title": "Title"
           },
@@ -35,6 +38,7 @@
         "required": [
           "id",
           "strategy_id",
+          "strategy_name",
           "trigger_id",
           "created_at",
           "title",
@@ -4045,10 +4049,14 @@
             },
             "title": "Strategies",
             "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PaperTotalsOut"
           }
         },
         "required": [
           "strategies",
+          "totals",
           "answered_at"
         ],
         "title": "PaperListOut",
@@ -4400,6 +4408,10 @@
           "name": {
             "title": "Name"
           },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
           "pause_reason": {
             "anyOf": [
               {
@@ -4420,6 +4432,10 @@
               }
             ],
             "title": "Pause Reason"
+          },
+          "position_count": {
+            "title": "Position Count",
+            "type": "integer"
           },
           "positions": {
             "items": {
@@ -4503,9 +4519,148 @@
           "positions",
           "strategy_id",
           "name",
-          "underlying"
+          "underlying",
+          "open_count",
+          "position_count"
         ],
         "title": "PaperStrategyOut",
+        "type": "object"
+      },
+      "PaperTotalsOut": {
+        "additionalProperties": false,
+        "description": "GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server.",
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "decay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay"
+          },
+          "decay_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "no_next_open",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason"
+          },
+          "decay_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Text"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "totals_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          }
+        },
+        "required": [
+          "booked",
+          "booked_text",
+          "unbooked",
+          "unbooked_text",
+          "total",
+          "total_text",
+          "totals_reason",
+          "decay",
+          "decay_text",
+          "decay_reason"
+        ],
+        "title": "PaperTotalsOut",
         "type": "object"
       },
       "PayoffCellOut": {

@@ -43,6 +43,7 @@ ALLOWED_IMPORTERS = frozenset({
     "ofo.outcome.price_history",    # the chart's points from minute bars (pure)
     "ofo_app.strategy_price_history",  # the chart's reads (KiteHistory) for GET /strategies/{id}/price-history
     "ofo_app.price_history_source",    # S5-1: wires kite_history.owner_minute_reader to that route (adapter side)
+    "ofo_app.paper_settlement",        # GC-TP 5b: the index's day close (KiteHistory.day_close) prices expiry settles
 })
 # frontend/src may request or import no history at all.
 ALLOWED_FRONTEND: frozenset[str] = frozenset()
@@ -78,6 +79,10 @@ ROUTE_DOOR: dict[str, frozenset[str]] = {
         "ofo_app.price_history_source",    # the opener wired into that route (adapter side)
         "ofo.outcome.price_history",       # the chart's display formatting of the points (pure)
     }),
+    # GC-TP 5b (REQ-109 AC-7, F-72): the app lifespan starts the settlement job, which reads one index's official
+    # close to price paper settle orders. An internal job (out of this guard's threat model, ADR-066): no route or
+    # page shows history through it.
+    "ofo_app.main": frozenset({"ofo_app.paper_settlement"}),
 }
 
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
@@ -373,8 +378,10 @@ def test_no_route_or_app_entry_is_allow_listed_and_the_list_has_no_stale_entry()
     """AC-1: the allow-list names no route module and not the app's main, and every entry is a real module."""
     assert not [m for m in ALLOWED_IMPORTERS if m.startswith("ofo_app.routes") or m == "ofo_app.main"]
     # F2: exactly one route may reach the chain, for ADR-203's chart only, and only through the named chain modules
+    # GC-TP 5b: plus the app lifespan's settlement job (REQ-109 AC-7), an internal job showing no history.
     named = {"ofo_app.routes.strategies": frozenset(
-        {"ofo_app.strategy_price_history", "ofo_app.price_history_source", "ofo.outcome.price_history"})}
+        {"ofo_app.strategy_price_history", "ofo_app.price_history_source", "ofo.outcome.price_history"}),
+        "ofo_app.main": frozenset({"ofo_app.paper_settlement"})}
     assert named == ROUTE_DOOR
     assert all(t in ALLOWED_IMPORTERS for t in ROUTE_DOOR["ofo_app.routes.strategies"])
     assert (BACKEND / "ofo_app" / "routes" / "strategies.py").exists()

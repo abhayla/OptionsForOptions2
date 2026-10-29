@@ -30,7 +30,9 @@ import { ADD_TO_PAPER_LABEL, addToPaper as postPaperOrders } from '@/lib/trackin
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+  extremesReasonText, legsAfterExit, paperFillKey,
 } from '@/lib/paperDrafts'
+import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
@@ -295,6 +297,29 @@ function reviewPending() {
   paperDialog.value = true
 }
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
+// GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
+// then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
+function exitAllPaper() {
+  if (!paper.value) return
+  setLegs([])
+  reviewPending()
+}
+function exitPaper(contractId, lots) {
+  if (!paper.value) return
+  const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
+  if (!next) return
+  setLegs(next)
+  reviewPending()
+}
+// Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
+// Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
+const paperLeft = computed(() => {
+  const b = paper.value?.book
+  if (!b) return null
+  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: extremesReasonText(b.extremes_reason) }
+})
+// R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
+const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value) return
   const { id } = paper.value
@@ -331,6 +356,17 @@ async function openFromBar(next, id, revision, name) {
   }
   leaveDrafts()
   openSaved(next, id, revision, name)
+}
+// GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
+// enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
+async function onPaperAdded(id) {
+  try {
+    const read = await readPaperBook(api, id)
+    if (read.kind === 'paper') return enterDrafts(id, read)
+    openError.value = unreadableParts(null)
+  } catch (e) {
+    openError.value = unreadableParts(e)
+  }
 }
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
@@ -668,7 +704,7 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :legs="legs" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
@@ -681,9 +717,10 @@ const pricesStamp = computed(() => {
           <button v-if="pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" @confirm="confirmPending" @cancel="paperDialog = false" />
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
@@ -783,10 +820,11 @@ const pricesStamp = computed(() => {
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
-            :max-profit="summaryFigure(data.summary, 'profit')"
-            :max-loss="summaryFigure(data.summary, 'loss')"
-            :max-profit-exact="data.summary.max_profit ?? null"
-            :max-loss-exact="data.summary.max_loss ?? null"
+            :left="paperLeft"
+            :max-profit="paperLeft ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
+            :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
+            :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
             :breakevens="data.summary.breakevens_display ?? []"
             :breakevens-exact="data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
@@ -802,7 +840,7 @@ const pricesStamp = computed(() => {
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
             :value-reason="data.summary.value_reason ?? null"
-            :funds-share="data.summary.funds_share ?? null"
+            :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >
             <template #pop><PopFigure :pop="data.probability_of_profit ?? null" /></template>
             <template #margin><MarginLine :margin="data.margin" :capabilities="capabilities" /></template>
