@@ -334,10 +334,11 @@ async def test_core_strategy_48_extremes_equal_the_hand_figures_with_their_texts
     assert (D(body["max_profit"]), D(body["max_loss"])) == original
     assert body["extremes_reason"] is None
     assert D(body["max_profit"]) == D(body["total"]) + D(body["profit_left"])  # both definitions tie at the extremes
-    for name in ("profit_left", "loss_left", "max_profit", "max_loss"):
-        value = D(body[name])
-        sign = "+" if value > 0 else (MINUS if value < 0 else "")
-        assert body[f"{name}_text"] == sign + f"{abs(value):,.2f}", name
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+
+    for name in ("profit_left", "loss_left", "max_profit", "max_loss"):  # the same money template as booked_text
+        assert body[f"{name}_text"] == render_explanation("summary_paisa_signed", amount=D(body[name])), name
+    assert body["profit_left_text"] == "+14,26,792.25"  # Indian grouping, read from the run of 2026-10-29
 
 
 async def test_stale_prices_drop_profit_left_and_loss_left_but_keep_the_original(db):
