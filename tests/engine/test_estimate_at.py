@@ -4,16 +4,17 @@ A NIFTY 22,800 / 23,000 bull call spread (REQ-084 AC-4's own example) on the 3 N
 and rate, valued 29 Oct 10:00 IST: (a) at = now IS Estimated Now (one function, no second formula); (b) at = the expiry
 close gives the At Expiry payoff to the paisa; (c) a long ATM call's estimate falls as the time moves later.
 """
+import dataclasses
 import datetime
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.engine.black_scholes import IST
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument, expiry_pnl
 from ofo.engine.model import estimate, leg_greeks_at_unrounded, leg_greeks_unrounded
 from ofo.rules.inputs import DataHealth
+
 from tests.scenario.scenario_fixtures import gated
 
 EXPIRY = datetime.date(2026, 11, 3)
@@ -24,10 +25,15 @@ SPOT = D("22976.85")
 RATE = D("0.065")
 
 
-def _leg(action, kind, strike, entry, iv, expiry=EXPIRY):
-    return LegInput(underlying="NIFTY", contract=f"NIFTY{expiry:%d%b}{strike}{kind.value}".upper(), action=action,
-                    instrument=kind, strike=D(strike), expiry=expiry, quantity=75, premium=D(entry), ltp=D(entry),
-                    iv=D(iv))
+def _leg(action, kind, strike, entry, iv):
+    return LegInput(underlying="NIFTY", contract=f"NIFTY{strike}{kind.value}", action=action, instrument=kind,
+                    strike=D(strike), expiry=EXPIRY, quantity=75, premium=D(entry), ltp=D(entry), iv=D(iv))
+
+
+def later_leg(action, kind, strike, entry, iv):
+    """The same leg on the later (10 Nov) expiry."""
+    leg = _leg(action, kind, strike, entry, iv)
+    return dataclasses.replace(leg, expiry=LATER_EXPIRY, contract=f"{leg.contract}-10NOV")
 
 
 def _model(legs):
@@ -85,7 +91,7 @@ def test_before_now_and_naive_time_are_refused():
 
 
 def test_multi_expiry_values_each_leg_on_its_own_time():
-    later = _leg(Action.BUY, Instrument.CE, "23000", "190.00", "0.1180", LATER_EXPIRY)
+    later = later_leg(Action.BUY, Instrument.CE, "23000", "190.00", "0.1180")
     m = _model((SPREAD[1], later))
     got = estimate(m, D("23000"), CLOSE)
     assert got.leg_pnls[0] == expiry_pnl(SPREAD[1].leg, D("23000"))  # first expiry: intrinsic

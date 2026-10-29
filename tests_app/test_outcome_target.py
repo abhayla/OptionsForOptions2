@@ -11,7 +11,9 @@ from decimal import Decimal
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from test_outcome_route import (  # noqa: E402,F401  (replayed is the module fixture)
+from ofo.marketdata.kite_provider import IST
+from ofo_app.routes.outcome import OutcomeRequest, margin_legs
+from test_outcome_route import (
     VALUATION,
     WORST_CASE,
     _body,
@@ -20,14 +22,18 @@ from test_outcome_route import (  # noqa: E402,F401  (replayed is the module fix
     _post,
     _post_stored,
     _spread_body,
-    replayed,
+    provider_for_catalogue,
 )
-
-from ofo.marketdata.kite_provider import IST  # noqa: E402
 
 CLOSE = datetime.datetime(2026, 10, 13, 15, 30, tzinfo=IST)  # the condor's expiry close
 HTTP_OK = 200
 HTTP_UNPROCESSABLE = 422
+
+
+@pytest.fixture(scope="module")
+def provider():
+    """The real 2026-10-08 replay, every contract subscribed (the route tests' own provider)."""
+    return provider_for_catalogue()
 
 
 def _point(curve: dict, level: str) -> str:
@@ -48,10 +54,10 @@ def _a_grid_level(out: dict) -> str:
     return str(int(whole[len(whole) // 2]))
 
 
-async def test_target_at_now_is_the_estimated_now_curve(replayed):  # noqa: F811
-    base = await _target(replayed)
+async def test_target_at_now_is_the_estimated_now_curve(provider):
+    base = await _target(provider)
     level = _a_grid_level(base)
-    out = await _target(replayed, target_level=level)
+    out = await _target(provider, target_level=level)
     t = out["target"]
     assert t["kind"] == "estimate" and t["model"]
     assert datetime.datetime.fromisoformat(t["at"]) == VALUATION and t["at_clamped"] is False and t["clamp"] is None
@@ -62,10 +68,10 @@ async def test_target_at_now_is_the_estimated_now_curve(replayed):  # noqa: F811
     assert isinstance(t["breakevens"], list) and t["breakevens_reason"] is None
 
 
-async def test_target_at_the_expiry_close_is_the_at_expiry_payoff(replayed):  # noqa: F811
-    base = await _target(replayed)
+async def test_target_at_the_expiry_close_is_the_at_expiry_payoff(provider):
+    base = await _target(provider)
     level = _a_grid_level(base)
-    out = await _target(replayed, target_level=level, target_at=CLOSE.isoformat())
+    out = await _target(provider, target_level=level, target_at=CLOSE.isoformat())
     t = out["target"]
     assert datetime.datetime.fromisoformat(t["at"]) == CLOSE and t["at_clamped"] is False
     assert t["pnl"]["value"] == _point(out["curves"]["at_expiry"], level)
@@ -73,11 +79,11 @@ async def test_target_at_the_expiry_close_is_the_at_expiry_payoff(replayed):  # 
     assert t["greeks"]["legs"] == [None, None, None, None]
 
 
-async def test_target_between_now_and_expiry_moves_every_figure(replayed):  # noqa: F811
-    base = await _target(replayed)
+async def test_target_between_now_and_expiry_moves_every_figure(provider):
+    base = await _target(provider)
     level = _a_grid_level(base)
     mid = datetime.datetime(2026, 10, 10, 12, 0, tzinfo=IST)
-    out = await _target(replayed, target_level=level, target_at=mid.isoformat())
+    out = await _target(provider, target_level=level, target_at=mid.isoformat())
     t = out["target"]
     assert datetime.datetime.fromisoformat(t["at"]) == mid
     now_pnl, expiry_pnl = _point(out["curves"]["estimated_now"], level), _point(out["curves"]["at_expiry"], level)
@@ -88,22 +94,22 @@ async def test_target_between_now_and_expiry_moves_every_figure(replayed):  # no
         assert Decimal(be) > 0
 
 
-async def test_target_after_the_first_expiry_is_clamped_to_its_close(replayed):  # noqa: F811
-    out = await _target(replayed, target_at="2026-10-15T10:00:00+05:30")
+async def test_target_after_the_first_expiry_is_clamped_to_its_close(provider):
+    out = await _target(provider, target_at="2026-10-15T10:00:00+05:30")
     t = out["target"]
     assert t["at_clamped"] is True and t["clamp"] == "after_first_expiry"
     assert datetime.datetime.fromisoformat(t["at"]) == CLOSE
 
 
-async def test_target_before_now_is_clamped_to_now(replayed):  # noqa: F811
-    out = await _target(replayed, target_at="2026-10-07T10:00:00+05:30")
+async def test_target_before_now_is_clamped_to_now(provider):
+    out = await _target(provider, target_at="2026-10-07T10:00:00+05:30")
     t = out["target"]
     assert t["at_clamped"] is True and t["clamp"] == "before_now"
     assert datetime.datetime.fromisoformat(t["at"]) == VALUATION
 
 
-async def test_target_level_limits_are_spot_ten_percent_snapped_and_clamp_outside(replayed):  # noqa: F811
-    out = await _target(replayed, target_level="99999")
+async def test_target_level_limits_are_spot_ten_percent_snapped_and_clamp_outside(provider):
+    out = await _target(provider, target_level="99999")
     t, spot = out["target"], Decimal(out["spot_level"])
     lim = {k: Decimal(v) for k, v in t["limits"].items()}
     assert lim["step"] == Decimal(50)
@@ -111,21 +117,21 @@ async def test_target_level_limits_are_spot_ten_percent_snapped_and_clamp_outsid
     assert spot * Decimal("0.9") <= lim["min"] < spot * Decimal("0.9") + 50
     assert spot * Decimal("1.1") - 50 < lim["max"] <= spot * Decimal("1.1")
     assert t["level_clamped"] is True and Decimal(t["level"]) == lim["max"]
-    low = (await _target(replayed, target_level="1"))["target"]
+    low = (await _target(provider, target_level="1"))["target"]
     assert low["level_clamped"] is True and Decimal(low["level"]) == lim["min"]
-    inside = (await _target(replayed, target_level=str(int(lim["min"]) + 50)))["target"]
+    inside = (await _target(provider, target_level=str(int(lim["min"]) + 50)))["target"]
     assert inside["level_clamped"] is False
 
 
-async def test_target_level_alone_uses_spot_inside_limits(replayed):  # noqa: F811
-    out = await _target(replayed, target_at=VALUATION.isoformat())
+async def test_target_level_alone_uses_spot_inside_limits(provider):
+    out = await _target(provider, target_at=VALUATION.isoformat())
     assert Decimal(out["target"]["level"]) == Decimal(out["spot_level"]).quantize(Decimal("0.01"))
     assert out["target"]["level_clamped"] is False
 
 
-async def test_multi_expiry_target_has_no_breakevens_with_the_reason(replayed):  # noqa: F811
-    body = {**_legs_body(replayed, _mixed_condor()), "target_at": "2026-10-10T12:00:00+05:30"}
-    r = await _post(body, replayed)
+async def test_multi_expiry_target_has_no_breakevens_with_the_reason(provider):
+    body = {**_legs_body(provider, _mixed_condor()), "target_at": "2026-10-10T12:00:00+05:30"}
+    r = await _post(body, provider)
     assert r.status_code == HTTP_OK, r.text
     t = r.json()["target"]
     assert t["breakevens"] is None and t["breakevens_reason"] == WORST_CASE
@@ -144,24 +150,22 @@ async def test_no_live_data_target_gives_at_expiry_and_refuses_the_time():
     assert t["pnl"]["value"] == _point(out["curves"]["at_expiry"], t["level"])
 
 
-async def test_no_target_fields_keep_the_reply_without_a_target(replayed):  # noqa: F811
-    assert "target" not in await _target(replayed)
+async def test_no_target_fields_keep_the_reply_without_a_target(provider):
+    assert "target" not in await _target(provider)
 
 
 @pytest.mark.parametrize("bad", [{"target_level": "23000.5"}, {"target_level": 23000},
                                  {"target_at": "2026-10-10T12:00:00"}])
-async def test_malformed_target_inputs_are_refused(replayed, bad):  # noqa: F811
-    r = await _post({**_body(replayed), **bad}, replayed)
+async def test_malformed_target_inputs_are_refused(provider, bad):
+    r = await _post({**_body(provider), **bad}, provider)
     assert r.status_code == HTTP_UNPROCESSABLE
 
 
-async def test_target_is_analysis_only_never_changes_legs_or_the_margin_plan(replayed):  # noqa: F811
+async def test_target_is_analysis_only_never_changes_legs_or_the_margin_plan(provider):
     """AC-6: the target never changes a leg, the planned entries or the margin plan (the margin cache's key)."""
-    from ofo_app.routes.outcome import OutcomeRequest, margin_legs
-
-    plain = _body(replayed)
+    plain = _body(provider)
     with_target = {**plain, "target_level": "25000", "target_at": "2026-10-10T12:00:00+05:30"}
     assert margin_legs(OutcomeRequest.model_validate(with_target)) == margin_legs(OutcomeRequest.model_validate(plain))
-    a, b = (await _post(plain, replayed)).json(), (await _post(with_target, replayed)).json()
+    a, b = (await _post(plain, provider)).json(), (await _post(with_target, provider)).json()
     for key in ("legs", "margin", "table", "scenario", "summary", "payoff"):
         assert a[key] == b[key], key
