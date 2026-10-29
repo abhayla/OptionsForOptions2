@@ -1,5 +1,14 @@
 # Session handover: GC-UI (Sensibull look + independent data check), 2026-10-28, session 1 of ~3
 
+## UPDATE session 2, LAND (2026-10-29 ~06:30 -> 09:45 IST) - READ THIS FIRST
+
+Owner said land (one PR, minimum CI). PR #604 carries GC-BM + GC-BP + GC-UI + docs. Market-hours checks DONE 09:16-09:22
+(contract row `market live`: paper walk on strategy 62, checker 0 mismatches, two-decimal prices, chart live, 0 order
+calls). CI round 1 red (19 DB + 16 e2e), all fixed locally (contract row `land r1`). Deferred items: #603.
+Worktrees: 52 are inside PR #604 and are removed with wt-rm after the merge; `OptionsForOptions2-gcbm` stays while the
+dev servers run from it; `OptionsForOptions2-row34` (superseded by PR #590, wt-rm refuses a non-identical tree) is the
+owner's call. NOT RUN: 1366 px check.
+
 ## UPDATE session 2 (2026-10-28 21:30 -> 2026-10-29 ~04:50 IST, head 05615606 + this commit) - READ THIS FIRST
 
 Every step's code is merged on `build/gcbm-must-have` (LOCAL ONLY, nothing pushed). Each row with its proof is in the
