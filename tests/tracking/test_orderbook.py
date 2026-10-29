@@ -162,3 +162,22 @@ def test_bad_order_fields_are_refused(bad: dict) -> None:
     fields = {"instrument_id": "C1", "side": "BUY", "quantity": 1, "price": D(1), "kind": "open", "placed_at": T0}
     with pytest.raises(ValueError):
         PaperOrder(**(fields | bad))
+
+
+@pytest.mark.parametrize("kind", ["open", "add", "exit", "stop"])
+def test_a_zero_price_is_refused_on_every_kind_but_settle(kind: str) -> None:
+    with pytest.raises(ValueError, match="above 0"):
+        PaperOrder("BSE_FO:863181", "BUY", 20, D(0), kind, T0)  # type: ignore[arg-type]
+
+
+def test_a_settle_at_zero_books_the_whole_premium_of_a_short_that_expired_worthless() -> None:
+    """GC-TP 5b (REQ-109 AC-7): strategy 52's SELL 20 SENSEX 72600 PE at 322.95 settles OTM at 0 -> booked 6,459.00."""
+    view = net_positions([PaperOrder("BSE_FO:863181", "SELL", 20, D("322.95"), "open", T0),
+                          PaperOrder("BSE_FO:863181", "BUY", 20, D(0), "settle", T0)], {})
+    pos = view.positions[0]
+    assert (pos.net_quantity, pos.booked, pos.unbooked, view.total) == (0, D("6459.00"), 0, D("6459.00"))
+
+
+def test_a_negative_settle_price_is_refused() -> None:
+    with pytest.raises(ValueError, match="above 0"):
+        PaperOrder("BSE_FO:863181", "BUY", 20, D("-0.05"), "settle", T0)

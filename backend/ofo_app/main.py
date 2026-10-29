@@ -25,6 +25,7 @@ from ofo_app import (
     held_switches,
     live_market,
     paper_monitor,
+    paper_settlement,
     pinned_clock,
     replay_mode,
 )
@@ -79,7 +80,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.error("live market data did not start: %s", type(exc).__name__)
     refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
     monitor = paper_monitor.start() if market is not None else None  # GC-TP 7a: paper stops, live only
+    settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
     yield
+    await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
     await paper_monitor.stop(monitor)  # a fire in flight is cancelled and rolls back
     await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
     if market is not None:
