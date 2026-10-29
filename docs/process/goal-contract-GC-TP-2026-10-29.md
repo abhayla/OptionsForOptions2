@@ -201,7 +201,7 @@ migration cannot reproduce today's figures exactly, the work stops there (Core-f
 
 | Step | Item | ADR-207 part / rows | What | Tier | Proof | Status |
 |---|---|---|---|---|---|---|
-| 0 | read first + spec text | - | §0.1, §0.2; write the REQ text the steps need, citing ADR-207, in one docs commit: REQ-109 (Add to Paper, order book, net position, partial exit, Drafts Mode, no silent drift), REQ-084 (target level + date ACs marked built in this goal; IV parts unchanged), REQ-041 AC-3 note (paper stop = automatic paper exit, no broker), a new AC in REQ-109 for expiry settlement; overlap list of shared files (as GC-UI step 0) | C | Docs commit + overlap list in this file | Not started |
+| 0 | read first + spec text | - | §0.1, §0.2; write the REQ text the steps need, citing ADR-207, in one docs commit: REQ-109 (Add to Paper, order book, net position, partial exit, Drafts Mode, no silent drift), REQ-084 (target level + date ACs marked built in this goal; IV parts unchanged), REQ-041 AC-3 note (paper stop = automatic paper exit, no broker), a new AC in REQ-109 for expiry settlement; overlap list of shared files (as GC-UI step 0) | C | Docs commit + overlap list in this file | DONE 2026-10-29 ~11:05 (REQ-109 AC-1/4/7/8 rewritten + AC-9/10 new; REQ-084 note; REQ-041 AC-3 paper note; overlap list below) |
 | 1 | CORE: order book + migration + checker | (2), F-65, F-66 | `paper_orders` table, migration 0028, net-position engine, routes `GET /paper/strategies`, `GET /paper/strategies/{id}` (net + orderbook), `POST /paper/strategies/{id}/orders` (list of orders, one transaction); checker extended | A (data migration, money) | Core proof above: 15 real strategies equal to the paisa before vs after; roll on 63 recomputed independently | Not started |
 | 2 | Add to Paper | (1), F-67, D-A23 | Button + confirm dialog + toast; old Start tracking path removed | B | vitest red first; live: place a NIFTY iron condor and a SENSEX strangle at typed prices; the orderbook shows the typed prices | Not started |
 | 3 | Drafts Mode in the builder | (2), F-65, F-66, D-C14, D-C52 | Net Positions / Orderbook, pending changes + review, partial exit, roll, add leg, Profit left / Loss left, Greeks / payoff on the net position | A (money figures) | Live on strategy 63: roll 22900 -> 22950 shows 2 pending orders, Confirm records them, net position + Profit/Loss left re-checked by the checker; a discarded edit leaves the orderbook unchanged | Not started |
@@ -245,6 +245,32 @@ no live-data item is ready, and their live proofs are scheduled into the next ma
       (NIFTY + SENSEX; single expiry + calendar; with a roll and a partial exit), all matching.
 - [ ] No push, no PR, no CI run happened (`git rev-parse @{u}` on `build/gctp` reports no upstream).
 - [ ] Handover written and committed locally; the owner's next steps (land, 0029) listed.
+
+## Overlap list (step 0, 2026-10-29)
+
+Run tree `D:\Abhay\Ventures\OptionsForOptions2-gctp-run`, branch `build/gctp`, base `build/gcbm-must-have` 5052f82a
+(#604 OPEN at 10:52 IST) + merge 806bfe6f of `docs/gctp-trader-paper`. `frontend\node_modules` installed by `npm ci`
+(the repo's `link_guard.py` refuses a junction into the main checkout; `wt-link-modules.ps1` knows only IPODhan's
+folders).
+
+| Step | Files it writes (expected) |
+|---|---|
+| 1 | NEW `backend/ofo/tracking/orderbook.py`, `backend/ofo_app/paper_store.py`, `backend/ofo_app/routes/paper.py`, alembic `0028_paper_orders.py`; `backend/ofo_app/main.py` (router), `scripts/checks/ui_data_check.py` |
+| 2 | `StrategyBuilderPage.vue`, `StrategyActions.vue`, `SaveDraftBar.vue`, NEW `PaperConfirmDialog.vue`, `lib/tracking.js` (-> paper), `routes/tracking.py` (POST removed) |
+| 3 | `StrategyBuilderPage.vue`, `LegList.vue`, `StrategyLegRow.vue`, `SummaryCards.vue`, `PaperConfirmDialog.vue`, engine Profit/Loss left (`ofo/tracking/orderbook.py` or `engine/metrics.py`), `routes/paper.py` |
+| 4 | `PositionsPage.vue`, `PaperStrategies.vue`, `router`, `lib/usePaperRefresh.js`, `routes/paper.py` (totals) |
+| 5 | NEW settlement module, `main.py` (lifespan), `paper_store.py` |
+| 6 | `ChartCard.vue`, `ScenarioControls.vue`, `StrategyBuilderPage.vue`, scenario route |
+| 7 | NEW monitor module + alembic `0029_paper_triggers.py` (so the drop of the old tables becomes 0030, not 0029), `main.py`, `feed_bus.py`, `AppHeader.vue`, `AlertsPage.vue` |
+| 8 | `ofo/charges/*` (read), `routes/paper.py`, `engine/money_summary.py`, `SummaryCards.vue`, `PaperStrategies.vue` |
+
+Shared hot files: `StrategyBuilderPage.vue` (2, 3, 6), `main.py` (1, 5, 7), `routes/paper.py` (1, 3, 4, 5, 8),
+`PaperStrategies.vue` (4, 8), `SummaryCards.vue` (3, 8). So 4 and 8 run one after the other; 6 may run beside 4
+(no shared file); 2 and 3 in order.
+
+Step-1 "before" record: `GET /tracking` at 2026-10-29 10:55:17 IST (answered_at 05:25:17Z) from the GC-UI API on
+ofo_dev, saved at `D:\Abhay\scratch\gctp\before-20261029T105515.json`: 18 tracked strategies (46-63), 16 with open
+legs, 2 fully exited (50, 53), 4 with one exited leg (48, 56, 62; 53 both), 2 calendars (51, 59).
 
 ## Found during the run
 
