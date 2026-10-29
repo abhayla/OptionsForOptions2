@@ -49,6 +49,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && url.startsWith('/paper/strategies/')) return Promise.reject({ status: 404 }) // GC-TP 3b1: not a paper strategy
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }

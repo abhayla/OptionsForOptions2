@@ -33,6 +33,9 @@ const props = defineProps({
   current: { type: Object, default: null },
   // the name the builder shows for an unsaved strategy (its shape name); an unsaved strategy is saved under it before Add to Paper
   shownName: { type: String, default: '' },
+  // GC-TP step 3b1 (ADR-207 (2), F-65): the builder shows a paper strategy's NET position (Drafts Mode). Save, Save As and Add to
+  // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
+  paperMode: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted'])
 
@@ -108,10 +111,10 @@ onBeforeUnmount(() => {
   deleteFlow.dispose()
 })
 
-const hasLegs = computed(() => canSaveLegs(props.legs)) // Save / Save As need legs that can be saved
+const hasLegs = computed(() => !props.paperMode && canSaveLegs(props.legs)) // Save / Save As need legs that can be saved
 // The "..." button is disabled only when the menu would be empty (nothing to save, no saved strategy); each item shows by its own condition.
 const hasMenu = computed(() => hasLegs.value || !!props.current)
-const canSave = computed(() => !busy.value && canSaveLegs(props.legs))
+const canSave = computed(() => !props.paperMode && !busy.value && canSaveLegs(props.legs))
 
 async function refresh() {
   try {
@@ -249,7 +252,7 @@ async function confirmRename() {
 
 async function confirmName() {
   if (asking.value === 'rename' && props.current && !busy.value) return confirmRename()
-  if (busy.value || !asking.value || !canSaveLegs(props.legs)) return
+  if (props.paperMode || busy.value || !asking.value || !canSaveLegs(props.legs)) return
   const mode = asking.value
   const legs = props.legs
   busy.value = true
@@ -296,7 +299,7 @@ const paperTarget = ref(null)
 const paperToast = ref(null) // the strategy id the toast's "Open in Builder" reopens, or null
 let paperToastTimer = null
 const tickedLegs = computed(() => props.legs.filter((l) => l.included !== false))
-const canAddToPaper = computed(() => !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+const canAddToPaper = computed(() => !props.paperMode && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
 async function startPaper() {
   if (!canAddToPaper.value) return
@@ -360,10 +363,10 @@ onMounted(refresh)
     <div class="-mt-4 flex min-h-14 items-center gap-2 rounded-b-lg border border-line bg-surface px-3 py-2 text-sm" data-testid="action-row">
       <slot name="add-edit" />
       <button
-type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
+v-if="!paperMode" type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
               :disabled="!canSave" @click="save">Save</button>
       <button
-type="button" data-testid="add-to-paper" class="h-10 flex-1 basis-0 rounded-lg border border-line px-3 font-medium disabled:opacity-50"
+v-if="!paperMode" type="button" data-testid="add-to-paper" class="h-10 flex-1 basis-0 rounded-lg border border-line px-3 font-medium disabled:opacity-50"
               :disabled="!canAddToPaper" @click="startPaper">{{ ADD_TO_PAPER_LABEL }}</button>
       <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button

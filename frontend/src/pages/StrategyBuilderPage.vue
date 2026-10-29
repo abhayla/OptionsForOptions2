@@ -26,7 +26,11 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { ADD_TO_PAPER_LABEL } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, addToPaper as postPaperOrders } from '@/lib/tracking'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import {
+  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+} from '@/lib/paperDrafts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
@@ -48,7 +52,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
-import { istClock, istTime, nameFromPool } from '@/lib/displayFormat'
+import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
@@ -253,6 +257,7 @@ const onRenamed = (id, name) => {
 // name and POSTs instead of PUTting a hidden id. The legs stay on screen; the ?strategy= link is dropped.
 const onDeleted = (id) => {
   if (openStrategy.value?.id !== id) return
+  leaveDrafts()
   openStrategy.value = null
   savedId.value = null
   savedRevision.value = null
@@ -266,10 +271,82 @@ const onSaved = (id, revision, name) => {
 }
 // AC-5: a reload of /strategy/builder?strategy=<id> reads the saved copy (legs and planned entries as saved, never today's prices).
 const STRATEGY_ID = /^[1-9]\d{0,17}$/
+// GC-TP step 3b1 (ADR-207 (2), REQ-109 AC-9; F-65, F-66): Drafts Mode. A strategy with paper orders opens as its NET position
+// (`paper` holds the book and the net legs) and every edit after that only changes the legs on screen; the ONLY way an edit
+// reaches the server is the list paperOrdersFor(net, legs) gives, reviewed in the confirm dialog. Save / Save As / Add to Paper
+// are not offered (SaveDraftBar paper-mode). A book that cannot be read is said plainly; the plan is never shown in its place.
+const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
+const pendingOrders = computed(() => (paper.value ? paperOrdersFor(paper.value.net, legs.value) : []))
+const paperRows = ref([])
+const paperDialog = ref(false)
+const paperBusy = ref(false)
+const paperError = ref('')
+const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
+const copyLegs = (net) => net.map((l) => ({ ...l }))
+function enterDrafts(id, read) {
+  paper.value = { id, book: read.book, net: read.net }
+  openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
+}
+const leaveDrafts = () => { paper.value = null }
+function reviewPending() {
+  if (!paper.value || !pendingOrders.value?.length) return
+  paperError.value = ''
+  paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName)
+  paperDialog.value = true
+}
+const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
+async function confirmPending(orders) {
+  if (paperBusy.value || !paper.value) return
+  const { id } = paper.value
+  paperBusy.value = true
+  paperError.value = ''
+  try {
+    await postPaperOrders(api, id, orders)
+  } catch (e) {
+    paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal
+    paperBusy.value = false
+    return
+  }
+  paperDialog.value = false
+  try {
+    const read = await readPaperBook(api, id) // the server's book after the orders: the new net position
+    if (read.kind === 'paper') enterDrafts(id, read)
+    else openError.value = unreadableParts(null)
+  } catch (e) {
+    openError.value = unreadableParts(e)
+  } finally {
+    paperBusy.value = false
+  }
+}
+// the Saved tab's Open goes through the same check: a strategy with paper orders opens as its net position, never its plan
+async function openFromBar(next, id, revision, name) {
+  if (Number.isInteger(id)) {
+    try {
+      const read = await readPaperBook(api, id)
+      if (read.kind === 'paper') return enterDrafts(id, read)
+    } catch (e) {
+      openError.value = unreadableParts(e)
+      return
+    }
+  }
+  leaveDrafts()
+  openSaved(next, id, revision, name)
+}
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
   if (!STRATEGY_ID.test(id)) return
   const before = legs.value
+  let read
+  try {
+    read = await readPaperBook(api, id)
+  } catch (e) {
+    if (String(route.query.strategy ?? '') === id) openError.value = unreadableParts(e) // said plainly; the plan is not shown instead
+    return
+  }
+  if (String(route.query.strategy ?? '') !== id || legs.value !== before) return
+  // the book names its own strategy id (an integer); it must be the one in the URL
+  if (read.kind === 'paper') return String(read.book.strategy_id) === id ? enterDrafts(read.book.strategy_id, read) : (openError.value = unreadableParts(null))
+  leaveDrafts()
   try {
     const saved = await fetchSavedDraft(api, id)
     if (String(route.query.strategy ?? '') !== id) return // F-4: the URL moved on while the read was out
@@ -292,6 +369,7 @@ watch(() => route.query.draft, (v) => {
   draftQuery = readDraft()
   canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
   const refused = draftQuery !== null && canonicalQueryLegs === null
+  leaveDrafts()
   openStrategy.value = null
   openError.value = null
   setLegs(legsFromQuery())
@@ -586,6 +664,9 @@ const pricesStamp = computed(() => {
 
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
         <!-- Region B (UI-104..UI-108) -->
+        <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
+        <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
+        <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
           :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
@@ -595,13 +676,20 @@ const pricesStamp = computed(() => {
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+        <div v-if="paper" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
+          <span class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
+          <button v-if="pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
+          <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
+        </div>
+        </div>
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" @confirm="confirmPending" @cancel="paperDialog = false" />
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
           <template #menu="{ close, addToPaper, canAddToPaper }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
-            <button type="button" role="menuitem" data-testid="menu-add-to-paper" :disabled="!canAddToPaper" @click="close(); addToPaper()">{{ ADD_TO_PAPER_LABEL }}</button>
+            <button v-if="!paper" type="button" role="menuitem" data-testid="menu-add-to-paper" :disabled="!canAddToPaper" @click="close(); addToPaper()">{{ ADD_TO_PAPER_LABEL }}</button>
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
           <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
