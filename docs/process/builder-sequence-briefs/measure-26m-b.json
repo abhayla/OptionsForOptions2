@@ -1,0 +1,92 @@
+{
+ "row": "26m-b",
+ "w_id": "W-154",
+ "req": "REQ-081",
+ "title": "Margin read with open positions counted or not: positions presence, consider_positions per setting, cache key, route, Execute names both figures",
+ "tier": "A",
+ "files": [
+  "backend/ofo_app/kite_margin.py",
+  "backend/ofo_app/outcome_margin.py",
+  "backend/ofo_app/kite_period_reads.py",
+  "backend/ofo/outcome/service.py",
+  "backend/ofo_app/routes/outcome.py",
+  "backend/ofo_app/routes/user_settings.py",
+  "backend/ofo_app/main.py",
+  "backend/ofo_app/live_market.py",
+  "backend/ofo_app/routes/execute.py",
+  "backend/ofo/errors/explanations.py",
+  "tests/errors/template_pins.json",
+  "docs/api/openapi.json",
+  "tests_app/test_outcome_margin.py",
+  "tests_app/test_kite_margin_client.py",
+  "tests_app/test_margin_positions_setting.py"
+ ],
+ "items": [
+  "Step 1 = CORE PROOF, on the live dev API like row 25 (docs/research/kite-proof-2026-10-07/rest-2026-10-26/row25-outcome-margin.json; owner Kite session; read-only, no order): for the same 2-leg NIFTY plan POST /api/strategies/outcome twice, once with margin.count_open_positions true and once false (written through the new route), and read GET /portfolio/positions through the product path. Record the figures with their labels, needed/broker_needed per call and the positions count (expected 0 today). State plainly in the report: with 0 open positions =true and =false must give the same final.total and the toggle is NOT offered; the different-figure case is UNPROVEN until the owner holds a position. Save the JSON next to the row-25 file. If Zerodha refuses the =false call, STOP and report the body (docs/research/kite-proof-2026-10-07/kite_core_proof.py:187 sent consider_positions=false on 2026-10-07 and it was accepted, so a refusal would be new).",
+  "Q1 kite_margin.py:44 BASKET_PATH is the fixed string '/margins/basket?consider_positions=true' and :190 fetch_basket_margin(orders) has no mode. Change to fetch_basket_margin(self, orders, *, consider_positions: bool = True); keep BASKET_PATH untouched (pinned by name in backend/ofo_app/order_limits_registry.py:123 and by tests_app/test_kite_margin_client.py:63,375) and add BASKET_PATH_STANDALONE = '/margins/basket?consider_positions=false' beside it. The DEFAULT stays True so the Execute gate's callers keep exactly their figure: backend/ofo_app/routes/execute.py:558 (_zerodha_margin), backend/ofo_app/checked_basket.py:49,86 and margin_verdict kite_margin.py:234. Pass consider_positions=True explicitly at execute.py:558 (one token) and test that a default flip fails (mutation). ALLOWED_CALLS (backend/ofo/broker/kite_endpoints.py:27) names ('POST','/margins/basket') without the query, so no new entry; assert in the test that the door accepts both URLs.",
+  "Q3 how the app knows an open position exists: REUSE, no second Kite call per tick (ADR-099). backend/ofo_app/kite_period_reads.py screen_positions already reads GET /portfolio/positions at most once per 45 s per user through rate_limit.read_once_per_period, and the periodic job live_market.py:195 _read_positions_periodic fills that same keyed answer in the background. Add open_positions_present(reads) -> bool | None in kite_period_reads.py: call screen_positions(reads), then True if any row of the reply's 'net' list is not flat (backend/ofo/reconciliation/positions.py:49 is_flat_row; NOT positions_from_reply, which refuses the whole reply for a row the platform cannot own - finding positions-reply-refused-for-non-platform-rows - and Zerodha counts every F&O position, so every non-flat row counts), False if all rows are flat or net is empty, None when the read failed (KiteReadError, busy, timeout, bad reply). No positions call of its own outside that 45 s period.",
+  "Q4 cache key + one read per change, backend/ofo_app/outcome_margin.py: margin_for (:151) keys on (session, orders). Make it (session, orders, consider_positions) so a setting flip is a different key (a miss, one read) and a cached counted figure is never shown as alone. When no open position is present (False) read ONCE with the default and key consider_positions=None (not applicable) so the setting costs no second read. _read (:99) takes the flag and passes it to fetch_basket_margin; ONE read of the chosen mode per plan change, never both (REQ-081 AC-8, ADR-099); the funds read is unchanged. OutcomeMargin gets two injected readers: positions (-> bool | None, open_positions_present in asyncio.to_thread under READ_TIMEOUT_SECONDS) and setting (-> bool | None from user_setting_store.read for the session's user_ref through a small write-through cache, so the live push, one push per second, never hits the database per push). margin_answer (:205) resolves both INSIDE the one door, so REST (routes/outcome.py:602), the live push (live_push.py:133) and the leg-edit embed (leg_edit.py:580) carry the same block with NO edit to live_push.py or leg_edit.py (structural guarantee, run-discipline B8). live_market.py:442 margin_source() wires the readers with the user from current_session(), never a retyped owner literal.",
+  "Margin dataclass (backend/ofo/outcome/service.py:163): add positions: str with values NOT_OFFERED (no session, no open position, or positions unknown), COUNTED (setting on and a position present; basket read with =true), ALONE (setting off and a position present; read with =false); default NOT_OFFERED so every existing constructor and the MARGIN constant keep their meaning. MarginOut (routes/outcome.py:411) gets positions: Literal[...] = 'NOT_OFFERED', positions_label: CatalogueText | None and positions_prompt: CatalogueText | None (caption only when offered) so the browser builds no text. Labels are catalogue templates in backend/ofo/errors/explanations.py near :967-983 with typed slots, passing check_explanation_wording, pins in tests/errors/template_pins.json with the existing pending-owner-read marker: 'Margin needed (with your open positions)', 'Margin needed (this strategy alone)' exactly as REQ-081 AC-5 writes them, and 'Count my open positions'. outcome_margin_checked (explanations.py:970) is unchanged for NOT_OFFERED. Money stays Decimal, strings in the API (ADR-008). Regenerate docs/api/openapi.json with scripts/generate_openapi.py and run its check. If tests_app/test_response_door.py lists response fields by name it needs the new fields and is a 16th file: STOP and move the openapi regeneration and that file to the 26m-f PR.",
+  "Q2 route for the setting: backend/ofo_app/routes/user_settings.py (new; PR #509 has a file of the same name for the chain key - take its shape): GET|PUT /api/user-settings/margin-count-open-positions with body {value: bool}, response_model on ApiModel, Annotated Depends(get_db), user_ref from the session through the dependency the other routes use, never the OWNER_REF literal in the route; the caller commits. Register it in backend/ofo_app/main.py:89-93 include_router. A PUT also clears that user's write-through setting cache in OutcomeMargin so the next outcome push uses the new value (REQ-138 AC-3: a changed setting asks the server for a new reply; the browser re-asks, it never edits the figure).",
+  "AC-6 Execute: the hard gate stays REQ-055 + ADR-094 with consider_positions=true whatever the setting says - nothing in routes/execute.py:552-560 reads the setting. When the gate blocks on margin (shortfall) AND positions are present, the Execute review names BOTH figures: the gate's (with positions, required_total) and the planning figure the user saw (standalone, ONE extra consider_positions=false read taken only on that blocked path through the same KiteMargin client). New catalogue template with typed Rupees slots (draft wording, condition and numbers only, no advice, pending-owner-read pin), e.g. 'With your open positions about {with_positions} is needed; this strategy alone needs about {alone}.' Spec wording note: REQ-081 AC-6 says 'Where the position-aware figure is lower than the gate's' but the gate IS position-aware (=true); the case that blocks Execute while the planning line says enough is the standalone (off) figure being LOWER than the gate's. Build to that intent and fix the AC-6 sentence in spec/requirements/REQ-081.md in the same PR (Class 1 wording correction, no behaviour change; list spec/requirements/REQ-081.md as a 16th file ONLY if the PR needs it - then move the Execute both-figures work to a 26m-b2 PR). If the Execute shortfall text lives in a file not in the list (grep callers of check_margin and the shortfall template), STOP before editing it and report.",
+  "Answer states for the positions read and the two margin reads, and what the screen shows - stated, at least one non-flat row: offer the toggle, read per setting; stated, none / flat rows / empty net: NOT_OFFERED, the existing outcome_margin_checked line (=true equals =false); absent (no Zerodha session or ctx None): existing login text, no Kite call; not found (net missing or not a list): None -> NOT_OFFERED, existing line, class logged only; failed (KiteReadError, token, busy 429, timeout, database error): None -> NOT_OFFERED and the existing =true figure with NO 'with your open positions' label because no position was confirmed; empty reply: as not found; ambiguous (some rows flat, some not; another underlying; CNC): any non-flat row counts as a position and the label says 'open positions'. Margin read states keep their ADR-099 texts: CHECKED, UNREADABLE (a failed =false read is UNREADABLE, never the other mode's figure), NO_BASKET, token invalid -> login text. A failed SETTING read (database) uses the default True, logged by class only.",
+  "Tests: tests_app/test_margin_positions_setting.py (new) = the whole matrix above on the replay transport; tests_app/test_outcome_margin.py (one read per plan, key includes the mode, a flip is exactly one new read, COUNTED and ALONE never share an entry, positions None reads once with the default); tests_app/test_kite_margin_client.py (:54-63 URL pin for the default, new pin for =false, door accepts both). Mutation gate single-line: default True->False, cache key drops the flag, setting on read as off, execute.py reading the setting, flat row counted as position, positions failure treated as present. Run only the files select_app_tests.py selects, the guard line, pytest -m repo_scan tests, ruff ratchet, openapi --check, pr_close_check. HARD STOP at 64 of 80 calls."
+ ],
+ "core": "Zerodha basket margin for the same real plan read twice - consider_positions=true (open positions counted) and consider_positions=false (this strategy alone) - through the product path POST /api/strategies/outcome, each shown with its own label (REQ-081 AC-5), while the Execute gate keeps reading consider_positions=true (REQ-081 AC-6, ADR-094).",
+ "proof": "item 1 (core proof plan): with NO open position in the owner's account (none on 2026-10-21 nor 2026-10-26) the builder can prove only that the standalone read works (a recorded POST /margins/basket?consider_positions=false for the row-25 2-leg NIFTY plan returns 200 with the same final.total as =true, because nothing else is held), that the setting, the cache key and the label switch work, and that the Execute gate still sends =true. It CANNOT prove that Zerodha returns a different figure with a position held, nor that the position-aware figure may be lower: that needs one real open NIFTY position (owner-held, 1 lot) and is recorded as UNPROVEN until then (AC-5 stays PARTIAL, issue to be filed with --stage).",
+ "spec_basis": "REQ-081 AC-5 \"Count my open positions\"; REQ-081 AC-5 \"The choice is a per-user setting, on by default as in Sensibull.\"; REQ-081 AC-6 \"The hard gate before the basket stays REQ-055 with the ADR-094 figure whatever this setting says\"; ADR-099 \"quantity or planned price changes - never on every tick.\"; ADR-094 \"a negative difference counts as 0, never as a credit\"; REQ-138 AC-2 \"from the session, never a hard-coded owner\"; REQ-138 AC-3 \"Changing a setting that changes a number\"; ADR-152 \"Three exceptions still go to the owner one question at a time\"",
+ "copy_from": "none - searched REQ-081, margin, positions, settings in spec/technical-design/legacy-reuse.md; the store shape is taken from this repo's own open PR #509 (branch build/W-124-a3-chain: 0022_user_settings.py, user_setting_store.py), not from a legacy repo; reference only, not copied: app/api/routes/orders.py (algochanakya margins/import-positions, float money; this repo reads positions through ofo_app/kite_reads.py)",
+ "attack": [
+  {
+   "text": "The Execute gate keeps consider_positions=true: fetch_basket_margin default is True, execute.py:558 passes it, and a flip of the default or reading the setting at Execute fails",
+   "test_file": "tests_app/test_kite_margin_client.py"
+  },
+  {
+   "text": "A setting flip is exactly one new Zerodha read, COUNTED and ALONE never share a cache entry, and the same plan and mode is one read for many pushes",
+   "test_file": "tests_app/test_outcome_margin.py"
+  },
+  {
+   "text": "Positions failed / not found / empty / ambiguous never produce the with-your-open-positions label or the toggle, and never a made-up figure",
+   "test_file": "tests_app/test_margin_positions_setting.py"
+  },
+  {
+   "text": "Flat rows (quantity 0) and a non-platform row (CNC stock): flat is no position, any non-flat row counts, the whole reply is never refused",
+   "test_file": "tests_app/test_margin_positions_setting.py"
+  },
+  {
+   "text": "REST outcome and the live push of one snapshot carry the same margin block (positions, label) because both go through margin_answer",
+   "test_file": "tests_app/test_margin_positions_setting.py"
+  },
+  {
+   "text": "No Kite positions call per tick: ten pushes inside one 45 s period make zero extra positions reads",
+   "test_file": "tests_app/test_margin_positions_setting.py"
+  },
+  {
+   "text": "Execute blocked on margin with positions present names both figures; with no positions it names one; the standalone read happens only on that blocked path",
+   "test_file": "tests_app/test_margin_positions_setting.py"
+  }
+ ],
+ "standing": {
+  "a": "applied: no new time-budgeted job; the positions read reuses the per-user 45 s period and READ_TIMEOUT_SECONDS, the setting read is write-through cached; a test proves the margin read still runs when positions are unknown",
+  "b": "n/a: no CI step changes",
+  "c": "n/a: no static detector added; the BASKET_PATH pin in order_limits_registry.py:123 stays valid because the constant is kept",
+  "d": "applied: every state of the positions read and both margin reads is listed in the item Answer states with its screen text; funds read unchanged"
+ },
+ "threat_model": "in scope - the Execute gate silently switching to the standalone figure (a lower number lets an order through), a cached counted figure shown as alone, a second Kite positions or margin call per tick (rate limit), a positions failure shown as with your open positions, the browser deciding which figure is shown, money as float, advice wording in the new templates, the setting read per push from the database; out of scope - the Settings panel and the other REQ-138 keys (row 40), the Execute risk tier, the toggle UI (26m-f)",
+ "findings_checked": [
+  "setting-read-from-two-sources",
+  "positions-reply-refused-for-non-platform-rows",
+  "margin-gate-blocks-closing-basket"
+ ],
+ "expected": {
+  "minutes": 90,
+  "tokens": 600000
+ },
+ "ci": "kit ci.yml pytest (tests/errors/test_template_pins.py) and app-tests job (tests_app/test_margin_positions_setting.py, tests_app/test_outcome_margin.py, tests_app/test_kite_margin_client.py, openapi check)",
+ "search_terms": [
+  "include existing positions",
+  "standalone margin",
+  "consider positions",
+  "screens 240-243"
+ ]
+}

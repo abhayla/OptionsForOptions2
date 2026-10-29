@@ -1,0 +1,37 @@
+{
+ "id": "changed-user-text-left-in-other-test-files",
+ "scope": "project",
+ "class": "When a user-facing text (a pinned template, a pre-filled value) changes, tests in OTHER files that copied the old literal keep asserting it; the builder's targeted run passes, and the stale assertion only fails in the full suite or in CI. Wider shape: a literal copied into a test is a second home of the text; the brief's 'search every test tree' rule is prose and is skipped.",
+ "mechanism": "2026-10-26, three times in one day: (1) row 25 reworded the Execute margin refusal - 5 tests in tests/execution/test_margin_gate.py still asserted 'Zerodha says this strategy needs ...' (caught by ci_local); (2) #537 F2 removed \"Zerodha's figure is final\" - tests/execution/test_safety_checks.py:149 still expected it (caught by ci_local); (3) ADR-192 shortened the Save As pre-fill - frontend/tests/draft-link.test.js:188 still expected 'NIFTY Oct condor copy' (caught by CI's frontend job, run 40333943898). Each builder ran targeted files only; the checkers did not grep for the old literal either.",
+ "first_seen": {
+  "date": "2026-10-26",
+  "where": "rows 25 and #537 F2/F5 (PRs #574, #579)",
+  "evidence": "ci_local logs 20261026-140308 and 20261026-185555; CI run 40333943898"
+ },
+ "fix": "Mechanism due (third occurrence): a check that, for every pinned template whose text or hash changes in a diff (tests/errors/template_pins.json) and every changed string constant a test can copy, greps tests/, tests_app/, frontend/tests/ and frontend/e2e/ for the OLD rendered text and fails naming each hit; run by ci_local's test step or a repo test. Until built: briefs require the grep with the old value pasted (builder-brief.md rule 'A changed shown value is searched in every test tree') and the full frontend unit suite (~1 min) when a frontend text changes.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "ci_local's full test step and CI catch it after the build, costing a round (about 15-25 min each time today)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-003.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-26",
+   "where": "tests/execution/test_margin_gate.py",
+   "evidence": "5 tests, row 25"
+  },
+  {
+   "date": "2026-10-26",
+   "where": "tests/execution/test_safety_checks.py:149",
+   "evidence": "#537 F2"
+  },
+  {
+   "date": "2026-10-26",
+   "where": "frontend/tests/draft-link.test.js:188",
+   "evidence": "ADR-192"
+  }
+ ]
+}
