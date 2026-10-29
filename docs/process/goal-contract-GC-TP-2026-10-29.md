@@ -89,7 +89,7 @@ migration cannot reproduce today's figures exactly, the work stops there (Core-f
 - Tests: builders run only the test files they touch (+ ruff on touched Python, `npx eslint --max-warnings 0` on touched
   frontend files); output to a log, read the tail. After each local merge, the FULL frontend vitest once with
   `FULL_SUITE_BUDGET=<n> npx vitest run --maxWorkers=2`. DB tests one file at a time via the MAIN checkout's
-  `scripts/orchestrator/db_run_fresh.py` (the PostgreSQL host also serves IPODhan production: targeted files only).
+  `scripts/orchestrator/db_run_fresh.py` (the PostgreSQL host is shared with a production database: targeted files only).
 - Migrations touching paper data are Tier A: before the first run against ofo_dev, dump the tracking tables
   (`public.strategy_tracking`, `public.strategy_tracking_legs` from 0021, `public.strategy_tracking_exits` from 0027) to `D:\Abhay\scratch\gctp-backup-<time>.sql` and record the file and its
   row counts in this file; the downgrade path is tested on ofo_test (fresh) before ofo_dev is touched.
@@ -250,8 +250,8 @@ no live-data item is ready, and their live proofs are scheduled into the next ma
 
 Run tree `D:\Abhay\Ventures\OptionsForOptions2-gctp-run`, branch `build/gctp`, base `build/gcbm-must-have` 5052f82a
 (#604 OPEN at 10:52 IST) + merge 806bfe6f of `docs/gctp-trader-paper`. `frontend\node_modules` installed by `npm ci`
-(the repo's `link_guard.py` refuses a junction into the main checkout; `wt-link-modules.ps1` knows only IPODhan's
-folders).
+(the repo's `link_guard.py` refuses a junction into the main checkout; `wt-link-modules.ps1` does not know this repo's
+`frontend` folder).
 
 | Step | Files it writes (expected) |
 |---|---|
