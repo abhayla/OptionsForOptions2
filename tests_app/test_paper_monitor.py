@@ -240,6 +240,13 @@ async def test_a_cancelled_trigger_never_fires(db):
     assert await monitor.step() == 0 and await _stops(db, stored.id) == []
 
 
+async def test_claiming_one_armed_trigger_twice_wins_once_and_the_second_claim_does_not_raise(db):
+    stored, _, _ = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    assert await triggers.claim_fire(db, tid) is True
+    assert await triggers.claim_fire(db, tid) is False
+
+
 async def test_a_failed_write_rolls_back_whole_and_the_next_crossing_tick_fires(db, monkeypatch):
     market = Market()
     stored, _, keys = await _strategy(db)
