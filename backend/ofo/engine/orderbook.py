@@ -22,8 +22,9 @@ The arithmetic is the engine's leg P&L, BUY (price - entry) x qty, SELL (entry -
 Answer states: no orders -> refused; a price finer than a paisa (an order or a live price) -> refused; a live price
 absent for an open contract -> its unbooked is None and the book's unbooked and total are None (REQ-109 AC-5). Any
 paisa price is accepted: legacy entries are captured LTPs (the 0.05 tick rule is for typed orders, step 1b).
-A price of 0 is accepted ONLY on a ``settle`` order (GC-TP 5b, REQ-109 AC-7: an out-of-the-money option's intrinsic value at expiry;
-migration 0030 allows exactly that in the database); every other kind, and every live price, is above 0.
+A price of 0 is accepted ONLY on a ``settle`` order (GC-TP 5b, REQ-109 AC-7: an out-of-the-money option's intrinsic
+value at expiry; migration 0030 allows exactly that in the database); every other kind, and every live price, is above
+0.
 Standard library only; no clock is read here.
 """
 from __future__ import annotations
