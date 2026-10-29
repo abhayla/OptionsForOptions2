@@ -13,21 +13,18 @@ The prices come only from the server's live read or the migration; this store ta
 """
 from __future__ import annotations
 
-import datetime
 from collections.abc import Sequence
-from dataclasses import dataclass
-from decimal import Decimal
 from typing import Any
 
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from sqlalchemy import text
 
 from ofo_app import strategy_store as store
+from ofo_app.paper_book import _COLUMNS, NewOrder, StoredOrder, UserBook, _row
 
 EXIT_EXCEEDS_OPEN = "exit_exceeds_open"
 REDUCING_KINDS = frozenset({"exit", "settle", "stop"})
 
-_COLUMNS = "id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, trigger_id"
 _INSERT = text(
     "INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at, reason, "
     "trigger_id) VALUES (:strategy_id, :contract_id, :side, :quantity, :price, :kind, :placed_at, :reason, "
@@ -43,42 +40,6 @@ _SELECT_USER = text(
     "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY o.strategy_id, o.id")
 
 
-@dataclass(frozen=True)
-class NewOrder:
-    contract_id: int
-    side: str
-    quantity: int
-    price: Decimal
-    kind: str
-    placed_at: datetime.datetime
-    reason: str | None = None
-    trigger_id: int | None = None
-
-    def as_paper(self) -> PaperOrder:
-        """The engine's view (validates side, kind, quantity and the paisa price); the contract id is the key."""
-        return PaperOrder(str(self.contract_id), self.side, self.quantity, self.price, self.kind, self.placed_at)
-
-
-@dataclass(frozen=True)
-class StoredOrder:
-    id: int
-    strategy_id: int
-    order: NewOrder
-    created_at: datetime.datetime
-
-
-@dataclass(frozen=True)
-class UserBook:
-    strategy_id: int
-    name: str | None
-    underlying: str
-    orders: tuple[StoredOrder, ...]
-
-
-def _row(r: Any) -> StoredOrder:
-    return StoredOrder(int(r.id), int(r.strategy_id),
-                       NewOrder(int(r.contract_id), r.side, int(r.quantity), r.price, r.kind, r.placed_at, r.reason,
-                                None if r.trigger_id is None else int(r.trigger_id)), r.created_at)
 
 
 def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:

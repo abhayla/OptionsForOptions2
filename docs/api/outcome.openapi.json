@@ -2862,6 +2862,18 @@
             ],
             "title": "Breakevens"
           },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
           "breakevens_reason": {
             "anyOf": [
               {},

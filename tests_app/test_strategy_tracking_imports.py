@@ -151,6 +151,10 @@ REVIEWED_RAW_IDENTITY = {
                                       "exchange file's token; no stored id",
     "backend/ofo_app/audit_allowlist.py": "docstring only (exchange_token is not in the order reply); no query",
     "backend/ofo_app/routes/catalogue.py": "docstring names the fields; lists live contracts via catalogue_picker",
+    # GC-CLEAN (2026-10-30), GC-TP settlement (F-72): option legs by stored id give TERMS only (name, type, strike,
+    # expiry) to settle at the index close; the one key read is the INDEX's, from load_catalogue's live rows by the
+    # fixed INDEX_ROWS key (as live_market.py). No stored id -> feed key.
+    "backend/ofo_app/paper_settlement.py": "stored id -> terms only; index token from live rows by INDEX_ROWS key",
 }
 #: Paths that must never be in the reviewed list: the callers issue #500 moved onto resolve.
 MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/routes/execute.py",

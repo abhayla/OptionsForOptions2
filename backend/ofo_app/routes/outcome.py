@@ -244,13 +244,12 @@ async def read_booked(strategy_id: int) -> Decimal | None:
         net_positions,  # late: the DB-free outcome route imports nothing of tracking at load
     )
 
-    from ofo_app import paper_store, strategy_store
+    from ofo_app import paper_book  # not paper_store: that one reaches order code (REQ-073 AC-6)
     from ofo_app.db import get_sessionmaker
     from ofo_app.routes.broker import current_user_ref
     try:
         async with get_sessionmaker()() as db:
-            await strategy_store.load(db, current_user_ref(), strategy_id)  # the owner check: another user's id is unknown
-            orders = await paper_store.load(db, strategy_id)
+            orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
     except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read", never a 0
         return None
     return net_positions([o.order.as_paper() for o in orders], {}).booked if orders else None

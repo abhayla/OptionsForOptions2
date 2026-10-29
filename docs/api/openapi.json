@@ -2592,6 +2592,52 @@
         "title": "FuturesOut",
         "type": "object"
       },
+      "GreekFigures": {
+        "additionalProperties": false,
+        "description": "Position-level Greeks (per unit x quantity x sign), 4 dp, with the table's display text.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "delta_text": {
+            "title": "Delta Text"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "gamma_text": {
+            "title": "Gamma Text"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "theta_text": {
+            "title": "Theta Text"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          },
+          "vega_text": {
+            "title": "Vega Text"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega",
+          "delta_text",
+          "gamma_text",
+          "theta_text",
+          "vega_text"
+        ],
+        "title": "GreekFigures",
+        "type": "object"
+      },
       "GreeksOut": {
         "additionalProperties": false,
         "properties": {
@@ -3372,6 +3418,12 @@
             "title": "Fallback",
             "type": "boolean"
           },
+          "include_booked": {
+            "default": true,
+            "description": "ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L to the target P&L, the badge and the target curve; false shows the open legs only",
+            "title": "Include Booked",
+            "type": "boolean"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/ofo_app__routes__outcome__LegIn"
@@ -3386,6 +3438,20 @@
             "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
             "title": "Open Interest",
             "type": "boolean"
+          },
+          "paper_strategy_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its booked P&L from the paper order book. Absent: a plan, nothing is added",
+            "title": "Paper Strategy Id"
           },
           "payoff_step": {
             "anyOf": [
@@ -3795,6 +3861,60 @@
           "booked_text": {
             "title": "Booked Text"
           },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "breakevens_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason Text"
+          },
           "charges": {
             "anyOf": [
               {
@@ -3821,6 +3941,15 @@
             ],
             "title": "Charges Reason"
           },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
           "charges_text": {
             "anyOf": [
               {},
@@ -3840,10 +3969,74 @@
                 "type": "string"
               },
               {
+                "const": "exited",
+                "type": "string"
+              },
+              {
                 "type": "null"
               }
             ],
             "title": "Extremes Reason"
+          },
+          "extremes_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason Text"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason"
+          },
+          "greeks_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason Text"
           },
           "loss_left": {
             "anyOf": [
@@ -3948,6 +4141,15 @@
             ],
             "title": "Pause Reason"
           },
+          "pause_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason Text"
+          },
           "positions": {
             "items": {
               "$ref": "#/components/schemas/PaperNetOut"
@@ -4043,6 +4245,20 @@
           }
         },
         "required": [
+          "greeks",
+          "greeks_reason",
+          "breakevens",
+          "breakevens_display",
+          "breakevens_reason",
+          "profit_left",
+          "loss_left",
+          "max_profit",
+          "max_loss",
+          "profit_left_text",
+          "loss_left_text",
+          "max_profit_text",
+          "max_loss_text",
+          "extremes_reason",
           "state",
           "pause_reason",
           "booked",
@@ -4056,18 +4272,80 @@
           "name",
           "underlying",
           "answered_at",
-          "orders",
-          "profit_left",
-          "loss_left",
-          "max_profit",
-          "max_loss",
-          "profit_left_text",
-          "loss_left_text",
-          "max_profit_text",
-          "max_loss_text",
-          "extremes_reason"
+          "orders"
         ],
         "title": "PaperBookOut",
+        "type": "object"
+      },
+      "PaperGreeksOut": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PaperLegGreeks"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "net": {
+            "$ref": "#/components/schemas/GreekFigures"
+          }
+        },
+        "required": [
+          "legs",
+          "net"
+        ],
+        "title": "PaperGreeksOut",
+        "type": "object"
+      },
+      "PaperLegGreeks": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "delta_text": {
+            "title": "Delta Text"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "gamma_text": {
+            "title": "Gamma Text"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "theta_text": {
+            "title": "Theta Text"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          },
+          "vega_text": {
+            "title": "Vega Text"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega",
+          "delta_text",
+          "gamma_text",
+          "theta_text",
+          "vega_text",
+          "contract_id"
+        ],
+        "title": "PaperLegGreeks",
         "type": "object"
       },
       "PaperListOut": {
@@ -4217,6 +4495,15 @@
               }
             ],
             "title": "Price State"
+          },
+          "price_state_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price State Text"
           },
           "strike": {
             "anyOf": [
@@ -4445,6 +4732,60 @@
           "booked_text": {
             "title": "Booked Text"
           },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "breakevens_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason Text"
+          },
           "charges": {
             "anyOf": [
               {
@@ -4471,6 +4812,15 @@
             ],
             "title": "Charges Reason"
           },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
           "charges_text": {
             "anyOf": [
               {},
@@ -4479,6 +4829,157 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "extremes_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason"
+          },
+          "extremes_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason Text"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason"
+          },
+          "greeks_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason Text"
+          },
+          "loss_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left"
+          },
+          "loss_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left Text"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
           },
           "name": {
             "title": "Name"
@@ -4508,6 +5009,15 @@
             ],
             "title": "Pause Reason"
           },
+          "pause_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason Text"
+          },
           "position_count": {
             "title": "Position Count",
             "type": "integer"
@@ -4518,6 +5028,30 @@
             },
             "title": "Positions",
             "type": "array"
+          },
+          "profit_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left"
+          },
+          "profit_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Text"
           },
           "state": {
             "enum": [
@@ -4583,6 +5117,20 @@
           }
         },
         "required": [
+          "greeks",
+          "greeks_reason",
+          "breakevens",
+          "breakevens_display",
+          "breakevens_reason",
+          "profit_left",
+          "loss_left",
+          "max_profit",
+          "max_loss",
+          "profit_left_text",
+          "loss_left_text",
+          "max_profit_text",
+          "max_loss_text",
+          "extremes_reason",
           "state",
           "pause_reason",
           "booked",
@@ -4638,6 +5186,15 @@
             ],
             "title": "Charges Reason"
           },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
           "charges_text": {
             "anyOf": [
               {},
@@ -4686,6 +5243,15 @@
               }
             ],
             "title": "Decay Reason"
+          },
+          "decay_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason Text"
           },
           "decay_text": {
             "anyOf": [
@@ -4736,6 +5302,15 @@
               }
             ],
             "title": "Totals Reason"
+          },
+          "totals_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason Text"
           },
           "unbooked": {
             "anyOf": [
@@ -6918,6 +7493,98 @@
         "title": "TableOut",
         "type": "object"
       },
+      "TargetBadgeOut": {
+        "additionalProperties": false,
+        "description": "GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),\nzero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the\nsigned exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "percent_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Reason"
+          },
+          "percent_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Text"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "profit",
+              "loss",
+              "zero",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "label"
+        ],
+        "title": "TargetBadgeOut",
+        "type": "object"
+      },
       "TargetGreeksOut": {
         "additionalProperties": false,
         "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why).",
@@ -7066,6 +7733,45 @@
             ],
             "title": "At Refused Reason"
           },
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetBadgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Display"
+          },
+          "booked_unreadable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Unreadable Text"
+          },
           "breakevens": {
             "anyOf": [
               {
@@ -7079,6 +7785,18 @@
               }
             ],
             "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
           },
           "breakevens_reason": {
             "anyOf": [
@@ -7114,6 +7832,26 @@
               }
             ]
           },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
+          "days_to_expiry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry Display"
+          },
           "greeks": {
             "anyOf": [
               {
@@ -7123,6 +7861,15 @@
                 "type": "null"
               }
             ]
+          },
+          "includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includes Booked Text"
           },
           "kind": {
             "anyOf": [
@@ -7176,6 +7923,35 @@
             ],
             "title": "Model"
           },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "move_pct_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Reason"
+          },
           "output_label": {
             "anyOf": [
               {},
@@ -7194,6 +7970,15 @@
                 "type": "null"
               }
             ]
+          },
+          "stale_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Text"
           }
         },
         "required": [
