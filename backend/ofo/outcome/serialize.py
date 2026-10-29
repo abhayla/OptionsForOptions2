@@ -152,7 +152,7 @@ def _curve(v: Any) -> dict[str, Any]:
 
 
 def _greeks_out(g: Any) -> dict[str, Any] | None:
-    return None if g is None else {n: _s(getattr(g, n)) for n in ("delta", "gamma", "theta", "vega")}
+    return None if g is None else {"delta": _s(g.delta), "gamma": _s(g.gamma), "theta": _s(g.theta), "vega": _s(g.vega)}
 
 
 def _target(t: Any) -> dict[str, Any]:

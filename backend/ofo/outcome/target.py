@@ -20,22 +20,20 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
-from typing import Final, Literal
+from decimal import ROUND_HALF_EVEN, Decimal
+from typing import Literal
 
 from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.estimate import MODEL
 from ofo.engine.legs import Instrument
 from ofo.engine.model import ModelInputs, estimate, leg_close, leg_greeks_at_unrounded
+from ofo.engine.target import breakevens_at, greeks_total, target_level_limits
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues, View, scenario_values
 from ofo.table.model import FUTURES_PER_UNIT_GREEKS, position_greeks, round_greek
-
-#: REQ-084 AC-1: the target level's span either side of spot (10%), snapped inward to the strike step.
-TARGET_SPAN: Final = Decimal("0.10")
 
 ClampCode = Literal["before_now", "after_first_expiry"]
 GreeksGap = Literal["no_time_left"]
@@ -91,8 +89,7 @@ class Target:
 
 def target_limits(spot: Decimal, step: Decimal) -> TargetLimits:
     """Spot -10% .. +10%, each end snapped inward to a multiple of ``step`` (REQ-084 AC-1)."""
-    low = (spot * (1 - TARGET_SPAN) / step).to_integral_value(rounding=ROUND_CEILING) * step
-    high = (spot * (1 + TARGET_SPAN) / step).to_integral_value(rounding=ROUND_FLOOR) * step
+    low, high = target_level_limits(spot, step)
     return TargetLimits(low, high, step)
 
 
@@ -127,35 +124,8 @@ def _at_expiry_pnl(model: ModelInputs, level: Decimal) -> Decimal | None:
 
 
 def _breakevens(model: ModelInputs, curve: ScenarioValues, at: datetime.datetime) -> tuple[Decimal, ...]:
-    """The levels where the target-time estimate crosses zero: each sign change on the curve, narrowed by halving with
-    the engine's estimate to the paisa (the level nearer zero wins)."""
-    levels, totals = curve.estimated_levels or (), curve.totals or ()
-    found: list[Decimal] = []
-    for i, (level, total) in enumerate(zip(levels, totals, strict=True)):
-        if total == 0:
-            found.append(level)
-            continue
-        if i + 1 == len(levels) or totals[i + 1] == 0 or (total > 0) == (totals[i + 1] > 0):
-            continue
-        lo, hi, lo_val = level, levels[i + 1], total
-        while hi - lo > PAISE:
-            mid = ((lo + hi) / 2).quantize(PAISE, rounding=ROUND_HALF_EVEN)
-            if mid in (lo, hi):
-                break
-            val = estimate(model, mid, at).total
-            if val == 0:
-                lo = hi = mid
-                break
-            if (val > 0) == (lo_val > 0):
-                lo, lo_val = mid, val
-            else:
-                hi = mid
-        if lo == hi:
-            found.append(lo)
-        else:
-            hi_val = estimate(model, hi, at).total
-            found.append(lo if abs(lo_val) <= abs(hi_val) else hi)
-    return tuple(found)
+    """The levels where the target-time estimate crosses zero, from the engine's search on the target curve."""
+    return breakevens_at(model, curve.estimated_levels or (), curve.totals or (), at)
 
 
 def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> TargetGreeks:
@@ -169,12 +139,15 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
             continue
         pos = position_greeks(unit, leg.action, leg.quantity)
         raw.append(pos)
-        rows.append(Greeks(*(round_greek(v) for v in (pos.delta, pos.gamma, pos.theta, pos.vega))))
+        rows.append(_rounded(pos))
     if len(raw) != len(rows):
         return TargetGreeks(tuple(rows), None, "no_time_left")
-    total = Greeks(*(round_greek(sum((getattr(g, n) for g in raw), Decimal(0)))
-                     for n in ("delta", "gamma", "theta", "vega")))
-    return TargetGreeks(tuple(rows), total, None)
+    return TargetGreeks(tuple(rows), _rounded(greeks_total(raw)), None)
+
+
+def _rounded(g: Greeks) -> Greeks:
+    """Each Greek rounded once to 4 dp (the table's one rounding rule)."""
+    return Greeks(round_greek(g.delta), round_greek(g.gamma), round_greek(g.theta), round_greek(g.vega))
 
 
 def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step: Decimal) -> Target:
