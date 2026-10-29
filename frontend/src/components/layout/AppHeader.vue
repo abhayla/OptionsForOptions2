@@ -11,6 +11,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
+import { dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_ITEMS, ACCOUNT_LABEL, ITEM_DESCRIPTIONS, MEGA_MENUS, SECTIONS } from '@/router/nav'
 
 const HOVER_DELAY_MS = 150
@@ -29,6 +31,14 @@ const ITEM_ICONS = {
 }
 
 const route = useRoute()
+// GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own)
+const { refresh: refreshAlerts } = usePaperRefresh({
+  key: () => 'alerts',
+  read: readPaperAlerts,
+  onData: takeAlerts,
+  onError: dropAlerts,
+})
+onMounted(refreshAlerts)
 const header = ref(null)
 const menuOpen = ref(false)
 const accountWrap = ref(null)
@@ -263,12 +273,17 @@ onBeforeUnmount(() => {
       <div class="flex shrink-0 items-center gap-2">
         <router-link
           to="/alerts/active"
-          class="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface-muted hover:text-ink"
-          aria-label="Alerts"
+          class="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface-muted hover:text-ink"
+          :aria-label="paperAlerts.unread > 0 ? `Alerts, ${paperAlerts.unread} unread` : 'Alerts'"
           data-testid="alerts-bell"
         >
-          <!-- UI-002: no count badge until the server reports active alerts (REQ-042). -->
+          <!-- UI-002 / GC-TP step 7b: the badge is the server's unread paper-alert count (GET /paper/alerts), hidden at 0. -->
           <Icon name="bell" />
+          <span
+            v-if="paperAlerts.unread > 0"
+            class="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-loss px-1 text-center text-[10px] font-semibold leading-4 text-white"
+            data-testid="alerts-bell-count"
+          >{{ paperAlerts.unread }}</span>
         </router-link>
         <div ref="accountWrap" class="relative">
           <button
