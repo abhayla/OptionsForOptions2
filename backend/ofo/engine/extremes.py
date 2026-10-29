@@ -30,7 +30,7 @@ from decimal import Decimal
 from typing import Literal
 
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift, strategy_metrics
 from ofo.engine.orderbook import BookView, NetPosition
 from ofo.engine.strategy import Strategy
 
@@ -39,8 +39,8 @@ PRICES_NOT_LIVE: ExtremesReason = "prices_not_live"
 MULTI_EXPIRY: ExtremesReason = "multi_expiry"
 Figure = Decimal | object  # a Decimal, or the engine's UNLIMITED sentinel (its class is private to metrics.py)
 
-__all__ = ["MULTI_EXPIRY", "PRICES_NOT_LIVE", "UNLIMITED", "BookExtremes", "ContractTerms", "ExtremesReason",
-           "book_extremes"]
+__all__ = ["MULTI_EXPIRY", "PRICES_NOT_LIVE", "UNLIMITED", "BookBreakevens", "BookExtremes", "ContractTerms",
+           "ExtremesReason", "book_breakevens", "book_extremes"]
 
 
 @dataclass(frozen=True)
@@ -96,3 +96,27 @@ def book_extremes(view: BookView, terms: Mapping[str, ContractTerms],
         return BookExtremes(None, None, max_profit, max_loss, PRICES_NOT_LIVE)
     profit_left, loss_left = _range(_strategy(open_, terms, live), Decimal(0))
     return BookExtremes(profit_left, loss_left, max_profit, max_loss, None)
+
+
+@dataclass(frozen=True)
+class BookBreakevens:
+    """GC-TP R-19b: the book's at-expiry breakevens. ``levels`` is None exactly when ``reason`` is set or nothing open;
+    an empty tuple is a real answer (the payoff never crosses zero)."""
+    levels: tuple[Decimal, ...] | None
+    reason: ExtremesReason | None
+
+
+def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms]) -> BookBreakevens:
+    """The levels where the book's at-expiry P&L is 0: booked + the open contracts' payoff at their exact average (the
+    same definition as Max Profit / Max Loss above: ``view.cash`` + the open contracts' value at expiry). Needs no live
+    price. Open contracts on more than one expiry: absent, ``multi_expiry`` (no exact breakevens, as Drafts Mode)."""
+    open_ = [p for p in view.positions if p.net_quantity != 0]
+    if not open_:
+        return BookBreakevens(None, None)
+    if len({terms[p.instrument_id].expiry for p in open_}) > 1:
+        return BookBreakevens(None, MULTI_EXPIRY)
+    try:
+        strategy = _strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_})
+        return BookBreakevens(breakevens_with_shift(strategy, view.cash), None)
+    except MultiExpiryError:
+        return BookBreakevens(None, MULTI_EXPIRY)

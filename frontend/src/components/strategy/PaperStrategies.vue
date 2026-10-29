@@ -58,6 +58,32 @@
                 </div>
               </dl>
             </div>
+            <!-- GC-TP R-19b (Sensibull 090): Breakeven, Max Profit and Max Loss on the card, and a Greeks toggle (off) with per-leg and
+                 net Greeks. All server texts; a figure the reply lacks is a dash with its reason, never 0. -->
+            <dl class="mt-2 flex flex-wrap items-start gap-6" data-testid="paper-summary">
+              <div v-for="f in summaryFigures" :key="f.id" class="min-w-0">
+                <dt class="text-xs text-ink-muted">{{ f.label }}</dt>
+                <dd class="font-semibold" :data-testid="`paper-${f.id}`">{{ pnlText(f.value(g)) }}</dd>
+                <p v-if="f.value(g) === null && f.reason(g)" class="text-xs text-ink-muted" :data-testid="`paper-${f.id}-reason`">{{ f.reason(g) }}</p>
+              </div>
+              <button type="button" class="rounded border border-line px-2 py-1" :aria-pressed="!!greeksOpen[g.id]" :data-testid="`greeks-toggle-${g.id}`" @click="greeksOpen = { ...greeksOpen, [g.id]: !greeksOpen[g.id] }">Greeks</button>
+            </dl>
+            <div v-if="greeksOpen[g.id]" class="mt-2" :data-testid="`paper-greeks-${g.id}`">
+              <p v-if="!g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ g.greeksReason }}</p>
+              <table v-else class="w-full text-left">
+                <thead><tr><th>Instrument</th><th v-for="c in GREEK_COLUMNS" :key="c.key">{{ c.label }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="l in g.greeks.legs" :key="l.contractId" data-testid="paper-greeks-leg">
+                    <td>{{ legName(g, l.contractId) }}</td>
+                    <td v-for="c in GREEK_COLUMNS" :key="c.key" :data-testid="`paper-greeks-leg-${c.key}`">{{ l[c.key] }}</td>
+                  </tr>
+                  <tr class="font-semibold" data-testid="paper-greeks-net">
+                    <td>Net</td>
+                    <td v-for="c in GREEK_COLUMNS" :key="c.key" :data-testid="`paper-greeks-net-${c.key}`">{{ g.greeks.net[c.key] }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
             <div class="mt-2 flex gap-3">
               <table v-if="g.positions.length" class="w-full min-w-0 flex-1 text-left">
@@ -104,7 +130,7 @@ import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { ALL_CLOSED_TEXT, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { signOf } from '@/lib/chartCard'
 
@@ -118,6 +144,14 @@ const figures = [
   { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
   { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]
+// GC-TP R-19b: the card's summary line; each reads one server text and says why when it is absent
+const summaryFigures = [
+  { id: 'breakeven', label: 'Breakeven', value: (g) => (g.breakevens ? g.breakevens.join(', ') : null), reason: (g) => g.breakevensReason },
+  { id: 'max-profit', label: 'Max Profit', value: (g) => g.maxProfit, reason: (g) => g.maxProfitReason },
+  { id: 'max-loss', label: 'Max Loss', value: (g) => g.maxLoss, reason: (g) => g.maxLossReason },
+]
+const greeksOpen = ref({})
+const legName = (g, contractId) => g.positions.find((p) => p.contractId === contractId)?.name ?? String(contractId)
 const totalFigures = [
   { id: 'total', field: 'total', reason: 'totalReason', reasonId: 'totals-reason', label: 'Total P&L' },
   { id: 'booked', field: 'booked', reason: 'totalReason', reasonId: 'totals-booked-reason', label: 'Booked P&L' },

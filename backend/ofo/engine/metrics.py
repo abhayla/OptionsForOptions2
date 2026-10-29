@@ -218,3 +218,15 @@ def loss_regions_after_charges(strategy: Strategy, charges: Decimal) -> tuple[Lo
     values = [strategy.expiry_pnl_at(p) - charges for p in points]
     upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
     return _loss_regions(points, values, upper_slope, _breakevens(points, values, upper_slope))
+
+
+def breakevens_with_shift(strategy: Strategy, shift: Decimal) -> tuple[Decimal, ...]:
+    """GC-TP R-19b: the at-expiry breakevens of a single-expiry strategy's P&L PLUS a flat ``shift`` (an exit's
+    booked P&L / the book's cash). The same zero-finding as ``strategy_metrics`` (``_breakevens``), so a
+    shift of 0 gives ``strategy_metrics(strategy).breakevens`` exactly."""
+    if not strategy.is_single_expiry:
+        raise MultiExpiryError("exact at-expiry breakevens need every leg on one expiry")
+    points = [Decimal(0), *sorted({leg.strike for leg in strategy.legs if leg.is_option})]
+    values = [strategy.expiry_pnl_at(p) + shift for p in points]
+    upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
+    return tuple(_to_decimal(x) for x in _breakevens(points, values, upper_slope))

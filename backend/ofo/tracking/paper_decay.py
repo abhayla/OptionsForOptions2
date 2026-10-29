@@ -58,7 +58,7 @@ class Decay:
     reason: DecayReason | PauseReason | None  # a book paused by a price passes its own pause reason
 
 
-def _iv(snapshot: MarketSnapshot, underlying: str, c: OpenContract) -> Decimal | None:
+def solved_iv(snapshot: MarketSnapshot, underlying: str, c: OpenContract) -> Decimal | None:
     market = snapshot.legs.get(c.key)
     quote = None if market is None else market.quote
     fwd = snapshot.forwards.get(c.expiry)
@@ -87,7 +87,7 @@ def book_decay(snapshot: MarketSnapshot | None, underlying: str, contracts: Sequ
     for c in contracts:
         iv = None
         if c.instrument is not Instrument.FUT:
-            iv = _iv(snapshot, underlying, c)
+            iv = solved_iv(snapshot, underlying, c)
             if iv is None:
                 return Decay(None, NO_IV)
         action = Action.BUY if c.net_quantity > 0 else Action.SELL

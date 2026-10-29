@@ -32,7 +32,8 @@ from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_extremes
+from ofo.engine.display import breakeven_percent_exact
+from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -42,7 +43,8 @@ from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
-from ofo.tracking import paper, paper_decay
+from ofo.table.model import display_number
+from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -157,13 +159,13 @@ class PaperFigures(ApiModel):
     charges_reason_text: CatalogueText | None = None
 
 
-class PaperBookOut(PaperFigures):
-    """GET /paper/strategies/{id} and the answer of POST .../orders."""
-    strategy_id: int
-    name: CatalogueText  # REQ-134: quoted user text
-    underlying: Underlying
-    answered_at: datetime.datetime
-    orders: list[PaperOrderOut]
+#: GC-TP R-19b: a figure the list leaves out because the whole strategy is exited (the Paper card says Exited).
+EXITED = "exited"
+FigureReason = ExtremesReason | Literal["exited"]
+GreeksFigureReason = paper.PauseReason | paper_greeks.GreeksReason | Literal["exited"]
+
+
+class PaperExtremes(ApiModel):
     # GC-TP step 3a (REQ-109 AC-9, Drafts Mode summary 278-279): ofo.engine.extremes; absent with extremes_reason
     profit_left: Extreme
     loss_left: Extreme
@@ -173,11 +175,53 @@ class PaperBookOut(PaperFigures):
     loss_left_text: CatalogueText | None
     max_profit_text: CatalogueText | None
     max_loss_text: CatalogueText | None
-    extremes_reason: ExtremesReason | None
+    extremes_reason: FigureReason | None
     extremes_reason_text: CatalogueText | None = None
 
 
-class PaperStrategyOut(PaperFigures):
+class PaperBreakevens(ApiModel):
+    """GC-TP R-19b (Sensibull 090): the at-expiry breakevens, exact; an empty list is a real answer, None is absent."""
+    breakevens: list[Money] | None
+    breakevens_text: list[CatalogueText] | None
+    breakevens_reason: FigureReason | None
+
+
+class GreekFigures(ApiModel):
+    """Position-level Greeks (per unit x quantity x sign), 4 dp, with the table's display text."""
+    delta: Money
+    gamma: Money
+    theta: Money
+    vega: Money
+    delta_text: CatalogueText
+    gamma_text: CatalogueText
+    theta_text: CatalogueText
+    vega_text: CatalogueText
+
+
+class PaperLegGreeks(GreekFigures):
+    contract_id: int
+
+
+class PaperGreeksOut(ApiModel):
+    legs: list[PaperLegGreeks]  # the open contracts, in the positions' order
+    net: GreekFigures
+
+
+class PaperGreeksBlock(ApiModel):
+    greeks: PaperGreeksOut | None
+    greeks_reason: GreeksFigureReason | None
+
+
+class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
+    """GET /paper/strategies/{id} and the answer of POST .../orders."""
+    strategy_id: int
+    name: CatalogueText  # REQ-134: quoted user text
+    underlying: Underlying
+    answered_at: datetime.datetime
+    orders: list[PaperOrderOut]
+
+
+class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
     strategy_id: int
     name: CatalogueText
     underlying: Underlying
@@ -271,7 +315,8 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "average": average, "average_text": price_text(average),
             "ltp": price.price if live and price is not None else None,
             "ltp_text": price_text(price.price) if live and price is not None else None,
-            "price_state": None if price is None else price.state, "price_state_text": _state_text(price), "price_at": None if price is None else price.at,
+            "price_state": None if price is None else price.state, "price_state_text": _state_text(price),
+            "price_at": None if price is None else price.at,
             "booked": _exact(p.booked), "booked_text": _signed(p.booked),
             "unbooked": _exact(p.unbooked), "unbooked_text": _signed(p.unbooked),
             "total": _exact(p.total), "total_text": _signed(p.total)}
@@ -316,7 +361,8 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         state, pause = "PAUSED", reason or paper.PRICES_NOT_LIVE
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
+    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause),
+            "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}
 
@@ -345,6 +391,79 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
     return out
+
+
+def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
+                spot: Decimal | None) -> dict:
+    """GC-TP R-19b: the book's at-expiry breakevens from the one engine (ofo.engine.extremes.book_breakevens), each with
+    its level text and the signed percent from spot (REQ-153) when the spot is usable. Needs no live price."""
+    terms = {}
+    for cid in {o.order.contract_id for o in orders}:
+        _, instrument, strike, expiry = _identity(found[cid])
+        terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    got = book_breakevens(net_positions(_paper(orders), {}), terms)
+    if got.levels is None:
+        return {"breakevens": None, "breakevens_text": None, "breakevens_reason": got.reason}
+    texts = []
+    for level in got.levels:
+        percent = breakeven_percent_exact(level, spot)
+        texts.append(render_explanation("summary_breakeven_level", level=level) if percent is None
+                     else render_explanation("summary_breakeven_percent", level=level, percent=percent))
+    return {"breakevens": [_exact(x) for x in got.levels], "breakevens_text": texts, "breakevens_reason": got.reason}
+
+
+def _open_contracts(figures: dict,
+                    found: dict[int, tracked_contracts.TrackedContract]) -> list[paper_decay.OpenContract]:
+    return [paper_decay.OpenContract(found[p["contract_id"]].feed_key or "", Instrument(p["instrument"]), p["strike"],
+                                     p["expiry"], p["net_quantity"], p["ltp"])
+            for p in figures["positions"] if p["net_quantity"] != 0]
+
+
+def _greek_figures(g: Any) -> dict:
+    return {"delta": g.delta, "gamma": g.gamma, "theta": g.theta, "vega": g.vega,
+            "delta_text": display_number(g.delta, 2), "gamma_text": display_number(g.gamma, 4),
+            "theta_text": display_number(g.theta, 2), "vega_text": display_number(g.vega, 2)}
+
+
+def _greeks(figures: dict, found: dict[int, tracked_contracts.TrackedContract], snapshot: Any,
+            underlying: str) -> dict:
+    """GC-TP R-19b: the open position's per-contract and net Greeks (ofo.tracking.paper_greeks, one snapshot). Absent
+    with the book's pause reason when an open contract is not live, never stale numbers; nothing open: absent."""
+    held = [p for p in figures["positions"] if p["net_quantity"] != 0]
+    if not held:
+        return {"greeks": None, "greeks_reason": None}
+    if figures["unbooked"] is None or snapshot is None:
+        return {"greeks": None, "greeks_reason": figures["pause_reason"] or paper.PRICES_NOT_LIVE}
+    got = paper_greeks.book_greeks(snapshot, underlying, _open_contracts(figures, found))
+    if got.net is None or got.legs is None:
+        return {"greeks": None, "greeks_reason": got.reason}
+    legs = [{"contract_id": p["contract_id"]} | _greek_figures(g) for p, g in zip(held, got.legs, strict=True)]
+    return {"greeks": {"legs": legs, "net": _greek_figures(got.net)}, "greeks_reason": None}
+
+
+def _spot(snapshot: Any) -> Decimal | None:
+    quote = None if snapshot is None else snapshot.spot
+    return None if quote is None or quote.ltp is None else quote.ltp
+
+
+_ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
+           "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
+           "breakevens": None, "breakevens_text": None, "breakevens_reason": EXITED, "greeks": None,
+           "greeks_reason": EXITED}
+
+
+def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
+             found: dict[int, tracked_contracts.TrackedContract],
+             prices: dict[int, paper.Price], figures: dict, snapshot: Any, underlying: str, *,
+             exited_absent: bool) -> dict:
+    """Max Profit / Max Loss (and Profit / Loss left), Breakeven and net Greeks of one book: ONE function behind both
+    the list and the single-strategy reply, so the two can never differ. ``exited_absent`` (the list): a fully exited
+    strategy has every one of them absent with the reason ``exited`` (never 0)."""
+    if exited_absent and figures["state"] == "EXITED":
+        return dict(_ABSENT)
+    spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
+    return (_extremes(orders, found, prices) | _breakevens(orders, found, spot)
+            | _greeks(figures, found, snapshot, underlying))
 
 
 def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract]) -> list:
@@ -394,7 +513,8 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
-    figures = (_figures(orders, found, prices, connected) | _extremes(orders, found, prices)
+    base = _figures(orders, found, prices, connected)
+    figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False)
                | _charges(orders, found, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
@@ -441,10 +561,12 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     out, decays = [], []
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
-        figures = _figures(b.orders, found, _prices(_open_ids(b.orders), found, snapshot), connected)
+        prices = _prices(_open_ids(b.orders), found, snapshot)
+        figures = _figures(b.orders, found, prices, connected)
+        summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
-        figures |= _charges(b.orders, found, b.underlying, rates)
+        figures |= _charges(b.orders, found, b.underlying, rates) | summary
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "open_count": held, "position_count": len(figures["positions"])})
     return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})

@@ -222,6 +222,10 @@ def _display_number(value: Decimal, places: int) -> ExplanationText:
     return render_explanation("cell_number", value=value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
 
 
+#: GC-TP R-19b: the paper card's Greek text is the table cell's own (delta, theta, vega 2 places; gamma 4)
+display_number = _display_number
+
+
 def _greek_cell(position_value: Decimal | None, vendor: Decimal | None, per_unit_value: Decimal | None,  # noqa: PLR0913 - one seam each
                 reason: str | None, *, places: int = 2, unrounded: Decimal | None = None) -> Cell:
     """A Greek cell. ``display`` / ``per_unit_display`` are the texts the browser prints, at ``places`` decimals
