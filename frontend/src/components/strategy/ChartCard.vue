@@ -41,6 +41,7 @@ const props = defineProps({
   targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
   targetBadge: { type: Object, default: null }, // GC-TP R-19a: the reply's target.badge (REQ-144), drawn on the graph
   targetStale: { type: Boolean, default: false }, // the last target request failed: the badge shows no old amount
+  targetStaleText: { type: String, default: '' }, // the reply's target.stale_text (ADR-210 (7)) shown when stale
   showBadge: { type: Boolean, default: false }, // the page has a target block (a reply with `target`)
   sd: { type: Object, default: null },
   oi: { type: Object, default: null },
@@ -112,7 +113,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
             :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
             :curves="curves" :target-curve="targetCurve" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
           />
-          <TargetBadge v-if="showBadge" :badge="targetBadge" :stale="targetStale" />
+          <TargetBadge v-if="showBadge" :badge="targetBadge" :stale="targetStale" :stale-text="targetStaleText" />
         </div>
         <slot name="target" />
       </div>
