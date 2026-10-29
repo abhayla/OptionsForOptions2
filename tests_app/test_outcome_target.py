@@ -161,7 +161,11 @@ async def test_plain_reply_carries_the_slider_limits_and_no_target_figure(provid
     date range now .. first expiry 15:30 IST) so the sliders show at once; nothing else is computed."""
     out = await _target(provider)
     t = out["target"]
-    assert set(t) == {"limits"}, t  # no pnl, curve, greeks, level, kind: nothing computed that was not asked
+    # no pnl, curve, greeks, level, kind: nothing computed that was not asked
+    # (R-19a adds only the captions and the badge)
+    assert set(t) == {"limits", "move_pct", "move_pct_display", "move_pct_reason", "days_to_expiry",
+                      "days_to_expiry_display", "badge"}, t
+    assert t["badge"]["state"] == "unavailable"
     lim = t["limits"]
     assert Decimal(lim["min"]) < Decimal(out["spot_level"]) < Decimal(lim["max"]) and Decimal(lim["step"]) > 0
     assert datetime.datetime.fromisoformat(lim["at_min"]) == VALUATION
@@ -173,7 +177,9 @@ async def test_plain_reply_carries_the_slider_limits_and_no_target_figure(provid
 async def test_plain_reply_without_a_usable_iv_gives_the_level_limits_and_the_date_reason():
     r = await _post_stored({**_spread_body(), "both_views": True})
     t = r.json()["target"]
-    assert set(t) == {"limits", "at_refused_reason"}, t
+    assert set(t) == {"limits", "at_refused_reason", "move_pct", "move_pct_display", "move_pct_reason",
+                      "days_to_expiry", "days_to_expiry_display", "badge"}, t
+    assert t["move_pct"] is None and t["move_pct_reason"]  # entries only: no live index price, no move
     assert t["limits"]["at_min"] is None and t["limits"]["at_max"] is None and t["at_refused_reason"]
 
 

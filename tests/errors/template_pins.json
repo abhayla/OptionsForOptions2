@@ -1882,5 +1882,37 @@
   "explanation:paper_charges": {
     "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
     "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_profit": {
+    "sha256": "22576eb2193f88c04e83c96cece35bb9d8c735807ccab10d5350c38a14c7a0f6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_loss": {
+    "sha256": "36c4c8f4e79dc9e92498b0d386b86735f4dcee31370dd4a05a9d44565b81543b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_zero": {
+    "sha256": "d7fd4fb9d9bebb907dc84d9646d2b37a9966d6c1ac33fe46d2807ba6054e1c32",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_unavailable": {
+    "sha256": "3b3d3517682b8da02643b83769119553b9bbc254a4b1db99e4492ec073716f03",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_no_target": {
+    "sha256": "c0028a03c99a478c1ca264f3a5f2ea4045440eadffac36045ead8ccfedea5bc4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_badge_percent_unavailable": {
+    "sha256": "0d53036da9c0311e8c777e6f3a6f28ede180e08b37d751bfa42cbeb3ebeb0b9b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_days_to_expiry": {
+    "sha256": "f97205c07dea49c8ffb6860243c99afdffec84c0144ffb57a71faa40d7d37067",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_move_no_spot": {
+    "sha256": "1b33dd295e1d8f597df0a5f51b3e0c42345b2b0b0d9996946293f9cb3d62ede8",
+    "reviewed": "pending owner read"
   }
 }

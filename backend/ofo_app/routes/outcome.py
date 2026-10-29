@@ -662,6 +662,21 @@ class TargetGreeksOut(ApiModel):
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
 
 
+class TargetBadgeOut(ApiModel):
+    """GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),
+    zero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the
+    signed exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``."""
+    state: Literal["profit", "loss", "zero", "unavailable"]
+    label: CatalogueText
+    reason: CatalogueText | None = None
+    amount: Money | None = None
+    amount_display: CatalogueText | None = None
+    percent: Money | None = None
+    percent_text: CatalogueText | None = None
+    percent_reason: CatalogueText | None = None
+    output_label: CatalogueText | None = None
+
+
 class TargetOut(ApiModel):
     """REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at
     the target. ``kind`` "estimate" (the pricing model, ``model``) or "exact" (At Expiry only: no IV or no live data,
@@ -684,6 +699,14 @@ class TargetOut(ApiModel):
     breakevens_reason: CatalogueText | None = None
     curve: CurveOut | None = None
     greeks: TargetGreeksOut | None = None
+    #: R-19a (Sensibull 020): the level's move from the live spot ("+6.1%"), absent with its reason when no spot is known
+    move_pct: Money | None = None
+    move_pct_display: CatalogueText | None = None
+    move_pct_reason: CatalogueText | None = None
+    #: R-19a: whole IST calendar days from the target date to the first expiry ("4D to expiry"), 0 on expiry day
+    days_to_expiry: int | None = None
+    days_to_expiry_display: CatalogueText | None = None
+    badge: TargetBadgeOut | None = None  # REQ-144 AC-1..AC-4
 
 
 class OutcomeResponse(ApiModel):

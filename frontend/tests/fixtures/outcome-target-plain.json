@@ -4071,6 +4071,21 @@
       "step": "50",
       "at_min": "2026-10-08T09:20:09+05:30",
       "at_max": "2026-10-13T15:30:00+05:30"
+    },
+    "move_pct": "0",
+    "move_pct_display": "0.0%",
+    "move_pct_reason": null,
+    "days_to_expiry": 5,
+    "days_to_expiry_display": "5D to expiry",
+    "badge": {
+      "state": "unavailable",
+      "label": "Projected figure not available",
+      "reason": "No target is set.",
+      "amount": null,
+      "amount_display": null,
+      "percent": null,
+      "percent_text": null,
+      "percent_reason": null
     }
   }
 }

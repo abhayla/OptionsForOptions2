@@ -875,13 +875,6 @@ const pricesStamp = computed(() => {
             <template #margin><MarginLine :margin="data.margin" :capabilities="capabilities" /></template>
           </SummaryCards>
           <ProjectionsNote />
-          <TargetBlock
-            :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
-            @level="(v) => pickTarget({ level: v })"
-            @date="(i) => pickTarget({ dateIndex: i })"
-            @reset-level="pickTarget({ level: '' })"
-            @reset-date="pickTarget({ dateIndex: 0 })"
-          />
 
           <!-- W-194 (ADR-193 Region F, ADR-194): the tabbed chart card. The scenario switch and range sit in its header
                (they drive the graph and the full table); the full REQ-035 table and its Bid/Ask Details are on the
@@ -900,6 +893,7 @@ const pricesStamp = computed(() => {
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
             :target-curve="targetShown?.curve ?? null"
+            :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :show-badge="!!targetShown"
             :breakevens="data.summary.breakevens ?? []"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
@@ -910,6 +904,16 @@ const pricesStamp = computed(() => {
             @zoom="zoomTo"
             @payoff-step="stepTo"
           >
+            <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->
+            <template #target>
+              <TargetBlock
+                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+                @level="(v) => pickTarget({ level: v })"
+                @date="(i) => pickTarget({ dateIndex: i })"
+                @reset-level="pickTarget({ level: '' })"
+                @reset-date="pickTarget({ dateIndex: 0 })"
+              />
+            </template>
             <template #controls>
               <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
             </template>

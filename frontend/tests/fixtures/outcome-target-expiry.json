@@ -548,7 +548,7 @@
      },
      "entry_price": {
       "value": "39.15",
-      "display": "\u20b939.15",
+      "display": "₹39.15",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -558,7 +558,7 @@
      },
      "ltp": {
       "value": "39.15",
-      "display": "\u20b939.15",
+      "display": "₹39.15",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -568,7 +568,7 @@
      },
      "entry_value": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -578,7 +578,7 @@
      },
      "current_value": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -588,7 +588,7 @@
      },
      "unrealized_pnl": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -668,7 +668,7 @@
      },
      "21500": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -678,7 +678,7 @@
      },
      "21600": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -688,7 +688,7 @@
      },
      "21700": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -698,7 +698,7 @@
      },
      "21800": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -708,7 +708,7 @@
      },
      "21900": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -718,7 +718,7 @@
      },
      "22000": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -728,7 +728,7 @@
      },
      "22100": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -738,7 +738,7 @@
      },
      "22200": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -748,7 +748,7 @@
      },
      "22300": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -758,7 +758,7 @@
      },
      "22326.85": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -768,7 +768,7 @@
      },
      "22400": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -778,7 +778,7 @@
      },
      "22500": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -788,7 +788,7 @@
      },
      "22533.25": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -798,7 +798,7 @@
      },
      "22600": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -808,7 +808,7 @@
      },
      "22700": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -818,7 +818,7 @@
      },
      "22800": {
       "value": "2544.75",
-      "display": "\u20b92,544.75",
+      "display": "₹2,544.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -828,7 +828,7 @@
      },
      "22873.15": {
       "value": "-2210.00",
-      "display": "\u2212\u20b92,210.00",
+      "display": "−₹2,210.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -838,7 +838,7 @@
      },
      "22900": {
       "value": "-3955.25",
-      "display": "\u2212\u20b93,955.25",
+      "display": "−₹3,955.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -848,7 +848,7 @@
      },
      "23000": {
       "value": "-10455.25",
-      "display": "\u2212\u20b910,455.25",
+      "display": "−₹10,455.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -858,7 +858,7 @@
      },
      "23100": {
       "value": "-16955.25",
-      "display": "\u2212\u20b916,955.25",
+      "display": "−₹16,955.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -868,7 +868,7 @@
      },
      "23200": {
       "value": "-23455.25",
-      "display": "\u2212\u20b923,455.25",
+      "display": "−₹23,455.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -878,7 +878,7 @@
      },
      "23300": {
       "value": "-29955.25",
-      "display": "\u2212\u20b929,955.25",
+      "display": "−₹29,955.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -888,7 +888,7 @@
      },
      "23400": {
       "value": "-36455.25",
-      "display": "\u2212\u20b936,455.25",
+      "display": "−₹36,455.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -898,7 +898,7 @@
      },
      "23500": {
       "value": "-42955.25",
-      "display": "\u2212\u20b942,955.25",
+      "display": "−₹42,955.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -908,7 +908,7 @@
      },
      "lower_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -918,7 +918,7 @@
      },
      "upper_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -928,7 +928,7 @@
      },
      "status": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "no status was given for this leg",
       "side": null,
@@ -1003,7 +1003,7 @@
      },
      "entry_price": {
       "value": "12.95",
-      "display": "\u20b912.95",
+      "display": "₹12.95",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1013,7 +1013,7 @@
      },
      "ltp": {
       "value": "12.95",
-      "display": "\u20b912.95",
+      "display": "₹12.95",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1023,7 +1023,7 @@
      },
      "entry_value": {
       "value": "841.75",
-      "display": "\u20b9841.75",
+      "display": "₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1033,7 +1033,7 @@
      },
      "current_value": {
       "value": "841.75",
-      "display": "\u20b9841.75",
+      "display": "₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1043,7 +1043,7 @@
      },
      "unrealized_pnl": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1123,7 +1123,7 @@
      },
      "21500": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1133,7 +1133,7 @@
      },
      "21600": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1143,7 +1143,7 @@
      },
      "21700": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1153,7 +1153,7 @@
      },
      "21800": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1163,7 +1163,7 @@
      },
      "21900": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1173,7 +1173,7 @@
      },
      "22000": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1183,7 +1183,7 @@
      },
      "22100": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1193,7 +1193,7 @@
      },
      "22200": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1203,7 +1203,7 @@
      },
      "22300": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1213,7 +1213,7 @@
      },
      "22326.85": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1223,7 +1223,7 @@
      },
      "22400": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1233,7 +1233,7 @@
      },
      "22500": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1243,7 +1243,7 @@
      },
      "22533.25": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1253,7 +1253,7 @@
      },
      "22600": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1263,7 +1263,7 @@
      },
      "22700": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1273,7 +1273,7 @@
      },
      "22800": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1283,7 +1283,7 @@
      },
      "22873.15": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1293,7 +1293,7 @@
      },
      "22900": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1303,7 +1303,7 @@
      },
      "23000": {
       "value": "-841.75",
-      "display": "\u2212\u20b9841.75",
+      "display": "−₹841.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1313,7 +1313,7 @@
      },
      "23100": {
       "value": "5658.25",
-      "display": "\u20b95,658.25",
+      "display": "₹5,658.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1323,7 +1323,7 @@
      },
      "23200": {
       "value": "12158.25",
-      "display": "\u20b912,158.25",
+      "display": "₹12,158.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1333,7 +1333,7 @@
      },
      "23300": {
       "value": "18658.25",
-      "display": "\u20b918,658.25",
+      "display": "₹18,658.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1343,7 +1343,7 @@
      },
      "23400": {
       "value": "25158.25",
-      "display": "\u20b925,158.25",
+      "display": "₹25,158.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1353,7 +1353,7 @@
      },
      "23500": {
       "value": "31658.25",
-      "display": "\u20b931,658.25",
+      "display": "₹31,658.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1363,7 +1363,7 @@
      },
      "lower_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -1373,7 +1373,7 @@
      },
      "upper_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -1383,7 +1383,7 @@
      },
      "status": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "no status was given for this leg",
       "side": null,
@@ -1458,7 +1458,7 @@
      },
      "entry_price": {
       "value": "82.75",
-      "display": "\u20b982.75",
+      "display": "₹82.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1468,7 +1468,7 @@
      },
      "ltp": {
       "value": "82.75",
-      "display": "\u20b982.75",
+      "display": "₹82.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1478,7 +1478,7 @@
      },
      "entry_value": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1488,7 +1488,7 @@
      },
      "current_value": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1498,7 +1498,7 @@
      },
      "unrealized_pnl": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1578,7 +1578,7 @@
      },
      "21500": {
       "value": "-53121.25",
-      "display": "\u2212\u20b953,121.25",
+      "display": "−₹53,121.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1588,7 +1588,7 @@
      },
      "21600": {
       "value": "-46621.25",
-      "display": "\u2212\u20b946,621.25",
+      "display": "−₹46,621.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1598,7 +1598,7 @@
      },
      "21700": {
       "value": "-40121.25",
-      "display": "\u2212\u20b940,121.25",
+      "display": "−₹40,121.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1608,7 +1608,7 @@
      },
      "21800": {
       "value": "-33621.25",
-      "display": "\u2212\u20b933,621.25",
+      "display": "−₹33,621.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1618,7 +1618,7 @@
      },
      "21900": {
       "value": "-27121.25",
-      "display": "\u2212\u20b927,121.25",
+      "display": "−₹27,121.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1628,7 +1628,7 @@
      },
      "22000": {
       "value": "-20621.25",
-      "display": "\u2212\u20b920,621.25",
+      "display": "−₹20,621.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1638,7 +1638,7 @@
      },
      "22100": {
       "value": "-14121.25",
-      "display": "\u2212\u20b914,121.25",
+      "display": "−₹14,121.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1648,7 +1648,7 @@
      },
      "22200": {
       "value": "-7621.25",
-      "display": "\u2212\u20b97,621.25",
+      "display": "−₹7,621.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1658,7 +1658,7 @@
      },
      "22300": {
       "value": "-1121.25",
-      "display": "\u2212\u20b91,121.25",
+      "display": "−₹1,121.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1668,7 +1668,7 @@
      },
      "22326.85": {
       "value": "624.00",
-      "display": "\u20b9624.00",
+      "display": "₹624.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1678,7 +1678,7 @@
      },
      "22400": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1688,7 +1688,7 @@
      },
      "22500": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1698,7 +1698,7 @@
      },
      "22533.25": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1708,7 +1708,7 @@
      },
      "22600": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1718,7 +1718,7 @@
      },
      "22700": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1728,7 +1728,7 @@
      },
      "22800": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1738,7 +1738,7 @@
      },
      "22873.15": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1748,7 +1748,7 @@
      },
      "22900": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1758,7 +1758,7 @@
      },
      "23000": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1768,7 +1768,7 @@
      },
      "23100": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1778,7 +1778,7 @@
      },
      "23200": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1788,7 +1788,7 @@
      },
      "23300": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1798,7 +1798,7 @@
      },
      "23400": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1808,7 +1808,7 @@
      },
      "23500": {
       "value": "5378.75",
-      "display": "\u20b95,378.75",
+      "display": "₹5,378.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1818,7 +1818,7 @@
      },
      "lower_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -1828,7 +1828,7 @@
      },
      "upper_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -1838,7 +1838,7 @@
      },
      "status": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "no status was given for this leg",
       "side": null,
@@ -1913,7 +1913,7 @@
      },
      "entry_price": {
       "value": "35.8",
-      "display": "\u20b935.80",
+      "display": "₹35.80",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1923,7 +1923,7 @@
      },
      "ltp": {
       "value": "35.8",
-      "display": "\u20b935.80",
+      "display": "₹35.80",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1933,7 +1933,7 @@
      },
      "entry_value": {
       "value": "2327.0",
-      "display": "\u20b92,327.00",
+      "display": "₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1943,7 +1943,7 @@
      },
      "current_value": {
       "value": "2327.0",
-      "display": "\u20b92,327.00",
+      "display": "₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -1953,7 +1953,7 @@
      },
      "unrealized_pnl": {
       "value": "0.0",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2033,7 +2033,7 @@
      },
      "21500": {
       "value": "43173.0",
-      "display": "\u20b943,173.00",
+      "display": "₹43,173.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2043,7 +2043,7 @@
      },
      "21600": {
       "value": "36673.0",
-      "display": "\u20b936,673.00",
+      "display": "₹36,673.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2053,7 +2053,7 @@
      },
      "21700": {
       "value": "30173.0",
-      "display": "\u20b930,173.00",
+      "display": "₹30,173.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2063,7 +2063,7 @@
      },
      "21800": {
       "value": "23673.0",
-      "display": "\u20b923,673.00",
+      "display": "₹23,673.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2073,7 +2073,7 @@
      },
      "21900": {
       "value": "17173.0",
-      "display": "\u20b917,173.00",
+      "display": "₹17,173.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2083,7 +2083,7 @@
      },
      "22000": {
       "value": "10673.0",
-      "display": "\u20b910,673.00",
+      "display": "₹10,673.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2093,7 +2093,7 @@
      },
      "22100": {
       "value": "4173.0",
-      "display": "\u20b94,173.00",
+      "display": "₹4,173.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2103,7 +2103,7 @@
      },
      "22200": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2113,7 +2113,7 @@
      },
      "22300": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2123,7 +2123,7 @@
      },
      "22326.85": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2133,7 +2133,7 @@
      },
      "22400": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2143,7 +2143,7 @@
      },
      "22500": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2153,7 +2153,7 @@
      },
      "22533.25": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2163,7 +2163,7 @@
      },
      "22600": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2173,7 +2173,7 @@
      },
      "22700": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2183,7 +2183,7 @@
      },
      "22800": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2193,7 +2193,7 @@
      },
      "22873.15": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2203,7 +2203,7 @@
      },
      "22900": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2213,7 +2213,7 @@
      },
      "23000": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2223,7 +2223,7 @@
      },
      "23100": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2233,7 +2233,7 @@
      },
      "23200": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2243,7 +2243,7 @@
      },
      "23300": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2253,7 +2253,7 @@
      },
      "23400": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2263,7 +2263,7 @@
      },
      "23500": {
       "value": "-2327.0",
-      "display": "\u2212\u20b92,327.00",
+      "display": "−₹2,327.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2273,7 +2273,7 @@
      },
      "lower_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2283,7 +2283,7 @@
      },
      "upper_be": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2293,7 +2293,7 @@
      },
      "status": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "no status was given for this leg",
       "side": null,
@@ -2308,7 +2308,7 @@
     "cells": {
      "leg": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2318,7 +2318,7 @@
      },
      "action": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2328,7 +2328,7 @@
      },
      "instrument": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2338,7 +2338,7 @@
      },
      "expiry": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2348,7 +2348,7 @@
      },
      "strike": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2358,7 +2358,7 @@
      },
      "quantity": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2368,7 +2368,7 @@
      },
      "entry_price": {
       "value": "73.15",
-      "display": "\u20b973.15 Cr",
+      "display": "₹73.15 Cr",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2378,7 +2378,7 @@
      },
      "ltp": {
       "value": "73.15",
-      "display": "\u20b973.15 Cr",
+      "display": "₹73.15 Cr",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2388,7 +2388,7 @@
      },
      "entry_value": {
       "value": "4754.75",
-      "display": "\u20b94,754.75 Cr",
+      "display": "₹4,754.75 Cr",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2398,7 +2398,7 @@
      },
      "current_value": {
       "value": "4754.75",
-      "display": "\u20b94,754.75 Cr",
+      "display": "₹4,754.75 Cr",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2408,7 +2408,7 @@
      },
      "unrealized_pnl": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2428,7 +2428,7 @@
      },
      "iv": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "not applicable",
       "side": null,
@@ -2488,7 +2488,7 @@
      },
      "21500": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2498,7 +2498,7 @@
      },
      "21600": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2508,7 +2508,7 @@
      },
      "21700": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2518,7 +2518,7 @@
      },
      "21800": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2528,7 +2528,7 @@
      },
      "21900": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2538,7 +2538,7 @@
      },
      "22000": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2548,7 +2548,7 @@
      },
      "22100": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2558,7 +2558,7 @@
      },
      "22200": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2568,7 +2568,7 @@
      },
      "22300": {
       "value": "-1745.25",
-      "display": "\u2212\u20b91,745.25",
+      "display": "−₹1,745.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2578,7 +2578,7 @@
      },
      "22326.85": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2588,7 +2588,7 @@
      },
      "22400": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2598,7 +2598,7 @@
      },
      "22500": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2608,7 +2608,7 @@
      },
      "22533.25": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2618,7 +2618,7 @@
      },
      "22600": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2628,7 +2628,7 @@
      },
      "22700": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2638,7 +2638,7 @@
      },
      "22800": {
       "value": "4754.75",
-      "display": "\u20b94,754.75",
+      "display": "₹4,754.75",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2648,7 +2648,7 @@
      },
      "22873.15": {
       "value": "0.00",
-      "display": "\u20b90.00",
+      "display": "₹0.00",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2658,7 +2658,7 @@
      },
      "22900": {
       "value": "-1745.25",
-      "display": "\u2212\u20b91,745.25",
+      "display": "−₹1,745.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2668,7 +2668,7 @@
      },
      "23000": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2678,7 +2678,7 @@
      },
      "23100": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2688,7 +2688,7 @@
      },
      "23200": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2698,7 +2698,7 @@
      },
      "23300": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2708,7 +2708,7 @@
      },
      "23400": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2718,7 +2718,7 @@
      },
      "23500": {
       "value": "-8245.25",
-      "display": "\u2212\u20b98,245.25",
+      "display": "−₹8,245.25",
       "kind": "money",
       "reason": null,
       "side": null,
@@ -2748,7 +2748,7 @@
      },
      "status": {
       "value": null,
-      "display": "\u2014",
+      "display": "—",
       "kind": "text",
       "reason": "no strategy health was given",
       "side": null,
@@ -2960,135 +2960,135 @@
    {
     "level": "21500",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "21600",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "21700",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "21800",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "21900",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "22000",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "22100",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "22200",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "22300",
     "pnl": "-1745.25",
-    "display": "\u2212\u20b91,745.25"
+    "display": "−₹1,745.25"
    },
    {
     "level": "22326.85",
     "pnl": "0.00",
-    "display": "\u20b90.00"
+    "display": "₹0.00"
    },
    {
     "level": "22400",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22500",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22533.25",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22600",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22700",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22800",
     "pnl": "4754.75",
-    "display": "\u20b94,754.75"
+    "display": "₹4,754.75"
    },
    {
     "level": "22873.15",
     "pnl": "0.00",
-    "display": "\u20b90.00"
+    "display": "₹0.00"
    },
    {
     "level": "22900",
     "pnl": "-1745.25",
-    "display": "\u2212\u20b91,745.25"
+    "display": "−₹1,745.25"
    },
    {
     "level": "23000",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "23100",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "23200",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "23300",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "23400",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    },
    {
     "level": "23500",
     "pnl": "-8245.25",
-    "display": "\u2212\u20b98,245.25"
+    "display": "−₹8,245.25"
    }
   ]
  },
  "summary": {
-  "what_can_i_lose": "At most \u20b98,245.25 at expiry, before charges and taxes.",
-  "what_can_i_make": "At most \u20b94,754.75 at expiry, before charges and taxes.",
+  "what_can_i_lose": "At most ₹8,245.25 at expiry, before charges and taxes.",
+  "what_can_i_make": "At most ₹4,754.75 at expiry, before charges and taxes.",
   "where_do_i_start_losing": "If NIFTY ends below 22,326.85 or above 22,873.15 at expiry.",
   "max_profit": "4754.75",
   "max_loss": "8245.25",
   "max_profit_display": "+4,755",
-  "max_loss_display": "\u22128,245",
+  "max_loss_display": "−8,245",
   "breakevens_display": [
-   "22,327 (\u22120.9%)",
+   "22,327 (−0.9%)",
    "22,873 (+1.5%)"
   ],
   "max_profit_unlimited": false,
@@ -3108,7 +3108,7 @@
   "reward_risk": null,
   "reward_risk_reason": "the charges could not be priced, so the ratio is not shown",
   "time_value": "-4754.75",
-  "time_value_display": "\u22124,755",
+  "time_value_display": "−4,755",
   "intrinsic_value": "0.00",
   "intrinsic_value_display": "0",
   "risk_reward": null,
@@ -3120,7 +3120,7 @@
    "side": "get",
    "per_unit": "73.15",
    "per_unit_display": "73.15",
-   "text": "Get \u20b94,754.75",
+   "text": "Get ₹4,754.75",
    "reason": null
   },
   "funds_share": null
@@ -3176,122 +3176,122 @@
     {
      "level": "21500",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21600",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21700",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21800",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21900",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22000",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22100",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22200",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22300",
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     },
     {
      "level": "22326.85",
      "pnl": "0.00",
-     "display": "\u20b90.00"
+     "display": "₹0.00"
     },
     {
      "level": "22400",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22500",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22533.25",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22600",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22700",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22800",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22873.15",
      "pnl": "0.00",
-     "display": "\u20b90.00"
+     "display": "₹0.00"
     },
     {
      "level": "22900",
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     },
     {
      "level": "23000",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23100",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23200",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23300",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23400",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23500",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    ]
   },
@@ -3306,122 +3306,122 @@
     {
      "level": "21500",
      "pnl": "-8055.45",
-     "display": "\u2212\u20b98,055.45"
+     "display": "−₹8,055.45"
     },
     {
      "level": "21600",
      "pnl": "-7876.05",
-     "display": "\u2212\u20b97,876.05"
+     "display": "−₹7,876.05"
     },
     {
      "level": "21700",
      "pnl": "-7567.30",
-     "display": "\u2212\u20b97,567.30"
+     "display": "−₹7,567.30"
     },
     {
      "level": "21800",
      "pnl": "-7079.80",
-     "display": "\u2212\u20b97,079.80"
+     "display": "−₹7,079.80"
     },
     {
      "level": "21900",
      "pnl": "-6371.30",
-     "display": "\u2212\u20b96,371.30"
+     "display": "−₹6,371.30"
     },
     {
      "level": "22000",
      "pnl": "-5430.75",
-     "display": "\u2212\u20b95,430.75"
+     "display": "−₹5,430.75"
     },
     {
      "level": "22100",
      "pnl": "-4289.35",
-     "display": "\u2212\u20b94,289.35"
+     "display": "−₹4,289.35"
     },
     {
      "level": "22200",
      "pnl": "-3037.45",
-     "display": "\u2212\u20b93,037.45"
+     "display": "−₹3,037.45"
     },
     {
      "level": "22300",
      "pnl": "-1811.55",
-     "display": "\u2212\u20b91,811.55"
+     "display": "−₹1,811.55"
     },
     {
      "level": "22326.85",
      "pnl": "-1508.00",
-     "display": "\u2212\u20b91,508.00"
+     "display": "−₹1,508.00"
     },
     {
      "level": "22400",
      "pnl": "-779.35",
-     "display": "\u2212\u20b9779.35"
+     "display": "−₹779.35"
     },
     {
      "level": "22500",
      "pnl": "-101.40",
-     "display": "\u2212\u20b9101.40"
+     "display": "−₹101.40"
     },
     {
      "level": "22533.25",
      "pnl": "24.05",
-     "display": "\u20b924.05"
+     "display": "₹24.05"
     },
     {
      "level": "22600",
      "pnl": "108.55",
-     "display": "\u20b9108.55"
+     "display": "₹108.55"
     },
     {
      "level": "22700",
      "pnl": "-185.90",
-     "display": "\u2212\u20b9185.90"
+     "display": "−₹185.90"
     },
     {
      "level": "22800",
      "pnl": "-936.00",
-     "display": "\u2212\u20b9936.00"
+     "display": "−₹936.00"
     },
     {
      "level": "22873.15",
      "pnl": "-1703.00",
-     "display": "\u2212\u20b91,703.00"
+     "display": "−₹1,703.00"
     },
     {
      "level": "22900",
      "pnl": "-2016.30",
-     "display": "\u2212\u20b92,016.30"
+     "display": "−₹2,016.30"
     },
     {
      "level": "23000",
      "pnl": "-3262.35",
-     "display": "\u2212\u20b93,262.35"
+     "display": "−₹3,262.35"
     },
     {
      "level": "23100",
      "pnl": "-4505.80",
-     "display": "\u2212\u20b94,505.80"
+     "display": "−₹4,505.80"
     },
     {
      "level": "23200",
      "pnl": "-5615.35",
-     "display": "\u2212\u20b95,615.35"
+     "display": "−₹5,615.35"
     },
     {
      "level": "23300",
      "pnl": "-6510.40",
-     "display": "\u2212\u20b96,510.40"
+     "display": "−₹6,510.40"
     },
     {
      "level": "23400",
      "pnl": "-7173.40",
-     "display": "\u2212\u20b97,173.40"
+     "display": "−₹7,173.40"
     },
     {
      "level": "23500",
      "pnl": "-7623.20",
-     "display": "\u2212\u20b97,623.20"
+     "display": "−₹7,623.20"
     }
    ]
   }
@@ -3455,11 +3455,11 @@
     "move_pct_display": "-4.6%",
     "estimated_now": {
      "pnl": "-8055.45",
-     "display": "\u2212\u20b98,055.45"
+     "display": "−₹8,055.45"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3470,11 +3470,11 @@
     "move_pct_display": "-4.4%",
     "estimated_now": {
      "pnl": "-7978.10",
-     "display": "\u2212\u20b97,978.10"
+     "display": "−₹7,978.10"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3485,11 +3485,11 @@
     "move_pct_display": "-4.1%",
     "estimated_now": {
      "pnl": "-7876.05",
-     "display": "\u2212\u20b97,876.05"
+     "display": "−₹7,876.05"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3500,11 +3500,11 @@
     "move_pct_display": "-3.9%",
     "estimated_now": {
      "pnl": "-7740.85",
-     "display": "\u2212\u20b97,740.85"
+     "display": "−₹7,740.85"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3515,11 +3515,11 @@
     "move_pct_display": "-3.7%",
     "estimated_now": {
      "pnl": "-7567.30",
-     "display": "\u2212\u20b97,567.30"
+     "display": "−₹7,567.30"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3530,11 +3530,11 @@
     "move_pct_display": "-3.5%",
     "estimated_now": {
      "pnl": "-7348.25",
-     "display": "\u2212\u20b97,348.25"
+     "display": "−₹7,348.25"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3545,11 +3545,11 @@
     "move_pct_display": "-3.3%",
     "estimated_now": {
      "pnl": "-7079.80",
-     "display": "\u2212\u20b97,079.80"
+     "display": "−₹7,079.80"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3560,11 +3560,11 @@
     "move_pct_display": "-3.0%",
     "estimated_now": {
      "pnl": "-6754.15",
-     "display": "\u2212\u20b96,754.15"
+     "display": "−₹6,754.15"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3575,11 +3575,11 @@
     "move_pct_display": "-2.8%",
     "estimated_now": {
      "pnl": "-6371.30",
-     "display": "\u2212\u20b96,371.30"
+     "display": "−₹6,371.30"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3590,11 +3590,11 @@
     "move_pct_display": "-2.6%",
     "estimated_now": {
      "pnl": "-5929.30",
-     "display": "\u2212\u20b95,929.30"
+     "display": "−₹5,929.30"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3605,11 +3605,11 @@
     "move_pct_display": "-2.4%",
     "estimated_now": {
      "pnl": "-5430.75",
-     "display": "\u2212\u20b95,430.75"
+     "display": "−₹5,430.75"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3620,11 +3620,11 @@
     "move_pct_display": "-2.1%",
     "estimated_now": {
      "pnl": "-4880.85",
-     "display": "\u2212\u20b94,880.85"
+     "display": "−₹4,880.85"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3635,11 +3635,11 @@
     "move_pct_display": "-1.9%",
     "estimated_now": {
      "pnl": "-4289.35",
-     "display": "\u2212\u20b94,289.35"
+     "display": "−₹4,289.35"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3650,11 +3650,11 @@
     "move_pct_display": "-1.7%",
     "estimated_now": {
      "pnl": "-3670.55",
-     "display": "\u2212\u20b93,670.55"
+     "display": "−₹3,670.55"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3665,11 +3665,11 @@
     "move_pct_display": "-1.5%",
     "estimated_now": {
      "pnl": "-3037.45",
-     "display": "\u2212\u20b93,037.45"
+     "display": "−₹3,037.45"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3680,11 +3680,11 @@
     "move_pct_display": "-1.3%",
     "estimated_now": {
      "pnl": "-2410.85",
-     "display": "\u2212\u20b92,410.85"
+     "display": "−₹2,410.85"
     },
     "at_expiry": {
      "pnl": "-4995.25",
-     "display": "\u2212\u20b94,995.25"
+     "display": "−₹4,995.25"
     }
    },
    {
@@ -3695,11 +3695,11 @@
     "move_pct_display": "-1.0%",
     "estimated_now": {
      "pnl": "-1811.55",
-     "display": "\u2212\u20b91,811.55"
+     "display": "−₹1,811.55"
     },
     "at_expiry": {
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     }
    },
    {
@@ -3710,11 +3710,11 @@
     "move_pct_display": "-0.8%",
     "estimated_now": {
      "pnl": "-1260.35",
-     "display": "\u2212\u20b91,260.35"
+     "display": "−₹1,260.35"
     },
     "at_expiry": {
      "pnl": "1504.75",
-     "display": "\u20b91,504.75"
+     "display": "₹1,504.75"
     }
    },
    {
@@ -3725,11 +3725,11 @@
     "move_pct_display": "-0.6%",
     "estimated_now": {
      "pnl": "-779.35",
-     "display": "\u2212\u20b9779.35"
+     "display": "−₹779.35"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3740,11 +3740,11 @@
     "move_pct_display": "-0.4%",
     "estimated_now": {
      "pnl": "-388.05",
-     "display": "\u2212\u20b9388.05"
+     "display": "−₹388.05"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3755,11 +3755,11 @@
     "move_pct_display": "-0.1%",
     "estimated_now": {
      "pnl": "-101.40",
-     "display": "\u2212\u20b9101.40"
+     "display": "−₹101.40"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3770,11 +3770,11 @@
     "move_pct_display": "+0.1%",
     "estimated_now": {
      "pnl": "66.95",
-     "display": "\u20b966.95"
+     "display": "₹66.95"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3785,11 +3785,11 @@
     "move_pct_display": "+0.3%",
     "estimated_now": {
      "pnl": "108.55",
-     "display": "\u20b9108.55"
+     "display": "₹108.55"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3800,11 +3800,11 @@
     "move_pct_display": "+0.5%",
     "estimated_now": {
      "pnl": "24.05",
-     "display": "\u20b924.05"
+     "display": "₹24.05"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3815,11 +3815,11 @@
     "move_pct_display": "+0.7%",
     "estimated_now": {
      "pnl": "-185.90",
-     "display": "\u2212\u20b9185.90"
+     "display": "−₹185.90"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3830,11 +3830,11 @@
     "move_pct_display": "+1.0%",
     "estimated_now": {
      "pnl": "-510.25",
-     "display": "\u2212\u20b9510.25"
+     "display": "−₹510.25"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3845,11 +3845,11 @@
     "move_pct_display": "+1.2%",
     "estimated_now": {
      "pnl": "-936.00",
-     "display": "\u2212\u20b9936.00"
+     "display": "−₹936.00"
     },
     "at_expiry": {
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     }
    },
    {
@@ -3860,11 +3860,11 @@
     "move_pct_display": "+1.4%",
     "estimated_now": {
      "pnl": "-1444.95",
-     "display": "\u2212\u20b91,444.95"
+     "display": "−₹1,444.95"
     },
     "at_expiry": {
      "pnl": "1504.75",
-     "display": "\u20b91,504.75"
+     "display": "₹1,504.75"
     }
    },
    {
@@ -3875,11 +3875,11 @@
     "move_pct_display": "+1.6%",
     "estimated_now": {
      "pnl": "-2016.30",
-     "display": "\u2212\u20b92,016.30"
+     "display": "−₹2,016.30"
     },
     "at_expiry": {
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     }
    },
    {
@@ -3890,11 +3890,11 @@
     "move_pct_display": "+1.8%",
     "estimated_now": {
      "pnl": "-2629.90",
-     "display": "\u2212\u20b92,629.90"
+     "display": "−₹2,629.90"
     },
     "at_expiry": {
      "pnl": "-4995.25",
-     "display": "\u2212\u20b94,995.25"
+     "display": "−₹4,995.25"
     }
    },
    {
@@ -3905,11 +3905,11 @@
     "move_pct_display": "+2.1%",
     "estimated_now": {
      "pnl": "-3262.35",
-     "display": "\u2212\u20b93,262.35"
+     "display": "−₹3,262.35"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3920,11 +3920,11 @@
     "move_pct_display": "+2.3%",
     "estimated_now": {
      "pnl": "-3894.15",
-     "display": "\u2212\u20b93,894.15"
+     "display": "−₹3,894.15"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3935,11 +3935,11 @@
     "move_pct_display": "+2.5%",
     "estimated_now": {
      "pnl": "-4505.80",
-     "display": "\u2212\u20b94,505.80"
+     "display": "−₹4,505.80"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3950,11 +3950,11 @@
     "move_pct_display": "+2.7%",
     "estimated_now": {
      "pnl": "-5083.65",
-     "display": "\u2212\u20b95,083.65"
+     "display": "−₹5,083.65"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3965,11 +3965,11 @@
     "move_pct_display": "+3.0%",
     "estimated_now": {
      "pnl": "-5615.35",
-     "display": "\u2212\u20b95,615.35"
+     "display": "−₹5,615.35"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3980,11 +3980,11 @@
     "move_pct_display": "+3.2%",
     "estimated_now": {
      "pnl": "-6091.80",
-     "display": "\u2212\u20b96,091.80"
+     "display": "−₹6,091.80"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -3995,11 +3995,11 @@
     "move_pct_display": "+3.4%",
     "estimated_now": {
      "pnl": "-6510.40",
-     "display": "\u2212\u20b96,510.40"
+     "display": "−₹6,510.40"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -4010,11 +4010,11 @@
     "move_pct_display": "+3.6%",
     "estimated_now": {
      "pnl": "-6870.50",
-     "display": "\u2212\u20b96,870.50"
+     "display": "−₹6,870.50"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -4025,11 +4025,11 @@
     "move_pct_display": "+3.8%",
     "estimated_now": {
      "pnl": "-7173.40",
-     "display": "\u2212\u20b97,173.40"
+     "display": "−₹7,173.40"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -4040,11 +4040,11 @@
     "move_pct_display": "+4.1%",
     "estimated_now": {
      "pnl": "-7422.35",
-     "display": "\u2212\u20b97,422.35"
+     "display": "−₹7,422.35"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    },
    {
@@ -4055,11 +4055,11 @@
     "move_pct_display": "+4.3%",
     "estimated_now": {
      "pnl": "-7623.20",
-     "display": "\u2212\u20b97,623.20"
+     "display": "−₹7,623.20"
     },
     "at_expiry": {
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    }
   ]
@@ -4068,7 +4068,9 @@
   "limits": {
    "min": "20300",
    "max": "24750",
-   "step": "50"
+   "step": "50",
+   "at_min": "2026-10-08T09:20:09+05:30",
+   "at_max": "2026-10-13T15:30:00+05:30"
   },
   "level": "22500",
   "level_clamped": false,
@@ -4083,7 +4085,7 @@
   "output_label": "Estimate from the pricing model at your target, not a forecast.",
   "pnl": {
    "value": "4754.75",
-   "display": "\u20b94,754.75"
+   "display": "₹4,754.75"
   },
   "breakevens": [
    "22326.85",
@@ -4101,122 +4103,122 @@
     {
      "level": "21500",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21600",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21700",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21800",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "21900",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22000",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22100",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22200",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "22300",
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     },
     {
      "level": "22326.85",
      "pnl": "0.00",
-     "display": "\u20b90.00"
+     "display": "₹0.00"
     },
     {
      "level": "22400",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22500",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22533.25",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22600",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22700",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22800",
      "pnl": "4754.75",
-     "display": "\u20b94,754.75"
+     "display": "₹4,754.75"
     },
     {
      "level": "22873.15",
      "pnl": "0.00",
-     "display": "\u20b90.00"
+     "display": "₹0.00"
     },
     {
      "level": "22900",
      "pnl": "-1745.25",
-     "display": "\u2212\u20b91,745.25"
+     "display": "−₹1,745.25"
     },
     {
      "level": "23000",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23100",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23200",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23300",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23400",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     },
     {
      "level": "23500",
      "pnl": "-8245.25",
-     "display": "\u2212\u20b98,245.25"
+     "display": "−₹8,245.25"
     }
    ]
   },
@@ -4230,6 +4232,22 @@
    "total": null,
    "unavailable": "no_time_left",
    "unavailable_text": "No Greeks at expiry: the options have no time left."
+  },
+  "move_pct": "-0.14755971730664684410815128754174386739595930458323",
+  "move_pct_display": "-0.1%",
+  "move_pct_reason": null,
+  "days_to_expiry": 0,
+  "days_to_expiry_display": "0D to expiry",
+  "badge": {
+   "state": "profit",
+   "label": "Projected profit: ₹4,754.75",
+   "reason": null,
+   "amount": "4754.75",
+   "amount_display": "₹4,754.75",
+   "percent": null,
+   "percent_text": null,
+   "percent_reason": "% of margin needed not available: Zerodha margin could not be read",
+   "output_label": "Estimate from the pricing model at your target, not a forecast."
   }
  }
 }
