@@ -6847,12 +6847,22 @@
               }
             ],
             "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
           }
         },
         "required": [
           "legs",
           "total",
-          "unavailable"
+          "unavailable",
+          "unavailable_text"
         ],
         "title": "TargetGreeksOut",
         "type": "object"
@@ -6896,6 +6906,15 @@
               }
             ],
             "title": "At"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
           },
           "at_clamped": {
             "title": "At Clamped",
@@ -6980,6 +6999,15 @@
             "title": "Level",
             "type": "string"
           },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
           "level_clamped": {
             "title": "Level Clamped",
             "type": "boolean"
@@ -7020,9 +7048,11 @@
           "limits",
           "level",
           "level_clamped",
+          "level_clamp_text",
           "at",
           "at_clamped",
           "clamp",
+          "at_clamp_text",
           "at_refused_reason",
           "kind",
           "model",

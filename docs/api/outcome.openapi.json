@@ -2541,6 +2541,15 @@
               }
             ],
             "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
           }
         },
         "additionalProperties": false,
@@ -2548,7 +2557,8 @@
         "required": [
           "legs",
           "total",
-          "unavailable"
+          "unavailable",
+          "unavailable_text"
         ],
         "title": "TargetGreeksOut",
         "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why)."
@@ -2590,6 +2600,15 @@
             "type": "boolean",
             "title": "Level Clamped"
           },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
           "at": {
             "anyOf": [
               {
@@ -2620,6 +2639,15 @@
               }
             ],
             "title": "Clamp"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
           },
           "at_refused_reason": {
             "anyOf": [
@@ -2716,9 +2744,11 @@
           "limits",
           "level",
           "level_clamped",
+          "level_clamp_text",
           "at",
           "at_clamped",
           "clamp",
+          "at_clamp_text",
           "at_refused_reason",
           "kind",
           "model",
