@@ -16,6 +16,7 @@ from test_strategy_store import _ids, _user, _with_draft
 
 AT = datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC)
 D = Decimal
+THREE_ORDERS = 3
 
 
 @pytest.fixture
@@ -120,3 +121,32 @@ async def test_load_all_is_one_query_whatever_the_count_and_only_the_users_own(d
     assert [b.strategy_id for b in books] == made
     assert all(len(b.orders) == 1 for b in books)
     assert len(await _ids(db)) >= 1
+
+
+@pytest.mark.parametrize(("held", "kind", "side", "qty"), [
+    ("BUY", "open", "SELL", 100), ("BUY", "add", "SELL", 65), ("SELL", "open", "BUY", 100), ("SELL", "add", "BUY", 10),
+], ids=["long-open-sell-flips", "long-add-sell-reduces", "short-open-buy-flips", "short-add-buy-reduces"])
+async def test_an_open_or_add_against_the_held_side_is_refused_and_nothing_is_stored(db, held, kind, side, qty):
+    user = _user()
+    sid, c = await _strategy(db, user)
+    await paper_store.place(db, user, sid, [_new(c[0], held, 65, "10.00")])
+    with pytest.raises(store.StrategyStoreError) as err:
+        await paper_store.place(db, user, sid, [_new(c[0], side, qty, "11.00", kind)])
+    assert err.value.code == paper_store.EXIT_EXCEEDS_OPEN
+    assert len(await paper_store.load(db, sid)) == 1
+
+
+async def test_an_add_on_the_held_side_and_a_fresh_short_are_stored(db):
+    user = _user()
+    sid, c = await _strategy(db, user)
+    await paper_store.place(db, user, sid, [_new(c[0], "BUY", 65, "10.00")])
+    await paper_store.place(db, user, sid, [_new(c[0], "BUY", 65, "11.00", "add"), _new(c[1], "SELL", 65, "5.00")])
+    assert len(await paper_store.load(db, sid)) == THREE_ORDERS
+
+
+async def test_an_open_on_a_contract_flat_after_an_exit_is_stored(db):
+    user = _user()
+    sid, c = await _strategy(db, user)
+    await paper_store.place(db, user, sid, [_new(c[0], "BUY", 65, "10.00"), _new(c[0], "SELL", 65, "11.00", "exit")])
+    await paper_store.place(db, user, sid, [_new(c[0], "SELL", 65, "12.00")])
+    assert len(await paper_store.load(db, sid)) == THREE_ORDERS
