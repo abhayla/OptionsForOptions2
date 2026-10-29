@@ -1810,5 +1810,17 @@
   "explanation:price_history_quantity_not_whole_lots": {
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "pending owner read"
+  },
+  "paper_price_invalid": {
+    "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
+    "reviewed": "pending owner read"
+  },
+  "paper_exit_exceeds_open": {
+    "sha256": "48481cc6051e506219f075f2f237cfa09016f756b94d09575b7783418f5881b6",
+    "reviewed": "pending owner read"
+  },
+  "paper_contract_not_tradable": {
+    "sha256": "ac0864a1f7e5b02f71bd04887f451c301a025c5d025ae495bd527f3a0a17b06e",
+    "reviewed": "pending owner read"
   }
 }
