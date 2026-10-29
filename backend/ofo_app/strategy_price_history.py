@@ -113,14 +113,15 @@ def label(lc: ListedContract) -> str:
 async def nearest_future(db: Any, underlying: str) -> ListedContract | None:
     """Production finder: the stored catalogue's nearest listed FUT of ``underlying`` (NIFTY -> NFO, SENSEX -> BFO)."""
     from ofo_app import catalogue_picker as picker  # noqa: PLC0415
-    from ofo_app import catalogue_store  # noqa: PLC0415
+    from ofo_app import tracked_contracts  # noqa: PLC0415
 
     today = await picker.database_today(db)
     futures = [r for r in await picker.pickable_contracts(db, underlying, today) if r.instrument_type == "FUT"]
     if not futures:
         return None
     nearest = min(futures, key=lambda r: r.expiry)
-    return (await catalogue_store.load_contract(db, nearest.contract_id)).listed
+    (answer,) = await tracked_contracts.resolve(db, [nearest.contract_id])  # the one door (issue #500)
+    return answer.stored.listed if answer.stored is not None and answer.state == tracked_contracts.LIVE else None
 
 
 async def _bars(fetch: Fetcher, iid: str, start: datetime.datetime, end: datetime.datetime,

@@ -1,3 +1,4 @@
+# ruff: noqa: RUF002
 """Display formatting without false precision (REQ-032 AC-5; ADR-008 Q15; scenario-calculations.md §5).
 
 - Exact money shows to the paisa with Indian digit grouping: ``₹17,19,000.00``; a loss uses the minus sign

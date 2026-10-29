@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415, RUF003, RUF012
 """POST /api/strategies/outcome (W-063; REQ-034 AC-1, AC-8; ADR-008, ADR-068).
 
 The browser sends a draft strategy (legs with their planned entry and its capture time) and gets back the one table,

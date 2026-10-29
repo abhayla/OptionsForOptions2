@@ -75,12 +75,12 @@ def test_recorded_reply_numbers_match_the_engine():
 
 def test_leg_pnl_text_to_the_paisa_from_the_exact_figure_every_answer_state():
     """REQ-109 AC-2: the server's leg text is the exact pnl to the paisa, signed; zero has no sign (round 2)."""
-    from ofo.errors.explanations import render_explanation
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415 - late import as its neighbours
 
     def text(v):
         return render_explanation("summary_paisa_signed", amount=v)
 
     legs = paper.leg_pnls(S54, dict(enumerate(LTP)), {})
-    assert [text(v) for v in legs] == ["+5,053.75", "−3,285.75"]
+    assert [text(v) for v in legs] == ["+5,053.75", "−3,285.75"]  # noqa: RUF001 - user text
     assert text(D("0.00")) == "0.00" and text(D("-0.00")) == "0.00" and text(D("-0.004")) == "0.00"
     assert text(legs[0] + legs[1]) == "+1,768.00"  # the total reads in the same form as the legs

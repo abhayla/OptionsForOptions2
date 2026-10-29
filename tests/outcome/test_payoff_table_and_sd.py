@@ -42,7 +42,7 @@ def test_payoff_table_rows_at_the_picked_interval_with_both_columns_from_the_eng
     table = body["payoff_table"]
     levels = [Decimal(r["level"]) for r in table["rows"]]
     assert table["step"] == str(step) and table["available"] is True
-    assert all(b - a == step for a, b in zip(levels, levels[1:], strict=False))
+    assert all(b - a == step for a, b in zip(levels, levels[1:], strict=False))  # noqa: RUF007 - pairs of neighbours
     assert all(lvl % step == 0 for lvl in levels)
     scen = body["scenario"]
     assert Decimal(scen["start"]) <= levels[0] < Decimal(scen["start"]) + step and levels[-1] <= Decimal(scen["end"])
@@ -71,7 +71,7 @@ def test_estimated_cells_equal_the_curve_values_at_shared_levels(provider):
 
 def _row_gaps(table):
     levels = [Decimal(r["level"]) for r in table["rows"]]
-    return {b - a for a, b in zip(levels, levels[1:], strict=False)}
+    return {b - a for a, b in zip(levels, levels[1:], strict=False)}  # noqa: RUF007 - pairs of neighbours
 
 
 def test_payoff_table_absent_step_is_the_strike_step_and_only_with_an_option(provider):
@@ -89,7 +89,7 @@ def test_payoff_table_absent_step_is_the_strike_step_and_only_with_an_option(pro
 def test_payoff_table_default_step_sensex_is_100():
     """REQ-137 AC-1 for SENSEX (strike step 100; the Admin grid step is 300). The SENSEX case of test_from_entries
     (78000 / 78300 strikes, lot 20, real catalogue rows with only the name, strike and lot changed)."""
-    from outcome.test_from_entries import LOW, _spread, _stored
+    from outcome.test_from_entries import LOW, _spread, _stored  # noqa: PLC0415 - late import as its neighbours
     stored = {iid: dataclasses.replace(
         c, contract=dataclasses.replace(c.contract, name="SENSEX", lot_size=20,
                                         strike=c.contract.strike + (Decimal(55000) if iid == LOW else Decimal(55100))))
@@ -97,7 +97,7 @@ def test_payoff_table_default_step_sensex_is_100():
     out = service.from_entries(StrategyDefinition("SENSEX", _spread().legs), None, stored, VALUATION, both_views=True)
     assert out.level_set.step == Decimal(300)  # the grid's Admin step is unchanged
     table = as_json(outcome_to_dict(out))["payoff_table"]
-    assert table["step"] == "100" and _row_gaps(table) == {Decimal(100)} and len(table["rows"]) > 2
+    assert table["step"] == "100" and _row_gaps(table) == {Decimal(100)} and len(table["rows"]) > 2  # noqa: PLR2004 - literal is the pinned value
 
 
 def test_default_step_refuses_an_index_without_a_strike_step():
@@ -128,7 +128,7 @@ def _s54_expiry_pnl(provider, level):
     """REQ-033 AC-1 written out: BUY 22600 CE, SELL 22800 CE, 65 each, at the replay LTP entries."""
     d = definition(provider, S54)
     buy, sell = d.legs
-    return ((max(level - 22600, Decimal(0)) - buy.planned_entry) - (max(level - 22800, Decimal(0)) - sell.planned_entry)) * 65
+    return ((max(level - 22600, Decimal(0)) - buy.planned_entry) - (max(level - 22800, Decimal(0)) - sell.planned_entry)) * 65  # noqa: E501 - long line kept whole
 
 
 # ---- item 3: SD block ----------------------------------------------------------------------------------------------

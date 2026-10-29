@@ -39,8 +39,8 @@ def _body(provider, **extra):
 
 
 async def _post(body, provider):
-    from ofo_app.main import create_app
-    from ofo_app.routes.outcome import MarketContext, get_market_context
+    from ofo_app.main import create_app  # noqa: PLC0415 - late import as its neighbours
+    from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: PLC0415 - late import as its neighbours
 
     app = create_app()
     app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE)
@@ -61,12 +61,12 @@ async def test_both_views_flag_off_keeps_todays_keys_and_on_adds_curves(replayed
 
 @pytest.mark.parametrize("bad", [1, "true", None])
 async def test_both_views_is_strict(replayed, bad):
-    assert (await _post(_body(replayed, both_views=bad), replayed)).status_code == 422
+    assert (await _post(_body(replayed, both_views=bad), replayed)).status_code == 422  # noqa: PLR2004 - literal is the pinned value
 
 
 @pytest.mark.parametrize("bad", [30, 0, -50, 300, 50.0, "50", True])
 async def test_payoff_step_outside_the_four_is_refused(replayed, bad):
-    assert (await _post(_body(replayed, payoff_step=bad), replayed)).status_code == 422
+    assert (await _post(_body(replayed, payoff_step=bad), replayed)).status_code == 422  # noqa: PLR2004 - literal is the pinned value
 
 
 @pytest.mark.parametrize("step", [10, 25, 50, 100])
@@ -75,5 +75,5 @@ async def test_payoff_step_and_sd_through_the_route(replayed, step):
     on = (await _post(_body(replayed, payoff_step=step, sd_bands=True), replayed)).json()
     assert set(on) - set(off) == {"payoff_table", "standard_deviation"}
     assert on["payoff_table"]["step"] == str(step) and on["payoff_table"]["rows"]
-    assert on["standard_deviation"]["available"] is True and on["standard_deviation"]["horizon_days"] == 5
-    assert len(on["standard_deviation"]["bands"]) == 4
+    assert on["standard_deviation"]["available"] is True and on["standard_deviation"]["horizon_days"] == 5  # noqa: PLR2004 - literal is the pinned value
+    assert len(on["standard_deviation"]["bands"]) == 4  # noqa: PLR2004 - literal is the pinned value

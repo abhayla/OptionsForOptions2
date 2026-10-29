@@ -127,7 +127,7 @@ def test_leg_edit_sends_planned_entry_display_at_two_decimals_for_a_one_decimal_
     assert status == HTTP_OK
     assert reply["legs"][0]["planned_entry"] == "99.80"
     assert reply["legs"][0]["planned_entry_display"] == "99.80"
-    assert all(isinstance(leg["planned_entry_display"], str) and len(leg["planned_entry_display"].split(".")[1]) == 2
+    assert all(isinstance(leg["planned_entry_display"], str) and len(leg["planned_entry_display"].split(".")[1]) == 2  # noqa: PLR2004 - literal is the pinned value
                for leg in reply["legs"])
 
 

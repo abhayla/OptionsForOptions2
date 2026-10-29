@@ -84,6 +84,7 @@ PR241_SELECTION = {
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
     "tests_app/test_drawer_after_hours.py",  # GC-BM F-18: imports ofo_app.catalogue_picker, calls leg_picker answers
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
+    "tests_app/test_strategy_tracking_list.py",  # GC-BP: calls /strategies/{id}/tracking routes (same reason as test_strategy_tracking)  # noqa: E501 - long line kept whole
     "tests_app/test_strategy_price_history_route.py",  # GC-UI step 5: imports ofo_app.routes.strategies (key measured)
     # backend/ofo/ modules are in scope since the run-40201288521 fix; the diff changes ofo.errors.explanations, which
     # these import (directly or through a route that imports it):

@@ -222,7 +222,7 @@ def _display_number(value: Decimal, places: int) -> ExplanationText:
     return render_explanation("cell_number", value=value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
 
 
-def _greek_cell(position_value: Decimal | None, vendor: Decimal | None, per_unit_value: Decimal | None,
+def _greek_cell(position_value: Decimal | None, vendor: Decimal | None, per_unit_value: Decimal | None,  # noqa: PLR0913 - one seam each
                 reason: str | None, *, places: int = 2, unrounded: Decimal | None = None) -> Cell:
     """A Greek cell. ``display`` / ``per_unit_display`` are the texts the browser prints, at ``places`` decimals
     (delta, theta, vega 2; gamma 4; REQ-084 AC-8, Sensibull sb-05); the position text is made from the UNROUNDED
@@ -319,12 +319,12 @@ def _iv_cell(leg: LegInput) -> Cell:
         return Cell(None, _dash(), CellKind.IV, reason=_r("fut_no_iv"))
     if leg.iv is None:
         return Cell(None, _dash(), CellKind.IV, reason=_r("no_iv"))
-    # REQ-145 AC-3: the fraction as a percent, two decimals, half-up ("0.160347" -> "16.03%"); done here, not in the browser
+    # REQ-145 AC-3: the fraction as a percent, two decimals, half-up ("0.160347" -> "16.03%"); done here, not in the browser  # noqa: E501 - long line kept whole
     percent = (leg.iv * 100).quantize(_PERCENT_STEP, rounding=ROUND_HALF_UP)
     return Cell(leg.iv, render_explanation("cell_percent", value=percent), CellKind.IV)
 
 
-def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
+def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],  # noqa: PLR0913 - one seam each
              scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None",
              supplied: Greeks | None = None, decay_until: datetime.datetime | None = None) -> Row:
     core = leg.leg
@@ -429,7 +429,7 @@ def _net_per_unit_cell(legs: Sequence[LegInput], price: str, has_futures: bool) 
     return _net_premium_cell(net_price_per_unit(legs, prices))  # ADR-008: the sum is the engine's
 
 
-def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,
+def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: ScenarioValues | None,  # noqa: PLR0913 - one seam each
                health: "StrategyHealth | None", supplied: Sequence[Greeks | None],
                decay_until: datetime.datetime | None = None) -> Row:
     legs = inputs.legs
@@ -485,13 +485,13 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
         ColumnId.UNREALIZED_PNL: _money(unrealized, ltp_reason),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
-        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, unit_totals["delta"] if every_leg_has_greeks else None, greek_reason, places=2,
+        ColumnId.DELTA: _greek_cell(greek_values["delta"], None, unit_totals["delta"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["delta"]),
-        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, unit_totals["gamma"] if every_leg_has_greeks else None, greek_reason, places=4,
+        ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, unit_totals["gamma"] if every_leg_has_greeks else None, greek_reason, places=4,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["gamma"]),
-        ColumnId.THETA: _greek_cell(greek_values["theta"], None, unit_totals["theta"] if every_leg_has_greeks else None, greek_reason, places=2,
+        ColumnId.THETA: _greek_cell(greek_values["theta"], None, unit_totals["theta"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["theta"]),
-        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, unit_totals["vega"] if every_leg_has_greeks else None, greek_reason, places=2,
+        ColumnId.VEGA: _greek_cell(greek_values["vega"], None, unit_totals["vega"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["vega"]),
         ColumnId.DECAY: _total_decay_cell(legs, inputs, decay_until),
     }

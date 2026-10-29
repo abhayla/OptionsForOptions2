@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415
 """Review fix 3 (REQ-152 AC-3): the outcome route sends bid_display / ask_display from the server."""
 from __future__ import annotations
 

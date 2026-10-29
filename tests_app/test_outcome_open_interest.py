@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """GC-UI step 4 server round 3, item 1 (REQ-083 AC-5 / AC-6; D-B16, D-B17): an outcome call that asks for it
 (``open_interest``) carries each plotted strike's call OI and put OI for the strategy's expiry, with the time they were
 read, from the same feed the strike drawer reads, so the chart draws OI bars behind the curve; and says why when OI is

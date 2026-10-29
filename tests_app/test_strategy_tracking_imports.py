@@ -100,9 +100,9 @@ def test_the_choke_point_checks_the_live_holder_of_the_token():
     source = (ROOT / "backend/ofo_app/tracked_contracts.py").read_text(encoding="utf-8")
     imported = set(_imported_names(ROOT / "backend/ofo_app/tracked_contracts.py"))
     assert {f"ofo_app.catalogue_store.{n}" for n in ("CatalogueStoreError", "StoredContract", "live_contract_id",
-                                                     "live_contract_ids", "load_contract", "load_contracts")} <= imported
-    assert source.count("holder != stored.contract_id") == 2
-    assert source.count("return LIVE if holder == stored.contract_id") == 2
+                                                     "live_contract_ids", "load_contract", "load_contracts")} <= imported  # noqa: E501 - long line kept whole
+    assert source.count("holder != stored.contract_id") == 2  # noqa: PLR2004 - literal is the pinned value
+    assert source.count("return LIVE if holder == stored.contract_id") == 2  # noqa: PLR2004 - literal is the pinned value
 
 
 @pytest.mark.parametrize("snippet", [

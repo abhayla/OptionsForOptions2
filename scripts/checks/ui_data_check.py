@@ -316,7 +316,7 @@ TENTH = Decimal("0.1")
 
 
 def display_rupees(value: Decimal) -> str:
-    """A payoff-table / curve cell: rupees to the paisa, Indian grouping, U+2212 on a loss ("−₹4,056.00")."""
+    """A payoff-table / curve cell: rupees to the paisa, Indian grouping, U+2212 on a loss ("−₹4,056.00")."""  # noqa: RUF002 - user text
     q = abs(value).quantize(PAISA, rounding=ROUND_HALF_UP)
     whole, frac = f"{q:f}".split(".")
     return (MINUS_SIGN if value < 0 and q != 0 else "") + "₹" + _indian(whole) + "." + frac
@@ -460,7 +460,7 @@ def check_sd(rep, both, legs, valuation) -> None:
                    f"{w['move']:f} ({w['percent']:f}%)")
         for k in ("lower", "upper"):
             check_text(rep, f"[both] SD {n} {k}_display", got.get(f"{k}_display"), w[k], f"{w[k]:f}")
-    if len(want) == 2:  # noqa: PLR2004
+    if len(want) == 2:
         one, two = want
         bands = [(-2, two["lower"]), (-1, one["lower"]), (1, one["upper"]), (2, two["upper"])]
         got_b = sd.get("bands") or []
@@ -798,12 +798,12 @@ def next_weekday_open(valuation: dt.datetime) -> dt.datetime:
     day = local.date()
     while True:
         opens = dt.datetime.combine(day, SESSION_OPEN, IST)
-        if day.weekday() < 5 and opens > local:  # noqa: PLR2004 - Mon-Fri
+        if day.weekday() < 5 and opens > local:
             return opens
         day += dt.timedelta(days=1)
 
 
-def decay_per_unit(s, k, t, r, q, sigma, kind, valuation: dt.datetime, until: dt.datetime) -> float:  # noqa: PLR0913
+def decay_per_unit(s, k, t, r, q, sigma, kind, valuation: dt.datetime, until: dt.datetime) -> float:
     """F-63 / REQ-145 AC-2, unsigned per unit: BSM with (t - elapsed) left minus BSM now, same S, K, r, q, sigma; time
     in calendar seconds / (365 x 86400). An expiry before ``until`` values at intrinsic (bsm_price at t <= 0)."""
     elapsed = (until - valuation).total_seconds() / (365.0 * 86400.0)
