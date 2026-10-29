@@ -15,7 +15,7 @@ import pytest
 from ofo.errors import explanations as ex
 from ofo.errors.explanations import (
     EXPLANATIONS, LEGACY_SLOT_TEMPLATES, ExplanationText, Explained, LegacyRecorded, Recorded, UserText, Values,
-    join_explanations, render_explanation, strike_text,
+    join_explanations, render_explanation, restore_explanation, strike_text,
 )
 
 #: The pinned gap: W-060 (engine/display.py, scenario/views.py) callers still pass joined or formatted strings.
@@ -112,8 +112,6 @@ def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: 
 
 def test_restore_explanation_takes_only_a_line_that_fits_its_template() -> None:
     """GC-TP 7a: a stored paper-alert line comes back as an explanation only when it fits the template's fixed words."""
-    from ofo.errors.explanations import ExplanationText, restore_explanation
-
     assert type(restore_explanation("paper_alert_title", "Paper strategy - x")) is ExplanationText
     for bad in ("Paper strategy - ", "something else", "Paper strategy - x\n"[:0]):
         with pytest.raises(ValueError, match="does not fit"):
