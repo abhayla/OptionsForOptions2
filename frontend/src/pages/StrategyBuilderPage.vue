@@ -344,7 +344,8 @@ async function openFromUrl() {
     return
   }
   if (String(route.query.strategy ?? '') !== id || legs.value !== before) return
-  if (read.kind === 'paper') return enterDrafts(Number(id), read)
+  // the book names its own strategy id (an integer); it must be the one in the URL
+  if (read.kind === 'paper') return String(read.book.strategy_id) === id ? enterDrafts(read.book.strategy_id, read) : (openError.value = unreadableParts(null))
   leaveDrafts()
   try {
     const saved = await fetchSavedDraft(api, id)

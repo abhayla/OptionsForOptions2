@@ -18,6 +18,9 @@ export const PAPER_BOOK_UNREADABLE = 'This strategy\'s paper position could not 
 
 const SIDES = new Set(['BUY', 'SELL'])
 const isCount = (v) => Number.isInteger(v) && v > 0
+// a count of units (an integer quantity, never money): its size and its side
+const size = (n) => (n < 0 ? -n : n)
+const sameSide = (a, b) => (a > 0) === (b > 0)
 
 /** True when GET /paper/strategies/{id} answered a book with at least one order (Drafts Mode applies). */
 export function isPaperBook(book) {
@@ -36,8 +39,8 @@ export function netLegsFromBook(book, contracts) {
     if (p.net_quantity === 0) continue // closed: booked, not a leg
     const c = byId.get(p.contract_id)
     if (!c || !isCount(c.lot_size)) return null
-    const units = Math.abs(p.net_quantity)
-    if (units % c.lot_size !== 0) return null
+    const held = size(p.net_quantity)
+    if (held % c.lot_size !== 0) return null
     out.push({
       id: `paper-${p.contract_id}`,
       underlying: book.underlying,
@@ -49,7 +52,7 @@ export function netLegsFromBook(book, contracts) {
       strike: c.strike,
       lot_size: c.lot_size,
       action: p.net_quantity > 0 ? 'BUY' : 'SELL',
-      lots: units / c.lot_size,
+      lots: held / c.lot_size,
       planned_entry: typeof p.average === 'string' ? p.average : null, // F-66: the paper fill, not the plan's entry
       captured_at: p.price_at ?? book.answered_at ?? null,
       typed: true, // the entry is the book's average: kept as given, never re-captured from today's price
@@ -65,10 +68,10 @@ function signedByContract(legs) {
   const out = new Map()
   for (const l of legs ?? []) {
     if (!Number.isInteger(l?.contract_id) || !isCount(l.lot_size) || !SIDES.has(l.action) || !Number.isInteger(l.lots) || l.lots < 0) return null
-    const units = l.lots * l.lot_size * (l.action === 'BUY' ? 1 : -1)
+    const signed = l.action === 'BUY' ? l.lots * l.lot_size : -(l.lots * l.lot_size)
     const had = out.get(l.contract_id)
     if (had && had.lot_size !== l.lot_size) return null
-    out.set(l.contract_id, { units: (had?.units ?? 0) + units, lot_size: l.lot_size, leg: had?.leg ?? l })
+    out.set(l.contract_id, { units: (had?.units ?? 0) + signed, lot_size: l.lot_size, leg: had?.leg ?? l })
   }
   return out
 }
@@ -101,14 +104,14 @@ export function paperOrdersFor(net, edited) {
     const sideOf = (units) => (units > 0 ? 'BUY' : 'SELL')
     const opposite = (units) => (units > 0 ? 'SELL' : 'BUY')
     if (held === 0) {
-      adds.push(order(id, sideOf(want), Math.abs(want), lotSize, 'add', wantLeg))
-    } else if (want === 0 || Math.sign(want) !== Math.sign(held)) {
-      exits.push(order(id, opposite(held), Math.abs(held), lotSize, 'exit', heldLeg))
-      if (want !== 0) adds.push(order(id, sideOf(want), Math.abs(want), lotSize, 'add', wantLeg))
-    } else if (Math.abs(want) > Math.abs(held)) {
-      adds.push(order(id, sideOf(held), Math.abs(want) - Math.abs(held), lotSize, 'add', wantLeg))
+      adds.push(order(id, sideOf(want), size(want), lotSize, 'add', wantLeg))
+    } else if (want === 0 || !sameSide(want, held)) {
+      exits.push(order(id, opposite(held), size(held), lotSize, 'exit', heldLeg))
+      if (want !== 0) adds.push(order(id, sideOf(want), size(want), lotSize, 'add', wantLeg))
+    } else if (size(want) > size(held)) {
+      adds.push(order(id, sideOf(held), size(want) - size(held), lotSize, 'add', wantLeg))
     } else {
-      exits.push(order(id, opposite(held), Math.abs(held) - Math.abs(want), lotSize, 'exit', heldLeg))
+      exits.push(order(id, opposite(held), size(held) - size(want), lotSize, 'exit', heldLeg))
     }
   }
   return [...exits, ...adds]
