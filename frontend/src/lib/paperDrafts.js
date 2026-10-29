@@ -9,6 +9,8 @@ export const PAPER_MODE_LABEL = 'Paper mode - not real trades'
 export const pendingText = (n) => `${n} pending ${n === 1 ? 'change' : 'changes'}`
 export const REVIEW_AND_ADD_LABEL = 'Review and add'
 export const DISCARD_LABEL = 'Discard'
+/** An edited leg the diff cannot read (no contract or lot size): no orders are offered; Discard restores the net position. */
+export const PAPER_PENDING_UNREADABLE = 'These changes cannot be turned into paper orders. Discard them to go back to the position.'
 /** REQ-109 AC-4: after hours there is no live price to default an exit to; the box says so and must be typed. */
 export const LAST_CLOSE_LABEL = 'last close'
 /** The paper book could not be read (network or unreadable answer): said plainly, never a silent fall-back to the plan. */
@@ -110,4 +112,50 @@ export function paperOrdersFor(net, edited) {
     }
   }
   return [...exits, ...adds]
+}
+
+/** The confirm list's rows for `orders` (PaperConfirmDialog props). Default price: an exit at the contract's live LTP text from
+ *  the book; an add at the leg's builder entry price. With no live LTP (after hours, REQ-109 AC-4) the exit's box is empty, marked
+ *  "last close", and must be typed (the dialog refuses an empty price). Texts only: no price is formed here (ADR-008). */
+export function confirmRowsFor(orders, book, nameOf) {
+  const byId = new Map((book?.positions ?? []).map((p) => [p.contract_id, p]))
+  return orders.map((o, i) => {
+    const p = byId.get(o.contract_id)
+    const live = o.kind === 'exit' && p?.price_state === 'live' && typeof p.ltp_text === 'string' && p.ltp_text.trim() !== ''
+    const price = o.kind === 'exit' ? (live ? p.ltp_text.trim() : '') : (typeof o.leg?.planned_entry === 'string' ? o.leg.planned_entry : '')
+    return {
+      key: `${o.kind}-${o.contract_id}-${i}`,
+      contract_id: o.contract_id,
+      side: o.side,
+      text: nameOf(o.leg) || p?.contract_text || '',
+      lots: o.lots,
+      lot_size: o.lot_size,
+      price,
+      kind: o.kind,
+      price_note: o.kind === 'exit' && !live ? LAST_CLOSE_LABEL : '',
+    }
+  })
+}
+
+/** Read GET /paper/strategies/{id} for the builder: {kind:'paper', book, net} when it has orders (Drafts Mode), {kind:'plan'} when
+ *  it has none or the server answers 404 (not a paper strategy: the saved plan opens as before). Any other failure (network,
+ *  5xx, an unreadable book) THROWS: the caller says so and never falls back to the plan silently. */
+export async function readPaperBook(client, id) {
+  let book
+  try {
+    book = (await client.get(`/paper/strategies/${id}`)).data
+  } catch (e) {
+    if (e?.status === 404) return { kind: 'plan' }
+    throw e
+  }
+  if (!book || typeof book !== 'object' || !Array.isArray(book.orders)) throw new Error('unreadable paper book')
+  if (!isPaperBook(book)) return { kind: 'plan' }
+  const contracts = []
+  const expiries = [...new Set(book.positions.filter((p) => p?.net_quantity !== 0).map((p) => p?.expiry))]
+  for (const expiry of expiries) {
+    contracts.push(...(await client.get(`/catalogue/${book.underlying}/contracts?expiry=${expiry}`)).data.contracts)
+  }
+  const net = netLegsFromBook(book, contracts)
+  if (!net) throw new Error('unreadable paper book')
+  return { kind: 'paper', book, net }
 }

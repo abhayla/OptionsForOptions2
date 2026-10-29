@@ -17,6 +17,8 @@
         <label class="flex items-center gap-1">
           <span class="text-ink-muted">Price</span>
           <input v-model="row.price" type="text" inputmode="decimal" class="h-9 w-24 rounded border border-line px-2 text-right" :aria-label="`Price for ${row.text}`" data-testid="paper-price" />
+          <!-- GC-TP step 3b1 (REQ-109 AC-4): an exit with no live price has an empty box, marked, and must be typed -->
+          <span v-if="row.price_note" class="text-xs text-warn" data-testid="paper-price-note">{{ row.price_note }}</span>
         </label>
         <span v-if="reasons[i]" class="w-full text-xs text-warn" data-testid="paper-reason">{{ reasons[i] }}</span>
       </li>
