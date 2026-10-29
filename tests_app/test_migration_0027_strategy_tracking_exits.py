@@ -55,10 +55,6 @@ async def _state(conn) -> dict:
     }
 
 
-def _expected_privileges() -> list[tuple[str, str]]:
-    return sorted([("INSERT", c) for c in INSERT_COLUMNS] + [("SELECT", c) for c in ALL_COLUMNS])
-
-
 async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and_upgrade_replays(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]
@@ -68,7 +64,8 @@ async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and
             head = await _state(conn)
             assert (head["table"], head["guard"], head["trigger"], head["block"]) == (True, True, 1, True)
             assert head["table_privileges"] == ["SELECT"]  # no UPDATE / DELETE / TRUNCATE / table-wide INSERT
-            assert head["column_privileges"] == _expected_privileges()
+            # GC-TP 0028 (ADR-207 (2)) moved paper exits to paper_orders and made this table read-only at head.
+            assert head["column_privileges"] == sorted(("SELECT", c) for c in ALL_COLUMNS)
             for sql in down:
                 await conn.execute(text(sql))
             before = await _state(conn)
