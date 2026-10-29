@@ -400,7 +400,7 @@ async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_alre
                 contract_ids = sorted(after - before)
                 entry = [paper_store.NewOrder(cid, leg.action.value, leg.quantity, D("10.00"), "open", at)
                          for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
-                await paper_store.start(setup, user, stored.id, stored.revision, entry)
+                await paper_store.place(setup, user, stored.id, entry)
         leg0 = stored.saved.definition.legs[0]
         close = "BUY" if leg0.action.value == "SELL" else "SELL"
 

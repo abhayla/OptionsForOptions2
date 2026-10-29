@@ -24,7 +24,7 @@ engine function (paper_pnl) with the exit price as that leg's "current" price, s
 P&L at live prices is UNBOOKED; total = booked + unbooked, only when unbooked is known (every open leg live). An exited
 leg is never priced, and its contract state no longer pauses the view (its figure is frozen).
 
-A start with any leg not live is refused (PricesNotLive): a guessed price is never stored. The view pauses paper P&L
+An exit with any leg not live is refused (PricesNotLive): a guessed price is never stored. The view pauses paper P&L
 when an open leg is not live, and computes no detection when the index is not live. A multi-expiry strategy has no exact
 breakevens (MultiExpiryError): paper P&L and the short-strike condition still run, the breakeven condition does not.
 Standard library only; no clock is read here.
@@ -118,19 +118,6 @@ def leg_price(snapshot: MarketSnapshot, instrument_id: str) -> Price:
 
 def index_price(snapshot: MarketSnapshot) -> Price:
     return price_of(snapshot.spot, snapshot.underlying)
-
-
-def capture_entry(snapshot: MarketSnapshot, legs: Sequence[TrackedLeg]) -> tuple[TrackedLeg, ...]:
-    """The paper entry: each leg's live price now. ``legs`` carry the definition (their entry_price is ignored and
-    replaced); any leg not live refuses the whole entry (PricesNotLive)."""
-    if not legs:
-        raise ValueError("a paper entry needs at least one leg")
-    prices = [leg_price(snapshot, leg.instrument_id) for leg in legs]
-    not_live = [p for p in prices if not is_live(p)]
-    if not_live:
-        raise PricesNotLive(not_live)
-    return tuple(TrackedLeg(leg.instrument_id, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity,
-                            p.price, p.at) for leg, p in zip(legs, prices, strict=True))
 
 
 def _engine_leg(leg: TrackedLeg, current: Decimal | None) -> Leg:
