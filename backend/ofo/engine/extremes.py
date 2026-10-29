@@ -30,14 +30,14 @@ from decimal import Decimal
 from typing import Literal
 
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.engine.metrics import UNLIMITED, MultiExpiryError, _Unlimited, strategy_metrics
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
 from ofo.engine.orderbook import BookView, NetPosition
 from ofo.engine.strategy import Strategy
 
 ExtremesReason = Literal["prices_not_live", "multi_expiry"]
 PRICES_NOT_LIVE: ExtremesReason = "prices_not_live"
 MULTI_EXPIRY: ExtremesReason = "multi_expiry"
-Figure = Decimal | _Unlimited
+Figure = Decimal | object  # a Decimal, or the engine's UNLIMITED sentinel (its class is private to metrics.py)
 
 __all__ = ["MULTI_EXPIRY", "PRICES_NOT_LIVE", "UNLIMITED", "BookExtremes", "ContractTerms", "ExtremesReason",
            "book_extremes"]
