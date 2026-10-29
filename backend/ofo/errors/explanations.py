@@ -496,6 +496,25 @@ class IndexLevel(SlotType):
         return format_index_level(value)
 
 
+class TargetValue(SlotType):
+    """A clamped what-if target (REQ-084 AC-2): a timezone-aware date-time in IST words, "3 Nov, 15:30 IST", or an
+    index level as `IndexLevel` prints it, "23,000.00"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is datetime.datetime:
+            HourMinute.validate(value)
+        else:
+            IndexLevel.validate(value)
+
+    @staticmethod
+    def format(value: datetime.datetime | Decimal) -> str:
+        if isinstance(value, datetime.datetime):
+            ist = value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+            return f"{ist.day} {ist.strftime('%b')}, {HourMinute.format(value)} IST"
+        return IndexLevel.format(value)
+
+
 #: The wording parts of a `LevelRegions` / `ExceptLevels` slot (ADR-072; issue #172), pinned as `labels:level_region`
 #: so a changed word needs a new pin ("pending owner read").
 LEVEL_REGION_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1069,6 +1088,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_from_entries_no_estimate", "values_seen",
                         "Estimated Now needs live prices, which are not available. At Expiry is shown from your "
                         "prices."),
+    # REQ-084 AC-2 / AC-5 (owner 2026-10-29, question tool "Approve all three"): the what-if target's three sentences
+    ExplanationTemplate("target_estimate_label", "values_seen",
+                        "Estimate from the pricing model at your target, not a forecast."),
+    ExplanationTemplate("target_clamped", "values_seen", "Target moved to the nearest allowed value: {value}.",
+                        {"value": TargetValue}),
+    ExplanationTemplate("target_greeks_no_time_left", "values_seen",
+                        "No Greeks at expiry: the options have no time left."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),

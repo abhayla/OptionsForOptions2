@@ -74,6 +74,7 @@ from ofo.scenario.levels import (
     graph_level_set,
 )
 from ofo.scenario.spot import spot_reading
+from ofo.outcome.target import Target, TargetAsk, entries_target, live_target
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
@@ -235,6 +236,7 @@ class Outcome:
     other_view: ScenarioValues | None = None
     payoff_table: PayoffTable | None = None  # REQ-137 AC-1: only when asked for (a step or both views)
     standard_deviation: StandardDeviation | None = None  # REQ-083 AC-4 / REQ-137 AC-3: only when asked for
+    target: Target | None = None  # REQ-084 AC-4: only when a target level or time was sent (analysis only, AC-6)
 
 
 @dataclass(frozen=True)
@@ -701,7 +703,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
                  valuation: datetime.datetime, *, view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                  rates: ChargeRates | None = None, override: RangeOverride | None = None,
                  both_views: bool = False, payoff_step: Decimal | None = None,
-                 sd_bands: bool = False) -> Outcome | None:
+                 sd_bands: bool = False, target: TargetAsk | None = None) -> Outcome | None:
     """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
     from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
@@ -774,7 +776,9 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
         curves=curves, other_view=other, payoff_table=table_p,
-        standard_deviation=standard_deviation(None, None) if sd_bands else None)
+        standard_deviation=standard_deviation(None, None) if sd_bands else None,
+        target=(entries_target(target, model, payoff_table_default_step(definition.underlying))
+                if target is not None and target.asked else None))
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
@@ -783,7 +787,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                   rates: ChargeRates | None = None,
                   override: RangeOverride | None = None, shared: FeedScope | None = None,
                   both_views: bool = False, payoff_step: Decimal | None = None,
-                  sd_bands: bool = False) -> Outcome:
+                  sd_bands: bool = False, target: TargetAsk | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
@@ -802,7 +806,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
         return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
                              override=override, both_views=both_views, payoff_step=payoff_step,
-                             sd_bands=sd_bands)
+                             sd_bands=sd_bands, target=target)
                 or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
@@ -925,4 +929,6 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
-        standard_deviation=sd)
+        standard_deviation=sd,
+        target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying))
+                if target is not None and target.asked else None))

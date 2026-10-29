@@ -2592,6 +2592,35 @@
         "title": "FuturesOut",
         "type": "object"
       },
+      "GreeksOut": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
+        ],
+        "title": "GreeksOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3425,6 +3454,35 @@
             ],
             "title": "Seq"
           },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)",
+            "title": "Target At"
+          },
+          "target_level": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot -10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)",
+            "examples": [
+              "23000"
+            ],
+            "title": "Target Level"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -3662,6 +3720,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetOut"
               },
               {
                 "type": "null"
@@ -6738,6 +6806,282 @@
           "rows"
         ],
         "title": "TableOut",
+        "type": "object"
+      },
+      "TargetGreeksOut": {
+        "additionalProperties": false,
+        "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why).",
+        "properties": {
+          "legs": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GreeksOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "const": "no_time_left",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
+          }
+        },
+        "required": [
+          "legs",
+          "total",
+          "unavailable",
+          "unavailable_text"
+        ],
+        "title": "TargetGreeksOut",
+        "type": "object"
+      },
+      "TargetLimitsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "string"
+          },
+          "min": {
+            "title": "Min",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min",
+          "max",
+          "step"
+        ],
+        "title": "TargetLimitsOut",
+        "type": "object"
+      },
+      "TargetOut": {
+        "additionalProperties": false,
+        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``).",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
+          },
+          "at_clamped": {
+            "title": "At Clamped",
+            "type": "boolean"
+          },
+          "at_refused_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Refused Reason"
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "clamp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "before_now",
+                  "after_first_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clamp"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "enum": [
+              "estimate",
+              "exact"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
+          "level_clamped": {
+            "title": "Level Clamped",
+            "type": "boolean"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/TargetLimitsOut"
+          },
+          "model": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetPnlOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "limits",
+          "level",
+          "level_clamped",
+          "level_clamp_text",
+          "at",
+          "at_clamped",
+          "clamp",
+          "at_clamp_text",
+          "at_refused_reason",
+          "kind",
+          "model",
+          "output_label",
+          "pnl",
+          "breakevens",
+          "breakevens_reason",
+          "curve",
+          "greeks"
+        ],
+        "title": "TargetOut",
+        "type": "object"
+      },
+      "TargetPnlOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "TargetPnlOut",
         "type": "object"
       },
       "TemplateLegOut": {

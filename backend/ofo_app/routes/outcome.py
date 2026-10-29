@@ -44,6 +44,7 @@ from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
+from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
@@ -266,6 +267,14 @@ class OutcomeRequest(BaseModel):
                     "range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time "
                     "read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change "
                     "is not offered (D-B18, Later)")
+    target_level: str | None = Field(
+        default=None, pattern=POINTS_PATTERN, examples=["23000"],
+        description="REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot "
+                    "-10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)")
+    target_at: AwareDatetime | None = Field(
+        default=None,
+        description="REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first "
+                    "expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -275,6 +284,12 @@ class OutcomeRequest(BaseModel):
         if self.payoff_step is not None and Decimal(self.payoff_step) not in PAYOFF_TABLE_STEPS:
             raise ValueError("payoff_step must be one of 10, 25, 50, 100")
         return self
+
+    def target_ask(self) -> TargetAsk | None:
+        """REQ-084 AC-4: the what-if inputs (None when neither was sent: today's reply exactly)."""
+        if self.target_level is None and self.target_at is None:
+            return None
+        return TargetAsk(None if self.target_level is None else Decimal(self.target_level), self.target_at)
 
     def table_step(self) -> Decimal | None:
         """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
@@ -617,6 +632,56 @@ class OpenInterestOut(ApiModel):
     rows: list[OiRowOut]
 
 
+class TargetLimitsOut(ApiModel):
+    min: Money
+    max: Money
+    step: Money
+
+
+class TargetPnlOut(ApiModel):
+    value: Money
+    display: CatalogueText
+
+
+class GreeksOut(ApiModel):
+    delta: Money
+    gamma: Money
+    theta: Money
+    vega: Money
+
+
+class TargetGreeksOut(ApiModel):
+    """Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total
+    (null unless every leg has a value; ``unavailable`` names why)."""
+    legs: list[GreeksOut | None]
+    total: GreeksOut | None
+    unavailable: Literal["no_time_left"] | None
+    unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
+
+
+class TargetOut(ApiModel):
+    """REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at
+    the target. ``kind`` "estimate" (the pricing model, ``model``) or "exact" (At Expiry only: no IV or no live data,
+    the time refused with ``at_refused_reason``)."""
+    limits: TargetLimitsOut
+    level: Money
+    level_clamped: bool
+    level_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <level>."
+    at: datetime.datetime | None
+    at_clamped: bool
+    clamp: Literal["before_now", "after_first_expiry"] | None
+    at_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <IST date-time>."
+    at_refused_reason: CatalogueText | None
+    kind: Literal["estimate", "exact"]
+    model: CatalogueText | None
+    output_label: CatalogueText | None
+    pnl: TargetPnlOut | None
+    breakevens: list[Money] | None
+    breakevens_reason: CatalogueText | None
+    curve: CurveOut | None
+    greeks: TargetGreeksOut | None
+
+
 class OutcomeResponse(ApiModel):
     state: Literal["COMPUTED", "FROM_ENTRIES", "NOT_CONNECTED", "REFUSED"]
     underlying: Underlying
@@ -648,6 +713,7 @@ class OutcomeResponse(ApiModel):
     payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
     standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
     open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
+    target: TargetOut | None = None  # REQ-084 AC-4: absent unless target_level or target_at
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -731,7 +797,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
-                            sd_bands=req.sd_bands)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            sd_bands=req.sd_bands, target=req.target_ask())  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
@@ -748,13 +814,13 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=req.target_ask())
                    or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=req.target_ask())
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2

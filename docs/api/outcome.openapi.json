@@ -424,6 +424,35 @@
         "title": "FundsShareOut",
         "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."
       },
+      "GreeksOut": {
+        "properties": {
+          "delta": {
+            "type": "string",
+            "title": "Delta"
+          },
+          "gamma": {
+            "type": "string",
+            "title": "Gamma"
+          },
+          "theta": {
+            "type": "string",
+            "title": "Theta"
+          },
+          "vega": {
+            "type": "string",
+            "title": "Vega"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
+        ],
+        "title": "GreeksOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1252,6 +1281,35 @@
             "title": "Open Interest",
             "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
             "default": false
+          },
+          "target_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[1-9]\\d{0,5}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Level",
+            "description": "REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot -10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)",
+            "examples": [
+              "23000"
+            ]
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At",
+            "description": "REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)"
           }
         },
         "additionalProperties": false,
@@ -1482,6 +1540,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/OpenInterestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetOut"
               },
               {
                 "type": "null"
@@ -2435,6 +2503,282 @@
           "rows"
         ],
         "title": "TableOut"
+      },
+      "TargetGreeksOut": {
+        "properties": {
+          "legs": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GreeksOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Legs"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "no_time_left"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "legs",
+          "total",
+          "unavailable",
+          "unavailable_text"
+        ],
+        "title": "TargetGreeksOut",
+        "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why)."
+      },
+      "TargetLimitsOut": {
+        "properties": {
+          "min": {
+            "type": "string",
+            "title": "Min"
+          },
+          "max": {
+            "type": "string",
+            "title": "Max"
+          },
+          "step": {
+            "type": "string",
+            "title": "Step"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "step"
+        ],
+        "title": "TargetLimitsOut"
+      },
+      "TargetOut": {
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/TargetLimitsOut"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "level_clamped": {
+            "type": "boolean",
+            "title": "Level Clamped"
+          },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "at_clamped": {
+            "type": "boolean",
+            "title": "At Clamped"
+          },
+          "clamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "before_now",
+                  "after_first_expiry"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clamp"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
+          },
+          "at_refused_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Refused Reason"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "estimate",
+              "exact"
+            ],
+            "title": "Kind"
+          },
+          "model": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetPnlOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "limits",
+          "level",
+          "level_clamped",
+          "level_clamp_text",
+          "at",
+          "at_clamped",
+          "clamp",
+          "at_clamp_text",
+          "at_refused_reason",
+          "kind",
+          "model",
+          "output_label",
+          "pnl",
+          "breakevens",
+          "breakevens_reason",
+          "curve",
+          "greeks"
+        ],
+        "title": "TargetOut",
+        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``)."
+      },
+      "TargetPnlOut": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "display": {
+            "title": "Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "TargetPnlOut"
       },
       "ValidationError": {
         "properties": {

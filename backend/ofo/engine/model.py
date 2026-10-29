@@ -29,6 +29,7 @@ from typing import Final, Mapping
 from ofo.engine import black_scholes as _bs
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.engine import estimate as _estimate
+from ofo.engine import legs as _legs
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Instrument
@@ -306,9 +307,32 @@ class Estimate:
     spot_at: datetime.datetime | None = None
 
 
-def estimate(model: ModelInputs, level: Decimal) -> Estimate:
-    """Estimated Now P&L if the index were at ``level`` at the valuation time (ADR-008 Q33A = C; ADR-063)."""
+def valued_at(model: ModelInputs, at: datetime.datetime | None = None) -> datetime.datetime:
+    """The time a what-if is valued at (REQ-084 AC-2): ``at``, or the model's own valuation time when None. A time
+    before the valuation, or a naive time, is refused (the route clamps before it gets here)."""
     m = _require(model)
+    now = m.inputs.valuation_time
+    if at is None:
+        return now
+    if not isinstance(at, datetime.datetime) or at.tzinfo is None or at < now:
+        raise ValueError(f"a what-if time must be timezone-aware and not before the valuation, got {at!r}")
+    return at
+
+
+def leg_close(leg: LegInput) -> datetime.datetime:
+    """The leg's expiry close (15:30 IST): at or after it the leg holds no time value."""
+    return datetime.datetime.combine(leg.expiry, _bs.EXPIRY_CLOSE)
+
+
+def estimate(model: ModelInputs, level: Decimal, at: datetime.datetime | None = None) -> Estimate:
+    """Estimated P&L if the index were at ``level`` at ``at`` (default: the valuation time, which IS Estimated Now;
+    ADR-008 Q33A = C; ADR-063; REQ-084 AC-4). One code path for every time: the model's input with its valuation time
+    moved to ``at`` (unchanged when ``at`` is the valuation time). A leg whose expiry close is at or before ``at`` is
+    marked at its At Expiry value (the engine's expiry payoff, years 0); every other leg keeps its own remaining time,
+    so a multi-expiry strategy values each leg on its own expiry."""
+    m = _require(model)
+    when = valued_at(m, at)
+    shifted = m.inputs if when == m.inputs.valuation_time else dataclasses.replace(m.inputs, valuation_time=when)
     marks: list[Decimal] = []
     pnls: list[Decimal] = []
     years: list[Decimal] = []
@@ -316,17 +340,40 @@ def estimate(model: ModelInputs, level: Decimal) -> Estimate:
     sources: list[str] = []
     for leg in m.legs:
         em = m.expiry_model(leg.expiry)
-        one = _estimate.estimate_now(dataclasses.replace(m.inputs, legs=(leg,)), level,
-                                     dividend_yield=em.dividend_yield, yield_source=em.source)
-        marks.append(one.marks[0])
-        pnls.append(one.leg_pnls[0])
-        years.append(one.assumptions.years_to_expiry[0])
+        if when >= leg_close(leg):
+            mark = _legs.expiry_value(leg.leg, level)
+            marks.append(mark)
+            pnls.append(_legs.expiry_pnl(leg.leg, level))
+            years.append(Decimal(0))
+        else:
+            one = _estimate.estimate_now(dataclasses.replace(shifted, legs=(leg,)), level,
+                                         dividend_yield=em.dividend_yield, yield_source=em.source)
+            marks.append(one.marks[0])
+            pnls.append(one.leg_pnls[0])
+            years.append(one.assumptions.years_to_expiry[0])
         qs.append(em.dividend_yield)
         sources.append(em.source)
-    i = m.inputs
     assumptions = _estimate.EstimateAssumptions(
-        model=_estimate.MODEL, valuation_time=i.valuation_time, rate=i.rate, days_in_year=i.days_in_year,
+        model=_estimate.MODEL, valuation_time=when, rate=shifted.rate, days_in_year=shifted.days_in_year,
         ivs=tuple(leg.iv for leg in m.legs), years_to_expiry=tuple(years), dividend_yields=tuple(qs),
         yield_sources=tuple(sources))
     return Estimate(level, tuple(marks), tuple(pnls), sum(pnls, Decimal(0)), assumptions, m.label, m.spot_level,
                     m.spot_at)
+
+
+def leg_greeks_at_unrounded(model: ModelInputs, leg: LegInput, level: Decimal,
+                            at: datetime.datetime | None = None) -> Greeks | None:
+    """Per-unit UNROUNDED engine Greeks of an option leg at ``level`` and ``at`` (REQ-084 AC-4) with its expiry's q.
+    None when the leg's expiry close is at or before ``at``: no time is left, so no model Greek exists (RD-081: the
+    caller explains it in a sentence, never an error)."""
+    m = _require(model)
+    if leg.iv is None:
+        raise ValueError(f"leg {leg.contract} has no IV")
+    when = valued_at(m, at)
+    if when >= leg_close(leg):
+        return None
+    em = m.expiry_model(leg.expiry)
+    f = em.forward
+    years = _bs.year_fraction(when, leg.expiry, days_in_year=f.days_in_year)
+    return _bs.bs_greeks_unrounded(leg.instrument, level, leg.strike, years, f.rate, leg.iv,
+                                   days_in_year=f.days_in_year, dividend_yield=em.dividend_yield)

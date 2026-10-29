@@ -100,6 +100,12 @@ def _long_value_at(leg: Leg, market: Decimal) -> Decimal:
     return market
 
 
+def expiry_value(leg: Leg, market: Decimal) -> Decimal:
+    """The per-unit value of ``leg``'s long side at expiry with the underlying at ``market`` (the At Expiry mark)."""
+    require_decimal(market, "market")
+    return _long_value_at(leg, market)
+
+
 def position_pnl(leg: Leg, value: Decimal) -> Decimal:
     """The one P&L sign convention: BUY (Value - Entry) x Qty, SELL (Entry - Value) x Qty.
 

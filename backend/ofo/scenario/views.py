@@ -71,12 +71,14 @@ def _missing_iv(inputs: ModelInputs) -> list[str]:
 
 
 def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAULT_VIEW, *,
-                    rates: ChargeRates | None = None) -> ScenarioValues:
+                    rates: ChargeRates | None = None, at: datetime.datetime | None = None) -> ScenarioValues:
     """Values of ``view`` over ``level_set``, each carrying the spot level, its time and its labels.
 
     ``inputs`` is a gated :class:`~ofo.engine.model.ModelInputs` (spot and each expiry's forward checked once):
     Estimated Now values every leg at S with its expiry's yield q (ADR-061, ADR-063; the engine owns q) and carries
     "estimated from spot" when an expiry fell back. At Expiry and the level columns stay on spot.
+    ``at`` (REQ-084 AC-4): the Estimated view valued at a what-if time (None: the valuation time, Estimated Now);
+    the same :func:`~ofo.engine.model.estimate`, never a second formula.
     """
     if not isinstance(level_set, LevelSet):
         raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
@@ -108,7 +110,7 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         return ScenarioValues(view, LABELS[view], "estimate", levels, False, reason, None, None,
                               output_label=inputs.data_label, **spot)
     quoted = tuple(level.quantize(_QUOTE, rounding=ROUND_HALF_EVEN) for level in levels)
-    estimates = tuple(estimate(inputs, level) for level in quoted)
+    estimates = tuple(estimate(inputs, level, at) for level in quoted)
     leg_rows = tuple(tuple(e.leg_pnls[i] for e in estimates) for i in range(len(inputs.legs)))
     model_label = FALLBACK_LABEL if any(em.forward.label for em in inputs.expiries.values()) else None
     return ScenarioValues(
