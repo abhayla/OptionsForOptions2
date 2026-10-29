@@ -42,8 +42,8 @@ from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
+from ofo_app import paper_store
 from ofo_app import strategy_store as store
-from ofo_app import tracking_store
 from ofo_app import tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -438,7 +438,7 @@ async def _tracked_ids(db: Any, ids: list[int]) -> set[int] | None:
     row says "unknown", never "not tracked" by default (REQ-134 AC-4). The read runs in its own savepoint."""
     try:
         async with db.begin_nested():
-            return await tracking_store.tracked_ids(db, ids)
+            return await paper_store.tracked_ids(db, ids)
     except Exception:  # noqa: BLE001 - any read failure only costs the tracked flag
         return None
 
