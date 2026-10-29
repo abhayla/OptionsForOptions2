@@ -16,8 +16,8 @@ DONE tonight (local commits on `build/gctp`, head after this commit; no upstream
   last close by the checker (step 13 row) and in Chrome.
 - Owner decisions written into the spec: ADR-209 (booked in target figures + switch, note shape "includes +Rs 962.00
   booked"), ADR-210 (7 sentences), ADR-211 (8 sentences); REQ-084 AC-4, REQ-144 AC-2/AC-3 edited.
-- Step 11 review: PARTIAL by design (owner asked for speed): two reviewers, one fix round; Tier A coverage gaps named in
-  its row (migrations, checker, order-door test not reviewed).
+- Step 11 review: DONE ~20:46 - two passes (pass 1 two reviewers + fix1; pass 2 the gaps: migrations 0028-0030 tests,
+  checker independence, order-door test + 2 new mutation cases 052d1263). R-37 deferred.
 - Step 9 DONE (1366 x 768 via an in-app frame), step 12 DONE (this block).
 
 OPEN for GC-TPL (live): R-24 (stale first tick vs leg stops at 09:15), R-26 (live push may cancel the target request -
@@ -26,7 +26,8 @@ DEFERRED (Found table): R-22, R-23, R-27, R-30, R-32..R-35. OWED: R-36 mechanism
 OWED AT LAND: migration 0031 (drop 0021/0027 tables); remove worktrees gctp-s1..s8, gctp-r18/r19a/r19b/r20/fix1 and
 the harness trees under `OptionsForOptions2\.claude\worktrees\agent-*` via wt-rm.ps1 (refuses until on origin/main);
 NIFTY 3 Nov settlement proof.
-Servers left running: API 8765 (run tree, merged code, started ~19:27), Vite 5174 (session 1, PID 17664). Lock removed.
+Servers: NOT running - Claude Code stopped the API (8765) and Vite (5174) for low memory at ~19:40; GC-TPL step L0 starts
+both from the run tree. Lock removed.
 
 ## SPLIT (2026-10-29 ~17:05 IST, session 2) - READ THIS FIRST
 
@@ -297,7 +298,7 @@ migration cannot reproduce today's figures exactly, the work stops there (Core-f
 | 9 | Side-by-side layout check | all above | Screenshot pairs vs Sensibull study 020, 050-053, 090-092, 166-173, 274-279 (study images, never copied into the repo) in `D:\Abhay\scratch\gctp-ui`; 1366 x 768 no-break pass on builder (Drafts Mode) and Positions | C | Viewer pairs + per-part matched / not list in this file | PARTIAL ~16:15. Pairs (ours in D:\Abhay\scratch\gctp-ui: ours-paper-tab-1536.jpg, ours-builder-drafts-target-1536.jpg; Sensibull images read in place, never copied). The study has images only for 020, 050-053, 090-092; 166-173 and 274-279 are catalogue text lines. MATCHED: dashed paper frame + "not real" label (090/091 Drafts Mode frame); totals Total / Booked / Unbooked / Total Decay (090); Show closed positions toggle (090); "N of M positions" (090); per-leg Avg / LTP / Booked / Unbooked / P&L (090); Open in Builder, Add orders, Exit (090); Net Positions | DONE ~19:30 (session 2). Pairs as in session 1 (matched / not matched list unchanged, R-19 built since: Target sliders below the graph with move % and days to expiry, projected badge, paper-card Breakeven / Max / Greeks, Add Booked P&L switch). 1366 x 768: Chrome stayed maximized (resize ignored, innerWidth 1536), so each page was loaded in a 1366 x 768 same-origin frame inside the app (real media queries): builder Drafts Mode on 63 and Positions -> Paper: scrollWidth 1351 = clientWidth 1351, 0 elements past the right edge; picture D:\Abhay\scratch\gctp-ui\ours-builder-drafts-1366.jpg (holds the owner funds figure: scratch only) |
 | 10 | Expert trader walk + data re-verification | all | Repeat the 2026-10-29 walk end to end: build NIFTY iron condor, SENSEX strangle, NIFTY calendar; Add to Paper at typed prices; watch on Positions; roll, partial exit, add a hedge; set a conditional exit; checker on 5 strategies all figures match | B | Walk lines with times + checker table; F-65 to F-70 each re-tested and marked fixed | MOVED to GC-TPL (goal-contract-GC-TPL-2026-10-30.md, steps L1-L4), owner split 2026-10-29 ~17:05 |
 | 13 | Sensibull parity + owner wording | R-18, R-19, R-20 (ADR-209, ADR-210) | R-19a target block (020), R-19b paper card figures + Greeks (090), R-20 sentences, R-18 Add Booked P&L switch | B | builders red-first; session re-run of touched files; checker on the last close for 3 strategies (target with --booked) | DONE ~19:30. Merged: R-19a 759f19d7, R-20 d0f992bf, R-19b 97532f26, R-18 9c11c25c, fix1 e5336365; slot pins 2e577d6b; checker booked basis 31b6ac2a; badge Rs whole rupees a0d51c0b; Drafts Mode breakeven from the book a4773085. Final suites on the merged tree: vitest 111 files / 1612 passed; repo guard 959 passed / 1 skipped. PROOF on the last close 19:14 (checker vs server, API on the merged tree): paper-orders 63 43/0, 66 17/0, 65 17/0 mismatches; target with booked: 63 @23,000 30 Oct 15:00 -142.35 = -142.35 (open -1,104.35 + booked 962.00), breakevens match; 63 @22,800 2 Nov 12:00 22/22; 66 715.00 = 715.00; 65 SENSEX 1,433.80 = 1,433.80 (only per-leg theta 4th decimal, R-17). Chrome ~19:20-19:30: badge "Projected loss: Rs 203 | includes +Rs 962.00 booked | 0.3% of margin needed"; switch OFF -1,165.45, ON -203.45 (diff 962.00 = booked); move +0.3%, 5D to expiry; Paper card 63 Breakeven 22,618, 22,983 = builder 22,618, 22,983 after a4773085 (hand: 22,650 - (17.70 + 962/65) = 22,617.50). NOT red-first: R-19a, R-19b, R-20, fix1 item 4 (R-18, fix1 items 1-3 and a4773085 red-first). 48 / 56 target not checkable after hours (no last close for their contracts: R-35) |
-| 11 | Review, no land | - | Fresh Opus (Tier A) for steps 1, 3, 5, 7, 8; Sonnet for 2, 4, 6; at most 2 rounds; accepted findings fixed and re-verified | A | Verdicts; `git rev-parse @{u}` still "no upstream" on `build/gctp` | PARTIAL ~18:05 (session 2). Cut by the owner's speed instruction to 2 reviewers, 1 fix round. Tier A (Opus, steps 1/3/5/7/8): no CRITICAL/MAJOR, 4 MINOR (R-22..R-25) - but only 14 tool calls in 62 min (stopped at budget): migrations 0028-0030, the checker, the order-door test and the red-first question NOT reviewed (stated, not counted as a pass). Engine averaging re-derived by hand on 3 cases, all equal. Tier B (Sonnet, steps 2/4/6): 1 MAJOR candidate (R-26, live only -> GC-TPL), 4 MINOR (R-27..R-30); #3 and #4 in fix1. Fix round fix1 building |
+| 11 | Review, no land | - | Fresh Opus (Tier A) for steps 1, 3, 5, 7, 8; Sonnet for 2, 4, 6; at most 2 rounds; accepted findings fixed and re-verified | A | Verdicts; `git rev-parse @{u}` still "no upstream" on `build/gctp` | DONE ~20:46 (session 2). Pass 1 (~18:05): Tier A Opus on steps 1/3/5/7/8 (no CRITICAL/MAJOR; R-22..R-25 MINOR, deferred or moved to GC-TPL) + Tier B Sonnet on 2/4/6 (R-26 MAJOR candidate -> GC-TPL live; R-28/R-29 fixed in fix1). Pass 2 (gap review, ~20:00-20:40, Opus) on the areas pass 1 did not reach + session checks: migrations - test_migration_0028 7 passed, 0029 8 passed, 0030 2 passed (fresh DB); 0028 downgrade refuses when paper_orders holds more rows than legs + exits; append-only trigger blocks UPDATE/DELETE, app role has no TRUNCATE; settlement race serialised by the strategy row lock + re-read (paper_settlement.py:152-154). Checker - imports standard library only (no backend / engine), checker tests 165 passed. Order door - test_paper_order_door 14 passed incl. 2 new mutation cases (settlement job; a door imported inside a function - the walker uses ast.walk) 052d1263. Not run (stated): the scratch-copy attack on kite ALLOWED_CALLS; R-37 (exit dated before its open, ordering by placed_at) - real ofo_dev data migrated with 0 mismatches at step 1; deferred |
 | 12 | Handover | - | DONE / PENDING / BLOCKED / PARKED / OWED-AT-LAND / NEXT; migration 0029 (drop the 0021 / 0027 tracking tables) listed as owed at land; worktrees merged and removed only via `wt-rm.ps1` where it allows | C | Handover committed locally | DONE ~19:35 (session 2): SESSION 2 HANDOVER block above; memory note; worktree removal OWED AT LAND (wt-rm.ps1 refuses until the work is on origin/main) |
 
 Out of scope: market analysis screens (chain, OI, IV pages); Strikewise IVs and IV offset (D-B42); portfolio folders
@@ -322,13 +323,13 @@ no live-data item is ready, and their live proofs are scheduled into the next ma
 
 ## Definition of Done
 
-- [ ] Every step 0-13 except 10 (moved) has Status DONE with its proof recorded in this file, or PARKED with evidence and what is left.
-- [ ] (MOVED to GC-TPL: the live F-65..F-70 re-tests, the class file to `guarded`, the 5-strategy live checker run.)
-- [ ] Step 13 merged into build/gctp and proven on the last close: the checker matches the target figures (with booked)
+- [x] Every step 0-13 except 10 (moved) has Status DONE with its proof recorded in this file, or PARKED with evidence and what is left. (Step 10 MOVED to GC-TPL by the owner's split, 2026-10-29 ~17:05.)
+- [x] MOVED to GC-TPL (owner split, not done here): the live F-65..F-70 re-tests, the class file to `guarded`, the 5-strategy live checker run - GC-TPL L2-L4.
+- [x] Step 13 merged into build/gctp and proven on the last close: the checker matches the target figures (with booked)
       and the paper card figures for 3 strategies; the screens seen in Chrome.
-- [ ] GC-TPL contract committed and its L0 preflight possible from the handover alone.
-- [ ] No push, no PR, no CI run happened (`git rev-parse @{u}` on `build/gctp` reports no upstream).
-- [ ] Handover written and committed locally; the owner's next steps (land, 0029) listed.
+- [x] GC-TPL contract committed and its L0 preflight possible from the handover alone.
+- [x] No push, no PR, no CI run happened (`git rev-parse @{u}` on `build/gctp` reports no upstream).
+- [x] Handover written and committed locally; the owner's next steps (land, 0031) listed.
 
 ## Overlap list (step 0, 2026-10-29)
 
@@ -398,6 +399,7 @@ exits).
 | R-34 | 13 | in Drafts Mode the Breakeven line lost its move-from-spot % ("22,632 (−1.3%)" -> "22,618") after a4773085, because the book reply has no breakevens_display | deferred: the book route could send the same display shape | - | - |
 | R-35 | 13 | after hours the target what-if of strategies 48 / 56 answers "Estimated Now needs live prices" (their contracts have no last close today) while 63 / 65 / 66 work | a data-availability class, not a code defect seen tonight; GC-TPL sees them live | - | - |
 | R-36 | session 2 | three times today a time was written into a file from memory, not the clock ("~17:10" at 17:05, "~17:00" at 16:58), despite the memory note | each corrected the same turn; a note did not stop it: needs a mechanism (a hook flagging a written HH:MM differing from the clock by > 2 min) - owed, not built tonight | - | - |
+| R-37 | 11 (gap review) | 0028 copies all `open` rows before all `exit` rows and never checks exited_at >= price_at: a tracking exit dated before its open would get a later id but an earlier placed_at; a reader ordering by placed_at would read the exit first | unverified on real data: the 18 real strategies migrated with 0 mismatches (step 1); deferred (C4) | - | - |
 | R-10 | 7 | live 13:40: the Stops panel shows no per-leg Stop rows (only Conditional exit), on every paper strategy | RCA: `PaperStrategies.stopLegs` keeps legs with a `contractId`, but the cards are built from `GET /tracking`, whose legs carry no `contract_id`; the 7b vitest stubbed legs WITH `contract_id`, a shape the server never sends. Class: frontend fixtures not shaped like the real reply. Fix in step 4 (Paper tab reads `GET /paper/strategies`, which has contract_id) with a test fed the REAL reply (`tests/fixtures/paper/strategy-63-roll.json`); the trigger list should also say above / below | step 4b 090deba7 | LIVE ~15:51: "Stop on a leg" rows present on the Paper card - FIXED |
 
 ## Parked
