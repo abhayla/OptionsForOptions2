@@ -16,8 +16,6 @@ from decimal import Decimal
 
 import pytest
 from _migration_replay import round_trip_sql
-from ofo.tracking import paper
-from ofo_app import tracking_store
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_strategy_store import _ids, _user, _with_draft
@@ -57,10 +55,6 @@ async def _state(conn) -> dict:
     }
 
 
-def _expected_privileges() -> list[tuple[str, str]]:
-    return sorted([("INSERT", c) for c in INSERT_COLUMNS] + [("SELECT", c) for c in ALL_COLUMNS])
-
-
 async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and_upgrade_replays(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]
@@ -70,7 +64,8 @@ async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and
             head = await _state(conn)
             assert (head["table"], head["guard"], head["trigger"], head["block"]) == (True, True, 1, True)
             assert head["table_privileges"] == ["SELECT"]  # no UPDATE / DELETE / TRUNCATE / table-wide INSERT
-            assert head["column_privileges"] == _expected_privileges()
+            # GC-TP 0028 (ADR-207 (2)) moved paper exits to paper_orders and made this table read-only at head.
+            assert head["column_privileges"] == sorted(("SELECT", c) for c in ALL_COLUMNS)
             for sql in down:
                 await conn.execute(text(sql))
             before = await _state(conn)
@@ -88,12 +83,20 @@ async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and
 
 
 async def _one_exit(conn, user: str) -> int:
+    """A tracked strategy with leg 0 exited, written as the owner straight into the 0021/0027 tables (read-only for
+    the application role since migration 0028; the old tracking_store writers are deleted, GC-TP 1a part 4)."""
     _, stored = await _with_draft(conn, user)
     assert len(await _ids(conn)) >= len(FEED_KEYS)
-    entry = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, Decimal("10.00"), AT)
-             for i, leg in zip(FEED_KEYS, stored.saved.definition.legs, strict=True)]
-    await tracking_store.start(conn, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
-    await tracking_store.exit_legs(conn, user, stored.id, [(0, Decimal("11.00"), AT)])
+    await conn.execute(text("INSERT INTO public.strategy_tracking (strategy_id, strategy_revision, price_health, "
+                            "prices_at) VALUES (:s, :r, 'available', :at)"),
+                       {"s": stored.id, "r": stored.revision, "at": AT})
+    for i, (contract_id, leg) in enumerate(zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)):
+        await conn.execute(text("INSERT INTO public.strategy_tracking_legs (strategy_id, leg_index, contract_id, side, "
+                                "quantity, entry_price, price_at) VALUES (:s, :i, :c, :side, :q, 10.00, :at)"),
+                           {"s": stored.id, "i": i, "c": contract_id, "side": leg.action.value, "q": leg.quantity,
+                            "at": AT})
+    await conn.execute(text("INSERT INTO public.strategy_tracking_exits (strategy_id, leg_index, exit_price, "
+                            "price_at) VALUES (:s, 0, 11.00, :at)"), {"s": stored.id, "at": AT})
     return stored.id
 
 

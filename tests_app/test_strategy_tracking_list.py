@@ -14,9 +14,8 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
-from ofo.tracking import paper
+from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
-from ofo_app import tracked_contracts, tracking_store
 from ofo_app.routes import tracking as tracking_routes
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
@@ -74,9 +73,12 @@ async def _contract_ids(db):
 
 
 async def _exits(db, strategy_id: int) -> list[tuple[int, Decimal]]:
-    rows = await db.execute(text("SELECT leg_index, exit_price FROM public.strategy_tracking_exits "
-                                 "WHERE strategy_id = :i ORDER BY leg_index"), {"i": strategy_id})
-    return [(int(r[0]), r[1]) for r in rows]
+    """(leg index, exit price) of every exit order (GC-TP 1a part 4: the paper book is public.paper_orders; a leg's
+    index is its contract's place among the open orders)."""
+    legs = await _leg_contracts(db, strategy_id)
+    rows = await db.execute(text("SELECT contract_id, price FROM public.paper_orders WHERE kind = 'exit' "
+                                 "AND strategy_id = :i ORDER BY id"), {"i": strategy_id})
+    return sorted((legs.index(int(r[0])), r[1]) for r in rows)
 
 
 # --- step 4: GET /tracking -------------------------------------------------------------------------------------------
@@ -161,7 +163,8 @@ async def test_list_expired_contract_pauses_with_its_reason_never_crashes(db):
 
 async def _leg_contracts(db, sid):
     return [int(r[0]) for r in await db.execute(text(
-        "SELECT contract_id FROM public.strategy_tracking_legs WHERE strategy_id = :i ORDER BY leg_index"), {"i": sid})]
+        "SELECT contract_id FROM public.paper_orders WHERE strategy_id = :i AND kind = 'open' ORDER BY id"),
+        {"i": sid})]
 
 
 async def test_list_fully_exited_strategy_is_exited_with_total_equal_booked_and_no_market_read(db, monkeypatch):
@@ -183,7 +186,7 @@ async def test_list_read_failure_is_refused_never_a_partial_list(db, monkeypatch
     async def broken(*_a, **_k):
         raise RuntimeError("read failed")
 
-    monkeypatch.setattr(tracking_store, "load_all", broken)
+    monkeypatch.setattr(paper_store, "load_all", broken)
     async with _client(app) as c:
         listed = await c.get("/tracking")
     assert listed.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR and "strategies" not in listed.text
@@ -314,8 +317,8 @@ async def test_exit_of_an_untracked_or_another_users_strategy_is_404_and_not_con
     assert await _exits(db, ids[0]) == []
 
 
-@pytest.mark.parametrize("sql", ["UPDATE public.strategy_tracking_exits SET exit_price = 1 WHERE strategy_id = :i",
-                                 "DELETE FROM public.strategy_tracking_exits WHERE strategy_id = :i"],
+@pytest.mark.parametrize("sql", ["UPDATE public.paper_orders SET price = 1 WHERE strategy_id = :i AND kind = 'exit'",
+                                 "DELETE FROM public.paper_orders WHERE strategy_id = :i AND kind = 'exit'"],
                          ids=["update", "delete"])
 async def test_paper_exit_rows_are_append_only(db, sql):
     app, ids, *_ = await _tracked(db)
@@ -368,7 +371,7 @@ async def _remove_tracked_rows(admin_engine, user_ref: str, contract_ids: list[i
     async with admin_engine.connect() as conn:  # noqa: SIM117
         async with conn.begin():
             mine = "(SELECT id FROM public.strategies WHERE user_ref = :u)"
-            for table in ("strategy_tracking_exits", "strategy_tracking_legs", "strategy_tracking"):
+            for table in ("paper_orders",):
                 await conn.execute(text(f'ALTER TABLE public."{table}" DISABLE TRIGGER USER'))
                 await conn.execute(text(f"DELETE FROM public.{table} WHERE strategy_id IN {mine}"),  # noqa: S608
                                    {"u": user_ref})
@@ -378,7 +381,8 @@ async def _remove_tracked_rows(admin_engine, user_ref: str, contract_ids: list[i
 
 async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_already_exited(app_engine, admin_engine):
     """Two connections exit leg 0 at once: the strategy's row lock makes the second wait for the first; once the first
-    commits, the second answers ALREADY_EXITED and exactly one exit row (the first's price, 11.00) is stored."""
+    commits, the second's exit exceeds the open quantity (EXIT_EXCEEDS_OPEN, which the route answers as
+    tracking_leg_already_exited) and exactly one exit order (the first's price, 11.00) is stored."""
     user = _user()
     at = datetime.datetime(2026, 10, 8, 3, 50, tzinfo=datetime.UTC)
     contract_ids: list[int] = []
@@ -392,24 +396,27 @@ async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_alre
                 # a row left behind makes a later test's small catalogue trip the ADR-058 10% guard
                 after = {r[0] for r in await setup.execute(text("SELECT id FROM public.catalogue_contracts"))}
                 contract_ids = sorted(after - before)
-                entry = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity,
-                                          D("10.00"), at)
-                         for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
-                await tracking_store.start(setup, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
+                entry = [paper_store.NewOrder(cid, leg.action.value, leg.quantity, D("10.00"), "open", at)
+                         for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
+                await paper_store.start(setup, user, stored.id, stored.revision, entry)
+        leg0 = stored.saved.definition.legs[0]
+        close = "BUY" if leg0.action.value == "SELL" else "SELL"
+
+        def _exit(price: str) -> list[paper_store.NewOrder]:
+            return [paper_store.NewOrder(stored.saved.contract_ids[0], close, leg0.quantity, D(price), "exit", at)]
+
         async with app_engine.connect() as first, app_engine.connect() as second:
             t1, t2 = await first.begin(), await second.begin()
-            await tracking_store.exit_legs(first, user, stored.id, [(0, D("11.00"), at)])
-            waiter = asyncio.create_task(tracking_store.exit_legs(second, user, stored.id, [(0, D("12.00"), at)]))
+            await paper_store.place(first, user, stored.id, _exit("11.00"))
+            waiter = asyncio.create_task(paper_store.place(second, user, stored.id, _exit("12.00")))
             await asyncio.sleep(1.0)
             assert not waiter.done(), "the second exit must wait for the first transaction's row lock"
             await t1.commit()
             with pytest.raises(store.StrategyStoreError) as refused:
                 await asyncio.wait_for(waiter, 10)
-            assert refused.value.code == tracking_store.ALREADY_EXITED
+            assert refused.value.code == paper_store.EXIT_EXCEEDS_OPEN
             await t2.rollback()
-            rows = (await first.execute(text("SELECT leg_index, exit_price FROM public.strategy_tracking_exits "
-                                             "WHERE strategy_id = :i"), {"i": stored.id})).all()
-            assert [(int(r[0]), r[1]) for r in rows] == [(0, D("11.00"))]
+            assert await _exits(first, stored.id) == [(0, D("11.00"))]
     finally:
         await _remove_tracked_rows(admin_engine, user, contract_ids)
 

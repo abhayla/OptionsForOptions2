@@ -85,11 +85,10 @@ async def _setup(db, *, ctx="replay", threshold=THRESHOLD, owner=None):
 
 
 async def _rows(db, strategy_id: int) -> tuple[int, int]:
-    a = (await db.execute(text("SELECT count(*) FROM public.strategy_tracking WHERE strategy_id = :i"),
+    """(tracked 0/1, open paper orders): the paper book is public.paper_orders since GC-TP 1a part 4."""
+    b = (await db.execute(text("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :i AND kind = 'open'"),
                           {"i": strategy_id})).scalar_one()
-    b = (await db.execute(text("SELECT count(*) FROM public.strategy_tracking_legs WHERE strategy_id = :i"),
-                          {"i": strategy_id})).scalar_one()
-    return int(a), int(b)
+    return min(int(b), 1), int(b)
 
 
 async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_and_one_detection(db):
@@ -115,7 +114,7 @@ async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_an
         ("platform_detection", "near_short_strike", "22400.00", "22533.25", "133.25", "0.59", "0.6", "live")]
     async with _same(db) as conn:
         stored_prices = [r[0] for r in await conn.execute(text(
-            "SELECT entry_price FROM public.strategy_tracking_legs WHERE strategy_id = :i ORDER BY leg_index"),
+            "SELECT price FROM public.paper_orders WHERE strategy_id = :i AND kind = 'open' ORDER BY id"),
             {"i": stored.id})]
     assert stored_prices == [D("39.15"), D("12.95"), D("82.75"), D("35.80")]
 
@@ -203,22 +202,24 @@ async def test_ac1_a_second_start_is_refused_as_already_tracked_before_any_price
 
 async def test_ac1_the_store_refuses_a_second_entry_even_without_the_route_check(db):
     """AC-1: the store itself refuses a second start (ALREADY_TRACKED; the route's pre-check is a second layer), so a
-    race past the route check still leaves exactly 1 + 4 rows."""
+    race past the route check still leaves exactly 4 open orders."""
     _app, stored, provider, _clock, last = await _setup(db)
     from ofo.outcome import read_snapshot  # noqa: PLC0415
     from ofo.tracking import paper  # noqa: PLC0415
+    from ofo_app import paper_store  # noqa: PLC0415
     from ofo_app import strategy_store as store  # noqa: PLC0415
-    from ofo_app import tracking_store  # noqa: PLC0415
 
     legs = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, D(0), last)
             for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
     entry = paper.capture_entry(read_snapshot(provider, "NIFTY", IDS, last, D("0.065")), legs)
     user = stored.user_ref
+    orders = [paper_store.NewOrder(cid, leg.action.value, leg.quantity, leg.entry_price, "open", leg.price_at)
+              for cid, leg in zip(stored.saved.contract_ids, entry, strict=True)]
     async with _same(db) as conn:
-        await tracking_store.start(conn, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
+        await paper_store.start(conn, user, stored.id, stored.revision, orders)
         with pytest.raises(store.StrategyStoreError) as refused:
-            await tracking_store.start(conn, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
-        assert refused.value.code == tracking_store.ALREADY_TRACKED
+            await paper_store.start(conn, user, stored.id, stored.revision, orders)
+        assert refused.value.code == paper_store.ALREADY_TRACKED
     assert await _rows(db, stored.id) == (1, 4)
 
 
