@@ -209,10 +209,10 @@ Requirements: 145; sections: 19
 | REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | Approved |
 | REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | Approved |
 | REQ-085 | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape | feature | Approved |
-| REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | Approved |
+| REQ-091 | Strategy price history chart in the builder (on by ADR-203 behind one flag) | feature | Approved |
 | REQ-135 | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited | feature | Approved |
 | REQ-138 | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L | feature | Approved |
-| REQ-142 | The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs placed first - beside Margin needed and Margin available | feature | Approved |
+| REQ-142 | The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs placed first - beside Margin needed and Margin available (held - no broker order in the current scope, ADR-206; no Zerodha source, F-62) | feature | Approved |
 | REQ-143 | A chart toggle Add Booked P&L adds the booked P&L of closed legs of a tracked strategy to the payoff curve (not in this phase) | feature | Approved |
 | REQ-144 | The payoff chart shows a Projected profit or Projected loss badge, the engine's P&L at the what-if target level and date | feature | Approved |
 | REQ-145 | The builder Greeks tab has a Decay column, and IV is shown as a percent with two decimals | feature | Approved |
