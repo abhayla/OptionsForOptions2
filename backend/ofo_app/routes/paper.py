@@ -28,6 +28,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_extremes
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -60,6 +61,9 @@ REQUEST_KINDS = ("open", "add", "exit")
 RequestKind = Literal["open", "add", "exit"]
 BookState = Literal["LIVE", "PAUSED", "NOT_CONNECTED", "EXITED"]
 SIGNED_PAISA = "summary_paisa_signed"
+#: GC-TP step 3a: the text of a side with no bound (a net short call above every strike); existing catalogue words.
+NO_FIXED_LIMIT = "summary_reward_risk_none"
+Extreme = Money | Literal["unlimited"] | None
 
 
 class PaperOrderIn(BaseModel):
@@ -131,6 +135,16 @@ class PaperBookOut(PaperFigures):
     underlying: Underlying
     answered_at: datetime.datetime
     orders: list[PaperOrderOut]
+    # GC-TP step 3a (REQ-109 AC-9, Drafts Mode summary 278-279): ofo.engine.extremes; absent with extremes_reason
+    profit_left: Extreme
+    loss_left: Extreme
+    max_profit: Extreme
+    max_loss: Extreme
+    profit_left_text: CatalogueText | None
+    loss_left_text: CatalogueText | None
+    max_profit_text: CatalogueText | None
+    max_loss_text: CatalogueText | None
+    extremes_reason: ExtremesReason | None
 
 
 class PaperStrategyOut(PaperFigures):
@@ -243,6 +257,32 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
             "total_text": _signed(view.total), "positions": positions}
 
 
+def _extreme(value: Any) -> tuple[Decimal | str | None, Any]:
+    """One extreme figure and its text: the exact Decimal, "unlimited" with the no-fixed-limit words, or absent."""
+    if value is None:
+        return None, None
+    if value is UNLIMITED:
+        return "unlimited", render_explanation(NO_FIXED_LIMIT)
+    return _exact(value), _signed(value)
+
+
+def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
+              prices: dict[int, paper.Price]) -> dict:
+    """Profit left / Loss left and the original Max Profit / Max Loss from the one engine (ofo.engine.extremes)."""
+    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+    terms = {}
+    for cid in {o.order.contract_id for o in orders}:
+        _, instrument, strike, expiry = _identity(found[cid])
+        terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    got = book_extremes(net_positions(_paper(orders), live), terms, live)
+    figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
+               "max_loss": got.max_loss}
+    out: dict[str, Any] = {"extremes_reason": got.reason}
+    for name, value in figures.items():
+        out[name], out[f"{name}_text"] = _extreme(value)
+    return out
+
+
 def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract]) -> list:
     rows = []
     for stored in orders:
@@ -271,7 +311,8 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     keys = [k for k in (found[c].feed_key for c in open_ids) if k is not None]
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
-    figures = _figures(orders, found, _prices(open_ids, found, snapshot), connected)
+    prices = _prices(open_ids, found, snapshot)
+    figures = _figures(orders, found, prices, connected) | _extremes(orders, found, prices)
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found)})

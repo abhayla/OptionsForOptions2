@@ -302,3 +302,63 @@ async def test_an_uneven_average_is_shown_to_the_paisa_and_the_figures_stay_exac
     assert (pos["net_quantity"], pos["average"], pos["average_text"]) == (3, "100.02", "100.02")  # 300.05 / 3
     ltp = D(pos["ltp"])
     assert D(pos["unbooked"]) == ltp * 3 - D("300.05") and D(pos["total"]) == D(pos["booked"]) + D(pos["unbooked"])
+
+
+# --- Profit left / Loss left and the original Max Profit / Max Loss (step 3a, REQ-109 AC-9) ---------------------------
+
+def _hand_range(body: dict, entry: str, booked: Decimal) -> tuple[Decimal, Decimal]:
+    """Max and min of the reply's open contracts' expiry P&L at 0, every strike and far above (flat tails here)."""
+    open_ = [p for p in body["positions"] if p["net_quantity"] != 0]
+    strikes = sorted({D(p["strike"]) for p in open_})
+
+    def at(level: Decimal) -> Decimal:
+        total = booked
+        for p in open_:
+            k = D(p["strike"])
+            value = max(level - k, D(0)) if p["instrument"] == "CE" else max(k - level, D(0))
+            total += (value - D(p[entry])) * p["net_quantity"]
+        return total
+
+    values = [at(x) for x in [D(0), *strikes, strikes[-1] + 1000]]
+    return max(values), min(values)
+
+
+async def test_core_strategy_48_extremes_equal_the_hand_figures_with_their_texts(db):
+    app, stored, *_ = await _seed_fixture(db)
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    left = _hand_range(body, "ltp", D(0))
+    # the original uses the exact average; every average of this book is a single order's price (exact to the paisa)
+    original = _hand_range(body, "average", D(body["booked"]))
+    assert (D(body["profit_left"]), D(body["loss_left"])) == left
+    assert (D(body["max_profit"]), D(body["max_loss"])) == original
+    assert body["extremes_reason"] is None
+    assert D(body["max_profit"]) == D(body["total"]) + D(body["profit_left"])  # both definitions tie at the extremes
+    for name in ("profit_left", "loss_left", "max_profit", "max_loss"):
+        value = D(body[name])
+        sign = "+" if value > 0 else (MINUS if value < 0 else "")
+        assert body[f"{name}_text"] == sign + f"{abs(value):,.2f}", name
+
+
+async def test_stale_prices_drop_profit_left_and_loss_left_but_keep_the_original(db):
+    app, stored, _provider, clock, last, _fixture = await _seed_fixture(db)
+    async with _client(app) as c:
+        live = (await c.get(f"/paper/strategies/{stored.id}")).json()
+        clock.now = last + datetime.timedelta(minutes=10)
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert (body["profit_left"], body["loss_left"], body["profit_left_text"], body["loss_left_text"]) == (
+        None, None, None, None)
+    assert body["extremes_reason"] == "prices_not_live"
+    assert (body["max_profit"], body["max_loss"]) == (live["max_profit"], live["max_loss"])
+
+
+async def test_a_fully_exited_strategy_has_zero_left_and_booked_as_the_original(db):
+    app, stored, *_ = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00"),
+                                                              _new(c0, "BUY", 65, "80.00", "exit")])
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert (body["profit_left"], body["loss_left"], body["max_profit"], body["max_loss"], body["extremes_reason"]) == (
+        "0.00", "0.00", "1300.00", "1300.00", None)
+    assert (body["max_profit_text"], body["loss_left_text"]) == ("+1,300.00", "0.00")
