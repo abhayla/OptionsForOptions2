@@ -167,7 +167,10 @@ async def test_a_client_that_goes_away_mid_wait_leaves_nothing_held(monkeypatch)
     monkeypatch.setattr(route, "PLANNED_ENTRY_WAIT_S", 5.0)
     rig = Rig()  # never ticks
     task = asyncio.ensure_future(rig.post([LEGS[0]]))
-    await asyncio.sleep(0.3)
+    for _ in range(60):  # GC-CLEAN: a fixed 0.3 s sleep raced a loaded CI runner (held [] at 0.3 s); poll up to 3 s
+        await asyncio.sleep(0.05)
+        if rig.held(LEGS):
+            break
     assert rig.held(LEGS) == [LEGS[0]]  # held while waiting
     task.cancel()
     with pytest.raises(asyncio.CancelledError):

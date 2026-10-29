@@ -315,8 +315,10 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     const w = await show(PositionsPage, '/p')
     expect(t(w, 'positions-empty').text()).toContain('No open positions')
   })
-  it('the bare /positions route redirects to /positions/current-positions', () => {
-    expect(routes.find((x) => x.path === '/positions').redirect).toBe('/positions/current-positions')
+  it('REQ-009 AC-3: the bare /positions route stays the section page (no redirect), so all four sub-items stay reachable', () => {
+    // GC-CLEAN 2026-10-30: GC-TP 4b's redirect hid Strategy-linked positions, Adjustment opportunities and P&L/risk
+    // from navigation (e2e navigation.spec 41 links, not 45); owner question filed, no decision row changed REQ-009.
+    expect(routes.find((x) => x.path === '/positions' && x.redirect)).toBeUndefined()
   })
   it('an alert row shows the strategy name from the reply, not "Strategy 64"', async () => {
     answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ id: 1, strategy_id: 64, strategy_name: '"Iron Fly"', trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }] })

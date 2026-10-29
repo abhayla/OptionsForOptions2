@@ -207,8 +207,10 @@ async def test_a_hidden_draft_is_not_tracked_and_undo_tracks_it_again(app_engine
         trans = await conn.begin()
         try:
             _, first = await _with_draft(conn, user := _user())
-            await conn.execute(text("INSERT INTO public.strategy_tracking (strategy_id, strategy_revision, "
-                                    "price_health, prices_at) VALUES (:id, 1, 'available', now())"), {"id": first.id})
+            # tracked = has a paper order (GC-TP 1a: strategy_tracking is migrated into paper_orders, migration 0028)
+            await conn.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, "
+                                    "price, kind, placed_at) VALUES (:id, :c, 'BUY', 65, 10.00, 'open', now())"),
+                               {"id": first.id, "c": first.saved.contract_ids[0]})
             async with _client(_app(_ConnMaker(conn), user)) as ac:
                 assert [s["tracked"] for s in (await ac.get("/strategies")).json()["strategies"]] == [True]
                 await ac.delete(f"/strategies/{first.id}", params={"expected_revision": 1})

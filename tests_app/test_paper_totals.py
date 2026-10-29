@@ -27,6 +27,7 @@ from ofo.outcome import read_snapshot
 from ofo.scenario.spot import spot_reading
 from ofo_app import paper_store, paper_trigger_store
 from ofo_app import strategy_store as store
+from ofo_app.paper_reasons import reason_text
 from ofo_app.routes.outcome import load_charge_rates
 from sqlalchemy import text
 from test_paper_routes import AT, FIXTURE, MINUS
@@ -208,7 +209,10 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
     assert body["totals"] == {"booked": "2236.00", "booked_text": "+2,236.00", "unbooked": "0.00",
                               "unbooked_text": zero, "total": "2236.00", "total_text": "+2,236.00",
                               "totals_reason": None, "decay": "0.00", "decay_text": zero, "decay_reason": None,
-                              "charges": None, "charges_text": None, "charges_reason": "rates_unavailable"}
+                              "charges": None, "charges_text": None, "charges_reason": "rates_unavailable",
+                              # ADR-210: each reason code carries its sentence (GC-TPD); a None code, None text
+                              "totals_reason_text": None, "decay_reason_text": None,
+                              "charges_reason_text": str(reason_text("rates_unavailable"))}
 
 
 async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
@@ -221,7 +225,8 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "total": "0.00", "total_text": zero, "totals_reason": None, "decay": "0.00",
                               "decay_text": zero, "decay_reason": None, "charges": "0.00",
                               "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
-                              "charges_reason": None}
+                              "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
+                              "charges_reason_text": None}
 
 
 # --- alerts carry the strategy name -----------------------------------------------------------------------------------
