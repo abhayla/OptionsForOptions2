@@ -5,11 +5,13 @@
 // exit order is built, and its price is the reply's own ltp string.
 import { plainName } from '@/lib/saveDraft'
 import { UNREADABLE_TEXT, EXITED_TEXT } from '@/lib/tracking'
+import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 export const PAPER_NO_FIGURE = '—'
 export const PAPER_PAUSED = 'Paper P&L paused - prices not live'
 export const PAPER_NOT_CONNECTED = 'Paper P&L paused - live prices are not connected'
+export const NOT_WHOLE_LOTS_TEXT = 'Not a whole number of lots'
 export const SHOW_CLOSED_LABEL = 'Show closed positions'
 export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed positions to see the exited ones.'
 
@@ -18,7 +20,10 @@ const isCount = (v) => Number.isInteger(v) && v >= 0
 
 function readPosition(p) {
   if (!p || !Number.isInteger(p.contract_id) || !Number.isInteger(p.net_quantity) || typeof p.contract_text !== 'string') return null
+  if (!Number.isInteger(p.lot_size) || p.lot_size <= 0) return null // no lot size, no lots: the group does not read
   const open = p.net_quantity !== 0
+  const held = p.net_quantity < 0 ? -p.net_quantity : p.net_quantity // a count of units, not money
+  const whole = held % p.lot_size === 0
   return {
     key: String(p.contract_id),
     contractId: p.contract_id,
@@ -26,10 +31,13 @@ function readPosition(p) {
     side: p.net_quantity > 0 ? 'B' : p.net_quantity < 0 ? 'S' : null,
     open,
     units: p.net_quantity,
-    qtyText: String(p.net_quantity),
+    lotSize: p.lot_size,
+    lots: whole ? held / p.lot_size : null,
+    // Lots = |net quantity| / lot size; a quantity that is not whole lots is shown as units, with the reason
+    qtyText: whole ? `${held / p.lot_size} ${held === p.lot_size ? 'lot' : 'lots'}` : `${held} units`,
+    qtyNote: whole ? '' : NOT_WHOLE_LOTS_TEXT,
     averageText: text(p.average_text),
     ltpText: p.price_state === 'live' ? text(p.ltp_text) : null,
-    exitPrice: p.price_state === 'live' ? text(p.ltp) : null, // the reply's own string, sent back as the exit price
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
     total: text(p.total_text),
@@ -87,9 +95,13 @@ export function visibleGroups(groups, showClosed) {
   return groups.filter((g) => !g.readable || isOpenGroup(g)).map((g) => (g.readable ? { ...g, positions: g.positions.filter((p) => p.open) } : g))
 }
 
-/** The exit orders (REQ-109 AC-4) for the ticked open contracts: the opposite side, all units, at the reply's ltp. */
-export function exitOrdersFor(positions) {
-  const rows = positions.filter((p) => p.open && p.exitPrice !== null)
-  if (rows.length !== positions.length) return null
-  return rows.map((p) => ({ contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', quantity: p.units < 0 ? -p.units : p.units, price: p.exitPrice, kind: 'exit' }))
+/** The confirm list's rows (PaperConfirmDialog orders) for the ticked open contracts: the opposite side, all open lots, price
+ *  = the reply's ltp text. After hours (no live ltp) the price is empty and marked "last close" (REQ-109 AC-4). Null when a
+ *  contract is not open or not in whole lots: no exit is offered for it. Quantities only: no price is formed here (ADR-008). */
+export function exitRowsFor(positions) {
+  if (positions.some((p) => !p.open || p.lots === null)) return null
+  return positions.map((p, i) => ({
+    key: `exit-${p.contractId}-${i}`, contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', text: p.name,
+    lots: p.lots, lot_size: p.lotSize, price: p.ltpText ?? '', kind: 'exit', price_note: p.ltpText ? '' : LAST_CLOSE_LABEL,
+  }))
 }

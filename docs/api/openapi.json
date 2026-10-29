@@ -4114,6 +4114,10 @@
             "title": "Instrument",
             "type": "string"
           },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
           "ltp": {
             "anyOf": [
               {
@@ -4238,6 +4242,7 @@
           "strike",
           "expiry",
           "net_quantity",
+          "lot_size",
           "average",
           "average_text",
           "ltp",

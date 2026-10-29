@@ -363,3 +363,35 @@ async def test_a_fully_exited_strategy_has_zero_left_and_booked_as_the_original(
     assert (body["profit_left"], body["loss_left"], body["max_profit"], body["max_loss"], body["extremes_reason"]) == (
         "0.00", "0.00", "1300.00", "1300.00", None)
     assert (body["max_profit_text"], body["loss_left_text"]) == ("+1,300.00", "0.00")
+
+
+# --- GC-TP step 4b round 2: lot_size on every position ------------------------------------------------------------
+
+async def _contract_lot(db, contract_id: int) -> int:
+    return int((await db.execute(text("SELECT lot_size FROM public.broker_instruments WHERE contract_id = :i "
+                                      "AND broker = 'zerodha'"), {"i": contract_id})).scalar_one())
+
+
+async def test_positions_carry_the_catalogue_lot_size_open_and_closed_in_both_replies(db):
+    app, stored, *_ = await _seed_fixture(db)  # three open NIFTY legs and one closed one
+    async with _client(app) as c:
+        one = (await c.get(f"/paper/strategies/{stored.id}")).json()
+        many = (await c.get("/paper/strategies")).json()["strategies"][0]
+    for body in (one, many):
+        assert {p["net_quantity"] == 0 for p in body["positions"]} == {True, False}
+        for p in body["positions"]:
+            assert p["lot_size"] == await _contract_lot(db, p["contract_id"]) == 65  # noqa: PLR2004 - NIFTY
+
+
+async def test_a_sensex_contract_position_carries_its_own_lot_size_20(db):
+    app, stored, *_ = await _setup(db)
+    sensex = (await db.execute(text(
+        "SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b ON b.contract_id = c.id "
+        "WHERE b.broker = 'zerodha' AND b.lot_size = 20 AND c.name = 'SENSEX' AND NOT c.retired AND NOT c.delisted "
+        "AND c.instrument_type IN ('CE', 'PE') LIMIT 1"))).scalar_one_or_none()
+    assert sensex is not None, "the test catalogue has no SENSEX option"
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(sensex, "BUY", 20, "100.00"),
+                                                              _new(sensex, "SELL", 20, "90.00", "exit")])
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert [(p["contract_id"], p["lot_size"]) for p in body["positions"]] == [(sensex, 20)]

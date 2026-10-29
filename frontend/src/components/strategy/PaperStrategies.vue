@@ -1,7 +1,7 @@
 <!-- GC-BP step 6 (ADR-201 (2); REQ-109 AC-2, AC-3, AC-4), rebuilt by GC-TP step 4b (ADR-207; RD-121; Sensibull Positions 050-053
      and Draft Portfolios 090-092): the user's paper strategies from GET /paper/strategies (newest first) - a totals strip
      (Total P&L, Booked, Unbooked, Total Decay), a "Show closed positions" toggle (off), and per strategy a card with
-     "N of M positions", Total / Booked / Unbooked and one row per contract (Qty, Avg, LTP, Booked, Unbooked, P&L) with
+     "N of M positions", Total / Booked / Unbooked and one row per contract (Lots, Avg, LTP, Booked, Unbooked, P&L) with
      Open in Builder, Add orders, Exit (n) and Stops. Shown in the Positions page's Paper tab and the builder's Tracked tab.
      The browser computes no money (ADR-008): every figure is the server's text. A failed or unreadable read shows no figure.
      Nothing here reaches Execute (REQ-109 AC-3): an exit is a paper order and sends nothing to Zerodha. -->
@@ -61,7 +61,7 @@
             <div class="mt-2 flex gap-3">
               <table v-if="g.positions.length" class="w-full min-w-0 flex-1 text-left">
                 <thead>
-                  <tr><th class="w-6"><span class="sr-only">Select</span></th><th>Instrument</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Booked</th><th>Unbooked</th><th>P&amp;L</th></tr>
+                  <tr><th class="w-6"><span class="sr-only">Select</span></th><th>Instrument</th><th>Lots</th><th>Avg</th><th>LTP</th><th>Booked</th><th>Unbooked</th><th>P&amp;L</th></tr>
                 </thead>
                 <tbody>
                   <tr v-for="p in g.positions" :key="p.key" data-testid="paper-leg" :data-leg="p.contractId">
@@ -69,7 +69,7 @@
                       <input v-if="canExit(p)" type="checkbox" :checked="isTicked(g.id, p.contractId)" :data-testid="`select-leg-${g.id}-${p.contractId}`" :aria-label="`Select ${p.name}`" @change="tick(g.id, p.contractId, $event.target.checked)" />
                     </td>
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
-                    <td data-testid="paper-qty">{{ p.qtyText }}</td>
+                    <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
                     <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}</td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
@@ -87,17 +87,13 @@
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
               </div>
             </div>
-            <div v-if="confirm && confirm.id === g.id" class="mt-2 rounded bg-amber-50 p-2" role="group" aria-label="Confirm paper exit">
-              <p data-testid="exit-confirm-text">Paper exit - no order is sent. Exit {{ confirm.names }} at the current paper price?</p>
-              <button type="button" class="mr-2 rounded border border-line px-3 py-1" data-testid="exit-confirm" :disabled="busy" @click="doExit">Confirm paper exit</button>
-              <button type="button" class="rounded border border-line px-3 py-1" data-testid="exit-cancel" :disabled="busy" @click="cancelExit(g.id)">Cancel</button>
-            </div>
-            <p v-if="exitErrors[g.id]" class="mt-2 text-red-700" role="alert" data-testid="paper-exit-error">{{ exitErrors[g.id] }}</p>
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" />
           </template>
         </div>
       </template>
     </template>
+    <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :busy="busy" :error="dialogError" @confirm="doExit" @cancel="cancelExit" />
   </section>
 </template>
 
@@ -106,7 +102,8 @@ import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
-import { ALL_CLOSED_TEXT, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitOrdersFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import { ALL_CLOSED_TEXT, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { signOf } from '@/lib/chartCard'
 
@@ -146,12 +143,12 @@ function tick(id, c, on) {
   const rest = (ticks.value[id] ?? []).filter((x) => x !== c)
   ticks.value = { ...ticks.value, [id]: on ? [...rest, c] : rest }
 }
-const canExit = (p) => p.open && p.exitPrice !== null // no live price, no price to exit at
+const canExit = (p) => p.open && p.lots !== null // a quantity that is not whole lots cannot be exited in lots
 const tickedOpen = (g) => g.positions.filter((p) => canExit(p) && isTicked(g.id, p.contractId))
 
 const confirm = ref(null)
 const busy = ref(false)
-const exitErrors = ref({})
+const dialogError = ref('') // the server's refusal text, shown inside the confirm list
 
 function show(data) {
   const read = readPaperList(data)
@@ -160,11 +157,10 @@ function show(data) {
     totals.value = null
     errorParts.value = NEUTRAL_PARTS
   } else {
-    const before = items.value
     items.value = read.groups
     totals.value = read.totals
     errorParts.value = null
-    settle(before, items.value)
+    settle(items.value)
   }
   loading.value = false
 }
@@ -173,7 +169,7 @@ function fail(e) {
   items.value = null
   totals.value = null
   confirm.value = null
-  exitErrors.value = {}
+  dialogError.value = ''
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
   loading.value = false
 }
@@ -186,48 +182,40 @@ const { refresh, refreshNow } = usePaperRefresh({
 })
 onMounted(refresh)
 
-// what a group's contracts look like to an exit (contract and net units); a read that changes it ends the exit's open question
-const sig = (g) => (g && g.readable ? g.positions.map((p) => `${p.contractId}:${p.units}`).join(',') : null)
-function settle(before, now) {
+// a read that changes the open contracts of the group being exited ends the exit's open question
+function settle(now) {
   const c = confirm.value
   if (c) {
     const g = now.find((x) => x.id === c.id)
     const stillOpen = g && g.readable && c.units.every((u) => g.positions.some((p) => p.contractId === u.id && p.units === u.units))
-    if (!stillOpen) confirm.value = null
+    if (!stillOpen) cancelExit()
   }
-  const kept = {}
-  for (const [id, text] of Object.entries(exitErrors.value)) {
-    const was = (before ?? []).find((x) => String(x.id) === id)
-    const is = now.find((x) => String(x.id) === id)
-    if (text && was && is && sig(was) === sig(is)) kept[id] = text // the group did not move: the refusal still stands
-  }
-  exitErrors.value = kept
 }
-function cancelExit(id) {
+function cancelExit() {
   confirm.value = null
-  exitErrors.value = { ...exitErrors.value, [id]: '' }
+  dialogError.value = ''
 }
 
 function ask(g, rows) {
-  if (busy.value || !rows.length) return
-  confirm.value = { id: g.id, rows, units: rows.map((p) => ({ id: p.contractId, units: p.units })), names: rows.map((p) => p.name).join(', ') }
+  const orders = exitRowsFor(rows)
+  if (busy.value || orders === null || !orders.length) return
+  dialogError.value = ''
+  confirm.value = { id: g.id, orders, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
-async function doExit() {
+// the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
+async function doExit(orders) {
   const c = confirm.value
   if (!c || busy.value) return
-  const orders = exitOrdersFor(c.rows)
-  if (orders === null) return
   busy.value = true
-  exitErrors.value = { ...exitErrors.value, [c.id]: '' }
+  dialogError.value = ''
   try {
     await api.post(`/paper/strategies/${c.id}/orders`, { orders })
     confirm.value = null
     ticks.value = { ...ticks.value, [c.id]: [] }
     refreshNow()
   } catch (e) {
-    confirm.value = null
-    exitErrors.value = { ...exitErrors.value, [c.id]: e?.parts?.what_happened || NEUTRAL_ERROR }
+    dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR
   } finally {
     busy.value = false
   }

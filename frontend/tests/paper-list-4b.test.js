@@ -87,19 +87,20 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
   })
 
-  it('a position row has Qty, Avg, LTP, Booked, Unbooked and P&L as the reply sent them', async () => {
+  it('a position row has Lots, Avg, LTP, Booked, Unbooked and P&L as the reply sent them', async () => {
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show()
     const p = REAL.strategies[1].positions[0]
     const row = all(w, 'paper-group')[0].findAll('[data-testid="paper-leg"]')[0]
     expect(row.get('[data-testid="paper-instrument"]').text()).toContain(p.contract_text)
-    expect(row.get('[data-testid="paper-qty"]').text()).toBe('65')
+    expect(row.get('[data-testid="paper-qty"]').text()).toBe('1 lot') // 65 units / the contract's lot size 65
     expect(row.get('[data-testid="paper-avg"]').text()).toBe(p.average_text)
     expect(row.get('[data-testid="paper-ltp"]').text()).toBe(p.ltp_text)
     expect(row.get('[data-testid="paper-leg-booked"]').text()).toBe(p.booked_text)
     expect(row.get('[data-testid="paper-leg-unbooked"]').text()).toBe(p.unbooked_text)
     expect(row.get('[data-testid="paper-leg-pnl"]').text()).toBe(p.total_text)
-    expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-qty"]')[1].text()).toBe('-65')
+    expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-qty"]')[1].text()).toBe('1 lot')
+    expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-instrument"]')[1].text()).toMatch(/^S /) // the side is B/S beside the name
   })
 
   it('actions: Open in Builder and Add orders open the builder on that strategy; the banner says not real', async () => {
@@ -138,28 +139,102 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(t(w, 'trigger-level').text()).toBe('74,500.00')
   })
 
-  it('Exit (n): ticked open positions go out as exit orders to POST /paper/strategies/{id}/orders at the reply ltp', async () => {
+  it('Exit (n) opens the shared confirm list: one exit row per ticked open contract, in lots, the reply ltp text as price', async () => {
     answers['GET /paper/strategies'] = ok(REAL)
     answers['POST /paper/strategies/1/orders'] = ok({})
     const w = await show()
+    const p = REAL.strategies[1].positions.find((x) => x.contract_id === 784)
+    expect(has(w, 'paper-confirm')).toBe(false)
     await all(w, 'paper-group')[0].get('[data-testid="select-leg-1-784"]').setValue(true)
     await t(w, 'exit-selected-1').trigger('click')
-    expect(t(w, 'exit-confirm-text').text()).toContain('no order is sent')
-    await t(w, 'exit-confirm').trigger('click')
+    await flushPromises()
+    expect(has(w, 'exit-confirm-text')).toBe(false) // the old inline confirm is gone
+    expect(all(w, 'paper-order')).toHaveLength(1)
+    const row = all(w, 'paper-order')[0]
+    expect(row.get('[data-testid="paper-order-kind"]').text()).toBe('Exit')
+    expect(row.get('[data-testid="paper-lots"]').element.value).toBe('1')
+    expect(row.get('[data-testid="paper-price"]').element.value).toBe(p.ltp_text)
+    expect(t(w, 'paper-not-real').exists()).toBe(true)
+    await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     const post = calls.find((c) => c[0] === 'POST')
     expect(post[1]).toBe('/paper/strategies/1/orders')
-    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: '31.15', kind: 'exit' }] })
+    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: p.ltp_text, kind: 'exit' }] })
+    expect(has(w, 'paper-confirm')).toBe(false)
   })
 
-  it('an open contract without an ltp shows a dash, and cannot be ticked for exit (no price to exit at)', async () => {
+  it('a partial exit: the lots are editable and go out as lots x the lot size', async () => {
+    const d = clone()
+    Object.assign(d.strategies[1].positions[1], { net_quantity: -195 }) // 3 lots short
+    answers['GET /paper/strategies'] = ok(d)
+    answers['POST /paper/strategies/1/orders'] = ok({})
+    const w = await show()
+    const row0 = all(w, 'paper-group')[0].findAll('[data-testid="paper-qty"]')[1]
+    expect(row0.text()).toBe('3 lots')
+    const id = d.strategies[1].positions[1].contract_id
+    await all(w, 'paper-group')[0].get(`[data-testid="select-leg-1-${id}"]`).setValue(true)
+    await t(w, 'exit-selected-1').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-lots').element.value).toBe('3')
+    await t(w, 'paper-lots').setValue('2')
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c[0] === 'POST')[2].orders[0]).toMatchObject({ contract_id: id, quantity: 130, kind: 'exit' })
+  })
+
+  it('SENSEX: lots use the contract lot size (20 units = 1 lot, 60 units = 3 lots)', async () => {
+    const d = clone()
+    Object.assign(d.strategies[1].positions[0], { lot_size: 20, net_quantity: 60 })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-qty"]')[0].text()).toBe('3 lots')
+  })
+
+  it('a quantity that is not whole lots is shown as units with the reason and cannot be ticked', async () => {
+    const d = clone()
+    Object.assign(d.strategies[1].positions[0], { net_quantity: 70 })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    const row = all(w, 'paper-group')[0].findAll('[data-testid="paper-leg"]')[0]
+    expect(row.get('[data-testid="paper-qty"]').text()).toContain('70 units')
+    expect(row.get('[data-testid="paper-qty-note"]').text()).toBe('Not a whole number of lots')
+    expect(row.find('input[type="checkbox"]').exists()).toBe(false)
+  })
+
+  it('a position reply without a lot size does not read: the strategy shows the unreadable text and no figure', async () => {
+    const d = clone()
+    delete d.strategies[1].positions[0].lot_size
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(all(w, 'paper-unreadable').length).toBeGreaterThan(0)
+  })
+
+  it('a POST refusal stays in the confirm list with the server text', async () => {
+    answers['GET /paper/strategies'] = ok(REAL)
+    answers['POST /paper/strategies/1/orders'] = () => Promise.reject({ status: 422, parts: { what_happened: 'Exit is larger than the open quantity' } })
+    const w = await show()
+    await all(w, 'paper-group')[0].get('[data-testid="select-leg-1-784"]').setValue(true)
+    await t(w, 'exit-selected-1').trigger('click')
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-error').text()).toBe('Exit is larger than the open quantity')
+    expect(has(w, 'paper-confirm')).toBe(true)
+  })
+
+  it('an open contract without an ltp shows a dash; its exit row has an empty price marked "last close" that must be typed', async () => {
     const d = clone()
     Object.assign(d.strategies[2].positions[0], { ltp: null, ltp_text: null, price_state: 'stale' })
     answers['GET /paper/strategies'] = ok(d)
     const w = await show()
     const row = all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')[0]
     expect(row.get('[data-testid="paper-ltp"]').text()).toBe('—')
-    expect(row.find('input[type="checkbox"]').exists()).toBe(false)
+    const id = d.strategies[2].positions[0].contract_id
+    await all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).setValue(true)
+    await t(w, `exit-selected-${d.strategies[2].strategy_id}`).trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-price').element.value).toBe('')
+    expect(t(w, 'paper-price-note').text()).toBe('last close')
+    expect(t(w, 'paper-confirm-button').element.disabled).toBe(true)
   })
 
   it('totals_reason replaces a missing figure with the server reason', async () => {
