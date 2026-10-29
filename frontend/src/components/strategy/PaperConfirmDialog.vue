@@ -51,7 +51,7 @@ const emit = defineEmits(['confirm', 'cancel'])
 
 const rows = ref([])
 watch(() => [props.open, props.orders], () => {
-  if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: o.price ?? '' }))
+  if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: String(o.price ?? '') }))
 }, { immediate: true })
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
@@ -61,7 +61,7 @@ const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) =>
 
 // the quantity is a count of units (whole lots x the lot size the order carries), not money
 const unitsOf = (r) => r.lots * r.lot_size
-const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.price.trim(), kind: r.kind }) // price: as typed
+const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: String(r.price).trim(), kind: r.kind }) // price: as typed
 
 function confirm() {
   if (props.busy || !ready.value) return

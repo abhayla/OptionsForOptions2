@@ -749,6 +749,7 @@ class TargetOut(ApiModel):
     output_label: CatalogueText | None = None
     pnl: TargetPnlOut | None = None
     breakevens: list[Money] | None = None
+    breakevens_display: list[CatalogueText] | None = None  # GC-TPD R-33: "22,578 (+0.1%)", same order as ``breakevens``
     breakevens_reason: CatalogueText | None = None
     stale_text: CatalogueText | None = None  # ADR-210 (7): the sentence for these figures if they go stale
     curve: CurveOut | None = None

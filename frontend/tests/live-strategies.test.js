@@ -75,9 +75,17 @@ async function mountPage() {
   router.push('/')
   await router.isReady()
   const w = mount(LiveStrategiesPage, { global: { plugins: [router] } })
+  // GC-TPD R-12: a page a test leaves mounted keeps real timers (the socket reconnect backoff, the 8 s queue release) and
+  // reopens FakeSockets into the NEXT test's shared FakeSocket.all / detailGets on a slow machine. Every page is
+  // unmounted after its test (a test that unmounts itself is not unmounted twice).
+  const unmount = w.unmount.bind(w)
+  let gone = false
+  w.unmount = () => { if (!gone) { gone = true; unmount() } }
+  mountedPages.push(w)
   await flushPromises()
   return w
 }
+const mountedPages = []
 const cards = (w) => w.findAll('[data-testid="live-strategy-card"]')
 const openAll = () => FakeSocket.all.forEach((s) => s.serverOpen())
 // Cards start one at a time: answer the newest socket, let the next card start, and repeat.
@@ -103,7 +111,10 @@ beforeEach(() => {
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  while (mountedPages.length) mountedPages.pop().unmount()
+  vi.restoreAllMocks()
+})
 
 describe('AC-4: stale or unavailable data is marked, never shown as live', () => {
   it('AC-4 (RD-045): each health state is explained in one sentence with its reason; available shows none', async () => {

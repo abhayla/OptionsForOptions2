@@ -48,9 +48,9 @@ describe('the card figures (the real reply)', () => {
   it('core: Breakeven, Max Profit and Max Loss are the reply texts as sent', async () => {
     answers['GET /paper/strategies'] = ok(LIVE)
     const s = open(LIVE)
-    expect(s.breakevens_text.length).toBeGreaterThan(0)
+    expect(s.breakevens_display.length).toBeGreaterThan(0)
     const c = card(await show(), s.strategy_id)
-    expect(q(c, 'paper-breakeven').text()).toBe(s.breakevens_text.join(', '))
+    expect(q(c, 'paper-breakeven').text()).toBe(s.breakevens_display.join(', '))
     expect(q(c, 'paper-max-profit').text()).toBe(s.max_profit_text)
     expect(q(c, 'paper-max-loss').text()).toBe(s.max_loss_text)
     expect(c.find('[data-testid="paper-breakeven-reason"]').exists()).toBe(false)

@@ -7,7 +7,7 @@
    "breakevens": null,
    "breakevens_reason": "multi_expiry",
    "breakevens_reason_text": "Breakeven is exact only for a single-expiry strategy",
-   "breakevens_text": null,
+   "breakevens_display": null,
    "charges": null,
    "charges_reason": "rates_unavailable",
    "charges_reason_text": "Charges and taxes are not included: the charge rates could not be read.",

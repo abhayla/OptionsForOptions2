@@ -120,7 +120,9 @@ describe('CORE: a slider sends only target_level / target_at; every shown figure
     expect('target_at' in sent[0].body).toBe(false) // the date was not touched
     // the figures shown are the reply's texts, as sent
     expect(t(w, 'target-pnl').text()).toBe(mid.target.pnl.display)
-    expect(all(w, 'target-breakeven').map((e) => e.text())).toEqual(mid.target.breakevens)
+    // GC-TPD R-33: the server's grouped text ("22,401 (−0.6%)"), never the raw "22400.63"
+    expect(all(w, 'target-breakeven').map((e) => e.text())).toEqual(mid.target.breakevens_display)
+    expect(all(w, 'target-breakeven').map((e) => e.text())).not.toContain(mid.target.breakevens[0])
     expect(t(w, 'target-label').text()).toBe(mid.target.output_label)
     expect(t(w, 'target-label').text()).toBe('Estimate from the pricing model at your target, not a forecast.')
     expect(t(w, 'target-level-text').text()).toBe(mid.target.level)

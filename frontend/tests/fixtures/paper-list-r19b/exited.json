@@ -7,7 +7,7 @@
    "breakevens": null,
    "breakevens_reason": "exited",
    "breakevens_reason_text": "Exited",
-   "breakevens_text": null,
+   "breakevens_display": null,
    "charges": null,
    "charges_reason": "rates_unavailable",
    "charges_reason_text": "Charges and taxes are not included: the charge rates could not be read.",

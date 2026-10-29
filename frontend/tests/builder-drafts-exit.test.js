@@ -71,9 +71,10 @@ describe('CORE: Drafts Mode summary from the REAL book reply', () => {
   it('Breakeven in Drafts Mode is the book reply\'s (booked counted, as Max Profit / Max Loss are), not the plan\'s', async () => {
     // live GET /paper/strategies/63 at 19:3x 2026-10-29 (R-19b fields): booked 962.00 / 65 = 14.80 per unit shifts the
     // open-legs breakevens 22,632 / 22,968 (net credit 17.70) to 22,618 / 22,983; the outcome reply is the plan's
-    answers[PAPER] = { ...copy(), breakevens: ['22617.50', '22982.50'], breakevens_text: ['22,618', '22,983'] }
+    answers[PAPER] = { ...copy(), breakevens: ['22617.50', '22982.50'], breakevens_display: ['22,618 (−1.4%)', '22,983 (+0.2%)'] }
     const w = await openBuilder()
-    expect(t(w, 'breakevens').text()).toBe('22,618, 22,983')
+    // GC-TPD R-34: the move-from-spot percent the outcome summary shows, sent by the server in the same shape
+    expect(t(w, 'breakevens').text()).toBe('22,618 (−1.4%), 22,983 (+0.2%)')
   })
 
   it('fully closed book: Profit left = Loss left = the reply\'s 0 texts', async () => {
