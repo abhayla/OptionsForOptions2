@@ -354,6 +354,11 @@ decisions:
   ADR-199: S6.1         # after the close on an expiry day the builder default expiry rolls to the next one (owner, 2026-10-27)
   ADR-200: S6.1         # ADR-197 built now; "last close" = LTP at the close, its own time; real-app closing-price walks prove GC-BM (owner)
   ADR-201: S6.1         # paper-tracked strategies on Positions in a separate Paper tab; 10-28 round is functional only (owner)
+  ADR-202: S6.1         # Required meaning in Sensibull's form (owner, 2026-10-28)
+  ADR-203: S6.1         # Strategy Chart from Kite history; data errors fixed in the UI round (owner, 2026-10-28)
+  ADR-204: S6.1         # UI-match differences approved as recommended (owner, 2026-10-28)
+  ADR-205: S6.1         # charges lines stay rounded from exact amounts, no note (owner, 2026-10-28)
+  ADR-206: S6.1         # order flow confirmed; Funds needed held (owner, 2026-10-28)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -670,6 +675,9 @@ findings:
   F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
   F-60: S6.7      # Kite REST limits per group (quote 1/s, historical 3/s, other 10/s); 429 = 10 s sliding cooldown
   F-61: S6.1      # false disconnected alarm comes from the server Kite feed reconnect, not the browser socket (REQ-133)
+  F-62: S6.1      # basket margin reply has no buy-first figure; REQ-142 Funds needed cannot come from it
+  F-63: S6.1      # Sensibull Decay = time value lost to the next market open (REQ-145)
+  F-64: S6.1      # Kite minute candles: core proof for the Strategy Chart (REQ-091, ADR-203)
 
 hypotheses:
   H1: done
