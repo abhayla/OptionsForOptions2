@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { ESLint } from 'eslint'
 import path from 'path'
 
@@ -10,6 +10,12 @@ async function messages(code, file) {
 }
 
 describe('lint rule banning literal vendor hosts (ADR-012)', () => {
+  // GC-TPD F-2: the first lintText loads the config and plugins cold (25.8 s under the full run, past the 5 s test
+  // limit); load them once here with a long hook timeout so each test times only its own lint call
+  beforeAll(async () => {
+    await eslint.lintText('export const warm = 1\n', { filePath: path.resolve(__dirname, '..', 'src/x.js') })
+  }, 120000)
+
   it.each(['kite.trade', 'zerodha.com', 'nseindia.com', 'api.upstox.com', 'angelone', 'dhan.co'])(
     'flags %s in a string literal',
     async (host) => {
