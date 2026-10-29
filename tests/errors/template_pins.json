@@ -1915,6 +1915,14 @@
     "sha256": "1b33dd295e1d8f597df0a5f51b3e0c42345b2b0b0d9996946293f9cb3d62ede8",
     "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
+  "explanation:target_includes_booked": {
+    "sha256": "d723b1162da2eb140c1388e145e40d634b06986a5724adad8eebbd5e29bcb75d",
+    "reviewed": "owner read 2026-10-29 (ADR-209)"
+  },
+  "explanation:target_booked_unreadable": {
+    "sha256": "adfdd3bc402148d1abf4b4e2ad1ecc9f9d208c2493e2bb6e9d690657c085cc1a",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_reason_not_priced": {
     "sha256": "bb747139646845cd6882855ed8409ed268d807914767b0a5b3174083b936fce3",
     "reviewed": "owner read 2026-10-29 (ADR-210, question tool \"Approve all 7\")"

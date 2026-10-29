@@ -51,6 +51,14 @@ export function targetFields(pick, stops) {
   return out
 }
 
+/** GC-TP R-18 (ADR-209): the request fields of the chart card's "Add Booked P&L" switch. Only a paper strategy (Drafts Mode,
+ *  `paperId` set) names itself; the server reads its booked P&L (nothing is computed here). A plan sends nothing. */
+export const BOOKED_SWITCH_LABEL = 'Add Booked P&L' // Sensibull screen 020, catalogue line 46
+export function bookedFields(paperId, includeBooked) {
+  if (!paperId) return {}
+  return includeBooked ? { paper_strategy_id: paperId } : { paper_strategy_id: paperId, include_booked: false }
+}
+
 /** True for a whole number of index points (the only form the route accepts). */
 export const isWholePoints = (text) => /^[1-9]\d{0,6}$/.test(String(text).trim())
 

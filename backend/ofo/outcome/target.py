@@ -29,7 +29,7 @@ from ofo.engine.black_scholes import Greeks
 from ofo.engine.estimate import MODEL
 from ofo.engine.legs import Instrument
 from ofo.engine.model import ModelInputs, estimate, leg_close, leg_greeks_at_unrounded
-from ofo.engine.target import breakevens_at, greeks_total, target_level_limits
+from ofo.engine.target import add_booked, add_booked_all, breakevens_at, greeks_total, target_level_limits
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
@@ -47,6 +47,9 @@ class TargetAsk:
 
     level: Decimal | None = None
     at: datetime.datetime | None = None
+    #: GC-TP R-18 (ADR-209): the paper strategy's booked P&L to add to the target figures (None: not asked, a plan, or 0)
+    booked: Decimal | None = None
+    booked_unreadable: bool = False  # the switch is on for a paper strategy whose book could not be read
 
     @property
     def asked(self) -> bool:
@@ -106,6 +109,8 @@ class Target:
     greeks: TargetGreeks | None
     spot: Decimal | None = None  # R-19a: the live index price the move is from (None: unknown, never an old one)
     days: int | None = None  # R-19a: whole IST calendar days from the target date to the first expiry, 0 or more
+    booked: Decimal | None = None  # R-18 (ADR-209): the booked P&L included in pnl and the curve (None: none included)
+    booked_unreadable: bool = False  # R-18: the book could not be read, so the figures are open legs only
 
     @property
     def level_clamp_text(self) -> ExplanationText | None:
@@ -215,27 +220,41 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = _missing_iv_reason(model)
     if reason is not None:  # AC-7: no IV: At Expiry P&L at the level; the time is refused
-        return _exact_only(limits, level, level_clamped, model, reason, model.spot_level)
+        return _exact_only(limits, level, level_clamped, model, reason, model.spot_level, ask)
     limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
     label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
     curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
     single = model.strategy.is_single_expiry
+    booked = _booked_of(ask)
+    breakevens = _breakevens(model, curve, at) if single else None  # open legs only: no shift path in this base (R-19b)
+    pnl = estimate(model, level, at).total
+    if booked is not None:
+        curve = dataclasses.replace(curve, totals=add_booked_all(curve.totals, booked))
+        pnl = add_booked(pnl, booked)
     return Target(
         limits=limits, level=level, level_clamped=level_clamped, at=at, at_clamped=clamp is not None, clamp=clamp,
         at_refused_reason=None, kind="estimate", model=MODEL, output_label=label,
-        pnl=estimate(model, level, at).total,
-        breakevens=_breakevens(model, curve, at) if single else None,
+        pnl=pnl, breakevens=breakevens,
         breakevens_reason=None if single else render_explanation("mixed_expiry_worst_case"),
-        curve=curve, greeks=_greeks(model, level, at), spot=model.spot_level, days=days_to(model, at))
+        curve=curve, greeks=_greeks(model, level, at), spot=model.spot_level, days=days_to(model, at),
+        booked=booked, booked_unreadable=ask.booked_unreadable)
+
+
+def _booked_of(ask: TargetAsk) -> Decimal | None:
+    """The booked amount to include: None for a plan, the switch off, an unreadable book, or exactly 0 (no line)."""
+    return None if ask.booked is None or ask.booked == 0 or ask.booked_unreadable else ask.booked
 
 
 def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model: ModelInputs,  # noqa: PLR0913
-                reason: ExplanationText, spot: Decimal | None) -> Target:
+                reason: ExplanationText, spot: Decimal | None, ask: TargetAsk) -> Target:
+    booked = _booked_of(ask)  # ADR-209: the At Expiry figure at the level is the whole strategy too
+    pnl = add_booked(_at_expiry_pnl(model, level), booked)
     return Target(limits=limits, level=level, level_clamped=level_clamped, at=None, at_clamped=False, clamp=None,
                   at_refused_reason=reason, kind="exact", model=None, output_label=model.data_label,
-                  pnl=_at_expiry_pnl(model, level), breakevens=None, breakevens_reason=None, curve=None, greeks=None,
-                  spot=spot, days=days_to(model, model.inputs.valuation_time))  # the time is refused: days from now
+                  pnl=pnl, breakevens=None, breakevens_reason=None, curve=None, greeks=None,
+                  spot=spot, days=days_to(model, model.inputs.valuation_time),
+                  booked=booked if pnl is not None else None, booked_unreadable=ask.booked_unreadable)  # the time is refused: days from now
 
 
 def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
@@ -244,4 +263,4 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
     limits = target_limits(model.spot_level, step)
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = render_explanation("outcome_from_entries_no_estimate")
-    return _exact_only(limits, level, level_clamped, model, reason, None)
+    return _exact_only(limits, level, level_clamped, model, reason, None, ask)

@@ -54,7 +54,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
-import { dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -134,6 +134,13 @@ const pickTarget = (patch) => {
   targetPick.value = { ...targetPick.value, ...patch } // both back at spot / now: no target field is sent
   loadSoon()
 }
+// GC-TP R-18 (ADR-209, Sensibull 020): the chart card's Add Booked P&L switch, ON by default; a toggle is a new target request
+// (same debounce; the request guard drops the older reply by its id)
+const includeBooked = ref(true)
+const pickBooked = (on) => {
+  includeBooked.value = on
+  loadSoon()
+}
 const updating = computed(() => guard.pending.outcome || guard.pending['leg-edit'])
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -153,6 +160,7 @@ async function load() {
   }
   const mine = guard.next('outcome') // aborts the outcome request still in flight
   const target = targetFields(targetPick.value, dateStopList.value)
+  const booked = bookedFields(paper.value?.book?.strategy_id, includeBooked.value) // R-18: the Add Booked P&L switch; the id is the server book's own (a paper strategy only)
   const prevState = state.value
   const fallback = socketDropped
   const sentKey = inputsKey()
@@ -163,7 +171,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, fallback, seq: mine.seq }, { signal: mine.signal })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked, fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
     // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
     // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
@@ -893,6 +901,8 @@ const pricesStamp = computed(() => {
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
             :target-curve="targetShown?.curve ?? null"
+            :include-booked="includeBooked"
+            :target-booked-text="targetShown?.includes_booked_text ?? ''"
             :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
             :breakevens="data.summary.breakevens ?? []"
             :sd="data.standard_deviation ?? null"
@@ -902,6 +912,7 @@ const pricesStamp = computed(() => {
             :saved-id="savedId"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
+            @update:include-booked="pickBooked"
             @payoff-step="stepTo"
           >
             <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->

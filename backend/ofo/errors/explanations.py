@@ -1106,6 +1106,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("target_days_to_expiry", "values_seen", "{days}D to expiry", {"days": Days}),
     ExplanationTemplate("target_move_no_spot", "values_seen",
                         "The move from spot is not available: there is no live index price."),
+    # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
+    ExplanationTemplate("target_includes_booked", "values_seen", "includes booked {amount}", {"amount": SignedPaisa}),
+    ExplanationTemplate("target_booked_unreadable", "values_seen",
+                        "Booked profit and loss could not be read, so these figures are for the open legs only."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),

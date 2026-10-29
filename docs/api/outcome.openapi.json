@@ -1310,6 +1310,26 @@
             ],
             "title": "Target At",
             "description": "REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)"
+          },
+          "paper_strategy_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Strategy Id",
+            "description": "ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its booked P&L from the paper order book. Absent: a plan, nothing is added"
+          },
+          "include_booked": {
+            "type": "boolean",
+            "title": "Include Booked",
+            "description": "ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L to the target P&L, the badge and the target curve; false shows the open legs only",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -2504,6 +2524,98 @@
         ],
         "title": "TableOut"
       },
+      "TargetBadgeOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "profit",
+              "loss",
+              "zero",
+              "unavailable"
+            ],
+            "title": "State"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "percent_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Text"
+          },
+          "percent_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "label"
+        ],
+        "title": "TargetBadgeOut",
+        "description": "GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),\nzero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the\nsigned exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``."
+      },
       "TargetGreeksOut": {
         "properties": {
           "legs": {
@@ -2759,6 +2871,15 @@
             ],
             "title": "Breakevens Reason"
           },
+          "stale_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Text"
+          },
           "curve": {
             "anyOf": [
               {
@@ -2778,6 +2899,103 @@
                 "type": "null"
               }
             ]
+          },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "move_pct_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Reason"
+          },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
+          "days_to_expiry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry Display"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetBadgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Display"
+          },
+          "includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includes Booked Text"
+          },
+          "booked_unreadable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Unreadable Text"
           }
         },
         "additionalProperties": false,
