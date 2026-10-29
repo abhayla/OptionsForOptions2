@@ -365,7 +365,7 @@ async def test_a_fully_exited_strategy_has_zero_left_and_booked_as_the_original(
     assert (body["max_profit_text"], body["loss_left_text"]) == ("+1,300.00", "0.00")
 
 
-# --- GC-TP step 4b round 2: lot_size on every position -----------------------------------------------------------------
+# --- GC-TP step 4b round 2: lot_size on every position ------------------------------------------------------------
 
 async def _contract_lot(db, contract_id: int) -> int:
     return int((await db.execute(text("SELECT lot_size FROM public.broker_instruments WHERE contract_id = :i "

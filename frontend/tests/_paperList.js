@@ -9,7 +9,7 @@ function position(l, i, underlying) {
   return {
     contract_id: Number(String(l.instrument_id ?? '').replace(/\D/g, '')) || i + 1,
     contract_text: `${underlying} ${Number(l.strike)} ${l.instrument} ${l.expiry}`,
-    instrument: l.instrument, strike: l.strike, expiry: l.expiry, net_quantity: q,
+    instrument: l.instrument, strike: l.strike, expiry: l.expiry, net_quantity: q, lot_size: l.quantity % 65 === 0 ? 65 : l.quantity,
     average: q ? l.entry_price : null, average_text: q ? (l.entry_price_display ?? null) : null,
     ltp: live ? l.current_price : null, ltp_text: live ? (l.current_price_display ?? null) : null,
     price_state: q ? l.price_state : null, price_at: null,

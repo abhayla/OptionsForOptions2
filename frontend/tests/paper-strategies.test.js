@@ -42,10 +42,12 @@ const gets = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strate
 async function exitLeg(w, i) {
   await t(w, `select-leg-48-${i + 1}`).setValue(true)
   await t(w, 'exit-selected-48').trigger('click')
+  await flushPromises()
 }
 async function exitAll(w) {
   for (const b of w.findAll('input[type="checkbox"]')) await b.setValue(true)
   await t(w, 'exit-selected-48').trigger('click')
+  await flushPromises()
 }
 
 async function show() {
@@ -139,8 +141,8 @@ describe('PaperStrategies: Paper exit', () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     const w = await show()
     await exitAll(w)
-    await t(w, 'exit-cancel').trigger('click')
-    expect(has(w, 'exit-confirm')).toBe(false)
+    await t(w, 'paper-cancel').trigger('click')
+    expect(has(w, 'paper-confirm')).toBe(false)
     expect(calls.some((c) => c[0] === 'POST')).toBe(false)
   })
 })
@@ -151,40 +153,40 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
     answers['GET /tracking'] = () => Promise.resolve({ data: reply })
     const w = await show()
     await exitLeg(w, 0)
-    expect(has(w, 'exit-confirm')).toBe(true)
+    expect(has(w, 'paper-confirm')).toBe(true)
     const out = (i) => leg(i, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null })
     reply = list(item({ legs: [out(0), leg(1), leg(2), leg(3)] }))
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(has(w, 'exit-confirm')).toBe(false)
+    expect(has(w, 'paper-confirm')).toBe(false)
   })
   it('R1-4: a failed read drops the confirm and the exit error; they do not come back with the next good read', async () => {
     let fail = false
     answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
-    answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
     const w = await show()
     await exitLeg(w, 0)
-    await t(w, 'exit-confirm').trigger('click')
+    await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
-    expect(has(w, 'paper-exit-error')).toBe(true)
+    expect(has(w, 'paper-error')).toBe(true)
     await exitLeg(w, 1)
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(has(w, 'paper-group')).toBe(true)
-    expect(has(w, 'exit-confirm')).toBe(false)
-    expect(has(w, 'paper-exit-error')).toBe(false)
+    expect(has(w, 'paper-confirm')).toBe(false)
+    expect(has(w, 'paper-error')).toBe(false)
   })
   it('R1-4: Cancel clears that group\'s exit error', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
-    answers['POST /strategies/48/tracking/exit'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
     const w = await show()
     await exitLeg(w, 0)
-    await t(w, 'exit-confirm').trigger('click')
+    await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     await exitLeg(w, 1)
-    await t(w, 'exit-cancel').trigger('click')
-    expect(has(w, 'paper-exit-error')).toBe(false)
+    await t(w, 'paper-cancel').trigger('click')
+    expect(has(w, 'paper-error')).toBe(false)
   })
 })
 
