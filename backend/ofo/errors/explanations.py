@@ -483,6 +483,19 @@ class Points(SlotType):
         return format_points(value)
 
 
+class IndexLevel(SlotType):
+    """An index or trigger level, a finite `Decimal`, Indian grouping, always two decimals, no currency sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_index_level  # late: display imports this module
+        return format_index_level(value)
+
+
 #: The wording parts of a `LevelRegions` / `ExceptLevels` slot (ADR-072; issue #172), pinned as `labels:level_region`
 #: so a changed word needs a new pin ("pending owner read").
 LEVEL_REGION_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1193,9 +1206,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-TP step 7a (ADR-207 (5), REQ-109 AC-8): the paper stop-loss texts - the stop order's reason and the alert
     ExplanationTemplate("paper_stop_reason_index", "what_triggered",
                         "Conditional exit: {underlying} crossed {direction} {level}",
-                        {"underlying": UnderlyingName, "direction": Recorded, "level": Amount}),
+                        {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
-                        {"contract": Explained, "direction": Recorded, "level": Amount}),
+                        {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy - {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),

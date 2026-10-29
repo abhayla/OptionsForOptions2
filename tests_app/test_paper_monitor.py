@@ -18,7 +18,7 @@ from decimal import Decimal
 import pytest
 from ofo.marketdata.fanout import FanOut
 from ofo.rules.inputs import DataHealth
-from ofo.tracking import paper
+from ofo.tracking import paper, stops
 from ofo_app import paper_monitor, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
@@ -114,7 +114,7 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
         assert await monitor.step() == 0
     market.tick(INDEX, "22849.95")
     assert await monitor.step() == 1
-    reason = "Conditional exit: NIFTY crossed below 22850.00"
+    reason = "Conditional exit: NIFTY crossed below 22,850.00"
     assert await _stops(db, stored.id) == [(ids[0], "BUY", 65, D("41.00"), reason, tid),
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
@@ -238,6 +238,13 @@ async def test_a_cancelled_trigger_never_fires(db):
     market.tick(keys[1], "12.50")
     market.tick(INDEX, "22800.00")
     assert await monitor.step() == 0 and await _stops(db, stored.id) == []
+
+
+@pytest.mark.parametrize(("level", "shown"), [(D("22850"), "22,850.00"), (D("22976.80"), "22,976.80"),
+                                              (D("22976.85"), "22,976.85")])
+def test_the_reason_text_shows_a_level_grouped_with_two_decimals(level, shown):
+    trigger = stops.Trigger(1, 1, "conditional_exit", "below", level, underlying="NIFTY")
+    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == f"Conditional exit: NIFTY crossed below {shown}"
 
 
 async def test_claiming_one_armed_trigger_twice_wins_once_and_the_second_claim_does_not_raise(db):

@@ -88,6 +88,13 @@ def format_points(level: Decimal) -> str:
     return f"{sign}{text}"
 
 
+def format_index_level(level: Decimal) -> str:
+    """An index or trigger level with Indian grouping and ALWAYS two decimals (no currency): ``22,850.00``,
+    ``22,976.80``. The same grouping and half-even rounding as :func:`format_points`; the paper stop texts use it."""
+    sign, text = _number(_finite(level, "level"), _PAISA)
+    return f"{sign}{text}"
+
+
 def format_whole_rupees(amount: Decimal, *, signed: bool) -> str:
     """REQ-152 AC-1/AC-3/AC-4: a summary money figure in whole rupees, Indian grouping, rounded HALF-UP from the exact
     Decimal (6025.50 -> ``+6,026``; a loss rounds on its magnitude, -104.50 -> ``−105``). ``signed``: a plus on
