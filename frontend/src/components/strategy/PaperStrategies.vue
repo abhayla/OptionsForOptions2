@@ -72,7 +72,7 @@
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
                     <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}</td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpReason && p.ltpText === null" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
@@ -113,8 +113,8 @@ const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
-  { field: 'total', label: 'Total P&L', testid: 'paper-total' },
-  { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked' },
+  { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
+  { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked', reason: 'pauseReason', reasonId: 'paper-unbooked-reason' },
   { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
   { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]

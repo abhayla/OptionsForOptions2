@@ -15,16 +15,8 @@ export const NOT_WHOLE_LOTS_TEXT = 'Not a whole number of lots'
 export const SHOW_CLOSED_LABEL = 'Show closed positions'
 export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed positions to see the exited ones.'
 
-// R-14: a reason code is never shown. Only a code with a sentence already in the product gets it; any other code shows nothing
-// beyond the dash (no new user text here); a reply that already sends a sentence is shown as sent.
-const REASON_SENTENCES = { prices_not_live: PAPER_PAUSED }
-const CODE_SHAPE = /^[a-z][a-z0-9]*(_[a-z0-9]+)+$/
-export function reasonSentence(v) {
-  if (typeof v !== 'string' || v.trim() === '') return null
-  const r = v.trim()
-  return REASON_SENTENCES[r] ?? (CODE_SHAPE.test(r) ? null : r)
-}
-
+// R-20 (ADR-210): a reason code is never shown and no reason sentence is written here; the reply's own `*_reason_text` (a pinned
+// server template, one per code) is shown beside the dash as sent.
 const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
@@ -48,6 +40,7 @@ function readPosition(p) {
     qtyNote: whole ? '' : NOT_WHOLE_LOTS_TEXT,
     averageText: text(p.average_text),
     ltpText: p.price_state === 'live' ? text(p.ltp_text) : null,
+    ltpReason: p.price_state === 'live' ? null : text(p.price_state_text), // ADR-210: the server's sentence for a retired / delisted contract
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
     total: text(p.total_text),
@@ -79,7 +72,8 @@ export function readPaperStrategy(s, index = 0) {
     booked: text(s.booked_text),
     unbooked: text(s.unbooked_text),
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
-    chargesReason: reasonSentence(s.charges_reason),
+    chargesReason: text(s.charges_reason_text),
+    pauseReason: text(s.pause_reason_text),
     positions,
   }
 }
@@ -88,8 +82,8 @@ function readTotals(t) {
   if (!t || typeof t !== 'object') return null
   return {
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
-    charges: text(t.charges_text), chargesReason: reasonSentence(t.charges_reason),
-    totalReason: reasonSentence(t.totals_reason), decayReason: reasonSentence(t.decay_reason),
+    charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
+    totalReason: text(t.totals_reason_text), decayReason: text(t.decay_reason_text),
   }
 }
 

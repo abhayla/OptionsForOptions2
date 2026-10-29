@@ -20,7 +20,6 @@ vi.mock('@/services/api', async (importActual) => {
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { healthSentence } from '@/lib/dataHealthText'
 import plain from './fixtures/outcome-target-plain.json'
 import mid from './fixtures/outcome-target.json'
 import atExpiry from './fixtures/outcome-target-expiry.json'
@@ -242,7 +241,8 @@ describe('the date slider and the answer states', () => {
     await settle()
     expect(t(w, 'target-pnl').text()).toBe(mid.target.pnl.display)
     expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
-    expect(t(w, 'target-stale').text()).toBe(healthSentence('stale')) // the app's existing stale sentence, no new text
+    expect(t(w, 'target-stale').text()).toBe(mid.target.stale_text) // R-15 (ADR-210 (7)): the reply's own sentence
+    expect(t(w, 'target-stale').text()).not.toContain('latest price for this contract')
   })
 
   it('AC-6: the sliders send no save, margin, execute or leg-edit request, only outcome reads', async () => {

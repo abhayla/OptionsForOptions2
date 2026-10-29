@@ -8,7 +8,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { EXTREMES_REASON_TEXT, PAPER_AVERAGE_LABEL } from '@/lib/paperDrafts'
+import { PAPER_AVERAGE_LABEL } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
 import OUTCOME from './fixtures/outcome-condor.json'
 
@@ -79,14 +79,20 @@ describe('CORE: Drafts Mode summary from the REAL book reply', () => {
     const w = await openBuilder()
     expect(t(w, 'profit-left').text()).toBe('No fixed maximum')
   })
+  // R-20 (ADR-210): the reply's own extremes_reason_text (server templates, tests/test_paper_reason_texts.py) is shown as sent
+  const SERVER_TEXT = {
+    multi_expiry: 'Profit left and Loss left are not worked out: the open contracts have different expiries.',
+    prices_not_live: 'Profit left and Loss left are not worked out: prices are not live.',
+  }
   for (const reason of ['multi_expiry', 'prices_not_live']) {
-    it(`extremes_reason ${reason}: no Profit left / Loss left figures, the reason said instead`, async () => {
-      answers[PAPER] = { ...copy(), extremes_reason: reason, profit_left: null, loss_left: null, max_profit: null, max_loss: null,
+    it(`extremes_reason ${reason}: no Profit left / Loss left figures, the reply's sentence said instead, never the code`, async () => {
+      answers[PAPER] = { ...copy(), extremes_reason: reason, extremes_reason_text: SERVER_TEXT[reason], profit_left: null, loss_left: null, max_profit: null, max_loss: null,
         profit_left_text: null, loss_left_text: null, max_profit_text: null, max_loss_text: null }
       const w = await openBuilder()
       expect(t(w, 'profit-left').exists()).toBe(false)
       expect(t(w, 'loss-left').exists()).toBe(false)
-      expect(t(w, 'extremes-reason').text()).toBe(EXTREMES_REASON_TEXT[reason])
+      expect(t(w, 'extremes-reason').text()).toBe(SERVER_TEXT[reason])
+      expect(w.html()).not.toContain(reason)
       expect(t(w, 'max-profit').text()).toBe('-')
     })
   }

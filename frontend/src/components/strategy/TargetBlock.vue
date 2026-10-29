@@ -9,7 +9,6 @@
 import { computed, ref, watch } from 'vue'
 import Card from '@/components/common/Card.vue'
 import { istTime } from '@/lib/displayFormat'
-import { healthSentence } from '@/lib/dataHealthText'
 import { isWholePoints } from '@/lib/targetBlock'
 
 const props = defineProps({
@@ -20,7 +19,6 @@ const props = defineProps({
 })
 const emit = defineEmits(['level', 'date', 'reset-level', 'reset-date'])
 
-const STALE_TEXT = healthSentence('stale') // the app's existing stale sentence
 const GREEKS = ['delta', 'gamma', 'theta', 'vega']
 const t = computed(() => props.target)
 const limits = computed(() => t.value?.limits ?? null)
@@ -81,7 +79,7 @@ const onBox = (e) => {
         <p v-if="dateRefused" class="mt-1 text-xs text-ink-muted" data-testid="target-date-reason">{{ dateRefused }}</p>
       </div>
       <p v-for="c in clamps" :key="c" class="text-xs text-ink-muted md:col-span-2" data-testid="target-clamp">{{ c }}</p>
-      <p v-if="stale" class="text-xs text-warn md:col-span-2" data-testid="target-stale">{{ STALE_TEXT }}</p>
+      <p v-if="stale && t?.stale_text" class="text-xs text-warn md:col-span-2" data-testid="target-stale">{{ t.stale_text }}</p>
       <div v-if="t?.kind" class="grid gap-3 text-sm md:col-span-2 md:grid-cols-3" :class="stale ? 'opacity-60' : ''" data-testid="target-figures">
         <div>
           <div class="text-ink-muted">P&amp;L at target</div>

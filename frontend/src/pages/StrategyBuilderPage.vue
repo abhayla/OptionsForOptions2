@@ -30,7 +30,7 @@ import { ADD_TO_PAPER_LABEL, addToPaper as postPaperOrders } from '@/lib/trackin
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  extremesReasonText, legsAfterExit, paperFillKey,
+  legsAfterExit, paperFillKey,
 } from '@/lib/paperDrafts'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -345,7 +345,7 @@ function exitPaper(contractId, lots) {
 const paperLeft = computed(() => {
   const b = paper.value?.book
   if (!b) return null
-  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: extremesReasonText(b.extremes_reason) }
+  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: b.extremes_reason_text ?? null } // R-20: the server's sentence for extremes_reason, never written here
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))

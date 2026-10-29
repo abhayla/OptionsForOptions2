@@ -173,13 +173,6 @@ export const EXIT_LABEL = 'Exit'
 export const ADD_KIND_LABEL = 'Add'
 export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
-/** The book answers extremes_reason as a code only (ofo.engine.extremes ExtremesReason): its words here, never a figure. */
-export const EXTREMES_REASON_TEXT = {
-  multi_expiry: 'Profit left and Loss left are not worked out: the open contracts have different expiries.',
-  prices_not_live: 'Profit left and Loss left are not worked out: prices are not live.',
-}
-export const EXTREMES_REASON_UNKNOWN = 'Profit left and Loss left are not worked out.'
-export const extremesReasonText = (code) => (code == null ? null : EXTREMES_REASON_TEXT[code] ?? EXTREMES_REASON_UNKNOWN)
 
 /** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits -> Exit paper
  *  positions; both -> Review paper orders. */
