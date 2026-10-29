@@ -15,8 +15,8 @@ fix depends on what the real data holds.
 ## GC-TPD HANDOVER (written 2026-10-29 21:54 IST)
 
 - DONE (10/10): R-37 (check, 0 real violations), R-22 (store refuses opposite-side open/add), R-17 (checker tolerance), R-9 (no store defect: quotes are the UserText slot by design; 0 of 66 stored names quoted), R-33, R-34, R-8 (already fixed in GC-TP 4a; test added), R-30, R-12 (test cleanup; 10/10), R-36 (hook built, not wired). All on local `build/gctp`, nothing pushed, no upstream.
-- NOT MET: full vitest 1617/1618 - `vendor-host-lint.test.js` timed out under load (F-2, pre-existing, passes alone).
-- PARKED: none. Deferred (C4): F-2, F-3 (`test_both_curves` pre-existing red), R-9 screen-strip check.
+- Full vitest: first run 1617/1618 (`vendor-host-lint.test.js` cold-load timeout, F-2); fixed test-only (c6e4680e, merge 329c6e73), re-run 22:25: 1618/1618 passed.
+- PARKED: none. Deferred (C4): F-3 (`test_both_curves` pre-existing red), R-9 screen-strip check.
 - OWNER STEP (R-36): to switch the hook on, add to the user-level Claude settings under `hooks.PostToolUse`:
   `{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "f=\"$HOME/.claude/hooks/clock-stamp-guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""}]}`
 - NEXT: 30 Oct 09:15 owner runs /goal on GC-TPL (live). AFTER GC-TPL: run Part 2 of this file (owner decision before 22:20: leftovers go into GC-TPD Part 2). Worktrees gctp-def1 / gctp-def2 stay until land (wt-rm refuses unpushed work).
@@ -113,7 +113,7 @@ outside the repo). def1 and def2 run in parallel; R-36 runs while they build.
       left "in progress".
 - [x] Every DONE item is merged into `build/gctp` and GC-TP's Found-table row for that R-id carries the fix commit and the
       re-test line.
-- [ ] (NOT MET: vitest 1 timeout, F-2; guard set passed) After the last merge, the full frontend vitest and the repo guard set each ran ONCE on `build/gctp` and passed (a
+- [x] (re-run 22:25 after the F-2 fix c6e4680e, merge 329c6e73: `Test Files 111 passed (111)`, `Tests 1618 passed (1618)`; first run had 1 timeout, F-2) After the last merge, the full frontend vitest and the repo guard set each ran ONCE on `build/gctp` and passed (a
       skipped test counts as not run and is named).
 - [x] No push, no PR, no CI (`git rev-parse @{u}` on `build/gctp` reports no upstream).
 - [x] The GC-TPD HANDOVER block is written and committed, listing DONE / PARKED / the R-36 configuration entry for the owner.
@@ -131,7 +131,7 @@ outside the repo). def1 and def2 run in parallel; R-36 runs while they build.
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
 | F-1 | 10 | R-36: a time written from memory, ahead of the clock (3 times on 10-29) | RCA: nothing checks a written stamp against the clock; Class: every HH:MM IST / ~HH:MM stamp on a today's-date line written by Write/Edit; detection: `~/.claude/hooks/clock-stamp-guard.py` (non-blocking warning) | outside the repo (user-level hook) | `clock-stamp-guard.test.py` 0 failed |
-| F-2 | 11 | full vitest: `vendor-host-lint.test.js` first test timed out at 5000 ms under the full run (25.8 s); alone 12 passed | timing class like R-12 (cold ESLint load under 2 workers); pre-existing, file untouched tonight. Deferred (C4) | - | - |
+| F-2 | 11 | full vitest: `vendor-host-lint.test.js` first test timed out at 5000 ms under the full run (25.8 s); alone 12 passed | RCA: the first `lintText` loads the ESLint config and plugins cold inside the 5 s test limit; Class: the one test file that builds an ESLint instance (grep `new ESLint` in frontend/tests: 1 file); fix: load once in `beforeAll` with a 120 s hook timeout; proof: first test 7 ms (was 25.8 s). No detection change: the full run itself caught it | c6e4680e (merge 329c6e73) | full vitest 1618/1618 passed |
 | F-3 | 11 | `tests/outcome/test_both_curves.py::test_flag_off_replies_are_byte_identical_to_the_recorded_ones` fails | pre-existing: fails on def2's tree whose outcome code equals base 6c8ae28f (`1 failed`); not in the guard set. Deferred (C4) | - | - |
 | F-4 | 6, 1 | R-34 has no Python red line (DB run straddled the rename); R-37 test written after its script | red-first missed twice by builders; R-37 red supplied by mutation (2 mutants each `1 failed`); R-34 JS red exists. No detection change: check_brief already demands red lines; the session check caught both | - | - |
 
