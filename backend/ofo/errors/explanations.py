@@ -1310,6 +1310,28 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
+    # GC-TP R-20 / R-15 (ADR-210, owner-approved 2026-10-29): why a paper or what-if figure is a dash; one per reason code
+    ExplanationTemplate("paper_reason_not_priced", "values_seen",
+                        "Charges not shown: an order's value could not be worked out."),
+    ExplanationTemplate("paper_reason_model_refused", "values_seen",
+                        "Decay not shown: the pricing model could not value a leg."),
+    ExplanationTemplate("paper_reason_contract_retired", "values_seen",
+                        "This contract has expired and is no longer traded."),
+    ExplanationTemplate("paper_reason_contract_delisted", "values_seen", "The exchange has removed this contract."),
+    ExplanationTemplate("paper_reason_token_reassigned", "values_seen",
+                        "The exchange now uses this contract's code for a different contract, so its price is not "
+                        "shown."),
+    ExplanationTemplate("paper_reason_contract_missing", "values_seen",
+                        "This contract is not in today's contract list, so its price is not shown."),
+    ExplanationTemplate("paper_reason_whatif_stale", "values_seen",
+                        "Stale: this target figure uses prices older than expected and may be out of date."),
+    # words that were already in the product (moved from the browser, unchanged): the paused book and the extremes
+    ExplanationTemplate("paper_reason_prices_not_live", "values_seen", "Paper P&L paused - prices not live"),
+    ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
+                        "Profit left and Loss left are not worked out: the open contracts have different expiries."),
+    ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
+                        "Profit left and Loss left are not worked out: prices are not live."),
+    ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),

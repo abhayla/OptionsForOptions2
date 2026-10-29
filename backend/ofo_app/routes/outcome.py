@@ -682,6 +682,7 @@ class TargetOut(ApiModel):
     pnl: TargetPnlOut | None = None
     breakevens: list[Money] | None = None
     breakevens_reason: CatalogueText | None = None
+    stale_text: CatalogueText | None = None  # ADR-210 (7): the sentence for these figures if they go stale
     curve: CurveOut | None = None
     greeks: TargetGreeksOut | None = None
 

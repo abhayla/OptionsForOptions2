@@ -178,6 +178,7 @@ def _target(t: Any) -> dict[str, Any]:
             "output_label": t.output_label, "pnl": pnl,
             "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
             "breakevens_reason": t.breakevens_reason,
+            "stale_text": render_explanation("paper_reason_whatif_stale"),  # ADR-210 (7): shown if a later request fails
             "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks}
 
 

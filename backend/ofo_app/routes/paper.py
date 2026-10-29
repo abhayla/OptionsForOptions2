@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -52,6 +52,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
+from ofo_app.paper_reasons import extremes_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -106,6 +107,7 @@ class PaperNetOut(ApiModel):
     ltp: Money | None  # the live price; None when flat or not live
     ltp_text: CatalogueText | None
     price_state: paper.LegState | None  # None when flat
+    price_state_text: CatalogueText | None = None  # ADR-210: the sentence for a contract reason (retired, ...)
     price_at: datetime.datetime | None
     booked: Money
     booked_text: CatalogueText
@@ -151,6 +153,8 @@ class PaperFigures(ApiModel):
     charges: Money | None = None
     charges_text: CatalogueText | None = None
     charges_reason: ChargesReason | None = None
+    pause_reason_text: CatalogueText | None = None  # ADR-210: the sentence for ``pause_reason`` / ``charges_reason``
+    charges_reason_text: CatalogueText | None = None
 
 
 class PaperBookOut(PaperFigures):
@@ -170,6 +174,7 @@ class PaperBookOut(PaperFigures):
     max_profit_text: CatalogueText | None
     max_loss_text: CatalogueText | None
     extremes_reason: ExtremesReason | None
+    extremes_reason_text: CatalogueText | None = None
 
 
 class PaperStrategyOut(PaperFigures):
@@ -198,6 +203,9 @@ class PaperTotalsOut(ApiModel):
     charges: Money | None = None  # GC-TP step 8a: every strategy's Charges summed; None (never partial) if one absent
     charges_text: CatalogueText | None = None
     charges_reason: ChargesReason | None = None
+    totals_reason_text: CatalogueText | None = None  # ADR-210: the sentence beside each dash above
+    decay_reason_text: CatalogueText | None = None
+    charges_reason_text: CatalogueText | None = None
 
 
 class PaperListOut(ApiModel):
@@ -263,10 +271,17 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "average": average, "average_text": price_text(average),
             "ltp": price.price if live and price is not None else None,
             "ltp_text": price_text(price.price) if live and price is not None else None,
-            "price_state": None if price is None else price.state, "price_at": None if price is None else price.at,
+            "price_state": None if price is None else price.state, "price_state_text": _state_text(price), "price_at": None if price is None else price.at,
             "booked": _exact(p.booked), "booked_text": _signed(p.booked),
             "unbooked": _exact(p.unbooked), "unbooked_text": _signed(p.unbooked),
             "total": _exact(p.total), "total_text": _signed(p.total)}
+
+
+def _state_text(price: paper.Price | None) -> Any:
+    """ADR-210: the sentence for a contract that is not shown (retired, delisted, ...); None for a price state."""
+    if price is None or price.state not in get_args(paper.ContractReason):
+        return None
+    return reason_text(price.state)
 
 
 def _prices(open_ids: Sequence[int], found: dict[int, tracked_contracts.TrackedContract],
@@ -301,7 +316,7 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         state, pause = "PAUSED", reason or paper.PRICES_NOT_LIVE
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
+    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}
 
@@ -326,7 +341,7 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     got = book_extremes(net_positions(_paper(orders), live), terms, live)
     figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
                "max_loss": got.max_loss}
-    out: dict[str, Any] = {"extremes_reason": got.reason}
+    out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
     return out
@@ -346,14 +361,17 @@ def _charges(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
              underlying: str, rates: ChargeRates | None) -> dict:
     """The strategy's Charges (ofo.charges.paper_charges), shown rounded up to the paisa; absent with its reason."""
     if rates is None:
-        return {"charges": None, "charges_text": None, "charges_reason": RATES_UNAVAILABLE}
+        return {"charges": None, "charges_text": None, "charges_reason": RATES_UNAVAILABLE,
+                "charges_reason_text": reason_text(RATES_UNAVAILABLE)}
     fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
                        _identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
     try:
         shown = paper_charges(fills, underlying, rates).shown
     except ChargesNotComputable:
-        return {"charges": None, "charges_text": None, "charges_reason": NOT_PRICED}
-    return {"charges": shown, "charges_text": render_explanation(PAPER_CHARGES, amount=shown), "charges_reason": None}
+        return {"charges": None, "charges_text": None, "charges_reason": NOT_PRICED,
+                "charges_reason_text": reason_text(NOT_PRICED)}
+    return {"charges": shown, "charges_text": render_explanation(PAPER_CHARGES, amount=shown), "charges_reason": None,
+            "charges_reason_text": None}
 
 
 async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
@@ -456,10 +474,13 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
     paused = next((s for s in strategies if s["unbooked"] is None), None)
     missing = next((d for d in decays if d.value is None), None)
     booked, unbooked, total, decay = got.booked, got.unbooked, got.total, got.decay
+    totals_reason = None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE)
+    decay_reason = None if missing is None else missing.reason
     return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
             "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
-            "totals_reason": None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE),
-            "decay": decay, "decay_text": _signed(decay), "decay_reason": None if missing is None else missing.reason,
+            "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
+            "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
+            "decay_reason_text": reason_text(decay_reason),
             **_charges_total(strategies)}
 
 
@@ -469,7 +490,7 @@ def _charges_total(strategies: Sequence[dict]) -> dict:
     reason = next((s["charges_reason"] for s in strategies if s["charges"] is None), None)
     text_ = None if total is None else render_explanation(PAPER_CHARGES, amount=total)
     return {"charges": _exact(total), "charges_text": text_,
-            "charges_reason": reason}
+            "charges_reason": reason, "charges_reason_text": reason_text(reason)}
 
 
 def _check_price(price: Decimal) -> None:
