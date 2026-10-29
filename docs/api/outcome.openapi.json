@@ -2576,6 +2576,30 @@
           "step": {
             "type": "string",
             "title": "Step"
+          },
+          "at_min": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Min"
+          },
+          "at_max": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Max"
           }
         },
         "additionalProperties": false,
@@ -2583,7 +2607,9 @@
         "required": [
           "min",
           "max",
-          "step"
+          "step",
+          "at_min",
+          "at_max"
         ],
         "title": "TargetLimitsOut"
       },
@@ -2593,12 +2619,20 @@
             "$ref": "#/components/schemas/TargetLimitsOut"
           },
           "level": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Level"
           },
           "level_clamped": {
             "type": "boolean",
-            "title": "Level Clamped"
+            "title": "Level Clamped",
+            "default": false
           },
           "level_clamp_text": {
             "anyOf": [
@@ -2623,7 +2657,8 @@
           },
           "at_clamped": {
             "type": "boolean",
-            "title": "At Clamped"
+            "title": "At Clamped",
+            "default": false
           },
           "clamp": {
             "anyOf": [
@@ -2659,10 +2694,17 @@
             "title": "At Refused Reason"
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "estimate",
-              "exact"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "estimate",
+                  "exact"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Kind"
           },
@@ -2741,26 +2783,10 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "limits",
-          "level",
-          "level_clamped",
-          "level_clamp_text",
-          "at",
-          "at_clamped",
-          "clamp",
-          "at_clamp_text",
-          "at_refused_reason",
-          "kind",
-          "model",
-          "output_label",
-          "pnl",
-          "breakevens",
-          "breakevens_reason",
-          "curve",
-          "greeks"
+          "limits"
         ],
         "title": "TargetOut",
-        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``)."
+        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``). With no target asked the block is ``limits`` alone (and\n``at_refused_reason`` when the date range cannot be offered): every other key is absent, nothing is computed."
       },
       "TargetPnlOut": {
         "properties": {
