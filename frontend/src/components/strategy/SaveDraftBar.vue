@@ -17,7 +17,9 @@ import EmptyState from '@/components/states/EmptyState.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
-import { istTime } from '@/lib/displayFormat'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import { contractName, istTime } from '@/lib/displayFormat'
+import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, addToPaper } from '@/lib/tracking'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
@@ -29,6 +31,8 @@ const props = defineProps({
   rulesRef: { type: String, default: '' },
   // the saved strategy this screen is editing ({ id, revision, name } as the page loaded or saved it), or null for a never-saved one
   current: { type: Object, default: null },
+  // the name the builder shows for an unsaved strategy (its shape name); an unsaved strategy is saved under it before Add to Paper
+  shownName: { type: String, default: '' },
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted'])
 
@@ -280,6 +284,72 @@ async function open(id) {
   }
 }
 
+// GC-TP step 2 (ADR-207 (1), REQ-109 AC-1; Sensibull Add to Drafts 166-173): "Add to Paper" lists the TICKED legs (B/S, contract,
+// lots, price = the leg's entry price) in the confirm dialog; Confirm sends ONE POST of `open` orders. An unsaved strategy is saved
+// first under its shown name through the same POST /strategies as Save. A refusal keeps the dialog and shows the server's text.
+const PAPER_TOAST_MS = 8000
+const paperOrders = ref([])
+const paperOpen = ref(false)
+const paperBusy = ref(false)
+const paperError = ref('')
+const paperTarget = ref(null)
+const paperToast = ref(null) // the strategy id the toast's "Open in Builder" reopens, or null
+let paperToastTimer = null
+const tickedLegs = computed(() => props.legs.filter((l) => l.included !== false))
+const canAddToPaper = computed(() => !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+
+async function startPaper() {
+  if (!canAddToPaper.value) return
+  paperError.value = ''
+  errorParts.value = null
+  let id = props.current?.id ?? null
+  if (id === null) {
+    busy.value = true
+    try {
+      const name = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
+      const res = await api.post('/strategies', buildSaveBody(props.legs, props.rulesRef, name))
+      const revision = done(res.data)
+      id = res.data.id
+      emit('saved', id, revision, savedName.value)
+      await refresh()
+    } catch (e) {
+      errorParts.value = e?.parts ?? NEUTRAL_PARTS
+      return
+    } finally {
+      busy.value = false
+    }
+  }
+  paperTarget.value = id
+  paperOrders.value = tickedLegs.value.map((l, i) => ({
+    key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
+    price: l.planned_entry ?? '', kind: 'open',
+  }))
+  paperOpen.value = true
+}
+
+async function confirmPaper(orders) {
+  if (paperBusy.value) return
+  paperBusy.value = true
+  paperError.value = ''
+  try {
+    await addToPaper(api, paperTarget.value, orders)
+    paperOpen.value = false
+    paperToast.value = paperTarget.value
+    clearTimeout(paperToastTimer)
+    paperToastTimer = setTimeout(() => { paperToast.value = null }, PAPER_TOAST_MS)
+  } catch (e) {
+    paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing is recorded locally on any refusal
+  } finally {
+    paperBusy.value = false
+  }
+}
+function openInBuilder() {
+  const id = paperToast.value
+  paperToast.value = null
+  if (id !== null) open(id)
+}
+onBeforeUnmount(() => clearTimeout(paperToastTimer))
+
 onMounted(refresh)
 </script>
 
@@ -292,6 +362,9 @@ onMounted(refresh)
       <button
 type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
               :disabled="!canSave" @click="save">Save</button>
+      <button
+type="button" data-testid="add-to-paper" class="h-10 flex-1 basis-0 rounded-lg border border-line px-3 font-medium disabled:opacity-50"
+              :disabled="!canAddToPaper" @click="startPaper">{{ ADD_TO_PAPER_LABEL }}</button>
       <span ref="menuRoot" class="relative" @keydown.esc="closeMenu">
         <button
 ref="menuButton" type="button" class="flex h-10 w-12 shrink-0 items-center justify-center rounded-lg border border-line" aria-haspopup="menu" :aria-expanded="menuOpen ? 'true' : 'false'"
@@ -306,7 +379,7 @@ v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
           <button
 v-if="current" type="button" role="menuitem" data-testid="rename-open"
                   :disabled="busy" @click="menuDo(renameOpen)">Rename</button>
-          <slot name="menu" :close="closeMenu" />
+          <slot name="menu" :close="closeMenu" :add-to-paper="startPaper" :can-add-to-paper="canAddToPaper" />
         </span>
       </span>
       <span v-if="savedId" class="truncate" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
@@ -327,6 +400,12 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
+    <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" @confirm="confirmPaper" @cancel="paperOpen = false" />
+    <p v-if="paperToast !== null" role="status" class="mt-2 flex flex-wrap items-center gap-3 rounded-lg bg-ink-overlay px-4 py-2.5 text-sm text-surface" data-testid="paper-toast">
+      <span data-testid="paper-toast-message">{{ PAPER_ADDED_TEXT }}</span>
+      <button type="button" class="font-semibold text-accent-soft underline" data-testid="paper-open-builder" @click="openInBuilder">Open in Builder</button>
+      <router-link to="/positions/current-positions?tab=paper" class="font-semibold text-accent-soft underline" data-testid="paper-open-positions">Open Paper positions</router-link>
+    </p>
     <p v-if="saveUndo" class="mt-2 flex items-center gap-2 text-sm" data-testid="save-undo-toast">
       <span>Saved.</span>
       <button type="button" class="underline" :disabled="busy" data-testid="save-undo" @click="undoSave">Undo</button>

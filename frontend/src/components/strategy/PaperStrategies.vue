@@ -96,7 +96,7 @@ import { signOf } from '@/lib/chartCard'
 defineProps({ compact: { type: Boolean, default: false } })
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER ='Paper trades - not real money'
-const EMPTY = 'No paper strategies yet. Save a strategy in the builder, then press Start tracking.'
+const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const expiryText = (e) => expiryWithDays(e, null)
 const NO_FIGURE = '—'
 const figures = [

@@ -1,20 +1,9 @@
 <!-- W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): paper tracking of a saved strategy.
      Layout after the studied Draft Portfolios screens (per-leg entry and LTP, the total inside a dashed frame). The
-     server stores the entry prices; the browser sends only the saved revision and shows the server's strings. A failed
+     server stores the entry prices; the browser shows the server's strings (orders are placed from Add to Paper). A failed
      or unreadable answer shows no figure. Nothing here reaches Execute (REQ-109 AC-3). -->
 <template>
   <section v-if="savedId" class="mt-4 rounded-lg border border-line bg-surface p-4" data-testid="tracking-panel">
-    <div v-if="status === 'untracked'" class="flex items-center gap-3">
-      <button
-        type="button"
-        data-testid="start-tracking"
-        :disabled="busy || savedRevision === null"
-        class="px-4 py-2 text-sm font-medium rounded-lg border border-line"
-        @click="start"
-      >
-        {{ START_TRACKING_LABEL }}
-      </button>
-    </div>
     <p v-if="error" class="text-sm text-red-700" data-testid="tracking-error">{{ error }}</p>
     <div v-if="view" class="border-2 border-dashed rounded-lg p-3" data-testid="tracking-view">
       <p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p>
@@ -57,19 +46,17 @@ import { ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { START_TRACKING_LABEL, readTracking } from '@/lib/tracking'
+import { readTracking } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
-  savedRevision: { type: Number, default: null },
   legs: { type: Array, default: null }, // the builder reply's legs: their whole-lot count names each paper leg in lots (D-B39)
 })
 
 const status = ref('loading')
 const view = ref(null)
 const error = ref('')
-const busy = ref(false)
 
 function failed(e) {
   view.value = null
@@ -90,21 +77,6 @@ async function load(id) {
     if (id !== props.savedId) return
     if (e?.status === 404) status.value = 'untracked'
     else failed(e)
-  }
-}
-
-async function start() {
-  busy.value = true
-  error.value = ''
-  try {
-    // the revision the page loaded: a strategy changed since then is refused by the server (409), never re-read here
-    const { data } = await api.post(`/strategies/${props.savedId}/tracking`, { revision: props.savedRevision })
-    status.value = 'tracked'
-    view.value = readTracking(data, props.legs)
-  } catch (e) {
-    failed(e)
-  } finally {
-    busy.value = false
   }
 }
 
