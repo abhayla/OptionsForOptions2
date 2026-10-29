@@ -1,6 +1,71 @@
 {
   "components": {
     "schemas": {
+      "AlertOut": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "title": "Body"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title"
+          },
+          "trigger_id": {
+            "title": "Trigger Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "trigger_id",
+          "created_at",
+          "title",
+          "body",
+          "read"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
+      "AlertsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "alerts",
+          "unread"
+        ],
+        "title": "AlertsOut",
+        "type": "object"
+      },
       "BasketOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -7186,6 +7251,241 @@
         "title": "TrackingStartIn",
         "type": "object"
       },
+      "TriggerIn": {
+        "additionalProperties": false,
+        "description": "conditional_exit: ``above`` and / or ``below`` (an index level each, one trigger per direction); leg_stop:\n``contract_id`` with ONE ``direction`` and ``level``.",
+        "properties": {
+          "above": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above"
+          },
+          "below": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 2147483647.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "above",
+                  "below"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "kind": {
+            "enum": [
+              "conditional_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "TriggerIn",
+        "type": "object"
+      },
+      "TriggerOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Text"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "conditional_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "level_text": {
+            "title": "Level Text"
+          },
+          "state": {
+            "enum": [
+              "armed",
+              "fired",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "underlying": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NIFTY",
+                  "SENSEX"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underlying"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "kind",
+          "direction",
+          "level",
+          "level_text",
+          "contract_id",
+          "contract_text",
+          "underlying",
+          "state",
+          "created_at",
+          "fired_at",
+          "cancelled_at"
+        ],
+        "title": "TriggerOut",
+        "type": "object"
+      },
+      "TriggersOut": {
+        "additionalProperties": false,
+        "properties": {
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/TriggerOut"
+            },
+            "title": "Triggers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "triggers"
+        ],
+        "title": "TriggersOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -9150,6 +9450,42 @@
         "summary": "Kite Callback"
       }
     },
+    "/paper/alerts": {
+      "get": {
+        "operationId": "list_paper_alerts_paper_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Paper Alerts"
+      }
+    },
+    "/paper/alerts/read": {
+      "post": {
+        "operationId": "read_paper_alerts_paper_alerts_read_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Paper Alerts"
+      }
+    },
     "/paper/strategies": {
       "get": {
         "description": "Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders\nquery, one contract batch (two queries) and ONE market read per underlying for every open contract together.",
@@ -9255,6 +9591,140 @@
           }
         },
         "summary": "Place Paper Orders"
+      }
+    },
+    "/paper/strategies/{strategy_id}/triggers": {
+      "get": {
+        "operationId": "list_paper_triggers_paper_strategies__strategy_id__triggers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Paper Triggers"
+      },
+      "post": {
+        "operationId": "add_paper_triggers_paper_strategies__strategy_id__triggers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Paper Triggers"
+      }
+    },
+    "/paper/strategies/{strategy_id}/triggers/{trigger_id}": {
+      "delete": {
+        "operationId": "cancel_paper_trigger_paper_strategies__strategy_id__triggers__trigger_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "trigger_id",
+            "required": true,
+            "schema": {
+              "title": "Trigger Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Paper Trigger"
       }
     },
     "/positions": {
