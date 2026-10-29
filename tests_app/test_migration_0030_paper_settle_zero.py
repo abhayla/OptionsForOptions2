@@ -62,7 +62,7 @@ async def test_downgrade_is_refused_while_a_zero_price_settle_exists(admin_engin
         trans = await conn.begin()
         try:
             await _zero_settle(conn)
-            with pytest.raises(DBAPIError, match="OF030|a paper settle order at a price of 0 exists"):
+            with pytest.raises(DBAPIError, match=r"OF030|a paper settle order at a price of 0 exists"):
                 async with conn.begin_nested():
                     for sql in own_down:
                         await conn.execute(text(sql))
