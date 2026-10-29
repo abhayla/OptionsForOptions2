@@ -24,7 +24,7 @@ OPEN for GC-TPL (live): R-24 (stale first tick vs leg stops at 09:15), R-26 (liv
 MAJOR candidate), the live proofs of step 13, F-65..F-70 re-tests, BSE previous close 74,151.04.
 DEFERRED (Found table): R-22, R-23, R-27, R-30, R-32..R-35. OWED: R-36 mechanism (clock-stamp hook).
 OWED AT LAND: migration 0031 (drop 0021/0027 tables); remove worktrees gctp-s1..s8, gctp-r18/r19a/r19b/r20/fix1 and
-the harness trees under `OptionsForOptions2\.claude\worktreesgent-*` via wt-rm.ps1 (refuses until on origin/main);
+the harness trees under `OptionsForOptions2\.claude\worktrees\agent-*` via wt-rm.ps1 (refuses until on origin/main);
 NIFTY 3 Nov settlement proof.
 Servers left running: API 8765 (run tree, merged code, started ~19:27), Vite 5174 (session 1, PID 17664). Lock removed.
 
