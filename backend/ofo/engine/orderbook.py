@@ -41,6 +41,19 @@ SIDES: tuple[Side, ...] = ("BUY", "SELL")
 ORDER_KINDS: tuple[OrderKind, ...] = ("open", "add", "exit", "settle", "stop")
 
 
+#: REQ-109 AC-1: a typed paper price is above 0, at most this (the price column is NUMERIC(14,2)) and a multiple of
+#: the tick. Stored legacy entries are captured LTPs and need only be a paisa (``PaperOrder``); the tick is for typed
+#: orders.
+TYPED_PRICE_TICK = Decimal("0.05")
+TYPED_PRICE_MAX = Decimal("10000000")
+
+
+def is_typed_price(value: Decimal) -> bool:
+    """Whether ``value`` is a price a user may type for a paper order (REQ-109 AC-1)."""
+    return (type(value) is Decimal and value.is_finite() and 0 < value <= TYPED_PRICE_MAX
+            and value % TYPED_PRICE_TICK == 0)
+
+
 def _paisa_price(value: Decimal, what: str) -> Decimal:
     if type(value) is not Decimal or not value.is_finite() or value <= 0:
         raise ValueError(f"{what}: a price must be a finite Decimal above 0, got {value!r}")

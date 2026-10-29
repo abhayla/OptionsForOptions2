@@ -45,6 +45,7 @@ from ofo_app.routes import (
     leg_picker,
     live,
     outcome,
+    paper,
     planned_entry,
     positions,
     ready_made,
@@ -109,6 +110,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
     app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
+    app.include_router(paper.router)  # GC-TP 1b: the paper order book (net positions, orderbook, typed orders)
 
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:

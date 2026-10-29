@@ -29,6 +29,8 @@ Known bypasses (not chased; the threat model is "one altered figure in the reply
   against the seed date and flagged when it differs).
 
 CLI: python scripts/checks/ui_data_check.py --strategy-legs <legs.json> [--paper <id>] [--replay <dir>] --out <dir>
+     python scripts/checks/ui_data_check.py --paper-orders <id> [--replay <dir>] --out <dir>   (GC-TP 1b: net quantity,
+     average, booked, unbooked and total recomputed from the orderbook rows of GET /paper/strategies/{id})
 Live mode (no --replay) fetches the replies from the running API (read-only GETs + POST outcome; never an order route).
 """
 
@@ -46,6 +48,7 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from decimal import ROUND_FLOOR, ROUND_HALF_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_UP, Decimal
+from fractions import Fraction
 from pathlib import Path
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -1379,6 +1382,112 @@ def check_paper(tracking: dict, planned_legs: list) -> Report:
     return rep
 
 
+def _book_by_contract(orders: list) -> dict:
+    """GC-TP 1b: the net quantity, exact average cost and booked P&L of each contract, from the ORDERBOOK rows alone
+    (own arithmetic, exact Fractions). Zerodha's average rule: the average is the weighted average of the orders that
+    increased the quantity on the current side; an order against the position books (exit - average) x qty for a long
+    and (average - exit) x qty for a short and leaves the average; an order through zero books the closing part and
+    opens the rest at its own price."""
+    books: dict = {}
+    for o in orders:
+        b = books.setdefault(o["contract_id"], {"net": 0, "cost": Fraction(0), "booked": Fraction(0)})
+        qty, price = int(o["quantity"]), Fraction(D(o["price"]))
+        signed = qty if o["side"] == "BUY" else -qty
+        if b["net"] == 0 or (b["net"] > 0) == (signed > 0):
+            b["net"] += signed
+            b["cost"] += price * qty
+            continue
+        closing = min(qty, abs(b["net"]))
+        average = b["cost"] / abs(b["net"])
+        gain = (price - average) if b["net"] > 0 else (average - price)
+        b["booked"] += gain * closing
+        b["cost"] -= average * closing
+        b["net"] += -closing if b["net"] > 0 else closing
+        if qty > closing:
+            b["net"] = (qty - closing) * (1 if signed > 0 else -1)
+            b["cost"] = price * (qty - closing)
+    return books
+
+
+def _paisa_of(value: Fraction) -> Decimal:
+    """An exact Fraction to the paisa, half up on the magnitude (the same rule as display)."""
+    return money(Decimal(value.numerator) / Decimal(value.denominator))
+
+
+def check_paper_orders(reply: dict) -> Report:
+    """GC-TP 1b (REQ-109 AC-4, AC-5; ADR-207): GET /paper/strategies/{id} recomputed from the orderbook rows and the
+    reply's own live prices. A contract with no live price has no unbooked or total, and the reply must say so (absent),
+    never 0. The prices are market inputs taken from the reply (see the known bypasses); the average shown is compared
+    to the paisa, never used to derive anything."""
+    rep = Report(f"paper orders strategy {reply.get('strategy_id') if reply else None}")
+    if not reply or reply.get("state") == "REFUSED" or not reply.get("orders"):
+        rep.skip("paper orders", f"no book: {(reply or {}).get('reason', 'no orders in the reply')}")
+        return rep
+    books = _book_by_contract(reply["orders"])
+    shown = {p["contract_id"]: p for p in reply.get("positions") or []}
+    rep.add("contracts in the reply", len(shown), len(books))
+    booked_sum, unbooked_sum, known = Fraction(0), Fraction(0), True
+    for cid, b in books.items():
+        name, pos = f"contract {cid}", shown.get(cid)
+        if pos is None:
+            rep.skip(name, "the orderbook has this contract but the net positions do not")
+            known = False
+            continue
+        rep.add(f"{name} net quantity", pos["net_quantity"], b["net"])
+        average = None if b["net"] == 0 else b["cost"] / abs(b["net"])
+        shown_avg = pos.get("average")  # a flat contract has no average: both sides must say "none", never a number
+        rep.add(f"{name} average (to the paisa)", "none" if shown_avg is None else shown_avg,
+                "none" if average is None else _paisa_of(average))
+        rep.add(f"{name} booked", money(pos["booked"]), _paisa_of(b["booked"]))
+        rep.add(f"{name} booked text", pos.get("booked_text"), display_paisa_signed(_paisa_of(b["booked"])))
+        live = D(pos.get("ltp")) if pos.get("price_state") == "live" else None
+        booked_sum += b["booked"]
+        if b["net"] == 0:
+            unbooked = Fraction(0)
+        elif live is None:
+            unbooked = None
+        else:
+            unbooked = (Fraction(live) - average) * b["net"]
+        if unbooked is None:
+            known = False
+            rep.add(f"{name} unbooked absent without a live price",
+                    "absent" if pos.get("unbooked") is None else "shown", "absent")
+            rep.add(f"{name} total absent without a live price", "absent" if pos.get("total") is None else "shown",
+                    "absent")
+            continue
+        unbooked_sum += unbooked
+        rep.add(f"{name} unbooked", money(pos["unbooked"]) if pos.get("unbooked") is not None else None,
+                _paisa_of(unbooked))
+        rep.add(f"{name} total", money(pos["total"]) if pos.get("total") is not None else None,
+                _paisa_of(b["booked"] + unbooked))
+        rep.add(f"{name} total text", pos.get("total_text"), display_paisa_signed(_paisa_of(b["booked"] + unbooked)))
+    rep.add("strategy booked", money(reply["booked"]), _paisa_of(booked_sum))
+    rep.add("strategy booked text", reply.get("booked_text"), display_paisa_signed(_paisa_of(booked_sum)))
+    if known:
+        rep.add("strategy unbooked", money(reply["unbooked"]) if reply.get("unbooked") is not None else None,
+                _paisa_of(unbooked_sum))
+        rep.add("strategy total", money(reply["total"]) if reply.get("total") is not None else None,
+                _paisa_of(booked_sum + unbooked_sum))
+        total = _paisa_of(booked_sum + unbooked_sum)
+        rep.add("strategy total text", reply.get("total_text"), display_paisa_signed(total))
+    else:
+        rep.add("strategy unbooked absent when a contract is not live",
+                "absent" if reply.get("unbooked") is None else "shown", "absent")
+        rep.add("strategy total absent when a contract is not live",
+                "absent" if reply.get("total") is None else "shown", "absent")
+    return rep
+
+
+def print_table(rep: Report) -> None:
+    """The match / mismatch table of one report on stdout (the paper-orders mode)."""
+    print(f"## {rep.strategy}: {rep.counts()}")
+    print("| figure | reply | recomputed | verdict |")
+    print("|---|---|---|---|")
+    for f in rep.figures:
+        print(f"| {f.name} | {f.ours} | {f.independent} | {f.verdict} |")
+
+
+
 # ---------------------------------------------------------------- output
 
 
@@ -1502,16 +1611,36 @@ def fetch_both(base, legs_doc, outdir: Path, flags: dict):
     (outdir / "request_both.json").write_text(json.dumps(flags), encoding="utf-8")
 
 
+def main_paper_orders(a) -> int:
+    """--paper-orders <id>: one read-only GET of /paper/strategies/{id} (or <replay>/paper_<id>.json), recomputed from
+    its orderbook rows; prints the match / mismatch table; exit 1 when any figure differs or none could be checked."""
+    path = f"paper_{a.paper_orders}.json"
+    if a.replay:
+        reply = json.loads((Path(a.replay) / path).read_text(encoding="utf-8"))
+    else:
+        reply = _http(a.api, f"/paper/strategies/{a.paper_orders}")
+    rep = check_paper_orders(reply)
+    write_report([rep], Path(a.out), f"paper-orders-{a.paper_orders}")
+    print_table(rep)
+    counts = rep.counts()
+    return 1 if counts[MISMATCH] or not counts[MATCH] else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--strategy-legs", required=True)
+    ap.add_argument("--strategy-legs")
     ap.add_argument("--paper", type=int)
+    ap.add_argument("--paper-orders", type=int, help="GC-TP 1b: recompute a paper strategy from its orders")
     ap.add_argument("--replay")
     ap.add_argument("--out", required=True)
     ap.add_argument("--api", default="http://127.0.0.1:8765")
     ap.add_argument("--both", action="store_true", help="live: also ask both_views + sd_bands (GC-UI step 4)")
     ap.add_argument("--payoff-step", type=int, help="live with --both: the payoff_step asked (absent: none sent)")
     a = ap.parse_args(argv)
+    if a.paper_orders is not None:
+        return main_paper_orders(a)
+    if not a.strategy_legs:
+        ap.error("--strategy-legs is required unless --paper-orders is given")
     legs_doc = json.loads(Path(a.strategy_legs).read_text())
     name = Path(a.strategy_legs).resolve().parent.name
     src = Path(a.replay) if a.replay else fetch_live(a.api, legs_doc, Path(a.out) / f"raw-{name}")

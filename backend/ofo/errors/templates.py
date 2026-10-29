@@ -936,6 +936,22 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "another contract).",
           "No leg was exited and nothing was stored; a leg is never priced from another contract.",
           "Exiting these paper legs.", "Exit only the legs whose contracts are still live."),
+    # GC-TP step 1b (REQ-109 AC-1, AC-4; ADR-207): typed paper orders on the paper order book.
+    _gate("paper_price_invalid", _SV, 437,
+          "A price must be above 0 and a multiple of 0.05.",
+          "No order was stored; a paper order is never placed at a price the exchange would not take.",
+          "Placing these paper orders.",
+          "Type a price above 0 that is a multiple of 0.05, then place the orders again."),
+    _gate("paper_exit_exceeds_open", _SV, 438,
+          "An exit is larger than the quantity you have open in that contract.",
+          "No order was stored; a paper exit only closes what is open on the same contract.",
+          "Placing these paper orders.",
+          "Choose an exit on the opposite side that is no larger than the open quantity."),
+    _gate("paper_contract_not_tradable", _SV, 439,
+          "A contract you chose is not a live contract (missing, expired, delisted, or its exchange token now "
+          "belongs to another contract).",
+          "No order was stored; a paper order is never placed on a contract that is not live.",
+          "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
