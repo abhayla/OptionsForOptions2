@@ -1534,11 +1534,12 @@ def _target_model(legs, qmap, level, at, r, dq=0.0):
     return tot, gtot, per_leg
 
 
-def target_breakevens(legs, qmap, at, r, lo, hi, step=5.0) -> list:
-    """This file's own crossings of the recomputed target curve: scan [lo, hi], bisect each sign change."""
+def target_breakevens(legs, qmap, at, r, lo, hi, step=5.0, shift=0.0) -> list:
+    """This file's own crossings of the recomputed target curve: scan [lo, hi], bisect each sign change. `shift` is
+    added to the curve first (ADR-209: a paper strategy's booked P&L), so the crossings are where open P&L = -shift."""
 
     def f(x):
-        return float(_target_model(legs, qmap, x, at, r)[0])
+        return float(_target_model(legs, qmap, x, at, r)[0]) + shift
 
     out, x, fx = [], lo, f(lo)
     while x < hi:
@@ -1563,8 +1564,10 @@ def target_breakevens(legs, qmap, at, r, lo, hi, step=5.0) -> list:
 def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
     """REQ-084 AC-4: recompute the reply's `target` block (P&L, breakevens, the four Greeks at the target level and
     date) with this file's own BSM and compare. No target figures in the reply -> not checkable, never a match.
-    P&L is compared on two bases and the checker does not choose between them: open legs only, and open legs plus
-    `booked` (the strategy's booked P&L, given by the caller; absent -> that row is not checkable)."""
+    With `booked` (the strategy's booked P&L, given by the caller) the expected basis is open legs plus booked, as
+    ADR-209 decides for a paper strategy with Add Booked P&L ON: the P&L and the breakevens (crossings of the curve
+    shifted by booked) are compared on that basis, and the open-legs-only P&L is printed as a note. Without it the
+    expected basis is open legs only."""
     rep = Report("target what-if")
     tg = (reply or {}).get("target") or {}
     if not tg.get("level") or not tg.get("at") or (tg.get("pnl") or {}).get("value") is None:
@@ -1587,13 +1590,14 @@ def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
     tol = Decimal(str(round(qty * 0.0051 + abs(float(wide[0] - pnl)), 2)))
     qtxt = ", ".join(f"{e}: {v[0]:.5f}" for e, v in sorted(qmap.items()))
     rep.notes.append(f"target level {tg['level']} at {tg['at']}; q solved per expiry {qtxt}")
-    rep.add("target P&L (open legs only)", tg["pnl"]["value"], money(pnl), tol, note="this file's BSM, target time")
     if booked is None:
-        rep.skip("target P&L (open legs + booked)", "no booked figure given (--booked)", ours=tg["pnl"]["value"])
+        rep.add("target P&L (open legs only)", tg["pnl"]["value"], money(pnl), tol, note="this file's BSM, target time")
     else:
+        rep.notes.append(f"open legs only (not compared, ADR-209): {money(pnl)}")
         both = money(pnl + D(booked))
         rep.add("target P&L (open legs + booked)", tg["pnl"]["value"], both, tol, note=f"booked {booked}")
-    want_be = target_breakevens(legs, qmap, at, r, level * 0.5, level * 1.5)
+    shift = float(D(booked)) if booked is not None else 0.0
+    want_be = target_breakevens(legs, qmap, at, r, level * 0.5, level * 1.5, shift=shift)
     if tg.get("breakevens") is None:
         rep.skip("target breakevens", tg.get("breakevens_reason") or "reply gives no breakevens")
     else:
@@ -1752,9 +1756,12 @@ def fetch_both(base, legs_doc, outdir: Path, flags: dict):
     (outdir / "request_both.json").write_text(json.dumps(flags), encoding="utf-8")
 
 
-def fetch_target(base, legs_doc, outdir: Path, level, at) -> None:
-    """Live: one read-only POST outcome asking the what-if target, saved as outcome_target.json."""
+def fetch_target(base, legs_doc, outdir: Path, level, at, paper_id=None) -> None:
+    """Live: one read-only POST outcome asking the what-if target, saved as outcome_target.json. With `paper_id` the
+    request names the paper strategy, as the builder does with Add Booked P&L ON (ADR-209): the server adds booked."""
     body = {"underlying": legs_doc["underlying"], "view": "estimated_now", "legs": legs_doc["legs"]}
+    if paper_id is not None:
+        body["paper_strategy_id"] = int(paper_id)
     if level:
         body["target_level"] = str(level)
     if at:
@@ -1797,6 +1804,7 @@ def main(argv=None):
     ap.add_argument("--target-level", help="GC-TP 6c: ask the what-if target level (points) and recompute its figures")
     ap.add_argument("--target-at", help="GC-TP 6c: ask the what-if target time (ISO, with offset) and recompute")
     ap.add_argument("--booked", help="GC-TP 6c: the strategy's booked P&L, for the open + booked P&L basis")
+    ap.add_argument("--paper-strategy-id", help="GC-TP R-18: send paper_strategy_id with the target request (ADR-209)")
     a = ap.parse_args(argv)
     if a.paper_orders is not None:
         return main_paper_orders(a)
@@ -1811,7 +1819,7 @@ def main(argv=None):
             flags["payoff_step"] = a.payoff_step
         fetch_both(a.api, legs_doc, src, flags)
     if (a.target_level or a.target_at) and not a.replay:
-        fetch_target(a.api, legs_doc, src, a.target_level, a.target_at)
+        fetch_target(a.api, legs_doc, src, a.target_level, a.target_at, a.paper_strategy_id)
     est, atx, before, after, fut = load_replay(src)
     both, step_asked = load_both(src)
     reports = [check_outcome(name, est, atx, before, after, fut, both=both, step_asked=step_asked)]
