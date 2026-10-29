@@ -37,6 +37,7 @@ const props = defineProps({
   // GC-UI b1 (REQ-083): the reply's both-curves, SD and OI blocks, its breakevens and its scenario grid, for the graph
   curves: { type: Object, default: null },
   breakevens: { type: Array, default: () => [] },
+  targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
   sd: { type: Object, default: null },
   oi: { type: Object, default: null },
   zoom: { type: Object, default: null },
@@ -103,7 +104,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
       <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
         <PayoffChart
           :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
-          :curves="curves" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
+          :curves="curves" :target-curve="targetCurve" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
         />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">

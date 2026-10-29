@@ -53,6 +53,8 @@ import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
+import TargetBlock from '@/components/strategy/TargetBlock.vue'
+import { dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -121,6 +123,22 @@ const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.incl
 // W-151 (REQ-119): the one newest-wins rule (src/lib/newestWins.js) for the outcome and leg-edit requests of this page;
 // the numbers are marked updating while the newest request of either kind has no applied reply (AC-4).
 const guard = createNewestWins()
+// GC-TP step 6b (REQ-084 AC-1): the what-if target the user set. Only target_level / target_at ever go out for it (analysis only,
+// AC-6); the figures shown are the reply's `target` block, kept (marked stale) when a later request fails or a live push lands.
+const targetPick = ref({ active: false, level: '', dateIndex: 0 })
+const targetShown = ref(null)
+const targetStale = ref(false)
+const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
+const loadSoon = debounced(() => load())
+const pickTarget = (patch) => {
+  targetPick.value = { ...targetPick.value, ...patch }
+  if (!targetPick.value.level && targetPick.value.dateIndex <= 0 && patch.active !== true) {
+    targetPick.value = { active: false, level: '', dateIndex: 0 } // both back at spot / now: no target is sent
+    targetShown.value = null
+    targetStale.value = false
+  }
+  loadSoon()
+}
 const updating = computed(() => guard.pending.outcome || guard.pending['leg-edit'])
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -139,6 +157,8 @@ async function load() {
     return
   }
   const mine = guard.next('outcome') // aborts the outcome request still in flight
+  const target = targetFields(targetPick.value, dateStopList.value)
+  const prevState = state.value
   const fallback = socketDropped
   const sentKey = inputsKey()
   // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
@@ -148,7 +168,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, fallback, seq: mine.seq }, { signal: mine.signal })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
     // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
     // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
@@ -156,6 +176,11 @@ async function load() {
     applyOutcome(res.data)
   } catch (e) {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
+    if ((target.target_level || target.target_at) && targetShown.value && data.value && prevState !== 'loading') {
+      targetStale.value = true // a failed target request keeps the last good figures, marked stale
+      state.value = prevState
+      return
+    }
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     errorAnsweredAt.value = e?.answered_at ?? null
     state.value = 'error'
@@ -195,6 +220,14 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  if (body.target) {
+    targetShown.value = body.target
+    targetStale.value = false
+  } else if (!targetPick.value.active) {
+    targetShown.value = null
+  } else if (targetShown.value) {
+    targetStale.value = true // a live push carries no target: the last figures stay, marked
+  }
   nameLegsFrom(body)
   if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
   else if (body.state === 'FROM_ENTRIES') state.value = 'from-entries' // REQ-077 AC-9: At Expiry from the user's prices, nothing live
@@ -846,6 +879,14 @@ const pricesStamp = computed(() => {
             <template #margin><MarginLine :margin="data.margin" :capabilities="capabilities" /></template>
           </SummaryCards>
           <ProjectionsNote />
+          <TargetBlock
+            :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+            @start="pickTarget({ active: true })"
+            @level="(v) => pickTarget({ level: v })"
+            @date="(i) => pickTarget({ dateIndex: i })"
+            @reset-level="pickTarget({ level: '' })"
+            @reset-date="pickTarget({ dateIndex: 0 })"
+          />
 
           <!-- W-194 (ADR-193 Region F, ADR-194): the tabbed chart card. The scenario switch and range sit in its header
                (they drive the graph and the full table); the full REQ-035 table and its Bid/Ask Details are on the
@@ -863,6 +904,7 @@ const pricesStamp = computed(() => {
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
+            :target-curve="targetShown?.curve ?? null"
             :breakevens="data.summary.breakevens ?? []"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
