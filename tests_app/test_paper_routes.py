@@ -12,6 +12,7 @@ import datetime
 import importlib.util
 import json
 import pathlib
+import sys
 from decimal import Decimal
 from http import HTTPStatus
 
@@ -98,6 +99,7 @@ async def test_core_strategy_48_net_positions_equal_the_fixture_to_the_paisa(db)
 def _checker():
     spec = importlib.util.spec_from_file_location("ui_data_check_routes", ROOT / "scripts/checks/ui_data_check.py")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses look their module up here
     spec.loader.exec_module(module)
     return module
 

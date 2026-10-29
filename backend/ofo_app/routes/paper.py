@@ -38,7 +38,7 @@ from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
 from ofo.tracking import paper
-from ofo.tracking.orderbook import NetPosition, PaperOrder, net_positions
+from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import paper_store, tracked_contracts
@@ -55,10 +55,6 @@ from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
 
-#: REQ-109 AC-1: a typed paper price is a multiple of this and above 0 (the exchange's tick for these contracts).
-TYPED_PRICE_TICK = Decimal("0.05")
-#: The largest typed price (the column is NUMERIC(14,2); no option or future trades near this).
-TYPED_PRICE_MAX = Decimal("10000000")
 #: The order kinds a request may carry; settle and stop are written by the server only (ADR-207).
 REQUEST_KINDS = ("open", "add", "exit")
 RequestKind = Literal["open", "add", "exit"]
@@ -324,7 +320,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
 
 def _check_price(price: Decimal) -> None:
     """REQ-109 AC-1: above 0, a multiple of 0.05, within the column (the reason text is the catalogue's)."""
-    if not (0 < price <= TYPED_PRICE_MAX) or price % TYPED_PRICE_TICK != 0:
+    if not is_typed_price(price):
         raise StrategyRefused("paper_price_invalid")
 
 
