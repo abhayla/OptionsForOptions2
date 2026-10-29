@@ -156,7 +156,7 @@ export function readTrackingItem(item, index = 0) {
     legs.push({
       key: `${l.leg_index}`,
       index: l.leg_index,
-      contractId: /^\d+$/.test(String(l.instrument_id ?? '')) ? Number(l.instrument_id) : null, // GC-TP 7b: the stop's contract id
+      contractId: /^\d+$/.test(String(l.instrument_id ?? '')) ? String(l.instrument_id) : null, // GC-TP 7b: the stop's contract id, a digit string sent as is (no number is formed)
       action: l.action === 'BUY' ? 'Buy' : l.action === 'SELL' ? 'Sell' : l.action,
       instrument: l.instrument,
       strike: l.strike,

@@ -98,7 +98,7 @@ describe('Stops panel', () => {
     answers[`POST ${TRIG}`] = ok({ triggers: [trig(4, { kind: 'leg_stop', direction: 'below', level: '90.55', level_text: 'At or below 90.55', contract_id: 5001, contract_text: 'SELL 22400 PE 3 Nov' })] })
     await t(w, 'stop-save-1').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['POST', TRIG, { kind: 'leg_stop', contract_id: 5001, direction: 'below', level: '90.55' }]])
+    expect(posts()).toEqual([['POST', TRIG, { kind: 'leg_stop', contract_id: '5001', direction: 'below', level: '90.55' }]])
     expect(w.findAll('[data-testid="trigger-row"]')[0].text()).toContain('SELL 22400 PE 3 Nov')
   })
   it('shows the server refusal text and keeps the typed values; a network failure shows the neutral line', async () => {
