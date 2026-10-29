@@ -43,6 +43,7 @@ ALLOWED_IMPORTERS = frozenset({
     "ofo.outcome.price_history",    # the chart's points from minute bars (pure)
     "ofo_app.strategy_price_history",  # the chart's reads (KiteHistory) for GET /strategies/{id}/price-history
     "ofo_app.price_history_source",    # S5-1: wires kite_history.owner_minute_reader to that route (adapter side)
+    "ofo_app.paper_settlement",        # GC-TP 5b: the index's day close (KiteHistory.day_close) prices expiry settles
 })
 # frontend/src may request or import no history at all.
 ALLOWED_FRONTEND: frozenset[str] = frozenset()
