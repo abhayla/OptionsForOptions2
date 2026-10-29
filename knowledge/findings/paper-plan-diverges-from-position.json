@@ -1,0 +1,22 @@
+{
+  "id": "paper-plan-diverges-from-position",
+  "scope": "project",
+  "class": "Any screen or figure that reads a paper-tracked strategy's saved plan (its latest revision and planned entry prices) instead of the legs and prices actually recorded for the paper position, once the plan has been saved again or the fills differ from the plan.",
+  "mechanism": "Paper tracking is pinned to the revision it started from and stores its own entry prices, but the builder loads and analyses the latest saved plan; nothing ties a later save to the open position or tells the user the two now differ.",
+  "first_seen": {
+    "date": "2026-10-29",
+    "where": "build/gcbm-must-have 5052f82a, ofo_dev strategy 63; backend/ofo_app/routes/tracking.py:61-65,319",
+    "evidence": "Live: short CE stepped 22900 -> 22950 and saved; builder legs read 22950 while the Paper P&L panel still listed '65 units 3 Nov 22900 CE'; summary max profit +4,274 used planned entries 73.90/103.60/118.65/78.80 against paper fills 72.60/102.00/122.25/80.95 (spec/findings.md F-65, F-66)."
+  },
+  "fix": "none yet; ADR-207 (2) decides the class fix: the paper position becomes an order book and the builder opens it in Drafts Mode, where an edit can only become paper orders (goal contract GC-TP).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "GC-TP's core step adds the check: the independent data checker recomputes an open paper position's figures from its recorded orders, never from the saved plan."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-109.md",
+    "spec/requirements/REQ-044.md",
+    "spec/decisions/ADR-207.md"
+  ]
+}

@@ -965,3 +965,49 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   session), so the chart's last point (76.00) can differ from the builder's 15:30 LTP net (74.15: 22500 PE candle close
   101.80 vs LTP 99.80). Gap rate is a property of the leg's liquidity: far-out-of-the-money legs gap (5.3% for the 25000
   CE above), near-the-money legs did not. Still not measured: a 4-leg strategy with far-out legs.
+
+## F-65 - Editing a paper-tracked strategy in the builder changes the saved plan but not the paper position, with no warning
+- Measured 2026-10-29 ~10:28 IST, live, build/gcbm-must-have 5052f82a, strategy 63 (NIFTY 3 Nov short iron condor
+  B 22600 PE / S 22700 PE / S 22900 CE / B 23000 CE, tracked 10:25): the short CE stepped 22900 -> 22950 and saved
+  ("Expert IC test 1029 saved."); the builder legs then read 22950 while the Paper P&L panel still listed
+  "65 units 3 Nov 22900 CE" (the other legs "1 x ..."), and the page's Greeks, payoff and summary described the
+  22950 plan. Cause in code: tracking is pinned to the saved revision it started from (`routes/tracking.py:61-65,319`)
+  and nothing links a later save to it. Class: every saved strategy with an open paper position (15 in ofo_dev on
+  2026-10-29) whose plan is saved again. Bears on REQ-109, REQ-044 AC-2; decided by ADR-207 (2).
+  Status: **measured once, live; defect class registered (`knowledge/findings/paper-plan-diverges-from-position.json`)**.
+
+## F-66 - The builder prices an open paper position at the plan's entry prices, not its paper fills
+- Same walk: strategy 63 reopened from its URL showed planned entry 73.90 / 103.60 / 118.65 / 78.80 and max profit
+  +4,274 on them, while its paper fills were 72.60 / 102.00 / 122.25 / 80.95. Every summary figure of an open paper
+  position (max profit / loss, breakevens, reward/risk) is therefore of a trade he did not make. Bears on REQ-109,
+  REQ-046 AC-2; decided by ADR-207 (2). Status: **measured once, live**.
+
+## F-67 - Paper entry is the LTP at "Start tracking", not the planned or typed entry price, and there is no confirm step
+- Same walk: planned (captured 10:23:04) 73.90 / 103.60 / 118.65 / 78.80; recorded paper entry at ~10:25
+  72.60 / 102.00 / 122.25 / 80.95 - all four legs differ (-1.30, -1.60, +3.65, +2.15 per unit). Code: `capture_entry`
+  takes the live LTP only (`ofo/tracking/paper.py:64`). Sensibull's Add to Drafts shows a confirm list with price and
+  quantity (catalogue 171-173). Bears on REQ-109, REQ-077; decided by ADR-207 (1). Status: **measured once, live**.
+
+## F-68 - An open paper leg has no expiry settlement: after expiry it has no price and its exit is refused
+- Code read 2026-10-29: an expired contract is "missing" (no price) in `ofo/tracking/paper.py:14`, and exit is refused
+  with `tracking_exit_contract_not_live` (`routes/tracking.py:389`). Real cases waiting: four SENSEX 29 Oct paper
+  strategies open at 10:30 IST on 2026-10-29 (GCBP P7, W2 P7, W2 P8; GCBP P8 already exited). Bears on REQ-109;
+  decided by ADR-207 (6). Status: **from code, NOT yet seen live (check after 15:30 IST on 2026-10-29)**.
+
+## F-69 - The Positions screen opens on a tab that says the user holds nothing while paper positions are open
+- Same walk: `/positions/current-positions` opened on "Positions": "No open positions - Zerodha shows no open
+  positions, and none of your strategies holds any." with 17 paper strategies (15 with open legs) in the Paper tab; the
+  just-placed strategy was 17th of 17. The menu's bare `/positions` page is a placeholder ("This page is a
+  placeholder"). Bears on ADR-201 (2), REQ-044 AC-3; decided by ADR-207 (3). Status: **measured once, live**.
+
+## F-70 - "% of funds" divides by available funds; at low cash it reads as a meaningless 1045%, and Sensibull divides by funds needed
+- Same walk: max profit +4,274 "(1045% of funds)", max loss -2,226 "(544% of funds)" with margin available 409 and
+  margin needed 61,163 (of margin needed: about 7.0% and 3.6%). REQ-081 AC-9 / ADR-164 take available funds and say
+  "as Sensibull does", but the study records Sensibull's percent as "of funds needed" (catalogue line 42). Decided by
+  ADR-207 (8) (SPEC CHANGE). Status: **measured once, live; basis read from the spec and the study**.
+
+## F-71 - The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design
+- Same walk: right after tracking, "Adjustment opportunity detected: Index is near a short strike: 22900, 78.95 points
+  (0.35%) away" on a fresh iron condor with spot 22,821 - where a 1-step-OTM short strike always sits. The threshold is
+  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **measured once, live;
+  deferred (outside ADR-207's eight parts)**.
