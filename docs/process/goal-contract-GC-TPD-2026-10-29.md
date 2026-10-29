@@ -19,7 +19,7 @@ fix depends on what the real data holds.
 - PARKED: none. Deferred (C4): F-2, F-3 (`test_both_curves` pre-existing red), R-9 screen-strip check.
 - OWNER STEP (R-36): to switch the hook on, add to the user-level Claude settings under `hooks.PostToolUse`:
   `{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "f=\"$HOME/.claude/hooks/clock-stamp-guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""}]}`
-- NEXT: 30 Oct 09:15 owner runs /goal on GC-TPL (live). Worktrees gctp-def1 / gctp-def2 stay until land (wt-rm refuses unpushed work).
+- NEXT: 30 Oct 09:15 owner runs /goal on GC-TPL (live). AFTER GC-TPL: run Part 2 of this file (owner decision before 22:20: leftovers go into GC-TPD Part 2). Worktrees gctp-def1 / gctp-def2 stay until land (wt-rm refuses unpushed work).
 
 ## §0.1 Where the run works (worktree isolation)
 
@@ -140,3 +140,28 @@ outside the repo). def1 and def2 run in parallel; R-36 runs while they build.
 | Row / item | Why (evidence) | What is left |
 |---|---|---|
 | (none parked) | all ten items DONE | R-9 follow-up: check every screen that shows `strategy_name_shown` strips the API's quote marks (AlertsPage does; others not checked) - deferred (C4) |
+
+## Part 2: the GC-TP leftovers (added 2026-10-29 22:21 IST; owner decision by question tool, answered before 22:20 by the clock read right after it: "Part 2 inside GC-TPD")
+
+Part 1 above (steps 1-11) is DONE and stays as recorded. Part 2 is a separate scope with its own Definition of Done.
+**When:** it starts only AFTER GC-TPL (30 Oct live) has finished, because R-27 changes slider / target code that GC-TPL step
+L2 tests live, and R-25 needs the NIFTY 3 Nov expiry close. All Part 1 rules (worktrees, no push, red first, 2 rounds then
+park, no new sentence, Sensibull first, clock stamps) apply unchanged. At the start of Part 2, each item's decision below is
+re-read against GC-TPL's findings and the spec (`views/spec-digest.md` + grep by the item's terms) before any brief.
+
+| Step | Item | Decision (pre-made where the spec allows) | Proof | Status |
+|---|---|---|---|---|
+| P2-1 | R-25 settle price = Kite day-candle close, proven for SENSEX only (F-72) | Proof only, no code first: after 15:45 on 3 Nov, compare the Kite day-candle close with the NSE official close for every NIFTY 3 Nov contract the paper book holds; equal -> record a finding and close; any difference -> record the rows, PARK (changing the settle source is an owner call) | the per-contract comparison table with both closes | Not started (needs 3 Nov 15:45) |
+| P2-2 | R-23 an expiry whose close is unreadable before 18:00 settles next day; a conditional exit on that strategy cannot fire meanwhile (calendars) | Tier A (settlement / money). Step 1 = read the settlement and conditional-exit sections of the spec; if the spec decides what a stop on an expired-but-unsettled leg does, build to it; if silent, PARK with an owner question (what a user sees and when money is booked is a business call) | red DB test on a two-expiry book with the near close unreadable, then green | Not started |
+| P2-3 | R-27 for 250 ms after a slider move the old pick's figures sit beside the new slider position | Check Sensibull's target slider (screens 020 / 090) first; then mark the old figures as pending (existing styling, no new sentence) until the new pick's reply lands; a stale reply never overwrites a newer pick. Re-read GC-TPL's R-26 result first: if R-26's fix already covers this, close it with a test | vitest red then green | Not started |
+| P2-4 | R-13 Drafts Mode writes the `extremes_reason` words in the browser | The book reply sends the text from an existing pinned server template, the browser shows it; if no approved template fits, PARK and add it to the wording question below | route test + vitest red then green | Not started |
+| P2-5 | R-35 after hours the what-if of strategies 48 / 56 says "Estimated Now needs live prices" (no last close today) | Classify from GC-TPL's live observation: works live -> a data-availability finding (record in `knowledge/findings/`, no code); still fails live -> a defect, fix the class with a red test | GC-TPL's live line for 48 / 56, then the finding or the red/green test | Not started (needs GC-TPL result) |
+| P2-6 | Wording batch: R-15 (reused stale-price sentence), R-20 (nine reason codes show a dash), R-16 / R-32 (rupee-sign style) | Not built in Part 2: ONE owner question at Part 2 start covering all three, each with a recommended text and its Spec basis; answers go into the spec as decision rows, then a follow-up item builds them | the owner's answer recorded as decision rows | Not started |
+
+### Part 2 Definition of Done
+
+- [ ] P2-1..P2-5 each DONE with red/green lines and proof, or PARKED with evidence and what is left.
+- [ ] P2-6 asked as one question; every answer written into the spec as a decision row.
+- [ ] Every DONE item merged into `build/gctp` (or its successor branch) with the touched DB files and the repo guard set green; GC-TP's Found row for that R-id carries the fix commit and re-test line.
+- [ ] A "GC-TPD PART 2 HANDOVER" block written and committed.
+
