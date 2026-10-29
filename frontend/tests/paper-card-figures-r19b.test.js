@@ -21,8 +21,8 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
-import { PAPER_PAUSED, PAPER_NO_FIGURE, MULTI_EXPIRY_TEXT } from '@/lib/paperList'
-import { UNREADABLE_TEXT, EXITED_TEXT } from '@/lib/tracking'
+import { PAPER_NO_FIGURE } from '@/lib/paperList'
+import { UNREADABLE_TEXT } from '@/lib/tracking'
 import { resetPaperAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
@@ -78,9 +78,10 @@ describe('the card figures (the real reply)', () => {
     const s = open(MULTI)
     expect(s.breakevens_reason).toBe('multi_expiry')
     const c = card(await show(), s.strategy_id)
-    for (const id of ['breakeven', 'max-profit', 'max-loss']) {
+    expect(s.breakevens_reason_text).toBe('Breakeven is exact only for a single-expiry strategy') // the pinned ADR-211 (5) template
+    for (const [id, sent] of [['breakeven', s.breakevens_reason_text], ['max-profit', s.extremes_reason_text], ['max-loss', s.extremes_reason_text]]) {
       expect(q(c, `paper-${id}`).text()).toBe(PAPER_NO_FIGURE)
-      expect(q(c, `paper-${id}-reason`).text()).toBe(MULTI_EXPIRY_TEXT)
+      expect(q(c, `paper-${id}-reason`).text()).toBe(sent) // as sent: the browser writes no sentence
     }
     expect(c.text()).not.toMatch(CODE)
   })
@@ -94,7 +95,8 @@ describe('the card figures (the real reply)', () => {
     expect(q(c, 'paper-max-profit').text()).toBe(s.max_profit_text)
     await q(c, `greeks-toggle-${s.strategy_id}`).trigger('click')
     expect(q(c, 'paper-greeks-reason').text()).toContain(PAPER_NO_FIGURE)
-    expect(q(c, 'paper-greeks-reason').text()).toContain(PAPER_PAUSED)
+    expect(s.greeks_reason_text).toBeTruthy()
+    expect(q(c, 'paper-greeks-reason').text()).toContain(s.greeks_reason_text)
     expect(c.text()).not.toMatch(CODE)
   })
 
@@ -104,12 +106,13 @@ describe('the card figures (the real reply)', () => {
     const w = await show()
     await w.get('[data-testid="show-closed"]').setValue(true)
     const c = card(w, s.strategy_id)
-    for (const id of ['breakeven', 'max-profit', 'max-loss']) {
+    for (const [id, sent] of [['breakeven', s.breakevens_reason_text], ['max-profit', s.extremes_reason_text], ['max-loss', s.extremes_reason_text]]) {
       expect(q(c, `paper-${id}`).text()).toBe(PAPER_NO_FIGURE)
-      expect(q(c, `paper-${id}-reason`).text()).toBe(EXITED_TEXT)
+      expect(q(c, `paper-${id}-reason`).text()).toBe(sent)
     }
+    expect(s.breakevens_reason_text).toBe('Exited')
     await q(c, `greeks-toggle-${s.strategy_id}`).trigger('click')
-    expect(q(c, 'paper-greeks-reason').text()).toContain(EXITED_TEXT)
+    expect(q(c, 'paper-greeks-reason').text()).toContain(s.greeks_reason_text)
   })
 
   it('an older reply without the new fields: a dash with the unavailable sentence, never 0 and never a code', async () => {

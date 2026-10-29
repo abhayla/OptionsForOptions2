@@ -167,9 +167,11 @@ def _at_expiry_pnl(model: ModelInputs, level: Decimal) -> Decimal | None:
     return scenario_grid(model.strategy, (level,)).totals[0]
 
 
-def _breakevens(model: ModelInputs, curve: ScenarioValues, at: datetime.datetime) -> tuple[Decimal, ...]:
-    """The levels where the target-time estimate crosses zero, from the engine's search on the target curve."""
-    return breakevens_at(model, curve.estimated_levels or (), curve.totals or (), at)
+def _breakevens(model: ModelInputs, curve: ScenarioValues, at: datetime.datetime,
+                booked: Decimal | None = None) -> tuple[Decimal, ...]:
+    """The levels where the target-time estimate crosses zero, from the engine's search on the target curve; with booked
+    P&L included (ADR-209) the levels where the open legs' P&L = -booked (the one solver, shifted)."""
+    return breakevens_at(model, curve.estimated_levels or (), curve.totals or (), at, booked or Decimal(0))
 
 
 def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> TargetGreeks:
@@ -227,7 +229,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
     single = model.strategy.is_single_expiry
     booked = _booked_of(ask)
-    breakevens = _breakevens(model, curve, at) if single else None  # open legs only: no shift path in this base (R-19b)
+    breakevens = _breakevens(model, curve, at, booked) if single else None  # ADR-209: booked counted, as in P&L
     pnl = estimate(model, level, at).total
     if booked is not None:
         curve = dataclasses.replace(curve, totals=add_booked_all(curve.totals, booked))

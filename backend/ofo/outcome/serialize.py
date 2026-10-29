@@ -188,7 +188,7 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
 
 
 def _booked_fields(t: Any) -> dict[str, Any]:
-    """GC-TP R-18 (ADR-209): the line naming the booked P&L the target figures include ("includes booked +962.00"), or the
+    """GC-TP R-18 (ADR-209): the line naming the booked P&L the target figures include ("includes +Rs 962.00 booked"), or the
     reason the book could not be read; none of the three keys is sent when nothing was booked (an older reply shape)."""
     if t.booked is not None:
         return {"booked": _s(t.booked), "booked_display": render_explanation("summary_paisa_signed", amount=t.booked),

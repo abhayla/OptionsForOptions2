@@ -415,6 +415,21 @@ class SignedWholeRupees(SlotType):
         return format_whole_rupees(value, signed=True)
 
 
+class SignedRupeesPaisa(SlotType):
+    """GC-TP fix1 (ADR-209): a signed paper P&L with the unit word, to the paisa: ``+Rs 962.00`` (REQ-089 AC-3 shape)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_paisa  # late: display imports this module
+        shown = format_signed_paisa(value)
+        sign = shown[0] if shown[0] in "+−" else ""
+        return f"{sign}Rs {shown[len(sign):]}"  # +Rs 962.00, −Rs 1,100.45, Rs 0.00
+
+
 class SignedPaisa(SlotType):
     """GC-UI D-B48: a paper P&L figure to the paisa, Indian grouping, "+" on profit, U+2212 on loss, "0.00" for zero."""
 
@@ -1107,7 +1122,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("target_move_no_spot", "values_seen",
                         "The move from spot is not available: there is no live index price."),
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
-    ExplanationTemplate("target_includes_booked", "values_seen", "includes booked {amount}", {"amount": SignedPaisa}),
+    ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
     ExplanationTemplate("target_booked_unreadable", "values_seen",
                         "Booked profit and loss could not be read, so these figures are for the open legs only."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
@@ -1346,6 +1361,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
                         "Profit left and Loss left are not worked out: prices are not live."),
+    # GC-TP fix1 (ADR-211 (5)): the breakeven dash of a card on legs with different expiries; "Exited" moved unchanged
+    # from the browser (EXITED_TEXT), the reason beside every figure of a fully exited strategy
+    ExplanationTemplate("paper_breakeven_multi_expiry", "values_seen",
+                        "Breakeven is exact only for a single-expiry strategy"),
+    ExplanationTemplate("paper_reason_exited", "values_seen", "Exited"),
     ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),

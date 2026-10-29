@@ -18,6 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import LegPicker from '@/components/strategy/LegPicker.vue'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import plain from './fixtures/outcome-target-plain.json'
@@ -359,5 +360,21 @@ describe('the date slider and the answer states', () => {
     expect(writes.every((c) => c.method === 'POST' && c.url === '/strategies/outcome')).toBe(true)
     const keys = new Set(outcomeCalls().flatMap((c) => Object.keys(c.body)))
     for (const k of keys) expect(k).not.toMatch(/save|execute|margin/i)
+  })
+})
+
+describe('fix1 (review): a target pick belongs to the underlying it was made for', () => {
+  it('swapping NIFTY for SENSEX clears the level and date: no leftover target field is sent', async () => {
+    const w = await openPage()
+    await startTarget(w)
+    expect(withTarget(outcomeCalls().at(-1))).toBe(true)
+    const sensex = { id: 9, underlying: 'SENSEX', instrument_id: 'BSE_FO:900001', contract_id: 900001, symbol: 'x', expiry: mid.legs[0].expiry, instrument_type: 'CE',
+      strike: '75000.00', lot_size: 20, action: 'SELL', lots: 1, planned_entry: '100.00', captured_at: mid.legs[0].captured_at, reason_code: null }
+    const before = outcomeCalls().length
+    w.findComponent(LegPicker).vm.$emit('update:legs', [sensex])
+    await settle()
+    const sent = outcomeCalls().slice(before)
+    expect(sent.length).toBeGreaterThan(0)
+    for (const c of sent) expect(withTarget(c)).toBe(false)
   })
 })

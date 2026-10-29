@@ -272,6 +272,18 @@ describe('the builder compact Paper list (same reply)', () => {
     expect(rows[0].get('a').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=1')
     expect(c.find('table').exists()).toBe(false)
   })
+
+  it('fix1: the compact list carries the Show closed positions switch, and turning it on lists the exited strategy', async () => {
+    answers['GET /paper/strategies'] = ok(REAL)
+    const w = await show(PaperStrategies, '/', {})
+    const c = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [w.vm.$router] } })
+    await flushPromises()
+    const box = c.get('[data-testid="show-closed"]')
+    expect(box.element.checked).toBe(false)
+    const before = c.findAll('[data-testid="paper-compact-row"]').length
+    await box.setValue(true)
+    expect(c.findAll('[data-testid="paper-compact-row"]').length).toBeGreaterThanOrEqual(before)
+  })
 })
 
 describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {

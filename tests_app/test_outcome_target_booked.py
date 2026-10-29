@@ -1,5 +1,5 @@
 """GC-TP R-18 (ADR-209, REQ-084 AC-4): on a paper strategy the what-if target P&L, the Projected badge and the target
-curve include the P&L already booked from exited legs ("includes booked +962.00"); `include_booked` false (the chart
+curve include the P&L already booked from exited legs ("includes +Rs 962.00 booked"); `include_booked` false (the chart
 card's "Add Booked P&L" switch off) gives the open legs only.
 
 Core proof: strategy 63's real roll book (frontend/tests/fixtures/paper-book-63.json, 8 orders, two exits) goes through
@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BOOK_63 = ROOT / "frontend/tests/fixtures/paper-book-63.json"
 HTTP_OK = 200
 AT = "2026-10-12T15:00:00+05:30"
-LINE = "includes booked +962.00"
+LINE = "includes +Rs 962.00 booked"
 
 
 def _book_63_booked() -> Decimal:
@@ -121,3 +121,29 @@ async def test_unreadable_book_gives_open_legs_only_with_the_reason(provider):
     assert _pnl(bad) == _pnl(off) and _curve(bad) == _curve(off)
     assert bad["target"].get("includes_booked_text") is None
     assert bad["target"]["booked_unreadable_text"] == render_explanation("target_booked_unreadable")
+
+
+async def _bracket(provider, booked: Decimal, level: str, shift: Decimal) -> tuple[Decimal, Decimal]:
+    """The open legs' P&L (switch off, so the route's plain figure) at the whole points just below and above ``level``."""
+    low = int(D(level).to_integral_value(rounding="ROUND_FLOOR"))
+    pnls = []
+    for lv in (low, low + 1):
+        probe = await _post(provider, booked, paper_strategy_id=63, include_booked=False, target_level=str(lv))
+        pnls.append(_pnl(probe) + shift)
+    return pnls[0], pnls[1]
+
+
+async def test_fix1_target_breakevens_count_booked_so_open_legs_pnl_equals_minus_booked(provider):
+    """ADR-209: switch ON: target breakevens are the levels where open legs P&L = -booked (real book 63). Each level
+    lies between two whole points whose open-legs P&L + booked change sign; switch OFF keeps the plain zero crossings."""
+    booked = _book_63_booked()
+    off = await _post(provider, booked, paper_strategy_id=63, include_booked=False)
+    on = await _post(provider, booked, paper_strategy_id=63)
+    assert on["target"]["breakevens"] and off["target"]["breakevens"]
+    assert on["target"]["breakevens"] != off["target"]["breakevens"]  # booked 962 moves them
+    for level in on["target"]["breakevens"]:
+        lo, hi = await _bracket(provider, booked, level, booked)
+        assert lo * hi <= 0, (level, lo, hi)
+    for level in off["target"]["breakevens"]:
+        lo, hi = await _bracket(provider, booked, level, D(0))
+        assert lo * hi <= 0, (level, lo, hi)

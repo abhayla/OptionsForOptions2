@@ -54,7 +54,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
-from ofo_app.paper_reasons import extremes_reason_text, reason_text
+from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -184,6 +184,7 @@ class PaperBreakevens(ApiModel):
     breakevens: list[Money] | None
     breakevens_text: list[CatalogueText] | None
     breakevens_reason: FigureReason | None
+    breakevens_reason_text: CatalogueText | None = None  # ADR-211 (5): the sentence beside the dash
 
 
 class GreekFigures(ApiModel):
@@ -210,6 +211,7 @@ class PaperGreeksOut(ApiModel):
 class PaperGreeksBlock(ApiModel):
     greeks: PaperGreeksOut | None
     greeks_reason: GreeksFigureReason | None
+    greeks_reason_text: CatalogueText | None = None  # ADR-210: the sentence beside the dash
 
 
 class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
@@ -403,13 +405,15 @@ def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     got = book_breakevens(net_positions(_paper(orders), {}), terms)
     if got.levels is None:
-        return {"breakevens": None, "breakevens_text": None, "breakevens_reason": got.reason}
+        return {"breakevens": None, "breakevens_text": None, "breakevens_reason": got.reason,
+                "breakevens_reason_text": breakevens_reason_text(got.reason)}
     texts = []
     for level in got.levels:
         percent = breakeven_percent_exact(level, spot)
         texts.append(render_explanation("summary_breakeven_level", level=level) if percent is None
                      else render_explanation("summary_breakeven_percent", level=level, percent=percent))
-    return {"breakevens": [_exact(x) for x in got.levels], "breakevens_text": texts, "breakevens_reason": got.reason}
+    return {"breakevens": [_exact(x) for x in got.levels], "breakevens_text": texts, "breakevens_reason": got.reason,
+            "breakevens_reason_text": None}
 
 
 def _open_contracts(figures: dict,
@@ -431,14 +435,16 @@ def _greeks(figures: dict, found: dict[int, tracked_contracts.TrackedContract], 
     with the book's pause reason when an open contract is not live, never stale numbers; nothing open: absent."""
     held = [p for p in figures["positions"] if p["net_quantity"] != 0]
     if not held:
-        return {"greeks": None, "greeks_reason": None}
+        return {"greeks": None, "greeks_reason": None, "greeks_reason_text": None}
     if figures["unbooked"] is None or snapshot is None:
-        return {"greeks": None, "greeks_reason": figures["pause_reason"] or paper.PRICES_NOT_LIVE}
+        why = figures["pause_reason"] or paper.PRICES_NOT_LIVE
+        return {"greeks": None, "greeks_reason": why, "greeks_reason_text": greeks_reason_text(why)}
     got = paper_greeks.book_greeks(snapshot, underlying, _open_contracts(figures, found))
     if got.net is None or got.legs is None:
-        return {"greeks": None, "greeks_reason": got.reason}
+        return {"greeks": None, "greeks_reason": got.reason, "greeks_reason_text": greeks_reason_text(got.reason)}
     legs = [{"contract_id": p["contract_id"]} | _greek_figures(g) for p, g in zip(held, got.legs, strict=True)]
-    return {"greeks": {"legs": legs, "net": _greek_figures(got.net)}, "greeks_reason": None}
+    return {"greeks": {"legs": legs, "net": _greek_figures(got.net)}, "greeks_reason": None,
+            "greeks_reason_text": None}
 
 
 def _spot(snapshot: Any) -> Decimal | None:
@@ -448,8 +454,10 @@ def _spot(snapshot: Any) -> Decimal | None:
 
 _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
            "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
-           "breakevens": None, "breakevens_text": None, "breakevens_reason": EXITED, "greeks": None,
-           "greeks_reason": EXITED}
+           "extremes_reason_text": extremes_reason_text(EXITED),
+           "breakevens": None, "breakevens_text": None, "breakevens_reason": EXITED,
+           "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
+           "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
 
 
 def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913

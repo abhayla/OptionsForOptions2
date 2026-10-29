@@ -764,7 +764,7 @@ class TargetOut(ApiModel):
     #: GC-TP R-18 (ADR-209): present only when a paper strategy's booked P&L is in ``pnl``, ``badge`` and ``curve``
     booked: Money | None = None
     booked_display: CatalogueText | None = None  # "+962.00"
-    includes_booked_text: CatalogueText | None = None  # "includes booked +962.00"
+    includes_booked_text: CatalogueText | None = None  # "includes +Rs 962.00 booked"
     booked_unreadable_text: CatalogueText | None = None  # the book could not be read: open legs only
 
 

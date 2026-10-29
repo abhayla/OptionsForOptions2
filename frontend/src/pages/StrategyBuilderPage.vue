@@ -457,6 +457,9 @@ const setLegs = (next) => {
   savedId.value = null
   savedRevision.value = null
   linkRefused.value = false
+  // fix1 (review): a target level / date picked for another underlying or first expiry means nothing for this one - reset it
+  const [oldExpiry, newExpiry] = [firstExpiry(legs.value), firstExpiry(next)] // a draft's legs carry no expiry: compare only two known ones
+  if (legs.value[0]?.underlying !== next[0]?.underlying || (oldExpiry && newExpiry && oldExpiry !== newExpiry)) targetPick.value = { level: '', dateIndex: 0 }
   legs.value = next
   hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
   shapeName.value = null

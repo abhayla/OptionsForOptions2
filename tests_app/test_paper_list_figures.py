@@ -175,3 +175,54 @@ async def test_the_database_and_feed_calls_of_the_list_do_not_grow_with_the_numb
     many = await list_cost()
     assert (one[2], many[2]) == (1, 21)
     assert many[0] == one[0] and many[1] == one[1], (one, many)  # statements and snapshot reads: same for 21 as for 1
+
+
+# GC-TP fix1 item 1 (ADR-211 (5)): every reason beside a dash is a pinned server template in the reply
+ADR_211 = pathlib.Path(__file__).resolve().parent.parent / "spec" / "decisions" / "ADR-211.md"
+
+
+def _adr_211_five() -> str:
+    import re  # noqa: PLC0415
+
+    import yaml  # noqa: PLC0415
+    decision = yaml.safe_load(ADR_211.read_text(encoding="utf-8").split("---")[1])["decision"]
+    found = re.search(r"\(5\) A paper card on legs with different expiries: \"(.*?)\"", decision)
+    assert found
+    return found.group(1)
+
+
+async def test_fix1_calendar_reply_carries_the_three_reason_texts_and_breakeven_one_is_the_adr_sentence(db):  # noqa: F811
+    from ofo.errors.explanations import TABLE_REASON_TEXT  # noqa: PLC0415
+    from ofo_app import paper_reasons  # noqa: PLC0415
+    app, stored, *_ = await _seed_fixture(db)
+    other = (await db.execute(text(OTHER_EXPIRY))).scalar_one()
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(int(other), "BUY", 65, "50.00")])
+    single, listed = await _both(app, stored.id, "fix1_multi_expiry")
+    for body in (single, listed):
+        for key in ("breakevens_reason_text", "extremes_reason_text", "greeks_reason_text"):
+            assert key in body, key
+        assert body["breakevens_reason_text"] == _adr_211_five()
+        assert _adr_211_five() == "Breakeven is exact only for a single-expiry strategy"
+        assert body["extremes_reason_text"] == paper_reasons.extremes_reason_text("multi_expiry")
+        assert body["greeks_reason"] == "no_iv"  # the real later-expiry contract has no IV
+        assert body["greeks_reason_text"] == paper_reasons.greeks_reason_text("no_iv") == TABLE_REASON_TEXT["no_iv"]
+        assert "multi_expiry" not in body["breakevens_reason_text"]
+
+
+async def test_fix1_exited_and_paused_replies_carry_server_texts_never_a_code(db):  # noqa: F811
+    app, stored, *_ = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00"),
+                                                              _new(c0, "BUY", 65, "80.00", "exit")])
+    _single, listed = await _both(app, stored.id, "fix1_exited")
+    for key in ("breakevens_reason_text", "extremes_reason_text", "greeks_reason_text"):
+        assert listed[key] == "Exited", key
+
+
+async def test_fix1_paused_reply_carries_the_paused_texts(db):  # noqa: F811
+    app, stored, _provider, clock, last, _fixture = await _seed_fixture(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    _single, paused = await _both(app, stored.id, "fix1_paused")
+    assert paused["greeks_reason_text"] == "Paper P&L paused - prices not live"
+    assert paused["extremes_reason_text"].startswith("Profit left and Loss left are not worked out")
+    assert paused["breakevens_reason_text"] is None
