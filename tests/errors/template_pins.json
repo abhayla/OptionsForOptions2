@@ -1916,12 +1916,12 @@
     "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:target_includes_booked": {
-    "sha256": "d723b1162da2eb140c1388e145e40d634b06986a5724adad8eebbd5e29bcb75d",
-    "reviewed": "owner read 2026-10-29 (ADR-209)"
+    "sha256": "14d71d08d731b601ae2ac1aa22062ff41a97ab20ed84abeb24b4ee84e610b47a",
+    "reviewed": "owner read 2026-10-29 (ADR-209, question tool \"Match REQ-089 + approve (2)\")"
   },
   "explanation:target_booked_unreadable": {
     "sha256": "adfdd3bc402148d1abf4b4e2ad1ecc9f9d208c2493e2bb6e9d690657c085cc1a",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-209, question tool \"Match REQ-089 + approve (2)\")"
   },
   "explanation:paper_reason_not_priced": {
     "sha256": "bb747139646845cd6882855ed8409ed268d807914767b0a5b3174083b936fce3",
@@ -1965,6 +1965,14 @@
   },
   "explanation:paper_extremes_unknown": {
     "sha256": "8772abd82604f5eb72666f04d3734b30ab8eb869169ba7cb6b792f36d4b0d1fb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_breakeven_multi_expiry": {
+    "sha256": "841b4809a5d41658dab7e9f7a45078b7fb13cd7d79b56ac275a43e51f7c12d75",
+    "reviewed": "owner read 2026-10-29 (ADR-211 (5), question tool \"Approve all 8\")"
+  },
+  "explanation:paper_reason_exited": {
+    "sha256": "c8b506190bc6e8e2d2ff1ec3822ea117c9753e87314ff77140d6c55c77dcb510",
     "reviewed": "pending owner read"
   }
 }

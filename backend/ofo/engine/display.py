@@ -117,6 +117,15 @@ def format_signed_paisa(amount: Decimal) -> str:
     return (sign or "+") + text
 
 
+def format_signed_rupees_paisa(amount: Decimal) -> str:
+    """GC-TP fix1 (ADR-209, REQ-089 AC-3 shape): a signed rupee amount with the unit word, to the paisa: ``+Rs 962.00``,
+    ``−Rs 1,100.45``; a figure that rounds to zero is ``Rs 0.00``. Display only."""
+    sign, text = _number(_finite(amount, "amount"), _PAISA)
+    if text == "0.00":
+        return f"Rs {text}"
+    return f"{sign or '+'}Rs {text}"
+
+
 def format_whole_points(level: Decimal) -> str:
     """REQ-152 / D-A04: an index level in whole points with Indian grouping, half-up: ``22,688``."""
     return _group_indian(f"{_finite(level, 'level').quantize(_WHOLE, rounding=ROUND_HALF_UP):f}")
