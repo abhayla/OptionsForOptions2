@@ -29,6 +29,8 @@ Known bypasses (not chased; the threat model is "one altered figure in the reply
   against the seed date and flagged when it differs).
 
 CLI: python scripts/checks/ui_data_check.py --strategy-legs <legs.json> [--paper <id>] [--replay <dir>] --out <dir>
+     python scripts/checks/ui_data_check.py --strategy-legs <legs.json> --target-level <L> --target-at <ISO>
+     [--booked <rs>] --out <dir>   (GC-TP 6c: what-if target P&L, breakevens, Greeks)
      python scripts/checks/ui_data_check.py --paper-orders <id> [--replay <dir>] --out <dir>   (GC-TP 1b: net quantity,
      average, booked, unbooked and total recomputed from the orderbook rows of GET /paper/strategies/{id})
 Live mode (no --replay) fetches the replies from the running API (read-only GETs + POST outcome; never an order route).
@@ -1478,6 +1480,153 @@ def check_paper_orders(reply: dict) -> Report:
     return rep
 
 
+# ---------------------------------------------------------------- GC-TP step 6c: the what-if target (REQ-084 AC-4)
+
+TARGET_GREEKS = ("delta", "gamma", "theta", "vega")
+Q_LOW, Q_HIGH = -0.5, 0.5  # the band the implied dividend yield is searched in
+
+
+def _implied_q(price, s, k, t, r, sigma, kind) -> float | None:
+    """The dividend yield q at which this file's BSM prices the leg at `price` with the leg's own IV (bisection;
+    a call falls and a put rises as q grows). None when `price` is outside the band."""
+    if price is None or t <= 0 or not sigma:
+        return None
+    sign = 1 if kind == "CE" else -1
+    if (bsm_price(s, k, t, r, Q_LOW, sigma, kind) - price) * sign < 0:
+        return None
+    if (bsm_price(s, k, t, r, Q_HIGH, sigma, kind) - price) * sign > 0:
+        return None
+    lo, hi = Q_LOW, Q_HIGH
+    for _ in range(100):
+        mid = 0.5 * (lo + hi)
+        if (bsm_price(s, k, t, r, mid, sigma, kind) - price) * sign > 0:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def target_q_by_expiry(reply: dict, r: float) -> dict:
+    """Per expiry (q, spread). q is solved from the reply's own legs (their IV and the two-sided mid, else the LTP the
+    IV was solved from) at the reply's valuation; spread = max - min over the legs and widens the tolerance. An
+    expiry with no solvable leg is absent."""
+    s = float(reply["spot_level"])
+    valuation = dt.datetime.fromisoformat(reply["valuation"])
+    quotes = {x["instrument_id"]: x for x in reply.get("leg_quotes") or []}
+    found: dict = {}
+    for lg in reply.get("legs") or []:
+        if lg.get("iv") is None:
+            continue
+        px, _src = iv_price(lg, quotes.get(lg["instrument_id"]) or {})
+        t = years_to_expiry(valuation, lg["expiry"])
+        q = _implied_q(px, s, float(lg["strike"]), t, r, float(lg["iv"]), lg["instrument"])
+        if q is not None:
+            found.setdefault(lg["expiry"], []).append(q)
+    return {e: (statistics.median(v), max(v) - min(v)) for e, v in found.items()}
+
+
+def _target_model(legs, qmap, level, at, r, dq=0.0):
+    """(open-leg P&L, {greek: total}, [per-leg greeks]) at `level` and `at`: every leg valued at the target time with
+    its own IV and its expiry's q (+ dq). The price per unit is rounded to the paisa like the Estimated Now check."""
+    tot, gtot, per_leg = Decimal(0), dict.fromkeys(TARGET_GREEKS, 0.0), []
+    for lg in legs:
+        t = years_to_expiry(at, lg["expiry"])
+        k, sig, q = float(lg["strike"]), float(lg["iv"]), qmap[lg["expiry"]][0] + dq
+        px = money(bsm_price(level, k, t, r, q, sig, lg["instrument"]))
+        tot += (px - D(lg["planned_entry"])) * D(lg["quantity"]) * _sign(lg)
+        g = bsm_greeks(level, k, t, r, q, sig, lg["instrument"]) if t > 0 else dict.fromkeys(TARGET_GREEKS, 0.0)
+        w = float(lg["quantity"]) * _sign(lg)
+        per_leg.append({n: g[n] * w for n in TARGET_GREEKS})
+        for n in TARGET_GREEKS:
+            gtot[n] += g[n] * w
+    return tot, gtot, per_leg
+
+
+def target_breakevens(legs, qmap, at, r, lo, hi, step=5.0) -> list:
+    """This file's own crossings of the recomputed target curve: scan [lo, hi], bisect each sign change."""
+
+    def f(x):
+        return float(_target_model(legs, qmap, x, at, r)[0])
+
+    out, x, fx = [], lo, f(lo)
+    while x < hi:
+        nx = min(x + step, hi)
+        fn = f(nx)
+        if fx * fn < 0:
+            a, b, fa = x, nx, fx
+            for _ in range(60):
+                m = 0.5 * (a + b)
+                fm = f(m)
+                if fa * fm <= 0:
+                    b = m
+                else:
+                    a, fa = m, fm
+            out.append(0.5 * (a + b))
+        elif fn == 0:
+            out.append(nx)
+        x, fx = nx, fn
+    return out
+
+
+def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
+    """REQ-084 AC-4: recompute the reply's `target` block (P&L, breakevens, the four Greeks at the target level and
+    date) with this file's own BSM and compare. No target figures in the reply -> not checkable, never a match.
+    P&L is compared on two bases and the checker does not choose between them: open legs only, and open legs plus
+    `booked` (the strategy's booked P&L, given by the caller; absent -> that row is not checkable)."""
+    rep = Report("target what-if")
+    tg = (reply or {}).get("target") or {}
+    if not tg.get("level") or not tg.get("at") or (tg.get("pnl") or {}).get("value") is None:
+        rep.skip("target figures", "the reply has no target P&L (no target asked, refused, or unavailable)")
+        return rep
+    legs = reply.get("legs") or []
+    if not legs or any(lg.get("iv") is None for lg in legs):
+        rep.skip("target figures", "a leg has no IV")
+        return rep
+    qmap = target_q_by_expiry(reply, r)
+    if any(lg["expiry"] not in qmap for lg in legs):
+        rep.skip("target figures", "no dividend yield could be solved from the reply's legs")
+        return rep
+    level, at = float(tg["level"]), dt.datetime.fromisoformat(tg["at"])
+    pnl, gtot, per_leg = _target_model(legs, qmap, level, at, r)
+    spread = max(v[1] for v in qmap.values())
+    qty = sum(abs(float(lg["quantity"])) for lg in legs)
+    wide = _target_model(legs, qmap, level, at, r, spread / 2)
+    # the Estimated Now tolerance rule: 0.005/unit/leg rounding + the move from the q spread across the legs
+    tol = Decimal(str(round(qty * 0.0051 + abs(float(wide[0] - pnl)), 2)))
+    qtxt = ", ".join(f"{e}: {v[0]:.5f}" for e, v in sorted(qmap.items()))
+    rep.notes.append(f"target level {tg['level']} at {tg['at']}; q solved per expiry {qtxt}")
+    rep.add("target P&L (open legs only)", tg["pnl"]["value"], money(pnl), tol, note="this file's BSM, target time")
+    if booked is None:
+        rep.skip("target P&L (open legs + booked)", "no booked figure given (--booked)", ours=tg["pnl"]["value"])
+    else:
+        both = money(pnl + D(booked))
+        rep.add("target P&L (open legs + booked)", tg["pnl"]["value"], both, tol, note=f"booked {booked}")
+    want_be = target_breakevens(legs, qmap, at, r, level * 0.5, level * 1.5)
+    if tg.get("breakevens") is None:
+        rep.skip("target breakevens", tg.get("breakevens_reason") or "reply gives no breakevens")
+    else:
+        slopes = [
+            abs(float(_target_model(legs, qmap, x + 1, at, r)[0] - _target_model(legs, qmap, x - 1, at, r)[0])) / 2
+            for x in want_be
+        ]
+        be_tol = Decimal(str(round(max(float(tol) / max(min(slopes, default=1.0), 1.0), 0.05), 2)))
+        rep.add_list("target breakevens", tg["breakevens"], [Decimal(str(round(x, 2))) for x in want_be], be_tol,
+                     note="crossings of this file's recomputed target curve; tol = P&L tol / slope")
+    greeks = tg.get("greeks") or {}
+    g_tol = {n: Decimal(str(round(0.001 + abs(wide[1][n] - gtot[n]), 4))) for n in TARGET_GREEKS}
+    for n in TARGET_GREEKS:
+        got = (greeks.get("total") or {}).get(n)
+        if got is None:
+            rep.skip(f"target {n}", greeks.get("unavailable_text") or "reply gives no value")
+        else:
+            rep.add(f"target {n}", got, round(Decimal(str(gtot[n])), 4), g_tol[n], note="total over the legs")
+    for i, row in enumerate(greeks.get("legs") or []):
+        for n in TARGET_GREEKS:
+            if row and row.get(n) is not None and i < len(per_leg):
+                rep.add(f"target leg{i + 1} {n}", row[n], round(Decimal(str(per_leg[i][n])), 4), g_tol[n])
+    return rep
+
+
 def print_table(rep: Report) -> None:
     """The match / mismatch table of one report on stdout (the paper-orders mode)."""
     print(f"## {rep.strategy}: {rep.counts()}")
@@ -1611,6 +1760,18 @@ def fetch_both(base, legs_doc, outdir: Path, flags: dict):
     (outdir / "request_both.json").write_text(json.dumps(flags), encoding="utf-8")
 
 
+def fetch_target(base, legs_doc, outdir: Path, level, at) -> None:
+    """Live: one read-only POST outcome asking the what-if target, saved as outcome_target.json."""
+    body = {"underlying": legs_doc["underlying"], "view": "estimated_now", "legs": legs_doc["legs"]}
+    if level:
+        body["target_level"] = str(level)
+    if at:
+        body["target_at"] = at
+    outdir.mkdir(parents=True, exist_ok=True)
+    (outdir / "outcome_target.json").write_text(json.dumps(_http(base, "/api/strategies/outcome", body), indent=1),
+                                                encoding="utf-8")
+
+
 def main_paper_orders(a) -> int:
     """--paper-orders <id>: one read-only GET of /paper/strategies/{id} (or <replay>/paper_<id>.json), recomputed from
     its orderbook rows; prints the match / mismatch table; exit 1 when any figure differs or none could be checked."""
@@ -1641,6 +1802,9 @@ def main(argv=None):
     ap.add_argument("--api", default="http://127.0.0.1:8765")
     ap.add_argument("--both", action="store_true", help="live: also ask both_views + sd_bands (GC-UI step 4)")
     ap.add_argument("--payoff-step", type=int, help="live with --both: the payoff_step asked (absent: none sent)")
+    ap.add_argument("--target-level", help="GC-TP 6c: ask the what-if target level (points) and recompute its figures")
+    ap.add_argument("--target-at", help="GC-TP 6c: ask the what-if target time (ISO, with offset) and recompute")
+    ap.add_argument("--booked", help="GC-TP 6c: the strategy's booked P&L, for the open + booked P&L basis")
     a = ap.parse_args(argv)
     if a.paper_orders is not None:
         return main_paper_orders(a)
@@ -1654,9 +1818,15 @@ def main(argv=None):
         if a.payoff_step is not None:
             flags["payoff_step"] = a.payoff_step
         fetch_both(a.api, legs_doc, src, flags)
+    if (a.target_level or a.target_at) and not a.replay:
+        fetch_target(a.api, legs_doc, src, a.target_level, a.target_at)
     est, atx, before, after, fut = load_replay(src)
     both, step_asked = load_both(src)
     reports = [check_outcome(name, est, atx, before, after, fut, both=both, step_asked=step_asked)]
+    if a.target_level or a.target_at or (src / "outcome_target.json").exists():
+        tj = src / "outcome_target.json"
+        reports.append(check_target(json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}, booked=a.booked))
+        print_table(reports[-1])
     if a.paper:
         tp = src / f"tracking_{a.paper}.json"
         tr = (
