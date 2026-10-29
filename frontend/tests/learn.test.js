@@ -13,6 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
     if (url === '/strategy-templates') {
       return templatesAnswer instanceof Error ? Promise.reject(templatesAnswer) : Promise.resolve({ data: templatesAnswer })
     }
+    if (url === '/paper/alerts') return Promise.resolve({ data: { alerts: [], unread: 0 } }) // GC-TP 7b: the Alerts page and the bell read this
     return Promise.resolve({ data: indicesAnswer })
   } } }
 })
