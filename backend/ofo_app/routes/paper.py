@@ -29,7 +29,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.engine.legs import Instrument
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
@@ -501,7 +501,8 @@ async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
     return AlertsOut.model_validate({"unread": unread, "alerts": [{
         "id": a.id, "strategy_id": a.strategy_id, "trigger_id": a.trigger_id, "created_at": a.created_at,
-        "title": a.title, "body": a.body, "read": a.read_at is not None} for a in rows]})
+        "title": restore_explanation("paper_alert_title", a.title),
+        "body": restore_explanation("paper_alert_body", a.body), "read": a.read_at is not None} for a in rows]})
 
 
 @router.get("/paper/alerts", response_model=AlertsOut)

@@ -1325,6 +1325,20 @@ render_explanation = _make_render_explanation()
 del _make_render_explanation
 
 
+def restore_explanation(template_id: str, stored: str) -> ExplanationText:
+    """A line a `render_explanation()` call made earlier and a store kept (GC-TP 7a: a paper alert's title and body) read
+    back as an explanation. Only a string that fits the template's fixed words, in order, is restored; anything else
+    (a hand-written or edited row) is refused, so a store cannot smuggle its own sentence through a response."""
+    found = next((t for t in _EXPLANATIONS if t.id == template_id), None)
+    if found is None:
+        raise ValueError(f"unknown explanation template id {template_id!r}")
+    pieces = re.split(r"\{[a-z_]+\}", found.text)
+    shape = ".+?".join(re.escape(piece) for piece in pieces)
+    if type(stored) is not str or re.fullmatch(shape, stored, re.DOTALL) is None:
+        raise ValueError(f"stored text does not fit explanation template {template_id!r}")
+    return ExplanationText(stored, _EXPLANATION_MINT)
+
+
 def join_explanations(parts: tuple[ExplanationText, ...] | list[ExplanationText], sep: str = ", ") -> ExplanationText:
     """Explanation lines joined into one: every part must be a `render_explanation()` result, the separator one of
     `JOIN_SEPARATORS`. So a joined line is still an `ExplanationText` and still holds only catalogue words."""

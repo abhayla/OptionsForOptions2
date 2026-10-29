@@ -108,3 +108,15 @@ def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: 
     monkeypatch.setattr(ex.Recorded, "validate", staticmethod(lambda value: None))
     assert "use strike 22,550" in render_explanation(
         "change_leg_removed", leg="leg expired before execution, use strike 22,550")
+
+
+def test_restore_explanation_takes_only_a_line_that_fits_its_template() -> None:
+    """GC-TP 7a: a stored paper-alert line comes back as an explanation only when it fits the template's fixed words."""
+    from ofo.errors.explanations import ExplanationText, restore_explanation
+
+    assert type(restore_explanation("paper_alert_title", "Paper strategy - x")) is ExplanationText
+    for bad in ("Paper strategy - ", "something else", "Paper strategy - x\n"[:0]):
+        with pytest.raises(ValueError, match="does not fit"):
+            restore_explanation("paper_alert_title", bad)
+    with pytest.raises(ValueError, match="unknown"):
+        restore_explanation("no_such_template", "x")
