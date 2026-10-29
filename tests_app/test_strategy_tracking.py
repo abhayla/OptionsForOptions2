@@ -175,29 +175,6 @@ async def test_ac2_an_edit_after_the_start_changes_nothing_in_the_tracked_figure
         ("22400.00", "133.25", "0.59")]
 
 
-async def test_ac1_the_store_refuses_a_second_entry_even_without_the_route_check(db):
-    """AC-1: the store itself refuses a second start (ALREADY_TRACKED; the route's pre-check is a second layer), so a
-    race past the route check still leaves exactly 4 open orders."""
-    _app, stored, provider, _clock, last = await _setup(db)
-    from ofo.outcome import read_snapshot  # noqa: PLC0415
-    from ofo.tracking import paper  # noqa: PLC0415
-    from ofo_app import paper_store  # noqa: PLC0415
-    from ofo_app import strategy_store as store  # noqa: PLC0415
-
-    legs = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, D(0), last)
-            for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
-    entry = paper.capture_entry(read_snapshot(provider, "NIFTY", IDS, last, D("0.065")), legs)
-    user = stored.user_ref
-    orders = [paper_store.NewOrder(cid, leg.action.value, leg.quantity, leg.entry_price, "open", leg.price_at)
-              for cid, leg in zip(stored.saved.contract_ids, entry, strict=True)]
-    async with _same(db) as conn:
-        await paper_store.start(conn, user, stored.id, stored.revision, orders)
-        with pytest.raises(store.StrategyStoreError) as refused:
-            await paper_store.start(conn, user, stored.id, stored.revision, orders)
-        assert refused.value.code == paper_store.ALREADY_TRACKED
-    assert await _rows(db, stored.id) == (1, 4)
-
-
 async def test_ac1_another_users_strategy_and_an_untracked_view_answer_not_found(db):
     """AC-1: another user's strategy id answers 404 exactly like a missing one; viewing an untracked strategy is 404."""
     app, stored, *_ = await _setup(db)

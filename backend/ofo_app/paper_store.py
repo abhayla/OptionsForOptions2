@@ -5,10 +5,6 @@
   quantity of its contract and never exceed it (EXIT_EXCEEDS_OPEN, nothing stored); the check runs on the book as
   stored plus the earlier orders of the same call, through the one engine (ofo.tracking.orderbook). Insert-only; the
   caller commits.
-- start (GC-TP 1a part 4; the POST /strategies/{id}/tracking start until step 2 removes it): under the same lock,
-  re-checks the revision the user started from (REVISION_CONFLICT) and refuses a strategy that already has orders
-  (ALREADY_TRACKED, also when two starts race: the second waits for the lock and then sees the first's orders), then
-  places the open orders.
 - tracked_ids: which of the given strategies have at least one paper order (REQ-134 AC-4).
 - load: the orders of one strategy the caller already loaded for its user, in placement order (the id).
 - load_all: every order of ONE user's visible strategies with name and underlying, in ONE query whatever the count
@@ -29,7 +25,6 @@ from sqlalchemy import text
 from ofo_app import strategy_store as store
 
 EXIT_EXCEEDS_OPEN = "exit_exceeds_open"
-ALREADY_TRACKED = "already_tracked"
 REDUCING_KINDS = frozenset({"exit", "settle", "stop"})
 
 _COLUMNS = "id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, trigger_id"
@@ -115,24 +110,6 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
                                          "quantity": o.quantity, "price": o.price, "kind": o.kind,
                                          "placed_at": o.placed_at, "reason": o.reason, "trigger_id": o.trigger_id})
     return await load(conn, strategy_id)
-
-
-async def start(conn: Any, user_ref: str, strategy_id: int, revision: int,
-                orders: Sequence[NewOrder]) -> tuple[StoredOrder, ...]:
-    """Opens the paper book of a strategy at ``revision`` (module docstring). A book that would hold one contract on
-    two legs is refused (ValueError, nothing stored): the engine nets them into one position and the legs shown would
-    change (the same refusal as migration 0028's data step)."""
-    if len({o.contract_id for o in orders}) != len(orders):
-        raise ValueError(f"strategy {strategy_id}: one contract on two legs cannot be paper-tracked")
-    async with conn.begin_nested():
-        stored = await store.load(conn, user_ref, strategy_id)  # NOT_FOUND for a missing or another user's strategy
-        await store.lock_strategy(conn, user_ref, strategy_id)
-        if stored.revision != revision:
-            raise store.StrategyStoreError(store.REVISION_CONFLICT, f"strategy {strategy_id} is at revision "
-                                                                    f"{stored.revision}, tracking asked for {revision}")
-        if await load(conn, strategy_id):
-            raise store.StrategyStoreError(ALREADY_TRACKED, f"strategy {strategy_id} is already tracked")
-        return await place(conn, user_ref, strategy_id, orders)
 
 
 async def tracked_ids(conn: Any, strategy_ids: Sequence[int]) -> set[int]:

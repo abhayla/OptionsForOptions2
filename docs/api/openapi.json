@@ -3723,6 +3723,93 @@
           "booked_text": {
             "title": "Booked Text"
           },
+          "extremes_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason"
+          },
+          "loss_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left"
+          },
+          "loss_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left Text"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
+          },
           "name": {
             "title": "Name"
           },
@@ -3760,6 +3847,30 @@
             },
             "title": "Positions",
             "type": "array"
+          },
+          "profit_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left"
+          },
+          "profit_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Text"
           },
           "state": {
             "enum": [
@@ -3838,7 +3949,16 @@
           "name",
           "underlying",
           "answered_at",
-          "orders"
+          "orders",
+          "profit_left",
+          "loss_left",
+          "max_profit",
+          "max_loss",
+          "profit_left_text",
+          "loss_left_text",
+          "max_profit_text",
+          "max_loss_text",
+          "extremes_reason"
         ],
         "title": "PaperBookOut",
         "type": "object"
