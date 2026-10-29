@@ -22,6 +22,7 @@ import {
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
+import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
   legs: { type: Array, required: true },
@@ -36,6 +37,8 @@ const props = defineProps({
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
   legUnit: { type: String, default: 'lots' }, // REQ-076 AC-5: 'lots' | 'quantity', chosen in the page's Settings popover
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
+  // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
+  paperFills: { type: Array, default: () => [] },
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -86,8 +89,10 @@ const strikeTitle = (l) => (isHedge(l) ? 'Hedge. Edit this leg' : 'Edit this leg
 // Revision 1 (REQ-077 AC-1, AC-6, AC-7): a second line only when something must stay visible
 // a leg without both a planned entry and its capture time keeps the not-connected label (REQ-077 AC-5)
 const unpriced = (l) => !(l.planned_entry != null && l.captured_at != null)
+// R-11: a paper fill (the book's average, still as loaded) is not a price the user typed; a typed price keeps its label and time
+const isPaperFill = (l) => props.paperFills.includes(paperFillKey(l))
 const needsSecondLine = (l, i) => l.included === false || l.typed === true || unpriced(l) || !!l.block || (props.errorParts && props.errorIndex === i)
-const entryLabel = (l) => (l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_LABEL)
+const entryLabel = (l) => (isPaperFill(l) ? PAPER_AVERAGE_LABEL : l.typed === true ? YOUR_PRICE_LABEL : PLANNED_ENTRY_LABEL)
 // REQ-077 AC-1: a captured price (not typed, not moved) shows its capture time as a small caption under the price
 const showsCaption = (l) => l.typed !== true && !moved(l) && !unpriced(l)
 // ADR-197: a captured (not typed) entry taken from the last close reads "Close, <the quote's own time>"
@@ -201,7 +206,7 @@ function setMultiplier(index) {
               <span v-if="moved(leg)" class="sr-only" data-testid="price-moved">{{ moved(leg) }}</span>
               <input
                 :value="priceText(leg, i)" type="text" inputmode="decimal" class="num h-full w-[8ch] min-w-0 flex-1 bg-transparent px-1 text-right text-ink"
-                :title="leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"
+                :title="isPaperFill(leg) ? PAPER_AVERAGE_LABEL : leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"
                 :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @input="onPriceInput(i, $event.target.value)" @keydown.enter="setPrice(i)"
               />
               <button
@@ -212,7 +217,8 @@ function setMultiplier(index) {
                 v-show="menuFor === i" role="menu" class="absolute right-0 top-full z-20 mt-1 w-56 max-[639px]:left-0 max-[639px]:right-auto whitespace-normal rounded border border-line bg-surface p-2 text-left shadow"
                 data-testid="price-menu-panel"
               >
-                <span v-if="leg.planned_entry != null && leg.captured_at != null" class="block text-ink-muted" data-testid="leg-captured">{{ capturedText(leg) }}</span>
+                <span v-if="isPaperFill(leg)" class="block text-ink-muted" data-testid="leg-captured">{{ PAPER_AVERAGE_LABEL }}</span>
+                <span v-else-if="leg.planned_entry != null && leg.captured_at != null" class="block text-ink-muted" data-testid="leg-captured">{{ capturedText(leg) }}</span>
                 <button type="button" role="menuitem" class="block text-accent" data-testid="price-set" @click="setPrice(i)">Set price</button>
                 <button type="button" role="menuitem" class="block text-accent" data-testid="reset-leg" @click="resetLeg(i)">Reset</button>
               </span>
@@ -230,7 +236,8 @@ function setMultiplier(index) {
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
-            <span v-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
+            <span v-if="isPaperFill(leg)" class="mr-2" data-testid="leg-paper-average">{{ PAPER_AVERAGE_LABEL }}</span>
+            <span v-else-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
             <template v-if="unpriced(leg)">
               <span class="mr-2" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
               <span v-if="leg.planned_entry == null && priceReasonText(leg.price_reason)" class="mr-2" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
