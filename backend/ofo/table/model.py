@@ -314,6 +314,12 @@ def _round_greek(value: Decimal) -> Decimal:
     return value.quantize(GREEK_STEP, rounding=ROUND_HALF_EVEN)
 
 
+# REQ-084 AC-4: the what-if target's Greeks use the table's own futures Greeks, signing and rounding (one rule each)
+FUTURES_PER_UNIT_GREEKS: Final = _FUTURES_PER_UNIT_GREEKS
+position_greeks = _position_greeks
+round_greek = _round_greek
+
+
 def _iv_cell(leg: LegInput) -> Cell:
     if leg.instrument is Instrument.FUT:
         return Cell(None, _dash(), CellKind.IV, reason=_r("fut_no_iv"))

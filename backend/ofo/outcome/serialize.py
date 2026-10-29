@@ -151,6 +151,24 @@ def _curve(v: Any) -> dict[str, Any]:
             "points": _points(v.levels, v.totals) if v.available and v.totals is not None else []}
 
 
+def _greeks_out(g: Any) -> dict[str, Any] | None:
+    return None if g is None else {n: _s(getattr(g, n)) for n in ("delta", "gamma", "theta", "vega")}
+
+
+def _target(t: Any) -> dict[str, Any]:
+    """REQ-084 AC-1/AC-2/AC-4: the what-if target's limits, the clamped inputs and every engine figure there."""
+    pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
+    greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
+                                            "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable}
+    return {"limits": {"min": _s(t.limits.min), "max": _s(t.limits.max), "step": _s(t.limits.step)},
+            "level": _s(t.level), "level_clamped": t.level_clamped, "at": t.at, "at_clamped": t.at_clamped,
+            "clamp": t.clamp, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,
+            "output_label": t.output_label, "pnl": pnl,
+            "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
+            "breakevens_reason": t.breakevens_reason,
+            "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks}
+
+
 def _view_head(v: Any) -> dict[str, Any]:
     return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
             "unavailable_reason": v.unavailable_reason}
@@ -257,4 +275,6 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         body["standard_deviation"] = _sd(out.standard_deviation)
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
+    if out.target is not None:  # REQ-084 AC-4: only when a target level or time was sent
+        body["target"] = _target(out.target)
     return body
