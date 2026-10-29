@@ -357,6 +357,17 @@ async function openFromBar(next, id, revision, name) {
   leaveDrafts()
   openSaved(next, id, revision, name)
 }
+// GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
+// enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
+async function onPaperAdded(id) {
+  try {
+    const read = await readPaperBook(api, id)
+    if (read.kind === 'paper') return enterDrafts(id, read)
+    openError.value = unreadableParts(null)
+  } catch (e) {
+    openError.value = unreadableParts(e)
+  }
+}
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
   if (!STRATEGY_ID.test(id)) return
@@ -709,7 +720,7 @@ const pricesStamp = computed(() => {
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" @confirm="confirmPending" @cancel="paperDialog = false" />
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
