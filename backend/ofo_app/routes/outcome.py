@@ -504,9 +504,10 @@ class NetPremiumOut(ApiModel):
 
 
 class FundsShareOut(ApiModel):
-    """ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never
-    estimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."""
-    funds: Money
+    """REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &
+    Margins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is
+    CHECKED with a positive margin needed; a side that is Unlimited has null percent/text."""
+    margin_needed: Money
     read_at: datetime.datetime
     max_profit_percent: Money | None
     max_loss_percent: Money | None

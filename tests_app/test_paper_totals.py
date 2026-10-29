@@ -16,6 +16,8 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo.charges import ChargeOrder, ChargeRates, charges_for_order
+from ofo.charges.round_trip import to_paise_up
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.model import expiry_model, implied_vol, iv_price, leg_decay_unrounded, model_inputs
@@ -25,6 +27,7 @@ from ofo.outcome import read_snapshot
 from ofo.scenario.spot import spot_reading
 from ofo_app import paper_store, paper_trigger_store
 from ofo_app import strategy_store as store
+from ofo_app.routes.outcome import load_charge_rates
 from sqlalchemy import text
 from test_paper_routes import AT, FIXTURE, MINUS
 from test_strategy_store import _client, _ids, _saved_in
@@ -33,6 +36,11 @@ from test_strategy_tracking import _RETIRE, IDS, _frame, _setup
 D = Decimal
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAISE = D("0.01")
+#: The Kite-reproduced rate set (tests/charges/test_rates_reproduce_kite.py, read 2026-10-15).
+RATES = ChargeRates(brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+                    transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+                    stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
+                    source_url="https://zerodha.com/charges (F&O options)")
 
 
 @pytest.fixture
@@ -193,22 +201,27 @@ async def test_no_iv_drops_only_the_decay_with_its_reason(db):
 async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
     app, stored, *_ = await _setup(db)
     await _strategy(db, stored, [(0, _fixture(50)["legs"][0])], AT, new=False)
+    app.dependency_overrides[load_charge_rates] = lambda: None  # charges are covered by the step 8a tests below
     body = await _list(app)
     assert body["strategies"][0]["state"] == "EXITED"
     zero = str(render_explanation("summary_paisa_signed", amount=D("0")))
     assert body["totals"] == {"booked": "2236.00", "booked_text": "+2,236.00", "unbooked": "0.00",
                               "unbooked_text": zero, "total": "2236.00", "total_text": "+2,236.00",
-                              "totals_reason": None, "decay": "0.00", "decay_text": zero, "decay_reason": None}
+                              "totals_reason": None, "decay": "0.00", "decay_text": zero, "decay_reason": None,
+                              "charges": None, "charges_text": None, "charges_reason": "rates_unavailable"}
 
 
 async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
     app, *_ = await _setup(db)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
     body = await _list(app)
     zero = str(render_explanation("summary_paisa_signed", amount=D("0")))
     assert body["strategies"] == []
     assert body["totals"] == {"booked": "0.00", "booked_text": zero, "unbooked": "0.00", "unbooked_text": zero,
                               "total": "0.00", "total_text": zero, "totals_reason": None, "decay": "0.00",
-                              "decay_text": zero, "decay_reason": None}
+                              "decay_text": zero, "decay_reason": None, "charges": "0.00",
+                              "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
+                              "charges_reason": None}
 
 
 # --- alerts carry the strategy name -----------------------------------------------------------------------------------
@@ -231,3 +244,48 @@ async def test_each_alert_row_names_its_strategy(db):
     assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [(stored.id, book["name"])]
     assert alerts[0]["strategy_name"]
 
+
+
+# --- GC-TP step 8a: Charges beside P&L (REQ-109 AC-10, ADR-207 (7), Sensibull 050) ------------------------------------
+
+async def _hand_charges(db, strategy_id: int) -> Decimal:
+    """Independent of the route: the calculator called order by order on the stored orders (all NIFTY options, none a
+    settle), summed exactly and rounded UP to the paisa once."""
+    orders = await paper_store.load(db, strategy_id)
+    exact = sum((charges_for_order(ChargeOrder("NSE_FO", o.order.side, o.order.quantity, o.order.price), RATES).total
+                 for o in orders), D(0))
+    return to_paise_up(exact)
+
+
+async def test_each_strategy_carries_its_charges_beside_an_unchanged_pnl_and_the_totals_sum_them(db):
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    before = await _list(app)  # rates as the database has them: the P&L figures must not depend on the charges
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    body = await _list(app)
+    by_id = {s["strategy_id"]: s for s in body["strategies"]}
+    hand = {sid[k]: await _hand_charges(db, sid[k]) for k in ("48", "50", "46")}
+    for strategy_id, charges in hand.items():
+        shown = by_id[strategy_id]
+        assert (D(shown["charges"]), shown["charges_reason"]) == (charges, None)
+        assert shown["charges_text"] == str(render_explanation("paper_charges", amount=charges))
+        old = next(s for s in before["strategies"] if s["strategy_id"] == strategy_id)
+        assert (shown["booked"], shown["unbooked"], shown["total"]) == (old["booked"], old["unbooked"], old["total"])
+    assert D(body["totals"]["charges"]) == sum(hand.values(), D(0))
+    assert body["totals"]["total"] == "-4433.00"  # charges are beside the total, never subtracted from it
+    async with _client(app) as c:
+        book = (await c.get(f"/paper/strategies/{sid['48']}")).json()
+    assert (D(book["charges"]), book["total"]) == (hand[sid["48"]], by_id[sid["48"]]["total"])
+
+
+async def test_no_rates_makes_every_charges_figure_absent_with_its_reason_never_zero(db):
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    app.dependency_overrides[load_charge_rates] = lambda: None
+    body = await _list(app)
+    for shown in body["strategies"]:
+        assert (shown["charges"], shown["charges_text"], shown["charges_reason"]) == (None, None, "rates_unavailable")
+    t = body["totals"]
+    assert (t["charges"], t["charges_text"], t["charges_reason"], t["total"]) == (
+        None, None, "rates_unavailable", "-4433.00")
+    async with _client(app) as c:
+        book = (await c.get(f"/paper/strategies/{sid['46']}")).json()
+    assert (book["charges"], book["charges_reason"]) == (None, "rates_unavailable")

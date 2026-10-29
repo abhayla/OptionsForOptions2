@@ -2374,10 +2374,10 @@
       },
       "FundsShareOut": {
         "additionalProperties": false,
-        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text.",
+        "description": "REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &\nMargins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is\nCHECKED with a positive margin needed; a side that is Unlimited has null percent/text.",
         "properties": {
-          "funds": {
-            "title": "Funds",
+          "margin_needed": {
+            "title": "Margin Needed",
             "type": "string"
           },
           "max_loss_percent": {
@@ -2427,7 +2427,7 @@
           }
         },
         "required": [
-          "funds",
+          "margin_needed",
           "read_at",
           "max_profit_percent",
           "max_loss_percent",
@@ -3795,6 +3795,41 @@
           "booked_text": {
             "title": "Booked Text"
           },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
           "extremes_reason": {
             "anyOf": [
               {
@@ -4410,6 +4445,41 @@
           "booked_text": {
             "title": "Booked Text"
           },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
           "name": {
             "title": "Name"
           },
@@ -4541,6 +4611,41 @@
           },
           "booked_text": {
             "title": "Booked Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
           },
           "decay": {
             "anyOf": [

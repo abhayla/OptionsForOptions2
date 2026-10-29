@@ -142,17 +142,17 @@ const props = defineProps({
   riskReward: { type: String, default: null },
   valueLabel: { type: String, default: null },
   valueReason: { type: String, default: null },
-  fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless Zerodha's funds were read)
+  fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless the margin needed was read)
   estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)
   // GC-TP step 3b2: Drafts Mode only - { profit, loss, reason }: the paper book's profit_left_text / loss_left_text as sent, or
   // the words for its extremes_reason; null outside Drafts Mode (the summary is then unchanged)
   left: { type: Object, default: null },
 })
-// REQ-081 AC-10: the funds the percentages are of and when Zerodha was read, words unchanged, now in the "?" of both
-// figures (ADR-202 (1)); absent with the percentages when funds could not be read. The funds figure has no server display
-// string, so its digits are only regrouped as text (groupMoney, never parsed).
+// REQ-081 AC-10 (basis changed by ADR-207 (8)): the margin needed the percentages are of and when Zerodha was read, in
+// the "?" of both figures (ADR-202 (1)); absent with the percentages when the margin needed could not be read. The figure
+// has no server display string, so its digits are only regrouped as text (groupMoney, never parsed).
 const fundsLine = computed(() => (props.fundsShare
-  ? `Percentages are of Rs ${groupMoney(props.fundsShare.funds)} available funds, read ${istTime(props.fundsShare.read_at)}`
+  ? `Percentages are of Rs ${groupMoney(props.fundsShare.margin_needed)} margin needed, read ${istTime(props.fundsShare.read_at)}`
   : null))
 // which of the server's two ratio strings is shown; never a calculation. A model the page owns (review 2), so a recompute
 // keeps the user's 1/x choice; without a v-model it is this card's own state.

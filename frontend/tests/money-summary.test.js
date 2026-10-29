@@ -46,7 +46,7 @@ async function hintLines(w, fig) {
   return lines;
 }
 const fundsLineOf = (share) =>
-  `Percentages are of Rs ${groupMoney(share.funds)} available funds, read ${istTime(share.read_at)}`;
+  `Percentages are of Rs ${groupMoney(share.margin_needed)} margin needed, read ${istTime(share.read_at)}`;
 const money = (o) => ({
   netPremium: o.summary.net_premium ?? null,
   charges: o.charges_breakdown ?? null,
@@ -103,11 +103,11 @@ describe("every state of every figure", () => {
     expect(t(m, "net-premium-text").text()).toBe(`${np.side === "get" ? "Get" : "Pay"} ${np.amount_display}`);
     expect(await hintLines(m, "net_premium")).toEqual([np.text]);
     const c = mount(SummaryCards, { props: cardProps(NO_RATES) });
-    expect(t(c, "max-profit-percent").text()).toBe("708% of funds");
-    expect((await hintLines(c, "max_profit"))[0]).toContain("Rs 671.50 available funds");
+    expect(t(c, "max-profit-percent").text()).toBe("67.3% of margin needed");
+    expect((await hintLines(c, "max_profit"))[0]).toContain("Rs 7,065.50 margin needed");
   });
 
-  it("no funds read: no percentages, no funds line, rupee figures stay", async () => {
+  it("no margin needed read: no percentages, no margin line, rupee figures stay", async () => {
     const c = mount(SummaryCards, {
       props: { ...cardProps(CONDOR), fundsShare: null },
     });
@@ -117,8 +117,8 @@ describe("every state of every figure", () => {
       expect((await hintLines(c, fig)).some((l) => l.includes("Percentages are of")), fig).toBe(false);
     expect(t(c, "max-profit").text()).toBe(CONDOR.summary.max_profit_display);
     expect(t(c, "max-loss").text()).toBe(CONDOR.summary.max_loss_display);
-    // the only "%" left is the breakeven's distance from spot (REQ-153), never a share of funds
-    expect(c.text()).not.toContain("of funds");
+    // the only "%" left is the breakeven's distance from spot (REQ-153), never a share of the margin needed
+    expect(c.text()).not.toContain("of margin needed");
     expect(c.text().replace(t(c, "breakevens").text(), "")).not.toContain("%");
   });
 
@@ -140,15 +140,15 @@ describe("every state of every figure", () => {
     expect(t(c, "max-loss-percent").text()).toBe(share.max_loss_text);
   });
 
-  it("below 1 percent: the server text is shown as sent", () => {
+  it("below 0.1 percent: the server text is shown as sent", () => {
     const share = {
       ...CONDOR.summary.funds_share,
-      max_loss_text: "less than 1% of funds",
+      max_loss_text: "less than 0.1% of margin needed",
     };
     const c = mount(SummaryCards, {
       props: { ...cardProps(CONDOR), fundsShare: share },
     });
-    expect(t(c, "max-loss-percent").text()).toBe("less than 1% of funds");
+    expect(t(c, "max-loss-percent").text()).toBe("less than 0.1% of margin needed");
   });
 
   it('net premium absent (futures leg): "-" plus the server reason, never 0.00', () => {
@@ -262,7 +262,7 @@ describe("a live update replaces the data", () => {
     expect(t(c, "reward-risk-reason").text()).toBe(
       `(${NO_RATES.summary.reward_risk_reason})`,
     );
-    expect(t(c, "max-profit-percent").text()).toBe("708% of funds");
+    expect(t(c, "max-profit-percent").text()).toBe("67.3% of margin needed");
     await c.setProps({ ...cardProps(NO_RATES), fundsShare: null });
     expect(t(c, "max-profit-percent").exists()).toBe(false);
     expect(t(c, "funds-line").exists()).toBe(false);

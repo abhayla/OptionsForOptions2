@@ -1199,8 +1199,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "It depends on where the index settles, so it is not in this total.", {"pct": Amount}),
     ExplanationTemplate("money_reward_risk_multi_expiry", "values_seen",
                         "no worst case for legs on different expiries"),
-    ExplanationTemplate("money_funds_percent", "values_seen", "{pct}% of funds", {"pct": Amount}),
-    ExplanationTemplate("money_funds_percent_small", "values_seen", "less than 1% of funds"),
+    # REQ-081 AC-9/AC-11 (ADR-207 (8)): the percent basis is the margin needed; the label is only "% of margin needed"
+    ExplanationTemplate("money_margin_percent", "values_seen", "{pct}% of margin needed", {"pct": Amount}),
+    ExplanationTemplate("money_margin_percent_small", "values_seen", "less than 0.1% of margin needed"),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
     ExplanationTemplate("summary_make_at_most_with_charges", "values_seen",
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
@@ -1229,6 +1230,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_whole_rupees", "values_seen", "{amount}", {"amount": WholeRupees}),
     ExplanationTemplate("summary_whole_rupees_signed", "values_seen", "{amount}", {"amount": SignedWholeRupees}),
     ExplanationTemplate("summary_paisa_signed", "values_seen", "{amount}", {"amount": SignedPaisa}),
+    # GC-TP step 8a (REQ-109 AC-10): a paper strategy's Charges, to the paisa, beside its P&L
+    ExplanationTemplate("paper_charges", "values_seen", "{amount}", {"amount": Rupees}),
     # GC-TP step 7a (ADR-207 (5), REQ-109 AC-8): the paper stop-loss texts - the stop order's reason and the alert
     ExplanationTemplate("paper_stop_reason_index", "what_triggered",
                         "Conditional exit: {underlying} crossed {direction} {level}",

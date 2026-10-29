@@ -28,6 +28,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.charges import ChargeRates
+from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
+from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_extremes
 from ofo.engine.legs import Instrument
@@ -50,7 +53,14 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    feed_scope,
+    get_answer_clock,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
@@ -118,6 +128,14 @@ class PaperOrderOut(ApiModel):
     kind: Literal["open", "add", "exit", "settle", "stop"]
 
 
+#: Why a Charges figure is absent: no charge rate set could be read, or an order the rate table cannot price (a futures
+#: order, an index without a known segment).
+ChargesReason = Literal["rates_unavailable", "not_priced"]
+RATES_UNAVAILABLE: ChargesReason = "rates_unavailable"
+NOT_PRICED: ChargesReason = "not_priced"
+PAPER_CHARGES = "paper_charges"
+
+
 class PaperFigures(ApiModel):
     state: BookState
     pause_reason: paper.PauseReason | None
@@ -128,6 +146,11 @@ class PaperFigures(ApiModel):
     unbooked_text: CatalogueText | None
     total_text: CatalogueText | None
     positions: list[PaperNetOut]
+    # GC-TP step 8a (REQ-109 AC-10, ADR-207 (7), Sensibull 050): the charges engine's sum over every paper order, BESIDE
+    # the P&L above (never subtracted from it); absent with ``charges_reason`` (never 0) when it cannot be computed
+    charges: Money | None = None
+    charges_text: CatalogueText | None = None
+    charges_reason: ChargesReason | None = None
 
 
 class PaperBookOut(PaperFigures):
@@ -172,6 +195,9 @@ class PaperTotalsOut(ApiModel):
     decay: Money | None  # REQ-145 AC-2: rupees to the next market open over every open contract, rounded once
     decay_text: CatalogueText | None
     decay_reason: TotalsReason | None
+    charges: Money | None = None  # GC-TP step 8a: every strategy's Charges summed; None (never partial) if one absent
+    charges_text: CatalogueText | None = None
+    charges_reason: ChargesReason | None = None
 
 
 class PaperListOut(ApiModel):
@@ -316,6 +342,20 @@ def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
     return rows
 
 
+def _charges(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
+             underlying: str, rates: ChargeRates | None) -> dict:
+    """The strategy's Charges (ofo.charges.paper_charges), shown rounded up to the paisa; absent with its reason."""
+    if rates is None:
+        return {"charges": None, "charges_text": None, "charges_reason": RATES_UNAVAILABLE}
+    fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
+                       _identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
+    try:
+        shown = paper_charges(fills, underlying, rates).shown
+    except ChargesNotComputable:
+        return {"charges": None, "charges_text": None, "charges_reason": NOT_PRICED}
+    return {"charges": shown, "charges_text": render_explanation(PAPER_CHARGES, amount=shown), "charges_reason": None}
+
+
 async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
     try:
         return await store.load(db, user_ref, strategy_id)
@@ -324,7 +364,8 @@ async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
 
 
 async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
-                ctx: MarketContext | None, feed: LiveFeed | None, answered_at: datetime.datetime) -> PaperBookOut:
+                ctx: MarketContext | None, feed: LiveFeed | None, answered_at: datetime.datetime,
+                rates: ChargeRates | None = None) -> PaperBookOut:
     ids = sorted({o.order.contract_id for o in orders})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     open_ids = _open_ids(orders)
@@ -335,7 +376,8 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
-    figures = _figures(orders, found, prices, connected) | _extremes(orders, found, prices)
+    figures = (_figures(orders, found, prices, connected) | _extremes(orders, found, prices)
+               | _charges(orders, found, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found)})
@@ -346,20 +388,22 @@ async def get_paper_strategy(strategy_id: int,  # noqa: PLR0913 - FastAPI depend
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
-                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> PaperBookOut:
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                             rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperBookOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     orders = await paper_store.load(db, strategy_id)
     if not orders:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
-    return await _book(db, stored, orders, ctx, feed, now())
+    return await _book(db, stored, orders, ctx, feed, now(), rates)
 
 
 @router.get("/paper/strategies", response_model=PaperListOut)
-async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
+async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - FastAPI dependencies
                                 user_ref: Annotated[str, Depends(current_user_ref)],
                                 ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                                 feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
-                                now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> PaperListOut:
+                                now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                                rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperListOut:
     """Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders
     query, one contract batch (two queries) and ONE market read per underlying for every open contract together."""
     books = await paper_store.load_all(db, user_ref)
@@ -382,6 +426,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
         figures = _figures(b.orders, found, _prices(_open_ids(b.orders), found, snapshot), connected)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
+        figures |= _charges(b.orders, found, b.underlying, rates)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "open_count": held, "position_count": len(figures["positions"])})
     return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
@@ -414,7 +459,17 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
     return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
             "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
             "totals_reason": None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE),
-            "decay": decay, "decay_text": _signed(decay), "decay_reason": None if missing is None else missing.reason}
+            "decay": decay, "decay_text": _signed(decay), "decay_reason": None if missing is None else missing.reason,
+            **_charges_total(strategies)}
+
+
+def _charges_total(strategies: Sequence[dict]) -> dict:
+    """The sum of every strategy's shown Charges; absent with the first absent strategy's reason (never partial)."""
+    total = charges_sum([s["charges"] for s in strategies])
+    reason = next((s["charges_reason"] for s in strategies if s["charges"] is None), None)
+    text_ = None if total is None else render_explanation(PAPER_CHARGES, amount=total)
+    return {"charges": _exact(total), "charges_text": text_,
+            "charges_reason": reason}
 
 
 def _check_price(price: Decimal) -> None:
@@ -428,7 +483,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
-                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> PaperBookOut:
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                             rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperBookOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     for order in body.orders:
         _check_price(order.price)
@@ -452,7 +508,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     except Exception:
         await db.rollback()
         raise
-    return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at)
+    return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------

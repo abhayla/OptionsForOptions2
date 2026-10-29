@@ -1655,14 +1655,6 @@
     "sha256": "4ba48cbd849357ef85f18aaba0be0df7f5cdc8587370d9fa45c70cde3e0df8c1",
     "reviewed": "pending owner read"
   },
-  "explanation:money_funds_percent": {
-    "sha256": "b85fa6b70f8d7bbebc97e4facb499e803042ad39069100510fccc63fb77a68c5",
-    "reviewed": "pending owner read"
-  },
-  "explanation:money_funds_percent_small": {
-    "sha256": "6f34368317c1c6530a035de7045c52391d1dfeba2e935ac782011a0de63076a2",
-    "reviewed": "pending owner read"
-  },
   "explanation:money_reward_risk_no_charges": {
     "sha256": "a4186caf26978f7f1d734da1e67e36e60b8b5cc7cf8b7fe2f3fd2ef3d6e20c7e",
     "reviewed": "pending owner read"
@@ -1878,5 +1870,17 @@
   "explanation:target_greeks_no_time_left": {
     "sha256": "c2953c2545362ec3e5eb1a08e70a8de30e731e2514362eec1bec00afa69abb7f",
     "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"
+  },
+  "explanation:money_margin_percent": {
+    "sha256": "d9d40274ba5ac47b0cd65f55764aaa72d6d3baca98642c5679a00dfc98e750c7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_margin_percent_small": {
+    "sha256": "9c41f178f7f0e8ed787bf01e5a754eb7a2163ddd23052b0f8f24054836a13956",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_charges": {
+    "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
+    "reviewed": "pending owner read"
   }
 }

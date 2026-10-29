@@ -1,9 +1,10 @@
 """REQ-081 (W-154) wiring: the money figures on the REST outcome and the live push, from the recorded Zerodha funds.
 
-Core: a CHECKED margin (the recorded funds 671.50) puts the funds share on the summary as strings, one door for the REST
+Core: a CHECKED margin (the recorded margin needed 7065.50; ADR-207 (8): never the funds 671.50) puts the share on the
+summary as strings, one door for the REST
 answer and the live push; every other margin state leaves it null while the rupee figures stay.
 Proof: test_route_carries_the_money_figures_as_strings (expected percentages are hand divisions of the replay's
-before-charges maximums 4754.75 and 8245.25 by 671.50).
+before-charges maximums 4754.75 and 8245.25 by the margin needed 7065.50).
 """
 from __future__ import annotations
 
@@ -40,7 +41,8 @@ from test_outcome_margin import (  # noqa: E402
 )
 from test_strategy_live_push import FakeChannel, held_replay, settle  # noqa: E402
 
-PROFIT_TEXT, LOSS_TEXT = "708% of funds", "1228% of funds"  # 4754.75 / 671.50 = 708.1 ; 8245.25 / 671.50 = 1227.9
+# REQ-081 AC-9 (ADR-207 (8)): 4754.75 / 7065.50 = 67.30% ; 8245.25 / 7065.50 = 116.70% (of the 671.50 funds: 708 / 1228)
+PROFIT_TEXT, LOSS_TEXT = "67.3% of margin needed", "116.7% of margin needed"
 MONEY_KEYS = ("net_premium", "funds_share", "reward_risk", "risk_reward", "time_value", "intrinsic_value")
 
 
@@ -68,7 +70,8 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     out = json.loads(resp.text, parse_float=lambda text: pytest.fail(f"float in the JSON: {text}"))
     s = out["summary"]
     share = s["funds_share"]
-    assert (share["funds"], share["max_profit_percent"], share["max_loss_percent"]) == ("671.50", "708", "1228")
+    assert (share["margin_needed"], share["max_profit_percent"], share["max_loss_percent"]) == (
+        "7065.50", "67.3", "116.7")
     assert (share["max_profit_text"], share["max_loss_text"]) == (PROFIT_TEXT, LOSS_TEXT)
     assert share["read_at"] is not None and CHECKED_AT.isoformat().replace("+00:00", "") in share["read_at"]
     # no rate table on this route: the charges cannot be priced, so there is no ratio (REQ-081 AC-4), never 0.58/1.73
@@ -134,7 +137,7 @@ async def test_a_failed_read_is_never_replaced_by_an_older_one_before_the_retry_
     mono.now += outcome_margin.RETRY_SECONDS  # the bound passed: Zerodha is read again, the share is that fresh read
     [fresh] = await _post(_body(replayed), replayed, src)
     share = fresh.json()["summary"]["funds_share"]
-    assert len(t.calls) > calls and share["funds"] == "671.50"
+    assert len(t.calls) > calls and share["margin_needed"] == "7065.50"
 
 
 async def test_live_push_and_rest_carry_identical_money_fields(monkeypatch) -> None:

@@ -361,9 +361,9 @@
       },
       "FundsShareOut": {
         "properties": {
-          "funds": {
+          "margin_needed": {
             "type": "string",
-            "title": "Funds"
+            "title": "Margin Needed"
           },
           "read_at": {
             "type": "string",
@@ -414,7 +414,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "funds",
+          "margin_needed",
           "read_at",
           "max_profit_percent",
           "max_loss_percent",
@@ -422,7 +422,7 @@
           "max_loss_text"
         ],
         "title": "FundsShareOut",
-        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."
+        "description": "REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &\nMargins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is\nCHECKED with a positive margin needed; a side that is Unlimited has null percent/text."
       },
       "GreeksOut": {
         "properties": {

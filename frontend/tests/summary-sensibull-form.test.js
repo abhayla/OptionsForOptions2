@@ -19,10 +19,10 @@ const S54 = {
   what_can_i_make: MAKE, what_can_i_lose: LOSE, where_do_i_start_losing: START,
   time_value: '-152.75', time_value_display: '\u2212153', intrinsic_value: '6942.00', intrinsic_value_display: '+6,942',
   value_label: 'value of the options, not P&L', reward_risk: '1.22',
-  funds_share: { funds: 'FUNDS', read_at: '2026-10-28T09:49:05.571132Z', max_profit_percent: 'P1', max_loss_percent: 'P2',
-    max_profit_text: 'P1% of funds', max_loss_text: 'P2% of funds' },
+  funds_share: { margin_needed: 'MARGIN', read_at: '2026-10-28T09:49:05.571132Z', max_profit_percent: 'P1', max_loss_percent: 'P2',
+    max_profit_text: 'P1% of margin needed', max_loss_text: 'P2% of margin needed' },
 }
-const FUNDS_LINE = 'Percentages are of Rs FUNDS available funds, read 28 Oct 2026, 15:19:05 IST'
+const FUNDS_LINE = 'Percentages are of Rs MARGIN margin needed, read 28 Oct 2026, 15:19:05 IST'
 
 const props = (s, extra = {}) => ({
   maxProfit: summaryFigure(s, 'profit'), maxLoss: summaryFigure(s, 'loss'),
@@ -45,8 +45,8 @@ describe('D-A21 / D-A29: Max Profit / Max Loss are the server display strings in
     const w = mount(SummaryCards, { props: props(S54) })
     expect(t(w, 'max-profit').text()).toBe('+7,152')
     expect(t(w, 'max-loss').text()).toBe('\u22125,848')
-    expect(t(w, 'max-profit-pill').text()).toBe('+7,152(P1% of funds)')
-    expect(t(w, 'max-loss-pill').text()).toBe('\u22125,848(P2% of funds)')
+    expect(t(w, 'max-profit-pill').text()).toBe('+7,152(P1% of margin needed)')
+    expect(t(w, 'max-loss-pill').text()).toBe('\u22125,848(P2% of margin needed)')
     expect(w.text()).not.toMatch(/7,152\.21|5,847\.79|₹7|₹5/)
   })
   it('funds unreadable: no percent, the figures stay (REQ-081 AC-10)', () => {

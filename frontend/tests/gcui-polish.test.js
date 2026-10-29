@@ -78,7 +78,7 @@ describe('D-A20: net premium and Charges on ONE line, Charges with an icon', () 
 })
 
 describe('D-A29: summary pills carry the percent inline at a small height', () => {
-  const props = { maxProfit: '+4,631', maxLoss: '−1,869', fundsShare: { funds: 'F', read_at: '2026-10-28T09:49:05Z', max_profit_text: '9% of funds', max_loss_text: '4% of funds' } }
+  const props = { maxProfit: '+4,631', maxLoss: '−1,869', fundsShare: { margin_needed: 'F', read_at: '2026-10-28T09:49:05Z', max_profit_text: '9.0% of margin needed', max_loss_text: '4.0% of margin needed' } }
   it('the percent is inside the pill element, the pill never wraps and is a fixed small height', () => {
     const w = mount(SummaryCards, { props })
     for (const [pill, fig, pct] of [['max-profit-pill', 'max-profit', 'max-profit-percent'], ['max-loss-pill', 'max-loss', 'max-loss-percent']]) {
@@ -90,7 +90,7 @@ describe('D-A29: summary pills carry the percent inline at a small height', () =
       expect(cls).toContain('whitespace-nowrap')
       expect(cls).not.toMatch(/(^| )flex-wrap( |$)/)
     }
-    expect(t(w, 'max-profit-percent').text()).toBe('9% of funds')
+    expect(t(w, 'max-profit-percent').text()).toBe('9.0% of margin needed')
   })
   it('D-PX item 2: both pills sit in ONE non-wrapping row container (side by side, as Sensibull sb-01)', () => {
     const w = mount(SummaryCards, { props })

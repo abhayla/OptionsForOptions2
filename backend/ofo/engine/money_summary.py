@@ -1,7 +1,8 @@
 """REQ-081 (W-154): the money arithmetic of the Builder summary, in the one engine (ADR-008). Exact Decimals, no float.
 
 Net premium (sells minus buys of entry price x quantity: the rule of the table's TOTAL Entry Value), intrinsic and time
-value, Reward/Risk and Risk/Reward, and a maximum as a percent of funds. Pure numbers only: which sentence or reason
+value, Reward/Risk and Risk/Reward, and a maximum as a percent of the margin needed (ADR-207 (8)). Pure numbers
+only: which sentence or reason
 goes with a figure is shaped in ``ofo.outcome.money``.
 """
 from __future__ import annotations
@@ -15,7 +16,7 @@ from ofo.engine.legs import Action, Instrument
 from ofo.money import PAISE
 
 ZERO_MONEY: Final = Decimal(0).quantize(PAISE)
-_WHOLE: Final = Decimal(1)
+_TENTH: Final = Decimal("0.1")
 _HUNDRED: Final = Decimal(100)
 _PRECISION: Final = 50
 
@@ -94,11 +95,12 @@ def reward_risk_ratios(max_profit: Decimal, max_loss: Decimal) -> tuple[Decimal,
     return _ratio(max_profit, max_loss), _ratio(max_loss, max_profit)
 
 
-def percent_of_funds(amount: Decimal, funds: Decimal) -> Decimal:
-    """The exact percent ``amount`` is of ``funds`` (funds positive)."""
+def percent_of(amount: Decimal, base: Decimal) -> Decimal:
+    """The exact percent ``amount`` is of ``base`` (base positive; the summary's base is the margin needed)."""
     with localcontext(prec=_PRECISION):
-        return amount * _HUNDRED / funds
+        return amount * _HUNDRED / base
 
 
-def whole_percent(raw: Decimal) -> Decimal:
-    return raw.quantize(_WHOLE, ROUND_HALF_UP)
+def one_decimal_percent(raw: Decimal) -> Decimal:
+    """A percent to one decimal, half-up (REQ-081 AC-9: "7.0% of margin needed")."""
+    return raw.quantize(_TENTH, ROUND_HALF_UP)
