@@ -1011,3 +1011,11 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (0.35%) away" on a fresh iron condor with spot 22,821 - where a 1-step-OTM short strike always sits. The threshold is
   fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **measured once, live;
   deferred (outside ADR-207's eight parts)**.
+
+## F-72 - Kite's day candle for an index carries the exchange's official closing value (SENSEX 28 Oct: 73,246.03 on both)
+- Measured 2026-10-29 ~14:10 IST: `scripts/checks/index_close.py SENSEX 2026-10-28` (one allow-listed read-only GET
+  `/instruments/historical/265/day` through `ofo_app/kite_history.py`, GC-TP step 5a) printed `close 73246.03`;
+  bseindia.com SENSEX page (logged out, same minute) showed "Previous Close: 73,246.03". Equal to the paisa. The
+  minute candle is not used: an index's official close is computed by the exchange, not the last minute's price. NIFTY
+  28 Oct read `22698.85` (not yet compared with NSE's published value). Basis for REQ-109 AC-7 (settlement price) and
+  ADR-207 (6). Status: **measured once, live, SENSEX; today's expiry close (29 Oct) to be compared after 15:30**.
