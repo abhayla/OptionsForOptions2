@@ -143,6 +143,7 @@ async def test_two_monitors_seeing_the_same_tick_fire_once(db):
     market.tick(keys[1], "12.50")
     market.tick(INDEX, "22800.00")
     assert await first.step() + await second.step() == 1
+    assert first.failures + second.failures == 0  # the loser finds no armed row; it never reaches the DB guard
     assert len(await _stops(db, stored.id)) == OPEN_LEGS
 
 
