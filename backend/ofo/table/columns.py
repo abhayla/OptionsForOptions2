@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """The locked column order for the single strategy table (REQ-035 AC-2, AC-7).
 
 Column order (AC-2, locked): Leg, Action, Instrument, Expiry, Strike, Quantity, Entry Price, LTP, Entry Value,

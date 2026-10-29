@@ -442,7 +442,7 @@ async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - 
         else:
             view = None
         figures = _figures(r.tracking, legs, view, reasons)
-        texts = {f"{k}_text": None if figures[k] is None else render_explanation("summary_paisa_signed", amount=figures[k])
+        texts = {f"{k}_text": None if figures[k] is None else render_explanation("summary_paisa_signed", amount=figures[k])  # noqa: E501 - long line kept whole
                  for k in ("total", "booked", "unbooked")}
         out.append({"strategy_id": r.tracking.strategy_id, "name": sf.shown_name(r.name), "underlying": r.underlying,
                     "started_at": r.tracking.started_at} | figures | texts)

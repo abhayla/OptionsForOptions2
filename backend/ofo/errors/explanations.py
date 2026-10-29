@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415
 """Explanation templates: platform wording that is NOT an error (W-024 round 9 part 2).
 
 Decision (orchestrator as product owner, recorded in work/W-024.md): the timeline "why did this trigger?" text is not

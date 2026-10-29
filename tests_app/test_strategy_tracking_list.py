@@ -105,7 +105,7 @@ async def test_list_all_live_gives_total_booked_unbooked_and_leg_fields(db):
 
 
 async def test_list_sends_each_figure_as_server_text_and_a_true_zero_has_no_sign(db):
-    """Review fix 4 (REQ-109 AC-2, REQ-152 AC-4): the money text comes from the server; booked 0.00 is "0.00", never "+0.00"."""
+    """Review fix 4 (REQ-109 AC-2, REQ-152 AC-4): the money text comes from the server; booked 0.00 is "0.00", never "+0.00"."""  # noqa: E501 - long line kept whole
     app, *_ = await _tracked(db)
     async with _client(app) as c:
         first = (await c.get("/tracking")).json()["strategies"][0]
@@ -113,7 +113,7 @@ async def test_list_sends_each_figure_as_server_text_and_a_true_zero_has_no_sign
 
 
 def test_signed_paisa_text_of_zero_and_negative_zero_is_unsigned():
-    from ofo.errors.explanations import render_explanation
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415 - late import as its neighbours
     for zero in (Decimal("0.00"), Decimal("-0.00"), Decimal("0.004"), Decimal("-0.004")):
         assert render_explanation("summary_paisa_signed", amount=zero) == "0.00"
     assert render_explanation("summary_paisa_signed", amount=Decimal("195")) == "+195.00"

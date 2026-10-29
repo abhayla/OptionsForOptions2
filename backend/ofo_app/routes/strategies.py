@@ -610,7 +610,7 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         # connection per request (ADR-048); a store error answers no_session, never a 500.
         reader = await opener(db)
         stored = await store.load(db, user_ref, strategy_id)
-        # Issue #500: a stored contract id reaches a ListedContract only through tracked_contracts.resolve, the one door.
+        # Issue #500: a stored contract id reaches a ListedContract only through tracked_contracts.resolve, the one door.  # noqa: E501 - long line kept whole
         answers = await tracked_contracts.resolve(db, stored.saved.contract_ids)
         if any(a.stored is None for a in answers):
             raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)

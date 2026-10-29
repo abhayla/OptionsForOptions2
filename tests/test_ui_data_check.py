@@ -866,7 +866,7 @@ def test_s4_sd_rule_is_the_formula_written_out():
     assert u.sd_horizon(dt.datetime(2026, 10, 13, 15, 0, tzinfo=u.IST), ["2026-10-13"]) == 1
 
 
-@pytest.mark.parametrize(("value", "text"), [(Decimal("-4056"), "\N{MINUS SIGN}₹4,056.00"), (Decimal("8944"), "₹8,944.00"),
+@pytest.mark.parametrize(("value", "text"), [(Decimal("-4056"), "\N{MINUS SIGN}₹4,056.00"), (Decimal("8944"), "₹8,944.00"),  # noqa: E501 - long line kept whole
                                              (Decimal("0"), "₹0.00"), (Decimal("123456.785"), "₹1,23,456.79")])
 def test_s4_rupee_cell_rule(value, text):
     assert u.display_rupees(value) == text
@@ -923,7 +923,7 @@ def paper_reply():
             base | {"action": "BUY", "entry_price": "193.70", "current_price": "271.45", "pnl": "5053.75",
                     "pnl_text": "+5,053.75"},
             base | {"action": "SELL", "entry_price": "106.35", "current_price": "156.90", "pnl": "-3285.75",
-                    "pnl_text": "−3,285.75"},
+                    "pnl_text": "−3,285.75"},  # noqa: RUF001 - user text
         ],
     }
 
@@ -949,7 +949,7 @@ def test_paper_leg_pnl_missing_never_matches():
 
 def test_paper_leg_pnl_exited_leg_is_valued_at_its_exit_price_and_must_say_booked():
     reply = paper_reply()
-    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_text": "+5,609.50", "pnl_kind": "booked", "current_price": None}
+    reply["legs"][0] |= {"exit_price": "280.00", "pnl": "5609.50", "pnl_text": "+5,609.50", "pnl_kind": "booked", "current_price": None}  # noqa: E501 - long line kept whole
     reply |= {"paper_pnl": "2323.75", "booked": "5609.50", "unbooked": "-3285.75"}
     assert u.check_paper(reply, []).counts()[u.MISMATCH] == 0
     reply["legs"][0]["pnl_kind"] = "unbooked"
@@ -957,7 +957,7 @@ def test_paper_leg_pnl_exited_leg_is_valued_at_its_exit_price_and_must_say_booke
 
 
 @pytest.mark.parametrize(("leg_no", "wrong"), [
-    (1, "+5,054"), (1, "+5,053.76"), (1, "5,053.75"), (2, "-3,285.75"), (2, "−3,285"), (2, "+3,285.75"),
+    (1, "+5,054"), (1, "+5,053.76"), (1, "5,053.75"), (2, "-3,285.75"), (2, "−3,285"), (2, "+3,285.75"),  # noqa: RUF001 - user text
 ])
 def test_paper_leg_pnl_text_must_equal_the_figure_to_the_paisa(leg_no, wrong):
     reply = paper_reply()

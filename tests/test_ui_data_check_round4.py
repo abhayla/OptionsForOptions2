@@ -181,7 +181,7 @@ def test_total_per_unit_greeks_match_a_real_reply_and_flag_tampered_or_partial_o
 
     def run(r):
         rep = u.Report("t")
-        assert u.check_total_per_unit_greeks(rep, "estimated_now", r) == 5
+        assert u.check_total_per_unit_greeks(rep, "estimated_now", r) == 5  # noqa: PLR2004 - literal is the pinned value
         return rep
 
     good = run(reply)

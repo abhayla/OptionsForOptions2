@@ -67,7 +67,7 @@ def test_core_both_curves_on_the_same_levels_equal_each_single_view_reply(provid
 
 def test_estimated_now_unavailable_keeps_at_expiry_and_says_why(provider, monkeypatch):
     """A leg without IV: the Estimated Now list is empty with the engine's reason; At Expiry is unchanged."""
-    import ofo.outcome.service as service
+    import ofo.outcome.service as service  # noqa: PLC0415, PLR0402 - late import as its neighbours
 
     real = service.model_inputs
 

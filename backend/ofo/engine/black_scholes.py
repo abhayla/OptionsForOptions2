@@ -1,3 +1,4 @@
+# ruff: noqa: PLR0913
 """Black-Scholes pricing, implied volatility and Greeks for European index options (REQ-032 AC-3).
 
 Textbook formulas (Hull, *Options, Futures and Other Derivatives*: Black-Scholes-Merton and the Greek letters),

@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLR2004
 """The outcome as plain JSON-ready data (W-063 step 3): every money/points/IV value is the Decimal's own string, never a
 float (ADR-008); times are ISO-8601 with their offset; enums are their values. Standard library only."""
 from __future__ import annotations

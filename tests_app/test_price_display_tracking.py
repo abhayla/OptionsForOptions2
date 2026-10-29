@@ -15,7 +15,7 @@ NOW = datetime.datetime(2026, 10, 29, 6, 0, tzinfo=datetime.UTC)
 
 
 def test_the_tracking_leg_carries_two_decimal_price_texts() -> None:
-    leg = paper.TrackedLeg(instrument_id="NSE_FO:1", action=Action.BUY, instrument=Instrument.CE, strike=Decimal("23000"),
+    leg = paper.TrackedLeg(instrument_id="NSE_FO:1", action=Action.BUY, instrument=Instrument.CE, strike=Decimal("23000"),  # noqa: E501 - long line kept whole
                            expiry=datetime.date(2026, 11, 3), quantity=65, entry_price=Decimal("187.35"), price_at=NOW)
     tracking = SimpleNamespace(exits=[], exit_prices={})
     view = SimpleNamespace(legs=[SimpleNamespace(price=Decimal("186.1"), state="live", at=NOW)], leg_pnls=[None],

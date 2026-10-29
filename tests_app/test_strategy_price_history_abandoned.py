@@ -21,7 +21,7 @@ def _clean():
     sph._in_flight.clear()
 
 
-async def _request(fetch, ids, timeout):
+async def _request(fetch, ids, timeout):  # noqa: ASYNC109 - test seam
     return await asyncio.wait_for(asyncio.gather(*(sph._bars(fetch, i, START, END, lambda: 0.0) for i in ids)), timeout)
 
 
@@ -51,7 +51,7 @@ def test_queued_fetches_of_a_request_that_gave_up_are_never_sent():
         seen_b: list[str] = []
         got = await _request(lambda i, s, e: seen_b.append(i) or [], ["NFO:90", "NFO:91", "NFO:92"], 5)
         assert got == [[], [], []]
-        assert len(seen_b) == 3
+        assert len(seen_b) == 3  # noqa: PLR2004 - literal is the pinned value
         assert len(calls) == sph.MAX_CONCURRENT_FETCHES  # B's calls went to its own fake, A's stayed at two
 
     asyncio.run(scenario())
