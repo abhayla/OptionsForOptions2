@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import datetime
 import gzip
-import inspect
 import os
 import pathlib
 import time
+import types
 from decimal import Decimal
 from typing import Callable, Optional
 
@@ -137,7 +137,7 @@ class _ReplayFanOut(FanOut):
         # input for the not-live stand-in. The no-listener holds (D-C33 forward strikes, REQ-083 AC-5 OI-bar contracts,
         # the chain / index / picker leases: module-level no-op functions) are not legs: releasing them must never make
         # another strategy's REST answer not live (GC-UI land fix, CI run 40806301948: 83 OI contracts released).
-        if inspect.ismethod(listener):
+        if isinstance(listener, types.MethodType):  # bound _on_quote = a strategy socket
             self._inputs.add(handle)
             self._streaming.hold(self._subs[handle].ids)
         return handle

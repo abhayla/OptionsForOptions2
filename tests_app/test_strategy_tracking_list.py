@@ -383,7 +383,7 @@ async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_alre
     at = datetime.datetime(2026, 10, 8, 3, 50, tzinfo=datetime.UTC)
     contract_ids: list[int] = []
     try:
-        async with app_engine.connect() as setup:  # noqa: SIM117 - the transaction needs the connection
+        async with app_engine.connect() as setup:
             before = {r[0] for r in await setup.execute(text("SELECT id FROM public.catalogue_contracts"))}
             await setup.rollback()  # end the read's autobegun transaction; the seed commits in its own
             async with setup.begin():
