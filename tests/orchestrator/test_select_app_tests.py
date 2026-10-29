@@ -327,3 +327,24 @@ def test_a_deletion_still_reaches_a_route_file_that_imports_the_module() -> None
     route = "backend/ofo_app/routes/strategies.py"
     keys = sel.keys_for([DELETED], _deletion(DELETED), ROOT, snap, [route])
     assert "/strategies" in {k.name for k in keys}  # strategies.py imports strategy_store (PR #241 snapshot)
+
+
+def test_a_deleted_migration_selects_the_fixed_migration_set_not_nothing() -> None:
+    """Review MAJOR (GC-CLEAN): a deleted migration keyed on its module name selected 0 files (fail open)."""
+    names = {pathlib.PurePosixPath(p).name for p in sel.select([MIG], _deletion(MIG), TESTS_APP, snap, [])}
+    assert "test_strategy_shape_matrix.py" in names and "test_alembic_migration_guard.py" in names
+
+
+def test_a_deleted_route_file_fails_closed() -> None:
+    """Review MINOR: a deleted route loses its route-path keys; with no source to read them from, refuse."""
+    route = "backend/ofo_app/routes/outcome.py"
+    with pytest.raises(sel.DiffNotParsed):
+        sel.keys_for([route], _deletion(route), ROOT, snap, [])
+
+
+def test_a_path_deleted_then_added_in_one_diff_fails_closed() -> None:
+    """Review MINOR: delete + add of the same path (a type change) must not read as a plain deletion."""
+    add = (f"diff --git a/{DELETED} b/{DELETED}\nnew file mode 100644\n--- /dev/null\n+++ b/{DELETED}\n"
+           "@@ -0,0 +1,1 @@\n+y = 1\n")
+    with pytest.raises(sel.DiffNotParsed):
+        sel.parse_diff(_deletion(DELETED) + add)

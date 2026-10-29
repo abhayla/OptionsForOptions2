@@ -115,6 +115,8 @@ def parse_diff(diff_text: str) -> dict:
             start = 0
             m = re.match(r"diff --git a/(.*) b/(.*)$", line)
             path = m.group(2) if m else None
+            if path is not None and path in out:  # the same path twice (delete + add): never guess which wins
+                raise DiffNotParsed(f"{path} appears twice in the diff")
             if path is not None:
                 out.setdefault(path, None)
         elif path is not None and line.startswith("deleted file mode"):
@@ -246,8 +248,13 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
             raise DiffNotParsed(f"{f} changed but is absent from the diff")
         if parsed[f] is None:
             raise DiffNotParsed(f"{f} has no hunk in the diff (rename or mode change only)")
-        if parsed[f] == DELETED:  # no source left to read: key on the module name, so a test still importing it runs
-            keys += _module_and_importers(f)
+        if parsed[f] == DELETED:  # no source left to read
+            if f.startswith(MIGRATIONS_DIR):
+                keys.append(Key("migration", "migration"))  # the fixed set, as for a changed migration
+            elif f.startswith(ROUTES_DIR):
+                raise DiffNotParsed(f"{f} deleted: its route paths cannot be read back")
+            else:
+                keys += _module_and_importers(f)  # key on the module name: a test still importing it runs
             continue
         try:
             source = read_source(f)
