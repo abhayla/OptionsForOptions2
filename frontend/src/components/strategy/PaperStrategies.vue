@@ -69,6 +69,7 @@
             <!-- D-C50: the action column. No Add Orders and no Convert To Real Trades (ADR-165). -->
             <div class="flex w-36 shrink-0 flex-col gap-2" data-testid="paper-actions">
               <RouterLink :to="{ path: '/strategy/builder', query: { strategy: String(g.id) } }" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
+              <button v-if="openLegs(g).length" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
               <button v-if="openLegs(g).length" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
             </div>
           </div>
@@ -78,6 +79,7 @@
             <button type="button" class="rounded border border-line px-3 py-1" data-testid="exit-cancel" :disabled="busy" @click="cancelExit(g.id)">Cancel</button>
           </div>
           <p v-if="exitErrors[g.id]" class="mt-2 text-red-700" role="alert" data-testid="paper-exit-error">{{ exitErrors[g.id] }}</p>
+          <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" />
         </template>
       </div>
     </template>
@@ -88,6 +90,7 @@
 import { onMounted, ref } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PaperStops from '@/components/strategy/PaperStops.vue'
 import { readTrackingItem } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { expiryWithDays, instrumentText, strikeLabel } from '@/lib/displayFormat'
@@ -112,6 +115,9 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(Stri
 const instrumentCell = (l) => instrumentText({ expiry: l.expiry, strike: l.strike, instrument: l.instrument }, null)
 const qtyText = (l) => (l.action === 'Sell' ? `-${l.quantity}` : `${l.quantity}`)
 const legName = (l) => `${l.action} ${strikeLabel(l.strike)} ${l.instrument} ${expiryText(l.expiry)}`
+// GC-TP step 7b: which strategy's Stops panel is open; a leg stop is offered for each open leg that has a contract id
+const stopsOpen = ref({})
+const stopLegs = (g) => g.legs.filter((l) => !l.exited && l.contractId !== null).map((l) => ({ index: l.index, label: `${l.action} ${strikeLabel(l.strike)} ${l.instrument} ${expiryText(l.expiry)}`, contractId: l.contractId }))
 const ticks = ref({})
 const isTicked = (id, i) => !!ticks.value[id]?.includes(i)
 function tick(id, i, on) {
