@@ -214,7 +214,7 @@ def _offenders(source: str, needles: set[str]) -> list[str]:
 # The 21 templates of the first catalogue (ids, current names and the names they had before RD-095) are matched as
 # substrings, as before. The 20 reference shapes of RD-090 have short everyday words as ids ("strip" is `str.strip`,
 # "strap", "batman"), so a substring scan would flag ordinary code: those are matched as whole word sequences
-# (`buy_call`, `Sell Put (ATM)`), and the single-word ones are covered by the `.id`/`.name` comparison rule only.
+# (`buy_call`, `Sell Put`), and the single-word ones are covered by the `.id`/`.name` comparison rule only.
 _FIRST_IDS = {
     "bull_call_spread", "bull_put_spread", "synthetic_long", "bear_put_spread", "bear_call_spread", "synthetic_short",
     "iron_condor", "iron_butterfly", "short_straddle", "short_strangle", "jade_lizard", "long_straddle",

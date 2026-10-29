@@ -64,6 +64,15 @@ def _legs():
             for i, a, k, s in CONDOR]
 
 
+def _entry(snapshot) -> tuple:
+    """The condor entered at each leg's live price in ``snapshot`` (paper entries are typed orders since GC-TP step 2;
+    this only builds the legs the view tests need)."""
+    prices = [paper.leg_price(snapshot, leg.instrument_id) for leg in _legs()]
+    assert all(paper.is_live(p) for p in prices), prices
+    return tuple(dataclasses.replace(leg, entry_price=p.price, price_at=p.at)
+                 for leg, p in zip(_legs(), prices, strict=True))
+
+
 def test_ac1_ac2_core_proof_entry_paper_pnl_and_one_detection_on_the_replay(replayed):
     """AC-1/AC-2 core proof. Entry = the recorded LTPs (39.15, 12.95, 82.75, 35.80). Then the feed moves the legs to
     45.15, 14.95, 70.75, 30.80. Paper P&L by hand: SELL CE (39.15 - 45.15) x 65 = -390.00; BUY CE (14.95 - 12.95) x 65
@@ -73,7 +82,7 @@ def test_ac1_ac2_core_proof_entry_paper_pnl_and_one_detection_on_the_replay(repl
     0.5913... -> 0.59% (<= 0.6, fires). Others: 22800 -> 266.75 (1.18%), 22326.85 -> 206.40 (0.92%), 22873.15 ->
     339.90 (1.51%): none fire. At the 0.5 default nothing fires (0.5913 > 0.5)."""
     provider, last = replayed
-    entry = paper.capture_entry(_snapshot(provider, last), _legs())
+    entry = _entry(_snapshot(provider, last))
     assert [e.entry_price for e in entry] == [D("39.15"), D("12.95"), D("82.75"), D("35.80")]
     assert all(e.price_at is not None for e in entry)
     for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
@@ -97,28 +106,31 @@ def _with_quote(snapshot, iid, **change):
 @pytest.mark.parametrize(("change", "state"), [({"health": DataHealth.STALE}, "stale"),
                                                ({"health": DataHealth.UNAVAILABLE}, "stale"),
                                                ({"ltp": None}, "missing"), ({"ltp": D("0")}, "missing")])
-def test_ac5_a_stale_or_missing_leg_refuses_the_entry_and_pauses_the_view(replayed, change, state):
-    """AC-5: a leg whose quote is not AVAILABLE (stale) or has no positive LTP (missing) refuses the paper entry (no
+def test_ac5_a_stale_or_missing_leg_refuses_the_exit_and_pauses_the_view(replayed, change, state):
+    """AC-5: a leg whose quote is not AVAILABLE (stale) or has no positive LTP (missing) refuses a paper exit (no
     guessed price) and pauses paper P&L with the quote's time as "as of"."""
     provider, last = replayed
+    entry = _entry(_snapshot(provider, last))
     snap = _with_quote(_snapshot(provider, last), IDS[0], **change)
     with pytest.raises(paper.PricesNotLive) as refused:
-        paper.capture_entry(snap, _legs())
+        paper.exit_prices_now(snap, entry)
     assert [(p.instrument_id, p.state) for p in refused.value.prices] == [(IDS[0], state)]
-    entry = paper.capture_entry(_snapshot(provider, last), _legs())
     view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
     assert view.paused is True and view.paper_pnl is None
     assert view.as_of == snap.legs[IDS[0]].quote.timestamp
 
 
 def test_ac1_a_leg_with_no_quote_at_all_is_missing(replayed):
-    """AC-1: a contract the feed holds no quote for is 'missing'; the entry is refused."""
+    """AC-1: a contract the feed holds no quote for is 'missing'; an exit of it is refused."""
     provider, last = replayed
     snap = _snapshot(provider, last)
+    entry = _entry(snap)
     legs = dict(snap.legs)
     legs[IDS[1]] = dataclasses.replace(legs[IDS[1]], quote=None)
+    no_quote = dataclasses.replace(snap, legs=legs)
+    assert paper.leg_price(no_quote, IDS[1]).state == "missing"
     with pytest.raises(paper.PricesNotLive):
-        paper.capture_entry(dataclasses.replace(snap, legs=legs), _legs())
+        paper.exit_prices_now(no_quote, entry[1:2])
 
 
 @pytest.mark.parametrize("spot_change", [{"health": DataHealth.STALE}, {"ltp": None}])
@@ -126,7 +138,7 @@ def test_ac2_a_stale_or_missing_index_computes_no_detection(replayed, spot_chang
     """AC-2: no detection is computed from an index price that is not live (the view's index state says why)."""
     provider, last = replayed
     snap = _snapshot(provider, last)
-    entry = paper.capture_entry(snap, _legs())
+    entry = _entry(snap)
     bad = dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, **spot_change))
     view = paper.tracking_view(bad, entry, D("100"), ALL_LIVE)
     assert view.detections == () and view.index.state != "live"
@@ -151,3 +163,49 @@ def test_ac2_paper_pnl_refuses_a_missing_current_price():
     leg = paper.TrackedLeg("NSE_FO:1", Action.SELL, Instrument.CE, D("24400"), EXPIRY, 65, D("100"), at)
     with pytest.raises(ValueError):
         paper.paper_pnl([leg, leg], [D("90")])
+
+
+def test_ac5_a_stale_quote_that_still_carries_a_price_pauses_and_refuses_on_its_state(replayed, monkeypatch):
+    """AC-5 (GC-BP step 8 review M1): the decision is the price's STATE, never "a price is present". A stale answer
+    that keeps its last price (45.15 here) must pause paper P&L (no total, no unbooked, reason prices_not_live) and
+    refuse an exit, exactly as a stale answer without one."""
+    provider, last = replayed
+    entry = _entry(_snapshot(provider, last))
+    real = paper.leg_price
+
+    def stale_with_price(snapshot, instrument_id):
+        found = real(snapshot, instrument_id)
+        if instrument_id != IDS[0]:
+            return found
+        return paper.Price(instrument_id, "stale", D("45.15"), found.at)
+
+    monkeypatch.setattr(paper, "leg_price", stale_with_price)
+    snap = _snapshot(provider, last)
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert (view.paused, view.pause_reason, view.paper_pnl, view.unbooked, view.booked) == (
+        True, "prices_not_live", None, None, D("0"))
+    assert view.legs[0].state == "stale"
+    with pytest.raises(paper.PricesNotLive):
+        paper.exit_prices_now(snap, entry[:1])
+    exited = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {1: D("14.95")})  # open leg 0 still pauses
+    assert (exited.paused, exited.paper_pnl, exited.unbooked) == (True, None, None)
+    # GC-UI D-B48: paused = no open leg's figure (never 0); the exited leg keeps its booked figure
+    assert exited.leg_pnls == (None, (D("14.95") - entry[1].entry_price) * 65, None, None)
+
+
+def test_d_b48_view_leg_pnls_live_exited_at_exit_price_and_they_add_to_the_total(replayed):
+    """Feed at 45.15 / 14.95 / 70.75 / 30.80 from 39.15 / 12.95 / 82.75 / 35.80, 65 a leg: -390.00, +130.00, +780.00,
+    -325.00 = +195.00. SELL 22800 CE (leg 0) exited at 40.00 books (39.15 - 40.00) x 65 = -55.25, not the -390.00 it
+    would be at the current 45.15; total -55.25 + 130 + 780 - 325 = +529.75."""
+    provider, last = replayed  # module-scoped: other tests move its prices, so set them here and state the entries
+    for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
+        provider.on_frame(_frame(provider, iid, rupees), last)
+    snap = _snapshot(provider, last)
+    entry = [dataclasses.replace(leg, entry_price=D(price))
+             for leg, price in zip(_legs(), ["39.15", "12.95", "82.75", "35.80"], strict=True)]
+    live = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert live.leg_pnls == (D("-390.00"), D("130.00"), D("780.00"), D("-325.00"))
+    assert sum(live.leg_pnls) == live.paper_pnl == D("195.00")
+    mixed = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {0: D("40.00")})
+    assert mixed.leg_pnls == (D("-55.25"), D("130.00"), D("780.00"), D("-325.00"))
+    assert sum(mixed.leg_pnls) == mixed.paper_pnl == D("529.75")

@@ -82,11 +82,19 @@ PR241_SELECTION = {
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
+    "tests_app/test_drawer_after_hours.py",  # GC-BM F-18: imports ofo_app.catalogue_picker, calls leg_picker answers
+    "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
+    "tests_app/test_strategy_tracking_list.py",  # GC-BP: calls /strategies/{id}/tracking routes (same reason as test_strategy_tracking)  # noqa: E501 - long line kept whole
+    "tests_app/test_strategy_price_history_route.py",  # GC-UI step 5: imports ofo_app.routes.strategies (key measured)
     # backend/ofo/ modules are in scope since the run-40201288521 fix; the diff changes ofo.errors.explanations, which
     # these import (directly or through a route that imports it):
     "tests_app/test_api_models.py", "tests_app/test_identifier_and_slots.py", "tests_app/test_outcome_catalogue.py",
     "tests_app/test_outcome_margin.py", "tests_app/test_outcome_split_loss.py",
     "tests_app/test_strategy_templates_route.py",
+    # GC-TP paper flow + target block: each names ofo.errors.explanations (5 also call /strategies routes)
+    "tests_app/test_outcome_target_badge.py", "tests_app/test_outcome_target_booked.py",
+    "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
+    "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
 }
 
 
@@ -287,3 +295,56 @@ def test_a_comment_only_edit_in_a_domain_module_selects_nothing() -> None:
     rel = "backend/ofo/errors/gate_slots.py"
     diff = f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n@@ -1,1 +1,2 @@\n x\n+# only a comment\n"
     assert sel.select([rel], diff, TESTS_APP, run_snap, ROUTES) == []
+
+
+# ---- GC-CLEAN (2026-10-30): a deleted backend module. Its hunk is `@@ -1,N +0,0 @@` (new side starts at 0), so the
+# parser saw "no hunk" and the selector failed closed on every branch that deletes a module (GC-TP 1a deleted
+# ofo_app/tracking_store.py). A deletion keys on the module's name: any test still importing it is selected. --------
+
+DELETED = "backend/ofo_app/strategy_store.py"
+
+
+def _deletion(rel: str, lines: int = 2) -> str:
+    body = "".join(f"-x{i} = {i}\n" for i in range(lines))
+    return (f"diff --git a/{rel} b/{rel}\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/{rel}\n"
+            f"+++ /dev/null\n@@ -1,{lines} +0,0 @@\n{body}")
+
+
+def test_a_deleted_module_is_parsed_as_deleted_not_as_no_hunk() -> None:
+    assert sel.parse_diff(_deletion(DELETED)) == {DELETED: sel.DELETED}
+
+
+def test_a_deleted_module_selects_the_tests_that_still_name_it_and_reads_no_source() -> None:
+    def no_read(rel: str) -> str:
+        raise AssertionError(f"read {rel}")  # a deleted file has no source to read
+
+    assert sel.keys_for([DELETED], _deletion(DELETED), ROOT, no_read, []) == [sel.Key("ofo_app.strategy_store",
+                                                                                      "module")]
+    assert "tests_app/test_execute_revision.py" in sel.select([DELETED], _deletion(DELETED), TESTS_APP, no_read, [])
+
+
+def test_a_deletion_still_reaches_a_route_file_that_imports_the_module() -> None:
+    route = "backend/ofo_app/routes/strategies.py"
+    keys = sel.keys_for([DELETED], _deletion(DELETED), ROOT, snap, [route])
+    assert "/strategies" in {k.name for k in keys}  # strategies.py imports strategy_store (PR #241 snapshot)
+
+
+def test_a_deleted_migration_selects_the_fixed_migration_set_not_nothing() -> None:
+    """Review MAJOR (GC-CLEAN): a deleted migration keyed on its module name selected 0 files (fail open)."""
+    names = {pathlib.PurePosixPath(p).name for p in sel.select([MIG], _deletion(MIG), TESTS_APP, snap, [])}
+    assert "test_strategy_shape_matrix.py" in names and "test_alembic_migration_guard.py" in names
+
+
+def test_a_deleted_route_file_fails_closed() -> None:
+    """Review MINOR: a deleted route loses its route-path keys; with no source to read them from, refuse."""
+    route = "backend/ofo_app/routes/outcome.py"
+    with pytest.raises(sel.DiffNotParsed):
+        sel.keys_for([route], _deletion(route), ROOT, snap, [])
+
+
+def test_a_path_deleted_then_added_in_one_diff_fails_closed() -> None:
+    """Review MINOR: delete + add of the same path (a type change) must not read as a plain deletion."""
+    add = (f"diff --git a/{DELETED} b/{DELETED}\nnew file mode 100644\n--- /dev/null\n+++ b/{DELETED}\n"
+           "@@ -0,0 +1,1 @@\n+y = 1\n")
+    with pytest.raises(sel.DiffNotParsed):
+        sel.parse_diff(_deletion(DELETED) + add)

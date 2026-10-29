@@ -351,6 +351,19 @@ decisions:
   ADR-196: S6.1         # builder + chain take every Sensibull builder/chain feature, our rules on top, indices only (owner, 2026-10-27)
   ADR-197: S6.1         # after hours the builder works from the last close, all numbers, under the ADR-177 banner (owner, 2026-10-27)
   ADR-198: S6.1         # 13 builder features approved as REQ-142..154, Indian grouping, server-kept drafts (owner, 2026-10-27)
+  ADR-199: S6.1         # after the close on an expiry day the builder default expiry rolls to the next one (owner, 2026-10-27)
+  ADR-200: S6.1         # ADR-197 built now; "last close" = LTP at the close, its own time; real-app closing-price walks prove GC-BM (owner)
+  ADR-201: S6.1         # paper-tracked strategies on Positions in a separate Paper tab; 10-28 round is functional only (owner)
+  ADR-202: S6.1         # Required meaning in Sensibull's form (owner, 2026-10-28)
+  ADR-203: S6.1         # Strategy Chart from Kite history; data errors fixed in the UI round (owner, 2026-10-28)
+  ADR-204: S6.1         # UI-match differences approved as recommended (owner, 2026-10-28)
+  ADR-205: S6.1         # charges lines stay rounded from exact amounts, no note (owner, 2026-10-28)
+  ADR-206: S6.1         # order flow confirmed; Funds needed held (owner, 2026-10-28)
+  ADR-207: S6.1         # paper trading follows Sensibull Draft Portfolios (owner, 2026-10-29)
+  ADR-208: S6.1         # what-if slider sentences (owner, 2026-10-29)
+  ADR-209: S6.1         # paper what-if P&L includes booked P&L (owner, 2026-10-29)
+  ADR-210: S6.1         # seven user sentences for paper figures not shown (owner, 2026-10-29)
+  ADR-211: S6.1         # eight user sentences for badge, Target block, paper (owner, 2026-10-29)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -483,6 +496,17 @@ issues:
   "#587": S6.4  # Pre-push gate: vitest related misses disk-reading tests (N1), plus N3-N5 minors from the round-2 review
   "#588": S6.4  # Chain: moneyness filter empties the table when the spot drops (N2, REQ-072 AC-2)
   "#592": S6.4  # G-069 phone width: no Sensibull phone study, so no verdict; our top bar is clipped at 390 px (GC-B1 item 6 PARKED)
+  "#596": S6.4  # Builder: a saved strategy reopened later loses the close label (shows 'captured <time>' not 'Close, <date>, <time> IST')
+  "#597": S6.4  # Option Chain still defaults to its first listed expiry after the close on an expiry day
+  "#598": S6.4  # ADR-008 money scan: two MINOR gaps left after GC-BM review round 2
+  "#599": S6.4  # Market calendar holds 2026 only: from 2027-01-01 the closed-market rule misjudges trading days
+  "#600": S6.4  # leg-edit echoes a client-sent close_at for legs it does not re-capture
+  "#601": S6.4  # After hours the strike drawer's first open fills prices about 4 s late
+  "#602": S6.4  # Broker status text 'Prices are from 03:30:00 PM' carries no date
+  "#603": S6.4  # GC-UI deferred items: execute.py DB connection across Kite reads, history-guard reuse gap, raw prices on 2 cards, a11y, flake, parked look rows
+  "#605": S6.4  # Parked 2026-10-29: 14 held PRs (live Kite gate), branches kept, rebuild order
+  "#606": S6.4  # GC-TPL live run (expert-trader paper, market hours) not run at the 2026-10-29 land
+  "#607": S6.4  # GC-TPD Part 2: R-25 R-23 R-27 R-13 R-35 + wording question (after GC-TPL)
 
 # Work items whose status is not done.
 work_items:
@@ -659,6 +683,17 @@ findings:
   F-59: S6.7      # Kite websocket cap is 3 per API key across all users (staff, forum); bears on ADR-053
   F-60: S6.7      # Kite REST limits per group (quote 1/s, historical 3/s, other 10/s); 429 = 10 s sliding cooldown
   F-61: S6.1      # false disconnected alarm comes from the server Kite feed reconnect, not the browser socket (REQ-133)
+  F-62: S6.1      # basket margin reply has no buy-first figure; REQ-142 Funds needed cannot come from it
+  F-63: S6.1      # Sensibull Decay = time value lost to the next market open (REQ-145)
+  F-64: S6.1      # Kite minute candles: core proof for the Strategy Chart (REQ-091, ADR-203)
+  F-65: S6.1      # editing a paper-tracked strategy changes the plan, not the paper position
+  F-66: S6.1      # builder prices an open paper position at plan entry, not paper fills
+  F-67: S6.1      # paper entry is the LTP at Start tracking, no confirm step
+  F-68: S6.1      # open paper leg has no expiry settlement
+  F-69: S6.1      # Positions opens on an empty tab while paper positions are open
+  F-70: S6.1      # % of funds divides by available funds
+  F-71: S6.1      # near-short-strike adjustment fires at entry by design shape
+  F-72: S6.1      # Kite index day candle = official close (SENSEX 28 Oct)
 
 hypotheses:
   H1: done

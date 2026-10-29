@@ -27,6 +27,7 @@ from ofo.engine.black_scholes import DAYS_IN_YEAR
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import Contract, ListedContract
+from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
@@ -61,6 +62,10 @@ class MarketSnapshot:
     #: REQ-106 AC-1 / REQ-027 (Q254): each read expiry's chain quotes, kept so the outcome finds the ATM strike (nearest
     #: that expiry's forward) and solves its CE and PE IV for the expected move; read at the same instant as the rest.
     chains: Mapping[datetime.date, tuple[NormalizedQuote, ...]] = field(default_factory=dict)
+    #: ADR-200 / ADR-119: the market is closed at ``valuation`` by the provider's own market-state answer
+    #: (``feed_health.market_closed_for``, the one every quote health reads). Then a STALE quote is the last close
+    #: held from the session (priced for planning, labelled by the market-closed banner), never a live price.
+    market_closed: bool = False
 
 
 #: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
@@ -80,6 +85,49 @@ def _forward(chain, spot, expiry, at, where):
     inputs = (rate, EXPIRY_CLOSE, DAYS_IN_YEAR, *spot_part, quotes)
     scope = (underlying, expiry, instant, "forward", None)
     return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, instant, rate))
+
+
+#: D-C33 (GC-UI checker 2026-10-28): the strikes nearest the money held per leg expiry, CE and PE each, so the chain an
+#: outcome hands to ``parity_forward`` has ADR-061's 3+ two-sided strikes (5 leaves room for 2 one-sided or crossed).
+#: Feed load: 2 x 5 = 10 contracts per distinct leg expiry of a followed strategy (a calendar: 20), shared on the one
+#: fan-out with every other holder (the strike drawer's lease holds the same contracts when it is open).
+FORWARD_STRIKES = 5
+
+
+def forward_strike_ids(master, underlying: str, legs: list[str], spot: Decimal | None,
+                       n: int = FORWARD_STRIKES) -> list[str]:
+    """The CE and PE ids of the ``n`` strikes nearest the money of every leg expiry of ``legs`` (instrument ids).
+
+    The money is ``spot`` when there is a live one, else the middle leg strike of that expiry (the index may not stream
+    yet when the strategy is first followed). An unknown leg, a future, an expired or other-underlying leg adds
+    nothing; the legs themselves are not repeated. Pure: the caller holds the ids on the feed (D-C33's RCA: the live
+    provider's chain snapshot is the book, which holds only subscribed contracts, so with only the legs held the
+    forward fell back to spot while the chain was live)."""
+    by_id = {contract_id(lc): lc for lc in master}
+    leg_strikes: dict[datetime.date, list[Decimal]] = {}
+    for iid in legs:
+        lc = by_id.get(iid)
+        if lc is None or lc.contract.name != underlying or lc.contract.expiry is None:
+            continue
+        if lc.contract.instrument_type not in (Instrument.CE.value, Instrument.PE.value) or lc.contract.strike is None:
+            continue
+        leg_strikes.setdefault(lc.contract.expiry, []).append(lc.contract.strike)
+    pairs: dict[tuple[datetime.date, Decimal, str], str] = {}
+    for iid, lc in by_id.items():
+        c = lc.contract
+        if (c.name == underlying and c.expiry in leg_strikes and c.strike is not None
+                and c.instrument_type in (Instrument.CE.value, Instrument.PE.value)):
+            pairs[(c.expiry, c.strike, c.instrument_type)] = iid
+    out: list[str] = []
+    for expiry, strikes in sorted(leg_strikes.items()):
+        centre = spot if spot is not None else sorted(strikes)[len(strikes) // 2]
+        listed = sorted({k for (e, k, _t) in pairs if e == expiry}, key=lambda k: (abs(k - centre), k))
+        for k in listed[:n]:
+            for t in (Instrument.CE.value, Instrument.PE.value):
+                iid = pairs.get((expiry, k, t))
+                if iid is not None and iid not in legs and iid not in out:
+                    out.append(iid)
+    return out
 
 
 def snapshot_instant(clock: datetime.datetime, quotes) -> datetime.datetime:
@@ -156,4 +204,5 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
         if t is not None:
             ended[iid] = t
     return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended,
-                          {expiry: tuple(chain) for expiry, chain in chains.items()})
+                          {expiry: tuple(chain) for expiry, chain in chains.items()},
+                          market_closed=market_closed_for(provider, valuation))

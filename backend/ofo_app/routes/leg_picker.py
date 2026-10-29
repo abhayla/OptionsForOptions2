@@ -41,9 +41,10 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
-from ofo.marketdata.provider import DayStatsReason, NotSupported
-from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
+from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE
+from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
 from pydantic import AfterValidator
@@ -56,14 +57,16 @@ from ofo_app.chain_push import (
     ChainReader,
     atm_strike,
     index_id_of,
+    live_spot,
     stored_chain,
     strike_grid,
 )
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
+from ofo_app.outcome_oi import oi_of, price_counts
 from ofo_app.routes import live
 from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
-from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, market_state
+from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, label_time, market_state
 from ofo_app.underlying import Underlying
 
 STRIKES_PATH = "/api/leg-picker/strikes"
@@ -80,7 +83,7 @@ _PERCENT = Decimal(100)
 ListReason = Literal["CATALOGUE_UNREADABLE", "CATALOGUE_EMPTY", "EXPIRY_UNKNOWN", "NOT_CONNECTED", "SPOT_MISSING",
                      "FEED_STALE", "WAITING_FOR_PRICES", "SOME_PRICES_MISSING"]
 #: Why one contract's depth cannot be shown (REQ-080 AC-8).
-DepthReason = Literal["NO_SESSION", "FEED_STALE", "NOT_STREAMING", "NO_DEPTH_RECEIVED", "DEPTH_EMPTY"]
+DepthReason = Literal["NO_SESSION", "FEED_STALE", "NOT_STREAMING", "NO_DEPTH_RECEIVED", "DEPTH_EMPTY", "MARKET_CLOSED"]
 #: What the strikes list is centred on (REQ-080 AC-5).
 Centre = Literal["LIVE_SPOT", "LAST_KNOWN_SPOT", "MIDDLE_STRIKE"]
 #: Why one future has no price (None when it has one). NOT_OFFERED only for a provider with no futures quote at all.
@@ -133,6 +136,9 @@ class StrikesOut(ApiModel):
     rows: list[PickerRowOut]  # ascending strike
     answered_at: datetime.datetime
     market_closed: bool
+    #: ADR-200 (2)/(4): with ``market_closed`` the drawer's banner time, the latest own last-price time among the quotes
+    #: the cells and the engine spot used (never a reconnect frame's time); None in market hours or with no such quote
+    last_price_at: datetime.datetime | None = None
 
 
 class FutureOut(ApiModel):
@@ -182,6 +188,11 @@ class DepthOut(ApiModel):
     last_trade_at: datetime.datetime | None
     day_stats_reason: DayStatsReason | None  # why the four day values and the time are null (None when they are given)
     read_at: datetime.datetime  # when the server read the depth
+    #: ADR-200 (1)/(2): outside market hours the held last depth and day values (read-only), shown under the one
+    #: market-closed banner; never an order input (Execute reads ``latest_depth``, live only)
+    market_closed: bool = False
+    #: ADR-200 (2)/(4): with ``market_closed`` the popup banner's time, the contract quote's own last-price time
+    last_price_at: datetime.datetime | None = None
 
 
 # ---- the window lease -----------------------------------------------------------------------------------------------
@@ -278,18 +289,19 @@ FUTURES_LEASE = WindowLease()  # the listed futures: the same fan-out and socket
 
 # ---- the strikes read -----------------------------------------------------------------------------------------------
 
-_priced = priced  # the one rule lives beside is_live_price (ofo.marketdata.quote)
+_priced = price_counts  # the one rule, shared with the payoff chart's OI bars (ofo_app.outcome_oi)
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None) -> PickerCellOut:
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, greeks: ChainGreeks | None,
+          closed: bool = False) -> PickerCellOut:
     if quote is None:
         return PickerCellOut(instrument_id=contract.instrument_id, lot_size=contract.lot_size, ltp=None, oi=None,
                              iv_percent=None, delta=None, health="unavailable", at=None)
-    priced = _priced(quote)
+    priced = _priced(quote, closed)
     return PickerCellOut(
         instrument_id=contract.instrument_id, lot_size=contract.lot_size,
         ltp=quote.ltp.quantize(PAISE) if priced and quote.ltp is not None else None,
-        oi=quote.oi if quote.health is DataHealth.AVAILABLE else None,
+        oi=oi_of(quote, closed),  # the drawer's OI rule, shared with the payoff chart (ofo_app.outcome_oi)
         iv_percent=None if greeks is None or not priced else (greeks.iv * _PERCENT).quantize(PAISE),
         delta=None if greeks is None or not priced else greeks.delta.quantize(_DELTA_STEP),
         health=quote.health.value, at=quote.timestamp)
@@ -323,10 +335,10 @@ def _window_contracts(catalogue: ChainCatalogue, window: tuple[Decimal, ...]) ->
     return sorted(chosen, key=lambda c: (c.strike, _SIDES.index(c.instrument_type)))
 
 
-def _list_reason(centre: Centre, cells: list[PickerCellOut]) -> ListReason | None:
+def _list_reason(centre: Centre, cells: list[PickerCellOut], closed: bool = False) -> ListReason | None:
     if centre == "MIDDLE_STRIKE":
         return "SPOT_MISSING"
-    if centre == "LAST_KNOWN_SPOT":
+    if centre == "LAST_KNOWN_SPOT" and not closed:  # after the close the last close is the price (ADR-200 (1))
         return "FEED_STALE"
     unpriced = [c for c in cells if c.ltp is None]
     if len(unpriced) == len(cells):
@@ -381,8 +393,10 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
+    mstate = market_state(ctx, answered_at)
+    closed = mstate.closed
     head = {"underlying": underlying, "expiry": expiry, "width": width, "answered_at": answered_at,
-            "market_closed": market_state(ctx, answered_at).closed}
+            "market_closed": closed}
     state: Literal["LIVE", "NOT_LIVE"] = "NOT_LIVE" if ctx is None else "LIVE"
     missing = _catalogue_reason(catalogue, expiry)
     if missing is not None:
@@ -395,16 +409,22 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     quotes = {} if feed is None else _held_quotes(feed, (viewer, underlying, expiry, width), contracts)
     if centre.kind == "MIDDLE_STRIKE":
         quotes = {}  # AC-5: without a spot every price cell is '-' with the reason
-    usable = [q for q in quotes.values() if _priced(q)]
-    greeks = {} if ctx is None or not usable else chain_greeks(
-        usable, spot_quote if centre.kind == "LIVE_SPOT" else None, expiry, answered_at, ctx.rate)
-    cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id)) for c in contracts}
+    usable = [q for q in quotes.values() if _priced(q, closed)]
+    # the engine's spot: a live index; after the close (ADR-200 (1)) the index's last close held, labelled by the
+    # banner (``market_closed``), never live; in hours a stale index gives no IV or delta (unchanged)
+    engine_spot = (spot_quote if centre.kind == "LIVE_SPOT"
+                   or (closed and planning_price_usable(spot_quote, market_closed=True)) else None)
+    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, ctx.rate)
+    cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id), closed)
+               for c in contracts}
     rows = []
     for strike in sorted({c.strike for c in contracts}):
         sides = {c.instrument_type: cell_of[c.instrument_id] for c in contracts if c.strike == strike}
         rows.append(PickerRowOut(strike=strike.quantize(PAISE), is_atm=strike == centre.atm, ce=sides.get("CE"),
                                  pe=sides.get("PE")))
-    reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()))
+    reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
+    if closed:  # ADR-200 (4): the label time is the used quotes' own time (in hours: no banner, no time)
+        head["last_price_at"] = label_time(mstate, (q.price_at for q in (*usable, engine_spot) if q is not None))
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)
@@ -440,11 +460,12 @@ async def stored_futures(underlying: str) -> FuturesCatalogue:
     return FuturesCatalogue(option_expiries=expiries, futures=tuple(r for r in rows if r.instrument_type == "FUT"))
 
 
-def _future_reason(quote: NormalizedQuote | None) -> FutureReason | None:
-    """Why a held future has no price now: no tick yet, a feed that is not healthy, or a zero price (ADR-015)."""
+def _future_reason(quote: NormalizedQuote | None, closed: bool = False) -> FutureReason | None:
+    """Why a held future has no price now: no tick yet, a feed that is not healthy, or a zero price (ADR-015). Outside
+    market hours (``closed``) the last close held is a price (ADR-200 (1), ``planning_price_usable``)."""
     if quote is None:
         return "NO_QUOTE"
-    if quote.health is not DataHealth.AVAILABLE:
+    if not planning_price_usable(quote, market_closed=closed):
         return "FEED_STALE"
     return None if is_live_price(quote.ltp) else "NO_QUOTE"
 
@@ -462,7 +483,7 @@ def _future_ltp(ctx: MarketContext | None, underlying: str, contract: PickableCo
         quote = ctx.provider.futures_quote(underlying, contract.expiry)
     except NotSupported:  # a provider that offers no futures quote at all
         return FutureOut(**head, ltp=None, health=None, ltp_reason="NOT_OFFERED")
-    reason = _future_reason(quote)
+    reason = _future_reason(quote, market_state(ctx, ctx.clock()).closed)
     if quote is None or quote.ltp is None or reason is not None:
         return FutureOut(**head, ltp=None, health=None if quote is None else quote.health.value, ltp_reason=reason)
     return FutureOut(**head, ltp=quote.ltp.quantize(PAISE), health=quote.health.value, ltp_reason=None)
@@ -485,6 +506,43 @@ def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: Norma
                       strikes_used=fwd.strikes_used, reason=None, spot_health=fwd.spot_health.value)
 
 
+FORWARD_HOLD_CAP, FORWARD_HOLD_DAYS = 250, 95  # contracts held for forwards; beyond the cap only near expiries
+
+
+def _forward_hold_ids(ctx: Any, underlying: str, expiries: tuple[datetime.date, ...], spot: Decimal | None,
+                      today: datetime.date) -> list[str]:
+    """GC-UI F-3: the contracts whose quotes let ``parity_forward`` answer each listed option expiry: one near-the-money
+    call as the expiry's 'leg' plus ``forward_strike_ids`` (D-C33's own strike choice, not duplicated). With the spot
+    live the money is the spot, else the middle listed strike. Over ``FORWARD_HOLD_CAP`` contracts only the expiries
+    within ``FORWARD_HOLD_DAYS`` days are held; the rest stay honestly on the spot-fallback label. A provider that
+    offers no instrument master (``NotSupported``) holds nothing extra."""
+    if not expiries:
+        return []
+    try:
+        master = [lc for lc in ctx.provider.instrument_master()
+                  if lc.contract.name == underlying and lc.contract.expiry in expiries]
+    except NotSupported:
+        return []
+
+    def build(wanted: tuple[datetime.date, ...]) -> list[str]:
+        legs: list[str] = []
+        for expiry in wanted:
+            calls = [lc for lc in master if lc.contract.expiry == expiry and lc.contract.instrument_type == "CE"
+                     and lc.contract.strike is not None]
+            if not calls:
+                continue
+            strikes = sorted(lc.contract.strike for lc in calls)
+            centre = spot if spot is not None else strikes[len(strikes) // 2]
+            legs.append(contract_id(min(calls, key=lambda lc: (abs(lc.contract.strike - centre), lc.contract.strike))))
+        return legs + forward_strike_ids(master, underlying, legs, spot)
+
+    ids = build(expiries)
+    if len(ids) > FORWARD_HOLD_CAP:
+        horizon = today + datetime.timedelta(days=FORWARD_HOLD_DAYS)
+        ids = build(tuple(e for e in expiries if e <= horizon))
+    return ids
+
+
 def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
                    viewer: str = V1_OWNER_REF) -> FuturesOut:
     ctx = None if feed is None else feed.ctx
@@ -495,7 +553,12 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
         # forwards need it and no other screen may hold it (finding live-read-without-own-subscription)
         key = (viewer, underlying, "futures")
         index_id = index_id_of(feed.ctx, underlying)
-        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures] + ([index_id] if index_id else []))
+        # GC-UI F-3: and the strikes nearest the money of every listed option expiry, so each forward is the parity
+        # forward a leg on that expiry is priced with (D-C33), not the spot fallback of an unsubscribed chain
+        spot_now = live_spot(feed.ctx, underlying)
+        forward_ids = _forward_hold_ids(feed.ctx, underlying, catalogue.option_expiries, spot_now, answered_at.date())
+        FUTURES_LEASE.hold(feed, key, [c.instrument_id for c in catalogue.futures] + ([index_id] if index_id else [])
+                           + forward_ids)
         streamed = FUTURES_LEASE.ids_of(key)
     spot_quote = None if ctx is None else _index_quote(ctx, underlying)
     spot = None if spot_quote is None or not is_live_price(spot_quote.ltp) else spot_quote.ltp
@@ -518,10 +581,13 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
 
 # ---- the depth read -------------------------------------------------------------------------------------------------
 
-def _not_available(instrument_id: str, reason: DepthReason, read_at: datetime.datetime) -> DepthOut:
-    return DepthOut(state="NOT_AVAILABLE", reason=reason, instrument_id=instrument_id, bids=[], asks=[], day_open=None,
-                    day_high=None, day_low=None, prev_close=None, last_trade_at=None, day_stats_reason=None,
-                    read_at=read_at)
+def _not_available(instrument_id: str, reason: DepthReason, read_at: datetime.datetime, **closed: Any) -> DepthOut:
+    """No levels, with the reason. ``closed`` (market-closed answers only): ``market_closed``, ``last_price_at`` and
+    the held day values."""
+    fields: dict[str, Any] = {"day_open": None, "day_high": None, "day_low": None, "prev_close": None,
+                              "last_trade_at": None, "day_stats_reason": None, **closed}
+    return DepthOut(state="NOT_AVAILABLE", reason=reason, instrument_id=instrument_id, bids=[], asks=[],
+                    read_at=read_at, **fields)
 
 
 def _depth_blocker(feed: LiveFeed, instrument_id: str) -> DepthReason | None:
@@ -538,6 +604,52 @@ def _paise(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
+def _day_fields(day: DayStatsAnswer) -> dict[str, Any]:
+    """The four day values and the last trade time of ``day`` (null with ``day_stats_reason`` when it has none)."""
+    stats = day.stats
+    return {
+        "day_open": None if stats is None else _paise(stats.day_open),
+        "day_high": None if stats is None else _paise(stats.day_high),
+        "day_low": None if stats is None else _paise(stats.day_low),
+        "prev_close": None if stats is None else _paise(stats.prev_close),
+        "last_trade_at": None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
+            stats.last_trade_ts, IST),
+        "day_stats_reason": day.reason}
+
+
+def _depth_out(instrument_id: str, depth, day: DayStatsAnswer, read_at: datetime.datetime, *,  # noqa: PLR0913
+               market_closed: bool = False, last_price_at: datetime.datetime | None = None) -> DepthOut:
+    return DepthOut(
+        state="AVAILABLE", reason=None, instrument_id=instrument_id,
+        bids=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.bids],
+        asks=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.asks],
+        read_at=read_at, market_closed=market_closed, last_price_at=last_price_at, **_day_fields(day))
+
+
+def _after_close(feed: LiveFeed, instrument_id: str, read_at: datetime.datetime) -> DepthOut | None:
+    """ADR-200 (1)/(2), REQ-080 AC-7 (read-only), GC-BM F-20: while the market is closed the depth answer is ALWAYS
+    the market-closed state (``market_closed`` true, the screen's one banner), never a live-rule reason such as
+    FEED_STALE ("not fresh"): the held last depth and day values when the provider holds a sound snapshot; else no
+    levels with the reason MARKET_CLOSED, plus the day values when held and the price's own time (Kite's book is empty
+    before the open). A session that ended or a contract nobody streams holds nothing: MARKET_CLOSED, no values.
+    None only in market hours: the live rules below then answer as before."""
+    if not market_state(feed.ctx, read_at).closed:
+        return None
+    provider = feed.ctx.provider
+    if provider.status().session_ended or feed.fanout.subscriber_count(instrument_id) == 0:
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at, market_closed=True)
+    held = provider.depth_after_close(instrument_id, read_at)  # the interface method (base: None)
+    depth, stats = (None, None) if held is None else held
+    # ADR-200 (2): the price's own time (the session close outside hours), never a frame's
+    own_at = provider.held_quote_time(instrument_id, read_at)
+    day = DayStatsAnswer(stats) if stats is not None else DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
+    if depth is None or (not depth.bids and not depth.asks):
+        fields = _day_fields(day) if stats is not None else {}
+        return _not_available(instrument_id, "MARKET_CLOSED", read_at, market_closed=True, last_price_at=own_at,
+                              **fields)
+    return _depth_out(instrument_id, depth, day, read_at, market_closed=True, last_price_at=own_at)
+
+
 def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) -> DepthOut:
     """One contract's depth. Every answer state: no feed or session ended (NO_SESSION), the feed not healthy
     (FEED_STALE), nobody streams the contract (NOT_STREAMING), no full packet yet or a provider without depth
@@ -549,6 +661,9 @@ def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) ->
         return _not_available(instrument_id, "NO_SESSION", now())
     ctx = feed.ctx
     read_at = ctx.clock()
+    held = _after_close(feed, instrument_id, read_at)
+    if held is not None:
+        return held
     blocker = _depth_blocker(feed, instrument_id)
     if blocker is not None:
         return _not_available(instrument_id, blocker, read_at)
@@ -557,19 +672,7 @@ def depth_answer(feed: LiveFeed | None, instrument_id: str, now: AnswerClock) ->
         return _not_available(instrument_id, "NO_DEPTH_RECEIVED", read_at)
     if not depth.bids and not depth.asks:
         return _not_available(instrument_id, "DEPTH_EMPTY", read_at)
-    day = ctx.provider.latest_day_stats(instrument_id, read_at)
-    stats = day.stats
-    last_trade = None if stats is None or stats.last_trade_ts is None else datetime.datetime.fromtimestamp(
-        stats.last_trade_ts, IST)
-    return DepthOut(
-        state="AVAILABLE", reason=None, instrument_id=instrument_id,
-        bids=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.bids],
-        asks=[DepthLevelOut(price=lv.price.quantize(PAISE), quantity=lv.quantity) for lv in depth.asks],
-        day_open=None if stats is None else _paise(stats.day_open),
-        day_high=None if stats is None else _paise(stats.day_high),
-        day_low=None if stats is None else _paise(stats.day_low),
-        prev_close=None if stats is None else _paise(stats.prev_close),
-        last_trade_at=last_trade, day_stats_reason=day.reason, read_at=read_at)
+    return _depth_out(instrument_id, depth, ctx.provider.latest_day_stats(instrument_id, read_at), read_at)
 
 
 # ---- routes ---------------------------------------------------------------------------------------------------------

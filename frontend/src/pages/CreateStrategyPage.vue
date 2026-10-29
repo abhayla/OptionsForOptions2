@@ -121,7 +121,7 @@ async function priceCard(template, legs) {
   if (!Array.isArray(entries)) return card
   const byId = Object.fromEntries(entries.map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
   if (legs.some((l) => !byId[l.instrument_id] || byId[l.instrument_id].planned_entry === null)) return card // never guessed
-  card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at }))
+  card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at, close_at: byId[l.instrument_id].close_at ?? null }))
   const out = await read(async () => (await api.post('/strategies/outcome', {
     underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),

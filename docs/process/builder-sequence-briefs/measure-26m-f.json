@@ -1,0 +1,68 @@
+{
+ "row": "26m-f",
+ "w_id": "W-154",
+ "req": "REQ-081",
+ "title": "Count my open positions toggle and the two labels on the margin line",
+ "tier": "B",
+ "files": [
+  "frontend/src/components/strategy/MarginLine.vue",
+  "frontend/src/pages/StrategyBuilderPage.vue",
+  "frontend/src/lib/userSettings.js",
+  "frontend/e2e/margin-open-positions.spec.ts"
+ ],
+ "items": [
+  "Step 1 = CORE PROOF in the real browser on the dev stack (26m-b merged): with the owner session and NO open position the margin line shows today's line and NO toggle (positions NOT_OFFERED); then, with the API stubbed in Playwright to the reply shapes with positions COUNTED / ALONE (state plainly: the stub is a shape test, NOT proof of Zerodha's different figure, which needs a real open position and stays UNPROVEN), the toggle appears with the server's caption and a click PUTs the setting and re-asks POST /api/strategies/outcome, redrawing from the new reply.",
+  "frontend/src/components/strategy/MarginLine.vue (:36-55): when margin.positions is COUNTED or ALONE and margin.positions_prompt is a string, render a switch (data-testid margin-positions-toggle) labelled with margin.positions_prompt, checked when COUNTED, and the figure line shows margin.positions_label before the existing server text. Emit change-positions with the new boolean; MarginLine never computes, parses or compares money and never builds label text (ADR-008, REQ-081 AC-7): both labels and the caption come from the server. NOT_OFFERED or absent fields -> exactly today's markup (read the fields with typeof checks like checked/short do).",
+  "StrategyBuilderPage.vue (:529 mounts MarginLine; :130 api.post('/strategies/outcome')): handle change-positions by an api.put through frontend/src/lib/userSettings.js (new; one function setCountOpenPositions(value) and the path constant; no figure logic), then re-ask the outcome once with the same draft and a new seq (reuse frontend/src/lib/newestWins.js so a slow reply never overwrites a newer one); the toggle is disabled while the PUT is in flight; on a PUT failure keep the old state with the page's existing error handling (never show with-your-open-positions unless the reply says COUNTED).",
+  "Answer states on screen: positions NOT_OFFERED (no session, 0 positions, unknown) -> no toggle, today's line; COUNTED / ALONE -> toggle + label; margin UNREADABLE / NO_BASKET / login text -> the server's reason as today, toggle hidden (no figure to relabel); PUT failed -> unchanged state plus the existing error text. Every label string comes from the server; a spec asserts the component source holds neither label text. Tests: frontend/e2e/margin-open-positions.spec.ts (stubs the API: NOT_OFFERED, COUNTED, ALONE, UNREADABLE; asserts toggle presence, the PUT body {value:false}, the re-asked outcome request, label text equals the server's, no toggle while UNREADABLE). Run only that spec plus frontend/e2e/builder-reachable.spec.ts and the frontend lint/build; the full e2e runs in CI."
+ ],
+ "core": "Zerodha basket margin for the same real plan read twice - consider_positions=true (open positions counted) and consider_positions=false (this strategy alone) - through the product path POST /api/strategies/outcome, each shown with its own label (REQ-081 AC-5), while the Execute gate keeps reading consider_positions=true (REQ-081 AC-6, ADR-094).",
+ "proof": "item 1 (core proof plan): with NO open position in the owner's account (none on 2026-10-21 nor 2026-10-26) the builder can prove only that the standalone read works (a recorded POST /margins/basket?consider_positions=false for the row-25 2-leg NIFTY plan returns 200 with the same final.total as =true, because nothing else is held), that the setting, the cache key and the label switch work, and that the Execute gate still sends =true. It CANNOT prove that Zerodha returns a different figure with a position held, nor that the position-aware figure may be lower: that needs one real open NIFTY position (owner-held, 1 lot) and is recorded as UNPROVEN until then (AC-5 stays PARTIAL, issue to be filed with --stage).",
+ "spec_basis": "REQ-081 AC-5 \"Count my open positions\"; REQ-081 AC-5 \"The choice is a per-user setting, on by default as in Sensibull.\"; REQ-081 AC-6 \"The hard gate before the basket stays REQ-055 with the ADR-094 figure whatever this setting says\"; ADR-099 \"quantity or planned price changes - never on every tick.\"; ADR-094 \"a negative difference counts as 0, never as a credit\"; REQ-138 AC-2 \"from the session, never a hard-coded owner\"; REQ-138 AC-3 \"Changing a setting that changes a number\"; ADR-152 \"Three exceptions still go to the owner one question at a time\"",
+ "copy_from": "none - searched REQ-081, margin, positions, settings in spec/technical-design/legacy-reuse.md; the store shape is taken from this repo's own open PR #509 (branch build/W-124-a3-chain: 0022_user_settings.py, user_setting_store.py), not from a legacy repo; reference only, not copied: app/api/routes/orders.py (algochanakya margins/import-positions, float money; this repo reads positions through ofo_app/kite_reads.py)",
+ "attack": [
+  {
+   "text": "No toggle and today's markup when positions is NOT_OFFERED or the fields are absent (an older cached answer)",
+   "test_file": "frontend/e2e/margin-open-positions.spec.ts"
+  },
+  {
+   "text": "Both labels and the caption are the server's text; the browser builds none and parses no money",
+   "test_file": "frontend/e2e/margin-open-positions.spec.ts"
+  },
+  {
+   "text": "A toggle click sends one PUT then one outcome re-ask, and a slower older reply never overwrites the newer figure",
+   "test_file": "frontend/e2e/margin-open-positions.spec.ts"
+  },
+  {
+   "text": "A failed PUT leaves the old state and never shows with-your-open-positions unless the reply says COUNTED",
+   "test_file": "frontend/e2e/margin-open-positions.spec.ts"
+  },
+  {
+   "text": "The toggle is hidden when the margin is UNREADABLE / NO_BASKET / needs a login",
+   "test_file": "frontend/e2e/margin-open-positions.spec.ts"
+  }
+ ],
+ "standing": {
+  "a": "n/a: no time-budgeted job",
+  "b": "n/a: no CI step changes",
+  "c": "n/a: no static detector added",
+  "d": "applied: positions NOT_OFFERED / COUNTED / ALONE and margin CHECKED / UNREADABLE / NO_BASKET / login each have a stubbed spec case; PUT ok / failed covered"
+ },
+ "threat_model": "in scope - the browser showing the wrong label for a figure (a counted figure labelled alone), a browser-built or browser-compared money string, a toggle shown with no confirmed position, an old reply overwriting a new one; out of scope - the backend read, cache and Execute gate (26m-b), the Settings panel (row 40)",
+ "findings_checked": [
+  "setting-read-from-two-sources",
+  "positions-reply-refused-for-non-platform-rows",
+  "margin-gate-blocks-closing-basket"
+ ],
+ "expected": {
+  "minutes": 45,
+  "tokens": 250000
+ },
+ "ci": "frontend job (lint, build) and the Playwright e2e job (frontend/e2e/margin-open-positions.spec.ts, frontend/e2e/builder-reachable.spec.ts)",
+ "search_terms": [
+  "include existing positions",
+  "standalone margin",
+  "consider positions",
+  "screens 240-243"
+ ]
+}

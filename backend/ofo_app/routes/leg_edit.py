@@ -42,6 +42,7 @@ from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.marketdata.quote import priced
 from ofo.money import PAISE
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Margin
 from ofo.strategy import leg_edit as edit
 from ofo.strategy import shape_families, stored_form
@@ -188,6 +189,7 @@ class EditLegIn(LegIn):
 
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
+    close_at: AwareDatetime | None = None  # ADR-197: the close time a capture after hours answered (sent back as is)
     base_lots: StrictInt = Field(gt=0, le=10000)  # strict like the shared leg's lots: true, 1.0, "2" refused
     included: StrictBool = True
     typed: StrictBool = False
@@ -257,7 +259,9 @@ class EditLegOut(ApiModel):
     base_lots: int
     quantity: int
     planned_entry: Money | None
+    planned_entry_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): two-decimal text; null = no price
     captured_at: datetime.datetime | None
+    close_at: datetime.datetime | None = None  # ADR-197: the quote's own time of an entry captured after hours
     price_source: Literal["captured", "typed", "none"]
     replaced_typed: bool  # AC-8: the leg had a typed price and moved, so the captured price replaced it
     included: bool
@@ -394,8 +398,9 @@ def _need_index(e: EditIn, legs: list[EditLeg]) -> int:
 
 def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bool):
     """REQ-078 AC-2/AC-10: ``{control: template id of the reason it is off, or None}`` for shift, width and hedge.
-    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, or when the matched
-    shape does not allow the control (Custom Strategy: Shift only). The same answer gates the moves in
+    Off when today's list is not loaded, when there are fewer than 2 legs or no option leg, when the legs are on more
+    than one expiry (Width and Hedge), or when the matched shape does not allow the control (Custom Strategy: Shift
+    only). The same answer gates the moves in
     :func:`apply_edit`, so the browser's word is never trusted."""
     off: dict[str, str | None] = {"shift": None, "width": None, "hedge": None}
     if not current:
@@ -405,6 +410,8 @@ def _controls(template, hedged: frozenset[int], legs: list[EditLeg], current: bo
     elif len(legs) < MIN_SHAPE_LEGS:  # each control says its own reason (REQ-078 AC-2)
         off = {"shift": "leg_edit_shift_needs_option_leg", "width": "leg_edit_width_needs_two_legs",
                "hedge": "leg_edit_hedge_needs_two_legs"}
+    elif len({x.leg.expiry for x in legs}) > 1:  # REQ-148 AC-3: a calendar or diagonal; Shift stays available
+        off["width"] = off["hedge"] = "leg_edit_width_hedge_one_expiry"
     else:
         if template is None or not template.width_adjustable:
             off["width"] = "leg_edit_width_not_applicable"
@@ -535,11 +542,14 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         await _check_landing(tradable, req.underlying, new_legs, moved, stored_of)
     shift_total = _next_shift_total(req, cat, today, legs)
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
+    # ADR-197: a leg the edit does not re-capture keeps the close time it was sent; a re-captured one takes the new one
+    closes: dict[int, datetime.datetime | None] = {i: x.close_at for i, x in enumerate(req.legs)}
     unpriced = {i for i, x in enumerate(req.legs) if x.planned_entry is None}
     reasons: dict[int, Reason] = {}
     recapture = sorted(moved | unpriced) if req.edit.control == "reset_prices" else sorted(moved)
     if req.edit.control == "price" and req.edit.index is not None:  # REQ-077 AC-4: a typed price carries its own time
         stamps[req.edit.index] = now()
+        closes[req.edit.index] = None  # a typed price is the user's, never the close
         unpriced.discard(req.edit.index)
     if recapture:
         valuation, got = await capture(ctx, feed, req.underlying, [ids[i] for i in recapture])
@@ -550,10 +560,12 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                 unpriced.add(i)
                 reasons[i] = "not_connected" if valuation is None else "no_live_price"  # AC-5: the screen says why
                 stamps[i] = None
+                closes[i] = None
             else:
                 entries[i] = price.price
                 unpriced.discard(i)
                 stamps[i] = valuation
+                closes[i] = price.close_at
         new_legs = edit.with_entries(new_legs, entries)
     template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
     blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
@@ -564,7 +576,9 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "strike": x.leg.strike, "expiry": x.leg.expiry,
         "days_to_expiry": days_to_expiry(x.leg.expiry, today), "lots": x.lots, "base_lots": x.base_lots,
         "quantity": x.leg.quantity, "planned_entry": None if i in unpriced else x.leg.entry_price.quantize(PAISE),
+        "planned_entry_display": None if i in unpriced else price_text(x.leg.entry_price),
         "captured_at": None if i in unpriced else stamps[i],
+        "close_at": None if i in unpriced or x.typed else closes[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
         "replaced_typed": legs[i].typed and i in moved,
         "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,

@@ -8,8 +8,10 @@ from ofo.engine.display import (
     estimate_line,
     format_approx_percent,
     format_approx_rupees,
+    format_index_level,
     format_points,
     format_rupees,
+    format_signed_paisa,
 )
 from ofo.engine.estimate import estimate_now
 
@@ -41,6 +43,12 @@ def test_estimates_have_no_false_precision():
     assert format_points(D("22909")) == "22,909"
 
 
+@pytest.mark.parametrize("level, text", [(D("22850"), "22,850.00"), (D("22976.8"), "22,976.80"),
+                                         (D("22976.85"), "22,976.85"), (D("100"), "100.00")])
+def test_an_index_level_is_grouped_and_always_has_two_decimals(level, text):
+    assert format_index_level(level) == text
+
+
 def test_estimate_line_is_labelled_with_assumptions():
     """AC-5: an estimate reads 'Estimated probability of profit: ~73%' and lists its assumptions; none is refused."""
     line = estimate_line("probability of profit", format_approx_percent(D("73.48291")), ["IV 14.2%", "10 days left"])
@@ -69,3 +77,22 @@ def test_estimate_model_text_names_the_implied_yield_never_no_dividends():
     assert "Black-Scholes-Merton" in MODEL and "implied dividend yield" in MODEL and "put-call parity" in MODEL
     assert "estimated from spot" in MODEL
     assert "no dividend" not in MODEL.lower()
+
+
+@pytest.mark.parametrize(
+    "amount, text",
+    [
+        (D("5053.75"), "+5,053.75"),  # strategy 54 BUY 22600 CE
+        (D("-3285.75"), "−3,285.75"),  # strategy 54 SELL 22800 CE  # noqa: RUF001 - user text
+        (D("1768.00"), "+1,768.00"),
+        (D("1240.5"), "+1,240.50"),
+        (D("-1234567.89"), "−12,34,567.89"),  # noqa: RUF001 - user text
+        (D("0"), "0.00"),
+        (D("0.00"), "0.00"),
+        (D("-0.004"), "0.00"),  # rounds to zero: no sign
+        (D("0.005"), "0.00"),  # half-even like format_rupees
+        (D("0.015"), "+0.02"),
+    ],
+)
+def test_format_signed_paisa(amount, text):
+    assert format_signed_paisa(amount) == text

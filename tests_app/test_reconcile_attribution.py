@@ -106,13 +106,16 @@ def _reader(store: object) -> ra.StoreReader:
             return store
         return [StrategySummary(sid, e.underlying, "draft", AT, AT) for sid, e in store.items()]
 
-    async def plans_for(conn, user_ref, strategy_id):
-        assert (conn, user_ref) == (CONN, USER)
+    def plans_for(strategy_id):
         if isinstance(store, list):
             return _plans("orders-122104", strategy_id).plans if strategy_id > 0 else ()
         return store[strategy_id].plans
 
-    return ra.StoreReader(list_strategies, plans_for)
+    async def plans_for_strategies(conn, user_ref, strategy_ids):
+        assert (conn, user_ref) == (CONN, USER)
+        return {sid: plans_for(sid) for sid in strategy_ids}
+
+    return ra.StoreReader(list_strategies, plans_for_strategies)
 
 
 def _positions(quantity: int | None = 65) -> object:
@@ -372,7 +375,7 @@ def test_ac7_the_caller_passes_no_plans_strategies_or_held_units():
     assert list(inspect.signature(ra.attribute_and_compare).parameters) == [
         "account", "standalone", "broker_net", "order_book", "sources", "at"]
     assert ra.StoreReader().list_strategies is strategy_store.list_strategies
-    assert ra.StoreReader().plans_for is execution_plan_store.plans_for
+    assert ra.StoreReader().plans_for_strategies is execution_plan_store.plans_for_strategies
 
 
 def test_ac7_a_strategy_with_two_plans_is_fully_counted():
@@ -414,7 +417,7 @@ def test_ac7_a_store_listing_that_is_not_a_list_is_refused():
     async def listing(conn, user_ref):
         return None
 
-    sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for))
+    sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for_strategies))
     with pytest.raises(ra.AttributionError):
         asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, (), sources, at=AT))
 
@@ -426,8 +429,9 @@ def test_ac7_account_and_sources_are_checked():
     for account in (ra.Account(CONN, ""), ra.Account(CONN, None), (CONN, USER)):
         with pytest.raises(ra.AttributionError):
             asyncio.run(ra.attribute_and_compare(account, {}, {KEY: 65}, (), good, at=AT))
-    look_alike = SimpleNamespace(list_strategies=good.reader.list_strategies, plans_for=good.reader.plans_for)
-    subclass = type("Sub", (ra.StoreReader,), {})(good.reader.list_strategies, good.reader.plans_for)
+    look_alike = SimpleNamespace(list_strategies=good.reader.list_strategies,
+                                 plans_for_strategies=good.reader.plans_for_strategies)
+    subclass = type("Sub", (ra.StoreReader,), {})(good.reader.list_strategies, good.reader.plans_for_strategies)
     for sources in (object(), ra.Sources(_catalogue(), clock, look_alike), ra.Sources(_catalogue(), clock, subclass)):
         with pytest.raises(ra.AttributionError):
             asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, (), sources, at=AT))
@@ -696,7 +700,7 @@ def test_ac7_a_fake_store_reader_is_refused_outside_app_env_test(env, monkeypatc
     with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
         _run({1: _plans("orders-122104")}, _positions(65))
     assert ra._check_reader(ra.StoreReader()) == ra.StoreReader()
-    half = ra.StoreReader(plans_for=_reader({}).plans_for)  # only one call replaced: still not the stores
+    half = ra.StoreReader(plans_for_strategies=_reader({}).plans_for_strategies)  # one call replaced
     with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
         ra._check_reader(half)
 
@@ -798,3 +802,79 @@ def test_ac7_open_plan_cancelled_part_filled_holds_the_fill():
     result = _run({1: _open_plan()}, _positions(65), order_book=_book(status="CANCELLED", filled_quantity=30))
     assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 30}}
     assert dict(result.outside) == {KEY: 35} and dict(result.pending) == {} and result.blocked == frozenset()
+
+
+# ---- GC-BP F-3: every listed strategy's plans in ONE store call (the Positions page timed out at 13-18 s) ----------
+
+def _counting(store: object) -> tuple[ra.StoreReader, list]:
+    """``_reader(store)`` that records every batched plan read (the ids asked for)."""
+    reader, calls = _reader(store), []
+
+    async def plans_for_strategies(conn, user_ref, strategy_ids):
+        calls.append(list(strategy_ids))
+        return await reader.plans_for_strategies(conn, user_ref, strategy_ids)
+
+    return ra.StoreReader(reader.list_strategies, plans_for_strategies), calls
+
+
+def _run_with(reader: ra.StoreReader, broker_net) -> ra.Attribution:
+    sources = ra.Sources(_catalogue(), clock, reader)
+    return asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, broker_net, (), sources, at=AT))
+
+
+@pytest.mark.parametrize("count", [2, 6])
+def test_f3_plans_are_read_once_for_every_strategy(count):
+    """F-3 detection: K strategies -> exactly ONE plan read, asked for exactly the listed ids in listing order (no
+    per-strategy loop, no id the user's listing did not give, REQ-125); the result is what each strategy holds."""
+    store = {sid: _plans("orders-122104", sid) for sid in range(count, 0, -1)}
+    reader, calls = _counting(store)
+    result = _run_with(reader, {KEY: 65 * count})
+    assert calls == [list(range(count, 0, -1))]
+    assert {sid: dict(u) for sid, u in result.held.items()} == {str(s): {KEY: 65} for s in range(1, count + 1)}
+    assert result.blocked == frozenset()
+
+
+def test_f3_no_strategies_reads_no_plans():
+    """F-3 answer state "user with no strategies": no plan read at all, nothing held, Zerodha's 65 is outside."""
+    reader, calls = _counting({})
+    result = _run_with(reader, {KEY: 65})
+    assert calls == [] and dict(result.held) == {} and dict(result.outside) == {KEY: 65}
+
+
+def test_f3_a_strategy_with_no_plans_holds_nothing():
+    """F-3 answer state "strategy with no plans": its key maps to () and it holds nothing; the other is counted."""
+    reader, calls = _counting({1: _plans("orders-122104"), 2: _Entry("NIFTY", ())})
+    result = _run_with(reader, {KEY: 65})
+    assert calls == [[1, 2]]
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 65}}
+
+
+@pytest.mark.parametrize("answer", [
+    pytest.param(lambda ids: dict.fromkeys(ids[1:], ()), id="a-listed-strategy-missing"),
+    pytest.param(lambda ids: {**dict.fromkeys(ids, ()), 99: ()}, id="an-unlisted-strategy-added"),
+    pytest.param(lambda ids: [() for _ in ids], id="not-a-mapping"),
+    pytest.param(lambda ids: None, id="none"),
+    pytest.param(dict.fromkeys, id="plans-not-a-sequence"),
+])
+def test_f3_a_batched_answer_that_cannot_be_read_is_refused(answer):
+    """F-3 fail closed: the batched answer must hold exactly the listed strategies, each a sequence of plans; a
+    missing, extra or malformed answer is refused (the route answers strategy_stored_unreadable), never skipped."""
+    base = _reader({1: _plans("orders-122104"), 2: _plans("orders-122104", 2)})
+
+    async def plans_for_strategies(conn, user_ref, strategy_ids):
+        return answer(list(strategy_ids))
+
+    with pytest.raises(ra.AttributionError):
+        _run_with(ra.StoreReader(base.list_strategies, plans_for_strategies), {KEY: 130})
+
+
+def test_f3_a_store_error_from_the_batched_read_propagates():
+    """F-3 answer state "a plan row that cannot be read": the store's own error reaches the caller unchanged (the
+    route maps every ValueError to strategy_stored_unreadable), never swallowed."""
+    base = _reader({1: _plans("orders-122104")})
+
+    async def plans_for_strategies(conn, user_ref, strategy_ids):
+        raise execution_plan_store.PlanStoreError(execution_plan_store.BAD_PLAN, "instrument has 0 zerodha symbols")
+
+    with pytest.raises(execution_plan_store.PlanStoreError):
+        _run_with(ra.StoreReader(base.list_strategies, plans_for_strategies), {KEY: 65})

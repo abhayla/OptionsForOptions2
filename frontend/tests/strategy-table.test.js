@@ -15,6 +15,8 @@ const OLD_BLOCK = ['advanced', 'details'].join('_')
 const LEVEL_KEY = ['ux', 'level'].join('_')
 const LEVEL_ATTR = ['data', 'ux'].join('-')
 const OLD_LEVEL = ['gui', 'ded'].join('')
+// the old level words as level labels; "Standard Deviation" (the lower card's heading, D-B45) is not a level label
+const LEVEL_WORDS = [/\bGuided\b/, /\bStandard\b(?!\s+Deviation)/, /\bAdvanced\b/, /Detail level/]
 const ids = (cols) => cols.map((c) => c.id)
 const without = (r) => {
   const { leg_quotes: _drop, ...rest } = r
@@ -98,11 +100,20 @@ describe('ADR-168: one full builder screen, no level switch', () => {
     const header = w.find('[data-testid="strategy-builder"]').text()
     const heading = w.find('[data-testid="advanced-details"] summary').text() // REQ-034 AC-7: the h2 became the summary
     expect(heading).toBe('Details: bid and ask per leg')
-    for (const word of ['Guided', 'Standard', 'Advanced', 'Detail level']) {
-      expect(header).not.toContain(word)
-      expect(heading).not.toContain(word)
+    // GC-UI step 5: the lower card's own heading "Standard Deviation" (D-B45) is a different thing from the old level
+    // control, so "Standard" is banned as a LEVEL label only: not when "Deviation" follows it.
+    for (const re of LEVEL_WORDS) {
+      expect(header).not.toMatch(re)
+      expect(heading).not.toMatch(re)
     }
     w.unmount()
+  })
+  it('attack 4 still fires: a planted "Standard" level label is caught, the heading "Standard Deviation" is not', () => {
+    const planted = ['Detail level: Standard', 'Standard', 'Standard view', 'Level Standard']
+    for (const text of planted) expect(LEVEL_WORDS.some((re) => re.test(text))).toBe(true)
+    expect(LEVEL_WORDS.some((re) => re.test('Standard Deviation'))).toBe(false)
+    expect(LEVEL_WORDS.some((re) => re.test('Standard  Deviation'))).toBe(false)
+    for (const word of ['Guided', 'Advanced', 'Detail level']) expect(LEVEL_WORDS.some((re) => re.test(`x ${word}`))).toBe(true)
   })
 })
 
@@ -212,8 +223,10 @@ describe('W-075: the Charges and taxes row is drawn from the API like every othe
 describe('ADR-008: no client maths on the outcome response (second layer)', () => {
   const SRC = path.resolve(__dirname, '../src')
   // Named exceptions, each with its reason: PayoffChart hands numbers to chart.js to DRAW the line (its tooltip and labels
-  // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display).
-  const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
+  // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display);
+  // lib/oiBars.js scales the strike drawer's OI bars (GC-UI 6c, D-C26): OI counts, not money, a CSS width only.
+  const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue'),
+    path.join('lib', 'oiBars.js')])
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
@@ -235,8 +248,204 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])
   })
-  it('only the two named files may parse an API number, and they exist', () => {
-    expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
+  // F-15: the two ALLOWED files are scanned too. A use is allowed only by its exact (trimmed) line, with its reason; any other
+  // line that hits BANNED fails, and a listed line that no longer exists fails (the list cannot go stale or be padded).
+  const L = (line, reason) => ({ line, reason })
+  const NAMED_USES = {
+    [path.join('components', 'strategy', 'PayoffChart.vue')]: [
+      L('const at = Math.max(0, Math.min(1, (y0 - area.top) / (area.bottom - area.top)))', 'pixel clamp in crossingGradient'),
+      L('const lineData = (points) => points.map((p) => ({ x: Number(p.level), y: Number(p.pnl) }))', 'drawing coordinates handed to chart.js'),
+      L('const firstLevel = () => Number(points0.value[0].level)', 'index level, not money'),
+      L('const lastLevel = () => Number(points0.value[points0.value.length - 1].level)', 'index level, not money'),
+      L('const lv = Number(levelOf(p))', 'nearestBy: index level or strike, not money'),
+      L('const d = Math.abs(lv - value)', 'nearest index level, not money'),
+      L('const spot = Number(props.spot)', 'pctFromSpot: index level'),
+      L('const pct = ((Number(level) - spot) / spot) * 100', 'pctFromSpot: index level percent, not money'),
+      L('const text = Math.abs(pct).toFixed(1)', 'pctFromSpot: index percent text, not money'),
+      L('return a.right > a.left ? firstLevel() + ((x - a.left) / (a.right - a.left)) * (lastLevel() - firstLevel()) : firstLevel()', 'pixel to index level, not money'),
+      L('return span ? a.left + ((level - firstLevel()) / span) * (a.right - a.left) : a.left', 'index level to pixel'),
+      L('const lvl = Number(p.level)', 'the hovered index level, for its pixel'),
+      L('return Math.max(h.area.left, Math.min(h.x - w / 2, h.area.right - w))', 'pixel clamp of the tooltip'),
+      L('const startIndex = () => nearestIndex(props.spot ? Number(props.spot) : firstLevel())', 'index level, not money'),
+      L("show(Math.max(0, Math.min(points0.value.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))", 'array index clamp'),
+      // GC-UI b1 (REQ-083 AC-4..AC-7): drawing coordinates of the bars, marks and SD lines; the zoom range on the grid
+      L('const barData = (rows, side) => rows.map((r) => ({ x: Number(r.strike), y: r[side] ?? null }))', 'OI bar coordinates (strike, contract count), not money'),
+      L('const at = (level) => chart.scales.x.getPixelForValue(Number(level))', 'index level to a pixel (SD and spot lines)'),
+      L("? [{ type: 'line', label: 'Breakeven', data: props.breakevens.map((b) => ({ x: Number(b), y: 0 })), showLine: false, pointRadius: 5, pointStyle: 'triangle', pointBackgroundColor: token('--color-ink') || '#1b1f24', order: 0 }]", 'breakeven mark coordinates (index level, the zero line)'),
+      L('return sdBands.value.map((b) => ({ label: b.label, level: b.level, x: pixelAt(Number(b.level)) })).filter((b) => inArea(b.x))', 'SD label pixel from the band level'),
+      L('const x = pixelAt(Number(props.spot))', 'current-price marker pixel'),
+      L('const at = hovered.value ? hovered.value.level : props.spot ? Number(props.spot) : null', 'index level that picks the OI strip strike'),
+      L('const step = Number(props.zoom?.step)', 'zoom: the grid step in index points'),
+      L('const s = Number(props.zoom?.start)', 'zoom: the range start in index points'),
+      L('const e = Number(props.zoom?.end)', 'zoom: the range end in index points'),
+      L('const k = Math.max(1, Math.floor((e - s) / step / 4))', 'zoom: a quarter of the range in whole steps (points)'),
+      L("const ns = dir === 'in' ? s + k * step : s - k * step", 'zoom: new start, index points on the grid'),
+      L("const ne = dir === 'in' ? e - k * step : e + k * step", 'zoom: new end, index points on the grid'),
+      L('if (!(ne - ns >= 2 * step) || !(ns > 0)) return null', 'zoom: a range of at least two steps'),
+      // F-1 round 1: the wider operator pattern (- and +) and the bound/template expressions now reach these real drawing lines
+      L(':style="{ left: `${hovered.x}px`, top: `${hovered.area.top}px`, height: `${hovered.area.bottom - hovered.area.top}px` }"', 'pixel height of the hover guide line'),
+      L('const span = lastLevel() - firstLevel()', 'index level range, not money'),
+      L('show(nearestIndex(levelAt(e.clientX - box().left)))', 'mouse pixel to canvas pixel'),
+    ],
+    [path.join('components', 'strategy', 'PnLCell.vue')]: [
+      L('const v = Number(props.value)', 'colour intensity only; the text is the API display'),
+      L('const i = Math.min(v / (Number(props.maxProfit) || 1), 1)', 'colour intensity only'),
+      L('const i = Math.min(Math.abs(v) / (Math.abs(Number(props.maxLoss)) || 1), 1)', 'colour intensity only'),
+    ],
+    [path.join('lib', 'oiBars.js')]: [
+      L("const oiCount = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))",
+        'OI count, not money: a bar width only; missing OI is no bar'),
+      L("return Math.max(0, ...(rows ?? []).flatMap((r) => ['ce', 'pe'].map((s) => oiCount(r?.[s]?.oi) ?? 0)))",
+        'largest OI on screen: the bar scale only'),
+      L('return n === null || n <= 0 || !(max > 0) ? null : `${Math.round((n / max) * 100)}%`',
+        'OI bar CSS width percent, not money'),
+    ],
+  }
+  // A small lexer, not a regex pair: comments are removed only OUTSIDE strings; a quote-delimited string is blanked, except the
+  // value of a Vue directive attribute (:x="..", @x="..", v-x="..") and the ${...} parts of a template literal, which are
+  // code and are scanned. Both outputs keep every newline, so line N of `masked` is line N of `plain` (comments removed,
+  // strings intact: the text a NAMED_USES line is compared with). A construct it cannot close is reported in `errors`.
+  const DIRECTIVE_ATTR = /(?:^|\s)(?::[\w.:-]+|@[\w.:-]+|v-[\w.:-]+)=$/
+  const nl = (s) => s.replace(/[^\n]/g, '')
+  function lex(text) {
+    let plain = ''
+    let masked = ''
+    const errors = []
+    let i = 0
+    const skip = (open, close) => {
+      const end = text.indexOf(close, i + open.length)
+      const stop = end < 0 ? text.length : end + close.length
+      plain += nl(text.slice(i, stop))
+      masked += nl(text.slice(i, stop))
+      i = stop
+    }
+    while (i < text.length) {
+      const c = text[i]
+      if (text.startsWith('/*', i)) { skip('/*', '*/'); continue }
+      if (text.startsWith('<!--', i)) { skip('<!--', '-->'); continue }
+      if (text.startsWith('//', i)) { const e = text.indexOf('\n', i); i = e < 0 ? text.length : e; continue }
+      if (c === "'" || c === '"') {
+        let j = i + 1
+        while (j < text.length && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1
+        if (text[j] === c) {
+          const seg = text.slice(i, j + 1)
+          const before = plain.slice(-60)
+          plain += seg
+          if (DIRECTIVE_ATTR.test(before)) masked += ' (' + lex(seg.slice(1, -1)).masked + ') '
+          else masked += "''"
+          i = j + 1
+          continue
+        }
+      }
+      if (c === '`') {
+        let j = i + 1
+        let m = '``'
+        while (j < text.length && text[j] !== '`') {
+          if (text[j] === '\\') { j += 2; continue }
+          if (text[j] === '$' && text[j + 1] === '{') {
+            let depth = 1
+            let k = j + 2
+            while (k < text.length && depth) { depth += text[k] === '{' ? 1 : text[k] === '}' ? -1 : 0; k++ }
+            if (depth) { errors.push('unclosed ${ in a template literal'); break }
+            const sub = lex(text.slice(j + 2, k - 1))
+            errors.push(...sub.errors)
+            m += ' (' + sub.masked + ') '
+            j = k
+            continue
+          }
+          if (text[j] === '\n') m += '\n'
+          j++
+        }
+        if (text[j] !== '`') { errors.push('unterminated template literal'); plain += text.slice(i); masked += m; i = text.length; continue }
+        plain += text.slice(i, j + 1)
+        masked += m
+        i = j + 1
+        continue
+      }
+      plain += c
+      masked += c
+      i++
+    }
+    return { plain, masked, errors }
+  }
+  // Operators on a value: binary and compound (* / % + - ** and their =), a continuation line that starts with one, and a
+  // unary plus. Keywords that may precede a sign are replaced first; data-/aria-/v- attribute names are not subtraction.
+  const OPERAND = '[-+]?\\s*[A-Za-z0-9_(.]'
+  const MONEY_OPS = [
+    new RegExp('[A-Za-z0-9_)\\]]\\s*(?:\\*\\*|[*/%+-])=?\\s*' + OPERAND),
+    new RegExp('^\\s*(?:\\*\\*|[*/%+-])=?\\s*' + OPERAND),
+    /(?:^|[=(,:?&|]\s*)\+\s*[A-Za-z_(]/,
+  ]
+  const MONEY_MATHS = [...BANNED, ...MONEY_OPS]
+  const forTest = (line) => line.replace(/\b(?:return|typeof|case|in|of|else|yield|void|delete|new)\b/g, ';').replace(/(?<![\w.$)\]])(?:data|aria|v)-[\w-]+/g, '')
+  // returns the violations of one allowed file's text: banned lines not in its list, and listed lines not found exactly once
+  function scanAllowedFile(text, uses) {
+    const listed = new Map(uses.map((u) => [u.line, 0]))
+    const bad = []
+    const { plain, masked, errors } = lex(text)
+    for (const e of errors) bad.push(`unclassifiable: ${e}`)
+    const plainLines = plain.split('\n')
+    const maskedLines = masked.split('\n')
+    plainLines.forEach((raw, n) => {
+      const code = raw.trim()
+      if (!code || !MONEY_MATHS.some((re) => re.test(forTest(maskedLines[n].trim())))) return
+      if (listed.has(code)) listed.set(code, listed.get(code) + 1)
+      else bad.push(`unlisted: ${code}`)
+    })
+    for (const [line, n] of listed) if (n !== 1) bad.push(`listed line found ${n} times: ${line}`)
+    return bad
+  }
+  it('F-15: PayoffChart.vue and PnLCell.vue pass the scan with only their named uses', () => {
+    for (const rel of ALLOWED) {
+      expect(NAMED_USES[rel].every((u) => u.reason.length > 5)).toBe(true)
+      expect(scanAllowedFile(fs.readFileSync(path.join(SRC, rel), 'utf8'), NAMED_USES[rel])).toEqual([])
+    }
+  })
+  it('F-15 mutation: a new money expression in PayoffChart.vue fails the scan', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    for (const evil of ['const _x = Number(point.pnl) * 2', 'const _y = p.pnl.toFixed(2)', 'const _z = pnl / 2']) {
+      expect(scanAllowedFile(text + '\n' + evil, NAMED_USES[rel]).length).toBeGreaterThan(0)
+    }
+  })
+  it('F-15 mutation (round 1): a template binding, a template literal, a // after a string and a subtraction fail the scan', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    const evils = [
+      '<span :title="Number(p.pnl) * 2" />',
+      '<span :style="{ top: p.pnl - q.pnl }" />',
+      'const w = `${Number(p.pnl) * 2}`',
+      "const s = 'a//b'; const m = Number(p.pnl) * 2",
+      'const d = p.pnl - q.pnl',
+      'const e = p.pnl * -1',
+      'x.pnl *= 2',
+      'const f = +p.pnl + +q.pnl',
+      'const g = p.pnl\n  * 2',
+      'const h = `${p.pnl',
+    ]
+    for (const evil of evils) expect(scanAllowedFile(text + '\n' + evil, NAMED_USES[rel]).length, evil).toBeGreaterThan(0)
+  })
+  it('F-15 lexer: // inside a string does not hide the rest of the line; a real comment still does', () => {
+    expect(scanAllowedFile("const s = 'a//b'; const m = Number(p.pnl) * 2", []).length).toBeGreaterThan(0)
+    expect(scanAllowedFile('const k = 1 // Number(p.pnl) * 2', [])).toEqual([])
+    expect(scanAllowedFile("const u = 'https://x.y/z'", [])).toEqual([])
+    expect(scanAllowedFile('<div class="a-b c/d" data-testid="x-y">{{ t }}</div>', [])).toEqual([])
+  })
+  it('F-15 mutation: a marker comment does not exempt a line that is not listed', () => {
+    const rel = path.join('components', 'strategy', 'PayoffChart.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    const bad = scanAllowedFile(text + '\nconst _m = Number(p.pnl) * 2 // adr008-allow: drawing', NAMED_USES[rel])
+    expect(bad.some((b) => b.startsWith('unlisted:'))).toBe(true)
+  })
+  it('F-15 mutation: a listed use that is removed or duplicated fails', () => {
+    const rel = path.join('components', 'strategy', 'PnLCell.vue')
+    const text = fs.readFileSync(path.join(SRC, rel), 'utf8')
+    expect(scanAllowedFile(text.replace('const v = Number(props.value)', ''), NAMED_USES[rel]).length).toBeGreaterThan(0)
+    expect(scanAllowedFile(text + '\nconst v = Number(props.value)', NAMED_USES[rel]).length).toBeGreaterThan(0)
+  })
+  it('only the three named files may parse an API number, and they exist', () => {
+    expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'),
+      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js')].sort())
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
   })
 })

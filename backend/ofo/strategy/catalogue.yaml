@@ -134,7 +134,7 @@ templates:
 
   - id: iron_butterfly
     family_plural: "iron butterflies"
-    name: "Iron Fly"
+    name: "Iron Butterfly"
     description: >-
       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
       away on each side, all the same expiry.
@@ -337,7 +337,7 @@ templates:
       - {name: upper_call, action: BUY, instrument: CE, strike: "m + w", expiry_slot: near, quantity_multiplier: 1}
 
   - id: ratio_backspread_call
-    name: "Call Ratio Backspread"
+    name: "Call Ratio Back Spread"
     description: Sell one call and buy two calls at a higher strike, all the same expiry.
     level: Advanced
     views: [bullish, volatile]
@@ -351,7 +351,7 @@ templates:
       - {name: long_calls, action: BUY, instrument: CE, strike: "k + w", expiry_slot: near, quantity_multiplier: 2}
 
   - id: ratio_backspread_put
-    name: "Put Ratio Backspread"
+    name: "Put Ratio Back Spread"
     description: Sell one put and buy two puts at a lower strike, all the same expiry.
     level: Advanced
     views: [bearish, volatile]
@@ -406,7 +406,7 @@ templates:
       - {name: long_put, action: BUY, instrument: PE, strike: "k", expiry_slot: near, quantity_multiplier: 1}
 
   - id: sell_put_atm
-    name: "Sell Put (ATM)"
+    name: "Sell Put"
     description: Sell a put at the at-the-money strike, one expiry.
     level: Intermediate
     views: [bullish, range-bound]

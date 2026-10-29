@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415
 """Explanation templates: platform wording that is NOT an error (W-024 round 9 part 2).
 
 Decision (orchestrator as product owner, recorded in work/W-024.md): the timeline "why did this trigger?" text is not
@@ -388,6 +389,102 @@ class Rupees(SlotType):
         return format_rupees(value)
 
 
+class WholeRupees(SlotType):
+    """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_rupees  # late: display imports this module
+        return format_whole_rupees(value, signed=False)
+
+
+class SignedWholeRupees(SlotType):
+    """REQ-152: a summary money figure in whole rupees, Indian grouping, "+" on profit, U+2212 on loss, "0" for zero."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_rupees  # late: display imports this module
+        return format_whole_rupees(value, signed=True)
+
+
+class SignedRupeesPaisa(SlotType):
+    """GC-TP fix1 (ADR-209): a signed paper P&L with the unit word, to the paisa: ``+Rs 962.00`` (REQ-089 AC-3 shape)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_paisa  # late: display imports this module
+        shown = format_signed_paisa(value)
+        sign = shown[0] if shown[0] in "+\u2212" else ""
+        return f"{sign}Rs {shown[len(sign):]}"  # +Rs 962.00, (minus sign)Rs 1,100.45, Rs 0.00
+
+
+class SignedPaisa(SlotType):
+    """GC-UI D-B48: a paper P&L figure to the paisa, Indian grouping, "+" on profit, U+2212 on loss, "0.00" for zero."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_paisa  # late: display imports this module
+        return format_signed_paisa(value)
+
+
+class WholePoints(SlotType):
+    """REQ-152 / D-A04: an index level in whole points with Indian grouping and no currency sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_whole_points  # late: display imports this module
+        return format_whole_points(value)
+
+
+class OiCount(SlotType):
+    """GC-UI D-B16: an open interest, a whole contract count of 0 or more (never a bool), in the drawer's compact Indian
+    form ("62,075", "74.9L", "1.23Cr"); a real 0 prints "0"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, int, "OiCount")
+        if value < 0:  # type: ignore[operator]
+            raise ValueError("OiCount slot requires a count of 0 or more")
+
+    @staticmethod
+    def format(value: int) -> str:
+        from ofo.engine.display import format_oi_compact  # late: display imports this module
+        return format_oi_compact(value)
+
+
+class SignedPercent(SlotType):
+    """REQ-153: a percent to one decimal, half-up, with "+" / U+2212; only a true zero is "0.0" with no sign (F-4)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_signed_percent  # late: display imports this module
+        return format_signed_percent(value)
+
+
 class Points(SlotType):
     """An index level in points, a finite `Decimal`, Indian grouping and no currency sign (display rules)."""
 
@@ -399,6 +496,38 @@ class Points(SlotType):
     def format(value: Decimal) -> str:
         from ofo.engine.display import format_points  # late: display imports this module
         return format_points(value)
+
+
+class IndexLevel(SlotType):
+    """An index or trigger level, a finite `Decimal`, Indian grouping, always two decimals, no currency sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_index_level  # late: display imports this module
+        return format_index_level(value)
+
+
+class TargetValue(SlotType):
+    """A clamped what-if target (REQ-084 AC-2): a timezone-aware date-time in IST words, "3 Nov, 15:30 IST", or an
+    index level as `IndexLevel` prints it, "23,000.00"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is datetime.datetime:
+            HourMinute.validate(value)
+        else:
+            IndexLevel.validate(value)
+
+    @staticmethod
+    def format(value: datetime.datetime | Decimal) -> str:
+        if isinstance(value, datetime.datetime):
+            ist = value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+            return f"{ist.day} {ist.strftime('%b')}, {HourMinute.format(value)} IST"
+        return IndexLevel.format(value)
 
 
 #: The wording parts of a `LevelRegions` / `ExceptLevels` slot (ADR-072; issue #172), pinned as `labels:level_region`
@@ -610,6 +739,18 @@ class ExpiryDate(SlotType):
         return value.isoformat()
 
 
+class DayMonth(SlotType):
+    """A contract date as day and month, no year: exactly a `datetime.date`, printed "24 Nov" (REQ-146 AC-5)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "DayMonth")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        return f"{value.day:02d} {value.strftime('%b')}"
+
+
 def _cell_enums() -> tuple[type, ...]:
     from ofo.engine.legs import Action, Instrument
     from ofo.table.model import LegStatus
@@ -637,12 +778,12 @@ class CellText(SlotType):
         return value.isoformat() if isinstance(value, datetime.date) else str(value)
 
 
-#: The 20 fixed table column headings (REQ-035 AC-2), by `ofo.table.columns.ColumnId` name.
+#: The 21 fixed table column headings (REQ-035 AC-2), by `ofo.table.columns.ColumnId` name.
 COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "LEG": "Leg", "ACTION": "Action", "INSTRUMENT": "Instrument", "EXPIRY": "Expiry", "STRIKE": "Strike",
     "QUANTITY": "Quantity", "ENTRY_PRICE": "Entry Price", "LTP": "LTP", "ENTRY_VALUE": "Entry Value",
     "CURRENT_VALUE": "Current Value", "UNREALIZED_PNL": "Unrealized P&L", "PNL_PERCENT": "P&L %", "IV": "IV",
-    "DELTA": "Delta", "GAMMA": "Gamma", "THETA": "Theta", "VEGA": "Vega", "LOWER_BE": "Lower Breakeven",
+    "DELTA": "Delta", "GAMMA": "Gamma", "THETA": "Theta", "DECAY": "Decay", "VEGA": "Vega", "LOWER_BE": "Lower Breakeven",
     "UPPER_BE": "Upper Breakeven", "STATUS": "Status",
 })
 
@@ -666,6 +807,8 @@ TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "no_lower_be": "no lower breakeven",
     "no_upper_be": "no upper breakeven",
     "no_health": "no strategy health was given",
+    "not_same_quantity": "the legs have different quantities, so there is no single per-unit figure",
+    "no_next_open": "the market calendar has no next open, so there is no decay to it",
 })
 
 
@@ -960,6 +1103,28 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_from_entries_no_estimate", "values_seen",
                         "Estimated Now needs live prices, which are not available. At Expiry is shown from your "
                         "prices."),
+    # REQ-084 AC-2 / AC-5 (owner 2026-10-29, question tool "Approve all three"): the what-if target's three sentences
+    ExplanationTemplate("target_estimate_label", "values_seen",
+                        "Estimate from the pricing model at your target, not a forecast."),
+    ExplanationTemplate("target_clamped", "values_seen", "Target moved to the nearest allowed value: {value}.",
+                        {"value": TargetValue}),
+    ExplanationTemplate("target_greeks_no_time_left", "values_seen",
+                        "No Greeks at expiry: the options have no time left."),
+    # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
+    ExplanationTemplate("target_badge_profit", "values_seen", "Projected profit: Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("target_badge_loss", "values_seen", "Projected loss: Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("target_badge_zero", "values_seen", "Projected P/L: {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("target_badge_unavailable", "values_seen", "Projected figure not available"),
+    ExplanationTemplate("target_badge_no_target", "values_seen", "No target is set."),
+    ExplanationTemplate("target_badge_percent_unavailable", "values_seen",
+                        "% of margin needed not available: Zerodha margin could not be read"),
+    ExplanationTemplate("target_days_to_expiry", "values_seen", "{days}D to expiry", {"days": Days}),
+    ExplanationTemplate("target_move_no_spot", "values_seen",
+                        "The move from spot is not available: there is no live index price."),
+    # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
+    ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
+    ExplanationTemplate("target_booked_unreadable", "values_seen",
+                        "Booked profit and loss could not be read, so these figures are for the open legs only."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),
@@ -967,18 +1132,27 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_margin_pending", "values_seen",
                         "Margin from Zerodha is not shown yet; it needs your Kite login."),
     # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
+    # GC-UI D-A47: two wordings, chosen on the server by the ADR-094 top-up (margin_gate.basket_requirement). Top-up
+    # 0: Zerodha's figure already includes the bought legs' premium and nothing was added, so no addition is named.
     ExplanationTemplate("outcome_margin_checked", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}. With the premium at your planned entry "
-                        "prices, "
-                        "about {needed} is needed (an estimate); {available} is available in your Zerodha account.",
-                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
+                        "Zerodha's own margin figure is {broker_needed}, which already includes the premium of the "
+                        "legs you buy; {available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "available": Rupees}),
+    ExplanationTemplate("outcome_margin_checked_top_up", "values_seen",
+                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "{available} is available in your Zerodha account.",
+                        {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
     ExplanationTemplate("outcome_margin_short", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}. With the premium at your planned entry "
-                        "prices, "
-                        "about {needed} is needed (an estimate); {available} is available in your account. "
-                        + MARGIN_SHORTFALL_NEXT_ACTION,
-                        {"broker_needed": Rupees, "needed": Rupees, "available": Rupees}),
+                        "Zerodha's own margin figure is {broker_needed}, which already includes the premium of the "
+                        "legs you buy; {available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "available": Rupees}),
+    ExplanationTemplate("outcome_margin_short_top_up", "values_seen",
+                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "{available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
+                        {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
@@ -1029,6 +1203,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
+    # G-065 (REQ-148 AC-4/AC-6, ADR-143 (1), REQ-083 AC-3): legs on more than one expiry have no exact at-expiry payoff;
+    # the worst-case line is ADR-143's own words, also the At Expiry chart's reason
+    ExplanationTemplate("mixed_expiry_worst_case", "values_seen",
+                        "Worst case: the loss for this strategy can't be estimated."),
+    ExplanationTemplate("summary_make_mixed_expiry", "values_seen",
+                        "The most this strategy can make can't be estimated: its legs are on more than one expiry."),
+    ExplanationTemplate("summary_start_mixed_expiry", "values_seen",
+                        "Where losses start can't be estimated: the legs are on more than one expiry."),
     ExplanationTemplate("summary_reward_risk_none", "values_seen", "No fixed maximum"),
     # REQ-081 (W-154): the money summary. No return, gain, expected or promise wording (ADR-003, ADR-164).
     ExplanationTemplate("money_premium_get", "values_seen", "Get {amount}", {"amount": Rupees}),
@@ -1047,8 +1229,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "It depends on where the index settles, so it is not in this total.", {"pct": Amount}),
     ExplanationTemplate("money_reward_risk_multi_expiry", "values_seen",
                         "no worst case for legs on different expiries"),
-    ExplanationTemplate("money_funds_percent", "values_seen", "{pct}% of funds", {"pct": Amount}),
-    ExplanationTemplate("money_funds_percent_small", "values_seen", "less than 1% of funds"),
+    # REQ-081 AC-9/AC-11 (ADR-207 (8)): the percent basis is the margin needed; the label is only "% of margin needed"
+    ExplanationTemplate("money_margin_percent", "values_seen", "{pct}% of margin needed", {"pct": Amount}),
+    ExplanationTemplate("money_margin_percent_small", "values_seen", "less than 0.1% of margin needed"),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
     ExplanationTemplate("summary_make_at_most_with_charges", "values_seen",
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
@@ -1057,6 +1240,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"index": UnderlyingName, "regions": LevelRegions}),
     ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {levels} at expiry.",
                         {"levels": ExceptLevels}),
+    # GC-UI D-A46: charges known; the levels are the pre-charges payoff's breakevens (spec sections 1 and 3)
+    ExplanationTemplate("summary_start_regions_with_charges", "values_seen",
+                        "If {index} ends {regions} at expiry, before about {charges} of charges and taxes.",
+                        {"index": UnderlyingName, "regions": LevelRegions, "charges": Rupees}),
+    ExplanationTemplate("summary_start_touch_with_charges", "values_seen",
+                        "At every level except exactly {levels} at expiry, before about {charges} of charges and "
+                        "taxes.", {"levels": ExceptLevels, "charges": Rupees}),
     ExplanationTemplate("summary_start_never", "values_seen", "At no level at expiry."),
     ExplanationTemplate("summary_start_everywhere", "values_seen",
                         "At every level at expiry."),
@@ -1067,7 +1257,54 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("scenario_header_zero_pnl", "values_seen", "0-P&L {level}", {"level": Points}),
     ExplanationTemplate("scenario_header_current_zero_pnl", "values_seen", "CURRENT 0-P&L {level}",
                         {"level": Points}),
+    ExplanationTemplate("summary_whole_rupees", "values_seen", "{amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("summary_whole_rupees_signed", "values_seen", "{amount}", {"amount": SignedWholeRupees}),
+    ExplanationTemplate("summary_paisa_signed", "values_seen", "{amount}", {"amount": SignedPaisa}),
+    # GC-TP step 8a (REQ-109 AC-10): a paper strategy's Charges, to the paisa, beside its P&L
+    ExplanationTemplate("paper_charges", "values_seen", "{amount}", {"amount": Rupees}),
+    # GC-TP step 7a (ADR-207 (5), REQ-109 AC-8): the paper stop-loss texts - the stop order's reason and the alert
+    ExplanationTemplate("paper_stop_reason_index", "what_triggered",
+                        "Conditional exit: {underlying} crossed {direction} {level}",
+                        {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
+    ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
+                        {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
+    ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
+    ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy - {name}", {"name": Explained}),
+    ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
+                        {"contract": Explained, "price": Explained}),
+    ExplanationTemplate("paper_alert_legs", "values_seen", "{rest}, {leg}", {"rest": Explained, "leg": Explained}),
+    ExplanationTemplate("paper_alert_body", "what_triggered",
+                        "Paper strategy - {name}: {what}; exited {count} legs at {prices}. A paper exit only: no order "
+                        "was sent to Zerodha.",
+                        {"name": Explained, "what": Explained, "count": Recorded, "prices": Explained}),
+    ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
+    ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
+                        {"level": WholePoints, "percent": SignedPercent}),
     ExplanationTemplate("cell_dash", "values_seen", "\u2014"),
+    # GC-UI step 4 (REQ-083 AC-4, REQ-137 AC-1/AC-3): the SD table and bands, and the payoff table's limits
+    ExplanationTemplate("sd_move", "values_seen", "{points} ({percent}%)", {"points": Amount, "percent": Amount}),
+    ExplanationTemplate("sd_label", "values_seen", "{n}SD", {"n": Recorded}),
+    ExplanationTemplate("sd_no_iv", "values_seen",
+                        "The standard deviation needs the at-the-money implied volatility, which is not available."),
+    ExplanationTemplate("sd_no_spot", "values_seen",
+                        "The standard deviation needs a live index price, which is not available."),
+    ExplanationTemplate("payoff_table_too_many_rows", "values_seen",
+                        "This range has too many rows at a {step}-point interval. Pick a wider interval.",
+                        {"step": Amount}),
+    # GC-UI D-B16 / D-B17 (REQ-083 AC-5, AC-6): the payoff chart's OI bars; the AC-6 line always opens with the
+    # requirement's own words, then the reason. Today's OI change (D-B18) is Later: no template for it.
+    ExplanationTemplate("outcome_oi_count", "values_seen", "{count}", {"count": OiCount}),
+    ExplanationTemplate("outcome_oi_read_at", "values_seen", "OI data at {time} IST", {"time": HourMinute}),
+    ExplanationTemplate("outcome_oi_nearest_expiry", "values_seen",
+                        "OI is shown for the nearest expiry, {expiry}.", {"expiry": ExpiryDate}),
+    ExplanationTemplate("outcome_oi_not_connected", "values_seen",
+                        "OI not available for this expiry: live data is not connected."),
+    ExplanationTemplate("outcome_oi_not_streaming", "values_seen",
+                        "OI not available for this expiry: its strikes are not streaming."),
+    ExplanationTemplate("outcome_oi_stale", "values_seen",
+                        "OI not available for this expiry: the feed is stale."),
+    ExplanationTemplate("outcome_oi_no_strikes", "values_seen",
+                        "OI not available for this expiry: no listed strike is inside the chart's range."),
     ExplanationTemplate("cell_rupees", "values_seen", "{amount}", {"amount": Rupees}),
     ExplanationTemplate("cell_rupees_cr", "values_seen", "{amount} Cr", {"amount": Rupees}),
     ExplanationTemplate("cell_rupees_dr", "values_seen", "{amount} Dr", {"amount": Rupees}),
@@ -1077,9 +1314,59 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
+    # GC-UI step 5 (REQ-091 AC-2..AC-5, ADR-203, F-64): the Strategy Chart's source, future label, notes and reasons
+    ExplanationTemplate("price_history_source", "values_seen", "Kite historical 1-minute candles"),
+    ExplanationTemplate("price_history_future_label", "values_seen", "{underlying} {expiry} FUT",
+                        {"underlying": UnderlyingName, "expiry": DayMonth}),
+    ExplanationTemplate("price_history_leg_listed_from", "values_seen", "{leg} listed from {date}; showing {days} days",
+                        {"leg": LegRef, "date": ExpiryDate, "days": Days}),
+    ExplanationTemplate("price_history_leg_ended_on", "values_seen",
+                        "{leg} has no prices after {date}; the chart ends there", {"leg": LegRef, "date": ExpiryDate}),
+    ExplanationTemplate("price_history_leg_not_listed", "values_seen", "{leg} has no prices in this window.",
+                        {"leg": LegRef}),
+    ExplanationTemplate("price_history_no_future_candles", "values_seen",
+                        "The index future has no prices in this window."),
+    ExplanationTemplate("price_history_all_gaps", "values_seen",
+                        "No minute in this window has a price for every leg."),
+    ExplanationTemplate("price_history_no_session", "values_seen", "Connect Zerodha to see the strategy chart."),
+    ExplanationTemplate("price_history_kite_refused", "values_seen",
+                        "Zerodha did not return the price history. Try again later."),
+    ExplanationTemplate("price_history_future_not_in_catalogue", "values_seen",
+                        "No index future is listed in the stored instrument list."),
+    # GC-UI step 9 F4: a saved leg's quantity is not a whole number of lots at today's lot size (lot size changed)
+    ExplanationTemplate("price_history_quantity_not_whole_lots", "values_seen",
+                        "{leg}: the saved quantity is not a whole number of lots at today's lot size.",
+                        {"leg": LegRef}),
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
+    # GC-TP R-20 / R-15 (ADR-210, owner-approved 2026-10-29): why a paper or what-if figure is a dash; one per reason code
+    ExplanationTemplate("paper_reason_not_priced", "values_seen",
+                        "Charges not shown: an order's value could not be worked out."),
+    ExplanationTemplate("paper_reason_model_refused", "values_seen",
+                        "Decay not shown: the pricing model could not value a leg."),
+    ExplanationTemplate("paper_reason_contract_retired", "values_seen",
+                        "This contract has expired and is no longer traded."),
+    ExplanationTemplate("paper_reason_contract_delisted", "values_seen", "The exchange has removed this contract."),
+    ExplanationTemplate("paper_reason_token_reassigned", "values_seen",
+                        "The exchange now uses this contract's code for a different contract, so its price is not "
+                        "shown."),
+    ExplanationTemplate("paper_reason_contract_missing", "values_seen",
+                        "This contract is not in today's contract list, so its price is not shown."),
+    ExplanationTemplate("paper_reason_whatif_stale", "values_seen",
+                        "Stale: this target figure uses prices older than expected and may be out of date."),
+    # words that were already in the product (moved from the browser, unchanged): the paused book and the extremes
+    ExplanationTemplate("paper_reason_prices_not_live", "values_seen", "Paper P&L paused - prices not live"),
+    ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
+                        "Profit left and Loss left are not worked out: the open contracts have different expiries."),
+    ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
+                        "Profit left and Loss left are not worked out: prices are not live."),
+    # GC-TP fix1 (ADR-211 (5)): the breakeven dash of a card on legs with different expiries; "Exited" moved unchanged
+    # from the browser (EXITED_TEXT), the reason beside every figure of a fully exited strategy
+    ExplanationTemplate("paper_breakeven_multi_expiry", "values_seen",
+                        "Breakeven is exact only for a single-expiry strategy"),
+    ExplanationTemplate("paper_reason_exited", "values_seen", "Exited"),
+    ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
@@ -1122,6 +1409,20 @@ def _make_render_explanation() -> Callable[..., ExplanationText]:
 
 render_explanation = _make_render_explanation()
 del _make_render_explanation
+
+
+def restore_explanation(template_id: str, stored: str) -> ExplanationText:
+    """A line a `render_explanation()` call made earlier and a store kept (GC-TP 7a: a paper alert's title and body) read
+    back as an explanation. Only a string that fits the template's fixed words, in order, is restored; anything else
+    (a hand-written or edited row) is refused, so a store cannot smuggle its own sentence through a response."""
+    found = next((t for t in _EXPLANATIONS if t.id == template_id), None)
+    if found is None:
+        raise ValueError(f"unknown explanation template id {template_id!r}")
+    pieces = re.split(r"\{[a-z_]+\}", found.text)
+    shape = ".+?".join(re.escape(piece) for piece in pieces)
+    if type(stored) is not str or re.fullmatch(shape, stored, re.DOTALL) is None:
+        raise ValueError(f"stored text does not fit explanation template {template_id!r}")
+    return ExplanationText(stored, _EXPLANATION_MINT)
 
 
 def join_explanations(parts: tuple[ExplanationText, ...] | list[ExplanationText], sep: str = ", ") -> ExplanationText:

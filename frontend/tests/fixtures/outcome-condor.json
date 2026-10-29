@@ -2605,6 +2605,12 @@
   "risk_boundaries": [
    "22200",
    "23000"
+  ],
+  "max_profit_display": "0",
+  "max_loss_display": "−13,000",
+  "breakevens_display": [
+   "22,400 (−0.6%)",
+   "22,800 (+1.2%)"
   ]
  },
  "leg_quotes": [

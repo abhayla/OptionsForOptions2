@@ -46,7 +46,10 @@ PINNED_SLOT_TYPES = frozenset({
         "LegacyRecorded", "OpWords", "ActionWords", "MeasureWords", "DirectionWords", "FollowUpLabel", "InputLabel",
         # W-066 (outcome text from the catalogue)
         "Rupees", "Points", "ExceptLevels", "LevelRegions", "SignedAmount", "HourMinute", "ClockSeconds",
-        "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "CellText",
+        "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "DayMonth", "CellText", "OiCount", "WholePoints", "SignedPercent", "WholeRupees",  # noqa: E501 - long line kept whole
+        "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
+        # GC-TP step 7a / 6a (reviewed 2026-10-29 session 2: both validate through Rupees / HourMinute, format only)
+        "IndexLevel", "TargetValue",
         "ColumnLabel", "HealthLabel", "ScenarioViewLabel",
         # W-117 (Learn): only a text the loaded strategy catalogue holds (name/description). The W-117 verifier
         # attacked it on 2026-10-19 (forged, empty, 1M-char, lookalike, NFD, str subclass, bytes: all refused);

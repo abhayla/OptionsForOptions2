@@ -49,15 +49,15 @@ async function addLeg(page: Page, type: string, action: string) {
   const rows = page.getByTestId('leg-row')
   await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
   const before = await rows.count()
-  await page.getByTestId('pick-type').selectOption(type)
-  await expect(page.getByTestId('pick-strike')).toBeEnabled()
-  const strikes = page.getByTestId('pick-strike').locator('option:not([value=""])')
-  const count = await strikes.count()
+  // D-C31: B / S on the strike table (lots from the cell's own select), then Done
+  const strikeRows = page.getByTestId('strike-row')
+  await expect(strikeRows.first()).toBeVisible()
+  const count = await strikeRows.count()
   expect(count).toBeGreaterThan(2)
-  await page.getByTestId('pick-strike').selectOption(await strikes.nth(Math.floor(count / 2)).getAttribute('value') as string)
-  await page.getByTestId('pick-action').selectOption(action)
-  await page.getByTestId('pick-lots').fill(type === 'CE' ? '2' : '1')
-  await page.getByTestId('add-leg').click()
+  const cell = strikeRows.nth(Math.floor(count / 2)).getByTestId(`cell-${type.toLowerCase()}`)
+  await cell.getByTestId(action === 'BUY' ? 'cell-buy' : 'cell-sell').click()
+  if (type === 'CE') await cell.getByTestId('cell-lots').selectOption({ index: 1 }) // the second offered size (2 lots)
+  await page.getByTestId('picker-done').click()
   await expect(rows).toHaveCount(before + 1)
 }
 
@@ -175,7 +175,7 @@ test('Save, edit a leg, Save again: ONE strategy at revision 2, not two; Save As
   await expect(page.getByTestId('name-input')).toHaveValue('E2E update proof')
   await page.getByTestId('name-input').fill('E2E renamed')
   await page.getByTestId('name-confirm').click()
-  await expect(page.getByTestId('current-name')).toHaveText('E2E renamed')
+  await expect(page.getByTestId('strategy-card-name')).toHaveText('E2E renamed') // GC-UI 3a D-A22: the name is the legs card title
   const renamedRow = await (await page.request.get(`${URL}/api/strategies/${id}`)).json()
   expect(renamedRow.name).toBe('"E2E renamed"')
   expect(renamedRow.revision).toBe(2)

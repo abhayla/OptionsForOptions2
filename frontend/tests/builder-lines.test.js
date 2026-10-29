@@ -46,7 +46,8 @@ describe('Save Draft bar', () => {
     answers['GET /strategies'] = { strategies: [{ id: 7, underlying: 'NIFTY', updated_at: '2026-10-15T06:29:59Z' }] }
     const w = mount(SaveDraftBar, { props: { legs: [] } })
     await flushPromises()
-    expect(t(w, 'saved-draft-row').text()).toContain('Draft 7, NIFTY, updated 15 Oct 2026, 11:59:59 IST')
+    // GC-UI 6b D-C11: the row is two lines (name, legs); the updated time moved to the row's tooltip
+    expect(t(w, 'open-draft-7').attributes('title')).toBe('NIFTY, updated 15 Oct 2026, 11:59:59 IST')
   })
 
   // W-192 (ADR-193 UI-108, UI-112): Save in the action row, Save As / Rename in the "..." menu, the list in the Saved tab
@@ -60,7 +61,7 @@ describe('Save Draft bar', () => {
     expect(t(w, 'tab-panel-saved').isVisible()).toBe(true)
     expect(w.findAll('[data-testid="saved-draft-row"]').map((r) => r.attributes('data-current'))).toHaveLength(10)
     await t(w, 'saved-search').setValue('sensex')
-    expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12, SENSEX, updated 15 Oct 2026, 11:59:59 IST'])
+    expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12'])
     await t(w, 'saved-search').setValue('no such plan')
     expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches.')
     w.unmount()
@@ -126,19 +127,19 @@ describe('contract names in the advanced details and the picker', () => {
       .toEqual(['NIFTY 13 Oct 22800 CE', 'Contract details not available'])
   })
 
-  it('the picker shows the lot-size line with the contract name', async () => {
+  it('the Edit form shows the lot-size line with the contract name', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = {
       underlying: 'NIFTY',
       contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }],
     }
-    const w = mount(LegPicker, { props: { legs: [] } })
+    const leg = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: '104.65', captured_at: '2026-10-13T09:20:09+05:30', reason_code: null }
+    const w = mount(LegPicker, { props: { legs: [leg] } }) // the by-contract form is the Edit path only (D-C31)
     await flushPromises()
-    await t(w, 'pick-expiry').setValue('2026-10-13')
+    expect(t(w, 'pick-type').exists()).toBe(false)
+    await t(w, 'edit-leg').trigger('click')
     await flushPromises()
-    await t(w, 'pick-type').setValue('CE')
-    await t(w, 'pick-strike').setValue('22800.00')
     expect(t(w, 'lot-size').text()).toBe('NIFTY 13 Oct 22800 CE, lot size 65')
   })
 })

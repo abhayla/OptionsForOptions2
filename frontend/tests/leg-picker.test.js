@@ -23,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft } from '@/lib/legPicker'
+import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
 const c = (token, type, strike, symbol, expiry = '2026-10-13') => ({
@@ -65,6 +65,7 @@ beforeEach(() => {
     'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', expiries: ['2026-10-15'] },
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-13': NIFTY_13,
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-27': NIFTY_27,
+    'GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10': pkStrikes(),
   }
 })
 
@@ -78,53 +79,67 @@ function mountPicker(initial = []) {
   return w
 }
 
+// GC-UI step 2 (D-C31): a leg is added only through the strike table's B / S buttons and Done; the by-contract form is
+// the Edit / Reprice path only. These strikes are the four recorded NIFTY 13-Oct contracts of NIFTY_13 above.
+const PK_ROWS = [['22200.00', 'PE', 44595], ['22400.00', 'PE', 44604], ['22800.00', 'CE', 44624], ['23000.00', 'CE', 44632]]
+const pkCell = (token) => ({ instrument_id: `NSE_FO:${token}`, lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null })
+const pkStrikes = () => ({
+  state: 'LIVE', reason: null, underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: '22533.25', spot_at: AT, centre: 'LIVE_SPOT',
+  atm_strike: '22800.00', answered_at: AT, market_closed: false,
+  rows: PK_ROWS.map(([strike, type, token]) => ({ strike, is_atm: false, ce: type === 'CE' ? pkCell(token) : null, pe: type === 'PE' ? pkCell(token) : null })),
+})
+const PK_URL = 'GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'
+
+/** Choose a contract the only way the page offers: B or S on its cell in the strike table (lots from the cell's own select). */
 async function pick(w, { expiry = '2026-10-13', type, strike, action = 'SELL', lots = '1' }) {
-  await t(w, 'pick-expiry').setValue(expiry)
+  answers[PK_URL] = pkStrikes()
+  if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') { // on the page the picker is a drawer
+    await t(w, 'add-edit').trigger('click')
+    await flushPromises()
+  }
+  if (t(w, 'pick-expiry').element.value !== expiry) await t(w, 'pick-expiry').setValue(expiry)
   await flushPromises()
-  await t(w, 'pick-type').setValue(type)
-  if (strike) await t(w, 'pick-strike').setValue(strike)
-  await t(w, 'pick-action').setValue(action)
-  await t(w, 'pick-lots').setValue(lots)
+  const side = w.find(`[data-testid="strike-row"][data-strike="${strike}"] [data-testid="cell-${type.toLowerCase()}"]`)
+  await side.find(`[data-testid="cell-${action === 'BUY' ? 'buy' : 'sell'}"]`).trigger('click')
+  if (lots !== '1') await side.find('[data-testid="cell-lots"]').setValue(lots)
 }
 
 describe('only offered contracts are selectable', () => {
-  it('offers the underlyings, then the expiries and strikes the API sent, in the API order', async () => {
+  it('offers the underlyings, then the expiries and the strike table the API sent, in the API order', async () => {
+    answers[PK_URL] = pkStrikes()
     const w = mountPicker()
     await flushPromises()
     expect(options(w, 'pick-underlying')).toEqual(['NIFTY', 'SENSEX'])
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
-    expect(calls.map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries'])
-    await t(w, 'pick-expiry').setValue('2026-10-13')
-    await flushPromises()
-    expect(calls.filter((x) => x.url.startsWith('/catalogue/')).at(-1).url).toBe('/catalogue/NIFTY/contracts?expiry=2026-10-13') // the picker's own strikes read follows it
-    expect(options(w, 'pick-type')).toEqual(['CE', 'PE'])
-    await t(w, 'pick-type').setValue('PE')
-    expect(options(w, 'pick-strike')).toEqual(['22200.00', '22400.00'])
-    await t(w, 'pick-type').setValue('CE')
-    expect(options(w, 'pick-strike')).toEqual(['22800.00', '23000.00'])
+    expect(calls.filter((x) => x.url.startsWith('/catalogue/')).map((x) => x.url)).toEqual(['/catalogue/NIFTY/expiries', '/catalogue/NIFTY/contracts?expiry=2026-10-13']) // G-070: opens on the nearest expiry
+    expect(w.findAll('[data-testid="strike-row"]').map((r) => r.attributes('data-strike'))).toEqual(PK_ROWS.map((r) => r[0]))
+    expect(t(w, 'picker-by-contract').exists()).toBe(false) // no add-by-contract form
+    expect(t(w, 'pick-type').exists()).toBe(false)
   })
 
-  it('changing the underlying asks the API again and clears the expiry, so an old contract cannot be added', async () => {
+  it('changing the underlying asks the API again and clears the expiry and the picks, so an old contract cannot be added', async () => {
+    answers[PK_URL] = pkStrikes()
     const w = mountPicker()
     await flushPromises()
-    await t(w, 'pick-expiry').setValue('2026-10-13')
-    await flushPromises()
+    await pick(w, { type: 'CE', strike: '22800.00' })
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
     await t(w, 'pick-underlying').setValue('SENSEX')
     await flushPromises()
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-15'])
-    expect(t(w, 'pick-expiry').element.value).toBe('')
-    expect(options(w, 'pick-type')).toEqual([])
-    expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-15') // G-070: the new underlying's nearest expiry
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
   })
 
   it('an expiry with no contracts offers nothing and cannot be added', async () => {
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [] }
+    answers[PK_URL] = { ...pkStrikes(), state: 'NOT_LIVE', reason: 'NO_CONTRACTS', rows: [] }
     const w = mountPicker()
     await flushPromises()
     await t(w, 'pick-expiry').setValue('2026-10-13')
     await flushPromises()
-    expect(options(w, 'pick-type')).toEqual([])
-    expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
+    expect(w.findAll('[data-testid="strike-row"]')).toHaveLength(0)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
   })
 
   it('a catalogue failure shows the four-part message and offers nothing', async () => {
@@ -139,13 +154,19 @@ describe('only offered contracts are selectable', () => {
 })
 
 describe('FUT has no strike', () => {
-  it('a FUT is added without a strike and is sent to the planned-entry API by its joined id', async () => {
+  it('a FUT is added without a strike through the Futures tab Buy, and is sent to the planned-entry API by its joined id', async () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(48704, '24750.50')] }
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = {
+      state: 'LIVE', reason: null, underlying: 'NIFTY', spot: '22533.25', answered_at: AT,
+      futures: [{ expiry: '2026-10-27', instrument_id: 'NSE_FO:48704', lot_size: 65, ltp: '24750.50', health: 'available', ltp_reason: null }],
+      forwards: [],
+    }
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { expiry: '2026-10-27', type: 'FUT', action: 'BUY' })
+    await w.findAll('[role="tab"]').find((x) => /future/i.test(x.text())).trigger('click')
+    await flushPromises()
     expect(t(w, 'pick-strike').exists()).toBe(false)
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'future-buy').trigger('click')
     await flushPromises()
     const post = calls.find((x) => x.method === 'POST')
     expect(post.body).toEqual({ underlying: 'NIFTY', instrument_ids: ['NSE_FO:48704'] })
@@ -161,17 +182,24 @@ describe('lots validation', () => {
     for (const bad of ['', '0', '-1', '1.5', '10001', '01', ' 1', '1e2', 'abc', null, undefined]) expect(lotsValid(bad)).toBe(false)
   })
 
-  it('the Add button stays disabled for bad lots and nothing is sent', async () => {
+  it('the Save leg button (Edit) stays disabled for bad lots and nothing is sent', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [entry(44624, '104.65')] }
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { type: 'CE', strike: '22800.00', lots: '0' })
+    await pick(w, { type: 'CE', strike: '22800.00' })
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    const posts = () => calls.filter((x) => x.method === 'POST').length
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'pick-lots').setValue('0')
     expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
     expect(t(w, 'lots-error').exists()).toBe(true)
     await t(w, 'pick-lots').setValue('10001')
     expect(t(w, 'add-leg').attributes('disabled')).toBeDefined()
     await t(w, 'pick-lots').setValue('3')
     expect(t(w, 'add-leg').attributes('disabled')).toBeUndefined()
-    expect(calls.some((x) => x.method === 'POST')).toBe(false)
+    expect(posts()).toBe(1) // only the capture at Done
   })
 })
 
@@ -181,7 +209,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00', lots: '2' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg).toMatchObject({ underlying: 'NIFTY', instrument_id: instrumentId('NSE_FO', 44624), symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT })
@@ -195,7 +223,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg.planned_entry).toBeNull()
@@ -208,7 +236,7 @@ describe('planned entry: captured when the leg is added, never invented', () => 
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const [leg] = w.props('legs')
     expect(leg.planned_entry).toBeNull()
@@ -222,7 +250,7 @@ describe('edit and remove', () => {
     const w = mountPicker()
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     return w
   }
@@ -285,28 +313,23 @@ describe('edit and remove', () => {
 })
 
 describe('a late async reply never overwrites newer user state', () => {
-  it('a leg is saved from what was picked at the click; picks made while the entry is being captured survive', async () => {
+  it('a leg is added from what was picked at Done; picks made while the entry is being captured survive', async () => {
     let release
     answers['POST /strategies/planned-entry'] = () => new Promise((res) => { release = () => res({ data: { entries: [entry(44624, '104.65')] } }) })
     const w = mountPicker()
     await flushPromises()
-    await pick(w, { type: 'CE', strike: '22800.00', action: 'SELL', lots: '1' })
-    await t(w, 'add-leg').trigger('click')
+    await pick(w, { type: 'CE', strike: '22800.00', action: 'SELL' })
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     // while the capture is pending the user picks the next leg
-    await t(w, 'pick-type').setValue('PE')
-    await t(w, 'pick-strike').setValue('22400.00')
-    await t(w, 'pick-action').setValue('BUY')
-    await t(w, 'pick-lots').setValue('3')
+    await pick(w, { type: 'PE', strike: '22400.00', action: 'BUY', lots: '3' })
     release()
     await flushPromises()
     const [leg] = w.props('legs')
     expect(w.props('legs')).toHaveLength(1)
     expect(leg).toMatchObject({ instrument_id: instrumentId('NSE_FO', 44624), action: 'SELL', lots: 1, instrument_type: 'CE', planned_entry: '104.65' })
-    expect(t(w, 'pick-type').element.value).toBe('PE')
-    expect(t(w, 'pick-strike').element.value).toBe('22400.00')
-    expect(t(w, 'pick-action').element.value).toBe('BUY')
-    expect(t(w, 'pick-lots').element.value).toBe('3')
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    expect(t(w, 'selection-side').text()).toBe('BUY')
   })
 
   it('the Builder ignores an outcome answer that arrives after every leg was removed', async () => {
@@ -319,7 +342,7 @@ describe('a late async reply never overwrites newer user state', () => {
     const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
     await flushPromises()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('loading')
     await t(w, 'remove-leg').trigger('click')
@@ -355,7 +378,7 @@ describe('legs added quickly in sequence are all kept', () => {
     for (const [i, [type, strike, action]] of legsAdded.entries()) {
       if (t(w, 'add-edit').exists() && t(w, 'add-edit').attributes('aria-expanded') !== 'true') await t(w, 'add-edit').trigger('click')
       await pick(w, { type, strike, action })
-      await t(w, 'add-leg').trigger('click')
+      await t(w, 'picker-done').trigger('click')
       await flushPromises()
       captures.shift()() // this leg's capture answers while every earlier outcome / shape read is still unanswered
       await flushPromises()
@@ -425,7 +448,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/outcome'] = OUTCOME_NOT_CONNECTED
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00', lots: '2' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
@@ -433,6 +456,9 @@ describe('the Builder page', () => {
       underlying: 'NIFTY',
       legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT }],
       fallback: false,
+      both_views: true, // GC-UI b1: the chart asks both curves, the SD bands and the OI bars (REQ-083)
+      sd_bands: true,
+      open_interest: true,
       seq: 2, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1
     })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
@@ -443,7 +469,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(44624, null)] }
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(calls.some((x) => x.url === '/strategies/outcome')).toBe(false)
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('unpriced')
@@ -455,7 +481,7 @@ describe('the Builder page', () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(44624, null)] }
     const w = await open()
     await pick(w, { type: 'CE', strike: '22800.00' })
-    await t(w, 'add-leg').trigger('click')
+    await t(w, 'picker-done').trigger('click')
     await flushPromises()
     await t(w, 'remove-leg').trigger('click')
     await flushPromises()
@@ -474,7 +500,7 @@ describe('the Builder page', () => {
     const w = await open({ draft: JSON.stringify(draft) })
     const out = calls.filter((x) => x.url === '/strategies/outcome')
     expect(out).toHaveLength(1)
-    expect(out[0].body).toEqual({ ...draft, fallback: false, seq: 1 })
+    expect(out[0].body).toEqual({ ...draft, fallback: false, both_views: true, sd_bands: true, open_interest: true, seq: 1 })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2) // the one list is LegList's
     expect(w.findAll('[data-testid="leg-list"]')).toHaveLength(0) // the picker draws no list of its own on the Builder
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
@@ -655,10 +681,10 @@ describe('REQ-080 strikes tab (W-147)', () => {
     // priced cell: the server's strings, nothing computed
     const ce = sideOf(w, '22500.00', 'ce')
     expect([ce.find('[data-testid="cell-ltp"]').text(), ce.find('[data-testid="cell-oi"]').text(), ce.find('[data-testid="cell-iv"]').text(), ce.find('[data-testid="cell-delta"]').text()])
-      .toEqual(['151.30', '3218475', '11.34', '0.5730'])
+      .toEqual(['151.30', '32.2L', '11.34', '0.5730'])
     // unpriced cell: '-' in every figure, and the reason sits above the list
     const none = sideOf(w, '22450.00', 'ce')
-    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '-', '-', '-'])
+    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '—', '-', '-'])
     expect(t(w, 'strikes-reason').text()).toBe('Some strikes have no live price right now; they show a dash.')
     expect(t(w, 'strikes-reason').element.compareDocumentPosition(rowOf(w, '22450.00').element) & 4).toBeTruthy() // the list follows the reason
     // select two contracts (22500 CE sell, 22550 PE buy), Done adds both
@@ -686,6 +712,107 @@ describe('REQ-080 strikes tab (W-147)', () => {
     await flushPromises()
     expect(calls.at(-1).url).toBe('/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=20')
     expect(t(w, 'picker-done').text()).toBe('Done')
+  })
+
+  // GC-BP F-2 (REQ-080 AC-3 "Done adds them all"): a change of expiry or width keeps every pick; only an underlying change clears.
+  // 27 Oct has its own tokens (45000 + ...), so a 22550 CE on each expiry is a different contract with its own expiry.
+  const tok27 = (i, side) => 45000 + 2 * i + (side === 'pe' ? 1 : 0)
+  const catalogue27 = {
+    underlying: 'NIFTY',
+    contracts: GRID.flatMap((strike, i) => ['ce', 'pe'].map((side) => ({
+      contract_id: tok27(i, side), exchange_segment: 'NSE_FO', exchange_token: tok27(i, side), instrument_type: side.toUpperCase(),
+      expiry: '2026-10-27', strike, lot_size: 65, symbol: `NIFTY26OCT27${strike}${side.toUpperCase()}`,
+    }))),
+  }
+  const strikes27 = () => strikesAnswer({
+    expiry: '2026-10-27',
+    rows: GRID.map((strike, i) => ({
+      strike, is_atm: strike === '22550.00',
+      ce: { ...cell(i, 'ce'), instrument_id: `NSE_FO:${tok27(i, 'ce')}` }, pe: { ...cell(i, 'pe'), instrument_id: `NSE_FO:${tok27(i, 'pe')}` },
+    })),
+  })
+  function setUp27() {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-27'] = catalogue27
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = strikes27()
+    answers['POST /strategies/planned-entry'] = entryFor({})
+  }
+  async function pickAcrossExpiries(w) {
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click') // Sell 13 Oct 22550 CE
+    await openStrikes(w, '2026-10-27')
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-buy"]').trigger('click') // Buy 27 Oct 22550 CE
+  }
+
+  it('GC-BP F-2 core: Sell 22550 CE on one expiry, switch expiry, Buy 22550 CE there, Done emits TWO legs with their own expiries', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await pickAcrossExpiries(w)
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.expiry, l.action, l.contract_id, l.instrument_id, l.strike, l.instrument_type]))
+      .toEqual([['2026-10-13', 'SELL', 44004, 'NSE_FO:44004', '22550.00', 'CE'], ['2026-10-27', 'BUY', 45004, 'NSE_FO:45004', '22550.00', 'CE']])
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(2)
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+  })
+
+  it('GC-BP F-2: the footer counts the picks of every expiry, and coming back to an expiry shows its pick as selected', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await pickAcrossExpiries(w)
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    await openStrikes(w, '2026-10-13')
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    expect(sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('GC-BP F-2: a change of width keeps the picks; its lots are kept too', async () => {
+    answers[STRIKES_URL(20)] = strikesAnswer({ width: 20 })
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'pick-width').setValue('20')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44002', 'BUY'], ['NSE_FO:44005', 'SELL']])
+  })
+
+  it('GC-BP F-2: a change of underlying still clears every pick (a strategy has one underlying)', async () => {
+    answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-15'] = { underlying: 'SENSEX', contracts: [] }
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'pick-underlying').setValue('SENSEX')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
+  })
+
+  it('GC-BP F-2: a pick with no stored contract still refuses Done and adds nothing (fail closed)', async () => {
+    setUp27()
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    await sideOf(w, '22550.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await openStrikes(w, '2026-10-27')
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [] }
+    // a pick on a cell whose contract the catalogue does not list (27 Oct list is replaced after the cell is shown)
+    w.vm.$.setupState.contracts = []
+    await sideOf(w, '22550.00', 'pe').find('[data-testid="cell-buy"]').trigger('click')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')).toEqual([])
+    expect(t(w, 'done-error').exists()).toBe(true)
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
   })
 
   it('attack 1: a leg picked on a strike with no price is still added and shows the reprice prompt', async () => {
@@ -866,28 +993,28 @@ describe('REQ-080 strikes tab (W-147)', () => {
     const w = mountPicker()
     await flushPromises()
     await openStrikes(w)
-    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
     expect(t(w, 'picker-clear-all').attributes('disabled')).toBeDefined()
     await pickThree(w)
     const footer = t(w, 'picker-footer')
-    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    expect(t(w, 'picker-count').text()).toBe('3 legs selected')
     expect(footer.find('[data-testid="picker-clear-all"]').text()).toBe('Clear All')
     expect(footer.find('[data-testid="picker-done"]').text()).toBe('Done')
     // Clear All: no selection row, no pressed Buy/Sell, Done disabled, nothing sent
     await t(w, 'picker-clear-all').trigger('click')
-    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
     expect(w.findAll('[data-testid="selection-row"]')).toHaveLength(0)
     expect(w.findAll('[aria-pressed="true"]')).toHaveLength(0)
     expect(t(w, 'picker-done').attributes('disabled')).toBeDefined()
     expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0)
     // a cleared cell forgets its lots, and Done adds all three at once
     await pickThree(w)
-    expect(t(w, 'picker-count').text()).toBe('3 selected')
+    expect(t(w, 'picker-count').text()).toBe('3 legs selected')
     await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44000', 'BUY'], ['NSE_FO:44002', 'SELL'], ['NSE_FO:44005', 'BUY']])
     expect(w.emitted('update:legs')).toHaveLength(1)
-    expect(t(w, 'picker-count').text()).toBe('0 selected')
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
   })
 
   it('AC-3 attack 6: Done with nothing selected adds nothing and sends no request', async () => {
@@ -1024,7 +1151,10 @@ describe('REQ-080 futures tab (W-147)', () => {
     expect(f[1].find('[data-testid="future-reason"]').text()).toBe('(No price has been received for this future yet.)')
     const fw = w.findAll('[data-testid="forward-row"]')
     expect(fw.map((r) => r.find('[data-testid="forward-value"]').text())).toEqual(['22540.10', '22548.00', '-'])
-    expect(fw.every((r) => r.text().includes('Forward used for pricing'))).toBe(true)
+    // GC-UI 6c D-C32: the rows sit under "Synthetic Futures" (i); the (i) says they are the forward used for pricing
+    expect(t(w, 'synthetic-title').text()).toContain('Synthetic Futures')
+    expect(t(w, 'synthetic-info').attributes('title')).toContain('Forward used for pricing')
+    expect(t(w, 'futures-head').text()).toBe('ExpiryPrice')
     expect(fw[0].find('[data-testid="forward-source"]').text()).toBe('(from put-call parity)')
     expect(fw[1].find('[data-testid="forward-source"]').text()).toBe('(estimated from spot)')
     expect(fw[2].find('[data-testid="forward-reason"]').text()).toBe('(The engine cannot price this expiry right now.)')
@@ -1098,13 +1228,32 @@ describe('REQ-080 futures tab (W-147)', () => {
   })
 })
 
+describe('ADR-199 (4): the drawer opens on the reply\'s default_expiry', () => {
+  it('with no legs it opens on default_expiry, not the first listed expiry', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+  })
+
+  it('with legs it opens on the legs\' expiry even when the default differs', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
+    const w = mountPicker(legs)
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-13')
+  })
+})
+
 describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s count; the value stays the ISO date)', () => {
   const DAYS = [{ expiry: '2026-10-13', days: 0 }, { expiry: '2026-10-27', days: 14 }]
-  it('the expiry select shows "Today (0 days)" and "27 Oct (14 days)" and keeps ISO values', async () => {
+  // GC-UI 6c D-C21: the select shows the short date (never clipped); the server's day count sits beside it
+  it('the expiry select shows "13 Oct" / "27 Oct" with the chosen expiry\'s "0 days" beside it, and keeps ISO values', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
     const w = mountPicker()
     await flushPromises()
-    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['Today (0 days)', '27 Oct (14 days)'])
+    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['13 Oct', '27 Oct'])
+    expect(t(w, 'pick-expiry-days').text()).toBe('0 days')
     expect(options(w, 'pick-expiry')).toEqual(['2026-10-13', '2026-10-27'])
     const before = calls.length
     await t(w, 'pick-expiry').setValue('2026-10-27')
@@ -1114,10 +1263,10 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
     expect(named.every((c) => c.url.includes('expiry=2026-10-27'))).toBe(true) // the ISO date, never the label
   })
 
-  it('a reply with no day count shows the date as sent', async () => {
+  it('a reply with no day count shows the date alone, never raw ISO (REQ-148 AC-2)', async () => {
     const w = mountPicker()
     await flushPromises()
-    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['2026-10-13', '2026-10-27'])
+    expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['13 Oct', '27 Oct']) // REQ-148 AC-2: never raw ISO
   })
 
   it('the Futures tab rows and forward rows take their label from the expiries reply', async () => {
@@ -1131,7 +1280,7 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
     await flushPromises()
     await t(w, 'tab-futures').trigger('click')
     await flushPromises()
-    expect(w.find('[data-testid="future-row"]').text()).toContain('27 Oct (14 days) future')
+    expect(w.find('[data-testid="future-row"]').text()).toContain('27 Oct (14 days)')
     expect(w.find('[data-testid="future-row"]').attributes('data-expiry')).toBe('2026-10-27')
     expect(w.find('[data-testid="forward-row"]').text()).toContain('27 Oct (14 days)')
   })
@@ -1145,12 +1294,38 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
   })
 
-  it('UI-202 (combined check A): the OI shown is the server number and no bar is drawn (a bar width would be browser maths, ADR-008)', async () => {
+  // GC-UI 6c D-C26: the OI label stays; a bar is drawn from the server's two OI values (drawing only, never printed).
+  // Recorded reply: 22500 CE OI 3218475, 22550 PE OI 4022200 (the largest), every other cell has no OI.
+  it('UI-202 / D-C26: the OI is written compactly in Indian units over a bar; a cell with no OI has no bar and the dash, never a zero bar', async () => {
     const w = mountPicker()
     await flushPromises()
     await openStrikes(w)
-    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('3218475')
-    expect(w.findAll('[data-testid="cell-oi-bar"]')).toHaveLength(0)
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('32.2L')
+    expect(sideOf(w, '22550.00', 'pe').find('[data-testid="cell-oi"]').text()).toBe('40.2L')
+    expect(w.findAll('[data-testid="cell-oi-bar"]')).toHaveLength(2)
+    expect(sideOf(w, '22550.00', 'pe').find('[data-testid="cell-oi-bar"]').attributes('style')).toContain('width: 100%')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi-bar"]').attributes('style')).toContain('width: 80%') // 3218475 / 4022200
+    expect(sideOf(w, '22450.00', 'ce').find('[data-testid="cell-oi-bar"]').exists()).toBe(false)
+    expect(sideOf(w, '22450.00', 'ce').find('[data-testid="cell-oi"]').text()).toBe('—')
+    expect(sideOf(w, '22500.00', 'ce').find('[data-testid="cell-oi-bar"]').text()).toBe('') // the bar prints no figure
+  })
+
+  // GC-UI D-C27 round 2: the drawer fits its panel. The widths are read from the grid the component really renders
+  // (its grid-template-columns and its gap class), a flexible minmax(Npx,1fr) counted at its N px minimum.
+  it('D-C27: the LTP view columns and gaps add up to at most 470 px (the 1536 x 864 drawer panel is 473 px), so none is cut off', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    for (const el of [t(w, 'strike-head'), rowOf(w, '22500.00')]) {
+      const tracks = el.element.style.gridTemplateColumns.split(/ (?![^(]*\))/)
+      expect(tracks).toHaveLength(11) // 4 figures + B/S per side, and the strike
+      const px = tracks.map((x) => Number((x.match(/^(?:minmax\()?(\d+(?:\.\d+)?)px/) || [])[1]))
+      expect(px.every((n) => n > 0)).toBe(true)
+      const gap = el.classes().find((k) => k.startsWith('gap-x-'))
+      const gapPx = gap.startsWith('gap-x-[') ? Number(gap.slice(7, -3)) : Number(gap.slice(6)) * 4
+      const total = px.reduce((a, b) => a + b, 0) + gapPx * (tracks.length - 1)
+      expect(total).toBeLessThanOrEqual(470)
+    }
   })
 
   it('UI-202: ITM halves are shaded from the server ATM flag only (calls below ATM, puts above); no ATM row shades nothing', async () => {
@@ -1165,6 +1340,18 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await openStrikes(w2)
     expect(w2.findAll('[data-testid="strike-row"]')).toHaveLength(4)
     expect(w2.findAll('.bg-warn-soft')).toHaveLength(0)
+  })
+
+  it('D-C27: the LTP view gives Delta and IV room for a 4 dp / 2 dp value plus a gap (jsdom cannot measure pixels; the live screen is checked after merge)', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const cols = t(w, 'strike-head').element.style.gridTemplateColumns.split(/\s+(?![^(]*\))/)
+    const px = (c) => Number.parseInt(c, 10)
+    expect(px(cols[0])).toBeGreaterThanOrEqual(44) // Call Delta ("-0.4920", 7 characters at 11 px tabular)
+    expect(px(cols[3])).toBeGreaterThanOrEqual(36) // Call IV ("47.00"); round 2 narrowed both so the whole grid fits 470 px
+    expect(t(w, 'strike-head').classes().join(' ')).toMatch(/gap-x-\[3px\]/)
+    expect(t(w, 'strike-row').classes().join(' ')).toMatch(/gap-x-\[3px\]/)
   })
 
   it('UI-202/UI-205: the view switch changes the columns (LTP default, Greeks = Delta and IV); width and size sit in Settings', async () => {
@@ -1233,6 +1420,31 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     expect(drawer().element.parentElement.style.display).toBe('none')
     w.unmount()
   })
+
+  // GC-UI 6c D-C20 / D-C35 (S-032): no "Add or edit legs" title bar (the picker's header row is the top line, the title
+  // stays the dialog's name); "Show Editor" folds the drawer away keeping the picks, "Show Strikes" brings it back.
+  it('D-C20 / D-C35: no title bar; Show Editor folds the drawer with the picks kept, Show Strikes reopens it', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { attachTo: document.body, global: { plugins: [router] } })
+    await flushPromises()
+    const drawer = () => w.find('[data-testid="drawer"][data-side="left"]')
+    await t(w, 'add-edit').trigger('click')
+    expect(drawer().find('[data-testid="drawer-title"]').exists()).toBe(false)
+    expect(drawer().attributes('aria-label')).toBe('Add or edit legs')
+    expect(drawer().text()).not.toContain('Add or edit legs')
+    await openStrikes(w)
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-buy"]').trigger('click')
+    expect(t(w, 'show-strikes').exists()).toBe(false)
+    await drawer().find('[data-testid="show-editor"]').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('none')
+    await t(w, 'show-strikes').trigger('click')
+    expect(drawer().element.parentElement.style.display).toBe('')
+    expect(t(w, 'show-strikes').exists()).toBe(false)
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected') // the half-made selection survived the fold
+    w.unmount()
+  })
 })
 
 describe('#582 item 7/8: the strike drawer list scrolls above its footer; strikes print as whole numbers', () => {
@@ -1274,5 +1486,419 @@ describe('#582 item 7/8: the strike drawer list scrolls above its footer; strike
     const w = await openWith(['22450.00', '22450.50'])
     expect(w.findAll('[data-testid="row-strike"]').map((e) => e.text().replace('ATM', ''))).toEqual(['22450', '22450.5'])
     expect(w.find('[data-testid="strike-row"]').attributes('data-strike')).toBe('22450.00')
+  })
+})
+
+// GC-BM G-070 (REQ-150 AC-4, Sensibull S-032): the drawer opens on an expiry with its strikes listed.
+describe('G-070: the drawer opens on the nearest expiry with its strikes', () => {
+  const LIVE = (e) => ({ state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: e })
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes'))
+  beforeEach(() => {
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-13')] = LIVE('2026-10-13')
+    answers[STRIKES_URL(10, 'NIFTY', '2026-10-27')] = LIVE('2026-10-27')
+  })
+
+  it('no legs: the first listed expiry is chosen and its strikes are read once', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-13')
+    expect(t(w, 'strikes-choose-expiry').exists()).toBe(false)
+    expect(strikeReads().map((x) => x.url)).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'])
+  })
+
+  it('a leg on the later expiry: the drawer opens on that expiry, not the nearest', async () => {
+    const leg = { id: 1, underlying: 'NIFTY', expiry: '2026-10-27', instrument_type: 'FUT', strike: null, action: 'BUY', lots: 1, instrument_id: 'NSE_FO:48704' }
+    const w = mountPicker([leg])
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+    expect(strikeReads().map((x) => x.url)).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+
+  it('no expiry can be read: the reason shows, no strikes are requested', async () => {
+    const parts = { what_happened: 'a', impact: 'b', what_is_blocked: 'c', next_action: 'd' }
+    answers['GET /catalogue/NIFTY/expiries'] = Object.assign(new Error('x'), { parts, status: 422 })
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'picker-error').text()).toContain('a')
+    expect(t(w, 'pick-expiry').element.value).toBe('')
+    expect(strikeReads()).toEqual([])
+  })
+
+  it('an empty expiry list: nothing chosen, no strikes requested', async () => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: [] }
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'pick-expiry').element.value).toBe('')
+    expect(strikeReads()).toEqual([])
+  })
+})
+
+// GC-BM F-12 (G-070 round 2): the opening state is decided when the drawer OPENS, not at mount. The real page order: the
+// picker mounts shut with no legs, the legs arrive later, then the drawer opens.
+describe('F-12: the drawer opens on the strategy expiry every time it is opened', () => {
+  const NOV3 = '2026-11-03'
+  const NOV9 = '2026-11-09'
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
+  const leg = (id, expiry) => ({ id, underlying: 'NIFTY', expiry, instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 1, instrument_id: `NSE_FO:${id}` })
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', NOV3, NOV9] }
+    for (const e of ['2026-10-27', NOV3, NOV9]) {
+      answers[`GET /catalogue/NIFTY/contracts?expiry=${e}`] = { underlying: 'NIFTY', contracts: [] }
+      answers[`GET /leg-picker/strikes?underlying=NIFTY&expiry=${e}&width=10`] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: e }
+    }
+  })
+  async function shutPicker() {
+    const w = mount(LegPicker, { props: { legs: [], active: false, 'onUpdate:legs': (v) => w.setProps({ legs: v }) } })
+    await flushPromises()
+    return w
+  }
+  const open = async (w) => { await w.setProps({ active: true }); await flushPromises() }
+  const close = async (w) => { await w.setProps({ active: false }); await flushPromises() }
+  const shown = (w) => t(w, 'pick-expiry').element.value
+
+  it('1: mounted with no legs, then legs on 3 Nov, then opened: 3 Nov, its strikes read once', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3), leg(2, NOV3)] })
+    calls.length = 0
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+    expect(strikeReads()).toEqual([`/leg-picker/strikes?underlying=NIFTY&expiry=${NOV3}&width=10`])
+  })
+
+  it('2: a hand pick of 9 Nov is kept while open and gone on the next open (3 Nov again)', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    await open(w)
+    await t(w, 'pick-expiry').setValue(NOV9)
+    await flushPromises()
+    expect(shown(w)).toBe(NOV9)
+    await close(w)
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+  })
+
+  it('3: legs cleared, then opened: the nearest expiry', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    await open(w)
+    await close(w)
+    await w.setProps({ legs: [] })
+    await open(w)
+    expect(shown(w)).toBe('2026-10-27')
+  })
+
+  it('4: Edit of a 9 Nov leg shows 9 Nov', async () => {
+    const w = await shutPicker()
+    await w.setProps({ legs: [leg(1, NOV3), leg(2, NOV9)] })
+    await open(w)
+    await w.vm.startEdit(leg(2, NOV9))
+    await flushPromises()
+    expect(shown(w)).toBe(NOV9)
+  })
+
+  it('5: the underlying switched while shut, then opened: that underlying nearest expiry', async () => {
+    const w = await shutPicker()
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: ['2026-10-29', '2026-11-05'] }
+    answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-29'] = { underlying: 'SENSEX', contracts: [] }
+    answers['GET /leg-picker/strikes?underlying=SENSEX&expiry=2026-10-29&width=10'] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: '2026-10-29' }
+    await t(w, 'pick-underlying').setValue('SENSEX')
+    await flushPromises()
+    await open(w)
+    expect(shown(w)).toBe('2026-10-29')
+  })
+
+  // GC-BM F-13 items 3 and 4
+  const reads = (prefix) => calls.filter((x) => x.url.startsWith(prefix)).map((x) => x.url)
+  it('F-13 attack 5: page load with the drawer shut reads no strikes and no contracts; opening reads strikes once', async () => {
+    calls.length = 0
+    const w = await shutPicker()
+    expect(reads('/leg-picker/strikes')).toEqual([])
+    expect(reads('/catalogue/NIFTY/contracts')).toEqual([])
+    await open(w)
+    expect(reads('/leg-picker/strikes')).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+    expect(shown(w)).toBe('2026-10-27')
+  })
+
+  it('F-13 attack 4: Futures tab, drawer shut, legs move to another expiry, reopened: futures prices are read once on open', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = await shutPicker()
+    await open(w)
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    await close(w)
+    await w.setProps({ legs: [leg(1, NOV3)] })
+    calls.length = 0
+    await open(w)
+    expect(shown(w)).toBe(NOV3)
+    expect(reads('/leg-picker/futures')).toEqual(['/leg-picker/futures?underlying=NIFTY'])
+    expect(reads('/leg-picker/strikes')).toEqual([])
+  })
+
+  it('F-13: opened on the Strikes tab with the expiry unchanged, strikes are read once on every open', async () => {
+    const w = await shutPicker()
+    await open(w)
+    await close(w)
+    calls.length = 0
+    await open(w)
+    expect(reads('/leg-picker/strikes')).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+})
+
+// GC-BM F-14: the drawer works on the STRATEGY's underlying, decided when it opens (not at mount)
+describe('F-14: the drawer opens on the strategy underlying', () => {
+  const OCT29 = '2026-10-29'
+  const sxLeg = (id) => ({ id, underlying: 'SENSEX', expiry: OCT29, instrument_type: 'CE', strike: '73600.00', action: 'SELL', lots: 1, instrument_id: `BSE_FO:${id}` })
+  const nfLeg = (id) => ({ id, underlying: 'NIFTY', expiry: '2026-10-27', instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 1, instrument_id: `NSE_FO:${id}` })
+  const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
+  const sxStrikes = `/leg-picker/strikes?underlying=SENSEX&expiry=${OCT29}&width=10`
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', '2026-11-03'] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-27'] = { underlying: 'NIFTY', contracts: [] }
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-27' }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [OCT29, '2026-11-05'] }
+    answers[`GET /catalogue/SENSEX/contracts?expiry=${OCT29}`] = { underlying: 'SENSEX', contracts: [] }
+    answers[`GET ${sxStrikes}`] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: OCT29 }
+  })
+  async function shut(extra = {}) {
+    const w = mount(LegPicker, { props: { legs: [], active: false, ...extra, 'onUpdate:legs': (v) => w.setProps({ legs: v }) } })
+    await flushPromises()
+    return w
+  }
+  const open = async (w) => { await w.setProps({ active: true }); await flushPromises() }
+
+  it('1: mounted empty (NIFTY), SENSEX legs arrive, opened: SENSEX, 29 Oct, SENSEX strikes read once, select locked', async () => {
+    const w = await shut()
+    await w.setProps({ legs: [sxLeg(1), sxLeg(2)] })
+    calls.length = 0
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-underlying').element.disabled).toBe(true)
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+    expect(strikeReads()).toEqual([sxStrikes])
+  })
+
+  it('2: no legs, page underlying SENSEX, opened: SENSEX and its nearest expiry', async () => {
+    const w = await shut()
+    await w.setProps({ pageUnderlying: 'SENSEX' })
+    calls.length = 0
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+    expect(strikeReads()).toEqual([sxStrikes])
+  })
+
+  it('3: SENSEX legs cleared, page back to NIFTY, opened: NIFTY', async () => {
+    const w = await shut({ pageUnderlying: 'SENSEX' })
+    await w.setProps({ legs: [sxLeg(1)] })
+    await open(w)
+    await w.setProps({ active: false })
+    await w.setProps({ legs: [], pageUnderlying: 'NIFTY' })
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
+    expect(t(w, 'pick-underlying').element.disabled).toBe(false)
+    expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
+  })
+
+  it('4: Edit of a SENSEX leg shows SENSEX and the leg expiry', async () => {
+    const w = await shut()
+    await w.setProps({ legs: [sxLeg(1)] })
+    await open(w)
+    await w.vm.startEdit(sxLeg(1))
+    await flushPromises()
+    expect(t(w, 'pick-underlying').element.value).toBe('SENSEX')
+    expect(t(w, 'pick-expiry').element.value).toBe(OCT29)
+  })
+
+  it('5: a shut picker reads no strikes; NIFTY legs on a NIFTY mount read NIFTY once on open', async () => {
+    calls.length = 0
+    const w = await shut({ legs: [nfLeg(1)] })
+    expect(strikeReads()).toEqual([])
+    await open(w)
+    expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
+    expect(strikeReads()).toEqual(['/leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27&width=10'])
+  })
+})
+
+// GC-UI D-C27 round 2 (S-032): the OI is a contract count, written in Indian units - 1.23Cr from 1,00,00,000, 74.9L from
+// 1,00,000, Indian digit grouping below - and a missing OI shows a dash, never NaN.
+describe('oiCompact', () => {
+  it('writes each size in its unit', () => {
+    expect(oiCompact(62075)).toBe('62,075')
+    expect(oiCompact(375960)).toBe('3.8L')
+    expect(oiCompact(7491380)).toBe('74.9L')
+    expect(oiCompact(12345678)).toBe('1.23Cr')
+    expect(oiCompact(0)).toBe('0')
+    expect(oiCompact(99999)).toBe('99,999')
+    expect(oiCompact(100000)).toBe('1.0L')
+    expect(oiCompact(10000000)).toBe('1.00Cr')
+    expect(oiCompact('7491380')).toBe('74.9L')
+  })
+  it('shows a dash for null, undefined, empty and non-numbers, never NaN', () => {
+    for (const v of [null, undefined, '', 'abc', NaN]) expect(oiCompact(v)).toBe('—')
+  })
+})
+
+// ---- GC-UI step 6c (D-C20..D-C28, Sensibull S-032): the drawer's control rows in Sensibull's order. The strikes reply is the
+// recorded NIFTY 2026-10-08 09:20:09 IST answer above (strikesAnswer: spot 22533.25, server ATM 22550). ----
+describe('GC-UI 6c drawer layout (D-C20, D-C21, D-C22, D-C23, D-C28)', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: [{ expiry: '2026-10-13', days: 5 }, { expiry: '2026-10-27', days: 19 }] }
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+  })
+
+  it('core: row 1 = Straddles / Strangles / Strikes / Futures + Settings, row 2 = expiry ("13 Oct", no day count clipped) + LTP / OI / Greeks, spot in the header, ATM row marked for centring', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    const row1 = t(w, 'picker-row1')
+    expect(row1.findAll('[role="tab"]').map((b) => b.text())).toEqual(['Straddles', 'Strangles', 'Strikes', 'Futures'])
+    expect(row1.find('[data-testid="picker-settings"]').exists()).toBe(true)
+    const row2 = t(w, 'picker-row2')
+    expect(row2.find('[data-testid="pick-expiry"]').exists()).toBe(true)
+    expect(row2.find('[data-testid="picker-view"]').exists()).toBe(true)
+    expect(row1.element.compareDocumentPosition(row2.element) & 4).toBeTruthy() // row 2 follows row 1
+    const shownExpiries = t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())
+    expect(shownExpiries).toEqual(['13 Oct', '27 Oct'])
+    expect(t(w, 'pick-expiry-days').text()).toBe('5 days') // REQ-135 AC-2: the server's day count stays beside the select
+    expect(t(w, 'picker-header').find('[data-testid="picker-spot"]').text()).toContain('22533.25')
+    expect(t(w, 'strikes-spot').exists()).toBe(false) // no separate spot line above the table
+    expect(w.findAll('[data-testid="strike-row"][data-centre="true"]').map((r) => r.attributes('data-strike'))).toEqual(['22550.00'])
+  })
+
+  it('spot missing: the header says so and no row is centred on a guess', async () => {
+    answers[STRIKES_URL()] = strikesAnswer({ centre: 'MIDDLE_STRIKE', spot: null, atm_strike: null, rows: strikesAnswer().rows.map((r) => ({ ...r, is_atm: false })) })
+    const w = mountPicker()
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('No live index price')
+    expect(t(w, 'strikes-centre').text()).toContain('ATM unknown')
+    expect(w.findAll('[data-testid="strike-row"][data-centre="true"]')).toHaveLength(0)
+  })
+
+  // GC-UI polish D-7b (ADR-197): after hours the drawer header shows the page header's last close, not "No live index price"
+  const closedStrikes = () => strikesAnswer({ centre: 'MIDDLE_STRIKE', spot: null, atm_strike: null, market_closed: true, rows: strikesAnswer().rows.map((r) => ({ ...r, is_atm: false })) })
+  it('D-7b: market closed with the page\'s last close: the header shows that same spot with "Market closed" (no number of its own)', async () => {
+    answers[STRIKES_URL()] = closedStrikes()
+    const w = mount(LegPicker, { props: { legs: [], lastClose: '22698.85', closedAt: '2026-10-28T15:30:00+05:30' } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('22698.85')
+    expect(t(w, 'picker-spot').attributes('title')).toBe('Market closed. Prices are from 28 Oct 2026, 15:30:00 IST.')
+    expect(t(w, 'picker-spot-closed').text()).toBe('Market closed')
+    expect(t(w, 'picker-header').text()).not.toContain('No live index price')
+  })
+  it('D-7b: market closed but the page has no last close: the reason is shown and no number', async () => {
+    answers[STRIKES_URL()] = closedStrikes()
+    const w = mount(LegPicker, { props: { legs: [], lastClose: null, closedAt: null } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('No live index price')
+    expect(t(w, 'picker-spot-closed').exists()).toBe(false)
+  })
+  it('D-7b: a live spot still wins over the last close', async () => {
+    const w = mount(LegPicker, { props: { legs: [], lastClose: '22698.85', closedAt: null } })
+    await flushPromises()
+    expect(t(w, 'picker-spot').text()).toBe('22533.25')
+    expect(t(w, 'picker-spot-closed').exists()).toBe(false)
+  })
+})
+
+// ---- GC-UI 6c D-C08 / D-C24 / D-C25 (S-036..S-038): Straddles and Strangles tabs build the one selection; a type change
+// with picks asks first. Recorded reply: only 22500 CE and 22550 PE are priced; every strike lists both cells. ----
+describe('GC-UI 6c Straddles / Strangles tabs and the type-change confirm (D-C08, D-C24, D-C25)', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+    answers['POST /strategies/planned-entry'] = entryFor({ 44002: '151.30', 44005: '145.10' })
+  })
+
+  it('Straddles: one radio per strike picks that strike\'s call and put on the chosen side; Done adds both legs as today', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-straddles').trigger('click') // 0 picks: no confirm
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-straddles').attributes('aria-selected')).toBe('true')
+    expect(w.findAll('[data-testid="type-row"]').map((r) => r.attributes('data-strike'))).toEqual(GRID)
+    expect(t(w, 'picker-done').attributes('disabled')).toBeDefined() // Done disabled until a pick (S-037)
+    await t(w, 'type-side-buy').trigger('click')
+    await w.find('[data-testid="type-row"][data-strike="22550.00"] [data-testid="straddle-radio"]').setValue(true)
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    await t(w, 'picker-done').trigger('click')
+    await flushPromises()
+    expect(w.props('legs').map((l) => [l.instrument_id, l.action, l.strike, l.instrument_type])).toEqual([
+      ['NSE_FO:44004', 'BUY', '22550.00', 'CE'], ['NSE_FO:44005', 'BUY', '22550.00', 'PE']])
+  })
+
+  it('Strangles: Quick Select asks the existing quick-pick call and its legs become the picks; a failed call picks nothing', async () => {
+    answers['POST /strategies/quick-pick'] = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44006', action: 'SELL', symbol: 'x' }, { instrument_id: 'NSE_FO:44001', action: 'SELL', symbol: 'y' }] }
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'tab-strangles').trigger('click')
+    await flushPromises()
+    expect(w.findAll('[data-testid^="quick-select-"]').filter((b) => b.element.tagName === 'BUTTON').map((b) => b.text())).toEqual(['50 pt', '100 pt', '150 pt', '200 pt'])
+    await t(w, 'quick-select-100').trigger('click')
+    await flushPromises()
+    expect(calls.find((x) => x.url === '/strategies/quick-pick').body).toEqual({ underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-13' })
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected')
+    expect(w.find('[data-testid="type-row"][data-strike="22600.00"] [data-testid="strangle-ce"]').element.checked).toBe(true)
+    expect(w.find('[data-testid="type-row"][data-strike="22450.00"] [data-testid="strangle-pe"]').element.checked).toBe(true)
+    answers['POST /strategies/quick-pick'] = new Error('down')
+    await t(w, 'quick-select-50').trigger('click')
+    await flushPromises()
+    expect(t(w, 'quick-select-error').exists()).toBe(true)
+    expect(t(w, 'picker-count').text()).toBe('2 legs selected') // the earlier picks stay
+  })
+
+  it('a type change with picks asks "You are changing strategy type from Strikes to Straddles"; Cancel keeps them, Proceed clears them', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-straddles').trigger('click')
+    expect(t(w, 'type-confirm-text').text()).toBe('You are changing strategy type from Strikes to Straddles')
+    expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+    await t(w, 'type-confirm-cancel').trigger('click')
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'tab-straddles').trigger('click')
+    await t(w, 'type-confirm-proceed').trigger('click')
+    await flushPromises()
+    expect(t(w, 'tab-straddles').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(0) // nothing added, nothing sent
+  })
+
+  it('review fix 6: clicking Futures (or any tab) while a type change waits cancels it; the picks stay and Futures shows no banner', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-straddles').trigger('click')
+    expect(t(w, 'type-confirm').exists()).toBe(true)
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'tab-futures').attributes('aria-selected')).toBe('true')
+    await t(w, 'tab-strikes').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+  })
+
+  it('the Futures tab keeps the picks (no confirm); the Straddles tab shows the strikes read failure', async () => {
+    answers['GET /leg-picker/futures?underlying=NIFTY'] = { state: 'LIVE', futures: [], forwards: [], underlying: 'NIFTY' }
+    const w = mountPicker()
+    await flushPromises()
+    await sideOf(w, '22500.00', 'ce').find('[data-testid="cell-sell"]').trigger('click')
+    await t(w, 'tab-futures').trigger('click')
+    await flushPromises()
+    expect(t(w, 'type-confirm').exists()).toBe(false)
+    expect(t(w, 'futures-none').text()).toBe('No future is listed for this index.')
+    await t(w, 'tab-strikes').trigger('click')
+    await flushPromises()
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+    await t(w, 'picker-clear-all').trigger('click')
+    answers[STRIKES_URL()] = new Error('down')
+    await t(w, 'tab-straddles').trigger('click')
+    await flushPromises()
+    expect(t(w, 'strikes-error').text()).toBe('The strikes could not be read right now.')
   })
 })

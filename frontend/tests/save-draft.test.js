@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import {
   STRATEGY_NAME_DEFAULT, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsFromSaved, legsLine, noMatchText, plainName,
-  searchStrategies, strategyLabel, trackedText,
+  saveAsName, searchStrategies, strategyLabel, trackedText,
 } from '@/lib/saveDraft'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 
@@ -334,7 +334,7 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
   it('attack 1+3: Rename PATCHes the loaded revision (no extra GET); the shown name comes from the reply, quotes stripped', async () => {
     answers['PATCH /strategies/7/name'] = RENAMED
     const w = await bar({ current })
-    expect(t(w, 'current-name').text()).toBe('NIFTY Oct condor')
+    expect(t(w, 'current-name').exists()).toBe(false) // GC-UI 3a D-A22: the name is the legs card title (LegList), not repeated here
     await t(w, 'rename-open').trigger('click')
     expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor')
     await t(w, 'name-input').setValue(' Condor wider ')
@@ -345,7 +345,6 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
     expect(calls.filter((c) => c.method === 'GET' && c.url === '/strategies/7')).toEqual([])
     expect(w.emitted('renamed')).toEqual([[7, quoted('Condor wider')]])
     await w.setProps({ current: { ...current, name: w.emitted('renamed')[0][1] } }) // what the page does with the event
-    expect(t(w, 'current-name').text()).toBe('Condor wider')
     expect(t(w, 'name-form').exists()).toBe(false)
   })
   it('attack 2: a never-saved strategy shows no Rename (Save asks the name instead)', async () => {
@@ -374,13 +373,39 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
   })
 })
 
+describe('ADR-192: the Save As pre-fill is the cut original plus " copy", at most 20 characters', () => {
+  it.each([
+    ['Iron fly', 'Iron fly copy'], // 8
+    ['123456789012345', '123456789012345 copy'], // 15 -> exactly 20
+    ['1234567890123456', '123456789012345 copy'], // 16: one character cut
+    ['NIFTY Oct condor', 'NIFTY Oct condo copy'], // the spec example
+    ['x'.repeat(25), `${'x'.repeat(15)} copy`],
+    ['x'.repeat(20), `${'x'.repeat(15)} copy`], // a full-length name
+  ])('%s -> %s', (name, expected) => {
+    const out = saveAsName(name)
+    expect(out).toBe(expected)
+    expect(out.length).toBeLessThanOrEqual(20)
+  })
+  it('a cut that ends in a space drops the space', () => {
+    expect(saveAsName('abcdefghijklmn opq')).toBe('abcdefghijklmn copy') // cut at 15 leaves a trailing space
+  })
+  it('counts and cuts by characters (code points), never splitting a surrogate pair', () => {
+    expect(saveAsName('NIFTY Oct cond🚀 more')).toBe('NIFTY Oct cond🚀 copy') // 15 characters kept, the emoji whole
+    expect(saveAsName('Iron fly 🚀🚀🚀🚀🚀🚀')).toBe('Iron fly 🚀🚀🚀🚀🚀🚀 copy') // 15 characters: not cut
+    expect(Array.from(saveAsName('NIFTY Oct cond🚀 more')).length).toBeLessThanOrEqual(20)
+  })
+  it('no name gives the default name plus the suffix', () => {
+    expect(saveAsName(null)).toBe(`${STRATEGY_NAME_DEFAULT} copy`)
+    expect(saveAsName(undefined)).toBe('New Strategy copy')
+  })
+})
+
 describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never sends the original', () => {
   const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
-  it('Save As is offered only for a saved strategy and prefills "<name> copy" without the API quotes', async () => {
-    expect(t(await bar(), 'save-as').exists()).toBe(false)
+  it('Save As prefills "<name> copy" without the API quotes', async () => {
     const w = await bar({ current })
     await t(w, 'save-as').trigger('click')
-    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor copy')
+    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condo copy') // ADR-192: 20 characters, cut from the end
     expect(t(w, 'name-form').attributes('data-mode')).toBe('save-as')
   })
   it('confirming POSTs a NEW strategy with the typed name and the on-screen legs, then opens the copy; no request names id 7', async () => {
@@ -410,15 +435,123 @@ describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never send
   })
 })
 
+describe('G-024: the "..." menu lists only the items that apply, never an empty menu', () => {
+  const current = { id: 7, revision: 3, name: quoted('NIFTY Oct condor') }
+  const items = (w) => w.findAll('[role="menuitem"]').map((b) => b.attributes('data-testid'))
+  const FOUR = [leg({ id: 1 }), leg({ id: 2, contract_id: 11 }), leg({ id: 3, contract_id: 12 }), leg({ id: 4, contract_id: 13 })]
+  it('attack 1: an empty builder has the button disabled and no menu item', async () => {
+    const w = await bar({ legs: [] })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeDefined()
+    expect(items(w)).toEqual([])
+  })
+  it('attack 2: an unsaved 4-leg strategy shows Save and Save As only; Save As asks the ADR-192 pre-fill and POSTs once', async () => {
+    answers['POST /strategies'] = STRATEGY_OUT(9, 'Four legs', 1)
+    const w = await bar({ legs: FOUR })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    expect(items(w)).toEqual(['menu-save', 'save-as'])
+    await t(w, 'more-menu').trigger('click')
+    await t(w, 'save-as').trigger('click')
+    expect(t(w, 'name-form').attributes('data-mode')).toBe('save-as')
+    expect(t(w, 'name-input').element.value).toBe(saveAsName(undefined))
+    await t(w, 'name-input').setValue('Four legs')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.url}`)).toEqual(['POST /strategies'])
+    expect(w.emitted('open')[0].slice(1, 3)).toEqual([9, 1])
+  })
+  it('a saved strategy shows Save, Save As and Rename; menu Save sends the PUT with the loaded revision', async () => {
+    answers['PUT /strategies/7'] = STRATEGY_OUT(7, 'NIFTY Oct condor', 4)
+    const w = await bar({ legs: FOUR, current })
+    expect(items(w)).toEqual(['menu-save', 'save-as', 'rename-open'])
+    await t(w, 'menu-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'PUT').body.expected_revision).toBe(3)
+  })
+  it('attack 3: Save As on a saved strategy makes a NEW id; the original id is never written', async () => {
+    answers['POST /strategies'] = STRATEGY_OUT(8, 'Copy', 1)
+    const w = await bar({ legs: FOUR, current })
+    await t(w, 'save-as').trigger('click')
+    await t(w, 'name-input').setValue('Copy')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.url}`)).toEqual(['POST /strategies'])
+    expect(w.emitted('open')[0].slice(1, 4)).toEqual([8, 1, quoted('Copy')])
+  })
+  it('attack 4: Rename sends only the name on the same id; empty and 21-character names are refused with the API text', async () => {
+    const LONG = { what_happened: 'That name is too long', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters.' }
+    answers['PATCH /strategies/7/name'] = (body) => (body.name.length > 20 || body.name === '' ? Promise.reject({ status: 422, parts: body.name === '' ? EMPTY_NAME : LONG }) : Promise.resolve({ data: { id: 7, name: quoted(body.name), revision: 3 } }))
+    const w = await bar({ legs: FOUR, current })
+    await t(w, 'rename-open').trigger('click')
+    await t(w, 'name-input').setValue('')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+    await t(w, 'name-input').setValue('x'.repeat(21))
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(t(w, 'save-error-what').text()).toBe(LONG.what_happened)
+    expect(w.emitted('renamed')).toBeUndefined()
+    await t(w, 'name-input').setValue('Renamed')
+    await t(w, 'name-form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('renamed')).toEqual([[7, quoted('Renamed')]])
+    expect(calls.filter((c) => c.method === 'POST' || c.method === 'PUT')).toEqual([])
+  })
+  it('attack 5: Escape closes the menu and choosing an item closes it', async () => {
+    const w = mount(SaveDraftBar, { props: { legs: FOUR, current }, attachTo: document.body })
+    await flushPromises()
+    await t(w, 'more-menu').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(true)
+    await t(w, 'more-menu-panel').trigger('keydown', { key: 'Escape' })
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    await t(w, 'more-menu').trigger('click')
+    await t(w, 'rename-open').trigger('click')
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    w.unmount()
+  })
+})
+
 describe('REQ-134: the saved list in the bar shows the name, and the old text when the server sent none', () => {
   it('a named row shows its name without quotes (as text); a row with no name shows "Draft <id>"', async () => {
     answers['GET /strategies'] = { strategies: [LIST_ROW(7, '<i>Condor</i>'), { id: 9, underlying: 'NIFTY', status: 'draft', updated_at: '2026-10-13T05:10:00Z' }] }
     const w = mount(SaveDraftBar, { props: { legs: LEGS } })
     await flushPromises()
     const names = w.findAll('[data-testid="saved-draft-name"]')
-    const texts = names.map((n) => n.text().split(', updated')[0])
-    expect([...texts].sort()).toEqual(['<i>Condor</i>, NIFTY', 'Draft 9, NIFTY'].sort())
+    const texts = names.map((n) => n.text())
+    expect([...texts].sort()).toEqual(['<i>Condor</i>', 'Draft 9'].sort())
     const condor = names.find((n) => n.text().startsWith('<i>Condor</i>'))
     expect(condor.find('i').exists()).toBe(false)
+  })
+})
+
+describe('GC-BM F-13: the "..." menu item shows by its own condition, never disables the whole menu', () => {
+  const current = { id: 35, revision: 2, name: quoted('NIFTY Oct condor') }
+  const NOT_LIVE = [leg({ lot_size: null })] // the saveDraft.js:129 shape of a leg that is not live
+  const slotMenu = { slots: { menu: '<button role="menuitem" data-testid="menu-activity">History</button>' } }
+  async function barWith(props, options = {}) {
+    answers['GET /strategies'] = { strategies: [] }
+    const w = mount(SaveDraftBar, { props: { rulesRef: '', ...props }, ...options })
+    await flushPromises()
+    return w
+  }
+  it('attack 1: a saved strategy with a not-live leg keeps the menu: Rename and History listed, Save / Save As hidden', async () => {
+    const w = await barWith({ legs: NOT_LIVE, current }, slotMenu)
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    await t(w, 'more-menu').trigger('click')
+    expect(t(w, 'rename-open').exists()).toBe(true)
+    expect(t(w, 'menu-activity').exists()).toBe(true)
+    expect(t(w, 'menu-save').exists()).toBe(false)
+    expect(t(w, 'save-as').exists()).toBe(false)
+  })
+  it('attack 2: no legs and no saved strategy: the button is disabled and no menu item exists', async () => {
+    const w = await barWith({ legs: [], current: null })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeDefined()
+    expect(['rename-open', 'menu-save', 'save-as'].filter((id) => t(w, id).exists())).toEqual([])
+  })
+  it('an unsaved strategy with live legs still lists Save and Save As but no Rename', async () => {
+    const w = await barWith({ legs: LEGS, current: null })
+    expect(t(w, 'more-menu').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'menu-save').exists() && t(w, 'save-as').exists()).toBe(true)
+    expect(t(w, 'rename-open').exists()).toBe(false)
   })
 })

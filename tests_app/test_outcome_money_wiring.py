@@ -1,9 +1,10 @@
 """REQ-081 (W-154) wiring: the money figures on the REST outcome and the live push, from the recorded Zerodha funds.
 
-Core: a CHECKED margin (the recorded funds 671.50) puts the funds share on the summary as strings, one door for the REST
+Core: a CHECKED margin (the recorded margin needed 7065.50; ADR-207 (8): never the funds 671.50) puts the share on the
+summary as strings, one door for the REST
 answer and the live push; every other margin state leaves it null while the rupee figures stay.
 Proof: test_route_carries_the_money_figures_as_strings (expected percentages are hand divisions of the replay's
-before-charges maximums 4754.75 and 8245.25 by 671.50).
+before-charges maximums 4754.75 and 8245.25 by the margin needed 7065.50).
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import asyncio
 import json
 import pathlib
 import sys
+from decimal import ROUND_HALF_UP, Decimal
 from http import HTTPStatus
 
 import pytest
@@ -39,7 +41,8 @@ from test_outcome_margin import (  # noqa: E402
 )
 from test_strategy_live_push import FakeChannel, held_replay, settle  # noqa: E402
 
-PROFIT_TEXT, LOSS_TEXT = "708% of funds", "1228% of funds"  # 4754.75 / 671.50 = 708.1 ; 8245.25 / 671.50 = 1227.9
+# REQ-081 AC-9 (ADR-207 (8)): 4754.75 / 7065.50 = 67.30% ; 8245.25 / 7065.50 = 116.70% (of the 671.50 funds: 708 / 1228)
+PROFIT_TEXT, LOSS_TEXT = "67.3% of margin needed", "116.7% of margin needed"
 MONEY_KEYS = ("net_premium", "funds_share", "reward_risk", "risk_reward", "time_value", "intrinsic_value")
 
 
@@ -67,7 +70,8 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     out = json.loads(resp.text, parse_float=lambda text: pytest.fail(f"float in the JSON: {text}"))
     s = out["summary"]
     share = s["funds_share"]
-    assert (share["funds"], share["max_profit_percent"], share["max_loss_percent"]) == ("671.50", "708", "1228")
+    assert (share["margin_needed"], share["max_profit_percent"], share["max_loss_percent"]) == (
+        "7065.50", "67.3", "116.7")
     assert (share["max_profit_text"], share["max_loss_text"]) == (PROFIT_TEXT, LOSS_TEXT)
     assert share["read_at"] is not None and CHECKED_AT.isoformat().replace("+00:00", "") in share["read_at"]
     # no rate table on this route: the charges cannot be priced, so there is no ratio (REQ-081 AC-4), never 0.58/1.73
@@ -80,12 +84,36 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     _no_float(out)
 
 
+async def test_route_carries_the_whole_rupee_display_texts(replayed, monkeypatch) -> None:
+    """REQ-152 AC-1/AC-3 and REQ-153 AC-1 on the real route: the same recorded replay, the display text beside every
+    exact value (4754.75 -> +4,755; 8245.25 -> U+2212 8,245; the margin figures to whole rupees, Indian grouping)."""
+    monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
+    [resp] = await _post(_body(replayed), replayed, source(Transport()))
+    out = resp.json()
+    s, m = out["summary"], out["margin"]
+    minus = chr(0x2212)
+    assert (s["max_profit"], s["max_profit_display"]) == ("4754.75", "+4,755")
+    assert (s["max_loss"], s["max_loss_display"]) == ("8245.25", f"{minus}8,245")
+    assert s["net_premium"]["amount_display"] is not None and "." not in s["net_premium"]["amount_display"]
+    assert s["time_value_display"].lstrip(f"+{minus}").replace(",", "").isdigit()
+    assert len(s["breakevens_display"]) == len(s["breakevens"])
+    for exact, shown in zip(s["breakevens"], s["breakevens_display"], strict=True):
+        assert shown.split(" (")[0].replace(",", "") == str(Decimal(exact).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        assert shown.endswith("%)")
+    assert (m["needed"], m["needed_display"]) == ("7065.50", "7,066")  # recorded basket + top-up; .50 rounds half-up
+    assert m["available"] == "671.50" and m["available_display"] == "672"
+    assert m["broker_needed_display"] == "6,409"
+
+
 @pytest.mark.parametrize("status", [HTTPStatus.SERVICE_UNAVAILABLE, HTTPStatus.TOO_MANY_REQUESTS])
 async def test_unreadable_margin_leaves_the_share_null_and_the_rupee_figures(replayed, monkeypatch, status) -> None:
     monkeypatch.setattr(outcome_margin, "basket_orders", _recorded_orders)
     [resp] = await _post(_body(replayed), replayed, source(Transport(status=status)))
     s = resp.json()["summary"]
     assert s["funds_share"] is None and s["max_loss"] == "8245.25" and s["max_profit"] == "4754.75"
+    assert s["max_profit_display"] == "+4,755"  # the rupee display does not depend on the margin read
+    m = resp.json()["margin"]
+    assert (m["needed_display"], m["available_display"], m["broker_needed_display"]) == (None, None, None)
 
 
 async def test_no_session_and_no_provider_carry_no_funds_share(replayed) -> None:
@@ -109,7 +137,7 @@ async def test_a_failed_read_is_never_replaced_by_an_older_one_before_the_retry_
     mono.now += outcome_margin.RETRY_SECONDS  # the bound passed: Zerodha is read again, the share is that fresh read
     [fresh] = await _post(_body(replayed), replayed, src)
     share = fresh.json()["summary"]["funds_share"]
-    assert len(t.calls) > calls and share["funds"] == "671.50"
+    assert len(t.calls) > calls and share["margin_needed"] == "7065.50"
 
 
 async def test_live_push_and_rest_carry_identical_money_fields(monkeypatch) -> None:

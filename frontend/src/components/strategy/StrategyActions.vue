@@ -5,7 +5,8 @@
      to a strategy, ADR-002); an unsaved or edited-since-save draft shows no Execute action.
      W-121 (REQ-073 AC-6, ADR-165): and none while the server's order path is not "on" (absent, not disabled). -->
 <template>
-  <div class="p-4 bg-gray-50 border-t flex flex-wrap items-center justify-between gap-4" data-testid="strategy-actions">
+  <!-- GC-UI D-B47: the bar exists only when it holds an action; an empty one was a ~35 px grey band with two rules -->
+  <div v-if="savedId && orderPathOn" class="p-4 bg-gray-50 border-t flex flex-wrap items-center justify-between gap-4" data-testid="strategy-actions">
     <div class="flex items-center gap-2">
       <RouterLink
         v-if="savedId && orderPathOn && brokerConnected && !executeRefusal"

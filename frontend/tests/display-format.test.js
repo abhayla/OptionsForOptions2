@@ -70,10 +70,13 @@ describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts not
   it('prints the day count as sent, "Today (0 days)" for 0, the date as sent for a missing or unreadable count', () => {
     expect(expiryWithDays('2026-10-27', 6)).toBe('27 Oct (6 days)')
     expect(expiryWithDays('2026-10-21', 0)).toBe('Today (0 days)')
-    expect(expiryWithDays('2026-10-27', null)).toBe('2026-10-27')
-    expect(expiryWithDays('2026-10-27', undefined)).toBe('2026-10-27')
-    expect(expiryWithDays('2026-10-27', '6')).toBe('2026-10-27') // a string is not a count
-    expect(expiryWithDays('2026-10-27', -1)).toBe('2026-10-27')
+    // REQ-148 AC-2 (G-065): no count from the server -> the date alone, never the raw ISO text and never a count
+    expect(expiryWithDays('2026-10-27', null)).toBe('27 Oct')
+    expect(expiryWithDays('2026-10-27', undefined)).toBe('27 Oct')
+    expect(expiryWithDays('2026-10-27', '6')).toBe('27 Oct') // a string is not a count
+    expect(expiryWithDays('2026-10-27', -1)).toBe('27 Oct')
+    expect(expiryWithDays('2026-11-09', 13)).toBe('9 Nov (13 days)') // the moved leg of G-065
+    expect(expiryWithDays('2026-11-09', null)).not.toMatch(/2026/)
     expect(expiryWithDays(null, 3)).toBe('')
     expect(daysByExpiry([{ expiry: '2026-10-27', days: 6 }, { days: 1 }])).toEqual({ '2026-10-27': 6 })
     expect(daysByExpiry(undefined)).toEqual({})

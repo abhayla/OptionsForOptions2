@@ -72,6 +72,7 @@ export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
       base_lots: l.base_lots ?? l.lots,
       planned_entry: l.planned_entry ?? null,
       captured_at: l.captured_at ?? null,
+      close_at: l.close_at ?? null, // ADR-197: sent back as is; the server keeps it on a leg it does not re-capture
       included: l.included !== false,
       typed: l.typed === true,
     })),
@@ -91,6 +92,8 @@ export function applyEditReply(prev, reply) {
       id: old.id ?? `edit-${i}`,
       underlying: old.underlying,
       instrument_id: r.instrument_id,
+      // ADR-197: the close label of the entry, as the reply sent it
+      close_at: r.close_at ?? null, // the server's answer: kept, re-captured after hours, or none
       contract_id: r.contract_id ?? null, // the server's id for THIS contract (a stepped leg's new one); null = not savable
       lot_size: r.lot_size ?? null,
       symbol: same ? old.symbol ?? null : null,
@@ -99,6 +102,7 @@ export function applyEditReply(prev, reply) {
       base_lots: r.base_lots,
       quantity: r.quantity ?? null, // the server's lots times lot size, drawn as sent (ADR-008)
       planned_entry: r.planned_entry,
+      planned_entry_display: r.planned_entry_display ?? null, // GC-UI D-PX: the server's two-decimal text
       captured_at: r.captured_at,
       included: r.included,
       typed: r.price_source === 'typed',
@@ -165,15 +169,18 @@ export function priceReasonText(code) {
   return null
 }
 
-/** REQ-077 AC-6: the 'Price has moved' marker text, or null. The two server strings are compared for EQUALITY only (no
+/** REQ-152 AC-4: a price the server sent no display text for prints as the dash, never as the raw value. */
+const NO_PRICE_TEXT = '—'
+
+/** REQ-077 AC-6: the 'Price has moved' marker text, or null. The two server strings are compared for EQUALITY only; `shown` is the server's two-decimal display text of each (GC-UI D-PX), the only text printed (no
  *  arithmetic, ADR-008): no marker without a live price, no marker without a planned entry; the marker changes no number. */
-export function movedMarker(leg, ltp) {
+export function movedMarker(leg, ltp, shown = {}) {
   if (leg?.planned_entry == null || ltp == null || ltp === '') return null
   const planned = canonicalMoney(leg.planned_entry) ?? leg.planned_entry
   const now = canonicalMoney(ltp) ?? ltp
   if (planned === now) return null
   const since = leg.captured_at == null ? '' : ` since ${istTime(leg.captured_at)}`
-  return `Price has moved${since}: planned ${leg.planned_entry}, now ${ltp}`
+  return `Price has moved${since}: planned ${shown.planned_entry_display ?? NO_PRICE_TEXT}, now ${shown.ltp_display ?? NO_PRICE_TEXT}`
 }
 
 /** ADR-195 (Sensibull S-111, ADR-152): while any leg is left out of the numbers the builder names no shape, shows no Hedge
@@ -187,6 +194,8 @@ export function controlsForSelection(controls, legs) {
 
 /** W-192 (UI-104): the compact leg row's column widths in px, in order (tick, B/S, expiry, strike, type, lots, price, depth,
  *  edit, remove). Their sum plus the card's side padding stays within the 480 px narrowest left column, so a row never wraps. */
-export const LEG_ROW_COLUMNS = Object.freeze([22, 26, 92, 96, 34, 44, 72, 22, 22, 22])
+// GC-UI 3a (D-A09, D-A16): tick, B/S, expiry, strike stepper, type, lots, price box, depth, bin (the pencil column is gone:
+// the strike opens the leg in the drawer)
+export const LEG_ROW_COLUMNS = Object.freeze([20, 24, 84, 100, 34, 48, 96, 22, 22])
 export const LEG_CARD_PADDING_PX = 12
 export const LEFT_COLUMN_MIN_PX = 480

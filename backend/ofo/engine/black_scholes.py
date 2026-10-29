@@ -1,3 +1,4 @@
+# ruff: noqa: PLR0913
 """Black-Scholes pricing, implied volatility and Greeks for European index options (REQ-032 AC-3).
 
 Textbook formulas (Hull, *Options, Futures and Other Derivatives*: Black-Scholes-Merton and the Greek letters),
@@ -158,6 +159,28 @@ def bs_price(
     s, k = _paise(spot, "spot"), _paise(strike, "strike")
     t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
     return _to_decimal(_price(_kind(option), s, k, t, r, v, _yield(dividend_yield)), PRICE_STEP)
+
+
+def bs_decay_unrounded(
+    option: Instrument, spot: Decimal, strike: Decimal, years_now: Decimal, years_then: Decimal, rate: Decimal,
+    vol: Decimal, *, dividend_yield: Decimal = Decimal("0"),
+) -> Decimal:
+    """Per-unit UNROUNDED decay of a European CE/PE (GC-UI D-B34, REQ-145 AC-2, F-63): the model value with
+    ``years_then`` left minus the model value with ``years_now`` left, the same spot, strike, rate, vol and q. A
+    ``years_then`` of 0 or less (the expiry close comes first) values the option at its intrinsic value at the same
+    spot, so the whole remaining time value is the decay. ``Decimal(repr(float))``, exact; the caller rounds once."""
+    kind, s, k = _kind(option), _paise(spot, "spot"), _paise(strike, "strike")
+    t, v, r, q = _positive(years_now, "years_now"), _positive(vol, "vol"), _rate(rate), _yield(dividend_yield)
+    if not isinstance(years_then, Decimal) or not years_then.is_finite() or years_then >= years_now:
+        raise ValueError(f"years_then must be a finite Decimal below years_now, got {years_then!r}")
+    if years_then > 0:
+        later = _price(kind, s, k, float(years_then), r, v, q)
+    else:
+        later = max(s - k, 0.0) if kind is Instrument.CE else max(k - s, 0.0)
+    value = later - _price(kind, s, k, t, r, v, q)
+    if not math.isfinite(value):
+        raise ValueError(f"the model produced a non-finite decay: {value}")
+    return Decimal(repr(value))
 
 
 def forward_price(spot: Decimal, years: Decimal, rate: Decimal, *, dividend_yield: Decimal = Decimal("0")) -> Decimal:

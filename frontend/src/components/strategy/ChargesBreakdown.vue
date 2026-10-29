@@ -5,6 +5,7 @@
 <script setup>
 import { ref } from "vue";
 import FigureHint from "@/components/common/FigureHint.vue";
+import Icon from "@/components/common/Icon.vue";
 import Modal from "@/components/common/Modal.vue";
 import { groupMoney } from "@/lib/displayFormat";
 
@@ -27,13 +28,13 @@ const ROWS = [
     <div class="flex flex-wrap items-center gap-1">
       <button
         type="button"
-        class="text-sm underline text-accent"
+        class="inline-flex items-center gap-1 text-sm underline text-accent"
         data-testid="charges-action"
         :aria-expanded="open ? 'true' : 'false'"
         aria-controls="charges-panel"
         @click="open = !open"
       >
-        Charges
+        <span data-testid="charges-icon"><Icon name="calculator" :size="14" /></span>Charges
       </button>
       <FigureHint id="charges" />
     </div>

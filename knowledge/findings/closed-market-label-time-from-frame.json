@@ -1,0 +1,34 @@
+{
+ "id": "closed-market-label-time-from-frame",
+ "scope": "project",
+ "class": "A market-closed label states a price time taken from a field that records when a frame ARRIVED (or when the broker stamped a post-close packet) instead of when the price was made; outside market hours every price was made at the close of its session, so any label built from arrival or packet time tells the user a false time (e.g. 'Prices are from 28 Oct 07:46' for the 27 Oct close).",
+ "mechanism": "backend/ofo/marketdata/kite_provider.py:176 sets NormalizedQuote.timestamp = exchange_ts if non-zero else received_at; Kite index/ltp packets before the open carry no or zero exchange time, and post-close packets carry times like 16:22:40 / 17:35:06. The closed-market labels (outcome, index, strikes, depth popup, planned-entry close_at, chain, broker status) printed that timestamp or the feed's last frame time.",
+ "first_seen": {
+  "date": "2026-10-28",
+  "where": "GC-BM walk 5 on the real app before the open (owner's fresh Kite login)",
+  "evidence": "07:46-07:52 IST: builder banner 'Market closed. Prices are from 28 Oct 2026, 07:46:17 IST.', entries 'Close, 28 Oct 2026, 07:47:44 IST', GET /api/market/indices last_price_at 2026-10-28T07:46:28+05:30 (NIFTY 22749.75 = the 27 Oct close). Second occurrence of the class: Tier A review round 1 (2026-10-28 ~00:10) found the banner time taken from the feed's last frame (a 21:05 reconnect read 21:05:00); fix 2d54330b moved to the quote's timestamp, which is itself an arrival time. Independent RCA (fresh Opus reviewer): decoded both in-hours recordings - 10,342 ticks, 0 without an exchange time, 0 with 0, arrival lag median 0.67 s; synthetic 8/28/32-byte packets through parse_frame all fall back to arrival time."
+ },
+ "fix": "Keep timestamp (liveness, bars, in-hours rules use it); add NormalizedQuote.price_at = t if the market calendar is open at t else last_close(t), t = exchange_ts or received_at, with market_calendar.last_close the mirror of next_open (15:30 IST of the latest trading day at or before t; None without calendar data). Every closed-market label reads only price_at. Built in GC-BM round 3 (F-19), with the depth popup's closed-market fall-through (F-20).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when the F-19 tests land: normalise tests for 28/32-byte and zero-time packets, post-close / holiday / weekend / no-calendar cases, a replay of both in-hours recordings asserting price_at == timestamp on every tick, and a route test at a 07:46 clock across every label surface."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-200.md",
+  "spec/decisions/ADR-197.md",
+  "spec/decisions/ADR-177.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-28",
+   "where": "GC-BM Tier A review round 1",
+   "evidence": "banner time = the feed's last frame time (21:05 reconnect)"
+  },
+  {
+   "date": "2026-10-28",
+   "where": "GC-BM walk 5 (real app, 07:46 IST)",
+   "evidence": "banner and entry labels = the morning snapshot's arrival time"
+  }
+ ]
+}

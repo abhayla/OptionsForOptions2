@@ -1,0 +1,25 @@
+"""Read-only spike: Zerodha basket margin for the row 25 plan with consider_positions true vs false (no order)."""
+import asyncio, json
+from decimal import Decimal
+from ofo_app.broker_config import load_broker_config
+from ofo_app.broker_crypto import TokenCipher
+from ofo_app.broker_token_store import access_token_for
+from ofo_app.db import get_engine
+from ofo_app.kite_margin import BasketOrder, KiteMargin
+
+async def tok():
+    cfg = load_broker_config()
+    async with get_engine().connect() as conn:
+        return cfg.api_key, await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
+api_key, t = asyncio.run(tok())
+km = KiteMargin(api_key=api_key, access_token=t); del t
+orders = [BasketOrder("NFO", "NIFTY26N0322650CE", "SELL", "NRML", "LIMIT", 65, Decimal("265.90")),
+          BasketOrder("NFO", "NIFTY26N0322850CE", "BUY", "NRML", "LIMIT", 65, Decimal("170.00"))]
+body = "[" + ", ".join(o.as_json() for o in orders) + "]"
+for flag in ("true", "false"):
+    try:
+        d = km._data("POST", f"/margins/basket?consider_positions={flag}", body, {"Content-Type": "application/json"})
+        print(flag, "final.total", d.get("final", {}).get("total"), "initial.total", d.get("initial", {}).get("total"), "orders", len(d.get("orders", [])), "keys", sorted(d))
+    except Exception as e:
+        print(flag, "ERROR", type(e).__name__, getattr(e, "code", ""), str(e)[:200])
+print("funds", km.fetch_available_funds())

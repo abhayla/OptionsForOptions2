@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415, RUF003, RUF012
 """POST /api/strategies/outcome (W-063; REQ-034 AC-1, AC-8; ADR-008, ADR-068).
 
 The browser sends a draft strategy (legs with their planned entry and its capture time) and gets back the one table,
@@ -27,6 +28,7 @@ from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
 from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import (
     OutcomeState,
@@ -39,13 +41,15 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.outcome.money import with_funds
+from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import Margin, waiting_first_price
+from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
+from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.timeutil import IST
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
@@ -176,6 +180,18 @@ def market_state(ctx: MarketContext | None, at: datetime.datetime) -> MarketStat
                        last_price_at=getattr(getattr(provider, "feed", None), "last_price_at", None))
 
 
+def label_time(state: MarketState, quote_times: Iterable[datetime.datetime | None]) -> datetime.datetime | None:
+    """ADR-200 (4): the time a market-closed answer is labelled with ("Market closed. Prices are from <time>.") is the
+    quotes' OWN last-price time, the latest ``at`` among the quotes the answer used, never the feed's last frame time (a
+    21:05 reconnect frame is not a price from the session that closed). An older-session price (a holiday before) is
+    kept and labelled with its own time. No usable quote time: None (no time is invented). In market hours the
+    answer's ``last_price_at`` stays the feed's last price frame, unchanged (the reconnecting text reads it)."""
+    if not state.closed:
+        return state.last_price_at
+    times = [t for t in quote_times if isinstance(t, datetime.datetime) and t.utcoffset() is not None]
+    return max(times) if times else None
+
+
 def feed_scope(ctx: MarketContext) -> FeedScope | None:
     """The shared-cache scope of ``ctx``'s feed (REQ-050 AC-1/AC-3, ADR-053), or None when there is no feed owner. Every
     route that reads a market snapshot takes its scope here, so none bypasses the shared cache."""
@@ -210,6 +226,47 @@ RequestSeq = Annotated[int, Field(strict=True, ge=0, le=INTEGER_MAX,
                                   description="the request's sequence id; the reply echoes it unchanged as seq")]
 
 
+@dataclasses.dataclass(frozen=True)
+class Booked:
+    """ADR-209: the booked P&L of the paper strategy a what-if request names (amount None, unreadable False: nothing to add)."""
+
+    amount: Decimal | None = None
+    unreadable: bool = False
+
+
+BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
+
+
+async def read_booked(strategy_id: int) -> Decimal | None:
+    """The strategy's booked P&L from the paper order book (the one engine's net_positions, the figure GET
+    /paper/strategies/{id} returns). None for a strategy that is not this user's, has no orders, or a read that fails."""
+    from ofo.tracking.orderbook import (
+        net_positions,  # late: the DB-free outcome route imports nothing of tracking at load
+    )
+
+    from ofo_app import paper_book  # not paper_store: that one reaches order code (REQ-073 AC-6)
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read", never a 0
+        return None
+    return net_positions([o.order.as_paper() for o in orders], {}).booked if orders else None
+
+
+def get_booked_reader() -> BookedReader:
+    return read_booked
+
+
+async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)]) -> Booked:
+    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read"."""
+    if req.paper_strategy_id is None or not req.include_booked:
+        return Booked()
+    amount = await reader(req.paper_strategy_id)
+    return Booked(None, True) if amount is None else Booked(amount)
+
+
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -233,13 +290,62 @@ class OutcomeRequest(BaseModel):
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
     seq: RequestSeq | None = None  # REQ-119 AC-1 (REST) / REQ-133 AC-2 (the live push): echoed unchanged
+    both_views: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in "
+                    "`curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly")
+    payoff_step: StrictInt | None = Field(
+        default=None, examples=[50],
+        description="REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then "
+                    "carries `payoff_table` (also sent with both_views; absent: the strike step, NIFTY 50, SENSEX 100)")
+    sd_bands: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day "
+                    "horizon, the days to expiry when fewer)")
+    open_interest: StrictBool = Field(
+        default=False,
+        description="REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario "
+                    "range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time "
+                    "read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change "
+                    "is not offered (D-B18, Later)")
+    target_level: str | None = Field(
+        default=None, pattern=POINTS_PATTERN, examples=["23000"],
+        description="REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot "
+                    "-10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)")
+    target_at: AwareDatetime | None = Field(
+        default=None,
+        description="REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first "
+                    "expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)")
+    paper_strategy_id: StrictInt | None = Field(
+        default=None, ge=1, le=INTEGER_MAX,
+        description="ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its "
+                    "booked P&L from the paper order book. Absent: a plan, nothing is added")
+    include_booked: StrictBool = Field(
+        default=True,
+        description="ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L "
+                    "to the target P&L, the badge and the target curve; false shows the open legs only")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
         """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
         self.scenario_choice()
+        if self.payoff_step is not None and Decimal(self.payoff_step) not in PAYOFF_TABLE_STEPS:
+            raise ValueError("payoff_step must be one of 10, 25, 50, 100")
         return self
+
+    def target_ask(self, booked: Booked | None = None) -> TargetAsk | None:
+        """REQ-084 AC-4: the what-if inputs (None when neither was sent: today's reply exactly). ``booked`` is the paper
+        strategy's booked P&L the route read (ADR-209); None: a plan, or the switch off."""
+        if self.target_level is None and self.target_at is None:
+            return None
+        booked = booked or Booked()
+        return TargetAsk(None if self.target_level is None else Decimal(self.target_level), self.target_at,
+                         booked.amount, booked.unreadable)
+
+    def table_step(self) -> Decimal | None:
+        """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
+        return None if self.payoff_step is None else Decimal(self.payoff_step)
 
     def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
@@ -286,6 +392,7 @@ class CellOut(ApiModel):
     reason: CatalogueText | None
     side: Literal["Cr", "Dr"] | None
     per_unit: Money | None
+    per_unit_display: CatalogueText | None
     vendor: Money | None
 
 
@@ -319,6 +426,18 @@ class LevelOut(ApiModel):
     zero_pnl: bool
 
 
+class ScenarioOtherOut(ApiModel):
+    """REQ-083 AC-1 (both views asked for): the other view's totals on the scenario table's own levels."""
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+    output_label: CatalogueText | None
+    totals: list[Money] | None
+
+
+
 class ScenarioOut(ApiModel):
     view: ViewCode
     label: CatalogueText
@@ -332,11 +451,13 @@ class ScenarioOut(ApiModel):
     start: Money
     end: Money
     customised: bool  # true when the user's range was used, false for the computed default range
+    other: ScenarioOtherOut | None = None  # both_views only (absent otherwise)
 
 
 class PointOut(ApiModel):
     level: Money
     pnl: Money
+    display: CatalogueText  # GC-BM F-8: the point's rupee text, in the table cells' format (e.g. "₹6,366.75")
 
 
 class PayoffOut(ApiModel):
@@ -344,21 +465,101 @@ class PayoffOut(ApiModel):
     points: list[PointOut]
 
 
+class CurveOut(ApiModel):
+    """REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason."""
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+    output_label: CatalogueText | None
+    points: list[PointOut]
+
+
+class CurvesOut(ApiModel):
+    """REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``)."""
+    at_expiry: CurveOut
+    estimated_now: CurveOut
+
+
+class PayoffCellOut(ApiModel):
+    pnl: Money
+    display: CatalogueText
+
+
+class PayoffRowOut(ApiModel):
+    level: Money
+    level_display: CatalogueText
+    nearest_spot: bool
+    move_pct: Money | None  # D-B26 / REQ-137 AC-2: (level - spot) x 100 / spot; None without a live index price
+    move_pct_display: CatalogueText | None  # "+2.1%" (signed, one decimal; a true zero "0.0%"), from the server
+    estimated_now: PayoffCellOut | None  # None: that view is unavailable (its column carries the reason)
+    at_expiry: PayoffCellOut | None
+
+
+class PayoffColumnOut(ApiModel):
+    view: ViewCode
+    label: CatalogueText
+    kind: Literal["exact", "estimate"]
+    available: bool
+    unavailable_reason: CatalogueText | None
+
+
+class PayoffTableOut(ApiModel):
+    step: Money
+    available: bool
+    unavailable_reason: CatalogueText | None
+    columns: list[PayoffColumnOut]
+    rows: list[PayoffRowOut]
+
+
+class SdRowOut(ApiModel):
+    sd: Literal[1, 2]
+    label: CatalogueText
+    move: Money
+    percent: Money
+    lower: Money
+    upper: Money
+    move_display: CatalogueText
+    lower_display: CatalogueText
+    upper_display: CatalogueText
+
+
+class SdBandOut(ApiModel):
+    sd: Literal[-2, -1, 1, 2]
+    label: CatalogueText
+    level: Money
+    display: CatalogueText
+
+
+class StandardDeviationOut(ApiModel):
+    available: bool
+    reason: CatalogueText | None
+    horizon_days: int | None
+    iv: Money | None
+    spot: Money | None
+    rows: list[SdRowOut]
+    bands: list[SdBandOut]
+
+
 class NetPremiumOut(ApiModel):
     """REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a
     leg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the
     legs' quantities differ."""
     amount: Money | None
+    amount_display: CatalogueText | None = None  # REQ-152: whole rupees, Indian grouping, no sign ("5,707"); null = absent
     side: Literal["get", "pay"] | None
     per_unit: Money | None
+    per_unit_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): "1.50", two decimals; null = absent
     text: CatalogueText | None
     reason: CatalogueText | None
 
 
 class FundsShareOut(ApiModel):
-    """ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never
-    estimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."""
-    funds: Money
+    """REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &
+    Margins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is
+    CHECKED with a positive margin needed; a side that is Unlimited has null percent/text."""
+    margin_needed: Money
     read_at: datetime.datetime
     max_profit_percent: Money | None
     max_loss_percent: Money | None
@@ -387,6 +588,11 @@ class SummaryOut(ApiModel):
     where_do_i_start_losing: CatalogueText
     max_profit: Money | None
     max_loss: Money | None
+    # REQ-152 AC-1/AC-3/AC-4: the server's whole-rupee text (half-up, Indian grouping, "+" profit, U+2212 loss); null =
+    # absent/unlimited (the reason or the unlimited flag is beside it); the exact value stays in the field above
+    max_profit_display: CatalogueText | None = None
+    max_loss_display: CatalogueText | None = None
+    breakevens_display: list[CatalogueText] = []  # REQ-153 AC-1: "22,688 (−0.1%)", same order as ``breakevens``
     max_profit_unlimited: bool
     max_loss_unlimited: bool
     breakevens: list[Money]
@@ -399,7 +605,9 @@ class SummaryOut(ApiModel):
     reward_risk: Money | None = None
     reward_risk_reason: CatalogueText | None = None
     time_value: Money | None = None
+    time_value_display: CatalogueText | None = None
     intrinsic_value: Money | None = None
+    intrinsic_value_display: CatalogueText | None = None
     # REQ-081 (W-154): null = absent; the reason text says why (never "0.00" for an absent figure)
     risk_reward: Money | None = None
     value_label: CatalogueText | None = None
@@ -415,6 +623,10 @@ class MarginOut(ApiModel):
     needed: Money | None = None  # OUR figure: Zerodha's basket figure + the ADR-094 top-up, to the paisa
     broker_needed: Money | None = None  # Zerodha's own final.total (0 for a closing basket); only when CHECKED
     available: Money | None = None  # Zerodha's available funds, to the paisa
+    # REQ-152 AC-1: whole rupees, Indian grouping, unsigned; null whenever the matching figure is null
+    needed_display: CatalogueText | None = None
+    broker_needed_display: CatalogueText | None = None
+    available_display: CatalogueText | None = None
     checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
     shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)
     shortfall_reason: CatalogueText | None = None  # REQ-055 AC-4: only when CHECKED and short, with the ways forward
@@ -432,8 +644,10 @@ class LegOut(ApiModel):
     lot_size: int | None
     quantity: int | None
     planned_entry: Money | None  # None only for a leg saved without a price (ADR-085)
+    planned_entry_display: CatalogueText | None = None  # GC-UI D-PX (REQ-152 AC-2): two-decimal text, null = absent
     captured_at: datetime.datetime
     ltp: Money | None
+    ltp_display: CatalogueText | None = None  # GC-UI D-PX: "99.80" for an ltp of 99.8
     iv: Money | None
     health: HealthCode | None
     label: CatalogueText | None
@@ -445,7 +659,113 @@ class LegQuoteOut(ApiModel):
     symbol: Identifier | None
     bid: Money | None
     ask: Money | None
+    bid_display: CatalogueText | None = None  # GC-UI D-PX: two-decimal text
+    ask_display: CatalogueText | None = None
     health: HealthCode | None
+
+
+class OiRowOut(ApiModel):
+    """One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / "0"."""
+    strike: Money
+    call_oi: int | None
+    call_oi_display: CatalogueText
+    put_oi: int | None
+    put_oi_display: CatalogueText
+
+
+class OpenInterestOut(ApiModel):
+    """REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason."""
+    available: bool
+    unavailable_reason: CatalogueText | None  # "OI not available for this expiry: ..." (AC-6); None when available
+    expiry: datetime.date | None
+    expiry_note: CatalogueText | None  # a calendar: which expiry the bars are for (the nearest); None otherwise
+    read_at: datetime.datetime | None  # the oldest time among the quotes used
+    read_at_display: CatalogueText | None  # "OI data at 09:20 IST"
+    contracts: int  # the contracts the bars read (two per listed strike in range)
+    rows: list[OiRowOut]
+
+
+class TargetLimitsOut(ApiModel):
+    min: Money
+    max: Money
+    step: Money
+    at_min: datetime.datetime | None  # the date range: now ..
+    at_max: datetime.datetime | None  # .. the first expiry's 15:30 IST (null: no estimate, see ``at_refused_reason``)
+
+
+class TargetPnlOut(ApiModel):
+    value: Money
+    display: CatalogueText
+
+
+class GreeksOut(ApiModel):
+    delta: Money
+    gamma: Money
+    theta: Money
+    vega: Money
+
+
+class TargetGreeksOut(ApiModel):
+    """Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total
+    (null unless every leg has a value; ``unavailable`` names why)."""
+    legs: list[GreeksOut | None]
+    total: GreeksOut | None
+    unavailable: Literal["no_time_left"] | None
+    unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
+
+
+class TargetBadgeOut(ApiModel):
+    """GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),
+    zero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the
+    signed exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``."""
+    state: Literal["profit", "loss", "zero", "unavailable"]
+    label: CatalogueText
+    reason: CatalogueText | None = None
+    amount: Money | None = None
+    amount_display: CatalogueText | None = None
+    percent: Money | None = None
+    percent_text: CatalogueText | None = None
+    percent_reason: CatalogueText | None = None
+    output_label: CatalogueText | None = None
+
+
+class TargetOut(ApiModel):
+    """REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at
+    the target. ``kind`` "estimate" (the pricing model, ``model``) or "exact" (At Expiry only: no IV or no live data,
+    the time refused with ``at_refused_reason``). With no target asked the block is ``limits`` alone (and
+    ``at_refused_reason`` when the date range cannot be offered): every other key is absent, nothing is computed."""
+    limits: TargetLimitsOut
+    level: Money | None = None
+    level_clamped: bool = False
+    level_clamp_text: CatalogueText | None = None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <level>."
+    at: datetime.datetime | None = None
+    at_clamped: bool = False
+    clamp: Literal["before_now", "after_first_expiry"] | None = None
+    at_clamp_text: CatalogueText | None = None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <IST date-time>."
+    at_refused_reason: CatalogueText | None = None
+    kind: Literal["estimate", "exact"] | None = None
+    model: CatalogueText | None = None
+    output_label: CatalogueText | None = None
+    pnl: TargetPnlOut | None = None
+    breakevens: list[Money] | None = None
+    breakevens_display: list[CatalogueText] | None = None  # GC-TPD R-33: "22,578 (+0.1%)", same order as ``breakevens``
+    breakevens_reason: CatalogueText | None = None
+    stale_text: CatalogueText | None = None  # ADR-210 (7): the sentence for these figures if they go stale
+    curve: CurveOut | None = None
+    greeks: TargetGreeksOut | None = None
+    #: R-19a (Sensibull 020): the level's move from the live spot ("+6.1%"), absent with its reason when no spot is known
+    move_pct: Money | None = None
+    move_pct_display: CatalogueText | None = None
+    move_pct_reason: CatalogueText | None = None
+    #: R-19a: whole IST calendar days from the target date to the first expiry ("4D to expiry"), 0 on expiry day
+    days_to_expiry: int | None = None
+    days_to_expiry_display: CatalogueText | None = None
+    badge: TargetBadgeOut | None = None  # REQ-144 AC-1..AC-4
+    #: GC-TP R-18 (ADR-209): present only when a paper strategy's booked P&L is in ``pnl``, ``badge`` and ``curve``
+    booked: Money | None = None
+    booked_display: CatalogueText | None = None  # "+962.00"
+    includes_booked_text: CatalogueText | None = None  # "includes +Rs 962.00 booked"
+    booked_unreadable_text: CatalogueText | None = None  # the book could not be read: open legs only
 
 
 class OutcomeResponse(ApiModel):
@@ -474,6 +794,12 @@ class OutcomeResponse(ApiModel):
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
     charges_breakdown: ChargesBreakdownOut | None = None  # REQ-081 AC-2 / ADR-167 (2)
+    #: GC-UI step 4 (REQ-083 AC-1): both curves on the same levels, keyed by view; absent unless ``both_views``
+    curves: CurvesOut | None = None
+    payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
+    standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
+    open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
+    target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 
@@ -487,6 +813,8 @@ def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str
                      "symbol": symbols.get(leg.instrument_id),
                      "bid": None if q is None or q.bid is None else f"{q.bid:f}",
                      "ask": None if q is None or q.ask is None else f"{q.ask:f}",
+                     "bid_display": None if q is None else price_text(q.bid),
+                     "ask_display": None if q is None else price_text(q.ask),
                      "health": None if q is None else q.health.value})
     return rows
 
@@ -542,24 +870,28 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
                      rates: ChargeRates | None = None, margin: Margin | None = None,
-                     seq: int | None = None) -> OutcomeResponse:
+                     seq: int | None = None, booked: Booked | None = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
     frozen quotes. ``now`` stamps the answer time (ADR-088); ``stored`` names the legs when there is no provider (#249)."""
     definition = _definition(req)
+    ask = req.target_ask(booked)  # ADR-209: the paper strategy's booked P&L rides on the what-if ask
     live_blocked = False
+    used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
     if ctx is None:
         answered_at = now()
         config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
-                            override=override)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            override=override, both_views=req.both_views, payoff_step=req.table_step(),
+                            sd_bands=req.sd_bands, target=ask)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  answered_at, ctx.rate, shared)
+        used_quotes = [snapshot.spot, *(leg.quote for leg in snapshot.legs.values())]
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
         live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
@@ -568,20 +900,29 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         elif live_blocked:
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+                                config=config, override=override, both_views=req.both_views,
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
                    or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
-                                config=config, override=override, shared=shared)
+                                config=config, override=override, shared=shared, both_views=req.both_views,
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     state = market_state(ctx, answered_at)
-    body["market_closed"], body["last_price_at"] = state.closed, state.last_price_at
+    body["market_closed"] = state.closed
+    body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
+    if req.open_interest:  # REQ-083 AC-5 / AC-6: the bars, or the one reason (never a 0 in a missing place)
+        from ofo_app.outcome_oi import oi_block  # late: outcome_oi's readers import this module
+        body["open_interest"] = oi_block(
+            None if ctx is None else ctx.provider, req.underlying, [leg.instrument_id for leg in req.legs], body,
+            closed=state.closed, live_blocked=live_blocked,
+            streams=None if ctx is None else (lambda ids: inputs_streaming(ctx, streaming, ids)))
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
@@ -617,8 +958,10 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
                      now: AnswerClock = Depends(get_answer_clock),
                      stored: Mapping[str, ListedContract] | None = Depends(get_stored_legs),
                      rates: ChargeRates | None = Depends(load_charge_rates), *,
-                     margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None) -> OutcomeResponse:
+                     margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None,
+                     booked: Annotated[Booked | None, Depends(get_booked)] = None) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,
-                            margin=margin if isinstance(margin, Margin) else None, seq=req.seq)
+                            margin=margin if isinstance(margin, Margin) else None, seq=req.seq,
+                            booked=booked if isinstance(booked, Booked) else None)

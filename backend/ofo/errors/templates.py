@@ -53,6 +53,16 @@ class MessageTemplate:
         object.__setattr__(self, "slots", MappingProxyType(dict(self.slots)))
 
 
+# REQ-055 AC-3 / ADR-094: the margin needed is OUR estimate (Zerodha's figure plus the BUY top-up), so the refusal
+# states the condition only and never Zerodha's verdict. One home for the three margin texts.
+MARGIN_SHORTFALL_IMPACT: str = (
+    "Funds are below the margin this plan needs (our estimate, including the premium up to your limit prices), "
+    "so the basket was not built."
+)
+MARGIN_SHORTFALL_EXECUTE_IMPACT: str = (
+    "Funds are below the margin this plan needs (our estimate), so it is not executed."
+)
+
 _TEMPLATES: tuple[MessageTemplate, ...] = (
     MessageTemplate(
         id="user_input_lot_size",
@@ -109,7 +119,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         error_class=ErrorClass.MARGIN,
         code="MARGIN_001",
         what_happened="Margin available {available} is below the {required} this strategy needs.",
-        impact="Zerodha would reject this order for insufficient margin.",
+        impact=MARGIN_SHORTFALL_EXECUTE_IMPACT,
         what_is_blocked="Execution of this strategy.",
         next_action="Add funds in Zerodha or reduce the quantity, then retry.",
         slots={"available": Money, "required": Money},
@@ -344,9 +354,9 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The orders could be rejected for insufficient margin.", _EXEC,
           "Check your margin in Zerodha, then try again."),
     _gate("gate_margin_insufficient", _MG, 102,
-          "Available margin {available} is less than the estimated {required} this strategy needs. Zerodha's figure "
-          "is final. No order has been submitted.",
-          "Zerodha would reject these orders for insufficient margin.", _EXEC,
+          "Available margin {available} is less than the estimated {required} this strategy needs. "
+          "No order has been submitted.",
+          MARGIN_SHORTFALL_EXECUTE_IMPACT, _EXEC,
           "Add funds in Zerodha or reduce the quantity, then try again.",
           {"available": Rupees, "required": Rupees}),
     _gate("gate_entitlement_unconfirmed", _EA, 101,
@@ -906,6 +916,59 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Can't delete: orders were sent",
           "The strategy and its history were not changed.", "Deleting this strategy.",
           "Keep the strategy; its history stays readable."),
+    # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
+    _gate("tracking_exit_prices_not_live", _SV, 433,
+          "Prices are not live; try again when they update.",
+          "No leg was exited and nothing was stored; a paper exit never uses a guessed price.",
+          "Exiting these paper legs.", "Try again when the prices update."),
+    _gate("tracking_leg_already_exited", _SV, 434,
+          "A leg you chose has already been exited on paper.",
+          "No leg was exited and nothing was changed; a paper exit is recorded once per leg.",
+          "Exiting these paper legs.", "Reload the tracking panel and choose only open legs."),
+    _gate("tracking_exit_legs_invalid", _SV, 435,
+          "A leg you chose is not a leg of this tracked strategy, or is listed twice.",
+          "No leg was exited and nothing was stored.", "Exiting these paper legs.",
+          "Reload the tracking panel and choose its open legs."),
+    # GC-BP step 8 (Opus review M2): an exit of a leg whose contract is no longer live; retrying cannot help, so it is
+    # not tracking_exit_prices_not_live, and Start tracking's own words ("Tracking did not start") would be false here.
+    _gate("tracking_exit_contract_not_live", _SV, 436,
+          "A leg you chose is no longer a live contract (expired, delisted, or its exchange token now belongs to "
+          "another contract).",
+          "No leg was exited and nothing was stored; a leg is never priced from another contract.",
+          "Exiting these paper legs.", "Exit only the legs whose contracts are still live."),
+    # GC-TP step 1b (REQ-109 AC-1, AC-4; ADR-207): typed paper orders on the paper order book.
+    _gate("paper_price_invalid", _SV, 437,
+          "A price must be above 0 and a multiple of 0.05.",
+          "No order was stored; a paper order is never placed at a price the exchange would not take.",
+          "Placing these paper orders.",
+          "Type a price above 0 that is a multiple of 0.05, then place the orders again."),
+    _gate("paper_exit_exceeds_open", _SV, 438,
+          "An exit is larger than the quantity you have open in that contract.",
+          "No order was stored; a paper exit only closes what is open on the same contract.",
+          "Placing these paper orders.",
+          "Choose an exit on the opposite side that is no larger than the open quantity."),
+    _gate("paper_contract_not_tradable", _SV, 439,
+          "A contract you chose is not a live contract (missing, expired, delisted, or its exchange token now "
+          "belongs to another contract).",
+          "No order was stored; a paper order is never placed on a contract that is not live.",
+          "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
+    # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
+    _gate("paper_trigger_level_invalid", _SV, 440,
+          "A stop level must be above 0 and a multiple of 0.05.",
+          "No stop was set; a paper stop is never armed at a level the exchange would not quote.",
+          "Setting this paper stop.", "Type a level above 0 that is a multiple of 0.05, then set the stop again."),
+    _gate("paper_trigger_leg_not_open", _SV, 441,
+          "A stop-loss names a contract that is not open in this strategy.",
+          "No stop was set; a stop-loss only exits a contract you hold.",
+          "Setting this paper stop.", "Choose a contract that is open in this strategy, then set the stop again."),
+    _gate("paper_trigger_nothing_open", _SV, 442,
+          "This strategy has nothing open, so there is nothing for a stop to exit.",
+          "No stop was set.",
+          "Setting this paper stop.", "Place a paper order to open a position first, then set the stop."),
+    _gate("paper_trigger_already_fired", _SV, 443,
+          "This stop has already fired (or was already cancelled) and cannot be cancelled.",
+          "Nothing was changed; a fired stop has already exited its legs.",
+          "Cancelling this paper stop.", "Read the strategy's orderbook for the exit it made."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
@@ -942,7 +1005,7 @@ _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("margin_basket_insufficient", _MG, 201,
           "This strategy needs {required} of margin with the premium up to your limit prices (an estimate); "
           "{available} is available in your account.",
-          "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
+          MARGIN_SHORTFALL_IMPACT,
           "Building the Zerodha basket for this strategy.",
           MARGIN_SHORTFALL_NEXT_ACTION,
           {"available": DisplayRupees, "required": DisplayRupees}),
@@ -981,6 +1044,11 @@ _READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Strikes are never placed from an old value, so none were placed.",
           "Loading a ready-made shape or a quick pick.",
           "Wait for the live data to return, then try again.", {"underlying": Underlying}),
+    # GC-UI step 5 (REQ-091 AC-1, ADR-203): the Strategy Chart's data route while its held flag is off
+    _gate("price_history_held", _UI, 104,
+          "The strategy chart is not available.",
+          "No price history was read.", "Opening the strategy chart.",
+          "Use the payoff chart and the P&L table instead."),
 )
 
 # --- W-148 (REQ-076 AC-1, AC-2): a refused leg edit (strike step, typed price). The whole edit is refused and nothing
@@ -1036,6 +1104,10 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_hedge_no_hedge_legs", _UI, 24, "This strategy has no Hedge legs, so Hedge has nothing to move.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or change the strikes yourself.", {}),
+    # G-065 (REQ-148 AC-3): Width and Hedge move legs of one expiry's shape; Shift stays available
+    _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
+          "The move was refused and no leg changed.", "This move.",
+          "Use Shift, or put every leg on one expiry.", {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES

@@ -1,0 +1,130 @@
+"""GC-UI step 2 round 2b: every IV and Greek cell carries the exact text the browser prints (REQ-145 AC-3, AC-8).
+
+Inputs are the REAL recorded reply (scratch gcui-checker run1 a_debit_spread_s54 outcome_estimated_now.json, leg 1):
+IV 0.160347; delta position 40.7883, per unit 0.6275126604423561; gamma 0.0523 / 0.0008050247282850743;
+theta -1122.3449 / -17.266844940108367; vega 721.0948 / 11.0937662602045.
+"""
+from decimal import Decimal as D
+
+from conftest import nifty_input, nifty_leg
+from ofo.engine.legs import Action, Instrument
+from ofo.outcome.serialize import _cell
+from ofo.table.columns import ColumnId
+from ofo.table.model import TOTAL_ROW_ID, _greek_cell, _iv_cell, build_table
+
+
+def _greek(position, per_unit, places):
+    return _cell(_greek_cell(D(position), None, D(per_unit), None, places=places, unrounded=D(position)))
+
+
+def test_core_real_reply_iv_and_delta_cells_carry_the_browser_text():
+    leg = nifty_leg(Action.BUY, Instrument.CE, "22400", "81.30", ltp="85", iv="0.160347")
+    iv = _cell(_iv_cell(leg))
+    assert iv["value"] == "0.160347" and iv["display"] == "16.03%"
+    delta = _greek("40.7883", "0.6275126604423561", 2)
+    assert delta["per_unit"] == "0.6275"
+    assert delta["per_unit_display"] == "0.63"
+    assert delta["display"] == "40.79"
+    assert delta["value"] == "40.7883"
+
+
+def test_gamma_four_places_theta_vega_two_places_negative_sign_kept():
+    gamma = _greek("0.0523", "0.0008050247282850743", 4)
+    assert (gamma["display"], gamma["per_unit_display"], gamma["per_unit"]) == ("0.0523", "0.0008", "0.0008")
+    theta = _greek("-1122.3449", "-17.266844940108367", 2)
+    assert (theta["display"], theta["per_unit_display"], theta["per_unit"]) == ("-1122.34", "-17.27", "-17.2668")
+    vega = _greek("721.0948", "11.0937662602045", 2)
+    assert (vega["display"], vega["per_unit_display"]) == ("721.09", "11.09")
+
+
+def test_round_half_up_not_half_even_at_the_display_boundary():
+    cell = _greek("0.125", "0.125", 2)
+    assert cell["display"] == "0.13" and cell["per_unit_display"] == "0.13"
+    iv = _cell(_iv_cell(nifty_leg(Action.BUY, Instrument.CE, "22400", "81.30", iv="0.18365")))
+    assert iv["display"] == "18.37%"  # half-up at the second decimal (REQ-145 AC-3 example family)
+
+
+def _rows(legs):
+    return {r.row_id: {str(k): _cell(c) for k, c in r.cells.items()} for r in build_table(nifty_input(legs)).rows}
+
+
+def test_answer_states_show_dash_or_null_never_zero_or_nan():
+    legs = [nifty_leg(Action.BUY, Instrument.CE, "22400", "81.30", ltp="85", iv="0.160347"),
+            nifty_leg(Action.SELL, Instrument.PE, "22300", "30.00", ltp="31", iv=None),
+            nifty_leg(Action.BUY, Instrument.FUT, None, "22500", ltp="22510")]
+    rows = _rows(legs)
+    leg_ids = [k for k in rows if k != TOTAL_ROW_ID]
+    no_iv, fut = rows[leg_ids[1]], rows[leg_ids[2]]
+    for col in (ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA):
+        cell = no_iv[str(col)]
+        assert cell["display"] == "—" and cell["value"] is None, col
+        assert cell.get("per_unit_display") is None, col
+    assert fut[str(ColumnId.IV)]["display"] == "—" and fut[str(ColumnId.IV)]["value"] is None
+    assert fut[str(ColumnId.DELTA)]["per_unit_display"] == "1.00"
+    assert fut[str(ColumnId.GAMMA)]["per_unit_display"] == "0.0000"
+    for cells in rows.values():
+        for cell in cells.values():
+            for text in (cell["display"], cell.get("per_unit_display")):
+                assert text is None or text.lower() not in ("nan", "inf")
+    total = rows[TOTAL_ROW_ID]
+    for col in (ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA):
+        cell = total[str(col)]
+        assert cell["display"] == "—" and cell["per_unit"] is None and cell.get("per_unit_display") is None
+
+
+def test_all_options_total_row_has_a_display_and_a_lot_weighted_per_unit():
+    """GC-UI T-1 (c592fb7b): when every leg has a per-unit Greek, the TOTAL Greek cell carries per_unit /
+    per_unit_display = the lot-weighted signed sum of the legs' per-units (1:1 here, so the plain sum); IV has no
+    total."""
+    legs = [nifty_leg(Action.BUY, Instrument.CE, "22400", "81.30", ltp="85", iv="0.160347"),
+            nifty_leg(Action.SELL, Instrument.PE, "22300", "30.00", ltp="31", iv="0.154691")]
+    rows = _rows(legs)
+    total = rows[TOTAL_ROW_ID]
+    leg_rows = [rows[k] for k in rows if k != TOTAL_ROW_ID]
+    for col in (ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA):
+        cell = total[str(col)]
+        assert cell["display"] != "—" and "." in cell["display"]
+        assert cell["per_unit"] is not None and cell["per_unit_display"] is not None, col
+        total_unit, legs_sum = D(cell["per_unit"]), sum(D(r[str(col)]["per_unit"]) for r in leg_rows)
+        ulp = D(1).scaleb(total_unit.as_tuple().exponent)  # the total rounds the UNROUNDED sum once; legs round each
+        assert abs(total_unit - legs_sum) <= ulp, (col, total_unit, legs_sum)
+    assert total.get(str(ColumnId.IV), {}).get("per_unit") is None  # IV has no total
+    leg1 = _rows(legs)
+    first = leg1[next(k for k in leg1 if k != TOTAL_ROW_ID)]
+    assert first[str(ColumnId.IV)]["display"] == "16.03%"
+    assert first[str(ColumnId.DELTA)]["per_unit_display"] is not None
+
+
+# ---- GC-UI F-2: per-unit Greeks carry the leg's buy / sell sign, like per position ------------------------------
+# RCA: _leg_row passed the UNSIGNED contract Greek to _greek_cell as the per-unit figure while the per-position
+# value is per_unit x quantity x (+1 BUY / -1 SELL), so a SELL leg printed per unit +0.42 beside per position -27.24
+# (REAL reply a_debit_spread_s54, leg 2: SELL NIFTY26N0322800CE x 65, iv 0.151825, entry 106.60).
+
+_GREEKS = (ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA)
+
+
+def _s54_sell_row():
+    leg = nifty_leg(Action.SELL, Instrument.CE, "22800", "106.60", ltp="133.6", iv="0.151825", quantity=65)
+    return build_table(nifty_input([leg])).rows[0]
+
+
+def test_core_sell_leg_delta_per_unit_is_negative_and_times_quantity_equals_value():
+    delta = _cell(_s54_sell_row().cell(ColumnId.DELTA))
+    assert D(delta["per_unit"]) < 0
+    assert delta["per_unit_display"].startswith("-")
+    assert abs(D(delta["per_unit"]) * 65 - D(delta["value"])) <= D("0.0033")  # 65 x 0.00005 + 4 dp value
+
+
+def test_every_greek_on_a_sell_leg_per_unit_times_quantity_equals_value_sign_included():
+    row = _s54_sell_row()
+    for cid in _GREEKS:
+        cell = _cell(row.cell(cid))
+        assert abs(D(cell["per_unit"]) * 65 - D(cell["value"])) <= D("0.0033"), cid
+        assert (D(cell["per_unit"]) < 0) == (D(cell["value"]) < 0), cid
+        assert (D(cell["per_unit_display"]) < 0) == (D(cell["value"]) < 0), cid
+
+
+def test_buy_leg_per_unit_is_unchanged_positive_delta():
+    leg = nifty_leg(Action.BUY, Instrument.CE, "22600", "81.30", ltp="85", iv="0.160347", quantity=65)
+    cell = _cell(build_table(nifty_input([leg])).rows[0].cell(ColumnId.DELTA))
+    assert D(cell["per_unit"]) > 0 and D(cell["value"]) > 0

@@ -1,12 +1,14 @@
 """REQ-081 (W-154): the money arithmetic of the Builder summary, in the one engine (ADR-008). Exact Decimals, no float.
 
 Net premium (sells minus buys of entry price x quantity: the rule of the table's TOTAL Entry Value), intrinsic and time
-value, Reward/Risk and Risk/Reward, and a maximum as a percent of funds. Pure numbers only: which sentence or reason
+value, Reward/Risk and Risk/Reward, and a maximum as a percent of the margin needed (ADR-207 (8)). Pure numbers
+only: which sentence or reason
 goes with a figure is shaped in ``ofo.outcome.money``.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from typing import Any, Final
 
@@ -14,7 +16,7 @@ from ofo.engine.legs import Action, Instrument
 from ofo.money import PAISE
 
 ZERO_MONEY: Final = Decimal(0).quantize(PAISE)
-_WHOLE: Final = Decimal(1)
+_TENTH: Final = Decimal("0.1")
 _HUNDRED: Final = Decimal(100)
 _PRECISION: Final = 50
 
@@ -34,6 +36,38 @@ def net_premium_per_unit(legs: Sequence[Any]) -> Decimal | None:
     if len({leg.quantity for leg in legs}) != 1:
         return None
     return abs(sum((_signed(leg, leg.entry_price) for leg in legs), Decimal(0)))
+
+
+def net_price_per_unit(legs: Sequence[Any], prices: Sequence[Decimal]) -> Decimal:
+    """Sells plus, buys minus, of one per-unit price per leg (``prices`` parallel to ``legs``): the TOTAL row's net
+    per-unit Entry / LTP (GC-UI D-B28). Positive = credit. The caller decides when the figure applies."""
+    return sum((_signed(leg, p) for leg, p in zip(legs, prices, strict=True)), Decimal(0))
+
+
+def combined_price_per_unit(legs: Sequence[Any], closes: Sequence[Decimal | None], *,
+                            invert: bool = False) -> Decimal | None:
+    """REQ-091 AC-2/AC-3 (ADR-203 consequence 1, F-64): the strategy's combined net price per unit at one minute, from
+    one close per leg (``closes`` parallel to ``legs``). Each leg counts at its lots divided by the greatest common
+    divisor of all the legs' lots (equal lots -> 1 each; 1 BUY + 2 SELL -> 1 and 2); sells plus, buys minus (a debit
+    is negative). Any leg without a close -> None: a gap, never interpolated or carried (AC-4). ``invert`` flips the
+    sign of this figure only (AC-3)."""
+    if any(c is None for c in closes):
+        return None
+    lots = [leg.lots for leg in legs]
+    if not lots or any(type(n) is not int or n <= 0 for n in lots):
+        raise ValueError("every leg needs a whole, positive number of lots")
+    unit = math.gcd(*lots)
+    value = sum((_signed(leg, close) * (leg.lots // unit) for leg, close in zip(legs, closes, strict=True)),
+                Decimal(0))
+    return -value if invert else value
+
+
+def combined_price_series(legs: Sequence[Any], closes_by_leg: Sequence[Mapping[Any, Decimal]], minutes: Sequence[Any],
+                          *, invert: bool = False) -> list[Decimal | None]:
+    """:func:`combined_price_per_unit` at each of ``minutes`` (the index future's minutes): a minute any leg has no
+    close for is a gap (None)."""
+    return [combined_price_per_unit(legs, [closes.get(m) for closes in closes_by_leg], invert=invert)
+            for m in minutes]
 
 
 def intrinsic_and_time(legs: Sequence[Any], spot: Decimal) -> tuple[Decimal, Decimal]:
@@ -61,11 +95,12 @@ def reward_risk_ratios(max_profit: Decimal, max_loss: Decimal) -> tuple[Decimal,
     return _ratio(max_profit, max_loss), _ratio(max_loss, max_profit)
 
 
-def percent_of_funds(amount: Decimal, funds: Decimal) -> Decimal:
-    """The exact percent ``amount`` is of ``funds`` (funds positive)."""
+def percent_of(amount: Decimal, base: Decimal) -> Decimal:
+    """The exact percent ``amount`` is of ``base`` (base positive; the summary's base is the margin needed)."""
     with localcontext(prec=_PRECISION):
-        return amount * _HUNDRED / funds
+        return amount * _HUNDRED / base
 
 
-def whole_percent(raw: Decimal) -> Decimal:
-    return raw.quantize(_WHOLE, ROUND_HALF_UP)
+def one_decimal_percent(raw: Decimal) -> Decimal:
+    """A percent to one decimal, half-up (REQ-081 AC-9: "7.0% of margin needed")."""
+    return raw.quantize(_TENTH, ROUND_HALF_UP)

@@ -92,7 +92,10 @@
   "available": "671.50",
   "checked_at": "2026-10-16T06:38:52Z",
   "shortfall": true,
-  "shortfall_reason": "Zerodha's own margin figure is ₹6,409.00. With the premium at your planned entry prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
+  "shortfall_reason": "Zerodha's own margin figure is ₹6,409.00. With the premium at your planned entry prices, about ₹7,065.50 is needed (an estimate); ₹671.50 is available in your account. Reduce the quantity, review the strategy, or add funds in Zerodha, then check again.",
+  "needed_display": "7,066",
+  "available_display": "672",
+  "broker_needed_display": "6,409"
  },
  "table": {
   "underlying": "NIFTY",
@@ -2764,16 +2767,25 @@
    "side": "get",
    "per_unit": "73.15",
    "text": "Get ₹4,754.75",
-   "reason": null
+   "reason": null,
+   "amount_display": "4,755"
   },
   "funds_share": {
-   "funds": "671.50",
+   "margin_needed": "7065.50",
    "read_at": "2026-10-16T06:38:52Z",
-   "max_profit_percent": "708",
-   "max_loss_percent": "1228",
-   "max_profit_text": "708% of funds",
-   "max_loss_text": "1228% of funds"
-  }
+   "max_profit_percent": "67.3",
+   "max_loss_percent": "116.7",
+   "max_profit_text": "67.3% of margin needed",
+   "max_loss_text": "116.7% of margin needed"
+  },
+  "max_profit_display": "+4,755",
+  "max_loss_display": "−8,245",
+  "breakevens_display": [
+   "22,327 (−0.9%)",
+   "22,873 (+1.5%)"
+  ],
+  "time_value_display": "−4,755",
+  "intrinsic_value_display": "0"
  },
  "leg_quotes": [
   {

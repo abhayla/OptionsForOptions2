@@ -4,22 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (194)
+## Decisions (207)
 
-- Older decisions: 154 rows, ADR-1..ADR-157 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-158 2026-10-21: SPEC CHANGE to ADR-066 and REQ-047 AC-1. [refines ADR-066; refines REQ-047]
-- ADR-159 2026-10-21: SPEC CHANGE to ADR-080 (1). [refines ADR-080]
-- ADR-160 2026-10-21: SPEC CHANGE to ADR-134 (1) and (2). [refines ADR-134; refines ADR-016; amends ADR-138;…]
-- ADR-161 2026-10-21: SPEC CHANGE to ADR-001 and ADR-102. [refines ADR-001; refines ADR-102]
-- ADR-162 2026-10-21: Refines ADR-153 and changes ADR-009 for exits. [refines ADR-153; refines ADR-009; refines ADR-017…]
-- ADR-163 2026-10-21: An exception to the Sensibull default of ADR-152, under its exception (a). [refines ADR-152]
-- ADR-164 2026-10-21: SPEC CHANGE to ADR-055 (1) for this one figure. [refines ADR-055]
-- ADR-165 2026-10-21: (1) The current scope is: every prerequisite of the strategy builder works, everything inside the s… [applies ADR-150; applies ADR-152; applies ADR-055…]
-- ADR-166 2026-10-21: The action on one saved strategy that records each leg at the live price and starts watching it (RE… [refines REQ-109]
-- ADR-167 2026-10-22: SPEC CHANGE to ADR-082 (2) for the scenario values. [amends ADR-082]
-- ADR-168 2026-10-22: The strategy builder is built from one ordered list of requirements (the owner's 59, grown to 63 ro… [amends ADR-165; amends ADR-004; supersedes REQ-00…]
-- ADR-169 2026-10-22: SPEC CHANGE to ADR-020 (Q178, second meaning) and REQ-015 AC-3: the guided Zerodha API setup (each… [amends ADR-020; amends REQ-015]
-- ADR-170 2026-10-23: Per-user live feeds (ADR-053) stay. [refines ADR-053]
+- Older decisions: 167 rows, ADR-1..ADR-170 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-171 2026-10-23: Amends ADR-168's "one requirement at a time": when row N's code is committed and its verifier is di… [amends ADR-168]
 - ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
 - ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
@@ -47,6 +34,19 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
 - ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
 - ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
+- ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
+- ADR-200 2026-10-27: (1) The after-hours builder is ADR-197, unchanged: outside market hours the builder captures planne… [clarifies ADR-197 ("last close", its label time);…]
+- ADR-201 2026-10-28: (1) A strategy started with "Start tracking" (REQ-109, ADR-165 (2)) is a paper trade: no order goes… [SPEC CHANGE to ADR-138 (2) / W-111: the Positions…]
+- ADR-202 2026-10-28: (1) Definitions and caveats that today sit as visible sentences under a figure (for example "At mos… [Refines REQ-136 (where definitions live: behind t…]
+- ADR-203 2026-10-28: (1) The builder's Strategy Chart tab (Sensibull 016: the strategy's combined price against the inde… [SPEC CHANGE to REQ-091 (hold lifted for the build…]
+- ADR-204 2026-10-28: (1) docs/process/ui-match-differences-2026-10-28.md is approved with every recommendation as writte… [SPEC CHANGE (approved) to REQ-034 AC-7, REQ-081 A…]
+- ADR-205 2026-10-28: (1) The Charges breakdown keeps ADR-082 (1) as decided: every charge is exact Decimal, STT and stam… [none to ADR-082; REQ-081 AC-2 gains one sentence…]
+- ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
+- ADR-207 2026-10-29: (1) PLACE: the builder has an "Add to Paper" button (Sensibull "Add to Drafts", study 166-173) that… [SPEC CHANGE to REQ-081 AC-9 and ADR-164 (percenta…]
+- ADR-208 2026-10-29: (1) Every what-if figure (target level and target date, REQ-084) carries the label "Estimate from t… [refines REQ-084 AC-2 and AC-5 (wording written th…]
+- ADR-209 2026-10-29: On a paper strategy (REQ-109), the what-if P&L at the target level and date (REQ-084 AC-4) and the… [refines REQ-084 AC-4 (text written there in the s…]
+- ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
+- ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
 
 ## Requirements (145)
 
@@ -139,7 +139,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-087 [Approved]: Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time val…
 - REQ-089 [Approved]: Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fi…
 - REQ-090 [Approved]: Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from th…
-- REQ-091 [Approved]: Strategy price history chart in the builder (held for display rights)
+- REQ-091 [Approved]: Strategy price history chart in the builder (on by ADR-203 behind one flag)
 - REQ-092 [Draft]: Optional pre-trade check-in - today's count, a 10-second pause and "Have you checked your exit plan?" before…
 - REQ-093 [Draft]: Instrument watchlists of index, futures and option contracts with live prices and no order buttons
 - REQ-094 [Draft]: Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept
@@ -196,7 +196,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-153 [Approved]: Breakeven percent from spot beside each breakeven, for Expiry and Target
 - REQ-154 [Approved]: An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or…
 
-## Spec sections (230)
+## Spec sections (241)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -318,6 +318,17 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-59 - Kite's 3-websocket limit is per API key across ALL users of on…
 - ## F-60 - Kite REST rate limits per endpoint group; a 429 starts a 10 s…
 - ## F-61 - A false "data disconnected" alarm after a reconnect comes from…
+- ## F-62 - Zerodha's basket margin reply carries no buy-first figure, so…
+- ## F-63 - Sensibull's Greeks-tab Decay is the time value lost between th…
+- ## F-64 - Kite's historical minute candles cover the Strategy Chart's 10…
+- ## F-65 - Editing a paper-tracked strategy in the builder changes the sa…
+- ## F-66 - The builder prices an open paper position at the plan's entry…
+- ## F-67 - Paper entry is the LTP at "Start tracking", not the planned or…
+- ## F-68 - An open paper leg has no expiry settlement: after expiry it ha…
+- ## F-69 - The Positions screen opens on a tab that says the user holds n…
+- ## F-70 - "% of funds" divides by available funds; at low cash it reads…
+- ## F-71 - The "near a short strike" adjustment detection fires at entry…
+- ## F-72 - Kite's day candle for an index carries the exchange's official…
 
 ### spec/open-questions.md
 

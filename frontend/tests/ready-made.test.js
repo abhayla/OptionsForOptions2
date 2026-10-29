@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('REQ-079 AC-2: the list by market view with an expiry picker', () => {
   it('groups the catalogue templates into Bullish / Bearish / Neutral / Other', () => {
-    expect(VIEW_GROUPS.map((g) => g.title)).toEqual(['Bullish', 'Bearish', 'Neutral', 'Other'])
+    expect(VIEW_GROUPS.map((g) => g.title)).toEqual(['Bullish', 'Bearish', 'Neutral', 'Others'])
     expect(VIEW_GROUPS.map((g) => templatesInGroup(TEMPLATES, g).map((t) => t.id))).toEqual([
       ['bull_call_spread'], ['bear_put_spread'], ['iron_condor'], ['long_straddle']])
   })
@@ -76,12 +76,87 @@ describe('REQ-079 AC-2: the list by market view with an expiry picker', () => {
   it('shows the panel with the expiry picker and loads the chosen template for the chosen expiry', async () => {
     const w = await panel()
     expect(w.find('[data-testid="ready-made"]').exists()).toBe(true)
-    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['2026-10-27', '2026-11-03'])
+    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['27 Oct', '3 Nov']) // REQ-148 AC-2: never raw ISO, even with no day count
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await flushPromises()
-    expect(posts).toEqual([['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }]])
+    expect(posts[0]).toEqual(['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }])
     const emitted = w.emitted('update:legs')[0][0]
     expect(emitted.map((l) => [l.action, l.instrument_id, l.lots, l.planned_entry])).toEqual([['BUY', 'NSE_FO:1', 1, null], ['SELL', 'NSE_FO:2', 1, null]])
+  })
+})
+
+const ENTRIES = (rows) => ({ data: { answered_at: 'now', entries: rows } })
+const E = (token, price) => ({ exchange_segment: 'NSE_FO', exchange_token: token, planned_entry: price, captured_at: price == null ? null : 'c1', source: 'ltp', reason_code: price == null ? 'no_live_price' : null })
+const PE = '/strategies/planned-entry'
+const planned = () => posts.filter((p) => p[0] === PE)
+const answer = (entries) => (url) => Promise.resolve(url === PE ? entries : { data: ANSWER })
+
+describe('GC-BM F-1: ready-made and quick-pick legs load WITH planned entries (REQ-079 AC-4, REQ-077 AC-1)', () => {
+  it('template load: one planned-entry call for all ids; legs carry entries and capture times', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', '80.00')]))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    expect(planned()).toEqual([[PE, { underlying: 'NIFTY', instrument_ids: ['NSE_FO:1', 'NSE_FO:2'] }]])
+    const out = w.emitted('update:legs')
+    expect(out.length).toBe(1)
+    expect(out[0][0].map((l) => [l.instrument_id, l.planned_entry, l.captured_at])).toEqual([['NSE_FO:1', '120.50', 'c1'], ['NSE_FO:2', '80.00', 'c1']])
+  })
+
+  it('one id with no price: that leg unpriced with its reason, the others priced', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '120.50'), E('2', null)]))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    const legs = w.emitted('update:legs')[0][0]
+    expect(legs.map((l) => l.planned_entry)).toEqual(['120.50', null])
+    expect(legs[1].captured_at).toBeNull()
+    expect(legs[1].reason_code).toBe('no_live_price')
+  })
+
+  it('capture call fails: legs still load unpriced and the server message is shown', async () => {
+    loadAnswer = (url) => (url === PE
+      ? Promise.reject({ message: 'x', status: 503, parts: { what_happened: 'Prices are not available.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+      : Promise.resolve({ data: ANSWER }))
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    const legs = w.emitted('update:legs')[0][0]
+    expect(legs.length).toBe(2)
+    expect(legs.every((l) => l.planned_entry === null && l.reason_code === 'capture_failed')).toBe(true)
+    expect(w.get('[data-testid="rm-error"]').text()).toContain('Prices are not available.')
+  })
+
+  it('Replace -> Cancel: no load-template and no planned-entry request', async () => {
+    loadAnswer = answer(ENTRIES([E('1', '1.00'), E('2', '2.00')]))
+    const w = await panel(TWO_LEGS)
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await w.get('[data-testid="rm-replace-no"]').trigger('click')
+    await flushPromises()
+    expect(posts).toEqual([])
+  })
+
+  it('an older load that finishes after a newer one does not overwrite it', async () => {
+    let release
+    const slow = new Promise((r) => { release = r })
+    let n = 0
+    loadAnswer = (url) => {
+      if (url === PE) return Promise.resolve(ENTRIES([E('1', '5.00'), E('2', '6.00')]))
+      return ++n === 1 ? slow : Promise.resolve({ data: ANSWER })
+    }
+    const w = await panel()
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    // The cards are :disabled while a load is busy, and a click on a disabled element does nothing, so the second click would
+    // never reach the guard. Lift the attribute on the DOM node (a click that got through) so the second load really starts.
+    const second = w.get('[data-testid="rm-template-bull_call_spread"]')
+    expect(second.attributes('disabled')).toBeDefined()
+    second.element.removeAttribute('disabled')
+    await second.trigger('click')
+    await flushPromises()
+    expect(n).toBe(2) // both loads were requested: the guard, not a disabled card, is what drops the older reply
+    release({ data: ANSWER })
+    await flushPromises()
+    expect(w.emitted('update:legs').length).toBe(1)
   })
 })
 
@@ -115,7 +190,7 @@ describe('REQ-079 AC-5: replace prompt', () => {
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await w.get('[data-testid="rm-replace-yes"]').trigger('click')
     await flushPromises()
-    expect(posts.length).toBe(1)
+    expect(posts.filter((p) => p[0] !== PE).length).toBe(1)
     expect(w.emitted('update:legs')[0][0].length).toBe(2)
   })
 
@@ -129,24 +204,18 @@ describe('REQ-079 AC-5: replace prompt', () => {
   })
 })
 
-describe('REQ-079 AC-7: quick picks', () => {
-  it('offers the underlying distances and posts the user side and distance', async () => {
+describe('GC-UI 6c D-C08: the Quick picks block has left Ready-made (now the leg drawer Straddles / Strangles tabs)', () => {
+  it('shows no quick-pick controls', async () => {
     const w = await panel()
-    expect(w.findAll('[data-testid^="rm-strangle-"]').map((b) => b.text())).toEqual(['50 points', '100 points', '150 points', '200 points'])
-    await w.get('[data-testid="rm-side-sell"]').setValue(true)
-    await w.get('[data-testid="rm-strangle-100"]').trigger('click')
-    await flushPromises()
-    expect(posts).toEqual([['/strategies/quick-pick', { underlying: 'NIFTY', kind: 'strangle', distance: 100, side: 'SELL', expiry: '2026-10-27' }]])
-    await w.get('[data-testid="rm-straddle"]').trigger('click')
-    await flushPromises()
-    expect(posts[1][1]).toEqual({ underlying: 'NIFTY', kind: 'straddle', distance: 0, side: 'SELL', expiry: '2026-10-27' })
+    for (const id of ['rm-quick', 'rm-straddle', 'rm-side-buy', 'rm-side-sell']) expect(w.find(`[data-testid="${id}"]`).exists()).toBe(false)
+    expect(w.findAll('[data-testid^="rm-strangle-"]')).toHaveLength(0)
   })
 })
 
 describe('REQ-079 AC-9: Open in Builder', () => {
   it('?template=<id> loads that template for the nearest expiry', async () => {
     await panel([], { template: 'bull_call_spread' })
-    expect(posts).toEqual([['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }]])
+    expect(posts[0]).toEqual(['/strategies/load-template', { underlying: 'NIFTY', template_id: 'bull_call_spread', expiry: '2026-10-27' }])
   })
 })
 
@@ -193,13 +262,29 @@ describe('REQ-135 AC-2: the expiry picker shows the server\'s day count; the opt
     expect(opts.map((o) => o.element.value)).toEqual(['2026-10-27', '2026-11-03'])
     await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
     await flushPromises()
-    expect(posts.at(-1)[1].expiry).toBe('2026-10-27')
+    expect(posts.find((p) => p[0] === '/strategies/load-template')[1].expiry).toBe('2026-10-27')
   })
 
   it('expiry day shows Today (0 days); a null day count shows the date alone', async () => {
     expiryReply = { expiry_days: [{ expiry: '2026-10-27', days: 0 }, { expiry: '2026-11-03', days: null }] }
     const w = await panel()
-    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '2026-11-03'])
+    expect(w.findAll('[data-testid="rm-expiry"] option').map((o) => o.text())).toEqual(['Today (0 days)', '3 Nov'])
+  })
+})
+
+describe('ADR-199 (4): the default expiry is the server\'s default_expiry, never list position', () => {
+  it('after the close on an expiry day the panel opens on the reply\'s default and loads a template for it', async () => {
+    expiryReply = { default_expiry: '2026-11-03' } // 27 Oct stays first in the list, but is spent
+    const w = await panel()
+    expect(w.get('[data-testid="rm-expiry"]').element.value).toBe('2026-11-03')
+    await w.get('[data-testid="rm-template-bull_call_spread"]').trigger('click')
+    await flushPromises()
+    expect(posts.find((p) => p[0] === '/strategies/load-template')[1].expiry).toBe('2026-11-03')
+  })
+
+  it('an older reply without the field falls back to the first listed expiry', async () => {
+    const w = await panel()
+    expect(w.get('[data-testid="rm-expiry"]').element.value).toBe('2026-10-27')
   })
 })
 
@@ -223,7 +308,7 @@ describe('W-192 UI-111: the Ready-made tab layout (chips, expiry on the right, 4
   it('shows the four view chips with the selected one accent-filled, and the shape cards in a 4-per-row grid by name', async () => {
     const w = await panel()
     const chips = VIEW_GROUPS.map((g) => w.get(`[data-testid="rm-group-${g.key}"]`))
-    expect(chips.map((c) => c.text())).toEqual(['Bullish', 'Bearish', 'Neutral', 'Other'])
+    expect(chips.map((c) => c.text())).toEqual(['Bullish', 'Bearish', 'Neutral', 'Others'])
     expect(chips[0].attributes('aria-pressed')).toBe('true')
     expect(chips[0].classes()).toContain('bg-accent')
     expect(chips[1].classes()).not.toContain('bg-accent')

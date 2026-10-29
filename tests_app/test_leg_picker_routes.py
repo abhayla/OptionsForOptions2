@@ -125,6 +125,9 @@ class FakeProvider:
     def underlying_quote(self, underlying: str) -> NormalizedQuote | None:
         return self.quotes.get(NIFTY_ID) if underlying == "NIFTY" else None
 
+    def instrument_master(self) -> list:  # GC-UI F-3: the futures lease reads it for the forward strikes
+        return []
+
     def option_chain_snapshot(self, underlying: str, expiry: datetime.date) -> list[NormalizedQuote]:
         return [q for q in self.quotes.values() if q.underlying == underlying and q.expiry == expiry]
 
@@ -139,6 +142,9 @@ class FakeProvider:
 
     def latest_depth(self, instrument_id: str, now=None) -> Depth | None:
         return self.depths.get(instrument_id)
+
+    def depth_after_close(self, instrument_id: str, now=None):  # the interface default: nothing held (fail closed)
+        return None
 
     def latest_day_stats(self, instrument_id: str, now=None) -> DayStatsAnswer:
         if not self.stats_offered:
@@ -804,10 +810,10 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
     allowed = {"__future__", "asyncio", "contextlib",
                "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi",
                "pydantic", "sqlalchemy.exc", "ofo.engine.chain_values", "ofo.marketdata.forward",
-               "ofo.timeutil", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money",
+               "ofo.timeutil", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money", "ofo.outcome.snapshot",
                "ofo.rules.inputs", "ofo_app.api_models", "ofo_app.catalogue_picker", "ofo_app.chain_push",
                "ofo_app.errors", "ofo_app.live_push", "ofo_app.routes", "ofo_app.routes.outcome",
-               "ofo_app.routes.broker",
+               "ofo_app.routes.broker", "ofo_app.outcome_oi",  # the OI rule shared with the payoff chart: reads only
                "ofo_app.underlying", "ofo_app", "ofo_app.db"}
     assert imported <= allowed, imported - allowed
     forbidden = ("execute", "basket", "margin", "order")

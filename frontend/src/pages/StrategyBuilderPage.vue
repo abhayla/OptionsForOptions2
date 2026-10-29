@@ -14,17 +14,26 @@
      Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ChartCard from '@/components/strategy/ChartCard.vue'
+import LowerCard from '@/components/strategy/LowerCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
 import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+import { ADD_TO_PAPER_LABEL, addToPaper as postPaperOrders } from '@/lib/tracking'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import {
+  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+  legsAfterExit, paperFillKey,
+} from '@/lib/paperDrafts'
+import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
+import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
@@ -44,8 +53,11 @@ import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
-import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
-import { istClock, istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import TargetBlock from '@/components/strategy/TargetBlock.vue'
+import { bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
+import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
+import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -74,8 +86,8 @@ function readDraft() {
 
 // The picked legs. A `draft` query seeds them (each already carries its planned entry and capture time). Every leg is
 // canonicalized once here (W-073); a link with a leg that will not canonicalize is refused, never half-opened.
-const draftQuery = readDraft()
-const canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
+let draftQuery = readDraft()
+let canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
 const linkRefused = ref(draftQuery !== null && canonicalQueryLegs === null)
 function legsFromQuery() {
   if (!draftQuery || canonicalQueryLegs === null) return []
@@ -88,6 +100,7 @@ function legsFromQuery() {
     lots: l.lots,
     planned_entry: l.planned_entry,
     captured_at: l.captured_at ?? null,
+    close_at: typeof l.close_at === 'string' ? l.close_at : null, // ADR-197: a draft link keeps the close label
     source: null,
   }))
 }
@@ -110,6 +123,24 @@ const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.incl
 // W-151 (REQ-119): the one newest-wins rule (src/lib/newestWins.js) for the outcome and leg-edit requests of this page;
 // the numbers are marked updating while the newest request of either kind has no applied reply (AC-4).
 const guard = createNewestWins()
+// GC-TP step 6b (REQ-084 AC-1): the what-if target the user set. Only target_level / target_at ever go out for it (analysis only,
+// AC-6); the figures shown are the reply's `target` block, kept (marked stale) when a later request fails or a live push lands.
+const targetPick = ref({ level: '', dateIndex: 0 })
+const targetShown = ref(null)
+const targetStale = ref(false)
+const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
+const loadSoon = debounced(() => load())
+const pickTarget = (patch) => {
+  targetPick.value = { ...targetPick.value, ...patch } // both back at spot / now: no target field is sent
+  loadSoon()
+}
+// GC-TP R-18 (ADR-209, Sensibull 020): the chart card's Add Booked P&L switch, ON by default; a toggle is a new target request
+// (same debounce; the request guard drops the older reply by its id)
+const includeBooked = ref(true)
+const pickBooked = (on) => {
+  includeBooked.value = on
+  loadSoon()
+}
 const updating = computed(() => guard.pending.outcome || guard.pending['leg-edit'])
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -128,6 +159,9 @@ async function load() {
     return
   }
   const mine = guard.next('outcome') // aborts the outcome request still in flight
+  const target = targetFields(targetPick.value, dateStopList.value)
+  const booked = bookedFields(paper.value?.book?.strategy_id, includeBooked.value) // R-18: the Add Booked P&L switch; the id is the server book's own (a paper strategy only)
+  const prevState = state.value
   const fallback = socketDropped
   const sentKey = inputsKey()
   // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
@@ -137,7 +171,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), fallback, seq: mine.seq }, { signal: mine.signal })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked, fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
     // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
     // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
@@ -145,6 +179,11 @@ async function load() {
     applyOutcome(res.data)
   } catch (e) {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
+    if ((target.target_level || target.target_at) && targetShown.value && data.value && prevState !== 'loading') {
+      targetStale.value = true // a failed target request keeps the last good figures, marked stale
+      state.value = prevState
+      return
+    }
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     errorAnsweredAt.value = e?.answered_at ?? null
     state.value = 'error'
@@ -184,6 +223,15 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  const moved = !!targetPick.value.level || targetPick.value.dateIndex > 0
+  if (body.target && (body.target.kind || !moved)) { // figures for the pick, or nothing picked: the reply's block as sent
+    targetShown.value = body.target
+    targetStale.value = false
+  } else if (moved && targetShown.value) {
+    targetStale.value = true // a live push carries the limits but no figures: the last figures stay, marked
+  } else {
+    targetShown.value = body.target ?? null
+  }
   nameLegsFrom(body)
   if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
   else if (body.state === 'FROM_ENTRIES') state.value = 'from-entries' // REQ-077 AC-9: At Expiry from the user's prices, nothing live
@@ -212,13 +260,13 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ...choiceFields(choice.value) })
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS })
   else live.stop()
 }
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
 const savedId = ref(null)
-// W-122: the revision the page loaded or saved (Start tracking is based on it, never on a fresh read)
+// W-122: the revision the page loaded or saved (kept for the chart's version)
 const savedRevision = ref(null)
 // REQ-134 AC-2: the saved strategy this screen is editing ({ id, revision, name }: the revision and name the page loaded or saved).
 // Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
@@ -248,6 +296,7 @@ const onRenamed = (id, name) => {
 // name and POSTs instead of PUTting a hidden id. The legs stay on screen; the ?strategy= link is dropped.
 const onDeleted = (id) => {
   if (openStrategy.value?.id !== id) return
+  leaveDrafts()
   openStrategy.value = null
   savedId.value = null
   savedRevision.value = null
@@ -261,23 +310,156 @@ const onSaved = (id, revision, name) => {
 }
 // AC-5: a reload of /strategy/builder?strategy=<id> reads the saved copy (legs and planned entries as saved, never today's prices).
 const STRATEGY_ID = /^[1-9]\d{0,17}$/
+// GC-TP step 3b1 (ADR-207 (2), REQ-109 AC-9; F-65, F-66): Drafts Mode. A strategy with paper orders opens as its NET position
+// (`paper` holds the book and the net legs) and every edit after that only changes the legs on screen; the ONLY way an edit
+// reaches the server is the list paperOrdersFor(net, legs) gives, reviewed in the confirm dialog. Save / Save As / Add to Paper
+// are not offered (SaveDraftBar paper-mode). A book that cannot be read is said plainly; the plan is never shown in its place.
+const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
+const pendingOrders = computed(() => (paper.value ? paperOrdersFor(paper.value.net, legs.value) : []))
+const paperRows = ref([])
+const paperDialog = ref(false)
+const paperBusy = ref(false)
+const paperError = ref('')
+const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
+const copyLegs = (net) => net.map((l) => ({ ...l }))
+function enterDrafts(id, read) {
+  paper.value = { id, book: read.book, net: read.net }
+  openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
+}
+const leaveDrafts = () => { paper.value = null }
+function reviewPending() {
+  if (!paper.value || !pendingOrders.value?.length) return
+  paperError.value = ''
+  paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName)
+  paperDialog.value = true
+}
+const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
+// GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
+// then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
+function exitAllPaper() {
+  if (!paper.value) return
+  setLegs([])
+  reviewPending()
+}
+function exitPaper(contractId, lots) {
+  if (!paper.value) return
+  const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
+  if (!next) return
+  setLegs(next)
+  reviewPending()
+}
+// Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
+// Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
+const paperLeft = computed(() => {
+  const b = paper.value?.book
+  if (!b) return null
+  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: b.extremes_reason_text ?? null } // R-20: the server's sentence for extremes_reason, never written here
+})
+// R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
+const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
+async function confirmPending(orders) {
+  if (paperBusy.value || !paper.value) return
+  const { id } = paper.value
+  paperBusy.value = true
+  paperError.value = ''
+  try {
+    await postPaperOrders(api, id, orders)
+  } catch (e) {
+    paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal
+    paperBusy.value = false
+    return
+  }
+  paperDialog.value = false
+  try {
+    const read = await readPaperBook(api, id) // the server's book after the orders: the new net position
+    if (read.kind === 'paper') enterDrafts(id, read)
+    else openError.value = unreadableParts(null)
+  } catch (e) {
+    openError.value = unreadableParts(e)
+  } finally {
+    paperBusy.value = false
+  }
+}
+// the Saved tab's Open goes through the same check: a strategy with paper orders opens as its net position, never its plan
+async function openFromBar(next, id, revision, name) {
+  if (Number.isInteger(id)) {
+    try {
+      const read = await readPaperBook(api, id)
+      if (read.kind === 'paper') return enterDrafts(id, read)
+    } catch (e) {
+      openError.value = unreadableParts(e)
+      return
+    }
+  }
+  leaveDrafts()
+  openSaved(next, id, revision, name)
+}
+// GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
+// enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
+async function onPaperAdded(id) {
+  try {
+    const read = await readPaperBook(api, id)
+    if (read.kind === 'paper') return enterDrafts(id, read)
+    openError.value = unreadableParts(null)
+  } catch (e) {
+    openError.value = unreadableParts(e)
+  }
+}
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
   if (!STRATEGY_ID.test(id)) return
   const before = legs.value
+  let read
+  try {
+    read = await readPaperBook(api, id)
+  } catch (e) {
+    if (String(route.query.strategy ?? '') === id) openError.value = unreadableParts(e) // said plainly; the plan is not shown instead
+    return
+  }
+  if (String(route.query.strategy ?? '') !== id || legs.value !== before) return
+  // the book names its own strategy id (an integer); it must be the one in the URL
+  if (read.kind === 'paper') return String(read.book.strategy_id) === id ? enterDrafts(read.book.strategy_id, read) : (openError.value = unreadableParts(null))
+  leaveDrafts()
   try {
     const saved = await fetchSavedDraft(api, id)
+    if (String(route.query.strategy ?? '') !== id) return // F-4: the URL moved on while the read was out
     if (legs.value !== before) return // the user changed the legs while the read was out: never overwrite them
     openSaved(saved.legs, saved.id, saved.revision, saved.name)
   } catch (e) {
     openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
   }
 }
+// F-4: the page stays mounted when only the query changes (App.vue's router-view is unkeyed), so a new ?strategy= / ?draft= is
+// opened here through the same paths a fresh load uses. The ?strategy= the page itself writes after Save names the open strategy
+// already, so it is not read again. Unsaved edits are replaced, exactly as the Saved tab's Open does (openSaved, no prompt).
+watch(() => route.query.strategy, (v) => {
+  if (!v || String(openStrategy.value?.id) === String(v)) return
+  openError.value = null
+  openFromUrl()
+})
+watch(() => route.query.draft, (v) => {
+  if (!v) return // dropped from the URL by Save
+  draftQuery = readDraft()
+  canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
+  const refused = draftQuery !== null && canonicalQueryLegs === null
+  leaveDrafts()
+  openStrategy.value = null
+  openError.value = null
+  setLegs(legsFromQuery())
+  if (refused) {
+    linkRefused.value = true
+    state.value = 'error'
+    errorParts.value = INVALID_LINK_PARTS
+  }
+})
 const setLegs = (next) => {
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
   savedRevision.value = null
   linkRefused.value = false
+  // fix1 (review): a target level / date picked for another underlying or first expiry means nothing for this one - reset it
+  const [oldExpiry, newExpiry] = [firstExpiry(legs.value), firstExpiry(next)] // a draft's legs carry no expiry: compare only two known ones
+  if (legs.value[0]?.underlying !== next[0]?.underlying || (oldExpiry && newExpiry && oldExpiry !== newExpiry)) targetPick.value = { level: '', dateIndex: 0 }
   legs.value = next
   hasReply.value = false // a new leg list has no reply yet: no name or Hedge mark is invented for it
   shapeName.value = null
@@ -392,6 +574,7 @@ const picker = ref(null)
 // W-195 (ADR-193 UI-200): the leg picker is the left slide-in drawer, opened by Add/Edit or the empty state's buttons; the
 // inline add-leg form is gone from the left column. REQ-076 AC-5: Lots or Quantity is chosen in Region A's Settings popover.
 const pickerOpen = ref(false)
+const pickerFolded = ref(false) // GC-UI 6c D-C35: the drawer was folded away by "Show Editor"
 const settingsOpen = ref(false)
 const settingsRoot = ref(null)
 const settingsButton = ref(null)
@@ -413,12 +596,20 @@ const openInPicker = (i) => {
 const focusPicker = () => {
   pickerOpen.value = true
 }
+// GC-UI 3a D-A07: the tick-all box runs the existing per-leg include edit once per leg that differs, one after another
+// (each edit's reply is drawn before the next is sent, so no edit cancels another); no include rule of its own
+async function includeAll(included) {
+  for (let i = 0; i < legs.value.length; i++) {
+    if ((legs.value[i]?.included !== false) !== included) await editLeg({ control: 'include', index: i, included })
+    if (editError.value) return // a refused edit stops the run with its reason shown; nothing further is sent
+  }
+}
 // W-195 review 7: "Pick from Option Chain" is not a second Add leg: it opens the drawer on the Strikes tab
 const pickFromChain = () => {
   picker.value?.showStrikes()
   pickerOpen.value = true
 }
-// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
+// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Add to Paper opens the confirm list; it used to go to the
 // existing tracking block (right column)
 const historyOpen = ref(false)
 const showHistory = () => {
@@ -429,7 +620,6 @@ const restoreFromHistory = (legsIn, id, revision, name) => {
   historyOpen.value = false
   openSaved(legsIn, id, revision, name)
 }
-const goToTracking = () => document.querySelector('[data-testid="tracking-panel"]')?.scrollIntoView?.()
 // AC-4: Execute stays disabled, with its reason, until the latest outcome and edit reply has arrived
 const refusal = computed(() => executeRefusal(legs.value) ?? (updating.value ? EXECUTE_WAITS_FOR_LATEST : null))
 const setChoice = (next) => {
@@ -437,6 +627,15 @@ const setChoice = (next) => {
   load()
   syncLive()
 }
+// GC-UI b1 D-B10 (REQ-083 AC-7): the graph's Zoom is a new range pick; the engine sends the points for it
+const zoomTo = (range) => setChoice({ ...choice.value, ...range })
+// GC-UI b2 D-B24 (REQ-137 AC-1): the payoff table's interval menu is a pick too; the engine makes the rows at that step
+const stepTo = (payoffStep) => setChoice({ ...choice.value, payoffStep })
+// the reply's scenario grid a zoom stays on (null: no zoom offered, nothing guessed)
+const zoomGrid = computed(() => {
+  const sc = data.value?.scenario
+  return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
+})
 onBeforeUnmount(() => {
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
@@ -444,6 +643,13 @@ onBeforeUnmount(() => {
 
 const index = useIndexAnswer()
 const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
+// ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
+// the drawer priced from the last close) it follows the index answer the page already holds (its own socket / REST read)
+const closedBanner = computed(() => {
+  if (data.value) return data.value.market_closed ? { at: data.value.last_price_at } : null
+  const a = index.answer.value
+  return a?.market_closed === true ? { at: a.last_price_at ?? null } : null
+})
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 // W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
 const chartTab = ref('payoff')
@@ -459,10 +665,10 @@ const ratioFlipped = ref(false)
 const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
-const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
-const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
+// GC-UI D-PX (REQ-152 AC-2): the server's two-decimal price texts by instrument id; the browser prints these, never the values
+const priceTextById = computed(() => Object.fromEntries((data.value?.legs ?? []).map((l) => [l.instrument_id, { ltp_display: l.ltp_display ?? null, planned_entry_display: l.planned_entry_display ?? null }])))
 const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
@@ -482,7 +688,8 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 const pricesStamp = computed(() => {
   const d = data.value
   if (!d || fromEntries.value || d.market_closed || live.reconnecting.value) return null
-  const label = d.output_label || staleLegs.value[0]?.label
+  // D-A42: the output label is shown once, beside the summary figures; only a stale leg's label stands in for the time
+  const label = staleLegs.value[0]?.label
   if (label) return { kind: 'health', text: label }
   const at = istClock(d.last_price_at)
   return at ? { kind: 'time', text: `Prices as of ${at} IST` } : null
@@ -495,7 +702,7 @@ const pricesStamp = computed(() => {
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
 
-    <MarketClosedBanner v-if="data?.market_closed" class="mt-2" :prices-at="data.last_price_at" />
+    <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <div class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">
@@ -504,8 +711,10 @@ const pricesStamp = computed(() => {
         data-testid="builder-left"
       >
         <!-- Region A (UI-100, UI-103): the underlying and the outcome reply's spot level; day change omitted until REQ-139 sends it -->
-        <div class="flex h-12 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm" data-testid="underlying-bar">
-          <span class="flex items-center gap-2">
+        <!-- GC-UI 3a D-A01: the index sits in a field with a magnifier inside it; Settings is a separate boxed button beside it -->
+        <div class="flex h-12 items-center gap-2 text-sm" data-testid="underlying-bar">
+          <span class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-3" data-testid="underlying-field">
+            <span class="text-ink-muted" data-testid="underlying-search-icon"><Icon name="search" :size="16" /></span>
             <span v-if="headerUnderlying" class="font-semibold" data-testid="underlying-name">{{ headerUnderlying }}</span>
             <!-- an empty builder chooses its underlying here (Region A owns it; the Ready-made tab reads it) -->
             <select v-else v-model="pickUnderlying" class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="underlying-select">
@@ -515,7 +724,7 @@ const pricesStamp = computed(() => {
           </span>
           <span ref="settingsRoot" class="relative" @keydown.esc="closeSettings">
             <button
-              ref="settingsButton" type="button" class="flex items-center gap-1 rounded border border-line px-2 py-1" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
+              ref="settingsButton" type="button" class="flex h-10 items-center gap-1 rounded-lg border border-line bg-surface px-3" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
               data-testid="builder-settings" @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
             ><Icon name="gear" :size="14" />Settings</button>
             <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover">
@@ -531,30 +740,53 @@ const pricesStamp = computed(() => {
 
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
         <!-- Region B (UI-104..UI-108) -->
+        <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
+        <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
+        <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :legs="legs" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById"
+          :legs="legs" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
-          @edit="editLeg" @edit-leg="openInPicker" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
+          @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+        <div v-if="paper" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
+          <span class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
+          <button v-if="pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
+          <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
+        </div>
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" @exit="exitPaper" @exit-all="exitAllPaper" />
+        </div>
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" @confirm="confirmPending" @cancel="paperDialog = false" />
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
-            <button type="button" class="rounded border border-line px-3 py-1" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+            <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
-          <template #menu="{ close }">
+          <template #menu="{ close, addToPaper, canAddToPaper }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
-            <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
+            <button v-if="!paper" type="button" role="menuitem" data-testid="menu-add-to-paper" :disabled="!canAddToPaper" @click="close(); addToPaper()">{{ ADD_TO_PAPER_LABEL }}</button>
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
+          <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
+          <template #tracked="{ active }"><PaperStrategies v-if="active" compact /></template>
         </SaveDraftBar>
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->
-        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist @close="pickerOpen = false">
-          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" @update:legs="setLegs" @done="pickerOpen = false" /></div>
+        <!-- GC-UI 6c D-C20: no title bar (S-032: the picker's own header row is the top line); the width stays 520 px so the
+             strike grid keeps the 470 px D-C27 fits in. D-C35: the "Show Editor" edge tab folds the drawer away to see the
+             builder; the "Show Strikes" tab at the page edge brings it back with the picks kept (the picker stays mounted). -->
+        <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist bare @close="pickerOpen = false; pickerFolded = false">
+          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" :last-close="closedBanner ? indexLevel : null" :closed-at="closedBanner?.at ?? null" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
+          <template #edge>
+            <button type="button" class="rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]" data-testid="show-editor" @click="pickerOpen = false; pickerFolded = true">Show Editor &gt;&gt;</button>
+          </template>
         </Drawer>
+        <button
+          v-if="pickerFolded && !pickerOpen" type="button" class="fixed left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]"
+          data-testid="show-strikes" @click="pickerOpen = true; pickerFolded = false"
+        >&lt;&lt; Show Strikes</button>
         <Drawer :open="historyOpen && !!openStrategy" title="Strategy history" side="right" @close="historyOpen = false">
           <ActivityPanel v-if="historyOpen && openStrategy" :current="openStrategy" in-drawer @open="restoreFromHistory" />
         </Drawer>
@@ -599,7 +831,7 @@ const pricesStamp = computed(() => {
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
           <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
           <ul class="mt-2 text-sm" data-testid="draft-legs">
-            <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
+            <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry_display ?? '—' }}</li>
           </ul>
         </div>
 
@@ -611,12 +843,13 @@ const pricesStamp = computed(() => {
         </div>
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
-          <!-- UI study Region E: the data-health strip at the top of the summary. W-193 (I-9): the data label (for example
-               "estimated from spot") is no longer a bare floating line: it is named here as the price data label (ADR-061:
-               never silent) and is also the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
-          <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[13px]" data-testid="data-health">
+          <!-- UI study Region E: the data-health strip at the top of the summary, now only for stale legs and the
+               from-entries labels. GC-UI step 3b (D-A42, ADR-202 (3)): the price data label ("estimated from spot",
+               ADR-061: never silent) is one small label inside the summary beside the figures it qualifies
+               (SummaryCards estimateLabel), not a full-width banner, and is not repeated in the foot stamp. It is also
+               the tooltip beside the Estimated Now switch, where the estimate is chosen. -->
+          <div v-if="staleLegs.length || (fromEntries && (data.status_label || data.centre_label || (data.scenario && !data.scenario.available)))" class="mt-4 rounded-lg border border-line bg-warn-soft px-3 py-2 text-[13px]" data-testid="data-health">
             <p v-if="fromEntries && data.status_label" data-testid="status-label">{{ data.status_label }}</p>
-            <p v-if="data.output_label"><span class="text-ink-muted">Price data: </span><span data-testid="output-label">{{ data.output_label }}</span></p>
             <p v-if="fromEntries && data.centre_label" data-testid="centre-label">{{ data.centre_label }}</p>
             <p v-if="fromEntries && data.scenario && !data.scenario.available" data-testid="estimate-unavailable">{{ data.scenario.unavailable_reason }}</p>
             <ul v-if="staleLegs.length">
@@ -627,20 +860,27 @@ const pricesStamp = computed(() => {
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
-            :max-profit="maxProfit"
-            :max-loss="maxLoss"
-            :breakevens="data.summary.breakevens"
+            :left="paperLeft"
+            :max-profit="paperLeft ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
+            :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
+            :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
+            :breakevens="paperLeft ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
+            :breakevens-exact="paperLeft ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"
             :where-i-start-losing="data.summary.where_do_i_start_losing"
             :reward-risk="data.summary.reward_risk ?? null"
             :reward-risk-reason="data.summary.reward_risk_reason ?? null"
-            :time-value="data.summary.time_value ?? null"
-            :intrinsic-value="data.summary.intrinsic_value ?? null"
+            :time-value="data.summary.time_value_display ?? null"
+            :time-value-exact="data.summary.time_value ?? null"
+            :intrinsic-value="data.summary.intrinsic_value_display ?? null"
+            :intrinsic-value-exact="data.summary.intrinsic_value ?? null"
+            :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
             :value-reason="data.summary.value_reason ?? null"
-            :funds-share="data.summary.funds_share ?? null"
+            :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >
             <template #pop><PopFigure :pop="data.probability_of_profit ?? null" /></template>
             <template #margin><MarginLine :margin="data.margin" :capabilities="capabilities" /></template>
@@ -655,11 +895,39 @@ const pricesStamp = computed(() => {
             v-model:payoff-view="chartPayoffView"
             v-model:full-table="chartFullTable"
             :points="data.payoff.points"
+            :view="data.payoff.view ?? ''"
+            :unavailable-reason="data.scenario && !data.scenario.available ? data.scenario.unavailable_reason : null"
             :spot="data.spot_level ?? ''"
             :table="data.table"
+            :legs="data.legs ?? null"
             :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
             :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+            :curves="data.curves ?? null"
+            :target-curve="targetShown?.curve ?? null"
+            :include-booked="includeBooked"
+            :target-booked-text="targetShown?.includes_booked_text ?? ''"
+            :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
+            :breakevens="data.summary.breakevens ?? []"
+            :sd="data.standard_deviation ?? null"
+            :oi="data.open_interest ?? null"
+            :zoom="zoomGrid"
+            :payoff-table="data.payoff_table ?? null"
+            :saved-id="savedId"
+            :saved-revision="savedRevision"
+            @zoom="zoomTo"
+            @update:include-booked="pickBooked"
+            @payoff-step="stepTo"
           >
+            <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->
+            <template #target>
+              <TargetBlock
+                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+                @level="(v) => pickTarget({ level: v })"
+                @date="(i) => pickTarget({ dateIndex: i })"
+                @reset-level="pickTarget({ level: '' })"
+                @reset-date="pickTarget({ dateIndex: 0 })"
+              />
+            </template>
             <template #controls>
               <ScenarioControls :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
             </template>
@@ -667,8 +935,9 @@ const pricesStamp = computed(() => {
               <AdvancedDetails v-if="legQuoteRows" :rows="legQuoteRows" :name-of="nameOf" />
             </template>
           </ChartCard>
+          <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" />
         </div>
       </div>
     </div>

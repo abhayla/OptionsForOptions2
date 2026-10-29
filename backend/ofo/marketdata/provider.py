@@ -96,6 +96,16 @@ class MarketDataProvider(abc.ABC):
         that offers none inherits this and says ``NOT_OFFERED``."""
         return DayStatsAnswer.unavailable(NOT_OFFERED)
 
+    def held_quote_time(self, instrument_id: str, now: datetime.datetime | None = None) -> datetime.datetime | None:
+        """ADR-200 (4): the own last-price time (the quote's ``timestamp``, never a frame's arrival time) of the quote
+        held for an instrument, or None. Read-only, for the market-closed label; a provider that keeps none: None."""
+        return None
+
+    def depth_after_close(self, instrument_id: str, now: datetime.datetime | None = None):
+        """READ-ONLY popup (REQ-080 AC-7, ADR-200 (1)): outside market hours the held last depth and day values, or
+        None. A provider that keeps none inherits this None (fail closed). Never an order input."""
+        return None  # noqa: RET501 - the explicit fail-closed answer of the interface default
+
     @abc.abstractmethod
     def underlying_quote(self, underlying: str) -> NormalizedQuote | None: ...
 

@@ -97,6 +97,10 @@ Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Sta
 - **(d) Every answer state of another system:** when a feature decides on another system's answer (Kite, NSE, the
   database), the brief lists every answer state - stated, absent, not found, failed, empty, ambiguous - and what each
   does. Example: GC-3L met Kite's `InputException` "tag should be max 8 characters", a state no brief had listed.
+- **Faked production seams:** a route test that fakes a production seam (an opener, a finder, a token read) needs one
+  more test that runs that seam for real, faking only the vendor's HTTP transport. Example: GC-UI step 5 faked the
+  Strategy Chart's token opener in every test; the real opener answered 500 live (S5-1, token read on a connection
+  already in a transaction).
 
 ## Quality bar (the reviewer will check exactly this)
 - **Database tests outside your files** (finding db-tests-outside-the-row-red-only-in-ci, 2 occurrences): if your diff

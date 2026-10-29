@@ -9,6 +9,7 @@ export const NEUTRAL_ERROR = 'Something went wrong. Please try again.'
 /** Map any failure to a neutral, displayable error. Server detail is never shown to the user. */
 export function mapError(error) {
   const out = { message: NEUTRAL_ERROR, status: error?.response?.status ?? null }
+  if (error?.code === 'ECONNABORTED') out.code = 'ECONNABORTED' // the client's own timeout: callers may word it
   const parts = catalogueParts(error?.response?.data)
   if (parts) out.parts = parts
   const stamped = serverTime(error?.response?.headers?.date)

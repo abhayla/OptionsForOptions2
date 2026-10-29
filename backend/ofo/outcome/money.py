@@ -105,10 +105,12 @@ def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True,
 
 @dataclass(frozen=True)
 class FundsShare:
-    """ADR-164: each maximum as a whole percent of the available funds Zerodha reported, with that figure and when it
-    was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue wording."""
+    """REQ-081 AC-9/AC-10 (ADR-207 (8), SPEC CHANGE to ADR-164): each maximum as a percent, to one decimal, of the
+    margin needed the Funds & Margins block shows (Zerodha's basket figure, ``Margin.needed``), with that figure and
+    when Zerodha was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue
+    wording, whose label is only "% of margin needed" (AC-11). The name is kept so the reply's key stays put."""
 
-    funds: Any
+    margin_needed: Any
     read_at: Any
     max_profit_percent: Any
     max_loss_percent: Any
@@ -116,34 +118,42 @@ class FundsShare:
     max_loss_text: ExplanationText | None
 
 
-def _share(amount: Any, funds: Any) -> tuple[Any, ExplanationText | None]:
-    """(whole percent, text). The whole percent is rounded ROUND_HALF_UP (2.5% -> 3%); a share under 1% sends percent
-    None with the "less than 1% of funds" text, never "0"."""
+#: Below this a one-decimal percent would read 0.0 or overstate as 0.1: percent stays null and a sentence says so.
+_SMALLEST_SHOWN: Final = Decimal("0.1")
+
+
+def _share(amount: Any, base: Any) -> tuple[Any, ExplanationText | None]:
+    """(percent to one decimal, text). Rounded ROUND_HALF_UP (6.95% -> 7.0%); a share under 0.1% sends percent None
+    with the "less than 0.1% of margin needed" text, never "0.0"."""
     if amount is None or amount < 0:
         return None, None
-    raw = engine.percent_of_funds(amount, funds)
-    if 0 < raw < 1:  # the whole percent would read 0 or 1 for it: percent stays null, a catalogue sentence says so
-        return None, render_explanation("money_funds_percent_small")
-    whole = engine.whole_percent(raw)
-    return whole, render_explanation("money_funds_percent", pct=whole)
+    raw = engine.percent_of(amount, base)
+    if 0 < raw < _SMALLEST_SHOWN:
+        return None, render_explanation("money_margin_percent_small")
+    pct = engine.one_decimal_percent(raw)
+    return pct, render_explanation("money_margin_percent", pct=pct)
+
+
+share_of = _share  # GC-TP R-19a: the Projected badge uses the same percent, rounding and "less than 0.1%" rule
 
 
 def funds_share(max_profit: Any, max_loss: Any, margin: Any) -> FundsShare | None:
-    """Present ONLY when the margin block is CHECKED with a finite positive Decimal of funds and a read time; every
-    other state (no session, unreadable, no basket, busy, funds 0 or negative, not a Decimal) gives None."""
-    available = getattr(margin, "available", None)
+    """Present ONLY when the margin block is CHECKED with a finite positive Decimal margin needed and a read time; every
+    other state (no session, failed read, unreadable, no basket, busy, a closing basket's 0, not a Decimal) gives None:
+    never available funds, never an older read (REQ-081 AC-10)."""
+    needed = getattr(margin, "needed", None)
     read_at = getattr(margin, "checked_at", None)
     if getattr(margin, "state", None) != CHECKED or read_at is None:
         return None
-    if type(available) is not Decimal or not available.is_finite() or available <= 0:
+    if type(needed) is not Decimal or not needed.is_finite() or needed <= 0:
         return None
-    profit_pct, profit_text = _share(max_profit, available)
-    loss_pct, loss_text = _share(max_loss, available)
-    return FundsShare(available, read_at, profit_pct, loss_pct, profit_text, loss_text)
+    profit_pct, profit_text = _share(max_profit, needed)
+    loss_pct, loss_text = _share(max_loss, needed)
+    return FundsShare(needed, read_at, profit_pct, loss_pct, profit_text, loss_text)
 
 
 def with_funds(summary: Any, margin: Any) -> Any:
-    """The summary with its funds share set (or unchanged when there is none): called after the margin read, with the
+    """The summary with its margin share set (or unchanged when there is none): called after the margin read, with the
     same funds+basket read that answers the margin line (no second Zerodha call, REQ-081 AC-8)."""
     if summary is None:
         return summary

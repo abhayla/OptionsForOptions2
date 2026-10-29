@@ -3,7 +3,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from ofo.engine import MultiExpiryError, scenario_grid
+from ofo.engine import scenario_grid
 from ofo.engine.legs import Action, Instrument
 from ofo.scenario.config import ScenarioConfig
 from ofo.scenario.levels import ColumnKind, ExpectedMove, RangeOverride, build_level_set
@@ -153,7 +153,9 @@ def test_override_accepted_within_bounds_and_refused_outside(golden, settings):
 
 
 def test_inputs_fail_closed(golden, settings):
-    """Negative cases: wrong index config, multi-expiry strategy, bad expected-move inputs are refused."""
+    """Negative cases: wrong index config and bad expected-move inputs are refused. A multi-expiry strategy is NOT
+    refused (G-065, REQ-148 AC-6: that refusal was the HTTP 500): its levels carry no breakeven, risk boundary or
+    Lower/Upper BE, since it has no exact at-expiry payoff, and the columns still cover the spot and the strikes."""
     with pytest.raises(ValueError, match="config is for SENSEX"):
         build_level_set(golden, settings.for_index("SENSEX"))
     import datetime
@@ -161,8 +163,10 @@ def test_inputs_fail_closed(golden, settings):
         nifty_leg(Action.BUY, Instrument.CE, "23000", "100.00"),
         nifty_leg(Action.SELL, Instrument.CE, "23000", "60.00", expiry=datetime.date(2026, 11, 24)),
     ])
-    with pytest.raises(MultiExpiryError):
-        build_level_set(two_expiries, settings.for_index("NIFTY"))
+    mixed = build_level_set(two_expiries, settings.for_index("NIFTY"))
+    assert (mixed.breakevens, mixed.risk_boundaries, mixed.lower_be, mixed.upper_be) == ((), (), None, None)
+    assert mixed.start <= D("23000") <= mixed.end and mixed.current in mixed.levels
+    assert not any(ColumnKind.ZERO_PNL in c.kinds for c in mixed.columns)
     for iv, days in [(D("0"), 30), (D("-0.1"), 30), (D("6"), 30), (D("0.2"), 0), (D("0.2"), 100000),
                      (D("0.2"), True), (0.2, 30), (D("NaN"), 30)]:
         with pytest.raises(ValueError):

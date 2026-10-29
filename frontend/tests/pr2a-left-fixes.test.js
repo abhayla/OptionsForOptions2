@@ -74,19 +74,21 @@ describe('W-192 review fixes: left-column labels are visible text, not a tooltip
     expect(row(w, 1).find('[data-testid="leg-typed-line"]').text()).toContain(YOUR_PRICE_LABEL)
   })
 
-  it('ADR-195: a disabled Width / Hedge shows its reason as visible text under the controls', () => {
+  it('ADR-195 + ADR-202 (1) (GC-UI 3a D-A19): a disabled Width / Hedge is greyed with its reason verbatim in its box tooltip, no visible line', () => {
     const props = { legs: condorLegs((i) => (i === 3 ? { included: false } : {})), hasReply: true, shapeName: 'x', controls: controlsFrom(rec.read) }
     const w = mount(LegList, { props })
     for (const id of ['width', 'hedge']) {
-      expect(t(w, `${id}-reason-visible`).text()).toContain(UNTICKED_CONTROL_REASON)
-      expect(t(w, `${id}-reason-visible`).classes()).toContain('text-xs')
+      expect(t(w, `${id}-reason-visible`).exists()).toBe(false)
+      expect(t(w, `${id}-stepper`).attributes('title')).toBe(UNTICKED_CONTROL_REASON)
+      expect(t(w, `${id}-reason`).text()).toBe(UNTICKED_CONTROL_REASON)
     }
   })
 
-  it('the tick-all state is an indicator with an aria-label, never an input', () => {
+  it('GC-UI 3a D-A07: the tick-all is a real checkbox carrying the state and an aria-label', () => {
     const w = mount(LegList, { props: { legs: condorLegs((i) => (i === 3 ? { included: false } : {})) } })
-    const el = t(w, 'tick-all-state')
-    expect(el.element.tagName).not.toBe('INPUT')
+    const el = t(w, 'tick-all')
+    expect(el.element.tagName).toBe('INPUT')
+    expect(el.element.indeterminate).toBe(true)
     expect(el.attributes('data-state')).toBe('some')
     expect(el.attributes('aria-label')).toMatch(/^Some legs selected/)
   })
@@ -123,14 +125,18 @@ describe('W-192 review fixes: a closed menu returns focus to its trigger; an out
   })
 
   it('more menu: item chosen, Esc and an outside click each close it and focus the trigger', async () => {
-    const w = mount(SaveDraftBar, { props: { legs: [], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body, global: { stubs: { RouterLink: true } } })
+    const w = mount(SaveDraftBar, { props: { legs: [{ contract_id: 5, lot_size: 65, action: 'SELL', lots: 1 }], current: { id: 3, revision: 1, name: 'Condor' } }, attachTo: document.body, global: { stubs: { RouterLink: true } } })
     await flushPromises()
     const trigger = t(w, 'more-menu')
     const check = () => {
       expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
       expect(document.activeElement).toBe(trigger.element)
     }
-    await trigger.trigger('click'); await t(w, 'rename-open').trigger('click'); await flushPromises(); check()
+    // GC-UI 6b D-C16: Rename opens the modal, so focus goes to the name field (not the trigger); Cancel closes it
+    await trigger.trigger('click'); await t(w, 'rename-open').trigger('click'); await flushPromises()
+    expect(t(w, 'more-menu-panel').isVisible()).toBe(false)
+    expect(document.activeElement).toBe(t(w, 'name-input').element)
+    await t(w, 'name-cancel').trigger('click'); await flushPromises()
     document.activeElement.blur()
     await trigger.trigger('click'); await trigger.trigger('keydown', { key: 'Escape' }); await flushPromises(); check()
     document.activeElement.blur()

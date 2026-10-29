@@ -916,3 +916,106 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   existing staleness setting (`FEED_STALE`, ADR-015 "an implementation setting"), the outcome answers not-connected
   "Waiting for the first live price"; past it with no price, the stale alarm returns. Not a rule change.
   Status: **measured on recorded data, reproduced by the row 24 checker (3 tests red on the base, green after)**.
+
+## F-62 - Zerodha's basket margin reply carries no buy-first figure, so REQ-142 "Funds needed" cannot be taken from it
+- Measured 2026-10-28 (GC-UI step 3b, D-A38) on four recorded buy-only basket replies in the tests_app fixtures and on
+  strategy 54's live outcome (NIFTY 3 Nov 22600 / 22800 CE bull call spread, 1 lot): the basket reply holds only
+  `initial` and `final` totals, per-order margins and each BUY order's `option_premium`; `final.total` already
+  includes the premium and the hedge benefit, and nothing in the reply depends on the ORDER the legs are placed in.
+  For buy-only baskets `final.total` = `initial.total` = the sum of `option_premium` (REQ-142 AC-3 holds); for strategy
+  54 our `needed` = Zerodha's `final.total` = 33,324.84 (top-up 0).
+- Bears on: REQ-142 (statement: the buy-first figure "comes from the server, from Zerodha's margin reply for the same
+  legs"): no field of that reply gives it. Not measured: three fresh live reads of a bull call spread, a short iron
+  condor and a long straddle (REQ-142 AC-1) - the conclusion rests on the reply's structure, which a fresh read does
+  not change. Nothing built; D-A38 parked in the GC-UI contract.
+  Status: **decided by the owner 2026-10-28 (ADR-206): REQ-142 held**; no broker order in the current scope.
+
+## F-63 - Sensibull's Greeks-tab Decay is the time value lost between the strategy's time and the next market open, about 0.73-0.84 of one day's theta overnight
+- Measured 2026-10-28 ~20:03 IST on web.sensibull.com logged out (REQ-145 AC-1 "measure first"; study screen 015 form),
+  NIFTY 3 Nov bull call spread that Sensibull loaded by default (BUY 22700 CE / SELL 22900 CE, 1 lot), its target time
+  "Wed, 28 Oct 3:40 PM", the next market open Thu 29 Oct 09:15 IST (17 h 35 min = 0.733 day). Per unit, rounded to
+  whole rupees by Sensibull: 22700 CE Theta -15, Decay -12; 22900 CE Theta +13, Decay +10; Total Theta -1.8, Decay -2.
+  Decay / Theta lies in 0.74-0.84 on both legs (rounding bounds); 0.733 day sits at the edge, so the measurement is
+  CONSISTENT with REQ-145's stated definition ("the time value change, in rupees, between now and the next market open
+  if everything else stays the same") and cannot separate a full model revaluation from theta x time at this rounding.
+  Columns in Sensibull order: Delta, Theta, Decay, Gamma, Vega.
+- Formula adopted (REQ-145 statement, no rule change): Decay per leg = model value at the next market open (same spot,
+  IV, rate, q; time to expiry shortened to that open) minus model value now, per unit, signed by the leg like theta;
+  Total = sum of legs. Not measured: an iron condor (REQ-145 AC-1 names one; the definition does not depend on the
+  shape) and a weekend gap (Friday -> Monday open, where the study says actual decay is 1/3 to 2/3 of the shown figure).
+  Status: **measured on Sensibull logged out (form + definition only, never used to check our numbers)**.
+
+## F-64 - Kite's historical minute candles cover the Strategy Chart's 10-day window for a leg and the future, but an option leg misses about 5% of the future's minutes and prices arrive as JSON numbers
+- Measured 2026-10-28 ~21:33 IST (GC-UI step 5 core proof, after hours) on the owner's own Kite Connect session read
+  from the encrypted store (`history_finalize.stored_credentials`), through the app's allow-listed door
+  (`GET /instruments/historical/{token}/minute`, `oi=1`), 2026-10-14 09:15 to 2026-10-28 15:30 IST: NIFTY26N0325000CE
+  (token 13908994) 3,638 candles, first `2026-10-14T09:15 5.4`, last `2026-10-28T15:29 close 0.65`; NIFTY26NOVFUT
+  (token 15736578) 3,840 candles, first `2026-10-14T09:15 open 22900`, last `2026-10-28T15:29 close 22775`. 10 trading
+  days. The leg lacks 202 of the future's 3,840 minutes (5.3%) and has none the future lacks; prices are JSON numbers
+  (here `int` for 22900, floats elsewhere, F-33), so the server must read them through `Decimal(str(x))` (ADR-008).
+- Only the `minute` interval is on the Kite allow-list (`ofo/broker/kite_endpoints.py`, `ofo_app/kite_history.py`);
+  `60minute` and `day` are refused before sending. REQ-091 AC-2 allows 1-minute bars, so no allow-list change is needed.
+- Bears on REQ-091 AC-2 (1-minute bars over the window), AC-4 (a minute where any leg has no candle is a gap, never
+  interpolated: with one illiquid leg about 1 minute in 20 is a gap, and with four legs more), AC-5 (listing date), and
+  ADR-203 (1). Status: **measured once, one leg + the future; a 4-leg strategy and a far-OTM leg not measured**.
+- Addendum 2026-10-28 ~23:15 IST (route live on 699c53c3, strategy 56, NIFTY 3 Nov iron condor BUY 22400 PE / SELL
+  22500 PE / SELL 22700 CE / BUY 22800 CE): all four near-the-money legs had 3,850 minute candles each (14 Oct 09:15 to
+  28 Oct 15:39 IST), so the chart had 0 gaps; an independent recomputation from the raw candles matched all 3,850 route
+  points to the paisa (`D:/Abhay/scratch/gcui-chart/check56.py`). Kite's minute candles run to 15:39 IST (the closing
+  session), so the chart's last point (76.00) can differ from the builder's 15:30 LTP net (74.15: 22500 PE candle close
+  101.80 vs LTP 99.80). Gap rate is a property of the leg's liquidity: far-out-of-the-money legs gap (5.3% for the 25000
+  CE above), near-the-money legs did not. Still not measured: a 4-leg strategy with far-out legs.
+
+## F-65 - Editing a paper-tracked strategy in the builder changes the saved plan but not the paper position, with no warning
+- Measured 2026-10-29 ~10:28 IST, live, build/gcbm-must-have 5052f82a, strategy 63 (NIFTY 3 Nov short iron condor
+  B 22600 PE / S 22700 PE / S 22900 CE / B 23000 CE, tracked 10:25): the short CE stepped 22900 -> 22950 and saved
+  ("Expert IC test 1029 saved."); the builder legs then read 22950 while the Paper P&L panel still listed
+  "65 units 3 Nov 22900 CE" (the other legs "1 x ..."), and the page's Greeks, payoff and summary described the
+  22950 plan. Cause in code: tracking is pinned to the saved revision it started from (`routes/tracking.py:61-65,319`)
+  and nothing links a later save to it. Class: every saved strategy with an open paper position (15 in ofo_dev on
+  2026-10-29) whose plan is saved again. Bears on REQ-109, REQ-044 AC-2; decided by ADR-207 (2).
+  Status: **measured once, live; defect class registered (`knowledge/findings/paper-plan-diverges-from-position.json`)**.
+
+## F-66 - The builder prices an open paper position at the plan's entry prices, not its paper fills
+- Same walk: strategy 63 reopened from its URL showed planned entry 73.90 / 103.60 / 118.65 / 78.80 and max profit
+  +4,274 on them, while its paper fills were 72.60 / 102.00 / 122.25 / 80.95. Every summary figure of an open paper
+  position (max profit / loss, breakevens, reward/risk) is therefore of a trade he did not make. Bears on REQ-109,
+  REQ-046 AC-2; decided by ADR-207 (2). Status: **measured once, live**.
+
+## F-67 - Paper entry is the LTP at "Start tracking", not the planned or typed entry price, and there is no confirm step
+- Same walk: planned (captured 10:23:04) 73.90 / 103.60 / 118.65 / 78.80; recorded paper entry at ~10:25
+  72.60 / 102.00 / 122.25 / 80.95 - all four legs differ (-1.30, -1.60, +3.65, +2.15 per unit). Code: `capture_entry`
+  takes the live LTP only (`ofo/tracking/paper.py:64`). Sensibull's Add to Drafts shows a confirm list with price and
+  quantity (catalogue 171-173). Bears on REQ-109, REQ-077; decided by ADR-207 (1). Status: **measured once, live**.
+
+## F-68 - An open paper leg has no expiry settlement: after expiry it has no price and its exit is refused
+- Code read 2026-10-29: an expired contract is "missing" (no price) in `ofo/tracking/paper.py:14`, and exit is refused
+  with `tracking_exit_contract_not_live` (`routes/tracking.py:389`). Real cases waiting: four SENSEX 29 Oct paper
+  strategies open at 10:30 IST on 2026-10-29 (GCBP P7, W2 P7, W2 P8; GCBP P8 already exited). Bears on REQ-109;
+  decided by ADR-207 (6). Status: **from code, NOT yet seen live (check after 15:30 IST on 2026-10-29)**.
+
+## F-69 - The Positions screen opens on a tab that says the user holds nothing while paper positions are open
+- Same walk: `/positions/current-positions` opened on "Positions": "No open positions - Zerodha shows no open
+  positions, and none of your strategies holds any." with 17 paper strategies (15 with open legs) in the Paper tab; the
+  just-placed strategy was 17th of 17. The menu's bare `/positions` page is a placeholder ("This page is a
+  placeholder"). Bears on ADR-201 (2), REQ-044 AC-3; decided by ADR-207 (3). Status: **measured once, live**.
+
+## F-70 - "% of funds" divides by available funds; at low cash it reads as a meaningless 1045%, and Sensibull divides by funds needed
+- Same walk: max profit +4,274 "(1045% of funds)", max loss -2,226 "(544% of funds)" with margin available 409 and
+  margin needed 61,163 (of margin needed: about 7.0% and 3.6%). REQ-081 AC-9 / ADR-164 take available funds and say
+  "as Sensibull does", but the study records Sensibull's percent as "of funds needed" (catalogue line 42). Decided by
+  ADR-207 (8) (SPEC CHANGE). Status: **measured once, live; basis read from the spec and the study**.
+
+## F-71 - The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design
+- Same walk: right after tracking, "Adjustment opportunity detected: Index is near a short strike: 22900, 78.95 points
+  (0.35%) away" on a fresh iron condor with spot 22,821 - where a 1-step-OTM short strike always sits. The threshold is
+  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **measured once, live;
+  deferred (outside ADR-207's eight parts)**.
+
+## F-72 - Kite's day candle for an index carries the exchange's official closing value (SENSEX 28 Oct: 73,246.03 on both)
+- Measured 2026-10-29 ~14:10 IST: `scripts/checks/index_close.py SENSEX 2026-10-28` (one allow-listed read-only GET
+  `/instruments/historical/265/day` through `ofo_app/kite_history.py`, GC-TP step 5a) printed `close 73246.03`;
+  bseindia.com SENSEX page (logged out, same minute) showed "Previous Close: 73,246.03". Equal to the paisa. The
+  minute candle is not used: an index's official close is computed by the exchange, not the last minute's price. NIFTY
+  28 Oct read `22698.85` (not yet compared with NSE's published value). Basis for REQ-109 AC-7 (settlement price) and
+  ADR-207 (6). Status: **measured once, live, SENSEX; today's expiry close (29 Oct) to be compared after 15:30**.

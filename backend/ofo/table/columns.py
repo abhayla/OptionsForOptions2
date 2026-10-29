@@ -1,7 +1,8 @@
+# ruff: noqa: E501
 """The locked column order for the single strategy table (REQ-035 AC-2, AC-7).
 
 Column order (AC-2, locked): Leg, Action, Instrument, Expiry, Strike, Quantity, Entry Price, LTP, Entry Value,
-Current Value, Unrealized P&L, P&L %, IV, Delta, Gamma, Theta, Vega, then the market-level scenario columns (one per
+Current Value, Unrealized P&L, P&L %, IV, Delta, Gamma, Theta, Decay, Vega, then the market-level scenario columns (one per
 :class:`ofo.scenario.levels.LevelColumn`, in the level set's own order), then Lower Breakeven, Upper Breakeven, Status.
 
 One column set for everyone (ADR-168 (4), (5)): every column is shown to every user; there is no level switch and no
@@ -33,6 +34,7 @@ class ColumnId(Enum):
     DELTA = "delta"
     GAMMA = "gamma"
     THETA = "theta"
+    DECAY = "decay"  # GC-UI D-B34 (REQ-145 AC-2): rupees to the next market open, after Theta
     VEGA = "vega"
     LOWER_BE = "lower_be"
     UPPER_BE = "upper_be"
@@ -57,6 +59,7 @@ LEADING_COLUMNS: tuple[ColumnId, ...] = (
     ColumnId.DELTA,
     ColumnId.GAMMA,
     ColumnId.THETA,
+    ColumnId.DECAY,
     ColumnId.VEGA,
 )
 

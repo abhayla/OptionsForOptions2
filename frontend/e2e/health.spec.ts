@@ -14,8 +14,10 @@ test('the health page shows the live database status from the real backend', asy
   await page.goto('/health-status')
   await expect(page.getByTestId('health-database')).toHaveText('database: ok')
   await expect(page.getByTestId('health-status')).toHaveAttribute('data-state', 'ok')
-  // ADR-012: the only call is same-origin /api/health
-  expect(apiCalls).toEqual([new URL(page.url()).origin + '/api/health'])
+  // ADR-012: every call is same-origin /api: the page's /api/health plus the header bell's unread count
+  // (GC-TP step 7b, ADR-207 (5): GET /paper/alerts on every app page); nothing else
+  const origin = new URL(page.url()).origin
+  expect([...new Set(apiCalls)].sort()).toEqual([origin + '/api/health', origin + '/api/paper/alerts'])
   await page.screenshot({ path: `screenshots/health-ok-${info.project.name}.png`, fullPage: true })
 })
 

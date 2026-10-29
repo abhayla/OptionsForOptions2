@@ -1,15 +1,21 @@
+# ruff: noqa: E501, PLR2004
 """The outcome as plain JSON-ready data (W-063 step 3): every money/points/IV value is the Decimal's own string, never a
 float (ADR-008); times are ISO-8601 with their offset; enums are their values. Standard library only."""
 from __future__ import annotations
 
 import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any
 
+from ofo.engine.black_scholes import GREEK_STEP
+from ofo.engine.display import breakeven_percent_exact
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import money
+from ofo.outcome.price_text import price_text
 from ofo.outcome.service import Outcome, OutcomeLeg
+from ofo.outcome.target import TargetOffer
+from ofo.outcome.target_badge import badge, days_fields, move_fields
 from ofo.table import Cell, ColumnSpec, Table
 from ofo.table.model import scenario_caption_parts
 from ofo.timeutil import days_to_expiry
@@ -23,14 +29,44 @@ def _s(value: Decimal | int | None) -> str | None:
     return f"{value:f}" if isinstance(value, Decimal) else str(value)
 
 
+def _level(value: Decimal | None) -> str | None:
+    """The index level as the browser prints it: two decimals ("22713.00", "22709.50"), never a Decimal that lost its
+    trailing zeros ("22713", "22709.5") (REQ-152 AC-2 style; the index row of GET /indices is already quantized)."""
+    return price_text(value)
+
+
 def _t(value: datetime.datetime | None) -> str | None:
     return None if value is None else value.isoformat()
+
+
+def _whole(value: Decimal | None, *, signed: bool) -> Any:
+    """REQ-152: the whole-rupee text of a summary figure, made on the server from the catalogue (ADR-008, ADR-003);
+    None stays None (the reason or the unlimited flag is beside it)."""
+    if value is None:
+        return None
+    return render_explanation("summary_whole_rupees_signed" if signed else "summary_whole_rupees", amount=value)
+
+
+def _breakeven(level: Decimal, spot: Decimal | None) -> Any:
+    """REQ-153 AC-1: the level in whole points with its signed percent from spot; no usable spot: the level alone."""
+    percent = breakeven_percent_exact(level, spot)
+    if percent is None:
+        return render_explanation("summary_breakeven_level", level=level)
+    return render_explanation("summary_breakeven_percent", level=level, percent=percent)
+
+
+def breakevens_display(levels: Any, spot: Decimal | None) -> list[Any]:
+    """GC-TPD R-33/R-34: the ONE function that makes every shown breakeven text ("22,618 (-1.4%)"), in the order of
+    ``levels``; the summary, the target and the paper book replies all call it (the browser only shows the text)."""
+    return [_breakeven(b, spot) for b in levels]
 
 
 def _margin(out: Outcome) -> dict[str, Any]:
     m = out.margin
     return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "broker_needed": _s(m.broker_needed),
-            "available": _s(m.available),
+            "available": _s(m.available), "needed_display": _whole(m.needed, signed=False),
+            "broker_needed_display": _whole(m.broker_needed, signed=False),
+            "available_display": _whole(m.available, signed=False),
             "checked_at": _t(m.checked_at), "shortfall": m.shortfall,
             "shortfall_reason": m.shortfall_reason}
 
@@ -52,13 +88,14 @@ def _breakdown(b: Any) -> dict[str, Any] | None:
 def _net_premium(p: money.NetPremium | None) -> dict[str, Any] | None:
     if p is None:
         return None
-    return {"amount": _s(p.amount), "side": p.side, "per_unit": _s(p.per_unit), "text": p.text, "reason": p.reason}
+    return {"amount": _s(p.amount), "amount_display": _whole(p.amount, signed=False), "side": p.side,
+            "per_unit": _s(p.per_unit), "per_unit_display": price_text(p.per_unit), "text": p.text, "reason": p.reason}
 
 
 def _funds_share(f: money.FundsShare | None) -> dict[str, Any] | None:
     if f is None:
         return None
-    return {"funds": _s(f.funds), "read_at": _t(f.read_at), "max_profit_percent": _s(f.max_profit_percent),
+    return {"margin_needed": _s(f.margin_needed), "read_at": _t(f.read_at), "max_profit_percent": _s(f.max_profit_percent),
             "max_loss_percent": _s(f.max_loss_percent), "max_profit_text": f.max_profit_text,
             "max_loss_text": f.max_loss_text}
 
@@ -69,11 +106,17 @@ def _col_id(cid: object) -> str:
     return _s(cid)  # a scenario column's id is its level
 
 
+def _per_unit_4dp(value: Decimal | None) -> Decimal | None:
+    """A per-unit Greek at the boundary: Decimal to 4 dp (scenario-calculations section 4), never through a float."""
+    return None if value is None else value.quantize(GREEK_STEP, rounding=ROUND_HALF_UP)
+
+
 def _cell(cell: Cell) -> dict[str, Any]:
     v = cell.value
     value = v if isinstance(v, str) or v is None else _s(v)
     return {"value": value, "display": cell.display, "kind": cell.kind.value, "reason": cell.reason,
-            "side": cell.side, "per_unit": _s(cell.per_unit), "vendor": _s(cell.vendor)}
+            "side": cell.side, "per_unit": _s(_per_unit_4dp(cell.per_unit)),
+            "per_unit_display": cell.per_unit_display, "vendor": _s(cell.vendor)}
 
 
 def _column(col: ColumnSpec, visible: set[str]) -> dict[str, Any]:
@@ -84,7 +127,7 @@ def _column(col: ColumnSpec, visible: set[str]) -> dict[str, Any]:
 
 def _table(table: Table, visible_cols) -> dict[str, Any]:
     visible = {_col_id(c.id) for c in visible_cols}
-    return {"underlying": table.underlying, "spot_level": _s(table.spot_level), "spot_at": _t(table.spot_at),
+    return {"underlying": table.underlying, "spot_level": _level(table.spot_level), "spot_at": _t(table.spot_at),
             "output_label": table.output_label, "scenario_heading": list(scenario_caption_parts(table)),
             "columns": [_column(c, visible) for c in table.columns],
             "rows": [{"row_id": r.row_id, "cells": {_col_id(k): _cell(c) for k, c in r.cells.items()}}
@@ -97,8 +140,114 @@ def _leg(leg: OutcomeLeg, today: datetime.date | None) -> dict[str, Any]:
             "expiry": None if leg.expiry is None else leg.expiry.isoformat(),
             "days_to_expiry": None if today is None else days_to_expiry(leg.expiry, today), "lots": leg.lots,
             "lot_size": leg.lot_size, "quantity": leg.quantity, "planned_entry": _s(leg.planned_entry),
-            "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "iv": _s(leg.iv),
+            "planned_entry_display": price_text(leg.planned_entry),
+            "captured_at": _t(leg.captured_at), "ltp": _s(leg.ltp), "ltp_display": price_text(leg.ltp), "iv": _s(leg.iv),
             "health": None if leg.health is None else leg.health.value, "label": leg.label}
+
+
+def _points(levels, totals) -> list[dict[str, Any]]:
+    """Payoff points with their server display text (the table cells' rupee format, GC-BM F-8): the browser never
+    formats or computes a money value (ADR-008)."""
+    return [{"level": _s(lvl), "pnl": _s(p), "display": render_explanation("cell_rupees", amount=p)}
+            for lvl, p in zip(levels, totals, strict=True)]
+
+
+def _curve(v: Any) -> dict[str, Any]:
+    """REQ-083 AC-1/AC-3: one view's curve; unavailable -> no points and the engine's reason."""
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason, "output_label": v.output_label,
+            "points": _points(v.levels, v.totals) if v.available and v.totals is not None else []}
+
+
+def _greeks_out(g: Any) -> dict[str, Any] | None:
+    return None if g is None else {"delta": _s(g.delta), "gamma": _s(g.gamma), "theta": _s(g.theta), "vega": _s(g.vega)}
+
+
+def _limits(lim: Any) -> dict[str, Any]:
+    return {"min": _s(lim.min), "max": _s(lim.max), "step": _s(lim.step), "at_min": lim.at_min, "at_max": lim.at_max}
+
+
+def _target(t: Any, margin: Any = None) -> dict[str, Any]:
+    """REQ-084 AC-1/AC-2/AC-4: the what-if target's limits, the clamped inputs and every engine figure there. A target
+    nobody asked for (``TargetOffer``) is the limits alone (and the date's reason when it has one), plus the captions
+    (move from spot of the spot itself, days to expiry) and the badge's not-available text (R-19a, REQ-144 AC-4)."""
+    if isinstance(t, TargetOffer):
+        offer: dict[str, Any] = {"limits": _limits(t.limits)}
+        if t.at_refused_reason is not None:
+            offer["at_refused_reason"] = t.at_refused_reason
+        offer.update(move_fields(t.spot, t.spot), **days_fields(t.days))
+        offer["badge"] = badge(t, margin)
+        return offer
+    pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
+    greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
+                                            "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable,
+                                            "unavailable_text": t.greeks.unavailable_text}
+    return {"limits": _limits(t.limits),
+            "level": _s(t.level), "level_clamped": t.level_clamped, "level_clamp_text": t.level_clamp_text,
+            "at": t.at, "at_clamped": t.at_clamped, "clamp": t.clamp, "at_clamp_text": t.at_clamp_text, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,
+            "output_label": t.output_label, "pnl": pnl,
+            "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
+            "breakevens_display": None if t.breakevens is None else breakevens_display(t.breakevens, t.spot),
+            "breakevens_reason": t.breakevens_reason,
+            "stale_text": render_explanation("paper_reason_whatif_stale"),  # ADR-210 (7): shown if a later request fails
+            "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks,
+            **move_fields(t.level, t.spot), **days_fields(t.days), "badge": badge(t, margin), **_booked_fields(t)}
+
+
+def _booked_fields(t: Any) -> dict[str, Any]:
+    """GC-TP R-18 (ADR-209): the line naming the booked P&L the target figures include ("includes +Rs 962.00 booked"), or the
+    reason the book could not be read; none of the three keys is sent when nothing was booked (an older reply shape)."""
+    if t.booked is not None:
+        return {"booked": _s(t.booked), "booked_display": render_explanation("summary_paisa_signed", amount=t.booked),
+                "includes_booked_text": render_explanation("target_includes_booked", amount=t.booked)}
+    if t.booked_unreadable:
+        return {"booked_unreadable_text": render_explanation("target_booked_unreadable")}
+    return {}
+
+
+def _view_head(v: Any) -> dict[str, Any]:
+    return {"view": v.view.value, "label": v.label, "kind": v.kind, "available": v.available,
+            "unavailable_reason": v.unavailable_reason}
+
+
+def _payoff_table(t: Any) -> dict[str, Any]:
+    """REQ-137 AC-1: one row per level, each view's P&L with its display text (None where the view is unavailable)."""
+    cols = {v.view: (v.totals if v.available else None) for v in t.views}
+
+    def cell(view, i):
+        totals = cols.get(view)
+        if totals is None:
+            return None
+        return {"pnl": _s(totals[i]), "display": render_explanation("cell_rupees", amount=totals[i])}
+
+    from ofo.scenario.levels import move_from_spot  # noqa: PLC0415 - late like View below (D-B26, REQ-137 AC-2)
+    from ofo.scenario.views import View  # late: the module's imports stay the outcome's own
+
+    def row(i, lvl):
+        pct, pct_display = move_from_spot(lvl, t.spot)
+        return {"level": _s(lvl), "level_display": render_explanation("cell_points", value=lvl),
+                "nearest_spot": lvl == t.nearest_spot, "move_pct": _s(pct), "move_pct_display": pct_display,
+                "estimated_now": cell(View.ESTIMATED_NOW, i), "at_expiry": cell(View.AT_EXPIRY, i)}
+    return {"step": _s(t.step), "available": t.unavailable_reason is None,
+            "unavailable_reason": t.unavailable_reason, "columns": [_view_head(v) for v in t.views],
+            "rows": [row(i, lvl) for i, lvl in enumerate(t.levels)]}
+
+
+def _sd(sd: Any) -> dict[str, Any]:
+    """REQ-083 AC-4 / REQ-137 AC-3: the SD table rows and the four band levels, both from the same rows."""
+    rows = [{"sd": r.sd, "label": render_explanation("sd_label", n=r.sd), "move": _s(r.move),
+             "percent": _s(r.percent), "lower": _s(r.lower), "upper": _s(r.upper),
+             "move_display": render_explanation("sd_move", points=r.move, percent=r.percent),
+             "lower_display": render_explanation("cell_number", value=r.lower),
+             "upper_display": render_explanation("cell_number", value=r.upper)} for r in sd.rows]
+    bands = []
+    if len(sd.rows) == 2:
+        one, two = sd.rows
+        for n, level in ((-2, two.lower), (-1, one.lower), (1, one.upper), (2, two.upper)):
+            bands.append({"sd": n, "label": render_explanation("sd_label", n=n), "level": _s(level),
+                          "display": render_explanation("cell_number", value=level)})
+    return {"available": sd.available, "reason": sd.reason, "horizon_days": sd.horizon_days, "iv": _s(sd.iv),
+            "spot": _s(sd.spot), "rows": rows, "bands": bands}
 
 
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
@@ -114,19 +263,33 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "totals": None if v.totals is None else [_s(x) for x in v.totals],
             "step": _s(ls.step), "start": _s(ls.start), "end": _s(ls.end), "customised": ls.customised,
         }
-        payoff = {"view": v.view.value, "points": [{"level": _s(lvl), "pnl": _s(p)} for lvl, p in out.payoff_points]}
+        # GC-BM F-8: a graph point can be a strike that is no table column, so each point carries its own display
+        # text (the table cells' rupee format), and the browser never formats or computes a money value (ADR-008)
+        payoff = {"view": v.view.value, "points": _points(*zip(*out.payoff_points, strict=True))
+                  if out.payoff_points else []}
+        if out.other_view is not None:  # both views asked for: the other view's totals on the table's levels
+            o = out.other_view
+            scenario["other"] = {"view": o.view.value, "label": o.label, "kind": o.kind, "available": o.available,
+                                 "unavailable_reason": o.unavailable_reason, "output_label": o.output_label,
+                                 "totals": None if o.totals is None else [_s(x) for x in o.totals]}
     if out.summary is not None:
         s = out.summary
         summary = {
             "what_can_i_lose": s.what_can_i_lose, "what_can_i_make": s.what_can_i_make,
             "where_do_i_start_losing": s.where_do_i_start_losing, "max_profit": _s(s.max_profit),
-            "max_loss": _s(s.max_loss), "max_profit_unlimited": s.max_profit_unlimited,
+            "max_profit_display": _whole(s.max_profit, signed=True),
+            "max_loss": _s(s.max_loss),
+            "max_loss_display": None if s.max_loss is None else _whole(-s.max_loss, signed=True),
+            "breakevens_display": breakevens_display(s.breakevens, out.spot_level),
+            "max_profit_unlimited": s.max_profit_unlimited,
             "max_loss_unlimited": s.max_loss_unlimited, "breakevens": [_s(b) for b in s.breakevens],
             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),
             "risk_boundaries": [_s(b) for b in s.risk_boundaries],
             "charges": _s(s.charges), "charges_unavailable": s.charges_unavailable,
             "reward_risk": _s(s.reward_risk), "reward_risk_reason": s.reward_risk_reason,
-            "time_value": _s(s.time_value), "intrinsic_value": _s(s.intrinsic_value),
+            "time_value": _s(s.time_value), "time_value_display": _whole(s.time_value, signed=True),
+            "intrinsic_value": _s(s.intrinsic_value),
+            "intrinsic_value_display": _whole(s.intrinsic_value, signed=True),
             "risk_reward": _s(s.risk_reward), "value_label": s.value_label, "value_reason": s.value_reason,
             "net_premium": _net_premium(s.net_premium), "funds_share": _funds_share(s.funds_share),
         }
@@ -135,11 +298,19 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
     body = {
         "state": out.state.value, "underlying": out.underlying,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
-        "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
+        "valuation": _t(out.valuation), "spot_level": _level(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
         "charges_breakdown": _breakdown(out.charges_breakdown),
     }
+    if out.curves:  # both views asked for (REQ-083 AC-1): absent otherwise, so today's replies keep their keys
+        body["curves"] = {c.view.value: _curve(c) for c in out.curves}
+    if out.payoff_table is not None:  # REQ-137 AC-1: a step or both views asked for
+        body["payoff_table"] = _payoff_table(out.payoff_table)
+    if out.standard_deviation is not None:  # REQ-083 AC-4 / REQ-137 AC-3: sd_bands asked for
+        body["standard_deviation"] = _sd(out.standard_deviation)
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
+    if out.target is not None:  # REQ-084 AC-4: the limits alone unless a target level or time was sent
+        body["target"] = _target(out.target, out.margin)
     return body

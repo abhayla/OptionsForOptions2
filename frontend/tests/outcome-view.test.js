@@ -7,9 +7,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import real from './fixtures/outcome-condor.json'
+import realRaw from './fixtures/outcome-condor.json'
+import { withPriceTexts } from './_priceTexts'
+const real = withPriceTexts(realRaw) // GC-UI D-PX: the recorded reply plus the display texts the server now adds
 import MARGIN from './fixtures/outcome-margin-states.json'
-import { groupMoney } from '@/lib/displayFormat'
+import { istTime } from '@/lib/displayFormat'
+// GC-UI step 3b (ADR-202 (1); REQ-034 AC-7 as changed by ADR-204): a figure's sentence and exact value are lines of its
+// "?"; this opens the "?", reads its lines and closes it. A missing "?" throws, so no check here passes vacuously.
+async function hintLines(w, fig) {
+  const hint = w.find(`[data-testid="figure-hint"][data-figure="${fig}"]`)
+  if (!hint.exists()) throw new Error(`no "?" for ${fig}`)
+  await hint.find('[data-testid="figure-hint-mark"]').trigger('click')
+  const lines = hint.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())
+  await hint.find('[data-testid="figure-hint-mark"]').trigger('click')
+  return lines
+}
 
 let apiAnswer = null
 let capabilities = {}
@@ -64,8 +76,8 @@ describe('REQ-034 AC-7: the technical detail is expandable (core)', () => {
     expect(rows).toHaveLength(real.leg_quotes.length)
     for (const q of real.leg_quotes) {
       const row = details.find(`tr[data-leg="${q.instrument_id}"]`)
-      expect(row.find('[data-testid="adv-bid"]').text()).toBe(q.bid)
-      expect(row.find('[data-testid="adv-ask"]').text()).toBe(q.ask)
+      expect(row.find('[data-testid="adv-bid"]').text()).toBe(q.bid_display)
+      expect(row.find('[data-testid="adv-ask"]').text()).toBe(q.ask_display)
     }
     w.unmount()
   })
@@ -84,13 +96,15 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
   it('AC-1: the plain sentences and the figures show from the answer, outside the closed block', async () => {
     const w = await openBuilder(WITH_MARGIN, MARGIN_ON)
     expect(t(w, 'advanced-details').element.open).toBe(false)
-    expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make)
-    expect(t(w, 'sum-lose').text()).toBe(real.summary.what_can_i_lose)
-    expect(t(w, 'sum-start').text()).toBe(real.summary.where_do_i_start_losing)
-    expect(t(w, 'max-profit').attributes('data-raw')).toContain(real.summary.max_profit)
-    expect(t(w, 'max-loss').attributes('data-raw')).toContain(real.summary.max_loss)
-    expect(t(w, 'breakevens').text()).toBe(groupMoney(real.summary.breakevens.join(', ')))
-    for (const id of ['summary-cards', 'sum-make', 'sum-lose', 'sum-start', 'strategy-table', 'payoff-chart', 'margin']) {
+    // the figures are visible with no click (REQ-152: the server's display strings); each sentence is the first line
+    // of its figure's "?" (REQ-034 AC-7, ADR-204), and the exact value follows it (REQ-152 AC-3)
+    expect(t(w, 'max-profit').text()).toBe(real.summary.max_profit_display)
+    expect(t(w, 'max-loss').text()).toBe(real.summary.max_loss_display)
+    expect(t(w, 'breakevens').text()).toBe(real.summary.breakevens_display.join(', '))
+    expect(await hintLines(w, 'max_profit')).toEqual([real.summary.what_can_i_make, `Exact value: ${real.summary.max_profit}`])
+    expect(await hintLines(w, 'max_loss')).toEqual([real.summary.what_can_i_lose, `Exact value: ${real.summary.max_loss}`])
+    expect((await hintLines(w, 'breakeven_expiry'))[0]).toBe(real.summary.where_do_i_start_losing)
+    for (const id of ['summary-cards', 'strategy-table', 'payoff-chart', 'margin']) {
       expect(t(w, 'advanced-details').find(`[data-testid="${id}"]`).exists()).toBe(false) // none of it hides in the block
     }
     w.unmount()
@@ -99,8 +113,10 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
   it('AC-1: the payoff is drawn from the answer points, and the scenario table has the API columns, with no click', async () => {
     const w = await openBuilder(WITH_MARGIN, MARGIN_ON)
     expect(drawn).toHaveLength(1)
-    expect(drawn[0].data.labels).toEqual(real.payoff.points.map((p) => p.level))
-    expect(t(w, 'payoff-first').text()).toBe(real.payoff.points[0].level)
+    expect(drawn[0].data.datasets[0].data.map((d) => d.x)).toEqual(real.payoff.points.map((p) => Number(p.level)))
+    // GC-UI b1 D-B11: the axis spans the first and last sent level; the duplicate range line under it is gone
+    expect(drawn[0].options.scales.x.min).toBe(Number(real.payoff.points[0].level))
+    expect(t(w, 'payoff-first').exists()).toBe(false)
     expect(t(w, 'strategy-table').exists()).toBe(true)
     expect(w.findAll('[data-testid="col-head"]')).toHaveLength(real.table.columns.length)
     w.unmount()
@@ -110,7 +126,8 @@ describe('REQ-034 AC-1: the outcome is on the page with no click', () => {
     const w = await openBuilder(WITH_MARGIN, MARGIN_ON)
     expect(t(w, 'margin').attributes('data-margin-state')).toBe('CHECKED')
     expect(t(w, 'margin-figures').text()).toBe(MARGIN.enough.reason) // the server's own text, never relabelled
-    expect(t(w, 'margin-checked-at').exists()).toBe(true)
+    // D-A40 (ADR-204): the read time is the Margin available "?" line, words unchanged
+    expect(await hintLines(w, 'margin_available')).toContain(`Checked at ${istTime(MARGIN.enough.checked_at)}`)
     w.unmount()
   })
 
@@ -129,7 +146,7 @@ describe('answer states of the details block (standing item d)', () => {
     const { leg_quotes: _drop, ...bare } = WITH_MARGIN
     const w = await openBuilder(bare, MARGIN_ON)
     expect(t(w, 'advanced-details').exists()).toBe(false)
-    expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make)
+    expect((await hintLines(w, 'max_profit'))[0]).toBe(real.summary.what_can_i_make)
     expect(t(w, 'margin-figures').exists()).toBe(true)
     w.unmount()
   })

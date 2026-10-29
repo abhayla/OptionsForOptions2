@@ -122,6 +122,10 @@ BROKER_ADAPTER_PATHS = {
                                               "routes/positions.py - REQ-063 AC-1",
     "ofo_app/feed_main.py":"the market-data process (REQ-113): builds the one real KiteSocket over "
                               "the bus relay; REQ-063 AC-1 keeps the Kite door out of the API process",
+    "ofo_app/price_history_source.py": "composition point of the Strategy Chart's candle read (GC-UI S5-1, B1): picks "
+                                       "the Kite adapter's owner_minute_reader so strategy_price_history.py and its "
+                                       "route stay vendor-free, like outcome_margin.py; also the paper "
+                                       "settlement's index day-close reader (F-72) - REQ-063 AC-1",
     "ofo_app/return_book.py":"the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",

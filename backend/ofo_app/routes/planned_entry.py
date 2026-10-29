@@ -6,7 +6,9 @@ Spec basis: ADR-068 (1) "A draft leg's entry price is its planned entry: the leg
 
 Prices are read only through ``ofo.outcome.read_snapshot`` with the same provider dependency the outcome route uses
 (``get_market_context``), so replay mode (APP_ENV=test + OUTCOME_REPLAY=1) works here too. LTP first (a positive value);
-the mid of bid and ask only when the quote carries no LTP; only a quote whose health is AVAILABLE counts as live.
+the mid of bid and ask only when the quote carries no LTP; only a quote whose health is AVAILABLE counts as live, and
+outside market hours (ADR-119 calendar) also the last price the feed holds from the session that closed (ADR-200 (1),
+(4): ``ofo.marketdata.quote.planning_price_usable``; the order paths never read this rule).
 The browser computes nothing: the price is a string from a Decimal, rounded half-up to the 0.01 the outcome route takes.
 """
 
@@ -14,19 +16,28 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.outcome.planned_entry import planned_entry_of
+from ofo.outcome.planned_entry import PlannedEntry, planned_entry_of
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
-from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    feed_scope,
+    get_answer_clock,
+    get_market_context,
+    market_state,
+)
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -51,6 +62,9 @@ class PlannedEntryOut(ApiModel):
     captured_at: datetime.datetime | None
     source: Literal["ltp", "mid"] | None
     reason_code: Reason | None
+    #: ADR-197: set only for an entry captured outside market hours from the last close: the quote's OWN last-price
+    #: time (the screen captions it "Close, <time>"); None in market hours
+    close_at: datetime.datetime | None = None
 
 
 class PlannedEntriesOut(ApiModel):
@@ -70,6 +84,18 @@ def get_live_feed() -> LiveFeed | None:
     return live_market.current_feed()
 
 
+def _can_price(ctx: MarketContext | None, at) -> bool:
+    """A live context whose provider is connected; or, outside market hours (ADR-200 (4)), one whose socket is down
+    but whose session has not ended: the book still holds the last close, which ``planning_price_usable`` judges per
+    quote. In market hours a disconnected provider prices nothing, as before. No context: nothing (never a default)."""
+    if ctx is None:
+        return False
+    status = ctx.provider.status()
+    if status.connected:
+        return True
+    return not status.session_ended and market_state(ctx, ctx.clock() if at is None else at).closed
+
+
 def _no_listener(_quote) -> None:  # the route only waits for the book to fill; it needs no pushed quotes
     return None
 
@@ -77,8 +103,20 @@ def _no_listener(_quote) -> None:  # the route only waits for the book to fill; 
 def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
     snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
-    priced = {i: planned_entry_of(snapshot.legs[i].quote) for i in ids if snapshot.legs[i].problem is None}
+    closed = market_state(ctx, valuation).closed  # the ONE market-state answer (ADR-119), at the read's instant
+    priced = {i: _closed_label(planned_entry_of(snapshot.legs[i].quote, market_closed=closed), snapshot.legs[i].quote,
+                               closed)
+              for i in ids if snapshot.legs[i].problem is None}
     return valuation, snapshot, priced
+
+
+def _closed_label(entry: PlannedEntry | None, quote: NormalizedQuote | None, closed: bool) -> PlannedEntry | None:
+    """ADR-197: the ONE place a capture learns it is the close. Outside market hours a priced entry carries the quote's
+    own last-price time (``close_at``); in market hours, or with no price, it is returned unchanged. Both the
+    planned-entry route and the leg-edit re-capture read entries from here (``_read``)."""
+    if entry is None or not closed or quote is None:
+        return entry
+    return dataclasses.replace(entry, close_at=quote.price_at)
 
 
 async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
@@ -113,7 +151,7 @@ async def planned_entry(body: PlannedEntryIn,
                         feed: Annotated[LiveFeed | None, Depends(get_live_feed)]) -> PlannedEntriesOut:
     answered_at = now()
     ids = list(dict.fromkeys(body.instrument_ids))
-    if ctx is None or not ctx.provider.status().connected:
+    if not _can_price(ctx, answered_at):
         return PlannedEntriesOut.model_validate({"entries": [_entry(i, reason_code="not_connected") for i in ids],
                                                "answered_at": answered_at})
     valuation, snapshot, priced_by_id = _read(ctx, body.underlying, ids)
@@ -132,7 +170,8 @@ async def planned_entry(body: PlannedEntryIn,
         if priced is None:
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
-            entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source))
+            entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source,
+                                  close_at=priced.close_at))  # ADR-197: set by _read's _closed_label only
     return PlannedEntriesOut.model_validate({"entries": entries, "answered_at": answered_at})
 
 
@@ -140,7 +179,7 @@ async def capture_entries(ctx: MarketContext | None, feed: LiveFeed | None, unde
     """W-148: the same capture the route above does (one read, then the bounded hold for contracts nobody streams), for
     a caller that already holds the answer clock: ``(valuation, {instrument id: PlannedEntry or None})``. No live
     context, or a provider that is not connected, prices nothing (ADR-020 Q185: never a default)."""
-    if ctx is None or not ctx.provider.status().connected:
+    if not _can_price(ctx, None):
         return None, dict.fromkeys(ids)
     valuation, _, priced = _read(ctx, underlying, ids)
     unpriced = [i for i in ids if priced.get(i) is None]

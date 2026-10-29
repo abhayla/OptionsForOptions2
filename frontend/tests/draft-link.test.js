@@ -49,6 +49,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && url.startsWith('/paper/strategies/')) return Promise.reject({ status: 404 }) // GC-TP 3b1: not a paper strategy
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -113,7 +114,8 @@ describe('REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved 
     const { w } = await openBuilder({ draft: JSON.stringify(DRAFT_LINK) })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     expect(calls.some((c) => c.url === '/strategies/7')).toBe(false)
-    expect(t(w, 'save-as').exists()).toBe(false)
+    expect(t(w, 'save-as').exists()).toBe(false) // a ?draft= leg names no contract yet (canSaveLegs false): no menu item, button disabled (G-024)
+    expect(t(w, 'rename-open').exists()).toBe(false)
     w.unmount()
   })
   it('not found (the catalogue message): shown, the screen is kept, nothing is guessed', async () => {
@@ -185,7 +187,7 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     const { w, router } = await openBuilder({ strategy: '7' })
     calls.length = 0
     await t(w, 'save-as').trigger('click')
-    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condor copy')
+    expect(t(w, 'name-input').element.value).toBe('NIFTY Oct condo copy')
     await t(w, 'name-input').setValue('Condor wider')
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
@@ -209,6 +211,51 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(writes()).toEqual(['PUT /strategies/7'])
+    w.unmount()
+  })
+})
+
+// ---- F-4 (GC-BP step 8): the builder follows its own URL while it stays mounted ----
+const other = (id, n) => ({ ...SAVED, id, name: quoted(`S${id}`), definition: { underlying: 'NIFTY', legs: real.legs.slice(0, n).map(savedLeg) } })
+describe('F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load', () => {
+  beforeEach(() => {
+    answers['GET /strategies/54'] = other(54, 4)
+    answers['GET /strategies/49'] = other(49, 2)
+  })
+  it('router.push to ?strategy=49 on a page showing 54 shows 49\'s legs', async () => {
+    const { w, router } = await openBuilder({ strategy: '54' })
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(4)
+    await router.push({ path: '/strategy/builder', query: { strategy: '49' } })
+    await flushPromises()
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/strategies/49')).toHaveLength(1)
+    expect(router.currentRoute.value.query).toEqual({ strategy: '49' })
+    w.unmount()
+  })
+  it('Save does not re-read the strategy it just named in the URL', async () => {
+    answers['PUT /strategies/54'] = OUT(54, 4)
+    const { w } = await openBuilder({ strategy: '54' })
+    await t(w, 'save-draft').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'GET' && c.url === '/strategies/54')).toHaveLength(1) // the mount read only
+    w.unmount()
+  })
+  it('a slow read of 54 landing after the push to 49 never replaces 49', async () => {
+    let release
+    answers['GET /strategies/54'] = () => new Promise((r) => { release = () => r({ data: other(54, 4) }) })
+    const { w, router } = await openBuilder({ strategy: '54' })
+    await router.push({ path: '/strategy/builder', query: { strategy: '49' } })
+    await flushPromises()
+    release()
+    await flushPromises()
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
+    w.unmount()
+  })
+  it('a new ?draft= link while mounted seeds that draft\'s legs', async () => {
+    const { w, router } = await openBuilder({ strategy: '54' })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT_LINK) } })
+    await flushPromises()
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     w.unmount()
   })
 })

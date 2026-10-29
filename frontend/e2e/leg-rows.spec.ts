@@ -62,8 +62,10 @@ test('REQ-077 AC-1: typing a price on a leg row sends it as text and the row sho
     const body = route.request().postDataJSON()
     if (body.edit.control !== 'read') sent.push(body)
     await route.fulfill({ json: replyFrom(body, (i) => (body.edit.control === 'price' && i === body.edit.index
-      ? { planned_entry: '81.30', captured_at: '2026-10-24T10:35:12+05:30', price_source: 'typed' } : {})) })
+      ? { planned_entry: '81.30', planned_entry_display: '81.30', captured_at: '2026-10-24T10:35:12+05:30', price_source: 'typed' } : {})) })
   })
+  // GC-UI D-PX (REQ-152 AC-2): the row prints the server's planned_entry_display, which the real leg-edit reply
+  // carries (backend/ofo_app/routes/leg_edit.py planned_entry_display); this mock now carries it too
   await page.goto(`${REPLAY_URL}/strategy/builder?draft=${encodeURIComponent(JSON.stringify(DRAFT))}`)
   const first = page.getByTestId('leg-row').nth(0)
   await expect(first).toBeVisible()
@@ -159,7 +161,8 @@ test('REQ-135 AC-4: a lone futures leg shows Unlimited, Reward/Risk - with its r
   const fut = { ...real.legs[0], instrument: 'FUT', strike: null, action: 'BUY' }
   const lone = { ...real, legs: [fut], last_price_at: '2026-10-19T10:15:00+05:30',
     summary: { ...real.summary, max_profit: null, max_profit_unlimited: true, max_loss: '1560000.00', max_loss_unlimited: false,
-      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00' } }
+      reward_risk: null, reward_risk_reason: 'No fixed maximum', time_value: '0.00', intrinsic_value: '0.00',
+      time_value_display: '0', intrinsic_value_display: '0' } } // GC-UI D-PX: the server's texts (serialize.py _whole)
   await page.route('**/api/strategies/outcome', async (route) => {
     const sent = route.request().postDataJSON()
     await route.fulfill({ json: { ...lone, seq: sent.seq } })
@@ -169,8 +172,9 @@ test('REQ-135 AC-4: a lone futures leg shows Unlimited, Reward/Risk - with its r
   await expect(page.getByTestId('max-profit')).toHaveText('Unlimited')
   await expect(page.getByTestId('reward-risk')).toHaveText('-')
   await expect(page.getByTestId('reward-risk-reason')).toContainText('No fixed maximum')
-  await expect(page.getByTestId('time-value')).toHaveText('0.00')
-  await expect(page.getByTestId('intrinsic-value')).toHaveText('0.00')
+  // REQ-152 AC-1: time value and intrinsic value are whole rupees, printed from the server's display text
+  await expect(page.getByTestId('time-value')).toHaveText(lone.summary.time_value_display)
+  await expect(page.getByTestId('intrinsic-value')).toHaveText(lone.summary.intrinsic_value_display)
   await expect(page.getByTestId('strike-plus')).toHaveCount(0)
   await expect(page.getByTestId('prices-as-of')).toHaveText('Prices as of 10:15:00 IST')
 })

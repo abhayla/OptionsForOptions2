@@ -1,6 +1,33 @@
 # Session handover 2026-10-22 ~18:10 IST (builder sequence, session 1) - continue with the same /goal prompt
 
-## UPDATE chunk 3 session B END (session 141f1b25), 2026-10-26 ~17:00 IST - START HERE (newest)
+## UPDATE after chunk 3 session B - owner follow-ups, 2026-10-26 evening (session 141f1b25) - START HERE (newest)
+Owner, 2026-10-26 ~17:30 IST: remove the 6 empty helper worktrees; repair the test DB (OK); "Row 26 go. Build it"
+(REQ-081 AC-5/AC-6 Count my open positions); row 25 wording: go with the recommendation.
+- **DONE:** the 6 agent-* worktrees removed (main checkout proven 2916 -> 2916 each time); ofo_test repaired to alembic
+  0026 (head) - it was at 0025 from an earlier draft of row 29's migration (downgrade -1, upgrade head); #537 F2 + F5
+  small fixes PR (margin refusal states our estimate, not Zerodha's verdict; Save As pre-fill cut by characters to 20,
+  ADR-192) - Opus 2 rounds PASS, see its PR.
+- **Test DB, honest state:** migrations are at head, but ofo_test keeps stale catalogue rows that the REQ-054 AC-3 trigger
+  never lets anyone delete (reset_test_catalogue.py --yes refused, nothing deleted, backup in
+  D:/Abhay/scratch/ofo2-test-db-backups/20261026T130739Z); with two runs at once the advisory lock also times out.
+  The same 3 DB files on db_run_fresh.py: 65 passed, 0 failed, 6 min 25 s. Second occurrence of finding
+  shared-test-db-holds-undeletable-committed-rows -> MECHANISM DUE: make local DB tests use
+  scripts/orchestrator/db_run_fresh.py by default (runbook "App layer and database" command + builder-brief line);
+  recreating ofo_test itself needs a new owner OK (VPS next to IPODhan production).
+- **NEXT - row 26m (REQ-081 AC-5/AC-6, W-154), fresh session:** measures are in
+  docs/process/builder-sequence-briefs/measure-26m-{db,b,f,notes}.json (each passes make_brief); order 26m-db (migration
+  0027 per-user settings table in the shape of open PR #509's user_settings, its own PR, Tier A) -> 26m-b (consider_positions
+  per setting, cache key, positions presence, Execute names both figures, Tier A, 15 files) -> 26m-f (toggle + labels,
+  Tier B). PR #509 must renumber its 0022_user_settings (collides with main's 0022). Core proof, first half DONE live
+  2026-10-26 ~18:10 IST (spike docs/process/builder-sequence-briefs/spike-26m-consider-positions.py.txt, no order): the row 25
+  plan with consider_positions=true and =false both answer the same shape (charges, final, initial, orders) and the same
+  final.total 32390.91 - equal because the account held no open position. Second half (a lower figure with positions)
+  needs a day the owner holds an open position; until then REQ-081 AC-5 stays PARTIAL. Estimate (measured): ~5 h.
+- **Also noted:** available funds read Rs 550.85 at ~18:10 IST (61,324.90 at 11:10) - owner activity, not a product event.
+- **Deferred to #537:** the Save As counter / maxlength count UTF-16 units (safe side); a multi-code-point emoji (flag,
+  family) at the Save As cut keeps only part of it (server accepts, editable).
+
+## UPDATE chunk 3 session B END (session 141f1b25), 2026-10-26 ~17:00 IST (older)
 Ran 11:01-~17:00 IST, owner present (Kite login 11:07). Chunk 3 is CLOSED. Process: ADR-189/190/191, kit 1.16.0.
 - **DONE (merged, CI green):** row 25 #574 (REQ-055, W-153; live core proof 11:10:30 IST through POST
   /api/strategies/outcome: SELL NIFTY26N0322650CE + BUY NIFTY26N0322850CE x65 -> CHECKED, needed 35711.37, available

@@ -15,7 +15,7 @@ from __future__ import annotations
 from ofo.errors.explanations import SCENARIO_VIEW_LABEL_TEXT, render_explanation
 
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
 from typing import Final, Literal
@@ -71,12 +71,14 @@ def _missing_iv(inputs: ModelInputs) -> list[str]:
 
 
 def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAULT_VIEW, *,
-                    rates: ChargeRates | None = None) -> ScenarioValues:
+                    rates: ChargeRates | None = None, at: datetime.datetime | None = None) -> ScenarioValues:
     """Values of ``view`` over ``level_set``, each carrying the spot level, its time and its labels.
 
     ``inputs`` is a gated :class:`~ofo.engine.model.ModelInputs` (spot and each expiry's forward checked once):
     Estimated Now values every leg at S with its expiry's yield q (ADR-061, ADR-063; the engine owns q) and carries
     "estimated from spot" when an expiry fell back. At Expiry and the level columns stay on spot.
+    ``at`` (REQ-084 AC-4): the Estimated view valued at a what-if time (None: the valuation time, Estimated Now);
+    the same :func:`~ofo.engine.model.estimate`, never a second formula.
     """
     if not isinstance(level_set, LevelSet):
         raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
@@ -90,6 +92,11 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         raise ValueError("level_set was built on a different spot reading (time or health differs)")
     spot = dict(spot_level=inputs.spot_level, spot_at=inputs.spot_at, data_label=inputs.data_label)
     levels = level_set.levels
+    if view is View.AT_EXPIRY and not inputs.strategy.is_single_expiry:
+        # G-065 (REQ-083 AC-3, RD-088, ADR-143): legs on more than one expiry have no exact at-expiry P&L (a later leg
+        # still holds time value on the first expiry), so the view is unavailable with the reason, never intrinsic sums
+        return ScenarioValues(view, LABELS[view], "exact", levels, False, render_explanation("mixed_expiry_worst_case"),
+                              None, None, output_label=inputs.data_label, **spot)
     if view is View.AT_EXPIRY:
         grid = scenario_grid(inputs.strategy, levels)
         charges = None
@@ -103,7 +110,7 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         return ScenarioValues(view, LABELS[view], "estimate", levels, False, reason, None, None,
                               output_label=inputs.data_label, **spot)
     quoted = tuple(level.quantize(_QUOTE, rounding=ROUND_HALF_EVEN) for level in levels)
-    estimates = tuple(estimate(inputs, level) for level in quoted)
+    estimates = tuple(estimate(inputs, level, at) for level in quoted)
     leg_rows = tuple(tuple(e.leg_pnls[i] for e in estimates) for i in range(len(inputs.legs)))
     model_label = FALLBACK_LABEL if any(em.forward.label for em in inputs.expiries.values()) else None
     return ScenarioValues(
@@ -121,3 +128,26 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         output_label=join_labels(inputs.data_label, model_label),
         **spot,
     )
+
+
+def on_levels(values: ScenarioValues, level_set: LevelSet) -> ScenarioValues:
+    """``values`` (computed ONCE over the payoff graph's levels, GC-BM F-8) cut down to ``level_set``'s columns: the
+    scenario table's values are the same engine numbers at its own levels, never a second computation (REQ-034 AC-8).
+    Every column of ``level_set`` must be one of ``values.levels`` (the graph set is a superset)."""
+    if not isinstance(values, ScenarioValues):
+        raise ValueError(f"values must be a ScenarioValues, got {values!r}")
+    position = {level: i for i, level in enumerate(values.levels)}
+    wanted = level_set.levels
+    missing = [level for level in wanted if level not in position]
+    if missing:
+        raise ValueError(f"the computed values have no value at levels {missing}")
+    picks = [position[level] for level in wanted]
+    if picks == list(range(len(values.levels))):
+        return values
+
+    def cut(row):
+        return None if row is None else tuple(row[i] for i in picks)
+
+    return replace(values, levels=wanted, totals=cut(values.totals),
+                   leg_rows=None if values.leg_rows is None else tuple(cut(row) for row in values.leg_rows),
+                   estimated_levels=cut(values.estimated_levels))

@@ -8,7 +8,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
 /** '2026-10-19' -> '19 Oct', or null when it is not a calendar date string. */
-function expiryText(expiry) {
+export function expiryText(expiry) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
@@ -32,16 +32,35 @@ export function strikeLabel(text) {
 }
 
 /** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser
- *  counts nothing: a missing or non-integer day count shows the date as it was sent (never a guessed number). */
+ *  counts nothing: a missing or non-integer day count shows the date alone, '9 Nov' (never a guessed number, and never
+ *  the raw '2026-11-09', REQ-148 AC-2); text that is not a date comes back as it was sent. */
 export function expiryWithDays(expiry, days) {
   const day = expiryText(expiry)
-  if (!Number.isInteger(days) || days < 0 || !day) return expiry ?? ''
+  if (!day) return expiry ?? ''
+  if (!Number.isInteger(days) || days < 0) return day
   return days === 0 ? 'Today (0 days)' : `${day} (${days} days)`
 }
 
 /** The server's `expiry_days` list ([{expiry, days}], 1:1 with the expiries) as an object by expiry; unreadable -> {}. */
 export function daysByExpiry(list) {
   return Object.fromEntries((Array.isArray(list) ? list : []).filter((x) => typeof x?.expiry === 'string').map((x) => [x.expiry, x.days]))
+}
+
+const commaless = (t) => String(t ?? '').replace(/,/g, '').trim()
+
+/** D-B29 / D-B30 / D-B39 (REQ-146 AC-5, REQ-151, ADR-204): the instrument as Sensibull prints it, "1 x 3 Nov 22600 CE".
+ *  `lots` is the server's own whole-lot count for the leg (the reply's `lots`; the browser divides nothing, ADR-008), or
+ *  null when the reply did not give one for this row: then the quantity form "100 units 3 Nov 22600 CE" is printed
+ *  (never a fraction of a lot, never a guessed count). A FUT leg has no strike or CE/PE: "1 x 3 Nov FUT"; an option
+ *  leg without a strike prints "-" there. A date that is not a date stays as sent. `parts` are the table's display texts
+ *  (quantity, expiry, strike, instrument). */
+export function instrumentText(parts, lots) {
+  const qty = commaless(parts?.quantity)
+  const head = Number.isInteger(lots) && lots > 0 ? `${lots} x` : /^\d+$/.test(qty) ? `${qty} units` : ''
+  const type = parts?.instrument ?? ''
+  const strike = type === 'FUT' ? '' : (strikeLabel(commaless(parts?.strike)) || '-')
+  const day = expiryText(parts?.expiry) ?? parts?.expiry ?? ''
+  return [head, day, strike, type].filter(Boolean).join(' ')
 }
 
 /** The leg's contract name: '<UNDERLYING> <D Mon> <strike> <CE|PE>', or '<UNDERLYING> <D Mon> FUT'. Built from underlying,
@@ -111,10 +130,19 @@ export function istClock(iso) {
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
 }
 
+/** ADR-197: the caption word of an entry captured from the last close ("Close, 27 Oct 2026, 15:30:00 IST"). */
+export const CLOSE_CAPTION_PREFIX = 'Close, '
+
 /** Review 3 (REQ-077 AC-1): a captured price's caption. "captured 10:35:12" when the capture is on today's India date,
  *  else "captured 21 Oct 2026, 10:35:12 IST"; null when the time is missing or unreadable. `now` is only the clock used to
  *  name today (an ISO instant; the browser clock when omitted): no number is computed from it. */
-export function capturedCaption(iso, now = new Date().toISOString()) {
+export function capturedCaption(iso, now = new Date().toISOString(), closeAt = null) {
+  // ADR-197: an entry captured outside market hours is the close, labelled with the quote's own last-price time
+  // (`close_at`, sent by the server), never the capture clock time
+  if (closeAt != null) {
+    const c = istTime(closeAt)
+    if (c !== TIME_UNAVAILABLE) return `${CLOSE_CAPTION_PREFIX}${c}`
+  }
   const t = istTime(iso)
   if (t === TIME_UNAVAILABLE) return null
   const today = istTime(now)
@@ -125,8 +153,14 @@ export function capturedCaption(iso, now = new Date().toISOString()) {
 /** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
  *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
 export function maxLine(summary, side) {
-  return summary?.[`max_${side}_unlimited`] ? 'Unlimited' : summary?.[`max_${side}`] ?? '-'
+  if (!summary) return '-'
+  if (summary[`max_${side}_unlimited`]) return 'Unlimited'
+  // REQ-148 AC-4/AC-6 (G-065, ADR-143): the engine gave no single maximum (legs on more than one expiry); the reason is
+  // the summary's own sentence under the figure. Never '-', '0' or a number the browser made up.
+  return summary[`max_${side}`] ?? MAX_NOT_AVAILABLE
 }
+
+export const MAX_NOT_AVAILABLE = 'Not available'
 
 /** REQ-081 AC-1 (screens 012, 107): Indian-style thousands separators on the server's money TEXT: '68007.07' ->
  *  '68,007.07', '-17436.25' -> '-17,436.25', 'Rs 1234567.5' -> 'Rs 12,34,567.5'. Display only: the digits are regrouped as

@@ -11,11 +11,13 @@ const calls = []
 let answers = {}
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
+  const { withPriceTexts } = await import('./_priceTexts.js')
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && url.startsWith('/paper/strategies/')) return Promise.reject({ status: 404 }) // GC-TP 3b1: not a paper strategy
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
-    return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a })
+    return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: withPriceTexts(a) })
   }
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
@@ -29,6 +31,7 @@ import {
 import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { movedMarker } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
+import { hintLines } from './helpers/figureHint'
 import rec from './fixtures/leg-edit-controls.json'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { buildSaveBody } from '@/lib/saveDraft'
@@ -104,7 +107,8 @@ describe('Core: a + on an option leg sends one leg-edit request and the page is 
     expect(edits()[0].body.edit).toEqual({ control: 'step', index: 0, direction: 1 })
     expect(edits()[0].body.legs.map((l) => l.instrument_id)).toEqual(real.legs.map((l) => l.instrument_id))
     expect(all(w, 'leg-strike')[0].text()).toBe('22850')
-    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+    // GC-UI step 3b (REQ-034 AC-7, ADR-204): the reply's sentence is the Max Profit "?" line
+    expect((await hintLines(w, 'max_profit'))[0]).toBe('REPLY: make nothing')
     expect(t(w, 'output-label').text()).toBe('REPLY LABEL')
   })
 })
@@ -116,7 +120,7 @@ describe('the request carries one edit and nothing computed', () => {
     expect(body.edit).toEqual({ control: 'step', index: 1, direction: -1 })
     expect(Object.keys(body).sort()).toEqual(['edit', 'legs', 'underlying'])
     expect(body.legs.map((l) => Object.keys(l).sort())).toEqual(Array(4).fill(
-      ['action', 'base_lots', 'captured_at', 'included', 'instrument_id', 'lots', 'planned_entry', 'typed']))
+      ['action', 'base_lots', 'captured_at', 'close_at', 'included', 'instrument_id', 'lots', 'planned_entry', 'typed'])) // close_at: ADR-197
   })
   it('an edit missing its fields, an unknown control or a leg with no id builds nothing (no guess)', () => {
     expect(buildEditRequest('NIFTY', legs, { control: 'step', index: 0 })).toBeNull()
@@ -204,8 +208,9 @@ describe('LegList rows (screens 011, 012)', () => {
     await w.setProps({ shapeName: 'Iron Condor', legs: [{ ...rows[0], hedge: true }, rows[1]] })
     expect(t(w, 'shape-name').text()).toContain('Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(1)
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').text()).toBe('H') // W-192 UI-105: a 10 px "H" badge
-    expect(row(w, 0).find('[data-testid="hedge-mark"]').attributes('aria-label')).toBe('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').attributes('aria-label')).toBe('Hedge') // D-A12 kept: REQ-076 AC-8, a visible "H" named Hedge + the strike's tooltip
+    expect(row(w, 0).find('[data-testid="edit-leg"]').attributes('title')).toContain('Hedge')
+    expect(row(w, 0).find('[data-testid="hedge-mark"]').classes()).not.toContain('sr-only')
     expect(shapeLabel({ shape_name: 'Iron Condor' })).toBe('Iron Condor')
     expect(shapeLabel({ shape_name: null })).toBe('Custom Strategy')
   })
@@ -267,11 +272,11 @@ describe('LegList rows (screens 011, 012)', () => {
     await flushPromises()
     expect(t(w, 'numbers').attributes('data-updating')).toBe('true')
     expect(t(w, 'numbers-updating').exists()).toBe(true)
-    expect(t(w, 'sum-make').text()).toBe(real.summary.what_can_i_make) // the old numbers stay until the reply
+    expect((await hintLines(w, 'max_profit'))[0]).toBe(real.summary.what_can_i_make) // the old numbers stay until the reply
     release()
     await flushPromises()
     expect(t(w, 'numbers').attributes('data-updating')).toBe('false')
-    expect(t(w, 'sum-make').text()).toBe('REPLY: make nothing')
+    expect((await hintLines(w, 'max_profit'))[0]).toBe('REPLY: make nothing')
   })
 })
 
@@ -428,7 +433,7 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     expect(row(w, 1).find('[data-testid="leg-block"]').text()).toBe(reason)
     expect(row(w, 0).find('[data-testid="leg-block"]').exists()).toBe(false)
   })
-  it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> empty form, Add adds nothing of A', async () => {
+  it('removing the leg being edited resets the form: Edit leg A, Remove leg A -> the form is gone, nothing of A is added', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624,
       instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }] }
@@ -447,10 +452,8 @@ describe('W-148 fix round: REQ-076 AC-5 Lots/Quantity switch, the freeze-limit b
     await t(w, 'remove-leg').trigger('click')
     await flushPromises()
     expect(all(w, 'leg-row')).toHaveLength(0)
-    expect(w.find('[data-testid="picker-by-contract"] h2').text()).toBe('Add a leg by contract')
-    expect([t(w, 'pick-type').element.value, t(w, 'pick-strike').element.value, t(w, 'pick-action').element.value, t(w, 'pick-lots').element.value]).toEqual(['', '', 'SELL', '1'])
-    const add = t(w, 'add-leg')
-    if (add.exists() && !add.element.disabled) await add.trigger('click')
+    expect(t(w, 'picker-by-contract').exists()).toBe(false) // no edit form left, and no add-by-contract form to replace it
+    expect(t(w, 'add-leg').exists()).toBe(false)
     await flushPromises()
     expect(w.findComponent({ name: 'LegPicker' }).props('legs')).toHaveLength(0)
   })
@@ -607,8 +610,12 @@ describe('REQ-077 AC-5 Reset Prices and the per-leg reset', () => {
 
 describe('REQ-077 AC-6 / AC-7 the price-has-moved marker', () => {
   const leg = { planned_entry: '44.90', captured_at: '2026-10-24T10:35:12+05:30' }
+  it('D-PX: the marker prints the server display text ("now 99.80" for an ltp sent as "99.8"), never the raw value', () => {
+    expect(movedMarker({ planned_entry: '140.35', captured_at: null }, '99.8', { planned_entry_display: '140.35', ltp_display: '99.80' })).toBe('Price has moved: planned 140.35, now 99.80')
+    expect(movedMarker({ planned_entry: '140.35', captured_at: null }, '99.8', {})).toBe('Price has moved: planned —, now —')
+  })
   it('AC-6: differing strings give the marker with the time, planned and now exactly as sent', () => {
-    expect(movedMarker(leg, '47.15')).toBe('Price has moved since 24 Oct 2026, 10:35:12 IST: planned 44.90, now 47.15')
+    expect(movedMarker(leg, '47.15', { planned_entry_display: '44.90', ltp_display: '47.15' })).toBe('Price has moved since 24 Oct 2026, 10:35:12 IST: planned 44.90, now 47.15')
   })
   it('AC-6: equal strings (also 44.9 vs 44.90) give no marker; no live data gives none', () => {
     expect(movedMarker(leg, '44.90')).toBeNull()
@@ -686,7 +693,7 @@ describe('REQ-135 AC-2: the leg row shows the server\'s days to expiry', () => {
     const reply = { ...STEPPED, legs: [replyLeg(real.legs[0], { days_to_expiry: 6 }), replyLeg(real.legs[1], { days_to_expiry: 0 }), replyLeg(real.legs[2]), replyLeg(real.legs[3], { days_to_expiry: null })] }
     expect(applyEditReply(prev, reply).map((l) => l.days_to_expiry)).toEqual([6, 0, null, null])
     const w = mount(LegList, { props: { legs: applyEditReply(prev, reply) } })
-    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(['13 Oct (6 days)', 'Today (0 days)', '2026-10-13', '2026-10-13'])
+    expect(all(w, 'leg-expiry').map((e) => e.text())).toEqual(['13 Oct (6 days)', 'Today (0 days)', '13 Oct', '13 Oct']) // REQ-148 AC-2: no count -> the date alone, never raw ISO
     w.unmount()
   })
 
@@ -864,14 +871,14 @@ describe('W-192 ADR-195: with any leg unticked the label shows only the count, n
       expect(t(w, `${id}-reason`).text()).toBe(UNTICKED_CONTROL_REASON)
     }
     expect(t(w, 'shift-plus').attributes('disabled')).toBeUndefined()
-    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('some')
+    expect(t(w, 'tick-all').attributes('data-state')).toBe('some')
     // ticking every leg again restores the server's name, marks and controls
     await w.setProps({ legs: condorLegs() })
     expect(t(w, 'shape-name').text()).toContain('Short Iron Condor')
     expect(all(w, 'hedge-mark')).toHaveLength(2)
     expect(t(w, 'width-plus').attributes('disabled')).toBeUndefined()
     expect(t(w, 'hedge-plus').attributes('disabled')).toBeUndefined()
-    expect(t(w, 'tick-all-state').attributes('data-state')).toBe('all')
+    expect(t(w, 'tick-all').attributes('data-state')).toBe('all')
     w.unmount()
   })
 })
@@ -884,7 +891,7 @@ describe('W-192 UI-104 (I-7): one leg row per leg that never wraps at the 480 px
     const lines = all(w, 'leg-row-line')
     expect(lines).toHaveLength(4)
     for (const line of lines) {
-      expect(line.classes()).toEqual(expect.arrayContaining(['grid', 'h-7', 'whitespace-nowrap'])) // one 28 px line, nothing wraps
+      expect(line.classes()).toEqual(expect.arrayContaining(['grid', 'h-9', 'whitespace-nowrap'])) // GC-UI 3a D-A09: one 36 px line, nothing wraps
       expect(line.attributes('style')).toContain(`${LEG_ROW_COLUMNS[0]}px ${LEG_ROW_COLUMNS[1]}px ${LEG_ROW_COLUMNS[2]}px minmax(${LEG_ROW_COLUMNS[3]}px, 1fr)`)
     }
     // the words that wrapped rows in the walkthrough are no longer visible row text (I-7): icons, a menu or screen-reader text
@@ -925,10 +932,12 @@ describe('W-192 Revision 1 (REQ-077 AC-1, AC-6, AC-7): a visible second line onl
     expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
     w.unmount()
   })
-  it('a moved price shows the marker with both prices as visible text (AC-6)', () => {
+  it('a moved price shows a dot on its price box with the AC-6 sentence in its tooltip, no second line (ADR-202 (2), GC-UI 3a D-A15)', () => {
     const legs = condorLegs()
-    const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' } } })
-    expect(row(w, 0).find('[data-testid="leg-second-line"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')
+    const w = mount(LegList, { props: { legs, ltpById: { [legs[0].instrument_id]: '39.15' }, priceTextById: { [legs[0].instrument_id]: { ltp_display: '39.15', planned_entry_display: '100.00' } } } })
+    expect(row(w, 0).find('[data-testid="leg-second-line"]').exists()).toBe(false)
+    expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved-dot"]').exists()).toBe(true)
+    expect(row(w, 0).find('[data-testid="price-box"] [data-testid="price-moved"]').text()).toContain('planned 100.00, now 39.15')
     w.unmount()
   })
   it('a leg saved without an entry shows the ADR-085 message and a Reprice button on the second line (AC-7)', async () => {

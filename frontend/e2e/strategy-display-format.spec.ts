@@ -29,9 +29,27 @@ const PARTS = {
   next_action: 'Go back to the previous page and choose again.',
 }
 
+// GC-UI D-C31: a leg is added only from the strike table, which reads GET /api/leg-picker/strikes. That route reads the
+// STORED catalogue on the database clock, where 13-Oct-2026 has expired, so its grid is answered here like the catalogue
+// above (same StrikesOut shape as routes/leg_picker.py; no price in it). Prices still come from the real planned-entry route.
+const GRID_CELL = (token: number) => ({
+  instrument_id: `NSE_FO:${token}`, lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null,
+})
+const GRID = {
+  state: 'NOT_LIVE', reason: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: null, spot_at: null,
+  centre: 'MIDDLE_STRIKE', atm_strike: null, answered_at: '2026-10-08T09:20:09+05:30', market_closed: false,
+  rows: [
+    { strike: '22200.00', is_atm: false, ce: null, pe: GRID_CELL(44595) },
+    { strike: '22400.00', is_atm: false, ce: null, pe: GRID_CELL(44604) },
+    { strike: '22800.00', is_atm: false, ce: GRID_CELL(44624), pe: null },
+    { strike: '23000.00', is_atm: false, ce: GRID_CELL(44632), pe: null },
+  ],
+}
+
 async function seedCatalogue(page: Page) {
   await page.route('**/api/catalogue/NIFTY/expiries', (r) => r.fulfill({ json: { underlying: 'NIFTY', expiries: ['2026-10-13'] } }))
   await page.route('**/api/catalogue/NIFTY/contracts?expiry=2026-10-13', (r) => r.fulfill({ json: CONTRACTS }))
+  await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: GRID }))
 }
 
 async function noRawValues(page: Page) {
@@ -49,12 +67,10 @@ test('legs are named by contract, times are IST words, and no raw id or ISO time
     const rows = page.getByTestId('leg-row')
     const before = await rows.count()
     await openAddEdit(page) // W-192: the add form sits behind Add/Edit once legs exist
-    await page.getByTestId('pick-type').selectOption('CE')
-    await expect(page.getByTestId('pick-strike')).toBeEnabled()
-    await expect(page.getByTestId('pick-strike').locator(`option[value="${strike}"]`)).toBeAttached()
-    await page.getByTestId('pick-strike').selectOption(strike)
-    await page.getByTestId('pick-action').selectOption(action)
-    await page.getByTestId('add-leg').click()
+    // D-C31: B / S on the strike table, then Done
+    const cell = page.locator(`[data-testid="strike-row"][data-strike="${strike}"] [data-testid="cell-ce"]`)
+    await cell.getByTestId(action === 'BUY' ? 'cell-buy' : 'cell-sell').click()
+    await page.getByTestId('picker-done').click()
     await expect(rows).toHaveCount(before + 1)
   }
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')

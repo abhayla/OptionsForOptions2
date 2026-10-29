@@ -29,7 +29,7 @@ from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext, market_state
+from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
 from ofo_app.underlying import Underlying
 
 #: The two indices of the view, in the order the message lists them (NIFTY then SENSEX).
@@ -69,7 +69,8 @@ def _row(ctx: MarketContext, underlying: Underlying, instrument_id: str | None,
     quote = None if instrument_id is None else ctx.provider.underlying_quote(underlying)
     if quote is not None and quote.instrument_id != instrument_id:  # never another instrument's quote as this index's
         quote = None
-    at = None if quote is None else quote.timestamp
+    # ADR-200 (2): closed, the row's time is when its price was made (the session close), never a frame's arrival
+    at = None if quote is None else (quote.price_at if closed else quote.timestamp)
     if not held:  # not held: the last value time only, never a number from a socket that is down (REQ-049 AC-4)
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=at, health=None)
     if quote is None:  # unknown index or no quote: shown as unavailable, no number (REQ-072 AC-2 "missing ... as such")
@@ -99,8 +100,9 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     # LIVE: the not-live answer, each row's last value kept as stale with its time, the market-closed banner shown.
     shown_live = live and not state.closed
     rows = [_row(ctx, u, i, live, state.closed) for u, i in index_ids(ctx).items()]
+    # ADR-200 (4): closed, the banner's time is the index quotes' own last-price time, never a reconnect frame's
     return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
-                      market_closed=state.closed, last_price_at=state.last_price_at)
+                      market_closed=state.closed, last_price_at=label_time(state, (r.at for r in rows)))
 
 
 def _shown_state(body: IndicesOut) -> tuple:

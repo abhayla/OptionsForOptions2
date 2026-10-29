@@ -1,6 +1,75 @@
 {
   "components": {
     "schemas": {
+      "AlertOut": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "title": "Body"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "title": {
+            "title": "Title"
+          },
+          "trigger_id": {
+            "title": "Trigger Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "trigger_id",
+          "created_at",
+          "title",
+          "body",
+          "read"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
+      "AlertsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "alerts",
+          "unread"
+        ],
+        "title": "AlertsOut",
+        "type": "object"
+      },
       "BasketOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -254,6 +323,15 @@
             ],
             "title": "Per Unit"
           },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
+          },
           "reason": {
             "anyOf": [
               {},
@@ -309,6 +387,7 @@
           "reason",
           "side",
           "per_unit",
+          "per_unit_display",
           "vendor"
         ],
         "title": "CellOut",
@@ -1112,6 +1191,89 @@
         "title": "CostOut",
         "type": "object"
       },
+      "CurveOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "points"
+        ],
+        "title": "CurveOut",
+        "type": "object"
+      },
+      "CurvesOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``).",
+        "properties": {
+          "at_expiry": {
+            "$ref": "#/components/schemas/CurveOut"
+          },
+          "estimated_now": {
+            "$ref": "#/components/schemas/CurveOut"
+          }
+        },
+        "required": [
+          "at_expiry",
+          "estimated_now"
+        ],
+        "title": "CurvesOut",
+        "type": "object"
+      },
       "DefinitionOut": {
         "additionalProperties": false,
         "properties": {
@@ -1274,6 +1436,18 @@
             "title": "Instrument Id",
             "type": "string"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
           "last_trade_at": {
             "anyOf": [
               {
@@ -1285,6 +1459,11 @@
               }
             ],
             "title": "Last Trade At"
+          },
+          "market_closed": {
+            "default": false,
+            "title": "Market Closed",
+            "type": "boolean"
           },
           "prev_close": {
             "anyOf": [
@@ -1310,7 +1489,8 @@
                   "FEED_STALE",
                   "NOT_STREAMING",
                   "NO_DEPTH_RECEIVED",
-                  "DEPTH_EMPTY"
+                  "DEPTH_EMPTY",
+                  "MARKET_CLOSED"
                 ],
                 "type": "string"
               },
@@ -1552,6 +1732,18 @@
             ],
             "title": "Captured At"
           },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
+          },
           "included": {
             "default": true,
             "title": "Included",
@@ -1634,6 +1826,18 @@
             ],
             "title": "Captured At"
           },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
+          },
           "contract_id": {
             "anyOf": [
               {
@@ -1701,6 +1905,15 @@
               }
             ],
             "title": "Planned Entry"
+          },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
           },
           "price_reason": {
             "anyOf": [
@@ -1925,6 +2138,18 @@
       "ExpiriesOut": {
         "additionalProperties": false,
         "properties": {
+          "default_expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Expiry"
+          },
           "expiries": {
             "items": {
               "format": "date",
@@ -2149,10 +2374,10 @@
       },
       "FundsShareOut": {
         "additionalProperties": false,
-        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text.",
+        "description": "REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &\nMargins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is\nCHECKED with a positive margin needed; a side that is Unlimited has null percent/text.",
         "properties": {
-          "funds": {
-            "title": "Funds",
+          "margin_needed": {
+            "title": "Margin Needed",
             "type": "string"
           },
           "max_loss_percent": {
@@ -2202,7 +2427,7 @@
           }
         },
         "required": [
-          "funds",
+          "margin_needed",
           "read_at",
           "max_profit_percent",
           "max_loss_percent",
@@ -2365,6 +2590,81 @@
           "answered_at"
         ],
         "title": "FuturesOut",
+        "type": "object"
+      },
+      "GreekFigures": {
+        "additionalProperties": false,
+        "description": "Position-level Greeks (per unit x quantity x sign), 4 dp, with the table's display text.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "delta_text": {
+            "title": "Delta Text"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "gamma_text": {
+            "title": "Gamma Text"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "theta_text": {
+            "title": "Theta Text"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          },
+          "vega_text": {
+            "title": "Vega Text"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega",
+          "delta_text",
+          "gamma_text",
+          "theta_text",
+          "vega_text"
+        ],
+        "title": "GreekFigures",
+        "type": "object"
+      },
+      "GreeksOut": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
+        ],
+        "title": "GreeksOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2714,6 +3014,15 @@
             ],
             "title": "Ask"
           },
+          "ask_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Display"
+          },
           "bid": {
             "anyOf": [
               {
@@ -2724,6 +3033,15 @@
               }
             ],
             "title": "Bid"
+          },
+          "bid_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid Display"
           },
           "health": {
             "anyOf": [
@@ -2881,6 +3199,15 @@
             ],
             "title": "Amount"
           },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
           "per_unit": {
             "anyOf": [
               {
@@ -2891,6 +3218,15 @@
               }
             ],
             "title": "Per Unit"
+          },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
           },
           "reason": {
             "anyOf": [
@@ -2936,13 +3272,156 @@
         "title": "NetPremiumOut",
         "type": "object"
       },
+      "OiRowOut": {
+        "additionalProperties": false,
+        "description": "One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / \"0\".",
+        "properties": {
+          "call_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi"
+          },
+          "call_oi_display": {
+            "title": "Call Oi Display"
+          },
+          "put_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi"
+          },
+          "put_oi_display": {
+            "title": "Put Oi Display"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strike",
+          "call_oi",
+          "call_oi_display",
+          "put_oi",
+          "put_oi_display"
+        ],
+        "title": "OiRowOut",
+        "type": "object"
+      },
+      "OpenInterestOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "contracts": {
+            "title": "Contracts",
+            "type": "integer"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "expiry_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Note"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "read_at_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At Display"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OiRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "available",
+          "unavailable_reason",
+          "expiry",
+          "expiry_note",
+          "read_at",
+          "read_at_display",
+          "contracts",
+          "rows"
+        ],
+        "title": "OpenInterestOut",
+        "type": "object"
+      },
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
+          "both_views": {
+            "default": false,
+            "description": "REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in `curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly",
+            "title": "Both Views",
+            "type": "boolean"
+          },
           "fallback": {
             "default": false,
             "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
             "title": "Fallback",
+            "type": "boolean"
+          },
+          "include_booked": {
+            "default": true,
+            "description": "ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L to the target P&L, the badge and the target curve; false shows the open legs only",
+            "title": "Include Booked",
             "type": "boolean"
           },
           "legs": {
@@ -2953,6 +3432,41 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "open_interest": {
+            "default": false,
+            "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
+            "title": "Open Interest",
+            "type": "boolean"
+          },
+          "paper_strategy_id": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its booked P&L from the paper order book. Absent: a plan, nothing is added",
+            "title": "Paper Strategy Id"
+          },
+          "payoff_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then carries `payoff_table` (also sent with both_views; absent: the strike step, NIFTY 50, SENSEX 100)",
+            "examples": [
+              50
+            ],
+            "title": "Payoff Step"
           },
           "range_end": {
             "anyOf": [
@@ -2986,6 +3500,12 @@
             ],
             "title": "Range Start"
           },
+          "sd_bands": {
+            "default": false,
+            "description": "REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day horizon, the days to expiry when fewer)",
+            "title": "Sd Bands",
+            "type": "boolean"
+          },
           "seq": {
             "anyOf": [
               {
@@ -2999,6 +3519,35 @@
               }
             ],
             "title": "Seq"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)",
+            "title": "Target At"
+          },
+          "target_level": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot -10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)",
+            "examples": [
+              "23000"
+            ],
+            "title": "Target Level"
           },
           "underlying": {
             "enum": [
@@ -3052,6 +3601,16 @@
               }
             ]
           },
+          "curves": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurvesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "last_price_at": {
             "anyOf": [
               {
@@ -3092,6 +3651,16 @@
             "title": "Market Closed",
             "type": "boolean"
           },
+          "open_interest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenInterestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "output_label": {
             "anyOf": [
               {},
@@ -3105,6 +3674,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PayoffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payoff_table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffTableOut"
               },
               {
                 "type": "null"
@@ -3164,6 +3743,16 @@
             ],
             "title": "Spot Level"
           },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StandardDeviationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "enum": [
               "COMPUTED",
@@ -3197,6 +3786,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetOut"
               },
               {
                 "type": "null"
@@ -3246,6 +3845,1573 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
+      "PaperBookOut": {
+        "additionalProperties": false,
+        "description": "GET /paper/strategies/{id} and the answer of POST .../orders.",
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "breakevens_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
+          "extremes_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason"
+          },
+          "extremes_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason Text"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason"
+          },
+          "greeks_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason Text"
+          },
+          "loss_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left"
+          },
+          "loss_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left Text"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "pause_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason Text"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PaperNetOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "profit_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left"
+          },
+          "profit_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Text"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "greeks",
+          "greeks_reason",
+          "breakevens",
+          "breakevens_display",
+          "breakevens_reason",
+          "profit_left",
+          "loss_left",
+          "max_profit",
+          "max_loss",
+          "profit_left_text",
+          "loss_left_text",
+          "max_profit_text",
+          "max_loss_text",
+          "extremes_reason",
+          "state",
+          "pause_reason",
+          "booked",
+          "unbooked",
+          "total",
+          "booked_text",
+          "unbooked_text",
+          "total_text",
+          "positions",
+          "strategy_id",
+          "name",
+          "underlying",
+          "answered_at",
+          "orders"
+        ],
+        "title": "PaperBookOut",
+        "type": "object"
+      },
+      "PaperGreeksOut": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/PaperLegGreeks"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "net": {
+            "$ref": "#/components/schemas/GreekFigures"
+          }
+        },
+        "required": [
+          "legs",
+          "net"
+        ],
+        "title": "PaperGreeksOut",
+        "type": "object"
+      },
+      "PaperLegGreeks": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "delta_text": {
+            "title": "Delta Text"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "string"
+          },
+          "gamma_text": {
+            "title": "Gamma Text"
+          },
+          "theta": {
+            "title": "Theta",
+            "type": "string"
+          },
+          "theta_text": {
+            "title": "Theta Text"
+          },
+          "vega": {
+            "title": "Vega",
+            "type": "string"
+          },
+          "vega_text": {
+            "title": "Vega Text"
+          }
+        },
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega",
+          "delta_text",
+          "gamma_text",
+          "theta_text",
+          "vega_text",
+          "contract_id"
+        ],
+        "title": "PaperLegGreeks",
+        "type": "object"
+      },
+      "PaperListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/PaperStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PaperTotalsOut"
+          }
+        },
+        "required": [
+          "strategies",
+          "totals",
+          "answered_at"
+        ],
+        "title": "PaperListOut",
+        "type": "object"
+      },
+      "PaperNetOut": {
+        "additionalProperties": false,
+        "description": "One contract's net position (screens 274-279: Lots / Avg / LTP / Booked / Unbooked).",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "average_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Text"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "ltp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Text"
+          },
+          "net_quantity": {
+            "title": "Net Quantity",
+            "type": "integer"
+          },
+          "price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price At"
+          },
+          "price_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "stale",
+                  "missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price State"
+          },
+          "price_state_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price State Text"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_text",
+          "instrument",
+          "strike",
+          "expiry",
+          "net_quantity",
+          "lot_size",
+          "average",
+          "average_text",
+          "ltp",
+          "ltp_text",
+          "price_state",
+          "price_at",
+          "booked",
+          "booked_text",
+          "unbooked",
+          "unbooked_text",
+          "total",
+          "total_text"
+        ],
+        "title": "PaperNetOut",
+        "type": "object"
+      },
+      "PaperOrderIn": {
+        "additionalProperties": false,
+        "description": "One typed paper order (REQ-109 AC-1). The price is checked by the route (its own reason text), not here.",
+        "properties": {
+          "contract_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "add",
+              "exit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Price"
+          },
+          "quantity": {
+            "description": "units (lots x lot size)",
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "side",
+          "quantity",
+          "price",
+          "kind"
+        ],
+        "title": "PaperOrderIn",
+        "type": "object"
+      },
+      "PaperOrderOut": {
+        "additionalProperties": false,
+        "description": "One row of the orderbook: time, side, contract text, quantity, price, kind.",
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "add",
+              "exit",
+              "settle",
+              "stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "placed_at": {
+            "format": "date-time",
+            "title": "Placed At",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "price_text": {
+            "title": "Price Text"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "placed_at",
+          "side",
+          "contract_id",
+          "contract_text",
+          "quantity",
+          "price",
+          "price_text",
+          "kind"
+        ],
+        "title": "PaperOrderOut",
+        "type": "object"
+      },
+      "PaperOrdersIn": {
+        "additionalProperties": false,
+        "properties": {
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOrderIn"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "PaperOrdersIn",
+        "type": "object"
+      },
+      "PaperStrategyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "breakevens_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
+          "extremes_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices_not_live",
+                  "multi_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason"
+          },
+          "extremes_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Reason Text"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason"
+          },
+          "greeks_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greeks Reason Text"
+          },
+          "loss_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left"
+          },
+          "loss_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left Text"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Text"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Text"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "pause_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason Text"
+          },
+          "position_count": {
+            "title": "Position Count",
+            "type": "integer"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PaperNetOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "profit_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left"
+          },
+          "profit_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Text"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "greeks",
+          "greeks_reason",
+          "breakevens",
+          "breakevens_display",
+          "breakevens_reason",
+          "profit_left",
+          "loss_left",
+          "max_profit",
+          "max_loss",
+          "profit_left_text",
+          "loss_left_text",
+          "max_profit_text",
+          "max_loss_text",
+          "extremes_reason",
+          "state",
+          "pause_reason",
+          "booked",
+          "unbooked",
+          "total",
+          "booked_text",
+          "unbooked_text",
+          "total_text",
+          "positions",
+          "strategy_id",
+          "name",
+          "underlying",
+          "open_count",
+          "position_count"
+        ],
+        "title": "PaperStrategyOut",
+        "type": "object"
+      },
+      "PaperTotalsOut": {
+        "additionalProperties": false,
+        "description": "GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server.",
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
+          "decay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay"
+          },
+          "decay_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "no_next_open",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason"
+          },
+          "decay_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason Text"
+          },
+          "decay_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Text"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "totals_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason"
+          },
+          "totals_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          }
+        },
+        "required": [
+          "booked",
+          "booked_text",
+          "unbooked",
+          "unbooked_text",
+          "total",
+          "total_text",
+          "totals_reason",
+          "decay",
+          "decay_text",
+          "decay_reason"
+        ],
+        "title": "PaperTotalsOut",
+        "type": "object"
+      },
+      "PayoffCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "pnl": {
+            "title": "Pnl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pnl",
+          "display"
+        ],
+        "title": "PayoffCellOut",
+        "type": "object"
+      },
+      "PayoffColumnOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason"
+        ],
+        "title": "PayoffColumnOut",
+        "type": "object"
+      },
       "PayoffOut": {
         "additionalProperties": false,
         "properties": {
@@ -3270,6 +5436,118 @@
           "points"
         ],
         "title": "PayoffOut",
+        "type": "object"
+      },
+      "PayoffRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at_expiry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimated_now": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "level_display": {
+            "title": "Level Display"
+          },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "nearest_spot": {
+            "title": "Nearest Spot",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "level_display",
+          "nearest_spot",
+          "move_pct",
+          "move_pct_display",
+          "estimated_now",
+          "at_expiry"
+        ],
+        "title": "PayoffRowOut",
+        "type": "object"
+      },
+      "PayoffTableOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "step",
+          "available",
+          "unavailable_reason",
+          "columns",
+          "rows"
+        ],
+        "title": "PayoffTableOut",
         "type": "object"
       },
       "PickerCellOut": {
@@ -3527,6 +5805,18 @@
             ],
             "title": "Captured At"
           },
+          "close_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close At"
+          },
           "exchange_segment": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Exchange Segment",
@@ -3595,6 +5885,9 @@
       "PointOut": {
         "additionalProperties": false,
         "properties": {
+          "display": {
+            "title": "Display"
+          },
           "level": {
             "title": "Level",
             "type": "string"
@@ -3606,7 +5899,8 @@
         },
         "required": [
           "level",
-          "pnl"
+          "pnl",
+          "display"
         ],
         "title": "PointOut",
         "type": "object"
@@ -3741,6 +6035,134 @@
           }
         },
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PriceHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "future_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Future Label"
+          },
+          "notes": {
+            "items": {},
+            "title": "Notes",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PricePointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "title": "Source"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "leg_not_listed",
+              "no_future_candles",
+              "all_gaps",
+              "no_session",
+              "broker_refused",
+              "future_not_in_catalogue",
+              "quantity_not_whole_lots"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "state",
+          "reason",
+          "source",
+          "future_label",
+          "as_of",
+          "notes",
+          "points"
+        ],
+        "title": "PriceHistoryOut",
+        "type": "object"
+      },
+      "PricePointOut": {
+        "additionalProperties": false,
+        "properties": {
+          "future": {
+            "$ref": "#/components/schemas/PriceValueOut"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceValueOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "t": {
+            "format": "date-time",
+            "title": "T",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "strategy",
+          "future"
+        ],
+        "title": "PricePointOut",
+        "type": "object"
+      },
+      "PriceValueOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "PriceValueOut",
         "type": "object"
       },
       "QuickPickIn": {
@@ -4185,6 +6607,78 @@
         "title": "RowOut",
         "type": "object"
       },
+      "ScenarioOtherOut": {
+        "additionalProperties": false,
+        "description": "REQ-083 AC-1 (both views asked for): the other view's totals on the scenario table's own levels.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "totals"
+        ],
+        "title": "ScenarioOtherOut",
+        "type": "object"
+      },
       "ScenarioOut": {
         "additionalProperties": false,
         "properties": {
@@ -4217,6 +6711,16 @@
             },
             "title": "Levels",
             "type": "array"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioOtherOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "output_label": {
             "anyOf": [
@@ -4282,6 +6786,169 @@
           "customised"
         ],
         "title": "ScenarioOut",
+        "type": "object"
+      },
+      "SdBandOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "sd": {
+            "enum": [
+              -2,
+              -1,
+              1,
+              2
+            ],
+            "title": "Sd",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sd",
+          "label",
+          "level",
+          "display"
+        ],
+        "title": "SdBandOut",
+        "type": "object"
+      },
+      "SdRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label"
+          },
+          "lower": {
+            "title": "Lower",
+            "type": "string"
+          },
+          "lower_display": {
+            "title": "Lower Display"
+          },
+          "move": {
+            "title": "Move",
+            "type": "string"
+          },
+          "move_display": {
+            "title": "Move Display"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "string"
+          },
+          "sd": {
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Sd",
+            "type": "integer"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "string"
+          },
+          "upper_display": {
+            "title": "Upper Display"
+          }
+        },
+        "required": [
+          "sd",
+          "label",
+          "move",
+          "percent",
+          "lower",
+          "upper",
+          "move_display",
+          "lower_display",
+          "upper_display"
+        ],
+        "title": "SdRowOut",
+        "type": "object"
+      },
+      "StandardDeviationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bands": {
+            "items": {
+              "$ref": "#/components/schemas/SdBandOut"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "horizon_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Days"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SdRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          }
+        },
+        "required": [
+          "available",
+          "reason",
+          "horizon_days",
+          "iv",
+          "spot",
+          "rows",
+          "bands"
+        ],
+        "title": "StandardDeviationOut",
         "type": "object"
       },
       "StatusOut": {
@@ -4646,6 +7313,18 @@
             "title": "Expiry",
             "type": "string"
           },
+          "last_price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Price At"
+          },
           "market_closed": {
             "title": "Market Closed",
             "type": "boolean"
@@ -4814,6 +7493,518 @@
         "title": "TableOut",
         "type": "object"
       },
+      "TargetBadgeOut": {
+        "additionalProperties": false,
+        "description": "GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),\nzero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the\nsigned exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "percent_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Reason"
+          },
+          "percent_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Text"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "profit",
+              "loss",
+              "zero",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "label"
+        ],
+        "title": "TargetBadgeOut",
+        "type": "object"
+      },
+      "TargetGreeksOut": {
+        "additionalProperties": false,
+        "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why).",
+        "properties": {
+          "legs": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GreeksOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "const": "no_time_left",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
+          }
+        },
+        "required": [
+          "legs",
+          "total",
+          "unavailable",
+          "unavailable_text"
+        ],
+        "title": "TargetGreeksOut",
+        "type": "object"
+      },
+      "TargetLimitsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at_max": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Max"
+          },
+          "at_min": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Min"
+          },
+          "max": {
+            "title": "Max",
+            "type": "string"
+          },
+          "min": {
+            "title": "Min",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min",
+          "max",
+          "step",
+          "at_min",
+          "at_max"
+        ],
+        "title": "TargetLimitsOut",
+        "type": "object"
+      },
+      "TargetOut": {
+        "additionalProperties": false,
+        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``). With no target asked the block is ``limits`` alone (and\n``at_refused_reason`` when the date range cannot be offered): every other key is absent, nothing is computed.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
+          },
+          "at_clamped": {
+            "default": false,
+            "title": "At Clamped",
+            "type": "boolean"
+          },
+          "at_refused_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Refused Reason"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetBadgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Display"
+          },
+          "booked_unreadable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Unreadable Text"
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "clamp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "before_now",
+                  "after_first_expiry"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clamp"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
+          "days_to_expiry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry Display"
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includes Booked Text"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "estimate",
+                  "exact"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
+          "level_clamped": {
+            "default": false,
+            "title": "Level Clamped",
+            "type": "boolean"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/TargetLimitsOut"
+          },
+          "model": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "move_pct_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetPnlOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stale_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Text"
+          }
+        },
+        "required": [
+          "limits"
+        ],
+        "title": "TargetOut",
+        "type": "object"
+      },
+      "TargetPnlOut": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "TargetPnlOut",
+        "type": "object"
+      },
       "TemplateLegOut": {
         "additionalProperties": false,
         "description": "One leg of a template at its default parameters (W-119): the strike as whole steps from the ATM strike.",
@@ -4952,6 +8143,175 @@
         "title": "TemplatesOut",
         "type": "object"
       },
+      "TrackedStrategyOut": {
+        "additionalProperties": false,
+        "description": "One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "name",
+          "underlying",
+          "started_at",
+          "state",
+          "pause_reason",
+          "as_of",
+          "total",
+          "booked",
+          "unbooked",
+          "total_text",
+          "booked_text",
+          "unbooked_text",
+          "legs"
+        ],
+        "title": "TrackedStrategyOut",
+        "type": "object"
+      },
+      "TrackingExitIn": {
+        "additionalProperties": false,
+        "description": "REQ-109 AC-4: the legs to exit by index; no price (the server reads it). \"All open legs\" = send them all.",
+        "properties": {
+          "legs": {
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "legs"
+        ],
+        "title": "TrackingExitIn",
+        "type": "object"
+      },
       "TrackingIndexOut": {
         "additionalProperties": false,
         "properties": {
@@ -5027,6 +8387,15 @@
             ],
             "title": "Current Price"
           },
+          "current_price_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price Display"
+          },
           "entry_at": {
             "format": "date-time",
             "title": "Entry At",
@@ -5035,6 +8404,41 @@
           "entry_price": {
             "title": "Entry Price",
             "type": "string"
+          },
+          "entry_price_display": {
+            "title": "Entry Price Display"
+          },
+          "exit_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price"
+          },
+          "exit_price_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price Display"
+          },
+          "exited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exited At"
           },
           "expiry": {
             "format": "date",
@@ -5054,6 +8458,45 @@
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "type": "string"
+          },
+          "leg_index": {
+            "title": "Leg Index",
+            "type": "integer"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "booked",
+                  "unbooked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Kind"
+          },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
           },
           "price_at": {
             "anyOf": [
@@ -5085,6 +8528,10 @@
                   "contract_missing"
                 ],
                 "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
               }
             ],
             "title": "Price State"
@@ -5106,6 +8553,7 @@
           }
         },
         "required": [
+          "leg_index",
           "instrument_id",
           "action",
           "instrument",
@@ -5113,12 +8561,41 @@
           "expiry",
           "quantity",
           "entry_price",
+          "entry_price_display",
           "entry_at",
           "current_price",
           "price_state",
-          "price_at"
+          "price_at",
+          "exit_price",
+          "exited_at",
+          "pnl",
+          "pnl_text",
+          "pnl_kind"
         ],
         "title": "TrackingLegOut",
+        "type": "object"
+      },
+      "TrackingListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/TrackedStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies",
+          "answered_at"
+        ],
+        "title": "TrackingListOut",
         "type": "object"
       },
       "TrackingOut": {
@@ -5140,6 +8617,19 @@
               }
             ],
             "title": "As Of"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
           },
           "breakevens": {
             "anyOf": [
@@ -5190,6 +8680,15 @@
             ],
             "title": "Paper Pnl"
           },
+          "paper_pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Pnl Text"
+          },
           "pause_reason": {
             "anyOf": [
               {
@@ -5225,7 +8724,8 @@
             "enum": [
               "LIVE",
               "PAUSED",
-              "NOT_CONNECTED"
+              "NOT_CONNECTED",
+              "EXITED"
             ],
             "title": "State",
             "type": "string"
@@ -5233,6 +8733,26 @@
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
           }
         },
         "required": [
@@ -5242,6 +8762,8 @@
           "state",
           "pause_reason",
           "paper_pnl",
+          "booked",
+          "unbooked",
           "as_of",
           "answered_at",
           "legs",
@@ -5252,21 +8774,239 @@
         "title": "TrackingOut",
         "type": "object"
       },
-      "TrackingStartIn": {
+      "TriggerIn": {
         "additionalProperties": false,
+        "description": "conditional_exit: ``above`` and / or ``below`` (an index level each, one trigger per direction); leg_stop:\n``contract_id`` with ONE ``direction`` and ``level``.",
         "properties": {
-          "revision": {
-            "description": "the saved strategy revision the user started tracking from",
-            "exclusiveMinimum": 0.0,
-            "maximum": 2147483647.0,
-            "title": "Revision",
-            "type": "integer"
+          "above": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above"
+          },
+          "below": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 2147483647.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "above",
+                  "below"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "kind": {
+            "enum": [
+              "conditional_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
           }
         },
         "required": [
-          "revision"
+          "kind"
         ],
-        "title": "TrackingStartIn",
+        "title": "TriggerIn",
+        "type": "object"
+      },
+      "TriggerOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Text"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "conditional_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "level_text": {
+            "title": "Level Text"
+          },
+          "state": {
+            "enum": [
+              "armed",
+              "fired",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "underlying": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NIFTY",
+                  "SENSEX"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underlying"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "kind",
+          "direction",
+          "level",
+          "level_text",
+          "contract_id",
+          "contract_text",
+          "underlying",
+          "state",
+          "created_at",
+          "fired_at",
+          "cancelled_at"
+        ],
+        "title": "TriggerOut",
+        "type": "object"
+      },
+      "TriggersOut": {
+        "additionalProperties": false,
+        "properties": {
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/TriggerOut"
+            },
+            "title": "Triggers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "triggers"
+        ],
+        "title": "TriggersOut",
         "type": "object"
       },
       "ValidationError": {
@@ -5568,6 +9308,15 @@
             ],
             "title": "Ltp"
           },
+          "ltp_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Display"
+          },
           "planned_entry": {
             "anyOf": [
               {
@@ -5578,6 +9327,15 @@
               }
             ],
             "title": "Planned Entry"
+          },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
           },
           "quantity": {
             "anyOf": [
@@ -5649,6 +9407,15 @@
             ],
             "title": "Available"
           },
+          "available_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Display"
+          },
           "broker_needed": {
             "anyOf": [
               {
@@ -5659,6 +9426,15 @@
               }
             ],
             "title": "Broker Needed"
+          },
+          "broker_needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed Display"
           },
           "checked_at": {
             "anyOf": [
@@ -5682,6 +9458,15 @@
               }
             ],
             "title": "Needed"
+          },
+          "needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed Display"
           },
           "reason": {
             "title": "Reason"
@@ -5728,6 +9513,12 @@
             "title": "Breakevens",
             "type": "array"
           },
+          "breakevens_display": {
+            "default": [],
+            "items": {},
+            "title": "Breakevens Display",
+            "type": "array"
+          },
           "charges": {
             "anyOf": [
               {
@@ -5765,6 +9556,15 @@
             ],
             "title": "Intrinsic Value"
           },
+          "intrinsic_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value Display"
+          },
           "lower_be": {
             "anyOf": [
               {
@@ -5787,6 +9587,15 @@
             ],
             "title": "Max Loss"
           },
+          "max_loss_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Display"
+          },
           "max_loss_unlimited": {
             "title": "Max Loss Unlimited",
             "type": "boolean"
@@ -5801,6 +9610,15 @@
               }
             ],
             "title": "Max Profit"
+          },
+          "max_profit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Display"
           },
           "max_profit_unlimited": {
             "title": "Max Profit Unlimited",
@@ -5864,6 +9682,15 @@
               }
             ],
             "title": "Time Value"
+          },
+          "time_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Display"
           },
           "upper_be": {
             "anyOf": [
@@ -7146,6 +10973,283 @@
         "summary": "Kite Callback"
       }
     },
+    "/paper/alerts": {
+      "get": {
+        "operationId": "list_paper_alerts_paper_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Paper Alerts"
+      }
+    },
+    "/paper/alerts/read": {
+      "post": {
+        "operationId": "read_paper_alerts_paper_alerts_read_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Paper Alerts"
+      }
+    },
+    "/paper/strategies": {
+      "get": {
+        "description": "Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders\nquery, one contract batch (two queries) and ONE market read per underlying for every open contract together.",
+        "operationId": "list_paper_strategies_paper_strategies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Paper Strategies"
+      }
+    },
+    "/paper/strategies/{strategy_id}": {
+      "get": {
+        "operationId": "get_paper_strategy_paper_strategies__strategy_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperBookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper Strategy"
+      }
+    },
+    "/paper/strategies/{strategy_id}/orders": {
+      "post": {
+        "operationId": "place_paper_orders_paper_strategies__strategy_id__orders_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaperOrdersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperBookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place Paper Orders"
+      }
+    },
+    "/paper/strategies/{strategy_id}/triggers": {
+      "get": {
+        "operationId": "list_paper_triggers_paper_strategies__strategy_id__triggers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Paper Triggers"
+      },
+      "post": {
+        "operationId": "add_paper_triggers_paper_strategies__strategy_id__triggers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Paper Triggers"
+      }
+    },
+    "/paper/strategies/{strategy_id}/triggers/{trigger_id}": {
+      "delete": {
+        "operationId": "cancel_paper_trigger_paper_strategies__strategy_id__triggers__trigger_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "trigger_id",
+            "required": true,
+            "schema": {
+              "title": "Trigger Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Paper Trigger"
+      }
+    },
     "/positions": {
       "get": {
         "operationId": "read_positions_positions_get",
@@ -7529,6 +11633,68 @@
         "summary": "Rename Strategy"
       }
     },
+    "/strategies/{strategy_id}/price-history": {
+      "get": {
+        "description": "The strategy's combined net price per unit per minute beside the index future (REQ-091 AC-2..AC-5). Another\nuser's strategy answers exactly as a missing one (store.load is owner-scoped). Prices only, no P&L (AC-6).",
+        "operationId": "strategy_price_history_strategies__strategy_id__price_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invert",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Invert",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 15,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Price History"
+      }
+    },
     "/strategies/{strategy_id}/restore/{seq}": {
       "post": {
         "operationId": "restore_strategy_strategies__strategy_id__restore__seq__post",
@@ -7624,9 +11790,12 @@
           }
         },
         "summary": "Get Tracking"
-      },
+      }
+    },
+    "/strategies/{strategy_id}/tracking/exit": {
       "post": {
-        "operationId": "start_tracking_strategies__strategy_id__tracking_post",
+        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg\nnot live refuses the whole exit (nothing stored): a contract no longer live answers\ntracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or missing answers\ntracking_exit_prices_not_live (AC-5: try again when prices update). The store re-checks under the strategy's row\nlock that each exit reduces and never exceeds the open quantity, so a leg exits once even when two exits race.",
+        "operationId": "exit_tracking_strategies__strategy_id__tracking_exit_post",
         "parameters": [
           {
             "in": "path",
@@ -7642,14 +11811,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TrackingStartIn"
+                "$ref": "#/components/schemas/TrackingExitIn"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -7670,7 +11839,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Start Tracking"
+        "summary": "Exit Tracking"
       }
     },
     "/strategies/{strategy_id}/undelete": {
@@ -7770,6 +11939,25 @@
           }
         },
         "summary": "Confirm Version"
+      }
+    },
+    "/tracking": {
+      "get": {
+        "description": "GC-BP step 4: every tracked strategy (one with paper orders) of the signed-in user (never another user's: the\nstore filters by the strategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost\nwhatever the count (finding F-3): one order query, one contract batch (two queries), and ONE market read per\nunderlying for all open legs together. A fully exited strategy needs no read. A read failure raises (the house\nrefusal), never a partial list.",
+        "operationId": "list_tracking_tracking_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tracking"
       }
     }
   }

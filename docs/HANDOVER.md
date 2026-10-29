@@ -1,6 +1,14 @@
 # Handover
 
-## NOW (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
+## NOW (2026-10-28 ~09:45 IST, after GC-BM; full block: docs/process/session-handover-2026-10-28-gcbm.md)
+
+- **GC-BM PARTIAL:** the 5 must-have builder rows (G-065, G-070, G-075, G-024, G-051) and F-1..F-20 built with failing
+  tests first; ADR-199, ADR-200; real-app walks clean after hours, before the open and in hours (2026-10-28 09:16).
+  ON HOLD before the push (owner, 09:50): no PR yet. Parked: #596 (close label on a reopened saved strategy needs a migration).
+- **PENDING:** deferred #597-#602; owner visual-differences list in the GC-BM contract.
+- **NEXT:** the owner's extra work on this branch, then the one push / PR / merge; then GC-B2 (edit speed p95 <= 1,000 ms; Width / Hedge values), market hours, fresh session.
+
+## EARLIER: (2026-10-27 ~14:00 IST, after GC-B1 of the builder phase; full block: docs/process/session-handover-2026-10-27-gcb1.md)
 
 - **GC-B1:** every item merged or measured (G-069 verdict 14:11, #592 closed), but two pushes and one gate skip broke
   the contract's one-push rule. Docs #585 (ADR-196, ADR-197, contracts GC-B1..B17, gap list) and #589 (REQ-141 approved, six gap rows
@@ -16,7 +24,8 @@
   Owner decision ADR-192 (Save As name fits 20 characters).
 - **PENDING:** #537 F5 Save As build + F2 Execute refusal sentence (small); ADR-191 (3) measured row 3 of 3; the shared
   ofo_test DB is out of step at alembic 0026 (owner OK before any VPS repair).
-- **NEXT:** chunk 4 session B (rows 33-35, market day) - prompt in docs/process/chunk-session-prompts.md; run ci_local
+- **Owner follow-ups (evening):** 6 helper worktrees removed; ofo_test migrated to head (stale catalogue rows remain - use db_run_fresh.py, mechanism due); #537 F2 + F5 fixed; row 26m (Count my open positions) measured, core half-proven live - build NEXT in a fresh session (block "after chunk 3 session B - owner follow-ups").
+- **NEXT:** row 26m (~5 h), then chunk 4 session B (rows 33-35, market day) - prompt in docs/process/chunk-session-prompts.md; run ci_local
   one at a time, --full when the default mode fails in 0.0 s (Startup-Factory #180).
 
 **2026-10-25 — kit 1.12.0 MERGED (PR #546, merge 74230ef6, ADR-187).** From 1.10.1. Merged by merge.py at reviewed

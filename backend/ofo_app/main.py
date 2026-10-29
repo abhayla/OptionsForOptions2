@@ -24,6 +24,8 @@ from ofo_app import (
     feed_mode,
     held_switches,
     live_market,
+    paper_monitor,
+    paper_settlement,
     pinned_clock,
     replay_mode,
 )
@@ -45,6 +47,7 @@ from ofo_app.routes import (
     leg_picker,
     live,
     outcome,
+    paper,
     planned_entry,
     positions,
     ready_made,
@@ -76,7 +79,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
     refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
+    monitor = paper_monitor.start() if market is not None else None  # GC-TP 7a: paper stops, live only
+    settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
     yield
+    await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
+    await paper_monitor.stop(monitor)  # a fire in flight is cancelled and rolls back
     await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
     if market is not None:
         live_market.set_current(None)  # a login arriving now finds no market (#296)
@@ -109,6 +116,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
     app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
+    app.include_router(paper.router)  # GC-TP 1b: the paper order book (net positions, orderbook, typed orders)
 
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:

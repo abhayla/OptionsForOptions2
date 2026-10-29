@@ -6,7 +6,14 @@ export const VIEWS = [
   { key: 'estimated_now', label: 'Estimated Now' },
 ]
 
-/** The default pick: At Expiry, the server's own range. */
+/** GC-UI b1 (REQ-083 AC-1, AC-4, AC-5): the chart's blocks every outcome request asks for, REST and live alike: both
+ *  curves of ONE engine reply (never two calls for different edits, REQ-034 AC-8), the SD bands and the OI bars. */
+export const CHART_FLAGS = Object.freeze({ both_views: true, sd_bands: true, open_interest: true })
+
+// the four intervals the server accepts (REQ-137 AC-1), menu text -> the request's integer; a lookup, no parsing
+const PAYOFF_STEP_VALUES = Object.freeze({ 10: 10, 25: 25, 50: 50, 100: 100 })
+
+/** The default pick: At Expiry, the server's own range (and, with no payoffStep, the server's payoff-table step). */
 export const DEFAULT_CHOICE = Object.freeze({ view: 'at_expiry', rangeStart: '', rangeEnd: '' })
 
 /** True for a whole number of index points as typed (digits only, no sign, no decimals), or empty. */
@@ -21,6 +28,10 @@ export function choiceFields(choice) {
     out.range_start = String(choice.rangeStart).trim()
     out.range_end = String(choice.rangeEnd).trim()
   }
+  // GC-UI b2 D-B24 (REQ-137 AC-1): the payoff table's interval, sent only once the user picked one (absent: the server's
+  // strike step); the openapi field is an integer
+  const step = PAYOFF_STEP_VALUES[String(choice.payoffStep ?? '')]
+  if (step) out.payoff_step = step
   return out
 }
 
@@ -35,6 +46,9 @@ export function matchesChoice(body, choice) {
   if (!sc) return true // no scenario in the answer (not connected / refused): nothing to compare
   if (sc.view !== choice.view) return false
   const want = choiceFields(choice)
+  // a late answer made at another payoff-table interval than the one now picked is dropped
+  const step = body?.payoff_table?.step
+  if (want.payoff_step && step != null && String(step) !== String(want.payoff_step)) return false
   if (!want.range_start) return sc.customised !== true // the default pick never accepts an answer for a custom range
   return sc.customised === true && sc.start === want.range_start && sc.end === want.range_end
 }

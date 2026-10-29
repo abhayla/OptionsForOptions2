@@ -111,6 +111,15 @@
             ],
             "title": "Per Unit"
           },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
+          },
           "vendor": {
             "anyOf": [
               {
@@ -132,6 +141,7 @@
           "reason",
           "side",
           "per_unit",
+          "per_unit_display",
           "vendor"
         ],
         "title": "CellOut"
@@ -266,11 +276,94 @@
         ],
         "title": "ColumnOut"
       },
+      "CurveOut": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "points"
+        ],
+        "title": "CurveOut",
+        "description": "REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason."
+      },
+      "CurvesOut": {
+        "properties": {
+          "at_expiry": {
+            "$ref": "#/components/schemas/CurveOut"
+          },
+          "estimated_now": {
+            "$ref": "#/components/schemas/CurveOut"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "at_expiry",
+          "estimated_now"
+        ],
+        "title": "CurvesOut",
+        "description": "REQ-083 AC-1: both curves of one answer, on the same levels (``both_views``)."
+      },
       "FundsShareOut": {
         "properties": {
-          "funds": {
+          "margin_needed": {
             "type": "string",
-            "title": "Funds"
+            "title": "Margin Needed"
           },
           "read_at": {
             "type": "string",
@@ -321,7 +414,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "funds",
+          "margin_needed",
           "read_at",
           "max_profit_percent",
           "max_loss_percent",
@@ -329,7 +422,36 @@
           "max_loss_text"
         ],
         "title": "FundsShareOut",
-        "description": "ADR-164: max profit / max loss as a whole percent of Zerodha's available funds. The whole block is null (never\nestimated) unless the margin read is CHECKED with positive funds; a side that is Unlimited has null percent/text."
+        "description": "REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &\nMargins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is\nCHECKED with a positive margin needed; a side that is Unlimited has null percent/text."
+      },
+      "GreeksOut": {
+        "properties": {
+          "delta": {
+            "type": "string",
+            "title": "Delta"
+          },
+          "gamma": {
+            "type": "string",
+            "title": "Gamma"
+          },
+          "theta": {
+            "type": "string",
+            "title": "Theta"
+          },
+          "vega": {
+            "type": "string",
+            "title": "Vega"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "delta",
+          "gamma",
+          "theta",
+          "vega"
+        ],
+        "title": "GreeksOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -509,6 +631,15 @@
             ],
             "title": "Planned Entry"
           },
+          "planned_entry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry Display"
+          },
           "captured_at": {
             "type": "string",
             "format": "date-time",
@@ -524,6 +655,15 @@
               }
             ],
             "title": "Ltp"
+          },
+          "ltp_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Display"
           },
           "iv": {
             "anyOf": [
@@ -625,6 +765,24 @@
               }
             ],
             "title": "Ask"
+          },
+          "bid_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid Display"
+          },
+          "ask_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Display"
           },
           "health": {
             "anyOf": [
@@ -729,6 +887,33 @@
             ],
             "title": "Available"
           },
+          "needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed Display"
+          },
+          "broker_needed_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker Needed Display"
+          },
+          "available_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Display"
+          },
           "checked_at": {
             "anyOf": [
               {
@@ -778,6 +963,15 @@
             ],
             "title": "Amount"
           },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
           "side": {
             "anyOf": [
               {
@@ -803,6 +997,15 @@
               }
             ],
             "title": "Per Unit"
+          },
+          "per_unit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit Display"
           },
           "text": {
             "anyOf": [
@@ -834,6 +1037,137 @@
         ],
         "title": "NetPremiumOut",
         "description": "REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a\nleg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the\nlegs' quantities differ."
+      },
+      "OiRowOut": {
+        "properties": {
+          "strike": {
+            "type": "string",
+            "title": "Strike"
+          },
+          "call_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Oi"
+          },
+          "call_oi_display": {
+            "title": "Call Oi Display"
+          },
+          "put_oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Oi"
+          },
+          "put_oi_display": {
+            "title": "Put Oi Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strike",
+          "call_oi",
+          "call_oi_display",
+          "put_oi",
+          "put_oi_display"
+        ],
+        "title": "OiRowOut",
+        "description": "One strike's bars: a side with no usable OI is null with a dash, never 0; a real 0 is 0 / \"0\"."
+      },
+      "OpenInterestOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "expiry_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Note"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "read_at_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At Display"
+          },
+          "contracts": {
+            "type": "integer",
+            "title": "Contracts"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OiRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "unavailable_reason",
+          "expiry",
+          "expiry_note",
+          "read_at",
+          "read_at_display",
+          "contracts",
+          "rows"
+        ],
+        "title": "OpenInterestOut",
+        "description": "REQ-083 AC-5 / AC-6 (``open_interest``): the OI bars for ``expiry`` over the scenario range, or ONE reason."
       },
       "OutcomeRequest": {
         "properties": {
@@ -914,6 +1248,88 @@
               }
             ],
             "title": "Seq"
+          },
+          "both_views": {
+            "type": "boolean",
+            "title": "Both Views",
+            "description": "REQ-083 AC-1: true asks for both curves (At Expiry and Estimated Now) over the same levels in `curves`, and the other view's totals in `scenario.other`; false keeps today's reply exactly",
+            "default": false
+          },
+          "payoff_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff Step",
+            "description": "REQ-137 AC-1: the payoff table's interval in index points, one of 10, 25, 50, 100; the reply then carries `payoff_table` (also sent with both_views; absent: the strike step, NIFTY 50, SENSEX 100)",
+            "examples": [
+              50
+            ]
+          },
+          "sd_bands": {
+            "type": "boolean",
+            "title": "Sd Bands",
+            "description": "REQ-083 AC-4 / REQ-137 AC-3: true adds `standard_deviation` (1 SD and 2 SD on a fixed 7-day horizon, the days to expiry when fewer)",
+            "default": false
+          },
+          "open_interest": {
+            "type": "boolean",
+            "title": "Open Interest",
+            "description": "REQ-083 AC-5 / AC-6: true adds `open_interest`: each listed strike inside the reply's scenario range with its call and put OI for the strategy's expiry (a calendar: the nearest) and the time read, or the reason OI is not available; false keeps today's reply exactly. Today's OI change is not offered (D-B18, Later)",
+            "default": false
+          },
+          "target_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[1-9]\\d{0,5}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Level",
+            "description": "REQ-084 AC-1: the what-if index level in points; the server clamps it to `target.limits` (spot -10% .. +10%, snapped to the strike step). Analysis only: never saved, never feeds margin (AC-6)",
+            "examples": [
+              "23000"
+            ]
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At",
+            "description": "REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)"
+          },
+          "paper_strategy_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Strategy Id",
+            "description": "ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its booked P&L from the paper order book. Absent: a plan, nothing is added"
+          },
+          "include_booked": {
+            "type": "boolean",
+            "title": "Include Booked",
+            "description": "ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L to the target P&L, the badge and the target curve; false shows the open legs only",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -1110,6 +1526,56 @@
               }
             ]
           },
+          "curves": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurvesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payoff_table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffTableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "standard_deviation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StandardDeviationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_interest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenInterestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "seq": {
             "anyOf": [
               {
@@ -1145,6 +1611,70 @@
         ],
         "title": "OutcomeResponse"
       },
+      "PayoffCellOut": {
+        "properties": {
+          "pnl": {
+            "type": "string",
+            "title": "Pnl"
+          },
+          "display": {
+            "title": "Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pnl",
+          "display"
+        ],
+        "title": "PayoffCellOut"
+      },
+      "PayoffColumnOut": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason"
+        ],
+        "title": "PayoffColumnOut"
+      },
       "PayoffOut": {
         "properties": {
           "view": {
@@ -1171,6 +1701,118 @@
         ],
         "title": "PayoffOut"
       },
+      "PayoffRowOut": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "level_display": {
+            "title": "Level Display"
+          },
+          "nearest_spot": {
+            "type": "boolean",
+            "title": "Nearest Spot"
+          },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "estimated_now": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at_expiry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "level",
+          "level_display",
+          "nearest_spot",
+          "move_pct",
+          "move_pct_display",
+          "estimated_now",
+          "at_expiry"
+        ],
+        "title": "PayoffRowOut"
+      },
+      "PayoffTableOut": {
+        "properties": {
+          "step": {
+            "type": "string",
+            "title": "Step"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffColumnOut"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PayoffRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step",
+          "available",
+          "unavailable_reason",
+          "columns",
+          "rows"
+        ],
+        "title": "PayoffTableOut"
+      },
       "PointOut": {
         "properties": {
           "level": {
@@ -1180,13 +1822,17 @@
           "pnl": {
             "type": "string",
             "title": "Pnl"
+          },
+          "display": {
+            "title": "Display"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "level",
-          "pnl"
+          "pnl",
+          "display"
         ],
         "title": "PointOut"
       },
@@ -1214,6 +1860,78 @@
           "cells"
         ],
         "title": "RowOut"
+      },
+      "ScenarioOtherOut": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "totals"
+        ],
+        "title": "ScenarioOtherOut",
+        "description": "REQ-083 AC-1 (both views asked for): the other view's totals on the scenario table's own levels."
       },
       "ScenarioOut": {
         "properties": {
@@ -1294,6 +2012,16 @@
           "customised": {
             "type": "boolean",
             "title": "Customised"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioOtherOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1313,6 +2041,169 @@
           "customised"
         ],
         "title": "ScenarioOut"
+      },
+      "SdBandOut": {
+        "properties": {
+          "sd": {
+            "type": "integer",
+            "enum": [
+              -2,
+              -1,
+              1,
+              2
+            ],
+            "title": "Sd"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "display": {
+            "title": "Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sd",
+          "label",
+          "level",
+          "display"
+        ],
+        "title": "SdBandOut"
+      },
+      "SdRowOut": {
+        "properties": {
+          "sd": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Sd"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "move": {
+            "type": "string",
+            "title": "Move"
+          },
+          "percent": {
+            "type": "string",
+            "title": "Percent"
+          },
+          "lower": {
+            "type": "string",
+            "title": "Lower"
+          },
+          "upper": {
+            "type": "string",
+            "title": "Upper"
+          },
+          "move_display": {
+            "title": "Move Display"
+          },
+          "lower_display": {
+            "title": "Lower Display"
+          },
+          "upper_display": {
+            "title": "Upper Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sd",
+          "label",
+          "move",
+          "percent",
+          "lower",
+          "upper",
+          "move_display",
+          "lower_display",
+          "upper_display"
+        ],
+        "title": "SdRowOut"
+      },
+      "StandardDeviationOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "horizon_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Days"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SdRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "bands": {
+            "items": {
+              "$ref": "#/components/schemas/SdBandOut"
+            },
+            "type": "array",
+            "title": "Bands"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "reason",
+          "horizon_days",
+          "iv",
+          "spot",
+          "rows",
+          "bands"
+        ],
+        "title": "StandardDeviationOut"
       },
       "SummaryOut": {
         "properties": {
@@ -1346,6 +2237,30 @@
               }
             ],
             "title": "Max Loss"
+          },
+          "max_profit_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Display"
+          },
+          "max_loss_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Display"
+          },
+          "breakevens_display": {
+            "items": {},
+            "type": "array",
+            "title": "Breakevens Display",
+            "default": []
           },
           "max_profit_unlimited": {
             "type": "boolean",
@@ -1438,6 +2353,15 @@
             ],
             "title": "Time Value"
           },
+          "time_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Display"
+          },
           "intrinsic_value": {
             "anyOf": [
               {
@@ -1448,6 +2372,15 @@
               }
             ],
             "title": "Intrinsic Value"
+          },
+          "intrinsic_value_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intrinsic Value Display"
           },
           "risk_reward": {
             "anyOf": [
@@ -1590,6 +2523,518 @@
           "rows"
         ],
         "title": "TableOut"
+      },
+      "TargetBadgeOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "profit",
+              "loss",
+              "zero",
+              "unavailable"
+            ],
+            "title": "State"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "amount_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Display"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "percent_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Text"
+          },
+          "percent_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "label"
+        ],
+        "title": "TargetBadgeOut",
+        "description": "GC-TP R-19a (REQ-144 AC-1..AC-4): the Projected profit / loss badge. ``state`` profit (above 0), loss (below 0),\nzero (exactly 0) or unavailable (``reason`` says why). The amount is the absolute value in ``amount_display``; the\nsigned exact figure is ``amount``. The percent is of margin needed (REQ-081 AC-9); absent with ``percent_reason``."
+      },
+      "TargetGreeksOut": {
+        "properties": {
+          "legs": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GreeksOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Legs"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "no_time_left"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable"
+          },
+          "unavailable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "legs",
+          "total",
+          "unavailable",
+          "unavailable_text"
+        ],
+        "title": "TargetGreeksOut",
+        "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why)."
+      },
+      "TargetLimitsOut": {
+        "properties": {
+          "min": {
+            "type": "string",
+            "title": "Min"
+          },
+          "max": {
+            "type": "string",
+            "title": "Max"
+          },
+          "step": {
+            "type": "string",
+            "title": "Step"
+          },
+          "at_min": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Min"
+          },
+          "at_max": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "step",
+          "at_min",
+          "at_max"
+        ],
+        "title": "TargetLimitsOut"
+      },
+      "TargetOut": {
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/TargetLimitsOut"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "level_clamped": {
+            "type": "boolean",
+            "title": "Level Clamped",
+            "default": false
+          },
+          "level_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Clamp Text"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "at_clamped": {
+            "type": "boolean",
+            "title": "At Clamped",
+            "default": false
+          },
+          "clamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "before_now",
+                  "after_first_expiry"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clamp"
+          },
+          "at_clamp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Clamp Text"
+          },
+          "at_refused_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Refused Reason"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "estimate",
+                  "exact"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "model": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetPnlOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "breakevens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens"
+          },
+          "breakevens_display": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Display"
+          },
+          "breakevens_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Reason"
+          },
+          "stale_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Text"
+          },
+          "curve": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "greeks": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetGreeksOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "move_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct"
+          },
+          "move_pct_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Display"
+          },
+          "move_pct_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Pct Reason"
+          },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
+          "days_to_expiry_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry Display"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetBadgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_display": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Display"
+          },
+          "includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includes Booked Text"
+          },
+          "booked_unreadable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Unreadable Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "limits"
+        ],
+        "title": "TargetOut",
+        "description": "REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at\nthe target. ``kind`` \"estimate\" (the pricing model, ``model``) or \"exact\" (At Expiry only: no IV or no live data,\nthe time refused with ``at_refused_reason``). With no target asked the block is ``limits`` alone (and\n``at_refused_reason`` when the date range cannot be offered): every other key is absent, nothing is computed."
+      },
+      "TargetPnlOut": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "display": {
+            "title": "Display"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "display"
+        ],
+        "title": "TargetPnlOut"
       },
       "ValidationError": {
         "properties": {

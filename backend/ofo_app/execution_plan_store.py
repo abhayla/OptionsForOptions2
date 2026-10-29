@@ -169,6 +169,18 @@ _SYMBOLS = text(
     "SELECT b.broker_symbol, (NOT c.retired AND NOT c.delisted) AS live FROM public.catalogue_contracts AS c "
     "JOIN public.broker_instruments AS b ON b.contract_id = c.id "
     "WHERE c.exchange_segment = :seg AND c.exchange_token = :tok AND b.broker = :broker")
+_SYMBOLS_MANY = text(
+    "SELECT c.exchange_segment, c.exchange_token, b.broker_symbol, (NOT c.retired AND NOT c.delisted) AS live "
+    "FROM public.catalogue_contracts AS c JOIN public.broker_instruments AS b ON b.contract_id = c.id "
+    "WHERE c.exchange_token = ANY(:toks) AND b.broker = :broker")
+# GC-BP F-3: the plan reads for many strategies at once (one query each, never one per strategy).
+_OWNED_MANY = text("SELECT id FROM public.strategies WHERE id = ANY(:ids) AND user_ref = :u AND deleted_at IS NULL")
+_PLANS_MANY = text("SELECT strategy_id, plan_number, action, status, created_at, closed_at, close_reason, "
+                   "strategy_version FROM public.execution_plans WHERE strategy_id = ANY(:ids) "
+                   "ORDER BY strategy_id, plan_number")
+_ORDERS_MANY = text("SELECT strategy_id, plan_number, leg_index, tag, instrument_id, transaction_type, quantity, "
+                    "price, filled_quantity FROM public.execution_plan_orders WHERE strategy_id = ANY(:ids) "
+                    "ORDER BY strategy_id, plan_number, leg_index")
 _LOCK_PLAN = text("SELECT status FROM public.execution_plans WHERE strategy_id = :s AND plan_number = :p FOR UPDATE")
 _SET_FILLED = text("UPDATE public.execution_plan_orders SET filled_quantity = :f "
                    "WHERE strategy_id = :s AND plan_number = :p AND tag = :tag")
@@ -180,19 +192,48 @@ _STORED_TRADES = text("SELECT broker_order_id, trade_id FROM public.execution_pl
                       "WHERE broker_order_id = ANY(:oids)")
 
 
-async def zerodha_symbol(conn: Any, instrument_id: str) -> str:
-    """The catalogue's ZERODHA trading symbol for ``instrument_id`` ("<segment>:<exchange token>"); no row, or two
-    different symbols with none of them live, is ``bad_plan`` (no symbol guessing, ADR-050 item 2)."""
+def _instrument_key(instrument_id: str) -> tuple[str, int]:
+    """(segment, exchange token) of an instrument_id "<segment>:<exchange token>"; anything else is ``bad_plan``."""
     segment, _, token = instrument_id.rpartition(":")
     if not segment or not token.isascii() or not token.isdigit() or int(token) > 2**63 - 1:
         raise PlanStoreError(BAD_PLAN, f"instrument_id {instrument_id!r} is not <segment>:<exchange token>")
-    rows = (await conn.execute(_SYMBOLS, {"seg": segment, "tok": int(token), "broker": ZERODHA})).all()
+    return segment, int(token)
+
+
+def _pick_symbol(instrument_id: str, rows: Sequence[Any]) -> str:
+    """The one ZERODHA symbol among the catalogue rows of ``instrument_id`` (live rows first); none, or two different
+    symbols with none of them live, is ``bad_plan`` (no symbol guessing, ADR-050 item 2)."""
     live = {r.broker_symbol for r in rows if r.live}
     found = live or {r.broker_symbol for r in rows}
     if len(found) != 1:
         raise PlanStoreError(BAD_PLAN, f"instrument {instrument_id!r} has {len(found)} {ZERODHA} symbols in the "
                                        f"catalogue; a plan needs exactly one")
     return next(iter(found))
+
+
+async def zerodha_symbol(conn: Any, instrument_id: str) -> str:
+    """The catalogue's ZERODHA trading symbol for ``instrument_id`` ("<segment>:<exchange token>"); no row, or two
+    different symbols with none of them live, is ``bad_plan`` (no symbol guessing, ADR-050 item 2)."""
+    segment, token = _instrument_key(instrument_id)
+    rows = (await conn.execute(_SYMBOLS, {"seg": segment, "tok": token, "broker": ZERODHA})).all()
+    return _pick_symbol(instrument_id, rows)
+
+
+async def _symbols_of(conn: Any, instrument_ids: Sequence[str]) -> dict[str, str]:
+    """``zerodha_symbol`` of every id in ONE query (GC-BP F-3). Ids are judged in the given order, so the first id that
+    fails raises exactly what a ``zerodha_symbol`` loop over the same order raises first."""
+    wanted = list(dict.fromkeys(instrument_ids))
+    tokens: set[int] = set()
+    for iid in wanted:
+        try:
+            tokens.add(_instrument_key(iid)[1])
+        except PlanStoreError:
+            continue  # raised below, in its turn
+    rows: dict[tuple[str, int], list[Any]] = {}
+    if tokens:
+        for r in (await conn.execute(_SYMBOLS_MANY, {"toks": sorted(tokens), "broker": ZERODHA})).all():
+            rows.setdefault((r.exchange_segment, int(r.exchange_token)), []).append(r)
+    return {iid: _pick_symbol(iid, rows.get(_instrument_key(iid), ())) for iid in wanted}
 
 
 async def _check_symbols(conn: Any, orders: tuple[PlanOrder, ...]) -> None:
@@ -321,12 +362,11 @@ def _one(found: tuple[StoredPlan, ...], number: int) -> StoredPlan:
     raise PlanStoreError(NOT_FOUND, f"plan {number}")
 
 
-async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
+def _plans_of(strategy_id: int, plan_rows: Sequence[Any], order_rows: Sequence[Any],
+              symbols: Mapping[str, str]) -> tuple[StoredPlan, ...]:
+    """One strategy's plans (ascending by plan number) from its plan rows and its order rows (plan, leg order)."""
     by_plan: dict[int, list[PlanOrder]] = {}
-    symbols: dict[str, str] = {}
-    for r in (await conn.execute(_ORDERS, {"s": strategy_id})).all():
-        if r.instrument_id not in symbols:
-            symbols[r.instrument_id] = await zerodha_symbol(conn, r.instrument_id)
+    for r in order_rows:
         by_plan.setdefault(int(r.plan_number), []).append(PlanOrder(
             leg_index=int(r.leg_index), tag=r.tag, instrument_id=r.instrument_id,
             tradingsymbol=symbols[r.instrument_id],
@@ -337,12 +377,49 @@ async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
                    orders=tuple(by_plan.get(int(r.plan_number), ())), created_at=r.created_at, closed_at=r.closed_at,
                    close_reason=r.close_reason,
                    strategy_version=None if r.strategy_version is None else int(r.strategy_version))
-        for r in (await conn.execute(_PLANS, {"s": strategy_id})).all())
+        for r in plan_rows)
+
+
+async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
+    orders = (await conn.execute(_ORDERS, {"s": strategy_id})).all()
+    symbols = await _symbols_of(conn, [r.instrument_id for r in orders])
+    return _plans_of(strategy_id, (await conn.execute(_PLANS, {"s": strategy_id})).all(), orders, symbols)
 
 
 async def plans_for(conn: Any, user_ref: str, strategy_id: int) -> tuple[StoredPlan, ...]:
     """Every plan of the strategy, ascending by plan number."""
     return await _read(conn, await owned_strategy(conn, user_ref, strategy_id))
+
+
+async def plans_for_strategies(conn: Any, user_ref: str,
+                               strategy_ids: Sequence[int]) -> dict[int, tuple[StoredPlan, ...]]:
+    """``plans_for`` of every strategy in ``strategy_ids`` in a FIXED number of queries whatever the count (GC-BP F-3:
+    owned, orders, symbols, plans = 4; none for no ids): strategy id -> its plans, keys in the given order, every id a
+    key (a strategy with no plan maps to ``()``). The answers equal ``plans_for`` called per id, and so do the refusals
+    (``PlanStoreError`` with the same code): a bad id, another user's or a missing strategy is ``not_found``
+    (REQ-125), an order whose instrument has no single Zerodha symbol is ``bad_plan``. Every id is checked before any
+    plan is read, so when two strategies fail in different ways the one reported may differ from a per-id loop."""
+    checked: list[int] = []
+    for strategy_id in strategy_ids:
+        try:
+            checked.append(strategy_store.check_strategy_id(strategy_id))
+        except strategy_store.StrategyStoreError as exc:
+            raise PlanStoreError(NOT_FOUND, f"strategy {strategy_id!r}") from exc
+    if not checked:
+        return {}
+    ids = list(dict.fromkeys(checked))
+    owned = {int(r.id) for r in (await conn.execute(_OWNED_MANY, {"ids": ids, "u": user_ref})).all()}
+    for strategy_id in ids:
+        if strategy_id not in owned:
+            raise PlanStoreError(NOT_FOUND, f"strategy {strategy_id}")
+    orders: dict[int, list[Any]] = {}
+    for r in (await conn.execute(_ORDERS_MANY, {"ids": ids})).all():
+        orders.setdefault(int(r.strategy_id), []).append(r)
+    symbols = await _symbols_of(conn, [r.instrument_id for sid in ids for r in orders.get(sid, ())])
+    rows: dict[int, list[Any]] = {}
+    for r in (await conn.execute(_PLANS_MANY, {"ids": ids})).all():
+        rows.setdefault(int(r.strategy_id), []).append(r)
+    return {sid: _plans_of(sid, rows.get(sid, ()), orders.get(sid, ()), symbols) for sid in ids}
 
 
 async def open_plan(conn: Any, user_ref: str, strategy_id: int) -> Optional[StoredPlan]:
@@ -470,4 +547,5 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
 
 __all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "UNRESOLVED", "PlanFill", "PlanOrder", "PlanStoreError",
            "StoredPlan", "close_plan", "lock_strategy", "next_plan_number", "open_plan", "owned_strategy", "plans_for",
+           "plans_for_strategies",
            "record_plan", "zerodha_symbol"]

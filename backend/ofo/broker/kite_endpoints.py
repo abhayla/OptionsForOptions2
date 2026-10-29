@@ -22,7 +22,8 @@ KITE_WS_HOST: Final = "ws.kite.trade"
 #: module path (relative to ``backend/``) -> the (METHOD, path template) pairs that module may call.
 ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
     "ofo_app/kite_client.py": frozenset({("POST", "/session/token")}),
-    "ofo_app/kite_history.py": frozenset({("GET", "/instruments/historical/{token}/minute")}),
+    "ofo_app/kite_history.py": frozenset({("GET", "/instruments/historical/{token}/minute"),
+                                         ("GET", "/instruments/historical/{token}/day")}),
     "ofo/instruments/downloader.py": frozenset({("GET", "/instruments")}),
     "ofo_app/kite_margin.py": frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
     "ofo_app/kite_reads.py": frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"),
@@ -37,6 +38,7 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
 ENDPOINT_GROUPS: Final[dict[tuple[str, str], tuple[str, bool]]] = {
     ("POST", "/session/token"): ("other", False),
     ("GET", "/instruments/historical/{token}/minute"): ("historical", True),
+    ("GET", "/instruments/historical/{token}/day"): ("historical", True),
     ("GET", "/instruments"): ("other", True),
     ("GET", "/user/margins"): ("other", True),
     ("POST", "/margins/basket"): ("other", True),
