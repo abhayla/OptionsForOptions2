@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import gzip
+import inspect
 import os
 import pathlib
 import time
@@ -126,18 +127,26 @@ class _ReplayFanOut(FanOut):
         self._monotonic = monotonic
         self._start: Optional[float] = None
         self._fed = 0  # frames fed so far (over every loop)
+        self._inputs: set[int] = set()  # handles that hold a strategy's inputs (see subscribe)
         first, last = frames[0][0], frames[-1][0]
         self._loop = (last - first) + LOOP_GAP
 
     def subscribe(self, listener, instrument_ids, **kw) -> int:
         handle = super().subscribe(listener, instrument_ids, **kw)
-        self._streaming.hold(self._subs[handle].ids)
+        # Only a hold that RECEIVES quotes (the strategy socket's legs + index, a bound ``_on_quote``) is a strategy's
+        # input for the not-live stand-in. The no-listener holds (D-C33 forward strikes, REQ-083 AC-5 OI-bar contracts,
+        # the chain / index / picker leases: module-level no-op functions) are not legs: releasing them must never make
+        # another strategy's REST answer not live (GC-UI land fix, CI run 40806301948: 83 OI contracts released).
+        if inspect.ismethod(listener):
+            self._inputs.add(handle)
+            self._streaming.hold(self._subs[handle].ids)
         return handle
 
     def unsubscribe(self, handle: int) -> None:
         sub = self._subs.get(handle)
         super().unsubscribe(handle)
-        if sub is not None:
+        if sub is not None and handle in self._inputs:
+            self._inputs.discard(handle)
             self._streaming.release(sub.ids)
 
     def _advance(self) -> None:
