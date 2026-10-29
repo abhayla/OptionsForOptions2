@@ -8,6 +8,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { useQuietLiveSocket } from './support/quiet-live'
 import { openFullTable } from './pages/builder.page'
 import { healthSentence } from '../src/lib/dataHealthText.js'
+import { expiryText, strikeLabel } from '../src/lib/displayFormat.js'
 
 useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
@@ -61,7 +62,11 @@ test('every number on the screen equals the API response text for the condor', a
   expect(visible.length).toBeGreaterThan(10)
   for (const row of api.table.rows) {
     for (const col of visible) {
-      const want = (row.cells[col.id] as Cell | undefined)?.display ?? ''
+      const sent = (row.cells[col.id] as Cell | undefined)?.display ?? ''
+      // GC-UI b2 (REQ-146 AC-5, REQ-151 AC-1/AC-2): the two text-only re-spellings of src/lib/strategyTable.js cellText,
+      // through the same displayFormat functions; every other cell must equal the API's display text exactly
+      const want = col.id === 'expiry' ? (expiryText(sent) ?? sent)
+        : col.id === 'strike' ? strikeLabel(String(sent).replace(/,/g, '')) : sent
       const cell = page.locator(`[data-testid="cell"][data-row="${row.row_id}"][data-col="${col.id}"]`)
       await expect(cell, `row ${row.row_id} column ${col.id}`).toHaveText(want)
     }
@@ -167,8 +172,8 @@ test('AC-5: Bid and Ask are in the Details block for everyone, with the API valu
   await expect(details).toHaveAttribute('open', '')
   for (const r of api.leg_quotes) {
     const row = page.locator(`[data-testid="advanced-details"] tr[data-leg="${r.instrument_id}"]`)
-    await expect(row.getByTestId('adv-bid')).toHaveText(r.bid)
-    await expect(row.getByTestId('adv-ask')).toHaveText(r.ask)
+    await expect(row.getByTestId('adv-bid')).toHaveText(r.bid_display) // GC-UI D-PX (REQ-152 AC-2): server text, paise kept
+    await expect(row.getByTestId('adv-ask')).toHaveText(r.ask_display) // GC-UI D-PX (REQ-152 AC-2): server text, paise kept
     // RD-045: the cell shows the one-sentence reading of the API's health word, never the bare word
     await expect(row.getByTestId('adv-health')).toHaveText(healthSentence(r.health) ?? 'Available')
   }

@@ -64,5 +64,8 @@ test('AC-6: At Expiry is the default; Estimated Now is labelled and keeps the ra
   await page.getByTestId('view-at_expiry').click()
   const again: Outcome = await (await back).json()
   expect(again.scenario.kind).toBe('exact')
-  expect([again.scenario.step, again.scenario.start, again.scenario.end]).toEqual(['100', '22800', '23600'])
+  // GC-UI b1 D-B10: the range is the one the Zoom picked (the typed 22800-23600 range went with the From / To inputs);
+  // switching back keeps exactly that range
+  expect([again.scenario.step, again.scenario.start, again.scenario.end]).toEqual([atExpiry.scenario.step, atExpiry.scenario.start, atExpiry.scenario.end])
+  expect(again.scenario.customised).toBe(true)
 })
