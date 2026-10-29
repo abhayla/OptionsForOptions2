@@ -499,6 +499,9 @@ issues:
   "#601": S6.4  # After hours the strike drawer's first open fills prices about 4 s late
   "#602": S6.4  # Broker status text 'Prices are from 03:30:00 PM' carries no date
   "#603": S6.4  # GC-UI deferred items: execute.py DB connection across Kite reads, history-guard reuse gap, raw prices on 2 cards, a11y, flake, parked look rows
+  "#605": S6.4  # Parked 2026-10-29: 14 held PRs (live Kite gate), branches kept, rebuild order
+  "#606": S6.4  # GC-TPL live run (expert-trader paper, market hours) not run at the 2026-10-29 land
+  "#607": S6.4  # GC-TPD Part 2: R-25 R-23 R-27 R-13 R-35 + wording question (after GC-TPL)
 
 # Work items whose status is not done.
 work_items:
