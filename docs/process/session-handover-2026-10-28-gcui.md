@@ -9,6 +9,19 @@ Worktrees: 52 are inside PR #604 and are removed with wt-rm after the merge; `Op
 dev servers run from it; `OptionsForOptions2-row34` (superseded by PR #590, wt-rm refuses a non-identical tree) is the
 owner's call. NOT RUN: 1366 px check.
 
+PAUSED by the owner at ~09:50 (market open; PR / CI after 15:30). STATE AT STOP (~10:30 IST):
+- Integration head 7641da53 + this commit on build/gcbm-must-have (LOCAL; origin still has d37955a3, PR #604 OPEN,
+  CI round 1 red). Every CI-1 red is fixed locally; the last prepush on 8f13d870 was STOPPED by the pause (not failed).
+- Live #603 item 11 fixes merged (7641da53, owner pick 09:50): (1) builder tracking total / booked / unbooked from the
+  server's signed text (paper_pnl_text etc.; live: total "−536.25" U+2212 like the legs); (2) index level in the
+  builder header two-decimal server text (live: 10 samples, e.g. "22761.50", "22763.10"); (3) market-closed sentence with
+  no usable time reads "Market closed." (first sentence of the ADR-177 wording; unit tests only, needs the owner's OK and
+  a pre-open check). The builder took no red-first runs.
+NEXT (fresh session, after 15:30): 1. `python scripts/orchestrator/prepush.py --full` on the head (clean tree);
+2. push once to build/gcbm-must-have; 3. `merge.py 604 --reviewed-sha <head>` (waits for CI); 4. after the merge,
+wt-rm each of the 52 trees (all inside the PR), keep -gcbm until the servers stop, row34 = owner;
+5. step 10 final handover. Servers: API on 7641da53 (8765), Vite (5174), both from -gcbm.
+
 ## UPDATE session 2 (2026-10-28 21:30 -> 2026-10-29 ~04:50 IST, head 05615606 + this commit) - READ THIS FIRST
 
 Every step's code is merged on `build/gcbm-must-have` (LOCAL ONLY, nothing pushed). Each row with its proof is in the
