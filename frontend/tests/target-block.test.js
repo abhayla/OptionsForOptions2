@@ -18,7 +18,10 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import plain from './fixtures/outcome-condor.json'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { healthSentence } from '@/lib/dataHealthText'
+import plain from './fixtures/outcome-target-plain.json'
 import mid from './fixtures/outcome-target.json'
 import atExpiry from './fixtures/outcome-target-expiry.json'
 import clamped from './fixtures/outcome-target-clamped.json'
@@ -46,13 +49,14 @@ async function openPage() {
   await flushPromises()
   return w
 }
-async function startTarget(w) {
-  await t(w, 'target-start').trigger('click')
-  await vi.advanceTimersByTimeAsync(DEBOUNCE)
-  await flushPromises()
-}
 async function dragLevel(w, value) {
   await t(w, 'target-level-slider').setValue(value)
+}
+// the sliders are there from the first reply (Sensibull 020); a figure appears once one is moved
+async function startTarget(w) {
+  await dragLevel(w, '22300')
+  await vi.advanceTimersByTimeAsync(DEBOUNCE)
+  await flushPromises()
 }
 async function settle() {
   await vi.advanceTimersByTimeAsync(DEBOUNCE)
@@ -60,13 +64,38 @@ async function settle() {
 }
 
 describe('CORE: a slider sends only target_level / target_at; every shown figure is the reply text', () => {
-  it('a plain page sends no target field and shows the start control, nothing computed', async () => {
+  it('a plain page sends no target field and shows both sliders at once from the reply limits, nothing computed', async () => {
+    expect(Object.keys(plain.target)).toEqual(['limits']) // the fixture is the route test's plain reply: limits alone
     const w = await openPage()
     expect(outcomeCalls()).toHaveLength(1)
     expect(withTarget(outcomeCalls()[0])).toBe(false)
     expect(t(w, 'target-block').exists()).toBe(true)
-    expect(t(w, 'target-start').exists()).toBe(true)
+    const lim = plain.target.limits
+    const level = t(w, 'target-level-slider').element
+    expect([level.min, level.max, level.step]).toEqual([lim.min, lim.max, lim.step])
+    expect(level.disabled).toBe(false)
+    const date = t(w, 'target-date-slider')
+    expect(date.exists()).toBe(true)
+    expect(date.attributes('disabled')).toBeUndefined()
+    expect(t(w, 'target-start').exists()).toBe(false)
     expect(t(w, 'target-pnl').exists()).toBe(false)
+    expect(t(w, 'target-figures').exists()).toBe(false)
+    expect(w.text()).not.toContain('Set a target')
+  })
+
+  it('no unapproved text: "Set a target" and the old stale sentence exist nowhere in frontend/src', () => {
+    const files = []
+    const walk = (dir) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name)
+        if (statSync(full).isDirectory()) walk(full)
+        else files.push(full)
+      }
+    }
+    walk(join(process.cwd(), 'src'))
+    expect(files.length).toBeGreaterThan(50)
+    const hits = files.filter((f) => /Set a target|from the last answer; the newest request/.test(readFileSync(f, 'utf8')))
+    expect(hits).toEqual([])
   })
 
   it('CORE: dragging the level slider sends exactly one request after 250 ms, with target_level and nothing else new', async () => {
@@ -131,7 +160,6 @@ describe('CORE: a slider sends only target_level / target_at; every shown figure
 describe('the date slider and the answer states', () => {
   it('moving the date slider sends target_at (an ISO time with +05:30) and not target_level', async () => {
     const w = await openPage()
-    await startTarget(w)
     const before = outcomeCalls().length
     const slider = t(w, 'target-date-slider')
     expect(slider.element.min).toBe('0')
@@ -145,7 +173,6 @@ describe('the date slider and the answer states', () => {
 
   it('the stepper buttons move the date by one stop, and Reset returns the date and level to now / spot (no target sent)', async () => {
     const w = await openPage()
-    await startTarget(w)
     let before = outcomeCalls().length
     await t(w, 'target-date-forward').trigger('click')
     await settle()
@@ -164,7 +191,9 @@ describe('the date slider and the answer states', () => {
     await settle()
     const last = outcomeCalls().at(-1)
     expect(withTarget(last)).toBe(false) // both back at spot / now: the target is gone from the request
-    expect(t(w, 'target-start').exists()).toBe(true)
+    expect(t(w, 'target-start').exists()).toBe(false) // Reset sends no target; the sliders stay
+    expect(t(w, 'target-level-slider').exists()).toBe(true)
+    expect(t(w, 'target-pnl').exists()).toBe(false)
   })
 
   it('at the expiry close the Greeks are the reply sentence, not numbers', async () => {
@@ -213,7 +242,7 @@ describe('the date slider and the answer states', () => {
     await settle()
     expect(t(w, 'target-pnl').text()).toBe(mid.target.pnl.display)
     expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
-    expect(t(w, 'target-stale').exists()).toBe(true)
+    expect(t(w, 'target-stale').text()).toBe(healthSentence('stale')) // the app's existing stale sentence, no new text
   })
 
   it('AC-6: the sliders send no save, margin, execute or leg-edit request, only outcome reads', async () => {

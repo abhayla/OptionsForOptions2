@@ -42,14 +42,12 @@ export function dateStops(valuation, expiry) {
   return stops
 }
 
-/** The request fields for a pick { active, level, dateIndex }: only what the user moved. A started target with neither
- *  moved asks for the target at now (the reply then carries the limits). Nothing started: no target field at all. */
+/** The request fields for a pick { level, dateIndex }: only what the user moved. Nothing moved (or Reset on both): no
+ *  target field at all; the plain reply still carries the slider limits. */
 export function targetFields(pick, stops) {
-  if (!pick?.active) return {}
   const out = {}
-  if (pick.level) out.target_level = String(pick.level)
-  if (pick.dateIndex > 0 && stops[pick.dateIndex]) out.target_at = stops[pick.dateIndex]
-  if (!out.target_level && !out.target_at && stops[0]) out.target_at = stops[0]
+  if (pick?.level) out.target_level = String(pick.level)
+  if (pick?.dateIndex > 0 && stops[pick.dateIndex]) out.target_at = stops[pick.dateIndex]
   return out
 }
 

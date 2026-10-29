@@ -26,11 +26,12 @@ describe('date stops', () => {
 })
 
 describe('request fields', () => {
-  it('nothing started sends nothing; a started target with nothing moved asks at now; only moved fields go out', () => {
-    expect(targetFields({ active: false, level: '22300', dateIndex: 2 }, stops)).toEqual({})
-    expect(targetFields({ active: true, level: '', dateIndex: 0 }, stops)).toEqual({ target_at: mid.valuation })
-    expect(targetFields({ active: true, level: '22300', dateIndex: 0 }, stops)).toEqual({ target_level: '22300' })
-    expect(targetFields({ active: true, level: '', dateIndex: 2 }, stops)).toEqual({ target_at: stops[2] })
+  it('nothing moved sends nothing; only the moved fields go out', () => {
+    expect(targetFields({ level: '', dateIndex: 0 }, stops)).toEqual({})
+    expect(targetFields(undefined, stops)).toEqual({})
+    expect(targetFields({ level: '22300', dateIndex: 0 }, stops)).toEqual({ target_level: '22300' })
+    expect(targetFields({ level: '', dateIndex: 2 }, stops)).toEqual({ target_at: stops[2] })
+    expect(targetFields({ level: '22300', dateIndex: 2 }, stops)).toEqual({ target_level: '22300', target_at: stops[2] })
   })
 })
 
