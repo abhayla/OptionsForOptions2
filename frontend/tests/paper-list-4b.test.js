@@ -323,4 +323,12 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
     expect(t(w, 'alert-strategy').text()).toBe('Iron Fly')
   })
+  it('GC-TPD R-8: an alert with no strategy name (absent, null or empty) falls back to "Strategy N", never a blank cell', async () => {
+    const row = { id: 1, strategy_id: 64, trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }
+    for (const gone of [{}, { strategy_name: null }, { strategy_name: '' }]) {
+      answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ ...row, ...gone }] })
+      const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
+      expect(t(w, 'alert-strategy').text()).toBe('Strategy 64')
+    }
+  })
 })
