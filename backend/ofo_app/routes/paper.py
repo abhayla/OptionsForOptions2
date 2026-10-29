@@ -29,7 +29,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.engine.legs import Instrument
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
@@ -41,7 +41,7 @@ from ofo.tracking import paper
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_store, tracked_contracts
+from ofo_app import paper_monitor, paper_store, paper_trigger_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
@@ -164,6 +164,8 @@ def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
 
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
     """The contracts with a non-zero net quantity (the quantity does not depend on any live price)."""
+    if not orders:
+        return []  # net_positions refuses an empty book
     return [int(p.instrument_id) for p in net_positions(_paper(orders), {}).positions if p.net_quantity != 0]
 
 
@@ -354,3 +356,164 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await db.rollback()
         raise
     return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at)
+
+
+# --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
+TriggerKind = Literal["conditional_exit", "leg_stop"]
+Direction = Literal["above", "below"]
+TriggerState = Literal["armed", "fired", "cancelled"]
+
+
+class TriggerIn(BaseModel):
+    """conditional_exit: ``above`` and / or ``below`` (an index level each, one trigger per direction); leg_stop:
+    ``contract_id`` with ONE ``direction`` and ``level``."""
+    model_config = ConfigDict(extra="forbid")
+    kind: TriggerKind
+    above: Decimal | None = Field(default=None, allow_inf_nan=False)
+    below: Decimal | None = Field(default=None, allow_inf_nan=False)
+    contract_id: int | None = Field(default=None, gt=0, le=INTEGER_MAX)
+    direction: Direction | None = None
+    level: Decimal | None = Field(default=None, allow_inf_nan=False)
+
+
+class TriggerOut(ApiModel):
+    id: int
+    strategy_id: int
+    kind: TriggerKind
+    direction: Direction
+    level: Money
+    level_text: CatalogueText
+    contract_id: int | None
+    contract_text: CatalogueText | None
+    underlying: Underlying | None
+    state: TriggerState
+    created_at: datetime.datetime
+    fired_at: datetime.datetime | None
+    cancelled_at: datetime.datetime | None
+
+
+class TriggersOut(ApiModel):
+    triggers: list[TriggerOut]  # newest first
+
+
+class AlertOut(ApiModel):
+    id: int
+    strategy_id: int
+    trigger_id: int
+    created_at: datetime.datetime
+    title: CatalogueText
+    body: CatalogueText
+    read: bool
+
+
+class AlertsOut(ApiModel):
+    alerts: list[AlertOut]  # newest first
+    unread: int
+
+
+def _state(row: paper_trigger_store.TriggerRow) -> TriggerState:
+    if row.fired_at is not None:
+        return "fired"
+    return "armed" if row.cancelled_at is None else "cancelled"
+
+
+async def _triggers_out(db: Any, strategy_id: int) -> TriggersOut:
+    rows = list(reversed(await paper_trigger_store.list_for(db, strategy_id)))
+    ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
+    return TriggersOut.model_validate({"triggers": [{
+        "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
+        "direction": r.trigger.direction, "level": r.trigger.level,
+        "level_text": render_explanation("paper_trigger_level", level=r.trigger.level),
+        "contract_id": r.trigger.contract_id,
+        "contract_text": None if r.trigger.contract_id is None else describe_contract(
+            _identity(found[r.trigger.contract_id])),
+        "underlying": r.trigger.underlying, "state": _state(r), "created_at": r.created_at,
+        "fired_at": r.fired_at, "cancelled_at": r.cancelled_at} for r in rows]})
+
+
+@router.get("/paper/strategies/{strategy_id}/triggers", response_model=TriggersOut)
+async def list_paper_triggers(strategy_id: int, db: Annotated[Any, Depends(get_db)],
+                              user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+    await _load_strategy(db, user_ref, strategy_id)
+    return await _triggers_out(db, strategy_id)
+
+
+def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> list[paper_trigger_store.NewTrigger]:
+    new: list[paper_trigger_store.NewTrigger] = []
+    if body.kind == "conditional_exit":
+        if body.contract_id is not None or body.direction is not None or body.level is not None:
+            raise StrategyRefused("user_input_request_invalid")
+        new = [paper_trigger_store.NewTrigger("conditional_exit", d, lvl, underlying=underlying)
+               for d, lvl in (("above", body.above), ("below", body.below)) if lvl is not None]
+    elif (body.above is None and body.below is None and body.contract_id is not None and body.direction
+          and body.level is not None):
+        new = [paper_trigger_store.NewTrigger("leg_stop", body.direction, body.level, contract_id=body.contract_id)]
+    if not new:
+        raise StrategyRefused("user_input_request_invalid")
+    for n in new:
+        if not is_typed_price(n.level):
+            raise StrategyRefused("paper_trigger_level_invalid")
+        if n.contract_id is not None and n.contract_id not in open_ids:
+            raise StrategyRefused("paper_trigger_leg_not_open")
+    return new
+
+
+@router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut)
+async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
+                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    open_ids = _open_ids(await paper_store.load(db, strategy_id))
+    if not open_ids:
+        raise StrategyRefused("paper_trigger_nothing_open")
+    new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
+    try:
+        for n in new:
+            await paper_trigger_store.add(db, strategy_id, n)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    paper_monitor.notify()
+    return await _triggers_out(db, strategy_id)
+
+
+@router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut)
+async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
+                               user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+    await _load_strategy(db, user_ref, strategy_id)
+    rows = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}
+    if trigger_id not in rows:
+        raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    if rows[trigger_id].fired_at is not None:
+        raise StrategyRefused("paper_trigger_already_fired", Failure.CONFLICT)
+    try:
+        await paper_trigger_store.cancel(db, strategy_id, trigger_id)  # already cancelled: nothing to change
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    paper_monitor.notify()
+    return await _triggers_out(db, strategy_id)
+
+
+async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
+    rows, unread = await paper_trigger_store.alerts(db, user_ref)
+    return AlertsOut.model_validate({"unread": unread, "alerts": [{
+        "id": a.id, "strategy_id": a.strategy_id, "trigger_id": a.trigger_id, "created_at": a.created_at,
+        "title": restore_explanation("paper_alert_title", a.title),
+        "body": restore_explanation("paper_alert_body", a.body), "read": a.read_at is not None} for a in rows]})
+
+
+@router.get("/paper/alerts", response_model=AlertsOut)
+async def list_paper_alerts(db: Annotated[Any, Depends(get_db)],
+                            user_ref: Annotated[str, Depends(current_user_ref)]) -> AlertsOut:
+    return await _alerts_out(db, user_ref)
+
+
+@router.post("/paper/alerts/read", response_model=AlertsOut)
+async def read_paper_alerts(db: Annotated[Any, Depends(get_db)],
+                            user_ref: Annotated[str, Depends(current_user_ref)]) -> AlertsOut:
+    await paper_trigger_store.mark_all_read(db, user_ref)
+    await db.commit()
+    return await _alerts_out(db, user_ref)

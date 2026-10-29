@@ -1822,5 +1822,49 @@
   "paper_contract_not_tradable": {
     "sha256": "ac0864a1f7e5b02f71bd04887f451c301a025c5d025ae495bd527f3a0a17b06e",
     "reviewed": "pending owner read"
+  },
+  "paper_trigger_level_invalid": {
+    "sha256": "70d659d3bb7cc64629eb6a29787a54ae9b6c91a6d72288d24247ea4183026709",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_leg_not_open": {
+    "sha256": "7ccfa4bb2552a88d29d4ecca08042066322d98c33e3de8bd9b425c6125045127",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_nothing_open": {
+    "sha256": "d89856264363ad3f34347c29a9aae1b0f2f9e483048a38396b16f388ed2e73d5",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_already_fired": {
+    "sha256": "4c55c37703f504064765823212ac1ce03dbee40e06508a277c3368e79d3927e9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_stop_reason_index": {
+    "sha256": "2211dd5d07b81f493422c716359cfc72854e2961340b7cc8ef5515b86c33a5c3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_stop_reason_leg": {
+    "sha256": "6adc19a2b79c5602576bb734408d339b3490a288be502db6896afbd98f0c67b2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_trigger_level": {
+    "sha256": "d6245c829440679ffc002796b40435dbe6f507d7fc78d057791a111d14d52d49",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_title": {
+    "sha256": "8113712107a5c5c05768fa68b3067d3027e4b1e5bdc4645707c151dbb76dcb6d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_leg": {
+    "sha256": "4be9e22d4d2fe322112495ec759e42e16467a8a5ebb0e5800beeac881938b5d6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_legs": {
+    "sha256": "ecafe1de3f80f008d5192659b47bd62773308eb897cc29a2e831a46d9145d9da",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_body": {
+    "sha256": "5dfffc8a655a90644d6b4b5493c6c60891d20d596c1848458999049bdc3f6fa0",
+    "reviewed": "pending owner read"
   }
 }

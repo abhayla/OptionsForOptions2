@@ -8,6 +8,7 @@ from ofo.engine.display import (
     estimate_line,
     format_approx_percent,
     format_approx_rupees,
+    format_index_level,
     format_points,
     format_rupees,
     format_signed_paisa,
@@ -40,6 +41,12 @@ def test_estimates_have_no_false_precision():
     assert format_approx_rupees(D("1234.49")) == "~₹1,234"
     assert format_points(D("23047.35")) == "23,047.35"
     assert format_points(D("22909")) == "22,909"
+
+
+@pytest.mark.parametrize("level, text", [(D("22850"), "22,850.00"), (D("22976.8"), "22,976.80"),
+                                         (D("22976.85"), "22,976.85"), (D("100"), "100.00")])
+def test_an_index_level_is_grouped_and_always_has_two_decimals(level, text):
+    assert format_index_level(level) == text
 
 
 def test_estimate_line_is_labelled_with_assumptions():

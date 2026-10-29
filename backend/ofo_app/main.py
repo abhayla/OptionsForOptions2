@@ -24,6 +24,7 @@ from ofo_app import (
     feed_mode,
     held_switches,
     live_market,
+    paper_monitor,
     pinned_clock,
     replay_mode,
 )
@@ -77,7 +78,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
     refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
+    monitor = paper_monitor.start() if market is not None else None  # GC-TP 7a: paper stops, live only
     yield
+    await paper_monitor.stop(monitor)  # a fire in flight is cancelled and rolls back
     await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
     if market is not None:
         live_market.set_current(None)  # a login arriving now finds no market (#296)

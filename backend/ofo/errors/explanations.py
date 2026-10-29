@@ -483,6 +483,19 @@ class Points(SlotType):
         return format_points(value)
 
 
+class IndexLevel(SlotType):
+    """An index or trigger level, a finite `Decimal`, Indian grouping, always two decimals, no currency sign."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        Rupees.validate(value)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_index_level  # late: display imports this module
+        return format_index_level(value)
+
+
 #: The wording parts of a `LevelRegions` / `ExceptLevels` slot (ADR-072; issue #172), pinned as `labels:level_region`
 #: so a changed word needs a new pin ("pending owner read").
 LEVEL_REGION_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1190,6 +1203,21 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_whole_rupees", "values_seen", "{amount}", {"amount": WholeRupees}),
     ExplanationTemplate("summary_whole_rupees_signed", "values_seen", "{amount}", {"amount": SignedWholeRupees}),
     ExplanationTemplate("summary_paisa_signed", "values_seen", "{amount}", {"amount": SignedPaisa}),
+    # GC-TP step 7a (ADR-207 (5), REQ-109 AC-8): the paper stop-loss texts - the stop order's reason and the alert
+    ExplanationTemplate("paper_stop_reason_index", "what_triggered",
+                        "Conditional exit: {underlying} crossed {direction} {level}",
+                        {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
+    ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
+                        {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
+    ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
+    ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy - {name}", {"name": Explained}),
+    ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
+                        {"contract": Explained, "price": Explained}),
+    ExplanationTemplate("paper_alert_legs", "values_seen", "{rest}, {leg}", {"rest": Explained, "leg": Explained}),
+    ExplanationTemplate("paper_alert_body", "what_triggered",
+                        "Paper strategy - {name}: {what}; exited {count} legs at {prices}. A paper exit only: no order "
+                        "was sent to Zerodha.",
+                        {"name": Explained, "what": Explained, "count": Recorded, "prices": Explained}),
     ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
     ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
                         {"level": WholePoints, "percent": SignedPercent}),
@@ -1295,6 +1323,20 @@ def _make_render_explanation() -> Callable[..., ExplanationText]:
 
 render_explanation = _make_render_explanation()
 del _make_render_explanation
+
+
+def restore_explanation(template_id: str, stored: str) -> ExplanationText:
+    """A line a `render_explanation()` call made earlier and a store kept (GC-TP 7a: a paper alert's title and body) read
+    back as an explanation. Only a string that fits the template's fixed words, in order, is restored; anything else
+    (a hand-written or edited row) is refused, so a store cannot smuggle its own sentence through a response."""
+    found = next((t for t in _EXPLANATIONS if t.id == template_id), None)
+    if found is None:
+        raise ValueError(f"unknown explanation template id {template_id!r}")
+    pieces = re.split(r"\{[a-z_]+\}", found.text)
+    shape = ".+?".join(re.escape(piece) for piece in pieces)
+    if type(stored) is not str or re.fullmatch(shape, stored, re.DOTALL) is None:
+        raise ValueError(f"stored text does not fit explanation template {template_id!r}")
+    return ExplanationText(stored, _EXPLANATION_MINT)
 
 
 def join_explanations(parts: tuple[ExplanationText, ...] | list[ExplanationText], sep: str = ", ") -> ExplanationText:
