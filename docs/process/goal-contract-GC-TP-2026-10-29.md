@@ -272,6 +272,11 @@ Step-1 "before" record: `GET /tracking` at 2026-10-29 10:55:17 IST (answered_at 
 ofo_dev, saved at `D:\Abhay\scratch\gctp\before-20261029T105515.json`: 18 tracked strategies (46-63), 16 with open
 legs, 2 fully exited (50, 53), 4 with one exited leg (48, 56, 62; 53 both), 2 calendars (51, 59).
 
+Tier A backup (before any migration on ofo_dev): `D:\Abhay\scratch\gctp-backup-20261029T105953.sql`, read-only
+INSERT dump by `D:\Abhay\scratch\gctp\backup_tracking.py` via `dev_run.py` (no pg_dump on this PC):
+strategy_tracking 18, strategy_tracking_legs 44, strategy_tracking_exits 6 (equal to the before record's 44 legs and 6
+exits).
+
 ## Found during the run
 
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
