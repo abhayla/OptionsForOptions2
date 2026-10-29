@@ -128,6 +128,10 @@ class TrackingOut(ApiModel):
     paper_pnl: Money | None  # the total = booked + unbooked; None when unbooked is unknown
     booked: Money  # REQ-109 AC-4 / ADR-201 (2): exited legs at their exit prices; "0.00" when nothing exited
     unbooked: Money | None  # open legs at live prices; None when paused or not connected
+    # REQ-152 AC-4: the server's own signed text of each figure (the same template as the list rows and the legs)
+    paper_pnl_text: CatalogueText | None = None
+    booked_text: CatalogueText | None = None
+    unbooked_text: CatalogueText | None = None
     as_of: datetime.datetime | None
     answered_at: datetime.datetime
     legs: list[TrackingLegOut]
@@ -234,9 +238,12 @@ def _view(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], under
           view: paper.TrackingView | None, answered_at: datetime.datetime,
           reasons: list[paper.ContractReason | None]) -> TrackingOut:
     figures = _figures(tracking, legs, view, reasons)
+    texts = {f"{k}_text": None if figures[k] is None else render_explanation("summary_paisa_signed", amount=figures[k])
+             for k in ("total", "booked", "unbooked")}
+    texts["paper_pnl_text"] = texts.pop("total_text")
     body: dict = {"strategy_id": tracking.strategy_id, "started_at": tracking.started_at,
                   "prices_at": tracking.prices_at, "answered_at": answered_at, "detections": [],
-                  "paper_pnl": figures.pop("total")} | figures
+                  "paper_pnl": figures.pop("total")} | figures | texts
     if view is None or view.index is None:
         return TrackingOut.model_validate(body | {"index": None, "breakevens": None})
     index = view.index

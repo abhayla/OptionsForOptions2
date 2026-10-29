@@ -27,6 +27,12 @@ def _s(value: Decimal | int | None) -> str | None:
     return f"{value:f}" if isinstance(value, Decimal) else str(value)
 
 
+def _level(value: Decimal | None) -> str | None:
+    """The index level as the browser prints it: two decimals ("22713.00", "22709.50"), never a Decimal that lost its
+    trailing zeros ("22713", "22709.5") (REQ-152 AC-2 style; the index row of GET /indices is already quantized)."""
+    return price_text(value)
+
+
 def _t(value: datetime.datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
@@ -113,7 +119,7 @@ def _column(col: ColumnSpec, visible: set[str]) -> dict[str, Any]:
 
 def _table(table: Table, visible_cols) -> dict[str, Any]:
     visible = {_col_id(c.id) for c in visible_cols}
-    return {"underlying": table.underlying, "spot_level": _s(table.spot_level), "spot_at": _t(table.spot_at),
+    return {"underlying": table.underlying, "spot_level": _level(table.spot_level), "spot_at": _t(table.spot_at),
             "output_label": table.output_label, "scenario_heading": list(scenario_caption_parts(table)),
             "columns": [_column(c, visible) for c in table.columns],
             "rows": [{"row_id": r.row_id, "cells": {_col_id(k): _cell(c) for k, c in r.cells.items()}}
@@ -238,7 +244,7 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
     body = {
         "state": out.state.value, "underlying": out.underlying,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
-        "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
+        "valuation": _t(out.valuation), "spot_level": _level(out.spot_level), "spot_at": _t(out.spot_at),
         "legs": [_leg(leg, today) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
         "charges_breakdown": _breakdown(out.charges_breakdown),
