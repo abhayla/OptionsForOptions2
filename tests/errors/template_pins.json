@@ -1847,6 +1847,10 @@
     "sha256": "6adc19a2b79c5602576bb734408d339b3490a288be502db6896afbd98f0c67b2",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_trigger_level": {
+    "sha256": "d6245c829440679ffc002796b40435dbe6f507d7fc78d057791a111d14d52d49",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_alert_title": {
     "sha256": "8113712107a5c5c05768fa68b3067d3027e4b1e5bdc4645707c151dbb76dcb6d",
     "reviewed": "pending owner read"

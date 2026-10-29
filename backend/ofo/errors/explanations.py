@@ -1209,6 +1209,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
                         {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
+    ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy - {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),

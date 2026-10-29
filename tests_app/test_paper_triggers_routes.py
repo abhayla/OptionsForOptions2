@@ -1,4 +1,4 @@
-"""GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): the paper trigger and alert routes, real PostgreSQL, every test rolled back.
+"""GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): trigger and alert routes, real PostgreSQL, every test rolled back.
 
 Core: POST /paper/strategies/{id}/triggers stores an armed trigger and notifies the monitor; GET /paper/alerts returns
 the alert rows the monitor wrote (written here with the store's own add_alert after a claim, as the monitor does).
@@ -48,7 +48,7 @@ def _url(stored, tail: str = "") -> str:
 
 
 async def test_core_a_posted_stop_is_stored_armed_notifies_the_monitor_and_its_alert_is_read_back(db, notified):
-    app, stored, ids = await _open(db)
+    app, stored, _ids = await _open(db)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22850"})
         assert reply.status_code == HTTPStatus.CREATED, reply.text

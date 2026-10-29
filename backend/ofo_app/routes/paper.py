@@ -28,7 +28,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.engine.display import format_index_level
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -165,6 +164,8 @@ def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
 
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
     """The contracts with a non-zero net quantity (the quantity does not depend on any live price)."""
+    if not orders:
+        return []  # net_positions refuses an empty book
     return [int(p.instrument_id) for p in net_positions(_paper(orders), {}).positions if p.net_quantity != 0]
 
 
@@ -422,7 +423,8 @@ async def _triggers_out(db: Any, strategy_id: int) -> TriggersOut:
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     return TriggersOut.model_validate({"triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
-        "direction": r.trigger.direction, "level": r.trigger.level, "level_text": format_index_level(r.trigger.level),
+        "direction": r.trigger.direction, "level": r.trigger.level,
+        "level_text": render_explanation("paper_trigger_level", level=r.trigger.level),
         "contract_id": r.trigger.contract_id,
         "contract_text": None if r.trigger.contract_id is None else describe_contract(
             _identity(found[r.trigger.contract_id])),
