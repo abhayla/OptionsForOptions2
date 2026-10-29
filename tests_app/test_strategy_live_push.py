@@ -805,6 +805,31 @@ def test_ac4_replay_streaming_counts_holders_and_never_drops_the_index():
     assert s("NSE_FO:1") is True
 
 
+def test_ac4_replay_only_a_strategys_own_legs_go_not_live_after_its_socket_ends(monkeypatch):
+    """AC-4 replay rule (GC-UI land fix): the strategy socket also holds contracts that are NOT its legs - the D-C33
+    forward strikes and the REQ-083 AC-5 OI-bar contracts (no-listener holds). When the socket ends, only its LEGS read
+    as "held and released"; another strategy built on those extra contracts keeps its REST numbers (COMPUTED), as it did
+    before the extra holds existed. Measured in CI run 40806301948: 16 e2e tests read FROM_ENTRIES from a REST probe of
+    contracts an earlier test's builder socket had held as forward / OI strikes."""
+    def legs(pairs):
+        return {"underlying": "NIFTY", "legs": [
+            {"instrument_id": i, "action": a, "lots": 1, "planned_entry": "100.00",
+             "captured_at": VALUATION.isoformat()} for i, a in pairs]}
+
+    client = StarletteClient(_replay_app(monkeypatch))
+    # the builder's follow message since GC-UI (frontend scenarioChoice CHART_FLAGS): OI bars asked for
+    body = {**legs([("NSE_FO:44604", "SELL"), ("NSE_FO:44595", "BUY")]),
+            "both_views": True, "sd_bands": True, "open_interest": True}
+    other = legs([("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY")])  # strikes in the first one's OI range
+    assert client.post("/api/strategies/outcome", json=other).json()["state"] == "COMPUTED"
+    with client.websocket_connect(live_route.PATH) as ws:
+        ws.send_json(body)
+        ws.receive_text()
+    assert client.post("/api/strategies/outcome", json=other).json()["state"] == "COMPUTED"
+    # the dropped strategy's own legs still read as not live (ADR-077 stand-in unchanged)
+    assert client.post("/api/strategies/outcome", json=body).json()["state"] == "FROM_ENTRIES"
+
+
 def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monkeypatch):
     """REQ-049 AC-5 / ADR-077 (W-065 p3 r2): a second socket (another tab, another user) holds the same legs while THIS
     page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer:

@@ -25,9 +25,27 @@ const CONTRACTS = {
   ],
 }
 
+// GC-UI D-C31: a leg is added only from the strike table, which reads GET /api/leg-picker/strikes. That route reads the
+// STORED catalogue on the database clock, where 13-Oct-2026 has expired, so its grid is answered here like the catalogue
+// above (same StrikesOut shape as routes/leg_picker.py; no price in it). Prices still come from the real planned-entry route.
+const GRID_CELL = (token: number) => ({
+  instrument_id: `NSE_FO:${token}`, lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null,
+})
+const GRID = {
+  state: 'NOT_LIVE', reason: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: null, spot_at: null,
+  centre: 'MIDDLE_STRIKE', atm_strike: null, answered_at: '2026-10-08T09:20:09+05:30', market_closed: false,
+  rows: [
+    { strike: '22200.00', is_atm: false, ce: null, pe: GRID_CELL(44595) },
+    { strike: '22400.00', is_atm: false, ce: null, pe: GRID_CELL(44604) },
+    { strike: '22800.00', is_atm: false, ce: GRID_CELL(44624), pe: null },
+    { strike: '23000.00', is_atm: false, ce: GRID_CELL(44632), pe: null },
+  ],
+}
+
 async function seedCatalogue(page: Page) {
   await page.route('**/api/catalogue/NIFTY/expiries', (r) => r.fulfill({ json: { underlying: 'NIFTY', expiries: ['2026-10-13'] } }))
   await page.route('**/api/catalogue/NIFTY/contracts?expiry=2026-10-13', (r) => r.fulfill({ json: CONTRACTS }))
+  await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: GRID }))
 }
 
 // The expiry is chosen once by the caller: saving a leg keeps it (and its contracts), so it is not re-selected here.
