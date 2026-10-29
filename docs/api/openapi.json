@@ -6404,6 +6404,15 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
+          },
           "breakevens": {
             "anyOf": [
               {
@@ -6452,6 +6461,15 @@
               }
             ],
             "title": "Paper Pnl"
+          },
+          "paper_pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Pnl Text"
           },
           "pause_reason": {
             "anyOf": [
@@ -6508,6 +6526,15 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
           }
         },
         "required": [

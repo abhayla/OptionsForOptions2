@@ -67,7 +67,7 @@ describe('review fix 2: missing exit price text, exit decided from the server ma
     expect(w.get('[data-testid="paper-leg"]').text()).not.toContain('Exited')
   })
   it('readTracking: exited from exited_at / booked, with exitPrice null when no text came', () => {
-    const body = { state: 'LIVE', paper_pnl: '1.00', booked: '1.00', unbooked: '0.00', detections: [], legs: [
+    const body = { state: 'LIVE', paper_pnl: '1.00', paper_pnl_text: '+1.00', booked: '1.00', booked_text: '+1.00', unbooked: '0.00', unbooked_text: '0.00', detections: [], legs: [
       leg(0, { exited_at: '2026-10-28T09:00:00Z' }), leg(1, { exit_price_display: '9.00' }), leg(2, { pnl_kind: 'booked' })] }
     const r = readTracking(body)
     expect(r.legs.map((l) => [l.exited, l.exitPrice])).toEqual([[true, null], [false, '9.00'], [true, null]])

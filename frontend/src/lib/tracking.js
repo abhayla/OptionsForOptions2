@@ -65,7 +65,7 @@ const lotsOf = (replyLegs, leg) => (Array.isArray(replyLegs)
   : null)
 
 /** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | exited | invalid.
- *  booked / unbooked are the server's strings, signed for display (null when absent or unreadable). */
+ *  booked / unbooked are the server's signed texts (null when absent). */
 export function readTracking(body, replyLegs = null) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
@@ -106,10 +106,12 @@ export function readTracking(body, replyLegs = null) {
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
   if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
-  const signed = signedRupees(body.paper_pnl)
+  // live #603 item 1 (REQ-152 AC-4, ADR-008): the total, booked and unbooked are the server's signed texts as sent (one
+  // minus character with the leg figures); a live / exited answer without the total's text is unreadable
+  const signed = serverText(body.paper_pnl_text)
   if (signed === null) return INVALID
-  const booked = signedRupees(body.booked)
-  const unbooked = signedRupees(body.unbooked)
+  const booked = serverText(body.booked_text)
+  const unbooked = serverText(body.unbooked_text)
   if (body.state === 'EXITED') return { kind: 'exited', text: `${PAPER_PNL_PREFIX}${signed} - exited`, figure: signed, booked, unbooked, legs, detections }
   return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, booked, unbooked, legs, detections }
 }

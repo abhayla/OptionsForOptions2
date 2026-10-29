@@ -1,7 +1,11 @@
+import { TIME_UNAVAILABLE } from '@/lib/displayFormat'
 // One home for the owner-approved texts of the shared screen states (GC-6; docs/design/screens-research-2026-10-19-part2.md,
 // "Shared states and screen rules"). Screens import these, never retype them. Character for character as approved.
 export const MARKET_CLOSED_PREFIX = 'Market closed. Prices are from '
-export const marketClosedText = (time) => `${MARKET_CLOSED_PREFIX}${time}.`
+// live #603 item 3: no usable time (before the open there is no closing-price time yet) -> the approved sentence's first
+// part alone (ADR-177 wording, the "Market closed" label of the picker), never "Prices are from Time not available."
+export const MARKET_CLOSED_NO_TIME_TEXT = 'Market closed.'
+export const marketClosedText = (time) => (time && time !== TIME_UNAVAILABLE ? `${MARKET_CLOSED_PREFIX}${time}.` : MARKET_CLOSED_NO_TIME_TEXT)
 
 // REQ-113 AC-2 / REQ-114 AC-5: shown (test id live-reconnecting) by every live screen whose socket dropped after it had
 // been live. ONE helper builds it: "Reconnecting - prices as of <time>" (the time of the screen's last price - the push's

@@ -13,7 +13,7 @@ beforeEach(() => { drawn.length = 0 })
 
 const leg = (over) => ({ instrument_id: 'NSE_FO:44616', action: 'BUY', instrument: 'CE', strike: '22600.00', expiry: '2026-10-13',
   quantity: 65, entry_price: '101.55', current_price: '110.00', price_state: 'live', exit_price: null, ...over })
-const body = (legs, over = {}) => ({ strategy_id: 54, state: 'LIVE', paper_pnl: '549.25', booked: '0.00', unbooked: '549.25', as_of: null,
+const body = (legs, over = {}) => ({ strategy_id: 54, state: 'LIVE', paper_pnl: '549.25', paper_pnl_text: '+549.25', booked: '0.00', booked_text: '0.00', unbooked: '549.25', unbooked_text: '+549.25', as_of: null,
   legs, detections: [], ...over })
 
 describe('D-B48: the paper tracking panel prints each leg P&L the server sent', () => {
