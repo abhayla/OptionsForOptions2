@@ -20,7 +20,9 @@ from ofo.tracking.orderbook import PaperOrder, net_positions
 from sqlalchemy import text
 
 from ofo_app import strategy_store as store
-from ofo_app.paper_book import _COLUMNS, NewOrder, StoredOrder, UserBook, _row
+from ofo_app.paper_book import COLUMNS as _COLUMNS
+from ofo_app.paper_book import NewOrder, StoredOrder, UserBook
+from ofo_app.paper_book import order_from_row as _row
 
 EXIT_EXCEEDS_OPEN = "exit_exceeds_open"
 REDUCING_KINDS = frozenset({"exit", "settle", "stop"})

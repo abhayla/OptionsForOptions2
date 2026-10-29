@@ -18,7 +18,7 @@ from typing import Any
 from ofo.tracking.orderbook import PaperOrder
 from sqlalchemy import text
 
-_COLUMNS = "id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, trigger_id"
+COLUMNS = "id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, trigger_id"
 _SELECT_OWNED = text(
     "SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, o.created_at, "
     "o.reason, o.trigger_id FROM public.paper_orders AS o JOIN public.strategies AS s ON s.id = o.strategy_id "
@@ -57,7 +57,7 @@ class UserBook:
     orders: tuple[StoredOrder, ...]
 
 
-def _row(r: Any) -> StoredOrder:
+def order_from_row(r: Any) -> StoredOrder:
     return StoredOrder(int(r.id), int(r.strategy_id),
                        NewOrder(int(r.contract_id), r.side, int(r.quantity), r.price, r.kind, r.placed_at, r.reason,
                                 None if r.trigger_id is None else int(r.trigger_id)), r.created_at)
@@ -65,4 +65,4 @@ def _row(r: Any) -> StoredOrder:
 
 async def load_owned(conn: Any, user_ref: str, strategy_id: int) -> tuple[StoredOrder, ...]:
     rows = (await conn.execute(_SELECT_OWNED, {"id": strategy_id, "user_ref": user_ref})).all()
-    return tuple(_row(r) for r in rows)
+    return tuple(order_from_row(r) for r in rows)
