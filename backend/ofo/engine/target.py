@@ -35,9 +35,12 @@ def add_booked_all(values: Sequence[Decimal] | None, booked: Decimal | None) -> 
 
 
 def breakevens_at(model: ModelInputs, levels: Sequence[Decimal], totals: Sequence[Decimal],
-                  at: datetime.datetime) -> tuple[Decimal, ...]:
+                  at: datetime.datetime, shift: Decimal = Decimal(0)) -> tuple[Decimal, ...]:
     """The levels where the target-time estimate crosses zero: each sign change on the curve (``levels``/``totals``),
-    narrowed by halving with the engine's estimate to the paisa (the level nearer zero wins)."""
+    narrowed by halving with the engine's estimate to the paisa (the level nearer zero wins). GC-TP fix1 (ADR-209):
+    ``shift`` is a flat amount (the booked P&L) added to the open-legs estimate everywhere, so the levels found are
+    where open-legs P&L = -shift; ``totals`` stay the open-legs curve. One solver: a shift of 0 is the old answer."""
+    totals = [t + shift for t in totals]
     found: list[Decimal] = []
     for i, (level, total) in enumerate(zip(levels, totals, strict=True)):
         if total == 0:
@@ -50,7 +53,7 @@ def breakevens_at(model: ModelInputs, levels: Sequence[Decimal], totals: Sequenc
             mid = ((lo + hi) / 2).quantize(PAISE, rounding=ROUND_HALF_EVEN)
             if mid in (lo, hi):
                 break
-            val = estimate(model, mid, at).total
+            val = estimate(model, mid, at).total + shift
             if val == 0:
                 lo = hi = mid
                 break
@@ -61,7 +64,7 @@ def breakevens_at(model: ModelInputs, levels: Sequence[Decimal], totals: Sequenc
         if lo == hi:
             found.append(lo)
         else:
-            hi_val = estimate(model, hi, at).total
+            hi_val = estimate(model, hi, at).total + shift
             found.append(lo if abs(lo_val) <= abs(hi_val) else hi)
     return tuple(found)
 
