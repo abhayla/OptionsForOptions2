@@ -106,12 +106,14 @@ def _margin(needed: Decimal | None, state: str = CHECKED) -> Margin:
 
 
 @pytest.mark.parametrize(("pnl", "state", "label"), [
-    (Decimal("7714"), "profit", "Projected profit: ₹7,714.00"),
-    (Decimal("-3200"), "loss", "Projected loss: ₹3,200.00"),
-    (Decimal("0.01"), "profit", "Projected profit: ₹0.01"),
-    (Decimal("-0.01"), "loss", "Projected loss: ₹0.01"),
-    (Decimal("0"), "zero", "Projected P/L: ₹0.00"),
-    (Decimal("-0.00"), "zero", "Projected P/L: ₹0.00"),
+    # REQ-144 AC-1 exactly ("Projected profit: Rs 7,714"); whole rupees, half-up (REQ-152 AC-3), the state from the
+    # exact value; a true zero reads "Projected P/L: 0" (ADR-211 (1))
+    (Decimal("7714"), "profit", "Projected profit: Rs 7,714"),
+    (Decimal("-3200"), "loss", "Projected loss: Rs 3,200"),
+    (Decimal("0.01"), "profit", "Projected profit: Rs 0"),
+    (Decimal("-0.01"), "loss", "Projected loss: Rs 0"),
+    (Decimal("0"), "zero", "Projected P/L: 0"),
+    (Decimal("-0.00"), "zero", "Projected P/L: 0"),
 ])
 def test_badge_label_flips_exactly_at_zero_and_a_true_zero_has_no_sign(pnl, state, label):
     """Attack 5 (REQ-152 AC-4)."""

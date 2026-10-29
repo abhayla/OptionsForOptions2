@@ -1884,11 +1884,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:target_badge_profit": {
-    "sha256": "22576eb2193f88c04e83c96cece35bb9d8c735807ccab10d5350c38a14c7a0f6",
+    "sha256": "62c0a6344fe54e754c993262cf66cefed8cd86e901a14900ea5bfe31ee966218",
     "reviewed": "pending owner read"
   },
   "explanation:target_badge_loss": {
-    "sha256": "36c4c8f4e79dc9e92498b0d386b86735f4dcee31370dd4a05a9d44565b81543b",
+    "sha256": "aa838866da7f8f5d666112f9d3cb459d2b0dd122b8eb52601c6fa14c5410e3be",
     "reviewed": "pending owner read"
   },
   "explanation:target_badge_zero": {

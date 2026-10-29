@@ -4241,7 +4241,7 @@
   "days_to_expiry_display": "0D to expiry",
   "badge": {
    "state": "loss",
-   "label": "Projected loss: ₹8,245.25",
+   "label": "Projected loss: Rs 8,245",
    "reason": null,
    "amount": "-8245.25",
    "amount_display": "₹8,245.25",
