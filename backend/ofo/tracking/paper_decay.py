@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
+from ofo.engine.book_totals import signed_decay
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.model import SpotRefused, expiry_model, implied_vol, iv_price, leg_decay_unrounded, model_inputs
@@ -97,7 +98,5 @@ def book_decay(snapshot: MarketSnapshot | None, underlying: str, contracts: Sequ
                                            tuple(legs)), snapshot.forwards)
     except (SpotRefused, ForwardUnavailable):
         return Decay(None, MODEL_REFUSED)
-    total = Decimal(0)
-    for c, leg in zip(contracts, legs, strict=True):
-        total += leg_decay_unrounded(model, leg, until) * c.net_quantity  # per unit x quantity x sign
-    return Decay(total, None)
+    units = [(leg_decay_unrounded(model, leg, until), c.net_quantity) for c, leg in zip(contracts, legs, strict=True)]
+    return Decay(signed_decay(units), None)  # per unit x quantity x sign, in the engine

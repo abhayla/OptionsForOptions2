@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Sequence
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_extremes
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation, restore_explanation
@@ -404,14 +405,10 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
 def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> dict:
     """The exact sums over every strategy. Unbooked and total are absent with the first absent strategy's reason, and
     Decay with the first absent book's reason: never a partial sum shown as a total (REQ-109 AC-5)."""
-    booked = sum((Decimal(s["booked"]) for s in strategies), Decimal(0))
+    got = book_totals([(s["booked"], s["unbooked"]) for s in strategies], [d.value for d in decays])
     paused = next((s for s in strategies if s["unbooked"] is None), None)
-    unbooked = None if paused else sum((Decimal(s["unbooked"]) for s in strategies), Decimal(0))
-    total = None if unbooked is None else booked + unbooked
     missing = next((d for d in decays if d.value is None), None)
-    decay = None
-    if missing is None:
-        decay = sum((d.value or Decimal(0) for d in decays), Decimal(0)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    booked, unbooked, total, decay = got.booked, got.unbooked, got.total, got.decay
     return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
             "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
             "totals_reason": None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE),
