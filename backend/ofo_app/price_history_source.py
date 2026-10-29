@@ -13,3 +13,10 @@ def history_opener() -> Any:
     """The production opener: reads the owner's stored session first on the request connection (S5-1)."""
     from ofo_app.kite_history import owner_minute_reader  # noqa: PLC0415 - a vendor door loads only on use
     return owner_minute_reader
+
+
+def day_close_reader(listed: Any, *, api_key: str, access_token: str) -> Any:
+    """GC-TP (F-72): the paper settlement's index DAY-candle reader, picked here so paper_settlement.py stays
+    vendor-free (REQ-063 AC-1); the reader's ``day_close(token, date)`` is the adapter's."""
+    from ofo_app.kite_history import KiteHistory  # noqa: PLC0415 - a vendor door loads only on use
+    return KiteHistory(listed, api_key=api_key, access_token=access_token)

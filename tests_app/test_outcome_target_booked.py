@@ -124,7 +124,8 @@ async def test_unreadable_book_gives_open_legs_only_with_the_reason(provider):
 
 
 async def _bracket(provider, booked: Decimal, level: str, shift: Decimal) -> tuple[Decimal, Decimal]:
-    """The open legs' P&L (switch off, so the route's plain figure) at the whole points just below and above ``level``."""
+    """The open legs' P&L (switch off, so the route's plain figure) at the whole points just below and above
+    ``level``."""
     low = int(D(level).to_integral_value(rounding="ROUND_FLOOR"))
     pnls = []
     for lv in (low, low + 1):
@@ -135,7 +136,8 @@ async def _bracket(provider, booked: Decimal, level: str, shift: Decimal) -> tup
 
 async def test_fix1_target_breakevens_count_booked_so_open_legs_pnl_equals_minus_booked(provider):
     """ADR-209: switch ON: target breakevens are the levels where open legs P&L = -booked (real book 63). Each level
-    lies between two whole points whose open-legs P&L + booked change sign; switch OFF keeps the plain zero crossings."""
+    lies between two whole points whose open-legs P&L + booked change sign; switch OFF keeps the plain zero
+    crossings."""
     booked = _book_63_booked()
     off = await _post(provider, booked, paper_strategy_id=63, include_booked=False)
     on = await _post(provider, booked, paper_strategy_id=63)

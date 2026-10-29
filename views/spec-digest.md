@@ -4,14 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (202)
+## Decisions (207)
 
-- Older decisions: 162 rows, ADR-1..ADR-165 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-166 2026-10-21: The action on one saved strategy that records each leg at the live price and starts watching it (RE… [refines REQ-109]
-- ADR-167 2026-10-22: SPEC CHANGE to ADR-082 (2) for the scenario values. [amends ADR-082]
-- ADR-168 2026-10-22: The strategy builder is built from one ordered list of requirements (the owner's 59, grown to 63 ro… [amends ADR-165; amends ADR-004; supersedes REQ-00…]
-- ADR-169 2026-10-22: SPEC CHANGE to ADR-020 (Q178, second meaning) and REQ-015 AC-3: the guided Zerodha API setup (each… [amends ADR-020; amends REQ-015]
-- ADR-170 2026-10-23: Per-user live feeds (ADR-053) stay. [refines ADR-053]
+- Older decisions: 167 rows, ADR-1..ADR-170 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-171 2026-10-23: Amends ADR-168's "one requirement at a time": when row N's code is committed and its verifier is di… [amends ADR-168]
 - ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
 - ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
@@ -47,6 +42,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-204 2026-10-28: (1) docs/process/ui-match-differences-2026-10-28.md is approved with every recommendation as writte… [SPEC CHANGE (approved) to REQ-034 AC-7, REQ-081 A…]
 - ADR-205 2026-10-28: (1) The Charges breakdown keeps ADR-082 (1) as decided: every charge is exact Decimal, STT and stam… [none to ADR-082; REQ-081 AC-2 gains one sentence…]
 - ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
+- ADR-207 2026-10-29: (1) PLACE: the builder has an "Add to Paper" button (Sensibull "Add to Drafts", study 166-173) that… [SPEC CHANGE to REQ-081 AC-9 and ADR-164 (percenta…]
+- ADR-208 2026-10-29: (1) Every what-if figure (target level and target date, REQ-084) carries the label "Estimate from t… [refines REQ-084 AC-2 and AC-5 (wording written th…]
+- ADR-209 2026-10-29: On a paper strategy (REQ-109), the what-if P&L at the target level and date (REQ-084 AC-4) and the… [refines REQ-084 AC-4 (text written there in the s…]
+- ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
+- ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
 
 ## Requirements (145)
 
@@ -196,7 +196,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-153 [Approved]: Breakeven percent from spot beside each breakeven, for Expiry and Target
 - REQ-154 [Approved]: An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or…
 
-## Spec sections (233)
+## Spec sections (241)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -321,6 +321,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-62 - Zerodha's basket margin reply carries no buy-first figure, so…
 - ## F-63 - Sensibull's Greeks-tab Decay is the time value lost between th…
 - ## F-64 - Kite's historical minute candles cover the Strategy Chart's 10…
+- ## F-65 - Editing a paper-tracked strategy in the builder changes the sa…
+- ## F-66 - The builder prices an open paper position at the plan's entry…
+- ## F-67 - Paper entry is the LTP at "Start tracking", not the planned or…
+- ## F-68 - An open paper leg has no expiry settlement: after expiry it ha…
+- ## F-69 - The Positions screen opens on a tab that says the user holds n…
+- ## F-70 - "% of funds" divides by available funds; at low cash it reads…
+- ## F-71 - The "near a short strike" adjustment detection fires at entry…
+- ## F-72 - Kite's day candle for an index carries the exchange's official…
 
 ### spec/open-questions.md
 

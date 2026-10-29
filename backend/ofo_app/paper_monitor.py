@@ -188,11 +188,14 @@ class PaperMonitor:
             self.failures += 1
             log.error("paper trigger %s not fired: %s", w.armed.trigger.id, type(exc).__name__)
             return False
-        if done is not None:  # fired, already fired, or cancelled: never watched again
-            for key, items in tuple(self._watch.items()):
-                self._watch[key] = [i for i in items if i.armed.trigger.id not in done["fired"] | done["cancelled"]]
-            self._dirty = True
-        return done is not None and w.armed.trigger.id in done["fired"]
+        if done is None:
+            return False
+        fired, cancelled = done["fired"], done["cancelled"]
+        finished = fired | cancelled  # fired, already fired, or cancelled: never watched again
+        for key, items in tuple(self._watch.items()):
+            self._watch[key] = [i for i in items if i.armed.trigger.id not in finished]
+        self._dirty = True
+        return w.armed.trigger.id in fired
 
     async def _fire(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> dict[str, set[int]] | None:
         """One transaction (module docstring). None = keep armed; else the ids now fired or cancelled."""

@@ -2,7 +2,7 @@
 
 # Findings index
 
-128 finding(s), generated from `knowledge/findings/*.json`.
+129 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -87,6 +87,7 @@
 | overlap-gate-refuses-generated-files | A dispatch-time overlap gate that compares the files two rows touch counts generated or shared registry files as overlap, so two rows with no real product overlap are serialised and the second sits idle. | unguarded | occurrences, scope, spec_ref |
 | own-figure-labelled-as-broker-figure | A figure the platform derives from the broker's answer (the broker's number plus a platform rule) is shown under the broker's name, so the user reads our number as the broker's authority. Wider shape: once a value is adjusted, every label that names its source must change with it; a field named after its origin ('Zerodha says') outlives the rule that changed its meaning. | unguarded | occurrences, scope, spec_ref |
 | owner-question-blocks-dispatchable-work | The orchestrator asks the owner a question with the interactive tool while independent work is ready to dispatch: the tool stops the orchestrator until the owner answers, so ready briefs wait for the whole answer time. | unguarded | occurrences, scope, spec_ref |
+| paper-plan-diverges-from-position | Any screen or figure that reads a paper-tracked strategy's saved plan (its latest revision and planned entry prices) instead of the legs and prices actually recorded for the paper position, once the plan has been saved again or the fills differ from the plan. | unguarded | scope, spec_ref |
 | parallel-branches-green-alone-red-together | Two work items built in parallel branches each pass CI on their own base, but one adds a repo-wide guard (an import scan, an inventory, an allowlist) that the other's new code violates; the clash shows only when the branches meet, so a branch merged first can turn the other red after it was verified. | unguarded | occurrences, scope, spec_ref |
 | pipe-masks-gate-exit-code | A failing step does not stop the step after it: a gate piped into a filter (`gate \| tail`) takes the filter's exit status, and a command on its own line (or after `;`) runs whatever the line before returned - so a following commit, push or merge goes ahead after a failed gate; chaining with && is not enough when the gate's output is piped. | guarded | occurrences, scope, spec_ref |
 | positions-reply-refused-for-non-platform-rows | A reader that must resolve every row of a broker reply against the platform's own catalogue refuses the WHOLE reply when the account holds any row the platform can never own (a stock, another underlying, another exchange), so a fail-closed gate downstream blocks every action for every strategy - the user's unrelated activity disables the product. | guarded | occurrences, scope, spec_ref |

@@ -78,8 +78,12 @@ def _norm(line: str) -> str:
     return "" if code.startswith("#") else code
 
 
+DELETED = "deleted"  # parse_diff's value for a file the diff deletes (its hunk's new side starts at 0)
+
+
 def parse_diff(diff_text: str) -> dict:
-    """{path: [new-side line numbers of code changes], None if no hunk}; raises DiffNotParsed on binary diffs."""
+    """{path: [new-side line numbers of code changes], None if no hunk, DELETED if the diff deletes the file};
+    raises DiffNotParsed on binary diffs."""
     if "Binary files" in diff_text or "GIT binary patch" in diff_text:
         raise DiffNotParsed("binary file in diff")
     out: dict = {}
@@ -88,7 +92,7 @@ def parse_diff(diff_text: str) -> dict:
     start = 0
 
     def flush() -> None:
-        if path is None or not hunk:
+        if path is None or not hunk or out[path] == DELETED:
             return
         plus_c = collections.Counter(_norm(t) for k, t, _ in hunk if k == "+")
         minus_c = collections.Counter(_norm(t) for k, t, _ in hunk if k == "-")
@@ -113,6 +117,8 @@ def parse_diff(diff_text: str) -> dict:
             path = m.group(2) if m else None
             if path is not None:
                 out.setdefault(path, None)
+        elif path is not None and line.startswith("deleted file mode"):
+            out[path] = DELETED
         elif line.startswith("@@"):
             flush()
             hunk = []
@@ -225,6 +231,14 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
                 raise DiffNotParsed(f"{rel}: {e}") from e
         return route_cache[rel]
 
+    def _module_and_importers(f: str) -> list:
+        mod = Key(_module_name(f), "module")
+        found = [mod]
+        for rf in (route_files if route_files is not None else _list_routes(root)):
+            if rf != f and mod.regex().search(read_source(rf)):
+                found += routes_of(rf)  # one level of import reachability
+        return found
+
     for f in changed_files:
         if not (f.startswith(SCOPES) and f.endswith(".py")):
             continue
@@ -232,6 +246,9 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
             raise DiffNotParsed(f"{f} changed but is absent from the diff")
         if parsed[f] is None:
             raise DiffNotParsed(f"{f} has no hunk in the diff (rename or mode change only)")
+        if parsed[f] == DELETED:  # no source left to read: key on the module name, so a test still importing it runs
+            keys += _module_and_importers(f)
+            continue
         try:
             source = read_source(f)
             real = set(parsed[f]) - _docstring_lines(ast.parse(source))
@@ -246,11 +263,7 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
         if own:
             keys += own
             continue
-        mod = Key(_module_name(f), "module")
-        keys.append(mod)
-        for r in (route_files if route_files is not None else _list_routes(root)):
-            if r != f and mod.regex().search(read_source(r)):
-                keys += routes_of(r)  # one level of import reachability
+        keys += _module_and_importers(f)
     return list(dict.fromkeys(keys))
 
 

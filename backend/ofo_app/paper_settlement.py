@@ -270,7 +270,7 @@ async def owner_close_of(conn: Any) -> CloseOf:
     from ofo_app.broker_config import BrokerConfigError, load_broker_config  # noqa: PLC0415
     from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
     from ofo_app.broker_token_store import BrokerStoreError, access_token_for  # noqa: PLC0415
-    from ofo_app.kite_history import KiteHistory  # noqa: PLC0415
+    from ofo_app.price_history_source import day_close_reader  # noqa: PLC0415 - the vendor pick lives there
     from ofo_app.live_market import OWNER_REF, listed_for_kite  # noqa: PLC0415
 
     async def unavailable(_underlying: str, _expiry: datetime.date) -> Decimal | None:
@@ -293,7 +293,7 @@ async def owner_close_of(conn: Any) -> CloseOf:
         if entry is None:
             log.warning("paper settlement: index %s not in the catalogue", underlying)
             return None
-        reader = KiteHistory(listed_for_kite([entry]), api_key=config.api_key, access_token=token)
+        reader = day_close_reader(listed_for_kite([entry]), api_key=config.api_key, access_token=token)
         return await asyncio.to_thread(reader.day_close, entry.broker_refs[ZERODHA].broker_token, expiry)
 
     return read

@@ -47,7 +47,8 @@ class TargetAsk:
 
     level: Decimal | None = None
     at: datetime.datetime | None = None
-    #: GC-TP R-18 (ADR-209): the paper strategy's booked P&L to add to the target figures (None: not asked, a plan, or 0)
+    #: GC-TP R-18 (ADR-209): the paper strategy's booked P&L to add to the target figures
+    #: (None: not asked, a plan, or 0)
     booked: Decimal | None = None
     booked_unreadable: bool = False  # the switch is on for a paper strategy whose book could not be read
 
@@ -256,7 +257,8 @@ def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model
                   at_refused_reason=reason, kind="exact", model=None, output_label=model.data_label,
                   pnl=pnl, breakevens=None, breakevens_reason=None, curve=None, greeks=None,
                   spot=spot, days=days_to(model, model.inputs.valuation_time),
-                  booked=booked if pnl is not None else None, booked_unreadable=ask.booked_unreadable)  # the time is refused: days from now
+                  # the time is refused: days from now
+                  booked=booked if pnl is not None else None, booked_unreadable=ask.booked_unreadable)
 
 
 def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:

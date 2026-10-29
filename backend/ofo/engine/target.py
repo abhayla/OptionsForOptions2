@@ -24,8 +24,8 @@ def target_level_limits(spot: Decimal, step: Decimal) -> tuple[Decimal, Decimal]
 
 
 def add_booked(value: Decimal | None, booked: Decimal | None) -> Decimal | None:
-    """GC-TP R-18 (ADR-209): a what-if figure plus the paper strategy's booked P&L, exact (ADR-008); the figure unchanged
-    when nothing is booked (``booked`` None) and absent when the figure is."""
+    """GC-TP R-18 (ADR-209): a what-if figure plus the paper strategy's booked P&L, exact (ADR-008);
+    the figure unchanged when nothing is booked (``booked`` None) and absent when the figure is."""
     return value if value is None or booked is None else value + booked
 
 

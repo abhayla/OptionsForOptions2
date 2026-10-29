@@ -426,8 +426,8 @@ class SignedRupeesPaisa(SlotType):
     def format(value: Decimal) -> str:
         from ofo.engine.display import format_signed_paisa  # late: display imports this module
         shown = format_signed_paisa(value)
-        sign = shown[0] if shown[0] in "+−" else ""
-        return f"{sign}Rs {shown[len(sign):]}"  # +Rs 962.00, −Rs 1,100.45, Rs 0.00
+        sign = shown[0] if shown[0] in "+\u2212" else ""
+        return f"{sign}Rs {shown[len(sign):]}"  # +Rs 962.00, (minus sign)Rs 1,100.45, Rs 0.00
 
 
 class SignedPaisa(SlotType):
