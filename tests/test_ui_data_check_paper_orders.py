@@ -149,3 +149,23 @@ def test_the_cli_mode_reads_a_replay_prints_the_table_and_its_exit_code_follows_
     (replay / "paper_7.json").write_text(json.dumps(bad), encoding="utf-8")
     assert u.main(["--paper-orders", "7", "--replay", str(replay), "--out", str(out)]) == 1
     assert "| strategy total | 1950.01 | 1950.00 | mismatch |" in capsys.readouterr().out
+
+
+def test_the_cli_prints_a_real_minus_sign_reply_on_a_cp1252_console(tmp_path):
+    """GC-TP step 1 live proof (2026-10-29 12:34 IST): on the owner's Windows console (cp1252) the table crashed with
+    UnicodeEncodeError on the server's U+2212 minus (on "-633.75") after the verdict was known. The checker writes
+    its own output as UTF-8, whatever the console's code page. Real reply: strategy 63 after the 22900 -> 22950 CE
+    roll."""
+    import subprocess  # noqa: PLC0415
+
+    replay, out = tmp_path / "replay", tmp_path / "out"
+    replay.mkdir()
+    out.mkdir()
+    real = Path(__file__).parent / "fixtures" / "paper" / "strategy-63-roll.json"
+    (replay / "paper_63.json").write_text(real.read_text(encoding="utf-8"), encoding="utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="cp1252")
+    argv = [sys.executable, str(CHECKER), "--paper-orders", "63", "--replay", str(replay), "--out", str(out)]
+    run = subprocess.run(argv, capture_output=True, env=env, check=False)  # noqa: S603 - fixed argv, tmp dirs
+    assert b"UnicodeEncodeError" not in run.stderr, run.stderr[-400:]
+    assert run.returncode == 0, run.stderr[-600:]
+    assert "\N{MINUS SIGN}633.75" in run.stdout.decode("utf-8")

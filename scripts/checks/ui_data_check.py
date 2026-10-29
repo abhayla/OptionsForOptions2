@@ -1627,6 +1627,11 @@ def main_paper_orders(a) -> int:
 
 
 def main(argv=None):
+    # The server's display text carries U+2212 minus; a cp1252 console cannot print it (GC-TP 2026-10-29), so every
+    # mode writes UTF-8 whatever the console's code page.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--strategy-legs")
     ap.add_argument("--paper", type=int)
