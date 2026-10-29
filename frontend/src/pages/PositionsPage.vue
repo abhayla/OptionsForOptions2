@@ -8,7 +8,7 @@
      to the strategy's Execute screen where Check is. Both Positions menu items show this same strategy-grouped page.
      New file, copy from: none. -->
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -23,6 +23,15 @@ import { useOrderPath } from '@/lib/orderPath'
 const route = useRoute()
 const POSITION_TABS = [{ key: 'positions', label: 'Positions' }, { key: 'paper', label: 'Paper' }]
 const tab = ref(route.query.tab === 'paper' ? 'paper' : 'positions')
+// GC-TP 4b (F-69): with at least one open paper strategy and no Zerodha position, the page opens on Paper. The count is the
+// server's rows (open_count above 0), read once; a tab the user (or the URL) chose is never moved.
+const paperOpen = ref(0)
+let chosen = route.query.tab !== undefined
+let moving = false
+watch(tab, () => { if (!moving) chosen = true }, { flush: 'sync' })
+const paperOpenText = (n) => `${n} paper ${n === 1 ? 'strategy is' : 'strategies are'} open - see Paper.`
+const NO_ZERODHA = 'No open Zerodha positions.'
+const noReal = () => !!result.value && !result.value.strategies.length && !result.value.has_outside
 // W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said
 // the order path is on; off, the strategy is named in plain text.
 const orderPathOn = useOrderPath()
@@ -40,13 +49,31 @@ const NO_ROW = 'No confirmed position of this strategy to show yet.'
 const VIEW_ON_KITE = 'view on Kite'
 const outsideText = (lots) => (lots === null ? 'Positions outside your strategies' : `${lots} outside ${lots === 1 ? 'lot' : 'lots'}`)
 
-onMounted(async () => {
+async function readPaperOpen() {
   try {
-    result.value = (await api.get('/positions')).data
-  } catch (e) {
-    errorParts.value = e?.parts ?? NEUTRAL_PARTS
-  } finally {
-    loading.value = false
+    const list = (await api.get('/paper/strategies')).data?.strategies
+    paperOpen.value = Array.isArray(list) ? list.filter((x) => x && x.state !== 'EXITED' && x.open_count > 0).length : 0
+  } catch {
+    paperOpen.value = 0 // unreadable: the page stays as it was
+  }
+}
+onMounted(async () => {
+  await Promise.all([
+    (async () => {
+      try {
+        result.value = (await api.get('/positions')).data
+      } catch (e) {
+        errorParts.value = e?.parts ?? NEUTRAL_PARTS
+      } finally {
+        loading.value = false
+      }
+    })(),
+    readPaperOpen(),
+  ])
+  if (!chosen && paperOpen.value > 0 && noReal()) {
+    moving = true
+    tab.value = 'paper'
+    moving = false
   }
 })
 </script>
@@ -75,7 +102,8 @@ onMounted(async () => {
       </div>
       <!-- GC-UI D-C40 (Sensibull 050): the shared empty state; the title is new text (owner read), the line is ours as before. -->
       <div v-if="!result.strategies.length && !result.has_outside" class="mt-2" data-testid="positions-empty">
-        <EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
+        <p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>
+        <EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
       </div>
       <p v-else-if="!result.strategies.length" class="mt-2" data-testid="positions-no-strategy">
         None of your strategies holds a position.

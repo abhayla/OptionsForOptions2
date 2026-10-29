@@ -121,6 +121,7 @@ const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row">
           <span>{{ t.kind === 'leg_stop' ? (t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
+          <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>
           <button v-if="t.state === 'armed'" type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy" :data-testid="`trigger-cancel-${t.id}`" @click="cancel(t)">Cancel</button>
