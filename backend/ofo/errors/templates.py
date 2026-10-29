@@ -952,6 +952,23 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "belongs to another contract).",
           "No order was stored; a paper order is never placed on a contract that is not live.",
           "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
+    # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
+    _gate("paper_trigger_level_invalid", _SV, 440,
+          "A stop level must be above 0 and a multiple of 0.05.",
+          "No stop was set; a paper stop is never armed at a level the exchange would not quote.",
+          "Setting this paper stop.", "Type a level above 0 that is a multiple of 0.05, then set the stop again."),
+    _gate("paper_trigger_leg_not_open", _SV, 441,
+          "A stop-loss names a contract that is not open in this strategy.",
+          "No stop was set; a stop-loss only exits a contract you hold.",
+          "Setting this paper stop.", "Choose a contract that is open in this strategy, then set the stop again."),
+    _gate("paper_trigger_nothing_open", _SV, 442,
+          "This strategy has nothing open, so there is nothing for a stop to exit.",
+          "No stop was set.",
+          "Setting this paper stop.", "Place a paper order to open a position first, then set the stop."),
+    _gate("paper_trigger_already_fired", _SV, 443,
+          "This stop has already fired (or was already cancelled) and cannot be cancelled.",
+          "Nothing was changed; a fired stop has already exited its legs.",
+          "Cancelling this paper stop.", "Read the strategy's orderbook for the exit it made."),
 )
 
 # --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the

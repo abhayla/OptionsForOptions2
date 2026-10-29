@@ -1823,6 +1823,22 @@
     "sha256": "ac0864a1f7e5b02f71bd04887f451c301a025c5d025ae495bd527f3a0a17b06e",
     "reviewed": "pending owner read"
   },
+  "paper_trigger_level_invalid": {
+    "sha256": "70d659d3bb7cc64629eb6a29787a54ae9b6c91a6d72288d24247ea4183026709",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_leg_not_open": {
+    "sha256": "7ccfa4bb2552a88d29d4ecca08042066322d98c33e3de8bd9b425c6125045127",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_nothing_open": {
+    "sha256": "d89856264363ad3f34347c29a9aae1b0f2f9e483048a38396b16f388ed2e73d5",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_already_fired": {
+    "sha256": "4c55c37703f504064765823212ac1ce03dbee40e06508a277c3368e79d3927e9",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_stop_reason_index": {
     "sha256": "2211dd5d07b81f493422c716359cfc72854e2961340b7cc8ef5515b86c33a5c3",
     "reviewed": "pending owner read"
