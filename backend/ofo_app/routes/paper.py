@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Sequence
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -38,7 +38,7 @@ from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
-from ofo.tracking import paper
+from ofo.tracking import paper, paper_decay
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -151,10 +151,30 @@ class PaperStrategyOut(PaperFigures):
     strategy_id: int
     name: CatalogueText
     underlying: Underlying
+    open_count: int  # GC-TP step 4a: positions with a non-zero net quantity ("N of M positions")
+    position_count: int
+
+
+TotalsReason = paper.PauseReason | paper_decay.DecayReason
+
+
+class PaperTotalsOut(ApiModel):
+    """GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server."""
+    booked: Money
+    booked_text: CatalogueText
+    unbooked: Money | None  # None (never a partial sum) when any strategy's unbooked is absent (REQ-109 AC-5)
+    unbooked_text: CatalogueText | None
+    total: Money | None
+    total_text: CatalogueText | None
+    totals_reason: paper.PauseReason | None
+    decay: Money | None  # REQ-145 AC-2: rupees to the next market open over every open contract, rounded once
+    decay_text: CatalogueText | None
+    decay_reason: TotalsReason | None
 
 
 class PaperListOut(ApiModel):
-    strategies: list[PaperStrategyOut]  # newest strategy first
+    strategies: list[PaperStrategyOut]  # newest strategy first (first order time, then id)
+    totals: PaperTotalsOut
     answered_at: datetime.datetime
 
 
@@ -353,12 +373,49 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
     if connected:
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
-    out = []
-    for b in reversed(books):
-        open_ids = _open_ids(b.orders)
-        figures = _figures(b.orders, found, _prices(open_ids, found, snapshots.get(b.underlying)), connected)
-        out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying})
-    return PaperListOut.model_validate({"strategies": out, "answered_at": now()})
+    out, decays = [], []
+    for b in sorted(books, key=_newest_first, reverse=True):
+        snapshot = snapshots.get(b.underlying)
+        figures = _figures(b.orders, found, _prices(_open_ids(b.orders), found, snapshot), connected)
+        decays.append(_decay(figures, found, snapshot, b.underlying))
+        held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
+        out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
+                              "open_count": held, "position_count": len(figures["positions"])})
+    return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
+
+
+def _newest_first(book: paper_store.UserBook) -> tuple[datetime.datetime, int]:
+    """The sort key of the list (reversed): the book's first order time, then the strategy id."""
+    return min(o.order.placed_at for o in book.orders), book.strategy_id
+
+
+def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], snapshot: Any,
+           underlying: str) -> paper_decay.Decay:
+    """One book's Decay (ofo.tracking.paper_decay): absent with the book's pause reason when an open contract is not
+    live; a fully exited book decays 0."""
+    if figures["unbooked"] is None:
+        return paper_decay.Decay(None, figures["pause_reason"] or paper.PRICES_NOT_LIVE)
+    contracts = [paper_decay.OpenContract(found[p["contract_id"]].feed_key or "", Instrument(p["instrument"]),
+                                          p["strike"], p["expiry"], p["net_quantity"], p["ltp"])
+                 for p in figures["positions"] if p["net_quantity"] != 0]
+    return paper_decay.book_decay(snapshot, underlying, contracts)
+
+
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> dict:
+    """The exact sums over every strategy. Unbooked and total are absent with the first absent strategy's reason, and
+    Decay with the first absent book's reason: never a partial sum shown as a total (REQ-109 AC-5)."""
+    booked = sum((Decimal(s["booked"]) for s in strategies), Decimal(0))
+    paused = next((s for s in strategies if s["unbooked"] is None), None)
+    unbooked = None if paused else sum((Decimal(s["unbooked"]) for s in strategies), Decimal(0))
+    total = None if unbooked is None else booked + unbooked
+    missing = next((d for d in decays if d.value is None), None)
+    decay = None
+    if missing is None:
+        decay = sum((d.value or Decimal(0) for d in decays), Decimal(0)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
+            "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
+            "totals_reason": None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE),
+            "decay": decay, "decay_text": _signed(decay), "decay_reason": None if missing is None else missing.reason}
 
 
 def _check_price(price: Decimal) -> None:
@@ -440,6 +497,7 @@ class TriggersOut(ApiModel):
 class AlertOut(ApiModel):
     id: int
     strategy_id: int
+    strategy_name: CatalogueText  # GC-TP step 4a: the strategy's saved name, the paper replies' quoted name slot
     trigger_id: int
     created_at: datetime.datetime
     title: CatalogueText
@@ -541,7 +599,8 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
     return AlertsOut.model_validate({"unread": unread, "alerts": [{
-        "id": a.id, "strategy_id": a.strategy_id, "trigger_id": a.trigger_id, "created_at": a.created_at,
+        "id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
+        "trigger_id": a.trigger_id, "created_at": a.created_at,
         "title": restore_explanation("paper_alert_title", a.title),
         "body": restore_explanation("paper_alert_body", a.body), "read": a.read_at is not None} for a in rows]})
 
