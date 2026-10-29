@@ -99,7 +99,7 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
     await flushPromises()
     expect(dialog(w).props('open')).toBe(true)
     expect(rowsOf(w)).toEqual(OPEN.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
-    expect(t(w, 'paper-confirm-title').text()).toBe('Exit paper positions')
+    expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit paper positions')
     expect(all(w, 'paper-order-kind').map((k) => k.text())).toEqual(OPEN.map(() => 'Exit'))
     expect(w.vm.$.setupState.legs).toEqual([]) // the edit is the legs, so the pending count / Discard see it too
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/paper/'))).toHaveLength(0)
@@ -143,7 +143,7 @@ describe('Confirm list title by content, each row\'s kind beside B/S', () => {
   for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit paper positions', ['Exit']], [['exit', 'add'], 'Review paper orders', ['Exit', 'Add']]]) {
     it(`${kinds.join('+')} -> "${title}"`, () => {
       const w = mount(PaperConfirmDialog, { props: { open: true, orders: kinds.map(order) } })
-      expect(t(w, 'paper-confirm-title').text()).toBe(title)
+      expect(t(w, 'modal-title').text()).toBe(title)
       expect(all(w, 'paper-order-kind').map((k) => k.text())).toEqual(labels)
       w.unmount()
     })

@@ -5,10 +5,12 @@
      it only checks the step (above 0, multiple of 0.05) by whole paise from the text. The server refuses the same and its
      refusal text arrives in `error`. Confirm emits ONE `confirm` with the whole list; `busy` blocks a second press. -->
 <template>
-  <Modal :open="open" title="Add to Paper" fallback-focus="[data-testid='add-to-paper']" data-testid="paper-confirm" @close="emit('cancel')">
+  <Modal :open="open" :title="title" fallback-focus="[data-testid='add-to-paper']" data-testid="paper-confirm" @close="emit('cancel')">
     <ul class="text-sm" data-testid="paper-orders">
       <li v-for="(row, i) in rows" :key="row.key" class="flex flex-wrap items-center gap-2 border-b border-line py-2" data-testid="paper-order">
         <Chip :kind="row.side === 'BUY' ? 'buy' : 'sell'" :label="row.side === 'BUY' ? 'B' : 'S'" />
+        <!-- GC-TP step 3b2 (Sensibull Add to Drafts 166-173): each row says whether it adds to the position or exits it -->
+        <span class="text-xs font-medium text-ink-muted" data-testid="paper-order-kind">{{ paperKindLabel(row.kind) }}</span>
         <span class="min-w-0 flex-1" data-testid="paper-order-text">{{ row.text }}</span>
         <label class="flex items-center gap-1">
           <span class="text-ink-muted">Lots</span>
@@ -37,6 +39,7 @@ import { computed, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import { PAPER_NOT_REAL_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, paperLotsOk, paperPriceOk } from '@/lib/tracking'
+import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -51,6 +54,8 @@ watch(() => [props.open, props.orders], () => {
   if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: o.price ?? '' }))
 }, { immediate: true })
 
+// GC-TP step 3b2: the title says what the list holds (adds, exits or both)
+const title = computed(() => paperDialogTitle(props.orders))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : !paperPriceOk(r.price) ? PAPER_PRICE_REASON : '')))
 const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) => r === ''))
 

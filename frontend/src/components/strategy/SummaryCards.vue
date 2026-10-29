@@ -21,6 +21,22 @@
       <!-- Block 1: Max Profit, Max Loss, Breakeven -->
       <div class="min-w-0 @2xl:pr-4" data-testid="summary-block-outcome">
         <p v-if="estimateLabel" class="mb-1 inline-block rounded bg-warn-soft px-1.5 text-[11px] text-ink" data-testid="output-label">{{ estimateLabel }}</p>
+        <!-- GC-TP step 3b2 (REQ-109 AC-9; Sensibull Drafts Mode 278-279): in Drafts Mode the paper book's Profit left / Loss left
+             come FIRST, each the book reply's text as sent; with the reply's extremes_reason they are absent and the reason said.
+             The Max Profit / Max Loss below are then the book's original figures (the page passes them). -->
+        <div v-if="left" class="mb-2 flex flex-nowrap items-start gap-x-3" data-testid="summary-left-row">
+          <template v-if="!left.reason">
+            <div class="min-w-0">
+              <span class="text-xs text-ink-muted">{{ PROFIT_LEFT_LABEL }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ left.profit ?? '-' }}</div>
+            </div>
+            <div class="min-w-0">
+              <span class="text-xs text-ink-muted">{{ LOSS_LEFT_LABEL }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ left.loss ?? '-' }}</div>
+            </div>
+          </template>
+          <p v-else class="text-xs text-ink-muted" data-testid="extremes-reason">{{ left.reason }}</p>
+        </div>
         <!-- GC-UI D-PX item 2: both pills in ONE row that never wraps (Sensibull sb-01: side by side); the percent is a smaller
              second line INSIDE its pill, so each pill is only as wide as its figure -->
         <div class="flex flex-nowrap items-start gap-x-3" data-testid="summary-pills-row">
@@ -106,6 +122,7 @@ import { istTime, groupMoney } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
+import { LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
   maxLoss: { type: String, default: '-' },
@@ -127,6 +144,9 @@ const props = defineProps({
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless Zerodha's funds were read)
   estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)
+  // GC-TP step 3b2: Drafts Mode only - { profit, loss, reason }: the paper book's profit_left_text / loss_left_text as sent, or
+  // the words for its extremes_reason; null outside Drafts Mode (the summary is then unchanged)
+  left: { type: Object, default: null },
 })
 // REQ-081 AC-10: the funds the percentages are of and when Zerodha was read, words unchanged, now in the "?" of both
 // figures (ADR-202 (1)); absent with the percentages when funds could not be read. The funds figure has no server display

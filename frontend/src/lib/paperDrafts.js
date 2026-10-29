@@ -162,3 +162,66 @@ export async function readPaperBook(client, id) {
   if (!net) throw new Error('unreadable paper book')
   return { kind: 'paper', book, net }
 }
+
+// GC-TP step 3b2 (REQ-109 AC-9; Sensibull Drafts Mode 274-279, Add to Drafts 166-173): the rest of Drafts Mode.
+/** R-11: a leg loaded from the book carries the paper fill's average, not a price the user typed (no time beside it). */
+export const PAPER_AVERAGE_LABEL = 'Paper average'
+export const PROFIT_LEFT_LABEL = 'Profit left'
+export const LOSS_LEFT_LABEL = 'Loss left'
+export const EXIT_ALL_LABEL = 'Exit all'
+export const EXIT_LABEL = 'Exit'
+export const ADD_KIND_LABEL = 'Add'
+export const NET_POSITIONS_LABEL = 'Net Positions'
+export const ORDERBOOK_LABEL = 'Orderbook'
+/** The book answers extremes_reason as a code only (ofo.engine.extremes ExtremesReason): its words here, never a figure. */
+export const EXTREMES_REASON_TEXT = {
+  multi_expiry: 'Profit left and Loss left are not worked out: the open contracts have different expiries.',
+  prices_not_live: 'Profit left and Loss left are not worked out: prices are not live.',
+}
+export const EXTREMES_REASON_UNKNOWN = 'Profit left and Loss left are not worked out.'
+export const extremesReasonText = (code) => (code == null ? null : EXTREMES_REASON_TEXT[code] ?? EXTREMES_REASON_UNKNOWN)
+
+/** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits -> Exit paper
+ *  positions; both -> Review paper orders. */
+export const PAPER_TITLE_ADD = 'Add to Paper'
+export const PAPER_TITLE_EXIT = 'Exit paper positions'
+export const PAPER_TITLE_BOTH = 'Review paper orders'
+export function paperDialogTitle(orders) {
+  const list = orders ?? []
+  const exits = list.filter((o) => o?.kind === 'exit').length
+  if (exits === 0) return PAPER_TITLE_ADD
+  return exits === list.length ? PAPER_TITLE_EXIT : PAPER_TITLE_BOTH
+}
+/** Each row's kind beside B/S ('open' and 'add' both add to the position). */
+export const paperKindLabel = (kind) => (kind === 'exit' ? EXIT_LABEL : ADD_KIND_LABEL)
+
+/** The open lots of `contractId` in the net position (a count), or 0. */
+export function openLots(net, contractId) {
+  const l = (net ?? []).find((x) => x.contract_id === contractId)
+  return l ? l.lots : 0
+}
+/** A lots-box text is a whole number 1..max (a count, read from digits only). */
+export function exitLotsOk(text, max) {
+  const s = String(text ?? '').trim()
+  return /^[1-9]\d{0,5}$/.test(s) && Number(s) <= max
+}
+/** The EDITED legs for "exit `lots` of `contractId`": every other contract keeps the legs on screen; this contract becomes its
+ *  net leg less `lots` (gone at zero), in its place. Only legs change: the orders still come from paperOrdersFor(net, edited),
+ *  never a second order-building path. Null when `lots` is not 1..open lots. */
+export function legsAfterExit(net, legs, contractId, lots) {
+  const held = (net ?? []).find((l) => l.contract_id === contractId)
+  if (!held || !Number.isInteger(lots) || lots < 1 || lots > held.lots) return null
+  const rest = held.lots - lots
+  const out = []
+  let placed = false
+  for (const l of legs ?? []) {
+    if (l.contract_id !== contractId) { out.push(l); continue }
+    if (!placed && rest > 0) out.push({ ...held, lots: rest })
+    placed = true
+  }
+  if (!placed && rest > 0) out.push({ ...held, lots: rest })
+  return out
+}
+
+/** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */
+export const paperFillKey = (l) => `${l?.contract_id}|${l?.planned_entry}|${l?.captured_at}`
