@@ -384,9 +384,14 @@ async def test_two_concurrent_exits_of_one_leg_one_stored_the_other_refused_alre
     contract_ids: list[int] = []
     try:
         async with app_engine.connect() as setup:  # noqa: SIM117 - the transaction needs the connection
+            before = {r[0] for r in await setup.execute(text("SELECT id FROM public.catalogue_contracts"))}
+            await setup.rollback()  # end the read's autobegun transaction; the seed commits in its own
             async with setup.begin():
                 _, stored = await _with_draft(setup, user)
-                contract_ids = list((await _contract_ids(setup)).values())
+                # every catalogue row this test committed (the whole recorded list, not only the legs' contracts):
+                # a row left behind makes a later test's small catalogue trip the ADR-058 10% guard
+                after = {r[0] for r in await setup.execute(text("SELECT id FROM public.catalogue_contracts"))}
+                contract_ids = sorted(after - before)
                 entry = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity,
                                           D("10.00"), at)
                          for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
