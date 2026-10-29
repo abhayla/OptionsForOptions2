@@ -292,7 +292,10 @@ LINES: dict[str, tuple[str, ...]] = {
         "const VIEW_ON_KITE = 'view on Kite'",
         '<p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>',
         '<p>Read from Zerodha at <span data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>',
-        '<EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
+        '<EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
+        # GC-TP 4b (F-69, ADR-207 (3)): while paper strategies are open, the real Positions tab names Zerodha as the source
+        "const NO_ZERODHA = 'No open Zerodha positions.'",
+        '<p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>',
         'Zerodha: <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> units,',
         '(Zerodha shows <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> on this contract)',
         '<a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="underline" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>',
