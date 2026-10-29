@@ -366,14 +366,15 @@ async def test_ac6_another_user_cannot_list_read_or_rename_a_strategy_and_the_an
 
 async def test_ac4_the_list_carries_underlying_first_leg_leg_count_and_the_tracked_state(app_engine, admin_engine):
     """Per strategy: name, underlying, the first leg's contract terms, leg_count (the browser writes "... and 3 more"),
-    last-saved time and tracked read from the real tracking table (a strategy with a tracking row: true)."""
+    last-saved time and tracked read from the real paper order book (a strategy with a paper order: true; GC-TP 1a)."""
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
             _, tracked = await _with_draft(conn, user := _user())
             _, untracked = await _with_draft(conn, user)
-            await conn.execute(text("INSERT INTO public.strategy_tracking (strategy_id, strategy_revision, "
-                                    "price_health, prices_at) VALUES (:id, 1, 'available', now())"), {"id": tracked.id})
+            await conn.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, "
+                                    "price, kind, placed_at) VALUES (:id, :c, 'BUY', 65, 10.00, 'open', now())"),
+                               {"id": tracked.id, "c": tracked.saved.contract_ids[0]})
             async with _client(_app(_ConnMaker(conn), user)) as ac:
                 listed = await ac.get("/strategies")
             by_id = {s["id"]: s for s in listed.json()["strategies"]}
@@ -388,12 +389,12 @@ async def test_ac4_the_list_carries_underlying_first_leg_leg_count_and_the_track
 
 async def test_ac4_when_the_tracking_read_fails_the_list_answers_and_tracked_is_unknown(app_engine, monkeypatch):
     """Standing item (d): a failed tracking read never reads "not tracked"; the rows still come back."""
-    from ofo_app import tracking_store  # noqa: PLC0415
+    from ofo_app import paper_store  # noqa: PLC0415
 
     async def broken(conn, ids):
         raise RuntimeError("tracking store unreachable")
 
-    monkeypatch.setattr(tracking_store, "tracked_ids", broken)
+    monkeypatch.setattr(paper_store, "tracked_ids", broken)
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:

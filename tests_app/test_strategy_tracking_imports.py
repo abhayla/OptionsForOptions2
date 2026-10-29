@@ -15,8 +15,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 def test_ac1_the_tracking_modules_import_nothing_from_the_order_path():
     """AC-1 (structural): the tracking route, store and domain import no execute/execution/basket module."""
-    for path in (ROOT / "backend/ofo_app/routes/tracking.py", ROOT / "backend/ofo_app/tracking_store.py",
-                 ROOT / "backend/ofo/tracking/paper.py"):
+    for path in (ROOT / "backend/ofo_app/routes/tracking.py", ROOT / "backend/ofo_app/paper_store.py",
+                 ROOT / "backend/ofo/tracking/paper.py", ROOT / "backend/ofo/tracking/book.py"):
         imports = [line for line in path.read_text(encoding="utf-8").splitlines()
                    if line.startswith(("import ", "from "))]
         assert not [line for line in imports if "execut" in line or "basket" in line or "orders" in line], path
@@ -40,13 +40,13 @@ def test_req109_ac3_paper_tracking_and_exit_import_nothing_from_the_order_path()
     """AC-3 (GC-BP step 5): start, view, list and paper exit never reach Execute: the route, store and domain import
     no module or name from the order path (execute*, basket*, broker order code), in any import form (AST, so a
     parenthesised multi-line import is read too)."""
-    for rel in ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py",
-                "backend/ofo/tracking/paper.py"):
+    for rel in ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/paper_store.py",
+                "backend/ofo/tracking/paper.py", "backend/ofo/tracking/book.py"):
         bad = [m for m in _imported_names(ROOT / rel) if any(word in m.lower() for word in ORDER_PATH)]
         assert not bad, (rel, bad)
 
 
-TRACKING_CODE = ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py")
+TRACKING_CODE = ("backend/ofo_app/routes/tracking.py", "backend/ofo_app/paper_store.py")
 #: The raw catalogue identity a stored contract id could be priced by without the live-identity check.
 RAW_IDENTITY = ("exchange_token", "catalogue_contracts", "load_contract", "live_contract_id")
 
@@ -90,7 +90,7 @@ def test_tracking_reaches_a_feed_key_only_through_tracked_contracts():
         assert path.exists(), path
         assert _raw_identity_uses(path) == [], name
     route = (ROOT / TRACKING_CODE[0]).read_text(encoding="utf-8")
-    assert "from ofo_app import tracked_contracts, tracking_store" in route
+    assert "from ofo_app import paper_store, tracked_contracts" in route
 
 
 def test_the_choke_point_checks_the_live_holder_of_the_token():
@@ -154,7 +154,7 @@ REVIEWED_RAW_IDENTITY = {
 }
 #: Paths that must never be in the reviewed list: the callers issue #500 moved onto resolve.
 MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/routes/execute.py",
-                    "backend/ofo_app/routes/tracking.py", "backend/ofo_app/tracking_store.py")
+                    "backend/ofo_app/routes/tracking.py", "backend/ofo_app/paper_store.py")
 
 
 def _reviewed(rel: str) -> bool:
@@ -316,7 +316,8 @@ ORDER_PATH = ("backend/ofo/execution", "backend/ofo/orders", "backend/ofo_app/ba
 def test_ac1_no_order_path_module_imports_the_tracking_code():
     """REQ-109 AC-1/AC-2 (no account-wide switch, paper never mixed with real): the reverse direction - no module of
     the order path (execution, orders, the basket and execute-plan modules) imports ofo.tracking or
-    ofo_app.tracking_store, so a paper entry cannot be read into an order. Every listed path must exist (a renamed
+    ofo_app.paper_store (the paper order book since GC-TP 1a part 4), so a paper entry cannot be read into an
+    order. Every listed path must exist (a renamed
     module fails here, never passes silently)."""
     files = []
     for name in ORDER_PATH:
@@ -327,7 +328,7 @@ def test_ac1_no_order_path_module_imports_the_tracking_code():
     for path in files:
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
-            names_tracking = "ofo.tracking" in stripped or "tracking_store" in stripped
+            names_tracking = "ofo.tracking" in stripped or "paper_store" in stripped
             if stripped.startswith(("import ", "from ")) and names_tracking:
                 offenders.append(f"{path.relative_to(ROOT)}: {stripped}")
     assert offenders == []
