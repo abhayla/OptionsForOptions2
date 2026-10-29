@@ -1098,7 +1098,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
     ExplanationTemplate("target_badge_profit", "values_seen", "Projected profit: {amount}", {"amount": Rupees}),
     ExplanationTemplate("target_badge_loss", "values_seen", "Projected loss: {amount}", {"amount": Rupees}),
-    ExplanationTemplate("target_badge_zero", "values_seen", "Projected P&L: {amount}", {"amount": Rupees}),
+    ExplanationTemplate("target_badge_zero", "values_seen", "Projected P/L: {amount}", {"amount": Rupees}),
     ExplanationTemplate("target_badge_unavailable", "values_seen", "Projected figure not available"),
     ExplanationTemplate("target_badge_no_target", "values_seen", "No target is set."),
     ExplanationTemplate("target_badge_percent_unavailable", "values_seen",

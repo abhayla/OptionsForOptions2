@@ -1892,8 +1892,8 @@
     "reviewed": "pending owner read"
   },
   "explanation:target_badge_zero": {
-    "sha256": "d7fd4fb9d9bebb907dc84d9646d2b37a9966d6c1ac33fe46d2807ba6054e1c32",
-    "reviewed": "pending owner read"
+    "sha256": "56de2eb476d9d36703625928256146d981098a787b8cb484edafd6edf002e88c",
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:target_badge_unavailable": {
     "sha256": "3b3d3517682b8da02643b83769119553b9bbc254a4b1db99e4492ec073716f03",
@@ -1901,11 +1901,11 @@
   },
   "explanation:target_badge_no_target": {
     "sha256": "c0028a03c99a478c1ca264f3a5f2ea4045440eadffac36045ead8ccfedea5bc4",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:target_badge_percent_unavailable": {
     "sha256": "0d53036da9c0311e8c777e6f3a6f28ede180e08b37d751bfa42cbeb3ebeb0b9b",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:target_days_to_expiry": {
     "sha256": "f97205c07dea49c8ffb6860243c99afdffec84c0144ffb57a71faa40d7d37067",
@@ -1913,7 +1913,7 @@
   },
   "explanation:target_move_no_spot": {
     "sha256": "1b33dd295e1d8f597df0a5f51b3e0c42345b2b0b0d9996946293f9cb3d62ede8",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:paper_reason_not_priced": {
     "sha256": "bb747139646845cd6882855ed8409ed268d807914767b0a5b3174083b936fce3",
@@ -1945,15 +1945,15 @@
   },
   "explanation:paper_reason_prices_not_live": {
     "sha256": "afea0830f025e3dfaa54187e8db331383eb63fa0dd6e46b8b4521dee3092522f",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:paper_reason_multi_expiry": {
     "sha256": "31b28d857f7da74a9c0c1d10c10f9ed6d47c5c5606e6f85d50de0add5b75e6f4",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:paper_extremes_prices_not_live": {
     "sha256": "b0cffb7229eeb80834fba58e4dd8546c0fd78fd2c5190eb68d3bc97eee4cd96d",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
   "explanation:paper_extremes_unknown": {
     "sha256": "8772abd82604f5eb72666f04d3734b30ab8eb869169ba7cb6b792f36d4b0d1fb",

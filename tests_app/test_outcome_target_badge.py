@@ -110,8 +110,8 @@ def _margin(needed: Decimal | None, state: str = CHECKED) -> Margin:
     (Decimal("-3200"), "loss", "Projected loss: ₹3,200.00"),
     (Decimal("0.01"), "profit", "Projected profit: ₹0.01"),
     (Decimal("-0.01"), "loss", "Projected loss: ₹0.01"),
-    (Decimal("0"), "zero", "Projected P&L: ₹0.00"),
-    (Decimal("-0.00"), "zero", "Projected P&L: ₹0.00"),
+    (Decimal("0"), "zero", "Projected P/L: ₹0.00"),
+    (Decimal("-0.00"), "zero", "Projected P/L: ₹0.00"),
 ])
 def test_badge_label_flips_exactly_at_zero_and_a_true_zero_has_no_sign(pnl, state, label):
     """Attack 5 (REQ-152 AC-4)."""
