@@ -4091,6 +4091,10 @@
    "22326.85",
    "22873.15"
   ],
+  "breakevens_display": [
+   "22,327 (−0.9%)",
+   "22,873 (+1.5%)"
+  ],
   "breakevens_reason": null,
   "stale_text": "Stale: this target figure uses prices older than expected and may be out of date.",
   "curve": {

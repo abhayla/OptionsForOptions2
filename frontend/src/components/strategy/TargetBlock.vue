@@ -96,8 +96,8 @@ const onBox = (e) => {
         </div>
         <div>
           <div class="text-ink-muted">Breakeven at target</div>
-          <div v-if="t.breakevens" class="tabular-nums">
-            <span v-for="b in t.breakevens" :key="b" class="mr-3" data-testid="target-breakeven">{{ b }}</span>
+          <div v-if="t.breakevens_display" class="tabular-nums">
+            <span v-for="b in t.breakevens_display" :key="b" class="mr-3" data-testid="target-breakeven">{{ b }}</span>
           </div>
           <div v-else-if="t.breakevens_reason" class="text-xs text-ink-muted" data-testid="target-breakeven-reason">{{ t.breakevens_reason }}</div>
         </div>

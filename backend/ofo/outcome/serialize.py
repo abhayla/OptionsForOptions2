@@ -55,6 +55,12 @@ def _breakeven(level: Decimal, spot: Decimal | None) -> Any:
     return render_explanation("summary_breakeven_percent", level=level, percent=percent)
 
 
+def breakevens_display(levels: Any, spot: Decimal | None) -> list[Any]:
+    """GC-TPD R-33/R-34: the ONE function that makes every shown breakeven text ("22,618 (-1.4%)"), in the order of
+    ``levels``; the summary, the target and the paper book replies all call it (the browser only shows the text)."""
+    return [_breakeven(b, spot) for b in levels]
+
+
 def _margin(out: Outcome) -> dict[str, Any]:
     m = out.margin
     return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "broker_needed": _s(m.broker_needed),
@@ -181,6 +187,7 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
             "at": t.at, "at_clamped": t.at_clamped, "clamp": t.clamp, "at_clamp_text": t.at_clamp_text, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,
             "output_label": t.output_label, "pnl": pnl,
             "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
+            "breakevens_display": None if t.breakevens is None else breakevens_display(t.breakevens, t.spot),
             "breakevens_reason": t.breakevens_reason,
             "stale_text": render_explanation("paper_reason_whatif_stale"),  # ADR-210 (7): shown if a later request fails
             "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks,
@@ -273,7 +280,7 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "max_profit_display": _whole(s.max_profit, signed=True),
             "max_loss": _s(s.max_loss),
             "max_loss_display": None if s.max_loss is None else _whole(-s.max_loss, signed=True),
-            "breakevens_display": [_breakeven(b, out.spot_level) for b in s.breakevens],
+            "breakevens_display": breakevens_display(s.breakevens, out.spot_level),
             "max_profit_unlimited": s.max_profit_unlimited,
             "max_loss_unlimited": s.max_loss_unlimited, "breakevens": [_s(b) for b in s.breakevens],
             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),

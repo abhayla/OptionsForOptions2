@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ofo.marketdata.kite_provider import IST
+from ofo.outcome.serialize import breakevens_display
 from ofo_app.routes.outcome import OutcomeRequest, margin_legs
 from test_outcome_route import (
     VALUATION,
@@ -198,3 +199,25 @@ async def test_target_is_analysis_only_never_changes_legs_or_the_margin_plan(pro
     a, b = (await _post(plain, provider)).json(), (await _post(with_target, provider)).json()
     for key in ("legs", "margin", "table", "scenario", "summary", "payoff"):
         assert a[key] == b[key], key
+
+
+async def test_target_breakevens_display_is_the_servers_grouped_text_in_the_same_order(provider):
+    """GC-TPD R-33: every breakeven at target is shown as the server's text ("22,578"), never the raw "22578.12"."""
+    base = await _target(provider)
+    t = (await _target(provider, target_level=_a_grid_level(base)))["target"]
+    assert len(t["breakevens_display"]) == len(t["breakevens"]) > 0
+    for raw, shown in zip(t["breakevens"], t["breakevens_display"], strict=True):
+        assert shown.split(" ")[0] == f"{round(Decimal(raw)):,}"  # whole points, grouped, same order
+
+
+async def test_target_without_breakevens_has_no_display_list(provider):
+    """GC-TPD R-33 attack 1: no breakevens (multi expiry) -> no display list, the reason text stays."""
+    body = {**_legs_body(provider, _mixed_condor()), "target_at": "2026-10-10T12:00:00+05:30"}
+    t = (await _post(body, provider)).json()["target"]
+    assert t["breakevens"] is None and t["breakevens_display"] is None
+
+
+def test_the_raw_level_22578_12_becomes_grouped_text_and_lengths_match() -> None:
+    assert breakevens_display([Decimal("22578.12"), Decimal("22864.84")], None) == ["22,578", "22,865"]
+    assert breakevens_display([Decimal("22578.12")], None) == ["22,578"]
+    assert breakevens_display([], None) == []
