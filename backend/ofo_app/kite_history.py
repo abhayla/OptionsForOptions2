@@ -95,26 +95,26 @@ def _day_close_of(body: str, day: datetime.date) -> Decimal | None:
         rows = parsed["data"]["candles"]
         if not isinstance(rows, list):
             raise CandleError("candles is not a list")
-        if not rows:
-            return None
         if len(rows) > 1:
             raise CandleError("more than one day candle for one day")
-        row = rows[0]
-        if not isinstance(row, list) or len(row) < 6:  # noqa: PLR2004 - [time, o, h, l, c, volume(, oi)]
-            raise CandleError("a day candle row needs 6 fields")
-        at = datetime.datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S%z")
-        if at.date() != day:
-            raise CandleError("the candle is for another date")
-        close = row[4]
-        if isinstance(close, int) and not isinstance(close, bool):
-            close = Decimal(close)
-        if not isinstance(close, Decimal) or not close.is_finite() or close <= 0:
-            raise CandleError("the close is not a positive number")
-        return close
+        return _day_row_close(rows[0], day) if rows else None
     except CandleError:
         raise
     except (ValueError, KeyError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
         raise CandleError(f"malformed candle body: {type(exc).__name__}") from None
+
+
+def _day_row_close(row: object, day: datetime.date) -> Decimal:
+    if not isinstance(row, list) or len(row) < 6:  # noqa: PLR2004 - [time, o, h, l, c, volume(, oi)]
+        raise CandleError("a day candle row needs 6 fields")
+    if datetime.datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S%z").date() != day:
+        raise CandleError("the candle is for another date")
+    close = row[4]
+    if isinstance(close, int) and not isinstance(close, bool):
+        close = Decimal(close)
+    if not isinstance(close, Decimal) or not close.is_finite() or close <= 0:
+        raise CandleError("the close is not a positive number")
+    return close
 
 
 #: (listed contracts) -> the minute-candle reader for exactly those contracts on the owner's stored session

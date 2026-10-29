@@ -5,15 +5,14 @@ import pathlib
 from decimal import Decimal
 
 import pytest
-
 from ofo.history.candles import CandleError
 from ofo.instruments.parser import parse_instruments_csv
 from ofo_app.kite_history import CandleFetchError, KiteHistory
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 LISTED = list(parse_instruments_csv(ROOT / "kite_ws" / "instruments-2026-10-08-subscribed.csv"))
-SECRET = "tok-SECRET-123"
-SENSEX_TOKEN = "265"  # the catalogue's Kite instrument token for the BSE SENSEX index row (fixture CSV)
+SECRET = "tok-SECRET-123"  # noqa: S105
+SENSEX_TOKEN = "265"  # noqa: S105 - the catalogue's Kite instrument token for the BSE SENSEX index row (fixture CSV)
 EXPIRY = datetime.date(2026, 10, 29)
 
 

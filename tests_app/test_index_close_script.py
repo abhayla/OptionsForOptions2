@@ -6,7 +6,6 @@ import pathlib
 from decimal import Decimal
 
 import pytest
-
 from ofo.instruments.models import BSE_INDEX, INDEX_ROWS, ZERODHA
 from ofo.instruments.parser import parse_instruments_csv
 
@@ -61,4 +60,5 @@ def test_the_catalogue_row_for_sensex_carries_kites_instrument_token_not_the_exc
     seg, exchange_token = index_close.INDEXES["SENSEX"]
     row = [lc for lc in listed if (lc.contract.exchange_segment, lc.contract.exchange_token) == (seg, exchange_token)]
     assert seg == BSE_INDEX and len(row) == 1
-    assert row[0].ref(ZERODHA).broker_token == "265" and exchange_token == 1  # the URL needs 265
+    kite_token = row[0].ref(ZERODHA).broker_token
+    assert kite_token == "265" and exchange_token == 1  # noqa: S105 - the URL needs 265

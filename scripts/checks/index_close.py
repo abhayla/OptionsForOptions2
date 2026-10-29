@@ -5,7 +5,7 @@ Usage (the orchestrator, after 15:30 IST):
 
 Spec basis: REQ-109 AC-7 ("at its intrinsic value from the official closing value of its index that day"). This is the
 core proof of the settlement; the settlement job itself is a later step. It makes exactly one read-only Kite call
-(``GET /instruments/historical/<token>/day``) through ``ofo_app.kite_history``; the allow-list door refuses anything else.
+(``GET /instruments/historical/<token>/day``) through ``ofo_app.kite_history``; the allow-list door refuses the rest.
 
 Refuses unless DATABASE_URL names ofo_dev (the way ``dev_run.py`` sets it). Opens the owner's cached Kite token the
 way ``live_market`` does. Prints exactly one line and never the token:
