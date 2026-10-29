@@ -110,6 +110,10 @@ class BookView:
     booked: Decimal
     unbooked: Decimal | None
     total: Decimal | None
+    #: The cash of every order: SELL price x qty in, BUY price x qty out - always a whole number of paise. Equals
+    #: booked minus the cost of the open quantity at its exact average (signed), so booked + the open contracts'
+    #: P&L at their average entry is ``cash`` + the open contracts' value (ofo.engine.extremes).
+    cash: Decimal
 
 
 class _Running:
@@ -173,9 +177,10 @@ def net_positions(orders: Sequence[PaperOrder], live_prices: Mapping[str, Decima
         running.setdefault(order.instrument_id, _Running(order)).apply(order)
     positions = tuple(r.position(live_prices.get(iid)) for iid, r in running.items())
     booked_f = sum((r.booked for r in running.values()), Fraction(0))
+    cash = sum((-o.signed * o.price for o in orders), Decimal(0))
     unknown = any(p.unbooked is None for p in positions)
     if unknown:
-        return BookView(positions, _decimal(booked_f), None, None)
+        return BookView(positions, _decimal(booked_f), None, None, cash)
     total = sum((p.total for p in positions if p.total is not None), Decimal(0))
     booked = _decimal(booked_f)
-    return BookView(positions, booked, total - booked, total)
+    return BookView(positions, booked, total - booked, total, cash)
