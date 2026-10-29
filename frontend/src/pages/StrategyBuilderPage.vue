@@ -26,6 +26,7 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+import { ADD_TO_PAPER_LABEL } from '@/lib/tracking'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
@@ -222,7 +223,7 @@ function syncLive() {
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
 const savedId = ref(null)
-// W-122: the revision the page loaded or saved (Start tracking is based on it, never on a fresh read)
+// W-122: the revision the page loaded or saved (kept for the chart's version)
 const savedRevision = ref(null)
 // REQ-134 AC-2: the saved strategy this screen is editing ({ id, revision, name }: the revision and name the page loaded or saved).
 // Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
@@ -454,7 +455,7 @@ const pickFromChain = () => {
   picker.value?.showStrikes()
   pickerOpen.value = true
 }
-// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Start tracking goes to the
+// "..." menu items: History opens the existing activity panel in the shared right Drawer (UI-108); Add to Paper opens the confirm list; it used to go to the
 // existing tracking block (right column)
 const historyOpen = ref(false)
 const showHistory = () => {
@@ -465,7 +466,6 @@ const restoreFromHistory = (legsIn, id, revision, name) => {
   historyOpen.value = false
   openSaved(legsIn, id, revision, name)
 }
-const goToTracking = () => document.querySelector('[data-testid="tracking-panel"]')?.scrollIntoView?.()
 // AC-4: Execute stays disabled, with its reason, until the latest outcome and edit reply has arrived
 const refusal = computed(() => executeRefusal(legs.value) ?? (updating.value ? EXECUTE_WAITS_FOR_LATEST : null))
 const setChoice = (next) => {
@@ -595,13 +595,13 @@ const pricesStamp = computed(() => {
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" class="max-[1099px]:contents" @open="openSaved" @saved="onSaved" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
-          <template #menu="{ close }">
+          <template #menu="{ close, addToPaper, canAddToPaper }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>
-            <button v-if="savedId" type="button" role="menuitem" data-testid="menu-start-tracking" @click="close(); goToTracking()">Start tracking</button>
+            <button type="button" role="menuitem" data-testid="menu-add-to-paper" :disabled="!canAddToPaper" @click="close(); addToPaper()">{{ ADD_TO_PAPER_LABEL }}</button>
           </template>
           <template #ready-made><ReadyMadePanel :legs="legs" :underlying="headerUnderlying || pickUnderlying" @update:legs="setLegs" /></template>
           <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
@@ -756,7 +756,7 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" :legs="data.legs ?? null" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" />
         </div>
       </div>
     </div>

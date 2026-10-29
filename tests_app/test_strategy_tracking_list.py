@@ -27,6 +27,7 @@ from test_strategy_tracking import (
     _REUSE,
     IDS,
     _frame,
+    _paper_body,
     _setup,
 )
 
@@ -60,8 +61,9 @@ async def _tracked(db, count: int = 1):
                                                                                await _contract_ids(db)))).id)
     async with _client(app) as c:
         for sid in ids:
-            started = await c.post(f"/strategies/{sid}/tracking", json={"revision": 1})
-            assert started.status_code == HTTPStatus.CREATED, started.text
+            placed = await c.post(f"/paper/strategies/{sid}/orders", json=_paper_body(await store.load(
+                db, stored.user_ref, sid)))
+            assert placed.status_code == HTTPStatus.CREATED, placed.text
     _move(provider, last)
     return app, ids, provider, clock, last
 

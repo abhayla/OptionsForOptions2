@@ -1,17 +1,15 @@
-"""POST/GET /strategies/{id}/tracking: paper tracking of a saved strategy and one platform detection (W-122).
+"""GET /strategies/{id}/tracking, GET /tracking, POST /strategies/{id}/tracking/exit: paper tracking of a saved strategy
+and one platform detection (W-122). Orders are placed through POST /paper/strategies/{id}/orders (GC-TP step 2: the
+old start route is gone).
 
 Spec basis: REQ-109 AC-1 (a paper entry per leg at the leg's live price, with time and price health; no account-wide
 switch), AC-2 (paper P&L from the one engine, exact Decimal, never mixed with real P&L), AC-3 (tracking never reaches
 Execute: this module imports nothing from the order path), AC-5 (stale or missing prices pause paper P&L); REQ-045 Q253
 condition 1 and AC-1/AC-2 (ofo.adjustment.detection); REQ-046 AC-1 (each detection's Layer 1 numbers).
 
-- Start: the body carries only the strategy revision the user is looking at (extra keys - prices included - are
-  refused, 422). The server reads every leg's price from the same market context as the outcome route
-  (``get_market_context``: the live feed, or the test replay) and refuses the start when any is stale or missing, when
-  no feed runs, when the strategy changed since that revision, or when it is already tracked. Nothing is stored then.
 - View: the paper order book (public.paper_orders, GC-TP 1a part 4) shown as one leg per contract
   (ofo.tracking.book), current prices, paper P&L from the one engine on the orders
-  (ofo.engine.orderbook.net_positions) or the paused state, and the detections. Start and exit write
+  (ofo.engine.orderbook.net_positions) or the paused state, and the detections. Exit writes
   paper orders (ofo_app.paper_store); the old tracking tables are read-only since migration 0028.
 - Contract identity (round 3 redesign): every stored contract id reaches a feed key ONLY through
   ofo_app.tracked_contracts.resolve, which gives a key only for a live contract still holding its own exchange token.
@@ -62,12 +60,6 @@ PriceStateCode = paper.PriceState
 def get_near_level_threshold() -> Decimal:
     """Q253 condition 1's threshold (an admin setting; the admin screen is Step 6). Tests override this dependency."""
     return NEAR_LEVEL_THRESHOLD_PERCENT
-
-
-class TrackingStartIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    revision: int = Field(gt=0, le=INTEGER_MAX,
-                          description="the saved strategy revision the user started tracking from")
 
 
 class TrackingExitIn(BaseModel):
@@ -169,14 +161,6 @@ class TrackedStrategyOut(ApiModel):
 class TrackingListOut(ApiModel):
     strategies: list[TrackedStrategyOut]
     answered_at: datetime.datetime
-
-
-def _legs(saved, ids: list[str]) -> list[paper.TrackedLeg]:
-    """The saved definition's legs as paper legs to price at the START only (their entry price is set by
-    paper.capture_entry); the view never uses this (it reads the stored entry, _entry_legs)."""
-    unset = datetime.datetime.min.replace(tzinfo=datetime.UTC)
-    return [paper.TrackedLeg(iid, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, Decimal(0), unset)
-            for iid, leg in zip(ids, saved.definition.legs, strict=True)]
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
@@ -387,37 +371,6 @@ async def _write(db: Any, strategy_id: int, writing: Coroutine[Any, Any, Sequenc
     if bk is None:
         raise RuntimeError(f"strategy {strategy_id}: the paper orders just written cannot be read back")
     return bk
-
-
-@router.post("/strategies/{strategy_id}/tracking", status_code=201, response_model=TrackingOut)
-async def start_tracking(strategy_id: int, body: TrackingStartIn,  # noqa: PLR0913 - FastAPI dependencies
-                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
-                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-                         feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
-                         now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                         threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingOut:
-    """Start (kept until GC-TP step 2 removes it): one `open` paper order per saved leg at its live price now."""
-    stored = await _load(db, user_ref, strategy_id)
-    if stored.revision != body.revision:
-        raise StrategyRefused("strategy_revision_conflict", Failure.CONFLICT)
-    if await paper_store.load(db, strategy_id):
-        raise StrategyRefused("tracking_already_started", Failure.CONFLICT)
-    if not _connected(ctx):
-        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
-    contracts = await tracked_contracts.resolve(db, stored.saved.contract_ids)
-    ids = [c.feed_key for c in contracts if c.feed_key is not None]
-    if len(ids) != len(contracts):
-        raise StrategyRefused("tracking_contract_not_live", Failure.CONFLICT)
-    snapshot = await _snapshot(ctx, feed, stored.saved.definition.underlying, ids)
-    try:
-        entry = paper.capture_entry(snapshot, _legs(stored.saved, ids))
-    except paper.PricesNotLive:
-        raise StrategyRefused("tracking_prices_not_live", Failure.CONFLICT) from None
-    orders = [paper_store.NewOrder(cid, leg.action.value, leg.quantity, leg.entry_price, "open", leg.price_at)
-              for cid, leg in zip(stored.saved.contract_ids, entry, strict=True)]
-    bk = await _write(db, strategy_id, paper_store.start(db, user_ref, strategy_id, body.revision, orders),
-                      paper_store.ALREADY_TRACKED, "tracking_already_started")
-    return await _answer(db, stored, bk, ctx, feed, threshold, now())
 
 
 @router.get("/strategies/{strategy_id}/tracking", response_model=TrackingOut)

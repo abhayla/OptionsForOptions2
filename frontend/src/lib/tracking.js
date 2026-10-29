@@ -13,8 +13,27 @@ const legPnlText = (leg) => {
 }
 import { plainName } from '@/lib/saveDraft'
 
-/** ADR-166: the action's label on every screen (owner decision; change it here only). */
-export const START_TRACKING_LABEL = 'Start tracking'
+/** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
+export const ADD_TO_PAPER_LABEL = 'Add to Paper'
+export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use no real money.'
+export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
+export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
+export const PAPER_ADDED_TEXT = 'Added to Paper'
+// a typed price: digits with at most two decimals whose last decimal is 0 or 5 (a multiple of 0.05), and not zero. Judged on
+// the text alone, no number is formed (ADR-008).
+const PRICE_TEXT = /^\d{1,7}(?:\.\d[05]?)?$/
+const ZERO_TEXT = /^0+(?:\.0+)?$/
+export function paperPriceOk(text) {
+  const typed = String(text ?? '').trim()
+  return PRICE_TEXT.test(typed) && !ZERO_TEXT.test(typed)
+}
+export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
+
+/** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
+export async function addToPaper(client, strategyId, orders) {
+  const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, { orders })
+  return data
+}
 /** GC-BP F-1: a tracked strategy's paper P&L is re-read this often while it is on screen (the strike picker's rate). */
 export const TRACKING_REFRESH_MS = 5000
 /** REQ-045 AC-1: the label of every platform detection. */

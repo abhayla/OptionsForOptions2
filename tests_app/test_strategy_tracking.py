@@ -91,6 +91,24 @@ async def _rows(db, strategy_id: int) -> tuple[int, int]:
     return min(int(b), 1), int(b)
 
 
+ENTRY_PRICES = ["39.15", "12.95", "82.75", "35.80"]
+
+
+def _paper_body(stored, prices=ENTRY_PRICES) -> dict:
+    """One typed `open` order per saved leg (GC-TP step 2: the paper book is written only by POST /paper/...)."""
+    return {"orders": [{"contract_id": cid, "side": leg.action.value, "quantity": leg.quantity, "price": price,
+                        "kind": "open"}
+                       for cid, leg, price in zip(stored.saved.contract_ids, stored.saved.definition.legs, prices,
+                                                  strict=True)]}
+
+
+async def _open_book(c, stored, prices=ENTRY_PRICES):
+    """Add the saved legs to paper at ``prices``; returns the tracking view read straight after (201 asserted)."""
+    placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, prices))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+    return await c.get(f"/strategies/{stored.id}/tracking")
+
+
 async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_and_one_detection(db):
     """AC-1/AC-2 core proof (REQ-045 AC-1/AC-2 too). Start stores the recorded LTPs 39.15 / 12.95 / 82.75 / 35.80 as
     the entry. The feed then moves the legs to 45.15 / 14.95 / 70.75 / 30.80. By hand: (39.15 - 45.15) x 65 = -390.00;
@@ -100,8 +118,7 @@ async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_an
     do not (credit 73.15 = 39.15 - 12.95 + 82.75 - 35.80)."""
     app, stored, provider, _clock, last = await _setup(db)
     async with _client(app) as c:
-        started = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert started.status_code == HTTPStatus.CREATED, started.text
+        started = await _open_book(c, stored)
         assert [leg["entry_price"] for leg in started.json()["legs"]] == ["39.15", "12.95", "82.75", "35.80"]
         assert started.json()["paper_pnl"] == "0.00"
         for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
@@ -142,8 +159,7 @@ async def test_ac2_an_edit_after_the_start_changes_nothing_in_the_tracked_figure
     app, stored, provider, _clock, last = await _setup(db)
     ids = await _ids(db)
     async with _client(app) as c:
-        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert first.status_code == HTTPStatus.CREATED
+        await _open_book(c, stored)
         edited = await c.put(f"/strategies/{stored.id}",
                              json=edit(_body(ids, wing=wing, expected_revision=stored.revision)))
         assert edited.status_code == HTTPStatus.OK, edited.text
@@ -157,47 +173,6 @@ async def test_ac2_an_edit_after_the_start_changes_nothing_in_the_tracked_figure
     assert view["breakevens"] == ["22326.85", "22873.15"]
     assert [(d["level"], d["distance_points"], d["distance_percent"]) for d in view["detections"]] == [
         ("22400.00", "133.25", "0.59")]
-
-
-async def test_ac1_stale_prices_at_start_are_refused_and_nothing_is_written(db):
-    """AC-1/AC-5: ten minutes after the last frame every quote is stale; the start is refused and 0 rows are written."""
-    app, stored, _provider, clock, last = await _setup(db)
-    clock.now = last + datetime.timedelta(minutes=10)
-    async with _client(app) as c:
-        refused = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-    assert refused.status_code == HTTPStatus.CONFLICT and "not live" in refused.text
-    assert await _rows(db, stored.id) == (0, 0)
-
-
-async def test_ac1_a_second_start_a_changed_revision_and_client_prices_are_refused(db):
-    """AC-1: one tracking per strategy (409 on the second start, still 1 + 4 rows); a start from another revision is
-    refused (409); a body carrying prices is refused (422) - the client never supplies an entry price."""
-    app, stored, *_ = await _setup(db)
-    async with _client(app) as c:
-        forged = await c.post(f"/strategies/{stored.id}/tracking",
-                              json={"revision": stored.revision, "legs": [{"entry_price": "1.00"}]})
-        assert forged.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
-        stale_rev = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision + 1})
-        assert stale_rev.status_code == HTTPStatus.CONFLICT
-        assert await _rows(db, stored.id) == (0, 0)
-        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert first.status_code == HTTPStatus.CREATED
-        again = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-    assert again.status_code == HTTPStatus.CONFLICT and "already being tracked" in again.text
-    assert await _rows(db, stored.id) == (1, 4)
-
-
-async def test_ac1_a_second_start_is_refused_as_already_tracked_before_any_price_read(db):
-    """AC-1: the route checks "already tracked" before it reads prices, so a second start while prices are stale still
-    says the strategy is already being tracked (not "prices not live") and writes nothing."""
-    app, stored, _provider, clock, last = await _setup(db)
-    async with _client(app) as c:
-        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert first.status_code == HTTPStatus.CREATED
-        clock.now = last + datetime.timedelta(minutes=10)
-        again = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-    assert again.status_code == HTTPStatus.CONFLICT and "already being tracked" in again.text
-    assert await _rows(db, stored.id) == (1, 4)
 
 
 async def test_ac1_the_store_refuses_a_second_entry_even_without_the_route_check(db):
@@ -228,19 +203,10 @@ async def test_ac1_another_users_strategy_and_an_untracked_view_answer_not_found
     app, stored, *_ = await _setup(db)
     other, _, *_rest = await _setup(db)
     async with _client(other) as c:
-        theirs = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": 1})
+        theirs = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored))
         assert theirs.status_code == HTTPStatus.NOT_FOUND
     async with _client(app) as c:
         assert (await c.get(f"/strategies/{stored.id}/tracking")).status_code == HTTPStatus.NOT_FOUND
-    assert await _rows(db, stored.id) == (0, 0)
-
-
-async def test_ac1_no_feed_refuses_the_start(db):
-    """AC-1 (feed not running): no market context -> 409 'Live prices are not connected', nothing written."""
-    app, stored, *_ = await _setup(db, ctx=None)
-    async with _client(app) as c:
-        refused = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-    assert refused.status_code == HTTPStatus.CONFLICT and "not connected" in refused.text
     assert await _rows(db, stored.id) == (0, 0)
 
 
@@ -249,8 +215,7 @@ async def test_ac2_stale_prices_after_start_pause_paper_pnl_and_drop_detection(d
     no detection (the index is not live either)."""
     app, stored, _provider, clock, last = await _setup(db, threshold=D("100"))
     async with _client(app) as c:
-        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert first.status_code == HTTPStatus.CREATED
+        await _open_book(c, stored)
         clock.now = last + datetime.timedelta(minutes=10)
         view = (await c.get(f"/strategies/{stored.id}/tracking")).json()
     assert view["state"] == "PAUSED" and view["paper_pnl"] is None and view["as_of"] is not None
@@ -263,8 +228,7 @@ async def test_ac1_a_tracked_strategy_never_reaches_execute(db):
     order path is off (409), or else by Execute's own closed body (422)."""
     app, stored, *_ = await _setup(db)
     async with _client(app) as c:
-        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert first.status_code == HTTPStatus.CREATED
+        await _open_book(c, stored)
         paper_body = await c.post(f"/strategies/{stored.id}/execute",
                                   json={"action": "ENTRY", "paper_entry": {"entry_price": "39.15"}})
         assert paper_body.status_code in {HTTPStatus.CONFLICT, HTTPStatus.UNPROCESSABLE_ENTITY}
@@ -282,7 +246,7 @@ async def test_ac2_a_threshold_setting_outside_0_to_100_fails_closed(db, thresho
     """AC-2: a broken threshold setting is an error, never a silent default."""
     app, stored, *_ = await _setup(db, threshold=threshold)
     async with _client(app) as c:
-        response = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+        response = await _open_book(c, stored)
     assert response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR
 
 
@@ -301,8 +265,7 @@ async def _started_then(db, *sqls: str):
     core proof's 45.15 / 14.95 / 70.75 / 30.80 (so an unchecked view would answer LIVE +195.00), and view."""
     app, stored, provider, _clock, last = await _setup(db, threshold=D("100"))
     async with _client(app) as c:
-        started = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert started.status_code == HTTPStatus.CREATED, started.text
+        await _open_book(c, stored)
         for sql in sqls:
             await db.execute(text(sql), {"id": stored.saved.contract_ids[0]})
         for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
@@ -338,21 +301,6 @@ async def test_ac2_a_delisted_leg_whose_token_is_not_reused_pauses_contract_deli
     _assert_paused_by(await _started_then(db, _DELIST), "contract_delisted")
 
 
-@pytest.mark.parametrize(("sqls", "state"), [((_DELIST, _REUSE), "token_reassigned"), ((_RETIRE,), "contract_retired"),
-                                             ((_DELIST,), "contract_delisted")])
-async def test_ac1_start_is_refused_for_a_leg_not_live_and_nothing_is_written(db, sqls, state):
-    """AC-1: Start tracking refuses the same states (409 tracking_contract_not_live, 0 rows), before any price read."""
-    app, stored, *_ = await _setup(db)
-    for sql in sqls:
-        await db.execute(text(sql), {"id": stored.saved.contract_ids[0]})
-    found = await tracked_contracts.resolve_one(db, stored.saved.contract_ids[0])
-    assert (found.state, found.feed_key) == (state, None)
-    async with _client(app) as c:
-        refused = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-    assert refused.status_code == HTTPStatus.CONFLICT and "no longer a live contract" in refused.text
-    assert await _rows(db, stored.id) == (0, 0)
-
-
 async def test_the_catalogue_answer_states_live_and_contract_row_missing(db):
     """The helper's other two states: a live contract holding its own token gives its feed key; an id no stored
     contract has is contract_missing (no key, fails closed)."""
@@ -378,8 +326,7 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     app, stored, provider, _clock, last = await _setup(db, owner="user-1")
     async with _client(app) as c:
-        started = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
-        assert started.status_code == HTTPStatus.CREATED, started.text
+        await _open_book(c, stored)
         assert calls and set(calls.values()) == {1}
         for _ in range(2):
             assert (await c.get(f"/strategies/{stored.id}/tracking")).status_code == HTTPStatus.OK

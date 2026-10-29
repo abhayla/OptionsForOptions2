@@ -19,7 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 
 import { withPriceTexts } from './_priceTexts'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { PAPER_PNL_PREFIX, START_TRACKING_LABEL, TRACKING_REFRESH_MS, readTracking, signedRupees } from '@/lib/tracking'
+import { PAPER_PNL_PREFIX, TRACKING_REFRESH_MS, readTracking, signedRupees } from '@/lib/tracking'
 
 const legs = withPriceTexts([
   { instrument_id: 'NSE_FO:44624', action: 'SELL', instrument: 'CE', strike: '22800.00', entry_price: '39.15',
@@ -59,7 +59,7 @@ const legRows = (w) => w.findAll('[data-testid="tracking-leg"]').map((r) => {
 })
 
 async function panel() {
-  const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3, legs: replyLegs } })
+  const w = mount(TrackingPanel, { props: { savedId: 7, legs: replyLegs } })
   await flushPromises()
   return w
 }
@@ -78,16 +78,13 @@ describe('signedRupees', () => {
 })
 
 describe('TrackingPanel', () => {
-  it('ADR-166 / AC-1: an untracked saved strategy offers exactly "Start tracking"; it posts only the revision', async () => {
+  it('GC-TP step 2: an untracked saved strategy shows no start button and no figure ("Start tracking" is gone)', async () => {
     answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    answers['POST /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
     const w = await panel()
-    expect(START_TRACKING_LABEL).toBe('Start tracking')
-    expect(w.get('[data-testid="start-tracking"]').text()).toBe('Start tracking')
-    await w.get('[data-testid="start-tracking"]').trigger('click')
-    await flushPromises()
-    expect(calls.find((c) => c[0] === 'POST')).toEqual(['POST', '/strategies/7/tracking', { revision: 3 }])
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +195.00')
+    expect(w.find('[data-testid="start-tracking"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Start tracking')
+    expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
+    expect(calls.filter((c) => c[0] === 'POST')).toEqual([])
   })
 
   it('AC-2: a live answer shows the paper figure, each leg entry and LTP; a stale leg shows no LTP', async () => {
@@ -97,7 +94,7 @@ describe('TrackingPanel', () => {
     const rows = legRows(w)
     // GC-UI D-B49 / D-B39: one value per column, the instrument as "<lots> x <D Mon> <strike> <type>" (no ".00"), prices as sent
     expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', '45.15'], ['S 1 x 3 Nov 22400 PE', '82.75', '-']])
-    // D-B51: the price stored at Start tracking is the Paper entry (the P&L Table's column is the Planned entry)
+    // D-B51: the price stored by Add to Paper is the Paper entry (the P&L Table's column is the Planned entry)
     // GC-UI b2 D-B48: the per-leg P&L column; these legs carry no pnl_text, so it prints the em dash (never a browser sum)
     expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP', 'P&L'])
     expect(w.findAll('[data-testid="tracking-leg-pnl"]').map((c) => c.text())).toEqual(['—', '—'])
@@ -163,18 +160,6 @@ describe('TrackingPanel', () => {
     expect(w.find('[data-testid="detection"]').exists()).toBe(false)
   })
 
-  it('a failed start shows the catalogue message and no figure', async () => {
-    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    answers['GET /strategies/7'] = () => Promise.resolve({ data: { id: 7, revision: 3 } })
-    answers['POST /strategies/7/tracking'] = () => Promise.reject({ status: 409,
-      parts: { what_happened: 'Prices are not live for every leg of this strategy.' } })
-    const w = await panel()
-    await w.get('[data-testid="start-tracking"]').trigger('click')
-    await flushPromises()
-    expect(w.get('[data-testid="tracking-error"]').text()).toBe('Prices are not live for every leg of this strategy.')
-    expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
-  })
-
   it('fail closed: an unknown detection kind or condition makes the whole answer unreadable (no figure)', () => {
     for (const bad of [{ ...detection, kind: 'user_rule' }, { ...detection, condition: 'x' }, null]) {
       const read = readTracking(body({ detections: [detection, bad] }))
@@ -183,24 +168,6 @@ describe('TrackingPanel', () => {
     expect(readTracking(body({ detections: undefined })).kind).toBe('invalid')
   })
 
-  it('Start tracking posts the revision the page loaded, never a freshly fetched one', async () => {
-    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    answers['GET /strategies/7'] = () => Promise.resolve({ data: { id: 7, revision: 9 } })
-    answers['POST /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
-    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
-    await flushPromises()
-    await w.get('[data-testid="start-tracking"]').trigger('click')
-    await flushPromises()
-    expect(calls.filter((c) => c[0] === 'POST')).toEqual([['POST', '/strategies/7/tracking', { revision: 3 }]])
-    expect(calls.some((c) => c[1] === '/strategies/7')).toBe(false)
-  })
-
-  it('without a loaded revision the start is disabled', async () => {
-    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: null } })
-    await flushPromises()
-    expect(w.get('[data-testid="start-tracking"]').attributes('disabled')).toBeDefined()
-  })
 })
 
 // GC-BP F-1 (2026-10-28, live walk on strategy 46): the panel read the paper P&L once and never again, so at 10:21:57 IST
@@ -221,19 +188,6 @@ describe('TrackingPanel refresh (GC-BP F-1)', () => {
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(gets()).toBe(2)
     expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): −188.50')
-  })
-
-  it('after Start tracking the figure refreshes too', async () => {
-    let tracked = false
-    answers['GET /strategies/7/tracking'] = () => (tracked
-      ? Promise.resolve({ data: body({ paper_pnl: '-50.00' }) })
-      : Promise.reject({ status: 404, parts: null }))
-    answers['POST /strategies/7/tracking'] = () => { tracked = true; return Promise.resolve({ data: body() }) }
-    const w = await panel()
-    await w.get('[data-testid="start-tracking"]').trigger('click')
-    await flushPromises()
-    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): −50.00')
   })
 
   it('fail closed: a failed refresh shows no figure (never the old one as if current); the next one restores it', async () => {
@@ -298,14 +252,14 @@ describe('TrackingPanel first read (GC-BP step 8 R1-2)', () => {
     let release7
     answers['GET /strategies/7/tracking'] = () => new Promise((r) => { release7 = () => r({ data: body({ paper_pnl: '700.00' }) }) })
     answers['GET /strategies/8/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
+    const w = mount(TrackingPanel, { props: { savedId: 7 } })
     await flushPromises()
-    await w.setProps({ savedId: 8, savedRevision: 1 })
+    await w.setProps({ savedId: 8 })
     await flushPromises()
     release7()
     await flushPromises()
     expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
-    expect(w.find('[data-testid="start-tracking"]').exists()).toBe(true) // 8 is untracked, as its own read said
+    expect(w.find('[data-testid="start-tracking"]').exists()).toBe(false) // 8 is untracked, as its own read said; no start button any more
   })
 })
 

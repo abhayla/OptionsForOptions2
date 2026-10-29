@@ -108,7 +108,7 @@ describe('PaperStrategies: answer states', () => {
   it('empty list', async () => {
     answers['GET /tracking'] = ok(list())
     const w = await show()
-    expect(t(w, 'paper-empty').text()).toBe('No paper strategies yet. Save a strategy in the builder, then press Start tracking.')
+    expect(t(w, 'paper-empty').text()).toBe('No paper strategies yet. Build a strategy, then press Add to Paper.')
   })
   it('paused: the paused line with the time and the reason, no total', async () => {
     answers['GET /tracking'] = ok(list(item({ state: 'PAUSED', total: null, unbooked: null, as_of: '2026-10-28T11:00:00+05:30', pause_reason: 'price_stale' })))
