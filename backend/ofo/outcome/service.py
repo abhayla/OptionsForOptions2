@@ -74,7 +74,7 @@ from ofo.scenario.levels import (
     graph_level_set,
 )
 from ofo.scenario.spot import spot_reading
-from ofo.outcome.target import Target, TargetAsk, entries_target, live_target
+from ofo.outcome.target import Target, TargetAsk, TargetOffer, entries_target, live_target, target_offer
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
@@ -236,7 +236,7 @@ class Outcome:
     other_view: ScenarioValues | None = None
     payoff_table: PayoffTable | None = None  # REQ-137 AC-1: only when asked for (a step or both views)
     standard_deviation: StandardDeviation | None = None  # REQ-083 AC-4 / REQ-137 AC-3: only when asked for
-    target: Target | None = None  # REQ-084 AC-4: only when a target level or time was sent (analysis only, AC-6)
+    target: Target | TargetOffer | None = None  # REQ-084 AC-4: the limits alone unless a target was sent (AC-6)
 
 
 @dataclass(frozen=True)
@@ -778,7 +778,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=standard_deviation(None, None) if sd_bands else None,
         target=(entries_target(target, model, payoff_table_default_step(definition.underlying))
-                if target is not None and target.asked else None))
+                if target is not None and target.asked
+                else target_offer(model, payoff_table_default_step(definition.underlying), live=False)))
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
@@ -931,4 +932,5 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=sd,
         target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying))
-                if target is not None and target.asked else None))
+                if target is not None and target.asked
+                else target_offer(model, payoff_table_default_step(definition.underlying), live=True)))

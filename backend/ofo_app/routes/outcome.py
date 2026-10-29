@@ -636,6 +636,8 @@ class TargetLimitsOut(ApiModel):
     min: Money
     max: Money
     step: Money
+    at_min: datetime.datetime | None  # the date range: now ..
+    at_max: datetime.datetime | None  # .. the first expiry's 15:30 IST (null: no estimate, see ``at_refused_reason``)
 
 
 class TargetPnlOut(ApiModel):
@@ -662,24 +664,25 @@ class TargetGreeksOut(ApiModel):
 class TargetOut(ApiModel):
     """REQ-084 AC-1/AC-2/AC-4/AC-7 (``target_level`` / ``target_at``): the clamped inputs and every engine figure at
     the target. ``kind`` "estimate" (the pricing model, ``model``) or "exact" (At Expiry only: no IV or no live data,
-    the time refused with ``at_refused_reason``)."""
+    the time refused with ``at_refused_reason``). With no target asked the block is ``limits`` alone (and
+    ``at_refused_reason`` when the date range cannot be offered): every other key is absent, nothing is computed."""
     limits: TargetLimitsOut
-    level: Money
-    level_clamped: bool
-    level_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <level>."
-    at: datetime.datetime | None
-    at_clamped: bool
-    clamp: Literal["before_now", "after_first_expiry"] | None
-    at_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <IST date-time>."
-    at_refused_reason: CatalogueText | None
-    kind: Literal["estimate", "exact"]
-    model: CatalogueText | None
-    output_label: CatalogueText | None
-    pnl: TargetPnlOut | None
-    breakevens: list[Money] | None
-    breakevens_reason: CatalogueText | None
-    curve: CurveOut | None
-    greeks: TargetGreeksOut | None
+    level: Money | None = None
+    level_clamped: bool = False
+    level_clamp_text: CatalogueText | None = None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <level>."
+    at: datetime.datetime | None = None
+    at_clamped: bool = False
+    clamp: Literal["before_now", "after_first_expiry"] | None = None
+    at_clamp_text: CatalogueText | None = None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <IST date-time>."
+    at_refused_reason: CatalogueText | None = None
+    kind: Literal["estimate", "exact"] | None = None
+    model: CatalogueText | None = None
+    output_label: CatalogueText | None = None
+    pnl: TargetPnlOut | None = None
+    breakevens: list[Money] | None = None
+    breakevens_reason: CatalogueText | None = None
+    curve: CurveOut | None = None
+    greeks: TargetGreeksOut | None = None
 
 
 class OutcomeResponse(ApiModel):
@@ -713,7 +716,7 @@ class OutcomeResponse(ApiModel):
     payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
     standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
     open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
-    target: TargetOut | None = None  # REQ-084 AC-4: absent unless target_level or target_at
+    target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
 

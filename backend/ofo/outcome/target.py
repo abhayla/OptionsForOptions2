@@ -57,6 +57,16 @@ class TargetLimits:
     min: Decimal
     max: Decimal
     step: Decimal
+    at_min: datetime.datetime | None = None  # the date range: now ..
+    at_max: datetime.datetime | None = None  # .. the first expiry's 15:30 IST (None: the time input is refused)
+
+
+@dataclass(frozen=True)
+class TargetOffer:
+    """No target asked: only what the sliders need (REQ-084 AC-1, Sensibull 020), nothing computed that was not asked."""
+
+    limits: TargetLimits
+    at_refused_reason: ExplanationText | None
 
 
 @dataclass(frozen=True)
@@ -168,14 +178,31 @@ def _rounded(g: Greeks) -> Greeks:
     return Greeks(round_greek(g.delta), round_greek(g.gamma), round_greek(g.theta), round_greek(g.vega))
 
 
+def _missing_iv_reason(model: ModelInputs) -> ExplanationText | None:
+    missing = [leg.contract for leg in model.legs if leg.leg.is_option and leg.iv is None]
+    return render_explanation("scenario_estimated_unavailable", legs=tuple(missing)) if missing else None
+
+
+def target_offer(model: ModelInputs, step: Decimal, *, live: bool) -> TargetOffer:
+    """The slider limits of an answer where no target was asked: the level range, and the date range now .. first expiry
+    close when the estimate can be made (live data and every option leg's IV); else the AC-7 reason for the date."""
+    limits = target_limits(model.spot_level, step)
+    if not live:
+        return TargetOffer(limits, render_explanation("outcome_from_entries_no_estimate"))
+    reason = _missing_iv_reason(model)
+    if reason is not None:
+        return TargetOffer(limits, reason)
+    return TargetOffer(dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model)), None)
+
+
 def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step: Decimal) -> Target:
     """The target block of a live computed answer: clamp, then every figure from the engine at the target."""
     limits = target_limits(model.spot_level, step)
     level, level_clamped = _level(ask, model.spot_level, limits)
-    missing = [leg.contract for leg in model.legs if leg.leg.is_option and leg.iv is None]
-    if missing:  # AC-7: no IV -> the level still gives At Expiry P&L; the time input is refused with the reason
-        reason = render_explanation("scenario_estimated_unavailable", legs=tuple(missing))
+    reason = _missing_iv_reason(model)
+    if reason is not None:  # AC-7: no IV -> the level still gives At Expiry P&L; the time input is refused with the reason
         return _exact_only(limits, level, level_clamped, model, reason)
+    limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
     label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
     curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
