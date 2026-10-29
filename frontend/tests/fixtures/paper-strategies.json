@@ -32,6 +32,9 @@
           "total_text": "+2,236.00"
         }
       ],
+      "charges": "79.75",
+      "charges_text": "₹79.75",
+      "charges_reason": null,
       "strategy_id": 2,
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
@@ -133,6 +136,9 @@
           "total_text": "+8,632.00"
         }
       ],
+      "charges": "170.20",
+      "charges_text": "₹170.20",
+      "charges_reason": null,
       "strategy_id": 1,
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
@@ -192,6 +198,9 @@
           "total_text": "−9,847.50"
         }
       ],
+      "charges": "66.08",
+      "charges_text": "₹66.08",
+      "charges_reason": null,
       "strategy_id": 3,
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
@@ -209,7 +218,10 @@
     "totals_reason": null,
     "decay": "-769.14",
     "decay_text": "−769.14",
-    "decay_reason": null
+    "decay_reason": null,
+    "charges": "316.03",
+    "charges_text": "₹316.03",
+    "charges_reason": null
   },
   "answered_at": "2026-10-08T04:00:00Z"
 }

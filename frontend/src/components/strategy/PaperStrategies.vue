@@ -17,7 +17,7 @@
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
         <div v-for="f in totalFigures" :key="f.id" class="text-right">
           <dt class="text-xs text-ink-muted">{{ f.label }}</dt>
-          <dd class="text-lg font-semibold" :class="toneOf(totals[f.field])" :data-testid="`totals-${f.id}`">{{ pnlText(totals[f.field]) }}</dd>
+          <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(totals[f.field])" :data-testid="`totals-${f.id}`">{{ pnlText(totals[f.field]) }}</dd>
           <p v-if="totals[f.field] === null && totals[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ totals[f.reason] }}</p>
         </div>
       </dl>
@@ -53,7 +53,8 @@
               <dl class="flex flex-wrap gap-6" data-testid="paper-figures">
                 <div v-for="f in figures" :key="f.field" class="text-right">
                   <dt class="text-xs text-ink-muted" data-testid="paper-figure-label">{{ f.label }}</dt>
-                  <dd class="text-lg font-semibold" :class="toneOf(g[f.field])" :data-testid="f.testid">{{ pnlText(g[f.field]) }}</dd>
+                  <dd class="text-lg font-semibold" :class="f.field === 'charges' ? '' : toneOf(g[f.field])" :data-testid="f.testid">{{ pnlText(g[f.field]) }}</dd>
+                  <p v-if="f.reason && g[f.field] === null && g[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ g[f.reason] }}</p>
                 </div>
               </dl>
             </div>
@@ -115,12 +116,14 @@ const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total' },
   { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked' },
   { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
+  { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]
 const totalFigures = [
   { id: 'total', field: 'total', reason: 'totalReason', reasonId: 'totals-reason', label: 'Total P&L' },
   { id: 'booked', field: 'booked', reason: 'totalReason', reasonId: 'totals-booked-reason', label: 'Booked P&L' },
   { id: 'unbooked', field: 'unbooked', reason: 'totalReason', reasonId: 'totals-unbooked-reason', label: 'Unbooked P&L' },
   { id: 'decay', field: 'decay', reason: 'decayReason', reasonId: 'totals-decay-reason', label: 'Total Decay' },
+  { id: 'charges', field: 'charges', reason: 'chargesReason', reasonId: 'totals-charges-reason', label: 'Charges' },
 ]
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
 const pnlText = (v) => (v === null || v === undefined ? PAPER_NO_FIGURE : v)
