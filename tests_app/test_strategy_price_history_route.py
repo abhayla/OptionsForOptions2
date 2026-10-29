@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 from ofo.timeutil import IST
 from ofo_app import broker_token_store as tokens
-from ofo_app import catalogue_store, held_switches, kite_history
+from ofo_app import catalogue_store, held_switches, kite_history, tracked_contracts
 from ofo_app import strategy_price_history as sph
 from ofo_app import strategy_store as store
 from ofo_app.broker_config import load_broker_config
@@ -48,6 +48,7 @@ from test_strategy_store import (
     _user,
     _with_draft,
 )
+from test_strategy_tracking import _DELIST, _RETIRE, _REUSE
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_history"
 LEG_BODY = (FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8")
@@ -514,6 +515,7 @@ async def test_f4_a_quantity_that_is_not_whole_lots_is_a_named_state(app_engine,
             item.listed, contract=dataclasses.replace(item.listed.contract, lot_size=lot_size)))
             for cid, item in found.items()}
     monkeypatch.setattr(catalogue_store, "load_contracts", relisted)
+    monkeypatch.setattr(tracked_contracts, "load_contracts", relisted)  # the one door imports the name
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -525,6 +527,29 @@ async def test_f4_a_quantity_that_is_not_whole_lots_is_a_named_state(app_engine,
             assert (body["available"], body["state"], body["points"]) == (False, "quantity_not_whole_lots", [])
             assert body["reason"].endswith(": the saved quantity is not a whole number of lots at today's lot size.")
             assert seen == []  # refused before any Kite call; never a silent floor
+        finally:
+            await trans.rollback()
+
+
+# ---- issue #500: a saved leg that is not live answers its reason, with no Kite fetch ------------------------------
+
+@pytest.mark.parametrize("sqls", [(_RETIRE,), (_DELIST,), (_DELIST, _REUSE)],
+                         ids=["contract_retired", "contract_delisted", "token_reassigned"])
+async def test_a_saved_leg_that_is_not_live_answers_its_reason_with_no_kite_fetch(app_engine, sqls):
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            for sql in sqls:
+                await conn.execute(text(sql), {"id": stored.saved.contract_ids[0]})
+            seen: list[str] = []
+            resp = await _get(conn, user, stored.id, transport=_standard(seen))
+            body = resp.json()
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert (body["available"], body["state"], body["points"], body["as_of"]) == (
+                False, "leg_not_listed", [], None)
+            assert body["reason"] == "NIFTY26O1322800CE has no prices in this window."
+            assert seen == []  # not one Kite fetch for any leg
         finally:
             await trans.rollback()
 

@@ -602,7 +602,6 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
     from ofo.errors.explanations import render_explanation  # noqa: PLC0415
     from ofo.outcome import price_history as ph  # noqa: PLC0415
 
-    from ofo_app import catalogue_store  # noqa: PLC0415
     from ofo_app import strategy_price_history as sph  # noqa: PLC0415
 
     async def work():
@@ -611,13 +610,15 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         # connection per request (ADR-048); a store error answers no_session, never a 500.
         reader = await opener(db)
         stored = await store.load(db, user_ref, strategy_id)
-        found = await catalogue_store.load_contracts(db, stored.saved.contract_ids)
-        listed = []
-        for cid in stored.saved.contract_ids:
-            item = found[cid]
-            if isinstance(item, Exception):
-                raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
-            listed.append(item.listed)
+        # Issue #500: a stored contract id reaches a ListedContract only through tracked_contracts.resolve, the one door.
+        answers = await tracked_contracts.resolve(db, stored.saved.contract_ids)
+        if any(a.stored is None for a in answers):
+            raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
+        listed = [a.stored.listed for a in answers]  # type: ignore[union-attr]
+        for a in answers:
+            if a.state != tracked_contracts.LIVE:  # retired / delisted / token reassigned: no chart, no Kite fetch
+                return sph.Answer("leg_not_listed", render_explanation("price_history_leg_not_listed",
+                                                                       leg=sph.label(a.stored.listed)))  # type: ignore[union-attr]
         definition = stored.saved.definition
         legs = []
         for leg, lc in zip(definition.legs, listed, strict=True):  # saved quantity is lots x lot size
