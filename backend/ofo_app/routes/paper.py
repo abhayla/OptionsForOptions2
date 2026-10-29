@@ -43,8 +43,8 @@ from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
-from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.table.model import display_number
+from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -435,15 +435,17 @@ _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss
            "greeks_reason": EXITED}
 
 
-def _summary(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], figures: dict, snapshot: Any, underlying: str, *,  # noqa: PLR0913
+def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
+             found: dict[int, tracked_contracts.TrackedContract],
+             prices: dict[int, paper.Price], figures: dict, snapshot: Any, underlying: str, *,
              exited_absent: bool) -> dict:
     """Max Profit / Max Loss (and Profit / Loss left), Breakeven and net Greeks of one book: ONE function behind both
     the list and the single-strategy reply, so the two can never differ. ``exited_absent`` (the list): a fully exited
     strategy has every one of them absent with the reason ``exited`` (never 0)."""
     if exited_absent and figures["state"] == "EXITED":
         return dict(_ABSENT)
-    return (_extremes(orders, found, prices) | _breakevens(orders, found, _spot(snapshot))
+    spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
+    return (_extremes(orders, found, prices) | _breakevens(orders, found, spot)
             | _greeks(figures, found, snapshot, underlying))
 
 

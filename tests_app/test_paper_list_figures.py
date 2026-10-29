@@ -24,7 +24,8 @@ D = Decimal
 FIELDS = ("breakevens", "breakevens_text", "breakevens_reason", "max_profit", "max_loss", "profit_left", "loss_left",
           "max_profit_text", "max_loss_text", "profit_left_text", "loss_left_text", "extremes_reason", "greeks",
           "greeks_reason")
-MOVE_EXPIRY = "UPDATE public.catalogue_contracts SET expiry = DATE '2026-10-20' WHERE id = :id"
+OTHER_EXPIRY = ("SELECT id FROM public.catalogue_contracts WHERE name = 'NIFTY' AND instrument_type = 'CE' "
+                "AND expiry > DATE '2026-10-13' AND NOT retired AND NOT delisted ORDER BY expiry, strike LIMIT 1")
 
 
 def _payoff(body: dict, level: Decimal) -> Decimal:
@@ -88,10 +89,12 @@ async def test_list_net_greeks_are_the_sum_of_the_legs_and_the_texts_are_the_ser
 
 async def test_multi_expiry_has_no_breakevens_and_no_range_with_the_reason_and_invents_nothing(db):  # noqa: F811
     app, stored, *_ = await _seed_fixture(db)
-    await db.execute(text(MOVE_EXPIRY), {"id": stored.saved.contract_ids[0]})
+    other = (await db.execute(text(OTHER_EXPIRY))).scalar_one()  # a real contract of a later expiry joins the book
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(int(other), "BUY", 65, "50.00")])
     single, listed = await _both(app, stored.id, "multi_expiry")
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
-    assert (listed["breakevens"], listed["breakevens_text"], listed["breakevens_reason"]) == (None, None, "multi_expiry")
+    assert (listed["breakevens"], listed["breakevens_text"]) == (None, None)
+    assert listed["breakevens_reason"] == "multi_expiry"
     assert [listed[f] for f in ("max_profit", "max_loss", "profit_left", "loss_left")] == [None] * 4
     assert listed["extremes_reason"] == "multi_expiry"
 
@@ -119,6 +122,7 @@ async def test_prices_not_live_drop_profit_left_and_greeks_with_the_paused_reaso
     assert (listed["extremes_reason"], listed["greeks_reason"]) == ("prices_not_live", "prices_not_live")
     # the original range and the breakevens need no price (extremes.py: "known whether or not prices are live")
     assert listed["max_profit"] is not None and listed["breakevens"] is not None and listed["breakevens_reason"] is None
+    assert not any("%" in t for t in listed["breakevens_text"])  # no percent from a spot that is not live
 
 
 async def test_a_contract_that_is_not_live_gives_greeks_the_contract_reason(db):  # noqa: F811
