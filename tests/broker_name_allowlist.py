@@ -322,6 +322,9 @@ LINES: dict[str, tuple[str, ...]] = {
         "read_failed: 'Your available margin could not be read from Zerodha.',",
         "export const ACCOUNT_UNREADABLE = 'Your Zerodha account details could not be read.'",
     ),
+    'frontend/src/components/strategy/PaperStops.vue': (
+        "const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'",
+    ),
     'frontend/src/lib/dataHealthText.js': (
         "not_sent: 'Zerodha did not send this figure for this contract.',",
     ),
