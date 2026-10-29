@@ -161,7 +161,8 @@ async def test_plain_reply_carries_the_slider_limits_and_no_target_figure(provid
     date range now .. first expiry 15:30 IST) so the sliders show at once; nothing else is computed."""
     out = await _target(provider)
     t = out["target"]
-    # no pnl, curve, greeks, level, kind: nothing computed that was not asked (R-19a adds only the captions and the badge)
+    # no pnl, curve, greeks, level, kind: nothing computed that was not asked
+    # (R-19a adds only the captions and the badge)
     assert set(t) == {"limits", "move_pct", "move_pct_display", "move_pct_reason", "days_to_expiry",
                       "days_to_expiry_display", "badge"}, t
     assert t["badge"]["state"] == "unavailable"

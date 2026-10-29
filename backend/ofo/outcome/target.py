@@ -230,7 +230,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
         curve=curve, greeks=_greeks(model, level, at), spot=model.spot_level, days=days_to(model, at))
 
 
-def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model: ModelInputs,
+def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model: ModelInputs,  # noqa: PLR0913
                 reason: ExplanationText, spot: Decimal | None) -> Target:
     return Target(limits=limits, level=level, level_clamped=level_clamped, at=None, at_clamped=False, clamp=None,
                   at_refused_reason=reason, kind="exact", model=None, output_label=model.data_label,
@@ -243,4 +243,5 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
     same centre the levels use); the time input is refused with the no-live-prices reason."""
     limits = target_limits(model.spot_level, step)
     level, level_clamped = _level(ask, model.spot_level, limits)
-    return _exact_only(limits, level, level_clamped, model, render_explanation("outcome_from_entries_no_estimate"), None)
+    reason = render_explanation("outcome_from_entries_no_estimate")
+    return _exact_only(limits, level, level_clamped, model, reason, None)

@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLR2004
 """GC-TP R-19a (REQ-144 AC-1..AC-4, REQ-084; Sensibull study screen 020): the what-if target reply carries the move from
 spot, the days to expiry and the Projected profit / loss badge, all made on the server (ADR-008). Route tests run on the
 real 2026-10-08 replay (valued 09:20:09 IST, expiry 13 Oct); the badge's zero / margin states are unit tests of the one

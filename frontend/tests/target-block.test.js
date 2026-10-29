@@ -65,7 +65,8 @@ async function settle() {
 
 describe('CORE: a slider sends only target_level / target_at; every shown figure is the reply text', () => {
   it('a plain page sends no target field and shows both sliders at once from the reply limits, nothing computed', async () => {
-    expect(Object.keys(plain.target)).toEqual(['limits']) // the fixture is the route test's plain reply: limits alone
+    // the fixture is the route test's plain reply: limits, the captions and the not-available badge, no figure
+    expect(Object.keys(plain.target)).toEqual(['limits', 'move_pct', 'move_pct_display', 'move_pct_reason', 'days_to_expiry', 'days_to_expiry_display', 'badge'])
     const w = await openPage()
     expect(outcomeCalls()).toHaveLength(1)
     expect(withTarget(outcomeCalls()[0])).toBe(false)
@@ -154,6 +155,102 @@ describe('CORE: a slider sends only target_level / target_at; every shown figure
     await flushPromises()
     expect(t(w, 'target-pnl').text()).toBe(atExpiry.target.pnl.display)
     expect(t(w, 'target-pnl').text()).not.toBe(mid.target.pnl.display)
+  })
+})
+
+describe('R-19a: the Target block under the graph, the move, the days and the Projected badge (all reply text)', () => {
+  const before = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+  const answer = (data) => { outcome = (body) => Promise.resolve({ data: 'target_level' in body || 'target_at' in body ? data : plain }) }
+
+  it('the Target block sits inside the chart card BELOW the payoff graph and the badge is on the graph', async () => {
+    const w = await openPage()
+    const card = t(w, 'chart-card').element
+    const block = t(w, 'target-block').element
+    const graph = t(w, 'payoff-graph').element
+    expect(card.contains(block) && graph.contains(block)).toBe(true)
+    const chart = graph.querySelector('payoff-chart-stub')
+    expect(chart).not.toBeNull()
+    expect(before(chart, block)).toBe(true) // the graph comes first, the block after it
+    expect(before(t(w, 'target-badge').element, block)).toBe(true)
+    expect(graph.firstElementChild.contains(t(w, 'target-badge').element)).toBe(true) // the badge shares the graph's box
+  })
+
+  it('shows the reply move from spot beside the level and the days to expiry beside the date', async () => {
+    const w = await openPage()
+    expect(t(w, 'target-days').text()).toBe(plain.target.days_to_expiry_display) // "5D to expiry" before any target
+    await startTarget(w)
+    expect(t(w, 'target-move-text').text()).toBe(mid.target.move_pct_display)
+    expect(t(w, 'target-days').text()).toBe(mid.target.days_to_expiry_display)
+    expect(t(w, 'target-days').text()).toBe('3D to expiry')
+  })
+
+  it('the badge prints the reply label and percent text; a missing percent shows the reply reason', async () => {
+    const w = await openPage()
+    expect(t(w, 'target-badge-label').text()).toBe('Projected figure not available') // no target: the reply's not-available text
+    expect(t(w, 'target-badge-reason').text()).toBe(plain.target.badge.reason)
+    await startTarget(w)
+    expect(t(w, 'target-badge-label').text()).toBe(mid.target.badge.label)
+    expect(t(w, 'target-badge').attributes('data-state')).toBe(mid.target.badge.state)
+    expect(t(w, 'target-badge-percent-reason').text()).toBe(mid.target.badge.percent_reason) // this replay has no margin read
+    answer({ ...mid, target: { ...mid.target, badge: { ...mid.target.badge, percent: '12.6', percent_text: '12.6% of margin needed', percent_reason: null } } })
+    await dragLevel(w, '22300')
+    await settle()
+    expect(t(w, 'target-badge-percent').text()).toBe('12.6% of margin needed')
+  })
+
+  it('no live price: the move is "-" with the reply reason, and the badge is the not-available text with its reason', async () => {
+    answer(noIv)
+    const w = await openPage()
+    await startTarget(w)
+    expect(t(w, 'target-move-text').text()).toBe('-')
+    expect(t(w, 'target-move-reason').text()).toBe(noIv.target.move_pct_reason)
+    expect(t(w, 'target-badge-label').text()).toBe('Projected figure not available')
+    expect(t(w, 'target-badge-reason').text()).toBe(noIv.target.at_refused_reason)
+  })
+
+  it('an older reply without the new fields shows "-", never 0 and never a number of its own', async () => {
+    const old = JSON.parse(JSON.stringify(mid))
+    for (const k of ['move_pct', 'move_pct_display', 'move_pct_reason', 'days_to_expiry', 'days_to_expiry_display', 'badge']) delete old.target[k]
+    answer(old)
+    const w = await openPage()
+    await startTarget(w)
+    expect(t(w, 'target-move-text').text()).toBe('-')
+    expect(t(w, 'target-days').text()).toBe('-')
+    expect(t(w, 'target-badge-label').text()).toBe('-')
+    expect(t(w, 'target-badge').text()).not.toMatch(/\d/)
+  })
+
+  it('a failed request shows "-" and the existing stale sentence in the badge, never the old amount', async () => {
+    const w = await openPage()
+    await startTarget(w)
+    expect(t(w, 'target-badge-label').text()).toBe(mid.target.badge.label)
+    outcome = () => Promise.reject(new Error('boom'))
+    await dragLevel(w, '22300')
+    await settle()
+    expect(t(w, 'target-badge-label').text()).toBe('-')
+    expect(t(w, 'target-badge-reason').text()).toBe(healthSentence('stale'))
+    expect(t(w, 'target-badge').text()).not.toContain(mid.target.badge.label)
+    expect(t(w, 'target-move-text').text()).toBe('-')
+    expect(t(w, 'target-days').text()).toBe('-')
+  })
+
+  it('a slow older reply never replaces the newest badge', async () => {
+    const w = await openPage()
+    await startTarget(w)
+    const pending = []
+    outcome = () => new Promise((resolve) => pending.push(resolve))
+    await dragLevel(w, '22200')
+    await settle()
+    await dragLevel(w, '22400')
+    await settle()
+    pending[1]({ data: clamped }) // newest answers first
+    await flushPromises()
+    expect(t(w, 'target-badge-label').text()).toBe(clamped.target.badge.label)
+    pending[0]({ data: mid }) // late: dropped by request id
+    await flushPromises()
+    expect(t(w, 'target-badge-label').text()).toBe(clamped.target.badge.label)
+    expect(t(w, 'target-badge-label').text()).not.toBe(mid.target.badge.label)
+    expect(t(w, 'target-days').text()).toBe(clamped.target.days_to_expiry_display)
   })
 })
 

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """GC-TP R-19a (REQ-144 AC-1..AC-4, REQ-084; Sensibull study screen 020): the texts the browser prints beside the what-if
 target, made here so the browser only formats nothing (ADR-008): the move of the target level from the live spot, the days
 to the first expiry, and the Projected profit / loss badge with its percent of margin needed (REQ-081 AC-9, ADR-207 (8)).

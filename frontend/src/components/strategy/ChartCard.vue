@@ -19,6 +19,7 @@ import Chip from '@/components/common/Chip.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import PayoffChart from './PayoffChart.vue'
+import TargetBadge from './TargetBadge.vue'
 import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import {
@@ -38,6 +39,9 @@ const props = defineProps({
   curves: { type: Object, default: null },
   breakevens: { type: Array, default: () => [] },
   targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
+  targetBadge: { type: Object, default: null }, // GC-TP R-19a: the reply's target.badge (REQ-144), drawn on the graph
+  targetStale: { type: Boolean, default: false }, // the last target request failed: the badge shows no old amount
+  showBadge: { type: Boolean, default: false }, // the page has a target block (a reply with `target`)
   sd: { type: Object, default: null },
   oi: { type: Object, default: null },
   zoom: { type: Object, default: null },
@@ -102,10 +106,15 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <div data-testid="scenario-controls-slot"><slot name="controls" /></div>
       </div>
       <div v-show="payoffView === 'graph'" role="tabpanel" v-bind="link(SUB, 'graph')" data-testid="payoff-graph">
-        <PayoffChart
-          :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
-          :curves="curves" :target-curve="targetCurve" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
-        />
+        <!-- GC-TP R-19a (Sensibull 020): the Projected badge sits on the graph; the what-if Target block is BELOW it -->
+        <div class="relative">
+          <PayoffChart
+            :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
+            :curves="curves" :target-curve="targetCurve" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
+          />
+          <TargetBadge v-if="showBadge" :badge="targetBadge" :stale="targetStale" />
+        </div>
+        <slot name="target" />
       </div>
       <div v-show="payoffView === 'table'" role="tabpanel" v-bind="link(SUB, 'table')" data-testid="payoff-table">
         <!-- GC-UI b2 D-B24 / D-B25 / D-B26 (Sensibull 017): the server's payoff_table at the chosen interval, both columns

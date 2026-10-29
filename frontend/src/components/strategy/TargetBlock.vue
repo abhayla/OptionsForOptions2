@@ -2,12 +2,12 @@
      the what-if Target block above the payoff graph. An index-level slider with a number box and Reset, a date slider with
      back / forward steppers and Reset. The block only SENDS the pick (an event); every figure it shows is the reply's own text
      (the `target` block of the outcome reply): the target P&L, the breakevens at the target date, the Greeks or their
-     "no time left" sentence, the estimate label, the clamp sentences. No money or level is computed here (ADR-008): the level
+     "no time left" sentence, the estimate label, the clamp sentences. R-19a: it sits BELOW the payoff graph (ChartCard's
+     `target` slot) and shows the move from spot beside the level and the days to expiry beside the date. No money or level is computed here (ADR-008): the level
      slider's min / max / step are the reply's limits, the date slider's positions come from the page (lib/targetBlock.js).
      The sliders show from the first reply (the plain reply carries the limits, Sensibull 020); Reset on both sends no target. -->
 <script setup>
 import { computed, ref, watch } from 'vue'
-import Card from '@/components/common/Card.vue'
 import { istTime } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
 import { isWholePoints } from '@/lib/targetBlock'
@@ -40,7 +40,7 @@ const onBox = (e) => {
 </script>
 
 <template>
-  <Card class="mt-4" data-testid="target-block" :data-stale="stale ? 'true' : 'false'">
+  <div class="mt-3 border-t border-line pt-1" data-testid="target-block" :data-stale="stale ? 'true' : 'false'">
     <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <h3 class="text-sm font-semibold">Target</h3>
     </div>
@@ -62,6 +62,11 @@ const onBox = (e) => {
           />
           <button type="button" class="text-sm text-accent" data-testid="target-level-reset" :disabled="!pick.level" @click="emit('reset-level')">Reset</button>
         </div>
+        <!-- R-19a (Sensibull 020): the level's move from spot, the reply's text; "-" with the reply's reason when absent -->
+        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-move">
+          <span data-testid="target-move-text">{{ !stale && t?.move_pct_display ? t.move_pct_display : '-' }}</span>
+          <span v-if="!t?.move_pct_display && t?.move_pct_reason" class="ml-2" data-testid="target-move-reason">{{ t.move_pct_reason }}</span>
+        </div>
       </div>
       <div data-testid="target-date-control">
         <div class="mb-1 flex items-center justify-between text-sm">
@@ -78,6 +83,7 @@ const onBox = (e) => {
           <button type="button" class="rounded border border-line px-2" aria-label="Later" data-testid="target-date-forward" :disabled="dateOff || pick.dateIndex >= lastStop" @click="emit('date', pick.dateIndex + 1)">&gt;</button>
           <button type="button" class="text-sm text-accent" data-testid="target-date-reset" :disabled="pick.dateIndex <= 0" @click="emit('reset-date')">Reset</button>
         </div>
+        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-days">{{ !stale && t?.days_to_expiry_display ? t.days_to_expiry_display : '-' }}</div>
         <p v-if="dateRefused" class="mt-1 text-xs text-ink-muted" data-testid="target-date-reason">{{ dateRefused }}</p>
       </div>
       <p v-for="c in clamps" :key="c" class="text-xs text-ink-muted md:col-span-2" data-testid="target-clamp">{{ c }}</p>
@@ -104,5 +110,5 @@ const onBox = (e) => {
         </div>
       </div>
     </div>
-  </Card>
+  </div>
 </template>
