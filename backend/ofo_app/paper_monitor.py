@@ -175,13 +175,11 @@ class PaperMonitor:
             price = paper.price_of(quote, quote.instrument_id)
         except ValueError:  # a price finer than a paisa is never stored
             return 0
-        fired = 0
-        for w in tuple(watching):
-            if stops.crossed(w.armed.trigger, price):
-                fired += await self._fire_guarded(w, price, now)
-        return fired
+        fired = [w for w in tuple(watching) if stops.crossed(w.armed.trigger, price)
+                 and await self._fire_guarded(w, price, now)]
+        return len(fired)
 
-    async def _fire_guarded(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> int:
+    async def _fire_guarded(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> bool:
         try:
             done = await asyncio.wait_for(self._fire(w, price, now), FIRE_TIMEOUT_SECONDS)
         except asyncio.CancelledError:
@@ -189,12 +187,12 @@ class PaperMonitor:
         except Exception as exc:  # noqa: BLE001 - a database failure or timeout; rolled back, retried on the next tick
             self.failures += 1
             log.error("paper trigger %s not fired: %s", w.armed.trigger.id, type(exc).__name__)
-            return 0
+            return False
         if done is not None:  # fired, already fired, or cancelled: never watched again
             for key, items in tuple(self._watch.items()):
                 self._watch[key] = [i for i in items if i.armed.trigger.id not in done["fired"] | done["cancelled"]]
             self._dirty = True
-        return 1 if done and w.armed.trigger.id in done.get("fired", ()) else 0
+        return done is not None and w.armed.trigger.id in done["fired"]
 
     async def _fire(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> dict[str, set[int]] | None:
         """One transaction (module docstring). None = keep armed; else the ids now fired or cancelled."""
