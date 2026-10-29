@@ -223,4 +223,18 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '10.05', kind: 'exit' }])
     w.unmount()
   })
+  it('GC-TPD R-30: a NUMERIC price (not text) does not throw on Confirm and is sent as text', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: 101.05, kind: 'exit' }] } })
+    await t(w, 'paper-confirm-button').trigger('click')
+    expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '101.05', kind: 'exit' }])
+    w.unmount()
+  })
+  it.each([0, -5, 101.03])('GC-TPD R-30: a numeric price %s is refused exactly as the text "%s" is (Confirm disabled, nothing emitted)', async (bad) => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: bad, kind: 'exit' }] } })
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-reason').text()).toBe('Enter a price in steps of 0.05')
+    await t(w, 'paper-confirm-button').trigger('click')
+    expect(w.emitted('confirm')).toBeUndefined()
+    w.unmount()
+  })
 })
