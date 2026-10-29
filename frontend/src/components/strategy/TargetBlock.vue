@@ -27,7 +27,7 @@ const boxText = ref(levelValue.value)
 watch(levelValue, (v) => { boxText.value = v })
 const dateRefused = computed(() => t.value?.at_refused_reason ?? null)
 const dateOff = computed(() => !!dateRefused.value || props.stopCount < 2)
-const lastStop = computed(() => Math.max(props.stopCount - 1, 0))
+const lastStop = computed(() => (props.stopCount > 1 ? props.stopCount - 1 : 0))
 const clamps = computed(() => [t.value?.level_clamp_text, t.value?.at_clamp_text].filter(Boolean))
 const atText = computed(() => (t.value?.at ? istTime(t.value.at) : ''))
 
@@ -72,7 +72,7 @@ const onBox = (e) => {
           <input
             id="target-date-slider" type="range" class="w-full" data-testid="target-date-slider"
             min="0" :max="lastStop" step="1" :value="pick.dateIndex" :disabled="dateOff"
-            @input="emit('date', Number($event.target.value))"
+            @input="emit('date', $event.target.valueAsNumber)"
           />
           <button type="button" class="rounded border border-line px-2" aria-label="Later" data-testid="target-date-forward" :disabled="dateOff || pick.dateIndex >= lastStop" @click="emit('date', pick.dateIndex + 1)">&gt;</button>
           <button type="button" class="text-sm text-accent" data-testid="target-date-reset" :disabled="pick.dateIndex <= 0" @click="emit('reset-date')">Reset</button>

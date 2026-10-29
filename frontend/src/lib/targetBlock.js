@@ -20,7 +20,7 @@ function istIso(ms) {
 /** The earliest expiry (a 'YYYY-MM-DD' text) among the reply's legs, or null. */
 export function firstExpiry(legs) {
   const dates = (legs ?? []).map((l) => l?.expiry).filter((e) => typeof e === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e))
-  return dates.length ? dates.reduce((a, b) => (b < a ? b : a)) : null
+  return dates.length ? [...dates].sort()[0] : null
 }
 
 /** The date slider's stops from now (the reply's valuation time, stop 0 = no target date) to the first expiry's 15:30 IST:
@@ -31,8 +31,9 @@ export function dateStops(valuation, expiry) {
   const day = typeof expiry === 'string' ? Date.parse(`${expiry}T00:00:00+05:30`) : NaN
   if (!Number.isFinite(start) || !Number.isFinite(day)) return []
   const stops = [valuation]
-  const startMinute = Math.floor((start + IST_OFFSET) % DAY / MIN) // minute of the IST day
-  const startDay = Math.floor((start + IST_OFFSET) / DAY) * DAY - IST_OFFSET // that day's 00:00 IST
+  const local = new Date(start + IST_OFFSET)
+  const startMinute = local.getUTCHours() * 60 + local.getUTCMinutes() // minute of the IST day
+  const startDay = local.setUTCHours(0, 0, 0, 0) - IST_OFFSET // that day's 00:00 IST
   for (let d = startDay + DAY; d < day; d += DAY) stops.push(istIso(d + startMinute * MIN))
   for (let m = OPEN; m <= CLOSE; m += STEP_MIN) {
     const ms = day + m * MIN
