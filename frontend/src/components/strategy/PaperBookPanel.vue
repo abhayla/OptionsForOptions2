@@ -15,6 +15,16 @@
       <button v-if="open.length" type="button" class="h-8 rounded-lg border border-line px-3 font-medium" data-testid="paper-exit-all" @click="emit('exit-all')">{{ EXIT_ALL_LABEL }}</button>
     </div>
 
+    <!-- GC-TP step 8b (REQ-109 AC-10; Sensibull Drafts Mode 278-279): the strategy's Charges beside its P&L, each the book reply's
+         text as sent; the Charges are never added to or taken from the P&L, and an absent one is a dash (never 0). -->
+    <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
+      <div><dt class="text-ink-muted">Total P&amp;L</dt><dd class="num text-sm font-semibold" data-testid="book-total">{{ book.total_text ?? '-' }}</dd></div>
+      <div>
+        <dt class="text-ink-muted">Charges</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-charges">{{ book.charges_text ?? '-' }}</dd>
+      </div>
+    </dl>
+
     <div v-if="view === 'net'" class="mt-2 overflow-x-auto">
       <table class="w-full text-xs" data-testid="net-table">
         <thead class="text-ink-muted">
