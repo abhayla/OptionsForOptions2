@@ -22,6 +22,9 @@ The arithmetic is the engine's leg P&L, BUY (price - entry) x qty, SELL (entry -
 Answer states: no orders -> refused; a price finer than a paisa (an order or a live price) -> refused; a live price
 absent for an open contract -> its unbooked is None and the book's unbooked and total are None (REQ-109 AC-5). Any
 paisa price is accepted: legacy entries are captured LTPs (the 0.05 tick rule is for typed orders, step 1b).
+A price of 0 is accepted ONLY on a ``settle`` order (GC-TP 5b, REQ-109 AC-7: an out-of-the-money option's intrinsic
+value at expiry; migration 0030 allows exactly that in the database); every other kind, and every live price, is above
+0.
 Standard library only; no clock is read here.
 """
 from __future__ import annotations
@@ -39,6 +42,7 @@ Side = Literal["BUY", "SELL"]
 OrderKind = Literal["open", "add", "exit", "settle", "stop"]
 SIDES: tuple[Side, ...] = ("BUY", "SELL")
 ORDER_KINDS: tuple[OrderKind, ...] = ("open", "add", "exit", "settle", "stop")
+SETTLE_KIND: OrderKind = "settle"  # the one kind whose price may be 0 (an option expiring out of the money)
 
 
 #: REQ-109 AC-1: a typed paper price is above 0, at most this (the price column is NUMERIC(14,2)) and a multiple of
@@ -54,8 +58,8 @@ def is_typed_price(value: Decimal) -> bool:
             and value % TYPED_PRICE_TICK == 0)
 
 
-def _paisa_price(value: Decimal, what: str) -> Decimal:
-    if type(value) is not Decimal or not value.is_finite() or value <= 0:
+def _paisa_price(value: Decimal, what: str, *, zero_allowed: bool = False) -> Decimal:
+    if type(value) is not Decimal or not value.is_finite() or value < 0 or (value == 0 and not zero_allowed):
         raise ValueError(f"{what}: a price must be a finite Decimal above 0, got {value!r}")
     if value != value.quantize(PAISE):
         raise ValueError(f"{what}: a price finer than a paisa cannot be stored exactly: {value}")
@@ -67,7 +71,7 @@ class PaperOrder:
     instrument_id: str
     side: Side
     quantity: int  # units (lots x lot size), above 0
-    price: Decimal  # to the paisa, above 0
+    price: Decimal  # to the paisa, above 0 (exactly 0 allowed only for kind settle)
     kind: OrderKind
     placed_at: datetime.datetime
 
@@ -78,7 +82,7 @@ class PaperOrder:
             raise ValueError(f"an order kind is one of {ORDER_KINDS}, got {self.kind!r}")
         if type(self.quantity) is not int or self.quantity <= 0:
             raise ValueError(f"an order quantity is a whole number above 0, got {self.quantity!r}")
-        _paisa_price(self.price, self.instrument_id)
+        _paisa_price(self.price, self.instrument_id, zero_allowed=self.kind == SETTLE_KIND)
 
     @property
     def signed(self) -> int:
