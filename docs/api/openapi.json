@@ -3642,6 +3642,619 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
+      "PaperBookOut": {
+        "additionalProperties": false,
+        "description": "GET /paper/strategies/{id} and the answer of POST .../orders.",
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PaperNetOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "pause_reason",
+          "booked",
+          "unbooked",
+          "total",
+          "booked_text",
+          "unbooked_text",
+          "total_text",
+          "positions",
+          "strategy_id",
+          "name",
+          "underlying",
+          "answered_at",
+          "orders"
+        ],
+        "title": "PaperBookOut",
+        "type": "object"
+      },
+      "PaperListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/PaperStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies",
+          "answered_at"
+        ],
+        "title": "PaperListOut",
+        "type": "object"
+      },
+      "PaperNetOut": {
+        "additionalProperties": false,
+        "description": "One contract's net position (screens 274-279: Lots / Avg / LTP / Booked / Unbooked).",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "average_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Text"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "ltp_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp Text"
+          },
+          "net_quantity": {
+            "title": "Net Quantity",
+            "type": "integer"
+          },
+          "price_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price At"
+          },
+          "price_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "stale",
+                  "missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "exited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price State"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_text",
+          "instrument",
+          "strike",
+          "expiry",
+          "net_quantity",
+          "average",
+          "average_text",
+          "ltp",
+          "ltp_text",
+          "price_state",
+          "price_at",
+          "booked",
+          "booked_text",
+          "unbooked",
+          "unbooked_text",
+          "total",
+          "total_text"
+        ],
+        "title": "PaperNetOut",
+        "type": "object"
+      },
+      "PaperOrderIn": {
+        "additionalProperties": false,
+        "description": "One typed paper order (REQ-109 AC-1). The price is checked by the route (its own reason text), not here.",
+        "properties": {
+          "contract_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "add",
+              "exit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Price"
+          },
+          "quantity": {
+            "description": "units (lots x lot size)",
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "side",
+          "quantity",
+          "price",
+          "kind"
+        ],
+        "title": "PaperOrderIn",
+        "type": "object"
+      },
+      "PaperOrderOut": {
+        "additionalProperties": false,
+        "description": "One row of the orderbook: time, side, contract text, quantity, price, kind.",
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "add",
+              "exit",
+              "settle",
+              "stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "placed_at": {
+            "format": "date-time",
+            "title": "Placed At",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "price_text": {
+            "title": "Price Text"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "placed_at",
+          "side",
+          "contract_id",
+          "contract_text",
+          "quantity",
+          "price",
+          "price_text",
+          "kind"
+        ],
+        "title": "PaperOrderOut",
+        "type": "object"
+      },
+      "PaperOrdersIn": {
+        "additionalProperties": false,
+        "properties": {
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOrderIn"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "PaperOrdersIn",
+        "type": "object"
+      },
+      "PaperStrategyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PaperNetOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "PAUSED",
+              "NOT_CONNECTED",
+              "EXITED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "pause_reason",
+          "booked",
+          "unbooked",
+          "total",
+          "booked_text",
+          "unbooked_text",
+          "total_text",
+          "positions",
+          "strategy_id",
+          "name",
+          "underlying"
+        ],
+        "title": "PaperStrategyOut",
+        "type": "object"
+      },
       "PayoffCellOut": {
         "additionalProperties": false,
         "properties": {
@@ -8535,6 +9148,113 @@
           }
         },
         "summary": "Kite Callback"
+      }
+    },
+    "/paper/strategies": {
+      "get": {
+        "description": "Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders\nquery, one contract batch (two queries) and ONE market read per underlying for every open contract together.",
+        "operationId": "list_paper_strategies_paper_strategies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Paper Strategies"
+      }
+    },
+    "/paper/strategies/{strategy_id}": {
+      "get": {
+        "operationId": "get_paper_strategy_paper_strategies__strategy_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperBookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper Strategy"
+      }
+    },
+    "/paper/strategies/{strategy_id}/orders": {
+      "post": {
+        "operationId": "place_paper_orders_paper_strategies__strategy_id__orders_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaperOrdersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperBookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place Paper Orders"
       }
     },
     "/positions": {
