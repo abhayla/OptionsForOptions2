@@ -9,7 +9,9 @@ error -> ``CandleFetchError`` (the caller keeps the day PROVISIONAL); a malforme
 from __future__ import annotations
 
 import datetime
+import json
 import logging
+from decimal import Decimal
 from typing import Any, Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
 
@@ -19,7 +21,7 @@ from ofo.broker.kite_http import KiteBodyUnreadable
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.broker.kite_http import read_text as kite_read_text
 from ofo.history.bars import MinuteBar
-from ofo.history.candles import parse_candles
+from ofo.history.candles import CandleError, parse_candles
 from ofo.instruments.models import ZERODHA, ListedContract
 
 log = logging.getLogger("ofo_app.kite_history")
@@ -68,6 +70,51 @@ class KiteHistory:
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")
         return parse_candles(text, instrument_id, index=instrument_id in self._index_ids)
+
+    def day_close(self, token: str | int, day: datetime.date) -> Decimal | None:
+        """GC-TP 5a (REQ-109 AC-7): the exchange's closing value of one instrument on ``day``, from Kite's DAY candle
+        (``GET /instruments/historical/<token>/day?from=<day>&to=<day>``; ``token`` is Kite's instrument token).
+        One candle for that date -> its close as an exact Decimal; none -> None (not traded, or not yet published);
+        non-200 or a transport error -> ``CandleFetchError``; a malformed body, a non-positive close, more than one
+        candle or a candle for another date -> ``CandleError``."""
+        if not str(token).isdigit():
+            raise CandleFetchError("unknown instrument")
+        url = f"{self._base}/instruments/historical/{token}/day?from={day:%Y-%m-%d}&to={day:%Y-%m-%d}"
+        status, text = self._fetch(url, self._headers)
+        if status != 200:  # noqa: PLR2004
+            log.warning("kite history HTTP status %s", status)
+            raise CandleFetchError(f"http status {status}")
+        return _day_close_of(text, day)
+
+
+def _day_close_of(body: str, day: datetime.date) -> Decimal | None:
+    try:
+        parsed = json.loads(body, parse_float=Decimal)  # F-33: a price never passes through a float
+        if parsed.get("status") != "success":
+            raise CandleError("not a success body")
+        rows = parsed["data"]["candles"]
+        if not isinstance(rows, list):
+            raise CandleError("candles is not a list")
+        if not rows:
+            return None
+        if len(rows) > 1:
+            raise CandleError("more than one day candle for one day")
+        row = rows[0]
+        if not isinstance(row, list) or len(row) < 6:  # noqa: PLR2004 - [time, o, h, l, c, volume(, oi)]
+            raise CandleError("a day candle row needs 6 fields")
+        at = datetime.datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S%z")
+        if at.date() != day:
+            raise CandleError("the candle is for another date")
+        close = row[4]
+        if isinstance(close, int) and not isinstance(close, bool):
+            close = Decimal(close)
+        if not isinstance(close, Decimal) or not close.is_finite() or close <= 0:
+            raise CandleError("the close is not a positive number")
+        return close
+    except CandleError:
+        raise
+    except (ValueError, KeyError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
+        raise CandleError(f"malformed candle body: {type(exc).__name__}") from None
 
 
 #: (listed contracts) -> the minute-candle reader for exactly those contracts on the owner's stored session
