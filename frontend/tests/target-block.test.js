@@ -150,8 +150,11 @@ describe('the date slider and the answer states', () => {
     await t(w, 'target-date-forward').trigger('click')
     await settle()
     expect(outcomeCalls().slice(before)[0].body.target_at).toBe('2026-10-09T09:20:00+05:30')
-    await t(w, 'target-date-back').trigger('click')
+    await t(w, 'target-date-forward').trigger('click')
     await settle()
+    await t(w, 'target-date-back').trigger('click') // one stop back: still after now
+    await settle()
+    expect(outcomeCalls().at(-1).body.target_at).toBe('2026-10-09T09:20:00+05:30')
     await dragLevel(w, '22300')
     await settle()
     before = outcomeCalls().length
@@ -215,12 +218,18 @@ describe('the date slider and the answer states', () => {
 
   it('AC-6: the sliders send no save, margin, execute or leg-edit request, only outcome reads', async () => {
     const w = await openPage()
+    const opened = calls.length // whatever the page itself reads when it opens is not the sliders' doing
     await startTarget(w)
     await dragLevel(w, '22300')
     await settle()
     await t(w, 'target-date-forward').trigger('click')
     await settle()
-    expect(calls.every((c) => c.method === 'POST' && c.url === '/strategies/outcome')).toBe(true)
+    const fromSliders = calls.slice(opened)
+    expect(fromSliders.length).toBeGreaterThan(2)
+    // every write that left the page while the sliders moved is the outcome read (a GET /features is the page's own, not a write)
+    const writes = fromSliders.filter((c) => c.method !== 'GET')
+    expect(writes.length).toBeGreaterThan(2)
+    expect(writes.every((c) => c.method === 'POST' && c.url === '/strategies/outcome')).toBe(true)
     const keys = new Set(outcomeCalls().flatMap((c) => Object.keys(c.body)))
     for (const k of keys) expect(k).not.toMatch(/save|execute|margin/i)
   })

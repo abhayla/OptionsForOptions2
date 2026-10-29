@@ -26,6 +26,9 @@
           <span :class="['inline-block h-0.5 w-4', c.view === 'estimated_now' ? 'bg-accent' : 'bg-profit']"></span>
           <span data-testid="payoff-legend-curve">{{ c.label }}</span>
         </span>
+        <span v-if="targetLine" class="flex items-center gap-1" data-testid="payoff-legend-target">
+          <span class="inline-block h-0.5 w-4 border-t-2 border-dashed border-ink"></span>{{ TARGET_LEGEND }}
+        </span>
         <span v-if="sdText" data-testid="payoff-sd-mode">{{ sdText }}</span>
       </div>
       <div v-if="zoom && points0.length" role="group" aria-label="Zoom" class="inline-flex overflow-hidden rounded border border-line" data-testid="payoff-zoom">
@@ -122,6 +125,7 @@ const props = defineProps({
   pnlText: { type: Object, default: null }, // { [level]: the table's display string } for the one line of `points`
   unavailableReason: { type: String, default: null }, // the reply's scenario.unavailable_reason when it has no curve
   curves: { type: Object, default: null }, // the reply's `curves` (both_views): { at_expiry, estimated_now }
+  targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve ({ available, points, output_label }), a third dashed line
   breakevens: { type: Array, default: () => [] }, // the reply's summary.breakevens (index levels as text)
   sd: { type: Object, default: null }, // the reply's standard_deviation block (sd_bands)
   oi: { type: Object, default: null }, // the reply's open_interest block (open_interest)
@@ -143,11 +147,15 @@ const shown = computed(() => {
 })
 // The levels the hover walks: the first drawn curve's (the server sends both curves on the same levels).
 const points0 = computed(() => shown.value[0]?.points ?? [])
+// GC-TP step 6b: the target curve, only when the reply marks it available with points
+const targetLine = computed(() => (props.targetCurve?.available && props.targetCurve.points?.length ? props.targetCurve : null))
+const TARGET_LEGEND = 'Target'
 // Small text under the legend: an unavailable curve's reason (a calendar: ADR-143's line) and a curve's output label.
 const notes = computed(() => {
   const c = props.curves
   if (!c) return []
   const out = VIEWS.flatMap((v) => [c[v] && !c[v].available ? c[v].unavailable_reason : null, c[v]?.available ? c[v].output_label : null])
+  if (targetLine.value) out.push(props.targetCurve.output_label)
   // GC-UI b2 (b1 defect, Chrome 20:5x IST): each curve carries its own label, so "stale since 17:35 IST" and "stale since
   // 17:35 IST; estimated from spot" printed the stale part twice. Each "; " part is shown once, in the order sent.
   const parts = out.filter(Boolean).flatMap((s) => String(s).split(';').map((p) => p.trim()).filter(Boolean))
@@ -222,6 +230,9 @@ const createChart = () => {
     // D-B15: only the first curve's zones are hatched (at expiry when it is drawn), so two fills never overlap
     fill: i === 0 ? { target: 'origin', above: hatchPattern(document, colours.profit || token('--color-profit-soft')), below: hatchPattern(document, colours.loss || token('--color-loss-soft')) } : false,
   }))
+  const targetSet = targetLine.value
+    ? [{ type: 'line', curve: 'target', label: TARGET_LEGEND, data: lineData(targetLine.value.points), borderWidth: 2, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 0, tension: 0, spanGaps: false, order: 1, borderColor: token('--color-ink') || '#1b1f24', fill: false }]
+    : []
   const beSet = props.breakevens.length
     ? [{ type: 'line', label: 'Breakeven', data: props.breakevens.map((b) => ({ x: Number(b), y: 0 })), showLine: false, pointRadius: 5, pointStyle: 'triangle', pointBackgroundColor: token('--color-ink') || '#1b1f24', order: 0 }]
     : []
@@ -234,7 +245,7 @@ const createChart = () => {
 
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { datasets: [...curveSets, ...beSet, ...oiSets] },
+    data: { datasets: [...curveSets, ...targetSet, ...beSet, ...oiSets] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -395,7 +406,7 @@ const onKey = (e) => {
 
 // A new reply (or none: NOT_CONNECTED) drops the hover, so no number from an older answer stays on screen.
 watch(points0, hide)
-watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi], createChart, { deep: true })
+watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
 onUnmounted(() => {
   if (chartInstance) chartInstance.destroy()
