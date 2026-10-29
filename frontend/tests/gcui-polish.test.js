@@ -7,11 +7,12 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
 let answers = {}
+import { legacy } from './_paperList'
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const reply = (method) => (url, body) => {
     calls.push([method, url, body])
-    const a = answers[`${method} ${url}`]
+    const a = legacy(answers, method, url)
     return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
   }
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), put: reply('PUT'), patch: reply('PATCH') } }

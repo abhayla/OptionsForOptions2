@@ -6,6 +6,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
+import { plainName } from '@/lib/saveDraft'
 import { PAPER_ALERTS_EMPTY, dropAlerts, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 
 const NO_CHANNELS = 'No notification channels are set up yet.'
@@ -34,7 +35,7 @@ onMounted(async () => {
     </template>
     <ul v-else-if="isActive && paperAlerts.alerts.length" class="mt-4 divide-y divide-line" data-testid="alerts-list">
       <li v-for="a in paperAlerts.alerts" :key="a.id" class="py-2" data-testid="alert-row">
-        <p class="text-xs text-ink-muted"><span data-testid="alert-time">{{ istTime(a.created_at) }}</span> - <span data-testid="alert-strategy">Strategy {{ a.strategy_id }}</span></p>
+        <p class="text-xs text-ink-muted"><span data-testid="alert-time">{{ istTime(a.created_at) }}</span> - <span data-testid="alert-strategy">{{ plainName(a.strategy_name) ?? `Strategy ${a.strategy_id}` }}</span></p>
         <p class="font-medium" data-testid="alert-title">{{ a.title }}</p>
         <p data-testid="alert-body">{{ a.body }}</p>
       </li>

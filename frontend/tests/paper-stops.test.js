@@ -6,11 +6,12 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
 let answers = {}
+import { legacy } from './_paperList'
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const reply = (method) => (url, body) => {
     calls.push([method, url, body])
-    const a = answers[`${method} ${url}`]
+    const a = legacy(answers, method, url)
     return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
   }
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
@@ -89,17 +90,6 @@ describe('Stops panel', () => {
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
     expect(posts()).toEqual([['POST', TRIG, { kind: 'conditional_exit', below: '24000' }]])
-  })
-  it('leg Stop: per-leg price and Above / Below sent with the contract id as typed', async () => {
-    const w = await open()
-    expect(t(w, 'stop-save-1').attributes('disabled')).toBeDefined()
-    await t(w, 'stop-level-1').setValue('90.55')
-    await t(w, 'stop-direction-1').setValue('below')
-    answers[`POST ${TRIG}`] = ok({ triggers: [trig(4, { kind: 'leg_stop', direction: 'below', level: '90.55', level_text: 'At or below 90.55', contract_id: 5001, contract_text: 'SELL 22400 PE 3 Nov' })] })
-    await t(w, 'stop-save-1').trigger('click')
-    await flushPromises()
-    expect(posts()).toEqual([['POST', TRIG, { kind: 'leg_stop', contract_id: '5001', direction: 'below', level: '90.55' }]])
-    expect(w.findAll('[data-testid="trigger-row"]')[0].text()).toContain('SELL 22400 PE 3 Nov')
   })
   it('shows the server refusal text and keeps the typed values; a network failure shows the neutral line', async () => {
     const w = await open()

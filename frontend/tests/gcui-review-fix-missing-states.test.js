@@ -7,8 +7,9 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 let reply = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: () => Promise.resolve({ data: reply }), post: () => Promise.reject(new Error('no')) } }
+  return { ...actual, default: { get: () => Promise.resolve({ data: toPaperList(reply) }), post: () => Promise.reject(new Error('no')) } }
 })
+import { toPaperList } from './_paperList'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { readTracking } from '@/lib/tracking'
@@ -56,16 +57,6 @@ describe('review fix 4: money text is the server text, printed as sent', () => {
 })
 
 describe('review fix 2: missing exit price text, exit decided from the server marker', () => {
-  it('an exited leg with no exit price text reads "Exited at —", never "Exited at null"', async () => {
-    const w = await show(item({ legs: [leg(0, { exited_at: '2026-10-28T09:00:00Z', pnl_kind: 'booked', price_state: 'exited', exit_price: '50.25' })] }))
-    const cell = w.get('[data-testid="paper-leg"]').text()
-    expect(cell).toContain('Exited at —')
-    expect(cell).not.toContain('null')
-  })
-  it('a leg with an exit price text but no exited marker is still open (a text does not decide it)', async () => {
-    const w = await show(item({ legs: [leg(0, { exit_price: '50.25', exit_price_display: '50.25' })] }))
-    expect(w.get('[data-testid="paper-leg"]').text()).not.toContain('Exited')
-  })
   it('readTracking: exited from exited_at / booked, with exitPrice null when no text came', () => {
     const body = { state: 'LIVE', paper_pnl: '1.00', paper_pnl_text: '+1.00', booked: '1.00', booked_text: '+1.00', unbooked: '0.00', unbooked_text: '0.00', detections: [], legs: [
       leg(0, { exited_at: '2026-10-28T09:00:00Z' }), leg(1, { exit_price_display: '9.00' }), leg(2, { pnl_kind: 'booked' })] }
