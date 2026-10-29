@@ -76,6 +76,9 @@ async def test_target_at_the_expiry_close_is_the_at_expiry_payoff(provider):
     assert datetime.datetime.fromisoformat(t["at"]) == CLOSE and t["at_clamped"] is False
     assert t["pnl"]["value"] == _point(out["curves"]["at_expiry"], level)
     assert t["greeks"]["total"] is None and t["greeks"]["unavailable"] == "no_time_left"
+    assert t["greeks"]["unavailable_text"] == "No Greeks at expiry: the options have no time left."  # REQ-084 AC-2
+    assert t["output_label"] == t["curve"]["output_label"] == (
+        "Estimate from the pricing model at your target, not a forecast.")  # REQ-084 AC-5
     assert t["greeks"]["legs"] == [None, None, None, None]
 
 
@@ -99,6 +102,7 @@ async def test_target_after_the_first_expiry_is_clamped_to_its_close(provider):
     t = out["target"]
     assert t["at_clamped"] is True and t["clamp"] == "after_first_expiry"
     assert datetime.datetime.fromisoformat(t["at"]) == CLOSE
+    assert t["at_clamp_text"] == "Target moved to the nearest allowed value: 13 Oct, 15:30 IST."  # REQ-084 AC-2
 
 
 async def test_target_before_now_is_clamped_to_now(provider):
@@ -117,10 +121,12 @@ async def test_target_level_limits_are_spot_ten_percent_snapped_and_clamp_outsid
     assert spot * Decimal("0.9") <= lim["min"] < spot * Decimal("0.9") + 50
     assert spot * Decimal("1.1") - 50 < lim["max"] <= spot * Decimal("1.1")
     assert t["level_clamped"] is True and Decimal(t["level"]) == lim["max"]
+    assert t["level_clamp_text"] == f"Target moved to the nearest allowed value: {lim['max']:,.2f}."  # REQ-084 AC-2
+    assert t["at_clamp_text"] is None
     low = (await _target(provider, target_level="1"))["target"]
     assert low["level_clamped"] is True and Decimal(low["level"]) == lim["min"]
     inside = (await _target(provider, target_level=str(int(lim["min"]) + 50)))["target"]
-    assert inside["level_clamped"] is False
+    assert inside["level_clamped"] is False and inside["level_clamp_text"] is None
 
 
 async def test_target_level_alone_uses_spot_inside_limits(provider):

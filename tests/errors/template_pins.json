@@ -1866,5 +1866,17 @@
   "explanation:paper_alert_body": {
     "sha256": "5dfffc8a655a90644d6b4b5493c6c60891d20d596c1848458999049bdc3f6fa0",
     "reviewed": "pending owner read"
+  },
+  "explanation:target_estimate_label": {
+    "sha256": "b7b2543784bc7079493407923d5df51f939c47ee00a8cd87a09c72360e11094e",
+    "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"
+  },
+  "explanation:target_clamped": {
+    "sha256": "faee1f97b0d4de0249c891c0553f948d6462e365696333e5fc8270dbc95c6412",
+    "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"
+  },
+  "explanation:target_greeks_no_time_left": {
+    "sha256": "c2953c2545362ec3e5eb1a08e70a8de30e731e2514362eec1bec00afa69abb7f",
+    "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"
   }
 }

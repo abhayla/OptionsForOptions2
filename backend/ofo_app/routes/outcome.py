@@ -656,6 +656,7 @@ class TargetGreeksOut(ApiModel):
     legs: list[GreeksOut | None]
     total: GreeksOut | None
     unavailable: Literal["no_time_left"] | None
+    unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
 
 
 class TargetOut(ApiModel):
@@ -665,9 +666,11 @@ class TargetOut(ApiModel):
     limits: TargetLimitsOut
     level: Money
     level_clamped: bool
+    level_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <level>."
     at: datetime.datetime | None
     at_clamped: bool
     clamp: Literal["before_now", "after_first_expiry"] | None
+    at_clamp_text: CatalogueText | None  # REQ-084 AC-2: "Target moved to the nearest allowed value: <IST date-time>."
     at_refused_reason: CatalogueText | None
     kind: Literal["estimate", "exact"]
     model: CatalogueText | None

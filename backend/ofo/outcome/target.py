@@ -18,6 +18,7 @@ Answer states:
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -67,6 +68,11 @@ class TargetGreeks:
     total: Greeks | None
     unavailable: GreeksGap | None
 
+    @property
+    def unavailable_text(self) -> ExplanationText | None:
+        """REQ-084 AC-2 / RD-081: the sentence beside ``unavailable`` (a sentence, never an error)."""
+        return None if self.unavailable is None else render_explanation("target_greeks_no_time_left")
+
 
 @dataclass(frozen=True)
 class Target:
@@ -85,6 +91,18 @@ class Target:
     breakevens_reason: ExplanationText | None
     curve: ScenarioValues | None
     greeks: TargetGreeks | None
+
+    @property
+    def level_clamp_text(self) -> ExplanationText | None:
+        """REQ-084 AC-2: "Target moved to the nearest allowed value: 23,000.00." beside ``level_clamped``."""
+        return render_explanation("target_clamped", value=self.level) if self.level_clamped else None
+
+    @property
+    def at_clamp_text(self) -> ExplanationText | None:
+        """REQ-084 AC-2: "Target moved to the nearest allowed value: 3 Nov, 15:30 IST." beside ``clamp``."""
+        if self.clamp is None or self.at is None:
+            return None
+        return render_explanation("target_clamped", value=self.at)
 
 
 def target_limits(spot: Decimal, step: Decimal) -> TargetLimits:
@@ -159,11 +177,12 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
         reason = render_explanation("scenario_estimated_unavailable", legs=tuple(missing))
         return _exact_only(limits, level, level_clamped, model, reason)
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
-    curve = scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at)
+    label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
+    curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
     single = model.strategy.is_single_expiry
     return Target(
         limits=limits, level=level, level_clamped=level_clamped, at=at, at_clamped=clamp is not None, clamp=clamp,
-        at_refused_reason=None, kind="estimate", model=MODEL, output_label=curve.output_label,
+        at_refused_reason=None, kind="estimate", model=MODEL, output_label=label,
         pnl=estimate(model, level, at).total,
         breakevens=_breakevens(model, curve, at) if single else None,
         breakevens_reason=None if single else render_explanation("mixed_expiry_worst_case"),

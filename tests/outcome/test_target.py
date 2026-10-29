@@ -65,3 +65,36 @@ def test_level_outside_limits_is_clamped_and_inside_is_kept():
     assert live_target(TargetAsk(D(30000)), m, _levels(m), STEP).level == D(25250)
     inside = live_target(TargetAsk(D(23100)), m, _levels(m), STEP)
     assert inside.level == D(23100) and inside.level_clamped is False
+
+
+# --- REQ-084 AC-2 / AC-5 (owner 2026-10-29): the three what-if sentences, each from its pinned template -------------
+
+ESTIMATE_LABEL = "Estimate from the pricing model at your target, not a forecast."
+NO_GREEKS = "No Greeks at expiry: the options have no time left."
+
+
+def test_every_target_figure_carries_the_estimate_label_not_estimated_now():
+    m = _model(SPREAD)
+    t = live_target(TargetAsk(D(23000), NOW + datetime.timedelta(days=1)), m, _levels(m), STEP)
+    assert t.output_label == ESTIMATE_LABEL
+    assert t.curve is not None and t.curve.output_label == ESTIMATE_LABEL
+
+
+def test_a_clamped_level_or_date_says_the_nearest_allowed_value():
+    m = _model(SPREAD)
+    high = live_target(TargetAsk(D(30000)), m, _levels(m), STEP)
+    assert high.level_clamp_text == "Target moved to the nearest allowed value: 25,250.00."
+    late = live_target(TargetAsk(at=CLOSE + datetime.timedelta(days=2)), m, _levels(m), STEP)
+    assert late.clamp == "after_first_expiry"
+    assert late.at_clamp_text == "Target moved to the nearest allowed value: 3 Nov, 15:30 IST."
+    inside = live_target(TargetAsk(D(23100), NOW + datetime.timedelta(hours=1)), m, _levels(m), STEP)
+    assert inside.level_clamp_text is None and inside.at_clamp_text is None
+
+
+def test_no_time_left_greeks_carry_the_sentence_and_live_greeks_do_not():
+    m = _model(SPREAD)
+    at_close = live_target(TargetAsk(D(23000), CLOSE), m, _levels(m), STEP)
+    assert at_close.greeks is not None and at_close.greeks.unavailable == "no_time_left"
+    assert at_close.greeks.unavailable_text == NO_GREEKS
+    now = live_target(TargetAsk(D(23000)), m, _levels(m), STEP)
+    assert now.greeks is not None and now.greeks.unavailable_text is None

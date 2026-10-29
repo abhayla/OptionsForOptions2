@@ -159,10 +159,11 @@ def _target(t: Any) -> dict[str, Any]:
     """REQ-084 AC-1/AC-2/AC-4: the what-if target's limits, the clamped inputs and every engine figure there."""
     pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
     greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
-                                            "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable}
+                                            "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable,
+                                            "unavailable_text": t.greeks.unavailable_text}
     return {"limits": {"min": _s(t.limits.min), "max": _s(t.limits.max), "step": _s(t.limits.step)},
-            "level": _s(t.level), "level_clamped": t.level_clamped, "at": t.at, "at_clamped": t.at_clamped,
-            "clamp": t.clamp, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,
+            "level": _s(t.level), "level_clamped": t.level_clamped, "level_clamp_text": t.level_clamp_text,
+            "at": t.at, "at_clamped": t.at_clamped, "clamp": t.clamp, "at_clamp_text": t.at_clamp_text, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,
             "output_label": t.output_label, "pnl": pnl,
             "breakevens": None if t.breakevens is None else [_s(b) for b in t.breakevens],
             "breakevens_reason": t.breakevens_reason,
