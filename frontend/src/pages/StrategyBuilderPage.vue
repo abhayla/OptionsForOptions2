@@ -865,7 +865,7 @@ const pricesStamp = computed(() => {
             :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
             :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
             :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
-            :breakevens="paperLeft ? paper.book.breakevens_text ?? [] : data.summary.breakevens_display ?? []"
+            :breakevens="paperLeft ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
             :breakevens-exact="paperLeft ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"

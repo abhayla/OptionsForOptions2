@@ -54,7 +54,7 @@ function readPosition(p) {
 // that lacks a field (an older server) or sends it as not-a-list/not-an-object reads as absent with UNREADABLE_TEXT: a dash, never 0.
 function readSummary(s) {
   const absent = (reasonText) => text(reasonText) ?? UNREADABLE_TEXT
-  const hasBe = Array.isArray(s.breakevens_text) && s.breakevens_text.every((t) => text(t) !== null) && s.breakevens_text.length > 0
+  const hasBe = Array.isArray(s.breakevens_display) && s.breakevens_display.every((t) => text(t) !== null) && s.breakevens_display.length > 0
   const shownText = (t, code) => ({ text: text(t), reason: text(t) === null ? absent(code) : null })
   const profit = shownText(s.max_profit_text, s.extremes_reason_text)
   const loss = shownText(s.max_loss_text, s.extremes_reason_text)
@@ -64,7 +64,7 @@ function readSummary(s) {
   const net = g ? greekRow(g.net) : null
   const greeksOk = !!net && !!legs && !legs.includes(null) && GREEK_COLUMNS.every((c) => net[c.key] !== null && legs.every((l) => l[c.key] !== null))
   return {
-    breakevens: hasBe ? s.breakevens_text.map((t) => t.trim()) : null,
+    breakevens: hasBe ? s.breakevens_display.map((t) => t.trim()) : null,
     breakevensReason: hasBe ? null : (Array.isArray(s.breakevens) && s.breakevens.length === 0 ? null : absent(s.breakevens_reason_text)),
     maxProfit: profit.text, maxProfitReason: profit.reason,
     maxLoss: loss.text, maxLossReason: loss.reason,

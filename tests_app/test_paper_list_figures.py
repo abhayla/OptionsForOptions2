@@ -21,7 +21,7 @@ from sqlalchemy import event, text
 from test_paper_routes import _client, _new, _seed_fixture, _setup, db  # noqa: F401 - db is the rollback fixture
 
 D = Decimal
-FIELDS = ("breakevens", "breakevens_text", "breakevens_reason", "max_profit", "max_loss", "profit_left", "loss_left",
+FIELDS = ("breakevens", "breakevens_display", "breakevens_reason", "max_profit", "max_loss", "profit_left", "loss_left",
           "max_profit_text", "max_loss_text", "profit_left_text", "loss_left_text", "extremes_reason", "greeks",
           "greeks_reason")
 OTHER_EXPIRY = ("SELECT id FROM public.catalogue_contracts WHERE name = 'NIFTY' AND instrument_type = 'CE' "
@@ -65,9 +65,10 @@ async def test_core_list_figures_equal_the_single_route_and_each_breakeven_is_a_
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
     assert listed["extremes_reason"] is None and listed["breakevens_reason"] is None and listed["greeks_reason"] is None
     assert len(listed["breakevens"]) == 2  # noqa: PLR2004 - a condor with one leg exited: two zeros
-    for level, shown in zip(listed["breakevens"], listed["breakevens_text"], strict=True):
+    for level, shown in zip(listed["breakevens"], listed["breakevens_display"], strict=True):
         assert abs(_payoff(listed, D(level))) <= D("0.01") * 65  # the level is exact to 0.01 point, x 65 units a leg
-        assert shown.startswith(f"{int(D(level)):,}") or shown.split(" ")[0].replace(",", "").isdigit(), shown
+        assert shown.split(" ")[0] == f"{round(D(level)):,}", shown  # grouped whole points, the outcome summary's shape
+        assert shown.endswith("%)"), shown  # GC-TPD R-34: a live book carries the move-from-spot percent
     assert D(listed["max_profit"]) >= D(listed["total"]) >= D(listed["max_loss"])  # the original range holds the P&L
 
 
@@ -93,7 +94,7 @@ async def test_multi_expiry_has_no_breakevens_and_no_range_with_the_reason_and_i
     await paper_store.place(db, stored.user_ref, stored.id, [_new(int(other), "BUY", 65, "50.00")])
     single, listed = await _both(app, stored.id, "multi_expiry")
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
-    assert (listed["breakevens"], listed["breakevens_text"]) == (None, None)
+    assert (listed["breakevens"], listed["breakevens_display"]) == (None, None)
     assert listed["breakevens_reason"] == "multi_expiry"
     assert [listed[f] for f in ("max_profit", "max_loss", "profit_left", "loss_left")] == [None] * 4
     assert listed["extremes_reason"] == "multi_expiry"
@@ -106,7 +107,7 @@ async def test_a_fully_exited_strategy_has_every_new_field_absent_with_its_reaso
                                                               _new(c0, "BUY", 65, "80.00", "exit")])
     _single, listed = await _both(app, stored.id, "exited")
     assert listed["state"] == "EXITED"
-    for name in ("breakevens", "breakevens_text", "max_profit", "max_loss", "profit_left", "loss_left",
+    for name in ("breakevens", "breakevens_display", "max_profit", "max_loss", "profit_left", "loss_left",
                  "max_profit_text", "max_loss_text", "profit_left_text", "loss_left_text", "greeks"):
         assert listed[name] is None, name
     assert (listed["extremes_reason"], listed["breakevens_reason"], listed["greeks_reason"]) == ("exited",) * 3
@@ -122,7 +123,7 @@ async def test_prices_not_live_drop_profit_left_and_greeks_with_the_paused_reaso
     assert (listed["extremes_reason"], listed["greeks_reason"]) == ("prices_not_live", "prices_not_live")
     # the original range and the breakevens need no price (extremes.py: "known whether or not prices are live")
     assert listed["max_profit"] is not None and listed["breakevens"] is not None and listed["breakevens_reason"] is None
-    assert not any("%" in t for t in listed["breakevens_text"])  # no percent from a spot that is not live
+    assert not any("%" in t for t in listed["breakevens_display"])  # no percent from a spot that is not live
 
 
 async def test_a_contract_that_is_not_live_gives_greeks_the_contract_reason(db):  # noqa: F811

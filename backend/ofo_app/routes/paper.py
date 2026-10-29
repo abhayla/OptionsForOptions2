@@ -32,7 +32,6 @@ from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.display import breakeven_percent_exact
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation, restore_explanation
@@ -41,6 +40,7 @@ from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
+from ofo.outcome.serialize import breakevens_display
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
@@ -182,7 +182,7 @@ class PaperExtremes(ApiModel):
 class PaperBreakevens(ApiModel):
     """GC-TP R-19b (Sensibull 090): the at-expiry breakevens, exact; an empty list is a real answer, None is absent."""
     breakevens: list[Money] | None
-    breakevens_text: list[CatalogueText] | None
+    breakevens_display: list[CatalogueText] | None
     breakevens_reason: FigureReason | None
     breakevens_reason_text: CatalogueText | None = None  # ADR-211 (5): the sentence beside the dash
 
@@ -405,14 +405,10 @@ def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     got = book_breakevens(net_positions(_paper(orders), {}), terms)
     if got.levels is None:
-        return {"breakevens": None, "breakevens_text": None, "breakevens_reason": got.reason,
+        return {"breakevens": None, "breakevens_display": None, "breakevens_reason": got.reason,
                 "breakevens_reason_text": breakevens_reason_text(got.reason)}
-    texts = []
-    for level in got.levels:
-        percent = breakeven_percent_exact(level, spot)
-        texts.append(render_explanation("summary_breakeven_level", level=level) if percent is None
-                     else render_explanation("summary_breakeven_percent", level=level, percent=percent))
-    return {"breakevens": [_exact(x) for x in got.levels], "breakevens_text": texts, "breakevens_reason": got.reason,
+    texts = breakevens_display(got.levels, spot)  # GC-TPD R-34: the outcome summary's own function and shape
+    return {"breakevens": [_exact(x) for x in got.levels], "breakevens_display": texts, "breakevens_reason": got.reason,
             "breakevens_reason_text": None}
 
 
@@ -455,7 +451,7 @@ def _spot(snapshot: Any) -> Decimal | None:
 _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
            "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
            "extremes_reason_text": extremes_reason_text(EXITED),
-           "breakevens": None, "breakevens_text": None, "breakevens_reason": EXITED,
+           "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
            "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
 
