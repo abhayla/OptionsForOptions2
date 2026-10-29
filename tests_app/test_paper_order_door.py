@@ -71,6 +71,10 @@ def _mutated(tmp_path, module_file: str, extra: str):
     ("ofo_app/paper_monitor.py", "from ofo_app import execute_plan  # noqa: F401", "ofo_app.execute_plan"),
     ("ofo_app/paper_trigger_store.py", "from ofo_app import order_audit  # noqa: F401", "ofo_app.order_audit"),
     ("ofo/tracking/stops.py", "from ofo.execution import basket  # noqa: F401", "ofo.execution.basket"),
+    # GC-TP step 11 gap review: the settlement job had no case; a door imported inside a function is caught too
+    ("ofo_app/paper_settlement.py", "from ofo_app import execute_plan  # noqa: F401", "ofo_app.execute_plan"),
+    ("ofo_app/paper_monitor.py", "def _late():\n    from ofo_app import order_audit  # noqa: F401",
+     "ofo_app.order_audit"),
 ])
 def test_mutation_a_forbidden_import_in_any_paper_module_is_red_with_its_chain(tmp_path, module_file, extra, door):
     problems, _ = paper_problems(_mutated(tmp_path, module_file, extra))
