@@ -19,13 +19,13 @@ export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use n
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
 export const PAPER_ADDED_TEXT = 'Added to Paper'
-// whole paise from the typed text (a count, not a rupee figure): above 0 and a multiple of 5 paise = 0.05
-const PRICE_TEXT = /^(\d{1,7})(?:\.(\d{1,2}))?$/
+// a typed price: digits with at most two decimals whose last decimal is 0 or 5 (a multiple of 0.05), and not zero. Judged on
+// the text alone, no number is formed (ADR-008).
+const PRICE_TEXT = /^\d{1,7}(?:\.\d[05]?)?$/
+const ZERO_TEXT = /^0+(?:\.0+)?$/
 export function paperPriceOk(text) {
-  const m = PRICE_TEXT.exec(String(text ?? '').trim())
-  if (!m) return false
-  const paise = Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'))
-  return paise > 0 && paise % 5 === 0
+  const typed = String(text ?? '').trim()
+  return PRICE_TEXT.test(typed) && !ZERO_TEXT.test(typed)
 }
 export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
 

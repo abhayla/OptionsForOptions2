@@ -52,9 +52,12 @@ watch(() => [props.open, props.orders], () => {
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : !paperPriceOk(r.price) ? PAPER_PRICE_REASON : '')))
 const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) => r === ''))
 
+// the quantity is a count of units (whole lots x the lot size the order carries), not money
+const unitsOf = (r) => r.lots * r.lot_size
+const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.price.trim(), kind: r.kind }) // price: as typed
+
 function confirm() {
   if (props.busy || !ready.value) return
-  // the quantity is a count of units (lots x the lot size the order carries); the price is sent exactly as typed
-  emit('confirm', rows.value.map((r) => ({ contract_id: r.contract_id, side: r.side, quantity: Number(r.lots) * r.lot_size, price: r.price.trim(), kind: r.kind })))
+  emit('confirm', rows.value.map(orderOf))
 }
 </script>
