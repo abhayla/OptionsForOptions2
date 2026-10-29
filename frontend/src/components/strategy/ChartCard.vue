@@ -25,6 +25,7 @@ import StrategyTable from './StrategyTable.vue'
 import {
   COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
+import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -40,6 +41,7 @@ const props = defineProps({
   breakevens: { type: Array, default: () => [] },
   targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
   targetBadge: { type: Object, default: null }, // GC-TP R-19a: the reply's target.badge (REQ-144), drawn on the graph
+  targetBookedText: { type: String, default: '' }, // R-18: the reply's target.includes_booked_text
   targetStale: { type: Boolean, default: false }, // the last target request failed: the badge shows no old amount
   targetStaleText: { type: String, default: '' }, // the reply's target.stale_text (ADR-210 (7)) shown when stale
   showBadge: { type: Boolean, default: false }, // the page has a target block (a reply with `target`)
@@ -76,6 +78,7 @@ const tab = defineModel('tab', { type: String, default: 'payoff' })
 const payoffView = defineModel('payoffView', { type: String, default: 'graph' })
 const fullTable = defineModel('fullTable', { type: Boolean, default: false }) // ADR-194 (1): the compact view is the default
 
+const includeBooked = defineModel('includeBooked', { type: Boolean, default: true }) // R-18 (ADR-209): Add Booked P&L, ON
 const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's move_pct_display per row
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table, props.legs))
@@ -95,6 +98,12 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
   <Card class="mt-4" flush data-testid="chart-card">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
       <Tabs v-model="tab" :tabs="TABS" variant="segmented" label="Chart views" :id-prefix="VIEW" />
+      <!-- GC-TP R-18 (ADR-209; Sensibull 020: top right of the chart card, shown ON): always shown; it changes the target figures
+           of a paper strategy only (the server adds the booked P&L), and does nothing to a plan -->
+      <label class="flex items-center gap-2 text-sm text-ink-muted">
+        <input v-model="includeBooked" type="checkbox" role="switch" :aria-checked="includeBooked ? 'true' : 'false'" data-testid="add-booked-switch" />
+        {{ BOOKED_SWITCH_LABEL }}
+      </label>
     </div>
 
     <!-- Payoff -->
@@ -113,7 +122,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
             :points="points" :spot="spot" :view="view" :pnl-text="pnlByLevel" :unavailable-reason="unavailableReason"
             :curves="curves" :target-curve="targetCurve" :breakevens="breakevens" :sd="sd" :oi="oi" :zoom="zoom" @zoom="emit('zoom', $event)"
           />
-          <TargetBadge v-if="showBadge" :badge="targetBadge" :stale="targetStale" :stale-text="targetStaleText" />
+          <TargetBadge v-if="showBadge" :badge="targetBadge" :booked-text="targetBookedText" :stale="targetStale" :stale-text="targetStaleText" />
         </div>
         <slot name="target" />
       </div>

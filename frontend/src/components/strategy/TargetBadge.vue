@@ -8,6 +8,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   badge: { type: Object, default: null }, // the reply's target.badge (null: an older reply that has none)
+  bookedText: { type: String, default: '' }, // R-18: the reply's target.includes_booked_text, else none (an older reply)
   stale: { type: Boolean, default: false }, // the last target request failed or was superseded by a push
   staleText: { type: String, default: '' }, // the last good reply's target.stale_text (ADR-210 (7))
 })
@@ -26,6 +27,7 @@ const tone = computed(() => ({ profit: 'text-profit', loss: 'text-loss' })[state
     </template>
     <template v-else>
       <div class="font-semibold tabular-nums" :class="tone" data-testid="target-badge-label">{{ badge.label }}</div>
+      <div v-if="bookedText" class="text-xs text-ink-muted tabular-nums" data-testid="target-badge-booked">{{ bookedText }}</div>
       <div v-if="badge.reason" class="text-xs text-ink-muted" data-testid="target-badge-reason">{{ badge.reason }}</div>
       <div v-if="badge.percent_text" class="text-xs text-ink-muted tabular-nums" data-testid="target-badge-percent">{{ badge.percent_text }}</div>
       <div v-else-if="badge.percent_reason" class="text-xs text-ink-muted" data-testid="target-badge-percent-reason">{{ badge.percent_reason }}</div>

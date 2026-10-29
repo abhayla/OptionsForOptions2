@@ -23,6 +23,17 @@ def target_level_limits(spot: Decimal, step: Decimal) -> tuple[Decimal, Decimal]
     return low, high
 
 
+def add_booked(value: Decimal | None, booked: Decimal | None) -> Decimal | None:
+    """GC-TP R-18 (ADR-209): a what-if figure plus the paper strategy's booked P&L, exact (ADR-008); the figure unchanged
+    when nothing is booked (``booked`` None) and absent when the figure is."""
+    return value if value is None or booked is None else value + booked
+
+
+def add_booked_all(values: Sequence[Decimal] | None, booked: Decimal | None) -> tuple[Decimal, ...] | None:
+    """:func:`add_booked` for every point of a curve (the same booked amount at each level)."""
+    return None if values is None else tuple(v if booked is None else v + booked for v in values)
+
+
 def breakevens_at(model: ModelInputs, levels: Sequence[Decimal], totals: Sequence[Decimal],
                   at: datetime.datetime) -> tuple[Decimal, ...]:
     """The levels where the target-time estimate crosses zero: each sign change on the curve (``levels``/``totals``),

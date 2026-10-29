@@ -184,7 +184,18 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
             "breakevens_reason": t.breakevens_reason,
             "stale_text": render_explanation("paper_reason_whatif_stale"),  # ADR-210 (7): shown if a later request fails
             "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks,
-            **move_fields(t.level, t.spot), **days_fields(t.days), "badge": badge(t, margin)}
+            **move_fields(t.level, t.spot), **days_fields(t.days), "badge": badge(t, margin), **_booked_fields(t)}
+
+
+def _booked_fields(t: Any) -> dict[str, Any]:
+    """GC-TP R-18 (ADR-209): the line naming the booked P&L the target figures include ("includes booked +962.00"), or the
+    reason the book could not be read; none of the three keys is sent when nothing was booked (an older reply shape)."""
+    if t.booked is not None:
+        return {"booked": _s(t.booked), "booked_display": render_explanation("summary_paisa_signed", amount=t.booked),
+                "includes_booked_text": render_explanation("target_includes_booked", amount=t.booked)}
+    if t.booked_unreadable:
+        return {"booked_unreadable_text": render_explanation("target_booked_unreadable")}
+    return {}
 
 
 def _view_head(v: Any) -> dict[str, Any]:

@@ -90,6 +90,8 @@ const onBox = (e) => {
         <div>
           <div class="text-ink-muted">P&amp;L at target</div>
           <div class="text-base font-semibold tabular-nums" data-testid="target-pnl">{{ t.pnl?.display ?? '' }}</div>
+          <div v-if="t.includes_booked_text" class="text-xs text-ink-muted" data-testid="target-booked">{{ t.includes_booked_text }}</div>
+          <div v-else-if="t.booked_unreadable_text" class="text-xs text-warn" data-testid="target-booked-unreadable">{{ t.booked_unreadable_text }}</div>
           <div v-if="t.output_label" class="text-xs text-ink-muted" data-testid="target-label">{{ t.output_label }}</div>
         </div>
         <div>

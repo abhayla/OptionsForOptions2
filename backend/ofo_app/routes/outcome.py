@@ -226,6 +226,48 @@ RequestSeq = Annotated[int, Field(strict=True, ge=0, le=INTEGER_MAX,
                                   description="the request's sequence id; the reply echoes it unchanged as seq")]
 
 
+@dataclasses.dataclass(frozen=True)
+class Booked:
+    """ADR-209: the booked P&L of the paper strategy a what-if request names (amount None, unreadable False: nothing to add)."""
+
+    amount: Decimal | None = None
+    unreadable: bool = False
+
+
+BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
+
+
+async def read_booked(strategy_id: int) -> Decimal | None:
+    """The strategy's booked P&L from the paper order book (the one engine's net_positions, the figure GET
+    /paper/strategies/{id} returns). None for a strategy that is not this user's, has no orders, or a read that fails."""
+    from ofo.tracking.orderbook import (
+        net_positions,  # late: the DB-free outcome route imports nothing of tracking at load
+    )
+
+    from ofo_app import paper_store, strategy_store
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            await strategy_store.load(db, current_user_ref(), strategy_id)  # the owner check: another user's id is unknown
+            orders = await paper_store.load(db, strategy_id)
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read", never a 0
+        return None
+    return net_positions([o.order.as_paper() for o in orders], {}).booked if orders else None
+
+
+def get_booked_reader() -> BookedReader:
+    return read_booked
+
+
+async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)]) -> Booked:
+    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read"."""
+    if req.paper_strategy_id is None or not req.include_booked:
+        return Booked()
+    amount = await reader(req.paper_strategy_id)
+    return Booked(None, True) if amount is None else Booked(amount)
+
+
 class OutcomeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -275,6 +317,14 @@ class OutcomeRequest(BaseModel):
         default=None,
         description="REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first "
                     "expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)")
+    paper_strategy_id: StrictInt | None = Field(
+        default=None, ge=1, le=INTEGER_MAX,
+        description="ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its "
+                    "booked P&L from the paper order book. Absent: a plan, nothing is added")
+    include_booked: StrictBool = Field(
+        default=True,
+        description="ADR-209: the chart card's Add Booked P&L switch. true (default) adds the paper strategy's booked P&L "
+                    "to the target P&L, the badge and the target curve; false shows the open legs only")
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
@@ -285,11 +335,14 @@ class OutcomeRequest(BaseModel):
             raise ValueError("payoff_step must be one of 10, 25, 50, 100")
         return self
 
-    def target_ask(self) -> TargetAsk | None:
-        """REQ-084 AC-4: the what-if inputs (None when neither was sent: today's reply exactly)."""
+    def target_ask(self, booked: Booked | None = None) -> TargetAsk | None:
+        """REQ-084 AC-4: the what-if inputs (None when neither was sent: today's reply exactly). ``booked`` is the paper
+        strategy's booked P&L the route read (ADR-209); None: a plan, or the switch off."""
         if self.target_level is None and self.target_at is None:
             return None
-        return TargetAsk(None if self.target_level is None else Decimal(self.target_level), self.target_at)
+        booked = booked or Booked()
+        return TargetAsk(None if self.target_level is None else Decimal(self.target_level), self.target_at,
+                         booked.amount, booked.unreadable)
 
     def table_step(self) -> Decimal | None:
         """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
@@ -708,6 +761,11 @@ class TargetOut(ApiModel):
     days_to_expiry: int | None = None
     days_to_expiry_display: CatalogueText | None = None
     badge: TargetBadgeOut | None = None  # REQ-144 AC-1..AC-4
+    #: GC-TP R-18 (ADR-209): present only when a paper strategy's booked P&L is in ``pnl``, ``badge`` and ``curve``
+    booked: Money | None = None
+    booked_display: CatalogueText | None = None  # "+962.00"
+    includes_booked_text: CatalogueText | None = None  # "includes booked +962.00"
+    booked_unreadable_text: CatalogueText | None = None  # the book could not be read: open legs only
 
 
 class OutcomeResponse(ApiModel):
@@ -812,12 +870,13 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
                      rates: ChargeRates | None = None, margin: Margin | None = None,
-                     seq: int | None = None) -> OutcomeResponse:
+                     seq: int | None = None, booked: Booked | None = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
     frozen quotes. ``now`` stamps the answer time (ADR-088); ``stored`` names the legs when there is no provider (#249)."""
     definition = _definition(req)
+    ask = req.target_ask(booked)  # ADR-209: the paper strategy's booked P&L rides on the what-if ask
     live_blocked = False
     used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
     if ctx is None:
@@ -825,7 +884,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
-                            sd_bands=req.sd_bands, target=req.target_ask())  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            sd_bands=req.sd_bands, target=ask)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
@@ -842,13 +901,13 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=req.target_ask())
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
                    or not_live(definition, snapshot))
         else:
             config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=req.target_ask())
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
@@ -899,8 +958,10 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
                      now: AnswerClock = Depends(get_answer_clock),
                      stored: Mapping[str, ListedContract] | None = Depends(get_stored_legs),
                      rates: ChargeRates | None = Depends(load_charge_rates), *,
-                     margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None) -> OutcomeResponse:
+                     margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None,
+                     booked: Annotated[Booked | None, Depends(get_booked)] = None) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,
-                            margin=margin if isinstance(margin, Margin) else None, seq=req.seq)
+                            margin=margin if isinstance(margin, Margin) else None, seq=req.seq,
+                            booked=booked if isinstance(booked, Booked) else None)
