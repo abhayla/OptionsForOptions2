@@ -70,7 +70,8 @@ async def test_route_carries_the_money_figures_as_strings(replayed, monkeypatch)
     out = json.loads(resp.text, parse_float=lambda text: pytest.fail(f"float in the JSON: {text}"))
     s = out["summary"]
     share = s["funds_share"]
-    assert (share["margin_needed"], share["max_profit_percent"], share["max_loss_percent"]) == ("7065.50", "67.3", "116.7")
+    assert (share["margin_needed"], share["max_profit_percent"], share["max_loss_percent"]) == (
+        "7065.50", "67.3", "116.7")
     assert (share["max_profit_text"], share["max_loss_text"]) == (PROFIT_TEXT, LOSS_TEXT)
     assert share["read_at"] is not None and CHECKED_AT.isoformat().replace("+00:00", "") in share["read_at"]
     # no rate table on this route: the charges cannot be priced, so there is no ratio (REQ-081 AC-4), never 0.58/1.73

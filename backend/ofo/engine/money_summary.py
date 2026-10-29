@@ -1,7 +1,8 @@
 """REQ-081 (W-154): the money arithmetic of the Builder summary, in the one engine (ADR-008). Exact Decimals, no float.
 
 Net premium (sells minus buys of entry price x quantity: the rule of the table's TOTAL Entry Value), intrinsic and time
-value, Reward/Risk and Risk/Reward, and a maximum as a percent of the margin needed (ADR-207 (8)). Pure numbers only: which sentence or reason
+value, Reward/Risk and Risk/Reward, and a maximum as a percent of the margin needed (ADR-207 (8)). Pure numbers
+only: which sentence or reason
 goes with a figure is shaped in ``ofo.outcome.money``.
 """
 from __future__ import annotations

@@ -105,9 +105,9 @@ def reward_risk(max_profit: Any, max_loss: Any, *, single_expiry: bool = True,
 
 @dataclass(frozen=True)
 class FundsShare:
-    """REQ-081 AC-9/AC-10 (ADR-207 (8), SPEC CHANGE to ADR-164): each maximum as a percent, to one decimal, of the margin
-    needed the Funds & Margins block shows (Zerodha's basket figure, ``Margin.needed``), with that figure and when
-    Zerodha was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue
+    """REQ-081 AC-9/AC-10 (ADR-207 (8), SPEC CHANGE to ADR-164): each maximum as a percent, to one decimal, of the
+    margin needed the Funds & Margins block shows (Zerodha's basket figure, ``Margin.needed``), with that figure and
+    when Zerodha was read. A side that is Unlimited (or a profit below 0) has no percentage; ``*_text`` is the catalogue
     wording, whose label is only "% of margin needed" (AC-11). The name is kept so the reply's key stays put."""
 
     margin_needed: Any

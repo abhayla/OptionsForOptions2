@@ -17,7 +17,7 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 from ofo.outcome import read_snapshot  # noqa: E402
 from ofo.tracking import paper, paper_decay  # noqa: E402
 from ofo_app import paper_store  # noqa: E402
-from ofo_app.routes.paper import _newest_first, _totals  # noqa: E402
+from ofo_app.routes.paper import _charges_total, _newest_first, _totals  # noqa: E402
 
 D = Decimal
 IDS = ["NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"]  # 22800 CE, 23000 CE, 22400 PE, 22200 PE
@@ -59,7 +59,8 @@ def test_an_option_without_a_solvable_iv_has_no_decay_and_no_open_contract_decay
 
 
 def _strategy(booked: str, unbooked: str | None, reason: str | None = None) -> dict:
-    return {"booked": D(booked), "unbooked": None if unbooked is None else D(unbooked), "pause_reason": reason}
+    return {"booked": D(booked), "unbooked": None if unbooked is None else D(unbooked), "pause_reason": reason,
+            "charges": D("1.00"), "charges_reason": None}  # every route strategy carries its Charges (step 8a)
 
 
 def test_one_strategy_without_unbooked_makes_the_totals_absent_never_a_partial_sum():
@@ -83,3 +84,12 @@ def _book(strategy_id: int, *hours: int) -> paper_store.UserBook:
 def test_newest_first_is_the_latest_first_order_then_the_highest_id():
     books = [_book(1, 5), _book(2, 1, 9), _book(3, 1)]
     assert [b.strategy_id for b in sorted(books, key=_newest_first, reverse=True)] == [1, 3, 2]
+
+
+def test_charges_total_is_absent_with_the_first_absent_reason_never_a_partial_sum():
+    # GC-TP step 8a (REQ-109 AC-10 with AC-5's never-a-partial-sum rule)
+    priced = {"charges": D("25.73"), "charges_reason": None}
+    futures = {"charges": None, "charges_reason": "not_priced"}
+    assert _charges_total([priced, priced])["charges"] == D("51.46")
+    got = _charges_total([priced, futures, {"charges": None, "charges_reason": "rates_unavailable"}])
+    assert (got["charges"], got["charges_text"], got["charges_reason"]) == (None, None, "not_priced")

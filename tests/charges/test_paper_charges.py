@@ -10,11 +10,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from ofo.charges import ChargeOrder, charges_for_order
 from ofo.charges.calculator import exercise_stt
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable, to_paise_up
+
 from tests.charges.test_rates_reproduce_kite import rates
 
 BOOK_63 = Path(__file__).resolve().parents[2] / "frontend" / "tests" / "fixtures" / "paper-book-63.json"

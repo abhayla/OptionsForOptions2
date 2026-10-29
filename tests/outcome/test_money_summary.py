@@ -278,7 +278,8 @@ def test_a_share_under_a_tenth_of_a_percent_sends_percent_null_with_the_text():
 
 
 def test_one_decimal_percent_rounds_half_up():
-    f = money.funds_share(D("2.5"), D("8.5"), FakeMargin(needed=D("1000")))  # 0.25 -> 0.3, 0.85 -> 0.9 (half-even: 0.2, 0.8)
+    # 0.25 -> 0.3, 0.85 -> 0.9 (half-even would give 0.2, 0.8)
+    f = money.funds_share(D("2.5"), D("8.5"), FakeMargin(needed=D("1000")))
     assert (f.max_profit_percent, f.max_loss_percent) == (D("0.3"), D("0.9"))
 
 

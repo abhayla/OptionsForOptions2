@@ -53,8 +53,14 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import (AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context,
-                                    load_charge_rates)
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    feed_scope,
+    get_answer_clock,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
@@ -189,7 +195,7 @@ class PaperTotalsOut(ApiModel):
     decay: Money | None  # REQ-145 AC-2: rupees to the next market open over every open contract, rounded once
     decay_text: CatalogueText | None
     decay_reason: TotalsReason | None
-    charges: Money | None = None  # GC-TP step 8a: sum of every strategy's Charges; None (never partial) if one is absent
+    charges: Money | None = None  # GC-TP step 8a: every strategy's Charges summed; None (never partial) if one absent
     charges_text: CatalogueText | None = None
     charges_reason: ChargesReason | None = None
 
@@ -392,7 +398,7 @@ async def get_paper_strategy(strategy_id: int,  # noqa: PLR0913 - FastAPI depend
 
 
 @router.get("/paper/strategies", response_model=PaperListOut)
-async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],
+async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - FastAPI dependencies
                                 user_ref: Annotated[str, Depends(current_user_ref)],
                                 ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                                 feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
@@ -461,7 +467,8 @@ def _charges_total(strategies: Sequence[dict]) -> dict:
     """The sum of every strategy's shown Charges; absent with the first absent strategy's reason (never partial)."""
     total = charges_sum([s["charges"] for s in strategies])
     reason = next((s["charges_reason"] for s in strategies if s["charges"] is None), None)
-    return {"charges": total, "charges_text": None if total is None else render_explanation(PAPER_CHARGES, amount=total),
+    text_ = None if total is None else render_explanation(PAPER_CHARGES, amount=total)
+    return {"charges": _exact(total), "charges_text": text_,
             "charges_reason": reason}
 
 
