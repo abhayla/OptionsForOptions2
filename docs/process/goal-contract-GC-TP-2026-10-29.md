@@ -4,6 +4,47 @@ Written 2026-10-29 ~11:00 IST in a planning-only session (no code changed). Docs
 (worktree `D:\Abhay\Ventures\OptionsForOptions2-gctp-docs`, local only, based on `build/gcbm-must-have` 5052f82a). The
 owner starts this contract with /goal in a FRESH session.
 
+## SESSION 1 HANDOVER (2026-10-29 16:47 IST) - READ THIS FIRST
+
+The live contract is THIS file in the run tree `D:\Abhay\Ventures\OptionsForOptions2-gctp-run` (branch `build/gctp`,
+head after this commit; no upstream, nothing pushed, no PR, no CI). The copy in `OptionsForOptions2-gctp-docs` is the
+STALE planning copy - do not use it.
+
+DONE (live-proven, review owed): steps 0, 1, 2, 3, 4, 5, 6, 7, 8 (each Status cell below has the proof). Step 9 PARTIAL
+(pairs done; 1366 x 768 pass owed - the Chrome window would not resize). Steps 10, 11, 12 NOT STARTED.
+
+Servers (started by session 1; they may die when the session is cleared - check ports first): API on 8765 = uvicorn PID
+25896 (run tree, ofo_dev at migration 0030, LIVE_MARKET=1); Vite on 5174 = PID 17664 (run tree frontend). Restart
+commands: see "Running the app" (use the run tree path). ofo_dev head = 0030_paper_settle_zero. Kite token expires
+06:00 IST: owner logs in once in a PRIVATE window at http://127.0.0.1:8765/broker/zerodha/login before 09:15.
+Lock: `.run-active.lock` at the run tree root holds session 1's token - the new session overwrites it.
+
+NEXT, in order:
+1. 09:15-09:20 tomorrow: bseindia.com SENSEX "Previous Close" must read 74,151.04 (final official close for the 29 Oct
+   settlement; step 5 owed check). If it differs: STOP, a correcting settle is needed (orders are append-only).
+2. Step 10 (market hours): the expert-trader walk end to end (NIFTY iron condor, SENSEX strangle, NIFTY calendar; Add to
+   Paper at typed prices; watch on Positions; roll, partial exit, add a hedge; set a conditional exit; checker
+   `--paper-orders` on 5 strategies incl. a calendar and a partial exit); retry the 1366 x 768 pass (ask the owner to
+   un-maximize Chrome if `window.innerWidth` stays 1536); re-test F-65..F-70 and mark them fixed in spec/findings.md;
+   move knowledge/findings/paper-plan-diverges-from-position.json to guarded (checker `--paper-orders` + the
+   paper-drafts-diff test).
+3. ONE owner question (business: user-visible words), batched: R-15 (stale sentence for what-if figures), R-20 (nine
+   reason codes with no sentence), R-18 (does the target P&L include booked P&L), R-16 (rupee sign on some money texts).
+4. R-19 (Sensibull parity gaps: sliders below the graph with move-% + projected badge; per-card Breakeven / Max / Greeks
+   toggle) - layout is a technical/design call (memory screen-design-by-research-role): decide, build as a small item.
+5. Step 11 review: fresh Opus (Tier A) on steps 1, 3, 5, 7, 8; Sonnet on 2, 4, 6; at most 2 rounds; open points for the
+   reviewers: R-13, R-17, the history-guard door for the settlement job (ADR-066), builders' red-first misses (2, 4b r2,
+   6b r2), the per-leg theta tolerance.
+6. Step 12 handover: worktrees gctp-s1, s1b, s2, s3a, s3b, s4a, s5, s6, s7, s7b, s8 are ALL merged into build/gctp and can
+   be removed with `wt-rm.ps1` (never rm -rf; each has its own npm-ci node_modules, not a junction); plus the harness
+   trees under `D:\Abhay\Ventures\OptionsForOptions2\.claude\worktrees\agent-*` made by this session's builders;
+   migration 0031 (drop the 0021/0027 tracking tables - renumbered: 0029 = triggers, 0030 = settle-zero) is owed at land;
+   NIFTY 3 Nov settlement proof owed after the goal window.
+
+Process lessons from session 1: builders hit their call caps 6 times - keep the HARD RULE stop line and put verification
+commands in the brief; stamp every time with the clock (memory stamp-times-from-clock); the repo hooks block `;`-chained
+commits and multi-line python before a commit - run edit scripts as separate calls.
+
 ## Owner decisions behind this contract (2026-10-29; recorded in ADR-207)
 
 1. Judge the app as an expert option trader from "build a strategy" to "track it on Positions" and "adjust it";
