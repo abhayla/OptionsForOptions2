@@ -32,8 +32,10 @@ describe('MarketClosedBanner', () => {
     expect(mount(MarketClosedBanner, { props: { pricesAt: '2026-10-19T15:30:00+05:30' } }).get('[data-testid="market-closed-banner"]').attributes('data-disables-execute')).toBe('false')
     expect(mount(MarketClosedBanner, { props: { pricesAt: '2026-10-19T15:30:00+05:30', disablesExecute: true } }).get('[data-testid="market-closed-banner"]').attributes('data-disables-execute')).toBe('true')
   })
-  it('never shows a raw string for an unusable time', () => {
-    expect(t(mount(MarketClosedBanner, { props: { pricesAt: 'garbage' } }), 'market-closed-text')).toBe('Market closed. Prices are from Time not available.')
+  it('live #603 item 3: with no usable time the sentence is the approved first part only, never "from Time not available"', () => {
+    for (const pricesAt of ['garbage', null, '']) {
+      expect(t(mount(MarketClosedBanner, { props: { pricesAt } }), 'market-closed-text')).toBe('Market closed.')
+    }
   })
 })
 
