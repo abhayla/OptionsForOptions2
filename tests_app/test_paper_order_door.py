@@ -20,7 +20,8 @@ pytestmark = pytest.mark.repo_scan
 
 #: The modules that make up the paper order book. Add a module here (step 7: the monitor) and it is walked too.
 PAPER_MODULES: tuple[str, ...] = ("ofo_app.routes.paper", "ofo_app.paper_store", "ofo.engine.orderbook",
-                                  "ofo.tracking.orderbook")
+                                  "ofo.tracking.orderbook", "ofo_app.paper_monitor", "ofo_app.paper_trigger_store",
+                                  "ofo.tracking.stops")
 #: Order doors beyond the shared order list: the order audit, order book and order-path-switch modules. A paper module
 #: reaching one is red. The Kite client is NOT listed: the paper book reads live prices through it (a read), and the
 #: order, GTT and basket doors sit in the modules above. A GTT or alert-trigger module added later must be listed
@@ -67,6 +68,9 @@ def _mutated(tmp_path, module_file: str, extra: str):
     ("ofo_app/routes/paper.py", "from ofo_app import order_audit  # noqa: F401", "ofo_app.order_audit"),
     ("ofo/tracking/orderbook.py", "from ofo.orders import model  # noqa: F401", "ofo.orders.model"),
     ("ofo_app/routes/paper.py", "from ofo_app.routes import execute  # noqa: F401", "ofo_app.routes.execute"),
+    ("ofo_app/paper_monitor.py", "from ofo_app import execute_plan  # noqa: F401", "ofo_app.execute_plan"),
+    ("ofo_app/paper_trigger_store.py", "from ofo_app import order_audit  # noqa: F401", "ofo_app.order_audit"),
+    ("ofo/tracking/stops.py", "from ofo.execution import basket  # noqa: F401", "ofo.execution.basket"),
 ])
 def test_mutation_a_forbidden_import_in_any_paper_module_is_red_with_its_chain(tmp_path, module_file, extra, door):
     problems, _ = paper_problems(_mutated(tmp_path, module_file, extra))
