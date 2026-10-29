@@ -200,11 +200,13 @@ export function openLots(net, contractId) {
   const l = (net ?? []).find((x) => x.contract_id === contractId)
   return l ? l.lots : 0
 }
-/** A lots-box text is a whole number 1..max (a count, read from digits only). */
-export function exitLotsOk(text, max) {
+/** The whole lots 1..max a lots-box text names (a count), or null: matched against the allowed counts, never parsed. */
+export function exitLotsFrom(text, max) {
   const s = String(text ?? '').trim()
-  return /^[1-9]\d{0,5}$/.test(s) && Number(s) <= max
+  for (let k = 1; k <= max; k += 1) if (String(k) === s) return k
+  return null
 }
+export const exitLotsOk = (text, max) => exitLotsFrom(text, max) !== null
 /** The EDITED legs for "exit `lots` of `contractId`": every other contract keeps the legs on screen; this contract becomes its
  *  net leg less `lots` (gone at zero), in its place. Only legs change: the orders still come from paperOrdersFor(net, edited),
  *  never a second order-building path. Null when `lots` is not 1..open lots. */
@@ -224,4 +226,4 @@ export function legsAfterExit(net, legs, contractId, lots) {
 }
 
 /** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */
-export const paperFillKey = (l) => `${l?.contract_id}|${l?.planned_entry}|${l?.captured_at}`
+export const paperFillKey = (l) => [l?.contract_id, l?.planned_entry, l?.captured_at].join('|') // an identity key, never shown

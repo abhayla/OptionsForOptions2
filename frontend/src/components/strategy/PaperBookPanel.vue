@@ -68,7 +68,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
-import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
+import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
@@ -86,8 +86,7 @@ const kindText = (kind) => (kind === 'open' ? 'Open' : paperKindLabel(kind))
 const exitText = ref({})
 watch(() => props.net, (net) => { exitText.value = Object.fromEntries(net.map((l) => [l.contract_id, String(l.lots)])) }, { immediate: true })
 function exitOne(p) {
-  const text = exitText.value[p.contract_id]
-  if (!exitLotsOk(text, lotsOf(p))) return
-  emit('exit', p.contract_id, Number(text)) // a count of lots, never money
+  const lots = exitLotsFrom(exitText.value[p.contract_id], lotsOf(p)) // a count of lots, never money
+  if (lots !== null) emit('exit', p.contract_id, lots)
 }
 </script>
