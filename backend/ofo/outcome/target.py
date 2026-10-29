@@ -63,7 +63,7 @@ class TargetLimits:
 
 @dataclass(frozen=True)
 class TargetOffer:
-    """No target asked: only what the sliders need (REQ-084 AC-1, Sensibull 020), nothing computed that was not asked."""
+    """No target asked: only what the sliders need (REQ-084 AC-1, Sensibull 020); nothing is computed."""
 
     limits: TargetLimits
     at_refused_reason: ExplanationText | None
@@ -200,7 +200,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     limits = target_limits(model.spot_level, step)
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = _missing_iv_reason(model)
-    if reason is not None:  # AC-7: no IV -> the level still gives At Expiry P&L; the time input is refused with the reason
+    if reason is not None:  # AC-7: no IV: At Expiry P&L at the level; the time is refused
         return _exact_only(limits, level, level_clamped, model, reason)
     limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
