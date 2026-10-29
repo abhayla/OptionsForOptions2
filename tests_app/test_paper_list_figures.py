@@ -10,6 +10,9 @@ hand sum (booked + open contracts' value at expiry - their average cost) from th
 from __future__ import annotations
 
 import datetime
+import json
+import os
+import pathlib
 from decimal import Decimal
 
 from ofo_app import paper_store
@@ -36,17 +39,28 @@ def _payoff(body: dict, level: Decimal) -> Decimal:
     return total
 
 
-async def _both(app, strategy_id: int) -> tuple[dict, dict]:
+CAPTURE = pathlib.Path(__file__).resolve().parent.parent / "frontend/tests/fixtures/paper-list-r19b"
+
+
+def _capture(name: str, body: dict) -> None:
+    """R_19B_CAPTURE=1: write the route's real list reply for the frontend tests (they never hand-type a reply)."""
+    if os.environ.get("R_19B_CAPTURE"):
+        CAPTURE.mkdir(parents=True, exist_ok=True)
+        (CAPTURE / f"{name}.json").write_text(json.dumps(body, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+async def _both(app, strategy_id: int, capture: str | None = None) -> tuple[dict, dict]:
     async with _client(app) as c:
         single = (await c.get(f"/paper/strategies/{strategy_id}")).json()
-        listed = next(s for s in (await c.get("/paper/strategies")).json()["strategies"]
-                      if s["strategy_id"] == strategy_id)
-    return single, listed
+        whole = (await c.get("/paper/strategies")).json()
+    if capture:
+        _capture(capture, whole)
+    return single, next(s for s in whole["strategies"] if s["strategy_id"] == strategy_id)
 
 
 async def test_core_list_figures_equal_the_single_route_and_each_breakeven_is_a_zero_of_the_book(db):  # noqa: F811
     app, stored, *_ = await _seed_fixture(db)
-    single, listed = await _both(app, stored.id)
+    single, listed = await _both(app, stored.id, "live")
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
     assert listed["extremes_reason"] is None and listed["breakevens_reason"] is None and listed["greeks_reason"] is None
     assert len(listed["breakevens"]) == 2  # noqa: PLR2004 - a condor with one leg exited: two zeros
@@ -75,7 +89,7 @@ async def test_list_net_greeks_are_the_sum_of_the_legs_and_the_texts_are_the_ser
 async def test_multi_expiry_has_no_breakevens_and_no_range_with_the_reason_and_invents_nothing(db):  # noqa: F811
     app, stored, *_ = await _seed_fixture(db)
     await db.execute(text(MOVE_EXPIRY), {"id": stored.saved.contract_ids[0]})
-    single, listed = await _both(app, stored.id)
+    single, listed = await _both(app, stored.id, "multi_expiry")
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
     assert (listed["breakevens"], listed["breakevens_text"], listed["breakevens_reason"]) == (None, None, "multi_expiry")
     assert [listed[f] for f in ("max_profit", "max_loss", "profit_left", "loss_left")] == [None] * 4
@@ -87,7 +101,7 @@ async def test_a_fully_exited_strategy_has_every_new_field_absent_with_its_reaso
     c0 = stored.saved.contract_ids[0]
     await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00"),
                                                               _new(c0, "BUY", 65, "80.00", "exit")])
-    _single, listed = await _both(app, stored.id)
+    _single, listed = await _both(app, stored.id, "exited")
     assert listed["state"] == "EXITED"
     for name in ("breakevens", "breakevens_text", "max_profit", "max_loss", "profit_left", "loss_left",
                  "max_profit_text", "max_loss_text", "profit_left_text", "loss_left_text", "greeks"):
@@ -98,7 +112,7 @@ async def test_a_fully_exited_strategy_has_every_new_field_absent_with_its_reaso
 async def test_prices_not_live_drop_profit_left_and_greeks_with_the_paused_reason_and_show_no_stale_number(db):  # noqa: F811
     app, stored, _provider, clock, last, _fixture = await _seed_fixture(db)
     clock.now = last + datetime.timedelta(minutes=10)
-    single, listed = await _both(app, stored.id)
+    single, listed = await _both(app, stored.id, "paused")
     assert {f: listed[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
     assert listed["state"] == "PAUSED"
     assert (listed["profit_left"], listed["loss_left"], listed["greeks"]) == (None, None, None)

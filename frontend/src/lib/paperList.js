@@ -18,6 +18,20 @@ export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed pos
 // R-14: a reason code is never shown. Only a code with a sentence already in the product gets it; any other code shows nothing
 // beyond the dash (no new user text here); a reply that already sends a sentence is shown as sent.
 const REASON_SENTENCES = { prices_not_live: PAPER_PAUSED }
+// GC-TP R-19b: the sentences already in the product for the new figures' reasons (server catalogue: money_reward_risk_multi_expiry,
+// table_reason_no_iv; EXITED_TEXT as the card's own state). Any other code shows the strategy's own state sentence, else nothing.
+export const MULTI_EXPIRY_TEXT = 'no worst case for legs on different expiries'
+export const NO_IV_TEXT = 'no implied volatility for this leg'
+export const GREEK_COLUMNS = [
+  { key: 'delta', label: 'Delta' }, { key: 'gamma', label: 'Gamma' }, { key: 'theta', label: 'Theta' }, { key: 'vega', label: 'Vega' },
+]
+const FIGURE_REASONS = { multi_expiry: MULTI_EXPIRY_TEXT, no_iv: NO_IV_TEXT, exited: EXITED_TEXT }
+function figureReason(code, state, stateText) {
+  if (typeof code !== 'string' || code.trim() === '') return null
+  const c = code.trim()
+  if (c === 'prices_not_live') return state === 'NOT_CONNECTED' ? PAPER_NOT_CONNECTED : PAPER_PAUSED
+  return FIGURE_REASONS[c] ?? (stateText || null)
+}
 const CODE_SHAPE = /^[a-z][a-z0-9]*(_[a-z0-9]+)+$/
 export function reasonSentence(v) {
   if (typeof v !== 'string' || v.trim() === '') return null
@@ -54,6 +68,29 @@ function readPosition(p) {
   }
 }
 
+// GC-TP R-19b: Breakeven / Max Profit / Max Loss and the net Greeks are the server's texts, only re-grouped (ADR-008). A reply
+// that lacks a field (an older server) or sends it as not-a-list/not-an-object reads as absent with UNREADABLE_TEXT: a dash, never 0.
+function readSummary(s, stateText) {
+  const absent = (code) => figureReason(code, s.state, stateText) ?? UNREADABLE_TEXT
+  const hasBe = Array.isArray(s.breakevens_text) && s.breakevens_text.every((t) => text(t) !== null) && s.breakevens_text.length > 0
+  const shownText = (t, code) => ({ text: text(t), reason: text(t) === null ? absent(code) : null })
+  const profit = shownText(s.max_profit_text, s.extremes_reason)
+  const loss = shownText(s.max_loss_text, s.extremes_reason)
+  const g = s.greeks
+  const greekRow = (r) => (r && typeof r === 'object' ? Object.fromEntries(GREEK_COLUMNS.map((c) => [c.key, text(r[`${c.key}_text`])])) : null)
+  const legs = g && Array.isArray(g.legs) ? g.legs.map((l) => (l && Number.isInteger(l.contract_id) ? { contractId: l.contract_id, ...greekRow(l) } : null)) : null
+  const net = g ? greekRow(g.net) : null
+  const greeksOk = !!net && !!legs && !legs.includes(null) && GREEK_COLUMNS.every((c) => net[c.key] !== null && legs.every((l) => l[c.key] !== null))
+  return {
+    breakevens: hasBe ? s.breakevens_text.map((t) => t.trim()) : null,
+    breakevensReason: hasBe ? null : (Array.isArray(s.breakevens) && s.breakevens.length === 0 ? null : absent(s.breakevens_reason)),
+    maxProfit: profit.text, maxProfitReason: profit.reason,
+    maxLoss: loss.text, maxLossReason: loss.reason,
+    greeks: greeksOk ? { legs, net } : null,
+    greeksReason: greeksOk ? null : absent(s.greeks_reason),
+  }
+}
+
 /** One strategy of the reply. */
 export function readPaperStrategy(s, index = 0) {
   const bad = (id) => ({ readable: false, id: id ?? `unreadable-${index}`, text: UNREADABLE_TEXT, state: null })
@@ -80,6 +117,7 @@ export function readPaperStrategy(s, index = 0) {
     unbooked: text(s.unbooked_text),
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: reasonSentence(s.charges_reason),
+    ...readSummary(s, stateText),
     positions,
   }
 }
