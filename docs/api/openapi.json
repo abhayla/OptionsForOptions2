@@ -7169,23 +7169,6 @@
         "title": "TrackingOut",
         "type": "object"
       },
-      "TrackingStartIn": {
-        "additionalProperties": false,
-        "properties": {
-          "revision": {
-            "description": "the saved strategy revision the user started tracking from",
-            "exclusiveMinimum": 0.0,
-            "maximum": 2147483647.0,
-            "title": "Revision",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "revision"
-        ],
-        "title": "TrackingStartIn",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -9797,58 +9780,11 @@
           }
         },
         "summary": "Get Tracking"
-      },
-      "post": {
-        "operationId": "start_tracking_strategies__strategy_id__tracking_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "strategy_id",
-            "required": true,
-            "schema": {
-              "title": "Strategy Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TrackingStartIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrackingOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Start Tracking"
       }
     },
     "/strategies/{strategy_id}/tracking/exit": {
       "post": {
-        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start. Any named leg not live refuses the whole exit (nothing stored): a contract no\nlonger live answers tracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or\nmissing answers tracking_exit_prices_not_live (AC-5: try again when prices update). The store\nre-checks under the strategy's row lock that each leg is still open; the primary key lets a leg exit once.",
+        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg\nnot live refuses the whole exit (nothing stored): a contract no longer live answers\ntracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or missing answers\ntracking_exit_prices_not_live (AC-5: try again when prices update). The store re-checks under the strategy's row\nlock that each exit reduces and never exceeds the open quantity, so a leg exits once even when two exits race.",
         "operationId": "exit_tracking_strategies__strategy_id__tracking_exit_post",
         "parameters": [
           {
@@ -9997,7 +9933,7 @@
     },
     "/tracking": {
       "get": {
-        "description": "GC-BP step 4: every tracked strategy of the signed-in user (never another user's: the store filters by the\nstrategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost whatever the count (finding\nF-3): three store queries, one contract batch (two queries), and ONE market read per underlying for all open legs\ntogether. A fully exited strategy needs no read. A read failure raises (the house refusal), never a partial list.",
+        "description": "GC-BP step 4: every tracked strategy (one with paper orders) of the signed-in user (never another user's: the\nstore filters by the strategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost\nwhatever the count (finding F-3): one order query, one contract batch (two queries), and ONE market read per\nunderlying for all open legs together. A fully exited strategy needs no read. A read failure raises (the house\nrefusal), never a partial list.",
         "operationId": "list_tracking_tracking_get",
         "responses": {
           "200": {
