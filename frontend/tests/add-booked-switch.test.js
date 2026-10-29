@@ -87,11 +87,11 @@ describe('the switch on the chart card', () => {
 })
 
 describe('what the reply says, shown as it is', () => {
-  it('ON: the Target block and the badge print the reply line "includes booked +962.00" beside the reply P&L and label', async () => {
+  it('ON: the Target block and the badge print the reply line "includes +Rs 962.00 booked" beside the reply P&L and label', async () => {
     const w = await openPlan()
     await moveLevel(w)
     expect(t(w, 'target-pnl').text()).toBe(on.target.pnl.display)
-    expect(t(w, 'target-booked').text()).toBe('includes booked +962.00')
+    expect(t(w, 'target-booked').text()).toBe('includes +Rs 962.00 booked')
     expect(t(w, 'target-badge-booked').text()).toBe(on.target.includes_booked_text)
     expect(t(w, 'target-badge-label').text()).toBe(on.target.badge.label)
   })
@@ -137,7 +137,7 @@ describe('what the reply says, shown as it is', () => {
     await flushPromises()
     pending[0].resolve({ data: off }) // ... the older one last: it must not replace it
     await flushPromises()
-    expect(t(w, 'target-booked').text()).toBe('includes booked +962.00')
+    expect(t(w, 'target-booked').text()).toBe('includes +Rs 962.00 booked')
     expect(t(w, 'target-pnl').text()).toBe(on.target.pnl.display)
   })
 })
