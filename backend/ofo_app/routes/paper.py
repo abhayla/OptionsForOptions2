@@ -90,6 +90,7 @@ class PaperNetOut(ApiModel):
     strike: Money | None
     expiry: datetime.date
     net_quantity: int  # signed: above 0 long, below 0 short, 0 flat
+    lot_size: int  # the catalogue contract's lot size: the Paper tab shows Lots = |net_quantity| / lot_size
     average: Money | None  # rounded to the paisa for display; None when flat
     average_text: CatalogueText | None
     ltp: Money | None  # the live price; None when flat or not live
@@ -232,6 +233,7 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
     text_ = describe_contract((underlying, instrument, strike, expiry))
     return {"contract_id": found.contract_id, "contract_text": text_,
             "instrument": instrument.value, "strike": strike, "expiry": expiry, "net_quantity": p.net_quantity,
+            "lot_size": found.stored.listed.contract.lot_size,  # _identity above already refused a missing stored row
             "average": average, "average_text": price_text(average),
             "ltp": price.price if live and price is not None else None,
             "ltp_text": price_text(price.price) if live and price is not None else None,
