@@ -115,7 +115,7 @@ async def test_target_before_now_is_clamped_to_now(provider):
 async def test_target_level_limits_are_spot_ten_percent_snapped_and_clamp_outside(provider):
     out = await _target(provider, target_level="99999")
     t, spot = out["target"], Decimal(out["spot_level"])
-    lim = {k: Decimal(v) for k, v in t["limits"].items()}
+    lim = {k: Decimal(t["limits"][k]) for k in ("min", "max", "step")}
     assert lim["step"] == Decimal(50)
     assert lim["min"] % 50 == 0 and lim["max"] % 50 == 0
     assert spot * Decimal("0.9") <= lim["min"] < spot * Decimal("0.9") + 50
@@ -156,8 +156,25 @@ async def test_no_live_data_target_gives_at_expiry_and_refuses_the_time():
     assert t["pnl"]["value"] == _point(out["curves"]["at_expiry"], t["level"])
 
 
-async def test_no_target_fields_keep_the_reply_without_a_target(provider):
-    assert "target" not in await _target(provider)
+async def test_plain_reply_carries_the_slider_limits_and_no_target_figure(provider):
+    """GC-TP 6b round 2 (REQ-084 AC-1; Sensibull 020): no target asked -> the limits (level min / max / step and the
+    date range now .. first expiry 15:30 IST) so the sliders show at once; nothing else is computed."""
+    out = await _target(provider)
+    t = out["target"]
+    assert set(t) == {"limits"}, t  # no pnl, curve, greeks, level, kind: nothing computed that was not asked
+    lim = t["limits"]
+    assert Decimal(lim["min"]) < Decimal(out["spot_level"]) < Decimal(lim["max"]) and Decimal(lim["step"]) > 0
+    assert datetime.datetime.fromisoformat(lim["at_min"]) == VALUATION
+    assert datetime.datetime.fromisoformat(lim["at_max"]) == CLOSE
+    asked = (await _target(provider, target_level=_a_grid_level(out)))["target"]
+    assert asked["limits"] == lim  # the same limits whether or not a target was asked
+
+
+async def test_plain_reply_without_a_usable_iv_gives_the_level_limits_and_the_date_reason():
+    r = await _post_stored({**_spread_body(), "both_views": True})
+    t = r.json()["target"]
+    assert set(t) == {"limits", "at_refused_reason"}, t
+    assert t["limits"]["at_min"] is None and t["limits"]["at_max"] is None and t["at_refused_reason"]
 
 
 @pytest.mark.parametrize("bad", [{"target_level": "23000.5"}, {"target_level": 23000},

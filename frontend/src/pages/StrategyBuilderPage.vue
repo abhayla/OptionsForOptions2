@@ -125,18 +125,13 @@ const allLeftOut = () => legs.value.length > 0 && legs.value.every((l) => l.incl
 const guard = createNewestWins()
 // GC-TP step 6b (REQ-084 AC-1): the what-if target the user set. Only target_level / target_at ever go out for it (analysis only,
 // AC-6); the figures shown are the reply's `target` block, kept (marked stale) when a later request fails or a live push lands.
-const targetPick = ref({ active: false, level: '', dateIndex: 0 })
+const targetPick = ref({ level: '', dateIndex: 0 })
 const targetShown = ref(null)
 const targetStale = ref(false)
 const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
 const loadSoon = debounced(() => load())
 const pickTarget = (patch) => {
-  targetPick.value = { ...targetPick.value, ...patch }
-  if (!targetPick.value.level && targetPick.value.dateIndex <= 0 && patch.active !== true) {
-    targetPick.value = { active: false, level: '', dateIndex: 0 } // both back at spot / now: no target is sent
-    targetShown.value = null
-    targetStale.value = false
-  }
+  targetPick.value = { ...targetPick.value, ...patch } // both back at spot / now: no target field is sent
   loadSoon()
 }
 const updating = computed(() => guard.pending.outcome || guard.pending['leg-edit'])
@@ -220,13 +215,14 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
-  if (body.target) {
+  const moved = !!targetPick.value.level || targetPick.value.dateIndex > 0
+  if (body.target && (body.target.kind || !moved)) { // figures for the pick, or nothing picked: the reply's block as sent
     targetShown.value = body.target
     targetStale.value = false
-  } else if (!targetPick.value.active) {
-    targetShown.value = null
-  } else if (targetShown.value) {
-    targetStale.value = true // a live push carries no target: the last figures stay, marked
+  } else if (moved && targetShown.value) {
+    targetStale.value = true // a live push carries the limits but no figures: the last figures stay, marked
+  } else {
+    targetShown.value = body.target ?? null
   }
   nameLegsFrom(body)
   if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
@@ -881,7 +877,6 @@ const pricesStamp = computed(() => {
           <ProjectionsNote />
           <TargetBlock
             :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
-            @start="pickTarget({ active: true })"
             @level="(v) => pickTarget({ level: v })"
             @date="(i) => pickTarget({ dateIndex: i })"
             @reset-level="pickTarget({ level: '' })"

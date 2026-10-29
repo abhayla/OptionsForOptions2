@@ -4,21 +4,23 @@
      (the `target` block of the outcome reply): the target P&L, the breakevens at the target date, the Greeks or their
      "no time left" sentence, the estimate label, the clamp sentences. No money or level is computed here (ADR-008): the level
      slider's min / max / step are the reply's limits, the date slider's positions come from the page (lib/targetBlock.js).
-     The plain reply carries no limits, so a target is started with one button; Reset on both controls ends it. -->
+     The sliders show from the first reply (the plain reply carries the limits, Sensibull 020); Reset on both sends no target. -->
 <script setup>
 import { computed, ref, watch } from 'vue'
 import Card from '@/components/common/Card.vue'
 import { istTime } from '@/lib/displayFormat'
+import { healthSentence } from '@/lib/dataHealthText'
 import { isWholePoints } from '@/lib/targetBlock'
 
 const props = defineProps({
-  target: { type: Object, default: null }, // the reply's `target` block (null until a target was asked)
-  pick: { type: Object, required: true }, // { active, level, dateIndex } the page keeps
+  target: { type: Object, default: null }, // the reply's `target` block (the limits; the figures once a target was asked)
+  pick: { type: Object, required: true }, // { level, dateIndex } the page keeps
   stopCount: { type: Number, default: 0 }, // how many positions the date slider has
   stale: { type: Boolean, default: false }, // the last request failed or was superseded by a push: the figures are the last good answer
 })
-const emit = defineEmits(['start', 'level', 'date', 'reset-level', 'reset-date'])
+const emit = defineEmits(['level', 'date', 'reset-level', 'reset-date'])
 
+const STALE_TEXT = healthSentence('stale') // the app's existing stale sentence
 const GREEKS = ['delta', 'gamma', 'theta', 'vega']
 const t = computed(() => props.target)
 const limits = computed(() => t.value?.limits ?? null)
@@ -41,9 +43,8 @@ const onBox = (e) => {
   <Card class="mt-4" data-testid="target-block" :data-stale="stale ? 'true' : 'false'">
     <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <h3 class="text-sm font-semibold">Target</h3>
-      <button v-if="!pick.active" type="button" class="rounded border border-line px-3 py-1 text-sm" data-testid="target-start" @click="emit('start')">Set a target</button>
     </div>
-    <div v-if="pick.active" class="grid gap-4 px-4 pb-4 md:grid-cols-2">
+    <div class="grid gap-4 px-4 pb-4 md:grid-cols-2">
       <div data-testid="target-level-control">
         <div class="mb-1 flex items-center justify-between text-sm">
           <label for="target-level-slider" class="text-ink-muted">Index level</label>
@@ -80,8 +81,8 @@ const onBox = (e) => {
         <p v-if="dateRefused" class="mt-1 text-xs text-ink-muted" data-testid="target-date-reason">{{ dateRefused }}</p>
       </div>
       <p v-for="c in clamps" :key="c" class="text-xs text-ink-muted md:col-span-2" data-testid="target-clamp">{{ c }}</p>
-      <p v-if="stale" class="text-xs text-warn md:col-span-2" data-testid="target-stale">These figures are from the last answer; the newest request did not update them.</p>
-      <div v-if="t" class="grid gap-3 text-sm md:col-span-2 md:grid-cols-3" :class="stale ? 'opacity-60' : ''" data-testid="target-figures">
+      <p v-if="stale" class="text-xs text-warn md:col-span-2" data-testid="target-stale">{{ STALE_TEXT }}</p>
+      <div v-if="t?.kind" class="grid gap-3 text-sm md:col-span-2 md:grid-cols-3" :class="stale ? 'opacity-60' : ''" data-testid="target-figures">
         <div>
           <div class="text-ink-muted">P&amp;L at target</div>
           <div class="text-base font-semibold tabular-nums" data-testid="target-pnl">{{ t.pnl?.display ?? '' }}</div>
