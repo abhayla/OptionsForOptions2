@@ -26,8 +26,9 @@ function readPosition(p) {
     side: p.net_quantity > 0 ? 'B' : p.net_quantity < 0 ? 'S' : null,
     open,
     units: p.net_quantity,
-    average: text(p.average_text),
-    ltp: p.price_state === 'live' ? text(p.ltp_text) : null,
+    qtyText: String(p.net_quantity),
+    averageText: text(p.average_text),
+    ltpText: p.price_state === 'live' ? text(p.ltp_text) : null,
     exitPrice: p.price_state === 'live' ? text(p.ltp) : null, // the reply's own string, sent back as the exit price
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
@@ -90,5 +91,5 @@ export function visibleGroups(groups, showClosed) {
 export function exitOrdersFor(positions) {
   const rows = positions.filter((p) => p.open && p.exitPrice !== null)
   if (rows.length !== positions.length) return null
-  return rows.map((p) => ({ contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', quantity: Math.abs(p.units), price: p.exitPrice, kind: 'exit' }))
+  return rows.map((p) => ({ contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', quantity: p.units < 0 ? -p.units : p.units, price: p.exitPrice, kind: 'exit' }))
 }

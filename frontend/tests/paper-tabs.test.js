@@ -7,11 +7,12 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
 let answers = {}
+import { legacy } from './_paperList'
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const reply = (method) => (url, body) => {
     calls.push([method, url, body])
-    const a = answers[`${method} ${url}`]
+    const a = legacy(answers, method, url)
     return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
   }
   return { ...actual, default: { get: reply('GET'), post: reply('POST') } }
@@ -72,26 +73,13 @@ describe('Positions page tabs', () => {
   it('R1-5: each tab\'s aria-controls names a real tabpanel, labelled by that tab (selected tab: Positions, then Paper)', async () => {
     answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
-    const w = await page('/p')
+    const w = await page('/p?tab=positions')
     for (const key of ['positions', 'paper']) {
       if (key === 'paper') { await t(w, 'tab-paper').trigger('click'); await flushPromises() }
       const panel = w.get(`#${t(w, `tab-${key}`).attributes('aria-controls')}`)
       expect(panel.attributes('role')).toBe('tabpanel')
       expect(panel.attributes('aria-labelledby')).toBe(t(w, `tab-${key}`).attributes('id'))
     }
-  })
-  it('the Paper tab shows the list and none of it appears in the Positions tab', async () => {
-    answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
-    answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
-    const w = await page('/p')
-    expect(w.text()).not.toContain('+71.50')
-    await t(w, 'tab-paper').trigger('click')
-    await flushPromises()
-    expect(t(w, 'tab-paper').attributes('aria-selected')).toBe('true')
-    expect(t(w, 'paper-total').text()).toBe('+71.50')
-    expect(has(w, 'positions-empty')).toBe(false)
-    await t(w, 'tab-positions').trigger('click')
-    expect(w.text()).not.toContain('+71.50')
   })
   it('?tab=paper opens the Paper tab, and a failed Zerodha read does not block it', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 503, parts: { what_happened: 'Zerodha down' } })

@@ -69,9 +69,9 @@
                       <input v-if="canExit(p)" type="checkbox" :checked="isTicked(g.id, p.contractId)" :data-testid="`select-leg-${g.id}-${p.contractId}`" :aria-label="`Select ${p.name}`" @change="tick(g.id, p.contractId, $event.target.checked)" />
                     </td>
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
-                    <td data-testid="paper-qty">{{ p.units }}</td>
-                    <td data-testid="paper-avg">{{ pnlText(p.average) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltp) }}</td>
+                    <td data-testid="paper-qty">{{ p.qtyText }}</td>
+                    <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}</td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>

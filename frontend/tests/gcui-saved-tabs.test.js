@@ -4,23 +4,21 @@
 // jsdom cannot measure pixels: structure only. No server runs.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
 let answers = {}
+import { legacy } from './_paperList'
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const respond = (method, url) => {
     calls.push(`${method} ${url}`)
-    const a = answers[`${method} ${url}`]
+    const a = legacy(answers, method, url)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a })
   }
   return { ...actual, default: { get: (u) => respond('GET', u), post: (u) => respond('POST', u), put: (u) => respond('PUT', u), patch: (u) => respond('PATCH', u), delete: (u) => respond('DELETE', u) } }
 })
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
-import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
-import { withPriceTexts } from './_priceTexts'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const LEG = {
@@ -135,40 +133,3 @@ describe('D-C16 Save modal', () => {
   })
 })
 
-describe('D-C14 compact Paper list', () => {
-  const item = (id, over = {}) => withPriceTexts({
-    strategy_id: id, name: `"Paper ${id}"`, underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null, as_of: null,
-    total: '71.50', booked: '0.00', unbooked: '71.50',
-    legs: [0, 1].map((i) => ({ leg_index: i, instrument_id: `NSE_FO:${i}`, action: 'BUY', instrument: 'PE', strike: '22300.00', expiry: '2026-11-03', quantity: 65,
-      entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z', current_price: '113.60', price_state: 'live', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null })),
-    ...over,
-  })
-  async function paper(strategies) {
-    answers['GET /tracking'] = { strategies, answered_at: '2026-10-28T06:00:00Z' }
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/positions/current-positions', component: { template: '<div/>' } }] })
-    router.push('/')
-    await router.isReady()
-    const w = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [router] } })
-    await flushPromises()
-    return w
-  }
-  it('one compact row: name, legs count, the server total, a link to Positions > Paper; no leg table, no exit buttons', async () => {
-    const w = await paper([item(48)])
-    const row = t(w, 'paper-compact-row')
-    expect(row.text()).toContain('Paper 48')
-    expect(t(w, 'paper-compact-legs').text()).toBe('2 legs')
-    expect(t(w, 'paper-total').text()).toBe('+71.50')
-    expect(t(w, 'paper-banner').text()).toBe('Paper trades - not real money')
-    expect(row.get('a').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=48')
-    expect(w.find('table').exists()).toBe(false)
-    expect(w.find('[data-testid="exit-all-48"]').exists()).toBe(false)
-  })
-  it('empty list keeps the empty sentence; a null total shows a dash and the reason, never +0.00', async () => {
-    const e = await paper([])
-    expect(t(e, 'paper-empty').exists()).toBe(true)
-    const w = await paper([item(48, { total: null, unbooked: null, state: 'PAUSED', as_of: '2026-10-28T06:00:00Z', pause_reason: 'feed' })])
-    expect(t(w, 'paper-total').text()).toBe('-')
-    expect(t(w, 'paper-compact-reason').text().length).toBeGreaterThan(0)
-    expect(w.text()).not.toContain('+0.00')
-  })
-})

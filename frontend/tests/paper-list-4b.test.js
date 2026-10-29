@@ -185,6 +185,20 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
   })
 })
 
+describe('the builder compact Paper list (same reply)', () => {
+  it('one compact row per open strategy: name, positions count, the reply total text, a link to Positions > Paper; no table', async () => {
+    answers['GET /paper/strategies'] = ok(REAL)
+    const w = await show(PaperStrategies, '/', {})
+    const c = await (async () => { const m = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [w.vm.$router] } }); await flushPromises(); return m })()
+    const rows = c.findAll('[data-testid="paper-compact-row"]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].get('[data-testid="paper-total"]').text()).toBe(REAL.strategies[1].total_text)
+    expect(rows[0].get('[data-testid="paper-compact-legs"]').text()).toBe('4 legs')
+    expect(rows[0].get('a').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=1')
+    expect(c.find('table').exists()).toBe(false)
+  })
+})
+
 describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
   const POS = (over = {}) => ({ read_at: '2026-10-29T10:00:00+05:30', strategies: [], has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [], ...over })
   it('opens on Paper with an open paper strategy and no real position', async () => {
