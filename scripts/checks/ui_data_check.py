@@ -1561,13 +1561,17 @@ def target_breakevens(legs, qmap, at, r, lo, hi, step=5.0, shift=0.0) -> list:
     return out
 
 
-def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
+def check_target(
+    reply: dict, r: float = RISK_FREE_RATE, booked=None, checker_instant: dt.datetime | None = None
+) -> Report:
     """REQ-084 AC-4: recompute the reply's `target` block (P&L, breakevens, the four Greeks at the target level and
     date) with this file's own BSM and compare. No target figures in the reply -> not checkable, never a match.
     With `booked` (the strategy's booked P&L, given by the caller) the expected basis is open legs plus booked, as
     ADR-209 decides for a paper strategy with Add Booked P&L ON: the P&L and the breakevens (crossings of the curve
     shifted by booked) are compared on that basis, and the open-legs-only P&L is printed as a note. Without it the
-    expected basis is open legs only."""
+    expected basis is open legs only. GC-TPD R-17: with `checker_instant` (when this check ran, live mode) each LEG's
+    Greek tolerance grows by abs(leg value) x the gap in years between the reply's valuation and that instant (theta is
+    per year, so a few seconds move it in the 3rd-4th decimal); no instant means a gap of 0 (the old fixed 0.001)."""
     rep = Report("target what-if")
     tg = (reply or {}).get("target") or {}
     if not tg.get("level") or not tg.get("at") or (tg.get("pnl") or {}).get("value") is None:
@@ -1609,6 +1613,10 @@ def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
         rep.add_list("target breakevens", tg["breakevens"], [Decimal(str(round(x, 2))) for x in want_be], be_tol,
                      note="crossings of this file's recomputed target curve; tol = P&L tol / slope")
     greeks = tg.get("greeks") or {}
+    gap_years = 0.0
+    if checker_instant is not None:
+        gap = abs((checker_instant - dt.datetime.fromisoformat(reply["valuation"])).total_seconds())
+        gap_years = gap / (365.0 * 86400.0)
     g_tol = {n: Decimal(str(round(0.001 + abs(wide[1][n] - gtot[n]), 4))) for n in TARGET_GREEKS}
     for n in TARGET_GREEKS:
         got = (greeks.get("total") or {}).get(n)
@@ -1619,7 +1627,10 @@ def check_target(reply: dict, r: float = RISK_FREE_RATE, booked=None) -> Report:
     for i, row in enumerate(greeks.get("legs") or []):
         for n in TARGET_GREEKS:
             if row and row.get(n) is not None and i < len(per_leg):
-                rep.add(f"target leg{i + 1} {n}", row[n], round(Decimal(str(per_leg[i][n])), 4), g_tol[n])
+                own = round(Decimal(str(per_leg[i][n])), 4)
+                leg_tol = g_tol[n] + Decimal(str(round(abs(float(own)) * gap_years, 6)))
+                rep.add(f"target leg{i + 1} {n}", row[n], own, leg_tol,
+                        note=f"tol + |leg {n}| x gap {gap_years:.2e} years" if gap_years else "")
     return rep
 
 
@@ -1825,7 +1836,8 @@ def main(argv=None):
     reports = [check_outcome(name, est, atx, before, after, fut, both=both, step_asked=step_asked)]
     if a.target_level or a.target_at or (src / "outcome_target.json").exists():
         tj = src / "outcome_target.json"
-        reports.append(check_target(json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}, booked=a.booked))
+        reports.append(check_target(json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}, booked=a.booked,
+                                     checker_instant=None if a.replay else dt.datetime.now(dt.UTC)))
         print_table(reports[-1])
     if a.paper:
         tp = src / f"tracking_{a.paper}.json"

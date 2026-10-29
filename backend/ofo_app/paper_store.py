@@ -82,14 +82,14 @@ def _row(r: Any) -> StoredOrder:
 
 
 def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:
-    if order.kind not in REDUCING_KINDS:
-        return
     net = 0
     if book:
         found = [p for p in net_positions(book, {}).positions if p.instrument_id == order.instrument_id]
         net = found[0].net_quantity if found else 0
     reduces = (net > 0 and order.side == "SELL") or (net < 0 and order.side == "BUY")
-    if not reduces or order.quantity > abs(net):
+    # GC-TPD R-22: an open / add against the held side would reduce or flip it: refused the same way as a bad exit
+    refused = (not reduces or order.quantity > abs(net)) if order.kind in REDUCING_KINDS else reduces
+    if refused:
         raise store.StrategyStoreError(EXIT_EXCEEDS_OPEN, f"contract {order.instrument_id}: a {order.kind} of "
                                                           f"{order.side} {order.quantity} against an open {net}")
 
