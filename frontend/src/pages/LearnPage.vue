@@ -5,6 +5,7 @@
      Platform guidance read the same content home. Nothing is computed here: payoff shapes are fixed points labelled Sample.
      A failed read shows the server's message. No money, no order link. -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -73,34 +74,34 @@ const shapePoints = computed(() => {
 
 <template>
   <section data-testid="learn" :data-state="state" :data-tab="tab">
-    <p class="text-xs text-ink-muted" data-testid="page-parent">Learn</p>
-    <h1 class="text-xl font-semibold" data-testid="page-title">{{ route.meta.title }}</h1>
+    <!-- Owner 2026-10-30 (Sensibull 170): shared header, one tab bar, a card grid grouped by level, the reading view in one card -->
+    <PageHeader parent="Learn" :title="route.meta.title" />
 
-    <nav class="mt-3 grid grid-cols-3 gap-1 rounded border border-line p-1 text-center text-sm" data-testid="learn-tabs" aria-label="Learn sections">
+    <nav class="grid grid-cols-3 gap-1 rounded-lg border border-line bg-surface-muted p-1 text-center text-sm" data-testid="learn-tabs" aria-label="Learn sections">
       <router-link
         v-for="t in TABS" :key="t.slug" :to="`/learn/${t.slug}`" :data-testid="`tab-${t.slug}`"
         :aria-current="tab === t.slug ? 'page' : undefined"
-        class="rounded px-1 py-2 break-words" :class="tab === t.slug ? 'bg-surface font-semibold' : 'text-ink-muted'">{{ t.label }}</router-link>
+        class="rounded px-1 py-2 break-words" :class="tab === t.slug ? 'bg-surface font-semibold text-accent' : 'text-ink-muted hover:text-ink'">{{ t.label }}</router-link>
     </nav>
 
     <ErrorMessage v-if="state === 'error'" class="mt-4" :parts="errorParts" prefix="learn-error" data-testid="learn-error" />
-    <p v-else-if="state === 'empty'" class="mt-4 text-ink-muted" data-testid="learn-empty">{{ NOTHING_PUBLISHED }}</p>
+    <p v-else-if="state === 'empty'" class="mt-4 rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="learn-empty">{{ NOTHING_PUBLISHED }}</p>
 
     <template v-else-if="state === 'list' && (openTemplate || openLesson)">
-      <button type="button" class="mt-4 text-sm underline" data-testid="detail-back" @click="openId = null">Back to the list</button>
+      <button type="button" class="link mt-4 text-sm" data-testid="detail-back" @click="openId = null">Back to the list</button>
 
-      <article v-if="openLesson" class="mt-3" data-testid="lesson-detail">
+      <article v-if="openLesson" class="mt-3 rounded-lg border border-line bg-surface p-6" data-testid="lesson-detail">
         <h2 class="text-lg font-semibold" data-testid="detail-title">{{ openLesson.title }}</h2>
         <p v-for="(line, i) in openLesson.body" :key="i" class="mt-2" data-testid="lesson-line">{{ line }}</p>
       </article>
 
-      <article v-else class="mt-3" data-testid="strategy-detail">
+      <article v-else class="mt-3 rounded-lg border border-line bg-surface p-6" data-testid="strategy-detail">
         <h2 class="text-lg font-semibold" data-testid="detail-title">{{ openTemplate.name }}</h2>
         <p class="mt-1 text-xs text-ink-muted" data-testid="detail-meta">{{ openTemplate.level }} - Market view: {{ openTemplate.views.join(', ') }}</p>
         <p class="mt-2" data-testid="detail-description">{{ openTemplate.description }}</p>
         <router-link
           v-if="platformStrikes" :to="{ path: '/strategy/builder', query: { template: openTemplate.id } }"
-          class="mt-2 inline-block text-sm underline" data-testid="open-in-builder">Open in Builder</router-link>
+          class="btn btn-primary mt-3" data-testid="open-in-builder">Open in Builder</router-link>
         <template v-if="text">
           <section v-for="[key, heading] in STRATEGY_PARTS" :key="key" class="mt-4" :data-testid="`part-${key}`">
             <h3 class="font-medium">
@@ -122,30 +123,30 @@ const shapePoints = computed(() => {
     </template>
 
     <template v-else-if="state === 'list'">
-      <label class="mt-4 block text-sm">
+      <label class="mt-4 block">
         <span class="sr-only">Search by title</span>
-        <input v-model="query" type="search" placeholder="Search by title" class="w-full rounded border border-line bg-surface p-2" data-testid="learn-search" />
+        <input v-model="query" type="search" placeholder="Search by title" class="field w-80 max-w-full" data-testid="learn-search" />
       </label>
       <p v-if="noMatch" class="mt-4 text-ink-muted" data-testid="learn-no-match">{{ NO_MATCH }}</p>
 
       <template v-if="isEducation">
         <div v-for="g in groups" :key="g.level" class="mt-5" :data-testid="`level-${g.level}`">
-          <h2 class="text-lg font-semibold" data-testid="level-title">{{ g.level }}</h2>
-          <ul class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <li v-for="t in g.items" :key="t.id" class="rounded border border-line bg-surface p-3" data-testid="template-card">
-              <h3 class="font-medium" data-testid="template-name">{{ t.name }}</h3>
-              <p class="mt-1 text-sm" data-testid="template-description">{{ t.description }}</p>
+          <h2 class="text-sm font-semibold text-ink-muted" data-testid="level-title">{{ g.level }}</h2>
+          <ul class="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <li v-for="t in g.items" :key="t.id" class="flex flex-col rounded-lg border border-line bg-surface p-4 hover:border-accent" data-testid="template-card">
+              <h3 class="font-semibold" data-testid="template-name">{{ t.name }}</h3>
+              <p class="mt-1 text-sm text-ink-muted" data-testid="template-description">{{ t.description }}</p>
               <p class="mt-1 text-xs text-ink-muted" data-testid="template-views">Market view: {{ t.views.join(', ') }}</p>
-              <button type="button" class="mt-2 text-sm underline" data-testid="card-open" @click="openId = t.id">Read more</button>
+              <button type="button" class="link mt-auto self-start pt-2 text-sm" data-testid="card-open" @click="openId = t.id">Read more</button>
             </li>
           </ul>
         </div>
       </template>
-      <ul v-else class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <li v-for="l in filteredLessons" :key="l.id" class="rounded border border-line bg-surface p-3" data-testid="lesson-card">
-          <h3 class="font-medium" data-testid="lesson-title">{{ l.title }}</h3>
-          <p class="mt-1 text-sm" data-testid="lesson-summary">{{ l.summary }}</p>
-          <button type="button" class="mt-2 text-sm underline" data-testid="card-open" @click="openId = l.id">Read more</button>
+      <ul v-else class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <li v-for="l in filteredLessons" :key="l.id" class="flex flex-col rounded-lg border border-line bg-surface p-4 hover:border-accent" data-testid="lesson-card">
+          <h3 class="font-semibold" data-testid="lesson-title">{{ l.title }}</h3>
+          <p class="mt-1 text-sm text-ink-muted" data-testid="lesson-summary">{{ l.summary }}</p>
+          <button type="button" class="link mt-auto self-start pt-2 text-sm" data-testid="card-open" @click="openId = l.id">Read more</button>
         </li>
       </ul>
     </template>

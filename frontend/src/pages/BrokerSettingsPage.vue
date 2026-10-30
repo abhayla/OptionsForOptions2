@@ -5,6 +5,7 @@
      guide); "Last successful sync"; Reconnect and Disconnect; and the V1 statement that history is not available.
      States of the whole page: loading, ready, unavailable (the status could not be read: nothing is shown as connected). -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -106,59 +107,60 @@ onMounted(load)
 
 <template>
   <section data-testid="broker-settings" :data-state="state">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Broker &amp; Market Data</h1>
-    <p class="mt-1 text-sm text-ink-muted">Zerodha is the only broker. Your strategies, history and account stay here whether or not Zerodha is connected.</p>
+    <!-- Owner 2026-10-30 (Sensibull 167): shared header; the four statuses as label / value rows in one card; account card;
+         actions in one row. -->
+    <PageHeader parent="Settings" title="Broker & Market Data" note="Zerodha is the only broker. Your strategies, history and account stay here whether or not Zerodha is connected." note-testid="broker-note" />
 
-    <p v-if="state === 'loading'" class="mt-4 text-sm text-ink-muted" data-testid="broker-loading">Checking the Zerodha connection.</p>
+    <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="broker-loading">Checking the Zerodha connection.</p>
 
-    <div v-else-if="state === 'unavailable'" class="mt-4" data-testid="broker-unavailable">
+    <div v-else-if="state === 'unavailable'" class="rounded-lg border border-line bg-surface p-4" data-testid="broker-unavailable">
       <p class="mb-2 font-medium">The Zerodha connection could not be checked, so nothing below is shown as connected.</p>
       <ErrorMessage v-if="error" :parts="error" />
-      <button type="button" class="mt-3 rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-retry" @click="load">Check again</button>
+      <button type="button" class="btn mt-3" data-testid="broker-retry" @click="load">Check again</button>
     </div>
 
     <template v-else>
-      <ul class="mt-4 space-y-3" data-testid="broker-rows">
-        <li v-for="r in rows" :key="r.key" class="rounded border border-line bg-surface p-3" :data-testid="`row-${r.key}`" :data-level="r.level">
+      <ul class="divide-y divide-line rounded-lg border border-line bg-surface" data-testid="broker-rows">
+        <li v-for="r in rows" :key="r.key" class="px-4 py-3" :data-testid="`row-${r.key}`" :data-level="r.level">
           <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <span class="font-medium">{{ r.title }}</span>
+            <span class="text-sm font-medium">{{ r.title }}</span>
             <span class="text-sm font-semibold" :data-testid="`status-${r.key}`">{{ r.label }}</span>
           </div>
-          <p v-if="r.fix" class="mt-1 text-sm" :data-testid="`fix-${r.key}`">{{ r.fix }}</p>
+          <p v-if="r.fix" class="mt-1 text-sm text-ink-muted" :data-testid="`fix-${r.key}`">{{ r.fix }}</p>
         </li>
       </ul>
 
-      <p class="mt-4 text-sm" data-testid="last-sync">
+      <p class="mt-3 text-sm text-ink-muted" data-testid="last-sync">
         Last successful sync:
         <span v-if="lastSync" data-testid="last-sync-time">{{ lastSync }}</span>
         <span v-else data-testid="last-sync-none">no successful read from Zerodha is recorded yet</span>
       </p>
 
-      <div v-if="account" class="mt-4 rounded border border-line bg-surface p-3" data-testid="broker-account">
+      <div v-if="account" class="mt-4 rounded-lg border border-line bg-surface p-4" data-testid="broker-account">
         <p class="text-sm">Zerodha client id: <span v-if="account.id" data-testid="account-id">{{ account.id }}</span><span v-else data-testid="account-id-none">not available</span></p>
         <p v-if="account.figure" class="mt-1 text-sm" data-testid="account-margin">Available margin (Zerodha): Rs <span data-testid="account-margin-figure">{{ account.figure }}</span>, read at <span data-testid="account-margin-read-at">{{ account.readAt }}</span></p>
         <p v-else class="mt-1 text-sm" data-testid="account-margin-reason">{{ account.reason }}</p>
       </div>
 
-      <p class="mt-2 text-sm" data-testid="history-statement">Historical market data: not currently available in this version.</p>
+      <p class="mt-3 text-sm text-ink-muted" data-testid="history-statement">Historical market data: not currently available in this version.</p>
 
       <div class="mt-4 flex flex-wrap gap-2">
-        <a href="/api/broker/zerodha/login" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-reconnect">{{ anyConnected ? 'Reconnect Zerodha' : 'Connect Zerodha' }}</a>
-        <button v-if="anyConnected && !confirming" type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>
+        <a href="/api/broker/zerodha/login" class="btn btn-primary" data-testid="broker-reconnect">{{ anyConnected ? 'Reconnect Zerodha' : 'Connect Zerodha' }}</a>
+        <button v-if="anyConnected && !confirming" type="button" class="btn" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>
       </div>
 
-      <div v-if="rows[0].level !== 'connected'" class="mt-4 rounded border border-line bg-surface p-3" data-testid="connect-help">
+      <div v-if="rows[0].level !== 'connected'" class="mt-4 rounded-lg border border-line bg-surface p-4" data-testid="connect-help">
         <h2 class="font-medium" data-testid="safe-title">{{ SAFE_EXPLAINER_TITLE }}</h2>
         <p class="mt-1 text-sm" data-testid="safe-explainer">{{ SAFE_EXPLAINER }}</p>
         <p class="mt-2 text-sm" data-testid="no-extra-charges">{{ NO_EXTRA_CHARGES }}</p>
-        <a v-if="openAccount" :href="openAccount" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm underline" data-testid="open-account">{{ OPEN_ACCOUNT_LABEL }}</a>
+        <a v-if="openAccount" :href="openAccount" target="_blank" rel="noopener noreferrer" class="link mt-2 inline-block text-sm" data-testid="open-account">{{ OPEN_ACCOUNT_LABEL }}</a>
       </div>
 
-      <div v-if="confirming" class="mt-3 rounded border border-line bg-surface p-3" role="alertdialog" aria-label="Confirm disconnect" data-testid="disconnect-confirm">
+      <div v-if="confirming" class="mt-3 rounded-lg border border-line bg-surface p-4" role="alertdialog" aria-label="Confirm disconnect" data-testid="disconnect-confirm">
         <p class="text-sm">Disconnecting keeps your strategies, history, entitlements and account. Live positions, orders, margin and execution are unavailable until you reconnect.</p>
         <div class="mt-2 flex gap-2">
-          <button type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" :disabled="disconnecting" data-testid="disconnect-yes" @click="disconnect">Yes, disconnect</button>
-          <button type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" :disabled="disconnecting" data-testid="disconnect-no" @click="confirming = false">Keep connected</button>
+          <button type="button" class="btn btn-primary" :disabled="disconnecting" data-testid="disconnect-yes" @click="disconnect">Yes, disconnect</button>
+          <button type="button" class="btn" :disabled="disconnecting" data-testid="disconnect-no" @click="confirming = false">Keep connected</button>
         </div>
       </div>
     </template>

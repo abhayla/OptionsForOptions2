@@ -13,7 +13,7 @@ defineProps({
 
 <template>
   <header class="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-2" data-testid="page-header">
-    <div class="min-w-0">
+    <div>
       <p v-if="parent" class="text-xs leading-4 text-ink-subtle" data-testid="page-parent">{{ parent }}</p>
       <h1 class="text-xl leading-7 font-semibold text-ink" data-testid="page-title">{{ title }}</h1>
       <p v-if="note || $slots.note" class="mt-0.5 text-sm text-ink-muted" :data-testid="noteTestid"><slot name="note">{{ note }}</slot></p>
