@@ -129,7 +129,9 @@ describe('U20: after hours and Sensibull 090 layout', () => {
     FakeSocket.all[0].serverPush(closedAnswer())
     await flushPromises()
     const c = cards(w)[0]
-    expect(c.find('[data-testid="market-closed-text"]').text()).toContain('29 Oct 2026, 15:30:00 IST')
+    expect(c.find('[data-testid="market-closed-text"]').exists()).toBe(false) // one banner per screen, not per card
+    expect(w.findAll('[data-testid="market-closed-text"]')).toHaveLength(1)
+    expect(w.find('[data-testid="market-closed-text"]').text()).toContain('29 Oct 2026, 15:30:00 IST')
     expect(c.find('[data-testid="live-spot-at"]').exists()).toBe(false)
     expect(c.find('[data-testid="live-leg-health"]').exists()).toBe(false)
     expect(c.find('[data-testid="live-leg-health-reason"]').exists()).toBe(false)

@@ -12,14 +12,13 @@ import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPi
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import Chip from '@/components/common/Chip.vue'
-import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { healthSentence } from '@/lib/dataHealthText'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
 const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true } })
-const emit = defineEmits(['settled'])
+const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
 let begun = false
@@ -114,6 +113,8 @@ const maxProfit = computed(() => moneyLine('profit'))
 const maxLoss = computed(() => moneyLine('loss'))
 // ADR-177 / ADR-200 (2): a closed market is one banner with the price's own time; the fetch time and the stale noise are not shown
 const closed = computed(() => data.value?.market_closed === true)
+// User test 2026-10-30: the page shows ONE market-closed banner (ADR-177); the card reports the closed state and price time
+watch(closed, (now) => { if (now) emit('closed', data.value.last_price_at) })
 const breakevens = computed(() => (data.value?.summary?.breakevens_display ?? []).join(', '))
 const hasLots = computed(() => (data.value?.legs ?? []).some((l) => l.lots != null))
 const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_entry_display ?? l.planned_entry) != null))
@@ -152,7 +153,6 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
 
       <template v-if="showFigures">
         <p v-if="data.output_label" class="mt-2 text-sm" data-testid="live-output-label">{{ data.output_label }}</p>
-        <MarketClosedBanner v-if="closed" class="mt-2" :prices-at="data.last_price_at" />
         <p class="mt-2 text-sm">{{ data.underlying }} <span class="font-semibold" data-testid="live-spot">{{ data.spot_level ?? '-' }}</span>
           <template v-if="!closed">at <span data-testid="live-spot-at">{{ spotAt }}</span></template></p>
         <p class="mt-1 text-xs text-ink-muted">
