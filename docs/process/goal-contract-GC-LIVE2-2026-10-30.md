@@ -75,7 +75,7 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 | Step | What | Proof | Status |
 |---|---|---|---|
 | M0 | Preflight: run tree from origin/main (record sha), upstream unset (proof line), ports free, lock written, npm ci exit 0 | status lines with times, sha, "no upstream" line | DONE 12:11 |
-| M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | Not started |
+| M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | DONE 12:26 (F-7, F-8 fixed 12:36) |
 | M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | DONE 12:37 |
 | M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | DONE 12:29 |
 | M4 | **Watch the 15:30 close live** (15:25-15:40), then post the #611 comment (details below) | one line per screen before and after 15:30; comment URL | Not started |
