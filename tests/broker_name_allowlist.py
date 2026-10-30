@@ -243,15 +243,22 @@ LINES: dict[str, tuple[str, ...]] = {
         "export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129",
     ),
     'frontend/src/pages/BrokerConnectedPage.vue': (
-        '<h1 class="text-xl font-semibold" data-testid="page-title">Zerodha is connected</h1>',
-        '<p class="mt-2" data-testid="connected-what">Your Zerodha account is now linked to this platform for today.</p>',
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<PageHeader parent="Settings" title="Zerodha is connected" />',
+        '<p data-testid="connected-what">Your Zerodha account is now linked to this platform for today.</p>',
     ),
     'frontend/src/pages/BrokerRefusedPage.vue': (
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<PageHeader parent="Settings" title="Zerodha login not completed" />',
         "const NEUTRAL = { ...NEUTRAL_PARTS, what_happened: 'The Zerodha login was not completed.' }",
-        '<h1 class="text-xl font-semibold" data-testid="page-title">Zerodha login not completed</h1>',
         '<router-link to="/settings/zerodha-connection" class="mt-4 inline-block rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="to-connection">Back to the Zerodha connection page</router-link>',
     ),
     'frontend/src/pages/BrokerSettingsPage.vue': (
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<PageHeader parent="Settings" title="Broker & Market Data" note="Zerodha is the only broker. Your strategies, history and account stay here whether or not Zerodha is connected." note-testid="broker-note" />',
+        '<p v-if="state === \'loading\'" class="text-sm text-ink-muted" data-testid="broker-loading">Checking the Zerodha connection.</p>',
+        '<a href="/api/broker/zerodha/login" class="btn btn-primary" data-testid="broker-reconnect">{{ anyConnected ? \'Reconnect Zerodha\' : \'Connect Zerodha\' }}</a>',
+        '<button v-if="anyConnected && !confirming" type="button" class="btn" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>',
         "['account_connection', 'Zerodha account connection'],",
         "connect_zerodha: 'Zerodha is not connected. Use Connect Zerodha below, log in on Zerodha\\'s own page, and come back here.',",
         "session_expired: 'Your Zerodha login for today has expired. Use Reconnect and log in again on Zerodha\\'s own page.',",
@@ -265,40 +272,39 @@ LINES: dict[str, tuple[str, ...]] = {
         '<p class="text-sm">Zerodha client id: <span v-if="account.id" data-testid="account-id">{{ account.id }}</span><span v-else data-testid="account-id-none">not available</span></p>',
         '<p v-if="account.figure" class="mt-1 text-sm" data-testid="account-margin">Available margin (Zerodha): Rs <span data-testid="account-margin-figure">{{ account.figure }}</span>, read at <span data-testid="account-margin-read-at">{{ account.readAt }}</span></p>',
         "positions_not_synced: 'Orders are not ready until your positions have been read from Zerodha. Fix the position sync row first.',",
-        '<p class="mt-1 text-sm text-ink-muted">Zerodha is the only broker. Your strategies, history and account stay here whether or not Zerodha is connected.</p>',
-        '<p v-if="state === \'loading\'" class="mt-4 text-sm text-ink-muted" data-testid="broker-loading">Checking the Zerodha connection.</p>',
         '<p class="mb-2 font-medium">The Zerodha connection could not be checked, so nothing below is shown as connected.</p>',
         '<span v-else data-testid="last-sync-none">no successful read from Zerodha is recorded yet</span>',
-        '<a href="/api/broker/zerodha/login" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-reconnect">{{ anyConnected ? \'Reconnect Zerodha\' : \'Connect Zerodha\' }}</a>',
-        '<button v-if="anyConnected && !confirming" type="button" class="rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="broker-disconnect" @click="confirming = true">Disconnect Zerodha</button>',
     ),
     'frontend/src/pages/ExecuteStrategyPage.vue': (
         '<h2 class="mt-4 font-medium">Plan {{ reply.plan_number }}: orders for Kite\'s page</h2>',
     ),
     'frontend/src/pages/ExecutionReturnedPage.vue': (
-        '<h1 class="text-xl font-semibold" data-testid="page-title">Back from Kite</h1>',
-        '<p class="mt-2">Your orders were handled on Kite\'s page.</p>',
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<PageHeader parent="Strategies" title="Back from Kite" />',
+        "<p>Your orders were handled on Kite's page.</p>",
     ),
     'frontend/src/pages/HomeOverviewPage.vue': (
-        '<p v-if="state !== \'loading\'" class="mt-8 text-xs text-ink-muted" data-testid="zerodha-line">Already trade with Zerodha? Connect when ready</p>',
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<p v-if="state !== \'loading\'" class="mt-6 text-xs text-ink-muted" data-testid="zerodha-line">Already trade with Zerodha? Connect when ready</p>',
     ),
     'frontend/src/pages/OptionChainPage.vue': (
         'Some contracts are currently unavailable on Zerodha and cannot be added.',
     ),
     'frontend/src/pages/PositionsPage.vue': (
+        # #611 restyle (ADR-193): the same user-facing wording on its new lines
+        '<p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>',
+        '<p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>',
+        '<a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="link" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>',
+        '<tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>',
+        '<td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>',
         "import { KITE_POSITIONS_URL } from '@/lib/execute'",
         "const WAITING = 'Order placed - waiting for Check with Zerodha'",
         "const BLOCKED = 'blocked until its position matches Zerodha'",
         "const VIEW_ON_KITE = 'view on Kite'",
-        '<p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>',
-        '<p>Read from Zerodha at <span data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>',
         '<EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
         # GC-TP 4b (F-69, ADR-207 (3)): while paper strategies are open, the real Positions tab names Zerodha as the source
         "const NO_ZERODHA = 'No open Zerodha positions.'",
         '<p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>',
-        'Zerodha: <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> units,',
-        '(Zerodha shows <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> on this contract)',
-        '<a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="underline" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>',
     ),
     'frontend/src/router/nav.js': (
         "['zerodha-connection', 'Zerodha connection'],",
