@@ -635,6 +635,10 @@ work_items:
   W-193: S6.1  # UI redesign PR-2b: builder summary card (ADR-193)
   W-194: S6.1  # UI redesign PR-2c: chart card and tables (ADR-193, ADR-194)
   W-195: S6.1  # UI redesign PR-3: slide-in strike drawer (ADR-193)
+  W-196: S6.4  # GC-ADJ1 step 1: adjustment approach builder + whole-trade After (REQ-155, ADR-214)
+  W-197: S6.4  # GC-ADJ1 step 2: compare adjustment approaches in adjust mode (REQ-156, ADR-214)
+  W-198: S6.4  # GC-ADJ1 step 2: filters on the approach compare (REQ-157, ADR-214)
+  W-199: S6.4  # GC-ADJ1 step 3: review-adjustment drawer on the Live Strategies card (REQ-046, ADR-214)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 

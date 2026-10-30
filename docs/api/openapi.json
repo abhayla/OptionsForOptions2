@@ -217,6 +217,14 @@
             "title": "Approaches",
             "type": "array"
           },
+          "available": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AdjustAvailableOut"
+            },
+            "title": "Available",
+            "type": "array"
+          },
           "before": {
             "anyOf": [
               {
@@ -250,6 +258,17 @@
             },
             "title": "Curves",
             "type": "object"
+          },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
           },
           "leads": {
             "default": {},
@@ -300,6 +319,44 @@
           "approaches"
         ],
         "title": "AdjustApproachesOut",
+        "type": "object"
+      },
+      "AdjustAvailableOut": {
+        "additionalProperties": false,
+        "description": "GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one generic approach for the Review adjustment drawer. No figure:\nthe id, the shown name, one plain line, and whether it can be built for this position now (else the reason).",
+        "properties": {
+          "applicable": {
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "explanation": {
+            "title": "Explanation"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "explanation",
+          "applicable"
+        ],
+        "title": "AdjustAvailableOut",
         "type": "object"
       },
       "AdjustCellOut": {

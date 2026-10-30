@@ -81,17 +81,25 @@ def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime) -
         return REASON_ABSENT
     if reading.state is not SourceState.STATED:
         return reading.state.name.lower()
-    if not isinstance(reading.value, Decimal):
+    return _price_problem(reading.value) or _time_problem(name, reading.at, now)
+
+
+def _price_problem(value: object) -> str | None:
+    """None when a STATED reading's value is a live price, else the reason."""
+    if not isinstance(value, Decimal):
         return REASON_NO_PRICE
-    if not reading.value.is_finite():  # before any comparison: comparing a NaN raises
+    if not value.is_finite():  # before any comparison: comparing a NaN raises
         return REASON_NOT_FINITE
-    if not is_live_price(reading.value):
-        return REASON_NO_PRICE
-    if reading.at is None or reading.at.tzinfo is None:
+    return None if is_live_price(value) else REASON_NO_PRICE
+
+
+def _time_problem(name: str, at: datetime.datetime | None, now: datetime.datetime) -> str | None:
+    """None when a STATED reading's time is aware, not in the future and (for the feed) fresh, else the reason."""
+    if at is None or at.tzinfo is None:
         return REASON_NO_TIME
-    if reading.at > now:
+    if at > now:
         return REASON_FUTURE
-    return _feed_age_problem(now - reading.at) if name == SOURCE_FEED else None
+    return _feed_age_problem(now - at) if name == SOURCE_FEED else None
 
 
 def _feed_age_problem(age: datetime.timedelta) -> str | None:

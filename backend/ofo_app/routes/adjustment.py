@@ -66,7 +66,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.held_switches import PROBABILITY_OF_PROFIT, held_on
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.outcome import MarketContext, get_margin_source, get_market_context, load_charge_rates
-from ofo_app.routes.strategies import StrategyRefused
+from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
