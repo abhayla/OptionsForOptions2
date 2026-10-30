@@ -1,0 +1,21 @@
+{
+  "id": "after-hours-what-if-needs-a-close-for-every-leg",
+  "scope": "project",
+  "class": "Any after-hours target what-if (Estimated Now at a target level or date) on a strategy whose open contracts include one with no last close for the current session: the model has no price to solve that leg's IV from, so the answer says Estimated Now needs live prices. It is a data-availability limit after hours, not a defect of the target path: in market hours the same strategies answer.",
+  "mechanism": "After hours the builder solves each leg's IV from its closing LTP (ADR-197, ADR-212); a contract whose session close is not in the book yet (not traded, or the close not loaded) has no price, and the what-if refuses rather than invent one.",
+  "first_seen": {
+    "date": "2026-10-29",
+    "where": "GC-TP after-hours walk (R-35, #607 P2-5): strategies 48 and 56, target what-if 'Estimated Now needs live prices'",
+    "evidence": "Re-tested live 30 Oct 2026 on ofo_dev, Kite connected, market open, API on live/2026-10-30 (1f245c77): strategy 48 (GCBP P3 IC) target index 23100 at 10:45:37 IST -> P&L at target Rs 18,833.75 (includes -Rs 1,504.75 booked), breakeven at target 22,696 (-1.1%), Greeks at target delta 56.4802; strategy 56 (W2 P3 IC) target 23100 at 10:51:06 IST -> P&L at target Rs 15,689.70 (includes +Rs 230.75 booked), breakeven at target 22,727 (-0.9%), delta 52.7444. Both answer live, so the after-hours refusal is a data-availability limit."
+  },
+  "fix": "None needed for the what-if path. Both answers carried 'Stale: this target figure uses prices older than expected' in market hours and did not refresh: tracked under R-26 in the GC-LIVE walk (L4), not here.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "A data limit, not a defect: no check needed. The refusal text names the missing live price, which is the honest answer."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-197.md",
+    "spec/decisions/ADR-212.md"
+  ]
+}
