@@ -119,8 +119,12 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert title.startswith("Paper strategy - ") and body.startswith("Paper strategy - ")
-    assert reason in body and "exited 2 legs at" in body and "41.00" in body and "no order was sent to Zerodha" in body
+    assert title.startswith("Paper strategy - ")
+    assert body.startswith("Conditional exit: ")
+    assert "Paper strategy - " not in body  # the title shows once, as the alert title
+    assert reason in body
+    assert "exited 2 legs at" in body and "41.00" in body
+    assert "no order was sent to Zerodha" in body
     for level in ("22849.90", "22800.00", "22700.00"):
         market.tick(INDEX, level)
         assert await monitor.step() == 0

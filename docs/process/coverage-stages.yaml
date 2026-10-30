@@ -508,6 +508,7 @@ issues:
   "#605": S6.4  # Parked 2026-10-29: 14 held PRs (live Kite gate), branches kept, rebuild order
   "#606": S6.4  # GC-TPL live run (expert-trader paper, market hours) not run at the 2026-10-29 land
   "#607": S6.4  # GC-TPD Part 2: R-25 R-23 R-27 R-13 R-35 + wording question (after GC-TPL)
+  "#608": S6.4  # User test 2026-10-30: remaining layout, display and after-hours items
 
 # Work items whose status is not done.
 work_items:

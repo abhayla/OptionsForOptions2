@@ -149,7 +149,7 @@ test('Strikes tab without live data: dashes and the reason, two selected contrac
   await expect(page.getByTestId('strikes-reason')).toHaveText('Live data is not connected, so no prices are shown.')
   await expect(page.getByTestId('strikes-centre')).toContainText('ATM unknown - no live price')
   await expect(page.getByTestId('strike-row')).toHaveCount(2)
-  await expect(page.getByTestId('cell-ltp').first()).toHaveText('-')
+  await expect(page.getByTestId('cell-ltp').first()).toHaveText('—')
   await page.getByTestId('cell-pe').getByTestId('cell-sell').click()
   await page.getByTestId('cell-ce').getByTestId('cell-buy').click()
   await page.getByTestId('picker-done').click()

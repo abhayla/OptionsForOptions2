@@ -1,0 +1,23 @@
+{
+  "id": "closed-market-rule-per-surface",
+  "scope": "project",
+  "class": "Any screen or answer that shows market data after hours, where the closed-market rule (ADR-177 one banner, ADR-200 (2) no stale/read-time labels, ADR-197/ADR-212 numbers from the last close) is applied by that surface's own code instead of one shared path: each surface that was not touched keeps showing 'stale since <read time>', per-cell stale sentences, a 'live' tag, the fetch time as the price time, or blank numbers.",
+  "mechanism": "The rule lives in the outcome service's answer label only (service.py `_closed_output_label`), while curves, tables, target, chain cells, index cards, live cards, the strike drawer and the paper figures each read the raw model or quote health; a STALE close looks like any stale price to them.",
+  "first_seen": {
+    "date": "2026-10-30",
+    "where": "owner-watched user test, real app on ofo_dev, Kite connected, market closed (close 29 Oct 15:30)",
+    "evidence": "8 surfaces showed it the same morning: builder payoff notes 'stale since 07:52 IST; estimated from spot'; option chain every LTP 'Stale: the latest price ... out of date' plus 'IV and Greeks: stale since 08:17 IST' and a 'live' tag; index view and Home strip 'stale' tags; Live Strategies 'NIFTY level 22936.75 at 30 Oct 2026, 08:18:54 IST' and '(stale)' legs; strike drawer 'as of 30 Oct 2026, 08:26:10 IST'; paper positions LTP/P&L '-'. Fixed per surface in PR fix/user-test-2026-10-30 (commits 2bf5f68a, 8a894e1c, b62c0e6b, eb76ae42, 69f49b5d, b486b2ec)."
+  },
+  "fix": "Per surface in the user-test PR; the outcome path now applies `market_closed_model` once so every output built from the model follows. No single choke point yet for the chain, index, live-card and drawer paths.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Each fixed surface has its own unit test; no check walks every after-hours answer/screen for 'stale since', 'Stale:' or a read-time stamp. Candidate: a test that serialises each closed-market answer (outcome, chain, indices, live, picker, paper) and fails on those strings."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-177.md",
+    "spec/decisions/ADR-200.md",
+    "spec/decisions/ADR-197.md",
+    "spec/decisions/ADR-212.md"
+  ]
+}

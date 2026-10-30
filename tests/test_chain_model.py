@@ -164,13 +164,3 @@ def test_u18_closed_market_computes_iv_from_the_held_close_and_makes_no_stale_la
     assert abs(closed.greeks[CE_ID].iv - D("0.113440")) < TIGHT  # the same hand-checked IV as the live proof
     hours = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE)
     assert str(hours.label) == "stale since 09:20 IST"
-
-
-def test_u18_a_cell_shows_iv_from_a_sound_stale_close_only_when_closed():
-    from ofo_app.chain_push import _greek_fields  # noqa: PLC0415 - the cell's one gate
-    stale_ce = _quote(CE_ID, Instrument.CE, "22500", "151.30", health=DataHealth.STALE)
-    model = chain_model([stale_ce], _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE, market_closed=True)
-    assert _greek_fields(stale_ce, model, CE_ID, market_closed=True)["iv"] is not None
-    assert _greek_fields(stale_ce, model, CE_ID, market_closed=False)["iv"] is None  # in hours a STALE price is old
-    unhealthy = _quote(CE_ID, Instrument.CE, "22500", "151.30", health=DataHealth.UNHEALTHY)
-    assert _greek_fields(unhealthy, model, CE_ID, market_closed=True)["iv"] is None

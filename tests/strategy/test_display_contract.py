@@ -19,7 +19,8 @@ def test_future_contract_has_no_strike():
 
 def test_alert_body_has_no_repeated_title_and_old_rows_still_restore():
     what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below", level=Decimal("22845"))
-    leg = render_explanation("paper_alert_leg", contract=display_contract(("NIFTY", Instrument.PE, Decimal("22650"), datetime.date(2026, 11, 3))), price=render_explanation("cell_dash"))
+    contract = display_contract(("NIFTY", Instrument.PE, Decimal("22650"), datetime.date(2026, 11, 3)))
+    leg = render_explanation("paper_alert_leg", contract=contract, price=render_explanation("cell_dash"))
     body = str(render_explanation("paper_alert_body", what=what, count=1, prices=leg))
     assert not body.startswith("Paper strategy")
     assert "2026-" not in body
