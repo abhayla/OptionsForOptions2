@@ -1066,6 +1066,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("strike_none", "values_seen", ""),
     ExplanationTemplate("contract_description", "values_seen", "{underlying}{strike} {instrument} {expiry}",
                         {"underlying": Recorded, "strike": Explained, "instrument": Recorded, "expiry": Recorded}),
+    # REQ-151 (U23): a contract as the screens print it, "NIFTY 3 Nov 22650 PE" (the strike and CE/PE only on an option)
+    ExplanationTemplate("contract_display", "values_seen", "{underlying} {day} {month}{strike} {instrument}",
+                        {"underlying": Recorded, "day": Recorded, "month": Recorded, "strike": Explained, "instrument": Recorded}),
     ExplanationTemplate("leg_description", "values_seen", "{action}{strike} {instrument} {expiry} x{quantity}",
                         {"action": Recorded, "strike": Explained, "instrument": Recorded, "expiry": Recorded,
                          "quantity": Recorded}),
@@ -1274,9 +1277,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"contract": Explained, "price": Explained}),
     ExplanationTemplate("paper_alert_legs", "values_seen", "{rest}, {leg}", {"rest": Explained, "leg": Explained}),
     ExplanationTemplate("paper_alert_body", "what_triggered",
-                        "Paper strategy - {name}: {what}; exited {count} legs at {prices}. A paper exit only: no order "
+                        "{what}; exited {count} legs at {prices}. A paper exit only: no order "
                         "was sent to Zerodha.",
-                        {"name": Explained, "what": Explained, "count": Recorded, "prices": Explained}),
+                        {"what": Explained, "count": Recorded, "prices": Explained}),
     ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
     ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
                         {"level": WholePoints, "percent": SignedPercent}),

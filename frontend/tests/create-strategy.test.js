@@ -23,7 +23,7 @@ const ct = (token, type, strike) => ({ contract_id: token, exchange_segment: 'NS
   expiry: '2026-10-13', strike, lot_size: 65, symbol: `NIFTY${strike}${type}` })
 const CONTRACTS = [ct(1, 'PE', '22600.00'), ct(2, 'PE', '22700.00'), ct(3, 'CE', '22800.00'), ct(4, 'PE', '22800.00'),
   ct(5, 'CE', '22900.00'), ct(6, 'CE', '23000.00'), ct(7, 'CE', '23100.00'), ct(8, 'PE', '22500.00')]
-const SUMMARY = { what_can_i_lose: 'L', what_can_i_make: 'M', where_do_i_start_losing: 'S', max_profit: '6175.00', max_loss: '-6825.00',
+const SUMMARY = { what_can_i_lose: 'L', what_can_i_make: 'M', where_do_i_start_losing: 'S', max_profit: '6175.00', max_loss: '-6825.00', max_profit_display: '+6,175', max_loss_display: '−6,825', breakevens_display: ['22,905 (+0.2%)'],
   max_profit_unlimited: false, max_loss_unlimited: false, breakevens: ['22905.00'], lower_be: null, upper_be: '22905.00', risk_boundaries: [] }
 
 vi.mock('@/services/api', async (importActual) => {
@@ -90,7 +90,7 @@ describe('Show strategies waits for the template list (slow templates route)', (
     await flushPromises()
     expect(w.findAll('[data-testid="strategy-card"]').map((c) => c.attributes('data-template-id')))
       .toEqual(['bull_call_spread', 'cash_secured_put', 'iron_condor'])
-    expect(w.find('[data-testid="strategy-card"][data-template-id="cash_secured_put"] [data-testid="card-max-loss"]').text()).toBe('-6825.00')
+    expect(w.find('[data-testid="strategy-card"][data-template-id="cash_secured_put"] [data-testid="card-max-loss"]').text()).toBe('−6,825')
   })
 
   it('a templates failure after the click shows the error and no cards', async () => {
@@ -142,9 +142,9 @@ describe('Create Strategy page', () => {
     await toResults(w, 'rises', 'bullish')
     const cards = w.findAll('[data-testid="strategy-card"]')
     expect(cards.map((c) => c.attributes('data-template-id'))).toEqual(['bull_call_spread', 'cash_secured_put'])
-    expect(cards[0].find('[data-testid="card-max-profit"]').text()).toBe('6175.00')
-    expect(cards[0].find('[data-testid="card-max-loss"]').text()).toBe('-6825.00')
-    expect(cards[0].find('[data-testid="card-breakevens"]').text()).toBe('22905.00')
+    expect(cards[0].find('[data-testid="card-max-profit"]').text()).toBe('+6,175')
+    expect(cards[0].find('[data-testid="card-max-loss"]').text()).toBe('−6,825')
+    expect(cards[0].find('[data-testid="card-breakevens"]').text()).toBe('22,905 (+0.2%)')
     expect(w.find('[data-testid="results-heading"]').text()).toBe('Strategies you could consider')
     const outcome = posts.filter((p) => p.url === '/strategies/outcome')[0].body
     expect(outcome.legs.map((l) => [l.instrument_id, l.action, l.planned_entry])).toEqual([['NSE_FO:3', 'BUY', '120.50'], ['NSE_FO:6', 'SELL', '120.50']])

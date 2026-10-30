@@ -64,7 +64,7 @@ async def test_core_a_posted_stop_is_stored_armed_notifies_the_monitor_and_its_a
         what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below",
                                   level=Decimal("22850"))
         leg = render_explanation("paper_alert_leg", contract=dash, price=dash)
-        body = str(render_explanation("paper_alert_body", name=dash, what=what, count=1, prices=leg))
+        body = str(render_explanation("paper_alert_body", what=what, count=1, prices=leg))
         await paper_trigger_store.add_alert(db, stored.id, tid, title, body)
         alerts = (await c.get("/paper/alerts")).json()
         assert alerts["unread"] == 1 and [a["trigger_id"] for a in alerts["alerts"]] == [tid]

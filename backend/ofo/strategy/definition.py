@@ -94,10 +94,20 @@ def contract_sort_key(contract: Contract) -> tuple:
     return (underlying, instrument.value, strike if strike is not None else Decimal(0), expiry)
 
 
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
 def describe_contract(contract: Contract) -> str:
     underlying, instrument, strike, expiry = contract
     return render_explanation("contract_description", underlying=underlying, strike=strike_text(strike),
                               instrument=instrument.value, expiry=expiry.isoformat())
+
+
+def display_contract(contract: Contract) -> str:
+    """REQ-151: the contract as the screens print it, "NIFTY 3 Nov 22650 PE" / "NIFTY 24 Nov FUT" (never an ISO date)."""
+    underlying, instrument, strike, expiry = contract
+    return render_explanation("contract_display", underlying=underlying, day=expiry.day,
+                              month=_MONTHS[expiry.month - 1], strike=strike_text(strike), instrument=instrument.value)
 
 
 @dataclass(frozen=True)
