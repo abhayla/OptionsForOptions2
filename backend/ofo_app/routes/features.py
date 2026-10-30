@@ -14,6 +14,7 @@ from ofo_app.api_models import ApiModel
 from ofo_app.errors import ClosedRoute
 from ofo_app.held_switches import features_on
 from ofo_app.order_path_switch import order_path_on
+from ofo_app.scenario_mode import scenario_flag
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -24,9 +25,13 @@ class FeaturesOut(ApiModel):
     #: browser shows nothing for it (absent, not greyed).
     held: list[Literal["platform_strikes", "probability_of_profit", "delayed_prices", "history_charts",
                        "events_calendar", "fii_dii", "market_event_warning", "strategy_price_history"]]
+    #: GC-ADJ1 step 1b: the scenario id when the API serves a scenario of the adjustment library (dev/test only,
+    #: ofo_app.scenario_mode), else null. Every screen shows the "test data, not the market" banner on a non-null.
+    scenario: str | None = None
 
 
 @router.get("/features", response_model=FeaturesOut)
 async def features() -> FeaturesOut:
     return FeaturesOut(order_path="on" if order_path_on() else "off",
-                       held=list(features_on()))  # type: ignore[arg-type]  # names come from the closed list
+                       held=list(features_on()),  # type: ignore[arg-type]  # names come from the closed list
+                       scenario=scenario_flag())

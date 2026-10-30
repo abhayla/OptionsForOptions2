@@ -1018,6 +1018,12 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Placing orders from this app is switched off for now.",
           "No order was prepared and nothing was sent to Zerodha.", "Preparing and checking orders.",
           "You can build, save and track strategies."),
+    # GC-ADJ1 step 1b: dev/test scenario mode (ofo_app.scenario_mode) serves test data; every order route refuses.
+    _gate("scenario_no_orders", _UI, 26,
+          "Scenario mode: no orders. This app is showing scenario test data, not the market.",
+          "No order was prepared or changed and nothing was sent to Zerodha.",
+          "Placing, changing and cancelling orders, real or paper.",
+          "Restart the app without the scenario setting to place orders."),
 )
 
 # --- W-125 (REQ-079 AC-1, AC-6, AC-7, AC-8): ready-made shapes and quick picks, held for the Q211 legal answer.
