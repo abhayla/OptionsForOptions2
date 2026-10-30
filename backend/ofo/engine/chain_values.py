@@ -128,10 +128,12 @@ class ChainModel:
     label: ExplanationText | None = None
 
 
-def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
-                valuation: datetime.datetime, rate: Decimal) -> ChainModel:
+def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,  # noqa: PLR0913
+                valuation: datetime.datetime, rate: Decimal, *, market_closed: bool = False) -> ChainModel:
     """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility, with the
-    forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused."""
+    forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused. ``market_closed``
+    (ADR-119 calendar): the held close is the answer (ADR-197, ADR-200 (2)), so no "stale since" label is made; the
+    one market-closed banner carries the time."""
     quotes = list(chain)
     try:
         reading = spot_reading(spot_quote)
@@ -159,7 +161,8 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega,
                                            exact if exact is not None and exact > 0 else None)
-    return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None, data_label(reading))
+    return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None,
+                      None if market_closed else data_label(reading))
 
 
 def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,

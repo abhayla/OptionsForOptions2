@@ -150,3 +150,17 @@ def test_round2_a_real_tiny_gamma_keeps_its_exact_value_when_four_decimals_would
     model = _model([*REAL, far])
     assert model.greeks[far.instrument_id].gamma == 0 and model.greeks[far.instrument_id].gamma_exact > 0
     assert model.greeks[CE_ID].gamma > 0 and model.greeks[CE_ID].gamma_exact is None
+
+
+def test_u18_closed_market_computes_iv_from_the_held_close_and_makes_no_stale_label():
+    """User test U18 (ADR-177, ADR-197, ADR-200 (2), ADR-212): after hours the spot and options are STALE (the held
+    close). The model still gives IV and Greeks and makes NO "stale since" text: the one market-closed banner says it.
+    In market hours the same STALE spot keeps its label (hours unchanged)."""
+    stale_chain = [_quote(CE_ID, Instrument.CE, "22500", "151.30", health=DataHealth.STALE),
+                   _quote(PE_ID, Instrument.PE, "22550", "145.10", health=DataHealth.STALE)]
+    closed = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE, market_closed=True)
+    assert set(closed.greeks) == {CE_ID, PE_ID}
+    assert closed.label is None
+    assert abs(closed.greeks[CE_ID].iv - D("0.113440")) < TIGHT  # the same hand-checked IV as the live proof
+    hours = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE)
+    assert str(hours.label) == "stale since 09:20 IST"

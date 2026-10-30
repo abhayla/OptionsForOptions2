@@ -18,7 +18,7 @@ const tone = computed(() => ({ profit: 'text-profit', loss: 'text-loss' })[state
 
 <template>
   <div
-    class="pointer-events-none absolute right-3 top-2 max-w-[60%] rounded border border-line bg-surface/90 px-2 py-1 text-right text-sm"
+    class="pointer-events-none absolute right-3 top-10 max-w-[60%] rounded border border-line bg-surface/90 px-2 py-1 text-right text-sm"
     data-testid="target-badge" :data-state="state" :title="badge?.output_label || undefined"
   >
     <template v-if="state === 'none'">

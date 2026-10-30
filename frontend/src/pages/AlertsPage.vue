@@ -9,6 +9,9 @@ import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { PAPER_ALERTS_EMPTY, dropAlerts, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 
+// U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
+const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.title.length + 2) : a.body)
+
 const NO_CHANNELS = 'No notification channels are set up yet.'
 
 const route = useRoute()
@@ -33,11 +36,11 @@ onMounted(async () => {
     <template v-if="isActive && paperAlerts.parts">
       <ErrorMessage class="mt-4" :parts="paperAlerts.parts" compact prefix="alerts-error" />
     </template>
-    <ul v-else-if="isActive && paperAlerts.alerts.length" class="mt-4 divide-y divide-line" data-testid="alerts-list">
-      <li v-for="a in paperAlerts.alerts" :key="a.id" class="py-2" data-testid="alert-row">
-        <p class="text-xs text-ink-muted"><span data-testid="alert-time">{{ istTime(a.created_at) }}</span> - <span data-testid="alert-strategy">{{ plainName(a.strategy_name) ?? `Strategy ${a.strategy_id}` }}</span></p>
+    <ul v-else-if="isActive && paperAlerts.alerts.length" class="mt-4 grid gap-3" data-testid="alerts-list">
+      <li v-for="a in paperAlerts.alerts" :key="a.id" class="rounded border border-line bg-surface p-3" data-testid="alert-row">
         <p class="font-medium" data-testid="alert-title">{{ a.title }}</p>
-        <p data-testid="alert-body">{{ a.body }}</p>
+        <p class="text-xs text-ink-muted"><span data-testid="alert-time">{{ istTime(a.created_at) }}</span> - <span data-testid="alert-strategy">{{ plainName(a.strategy_name) ?? `Strategy ${a.strategy_id}` }}</span></p>
+        <p class="mt-1 text-sm" data-testid="alert-body">{{ alertBody(a) }}</p>
       </li>
     </ul>
     <p v-else class="mt-4 text-ink-muted" data-testid="alerts-empty">{{ line }}</p>

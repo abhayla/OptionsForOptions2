@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import REAL from './fixtures/paper-strategies.json'
+import { contractName } from '@/lib/displayFormat'
 
 const calls = []
 let answers = {}
@@ -92,7 +93,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     const w = await show()
     const p = REAL.strategies[1].positions[0]
     const row = all(w, 'paper-group')[0].findAll('[data-testid="paper-leg"]')[0]
-    expect(row.get('[data-testid="paper-instrument"]').text()).toContain(p.contract_text)
+    expect(row.get('[data-testid="paper-instrument"]').text()).toContain(contractName({ underlying: REAL.strategies[1].underlying, expiry: p.expiry, strike: p.strike, instrument: p.instrument })) // U16: 'NIFTY 3 Nov 22950 CE', not the ISO date
     expect(row.get('[data-testid="paper-qty"]').text()).toBe('1 lot') // 65 units / the contract's lot size 65
     expect(row.get('[data-testid="paper-avg"]').text()).toBe(p.average_text)
     expect(row.get('[data-testid="paper-ltp"]').text()).toBe(p.ltp_text)

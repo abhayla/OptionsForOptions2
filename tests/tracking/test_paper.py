@@ -209,3 +209,29 @@ def test_d_b48_view_leg_pnls_live_exited_at_exit_price_and_they_add_to_the_total
     mixed = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {0: D("40.00")})
     assert mixed.leg_pnls == (D("-55.25"), D("130.00"), D("780.00"), D("-325.00"))
     assert sum(mixed.leg_pnls) == mixed.paper_pnl == D("529.75")
+
+
+def test_adr212_display_price_uses_the_held_close_after_hours_but_fills_still_refuse(replayed):
+    """ADR-212: market closed + a sound STALE quote -> the display price is the held close (45.15 here, its own time);
+    no quote -> unpriced; market open + stale -> paused (not priced); and the fill predicate/exit still refuse it."""
+    provider, last = replayed
+    entry = _entry(_snapshot(provider, last))
+    stale = _with_quote(_snapshot(provider, last), IDS[0], health=DataHealth.STALE)
+    held = stale.legs[IDS[0]].quote
+    closed = dataclasses.replace(stale, market_closed=True)
+    shown = paper.display_price(closed, IDS[0])
+    assert (shown.state, shown.price, shown.at) == ("live", held.ltp, held.timestamp)
+    # market open: a stale quote is not displayed (REQ-109 AC-5 unchanged)
+    assert paper.display_price(dataclasses.replace(stale, market_closed=False), IDS[0]).state == "stale"
+    # closed but no quote / no price: unpriced, never a default (ADR-200 (4))
+    legs = dict(closed.legs)
+    legs[IDS[1]] = dataclasses.replace(legs[IDS[1]], quote=None)
+    assert paper.display_price(dataclasses.replace(closed, legs=legs), IDS[1]).price is None
+    assert paper.display_price(_with_quote(closed, IDS[0], ltp=None), IDS[0]).price is None
+    # an UNAVAILABLE (session ended) quote is never a close
+    ended = _with_quote(closed, IDS[0], health=DataHealth.UNAVAILABLE)
+    assert paper.display_price(ended, IDS[0]).price is None
+    # fills: leg_price and exit_prices_now still refuse the stale close even though the market is closed
+    assert not paper.is_live(paper.leg_price(closed, IDS[0]))
+    with pytest.raises(paper.PricesNotLive):
+        paper.exit_prices_now(closed, entry[:1])

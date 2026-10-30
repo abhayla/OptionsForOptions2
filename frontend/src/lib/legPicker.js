@@ -143,6 +143,9 @@ export const dayStatsReasonText = (code) => wording(DAY_STATS_REASON_TEXT, code)
 /** How the strikes list is centred when there is no live spot (REQ-080 AC-5): the dated last known spot, or the middle strike. */
 export function centreText(strikes, timeText) {
   if (!strikes || strikes.centre === 'LIVE_SPOT') return null
+  // User test 2026-10-30 (ADR-200 (2)): after the close the drawer's market-closed banner carries the price time; the
+  // held spot's own stamp is a read time ("as of 08:26"), so no second, wrong time is printed
+  if (strikes.centre === 'LAST_KNOWN_SPOT' && strikes.market_closed) return null
   if (strikes.centre === 'LAST_KNOWN_SPOT') {
     const at = strikes.spot_at ? timeText(strikes.spot_at) : ''
     return `Centred on the last known index price ${strikes.spot ?? ''}${at ? `, as of ${at}` : ''}.`
@@ -153,6 +156,8 @@ export function centreText(strikes, timeText) {
 
 /** A price-like cell value as shown: the server's string, or '-' when it sent none. */
 export const shown = (value) => (value == null || value === '' ? PRICE_MISSING : String(value))
+/** A strike-table cell: the server's string, or the one shared dash (OI_MISSING) in every column, so empty cells never mix glyphs. */
+export const cellShown = (value) => (value == null || value === '' ? OI_MISSING : String(value))
 
 /** The shared dash for an answer with no value (S-032): the OI shows it for null, undefined, empty and non-numbers. */
 export const OI_MISSING = '—'

@@ -239,7 +239,7 @@ async def test_each_alert_row_names_its_strategy(db):
     assert await paper_trigger_store.claim_fire(db, tid)
     dash = render_explanation("cell_dash")
     what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="above", level=D("23100"))
-    body = str(render_explanation("paper_alert_body", name=dash, what=what, count=1,
+    body = str(render_explanation("paper_alert_body", what=what, count=1,
                                   prices=render_explanation("paper_alert_leg", contract=dash, price=dash)))
     await paper_trigger_store.add_alert(db, stored.id, tid, str(render_explanation("paper_alert_title", name=dash)),
                                         body)

@@ -297,3 +297,25 @@ describe('Delete with Undo', () => {
     expect(w.findAll('[data-testid="strategy-row"]')).toHaveLength(1)
   })
 })
+
+describe('U1: the rows are a fixed column grid from lg, wrapped below', () => {
+  it('every row is a grid with the same columns; the actions sit in one right-aligned last cell; every test id is kept', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [
+      { id: 1, underlying: 'NIFTY', status: 'draft', updated_at: '2026-10-27T04:00:00Z', name: '"A"', tracked: false },
+      { id: 2, underlying: 'SENSEX', status: 'draft', updated_at: '2026-10-27T04:00:00Z', name: '"B"', tracked: false },
+    ] } })
+    const w = await open()
+    const rows = w.findAll('[data-testid="strategy-row"]')
+    expect(rows).toHaveLength(2)
+    const cols = (r) => r.classes().filter((c) => c.startsWith('lg:grid-cols-'))
+    expect(rows[0].classes()).toContain('lg:grid') // the grid applies from lg; below it the row wraps (no 390 px scroll)
+    expect(rows[0].classes()).toContain('flex-wrap')
+    expect(cols(rows[0])).toHaveLength(1)
+    expect(cols(rows[0])).toEqual(cols(rows[1]))
+    for (const r of rows) {
+      expect(r.find('[data-testid="row-actions"]').classes()).toContain('justify-end')
+      for (const id of ['row-name', 'row-underlying', 'row-status', 'row-saved']) expect(r.find(`[data-testid="${id}"]`).exists()).toBe(true)
+      expect(r.find('[data-testid="row-actions"] [data-testid^="open-builder-"]').exists()).toBe(true)
+    }
+  })
+})

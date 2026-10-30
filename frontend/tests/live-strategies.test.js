@@ -116,6 +116,55 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('U20: after hours and Sensibull 090 layout', () => {
+  const closedLeg = (over = {}) => leg({ symbol: 'NIFTY26N0322950CE', instrument: 'CE', strike: '22950.00', expiry: '2026-11-03', health: 'stale', lots: 2,
+    planned_entry_display: '150.00', ltp_display: '150.60', ...over })
+  const closedAnswer = (over = {}) => computed({ market_closed: true, last_price_at: '2026-10-29T15:30:00+05:30', spot_at: '2026-10-30T08:18:54+05:30',
+    summary: { max_profit: '7113.83', max_loss: '5886.17', max_profit_display: '+7,114', max_loss_display: '−5,886', breakevens_display: ['22,688 (-0.1%)'],
+      max_profit_unlimited: false, max_loss_unlimited: false }, legs: [closedLeg()], ...over })
+
+  it('closed market: price-time banner, no fetch time, no stale noise, contract name, server money strings', async () => {
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(closedAnswer())
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="market-closed-text"]').exists()).toBe(false) // one banner per screen, not per card
+    expect(w.findAll('[data-testid="market-closed-text"]')).toHaveLength(1)
+    expect(w.find('[data-testid="market-closed-text"]').text()).toContain('29 Oct 2026, 15:30:00 IST')
+    expect(c.find('[data-testid="live-spot-at"]').exists()).toBe(false)
+    expect(c.find('[data-testid="live-leg-health"]').exists()).toBe(false)
+    expect(c.find('[data-testid="live-leg-health-reason"]').exists()).toBe(false)
+    expect(c.text()).not.toContain('NIFTY26N0322950CE')
+    expect(c.find('[data-testid="live-leg"]').text()).toContain('NIFTY 3 Nov 22950 CE')
+    expect(c.find('[data-testid="live-max-profit"]').text()).toBe('+7,114')
+    expect(c.find('[data-testid="live-max-loss"]').text()).toBe('−5,886')
+    expect(c.find('[data-testid="live-breakevens"]').text()).toContain('22,688')
+    expect(c.find('[data-testid="live-leg-ltp"]').text()).toBe('150.60')
+  })
+
+  it('market open + stale leg: unchanged (health word and sentence stay, level time shown, no banner)', async () => {
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(closedAnswer({ market_closed: false }))
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+    expect(c.find('[data-testid="live-leg-health"]').text()).toBe('(stale)')
+    expect(c.find('[data-testid="live-leg-health-reason"]').exists()).toBe(true)
+    expect(c.find('[data-testid="live-spot-at"]').exists()).toBe(true)
+  })
+
+  it('a column with no value in the answer is omitted, never computed', async () => {
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(computed())
+    await flushPromises()
+    expect(cards(w)[0].text()).not.toContain('Planned entry')
+    expect(cards(w)[0].text()).not.toContain('Lots')
+  })
+})
+
 describe('AC-4: stale or unavailable data is marked, never shown as live', () => {
   it('AC-4 (RD-045): each health state is explained in one sentence with its reason; available shows none', async () => {
     const SENTENCES = [

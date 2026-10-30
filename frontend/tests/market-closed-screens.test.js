@@ -68,7 +68,7 @@ async function chain(open) {
 
 async function strip(open) {
   const row = (u) => ({ underlying: u, instrument_id: null, value: null, at: null, health: null })
-  answers['GET /api/market/indices'] = { state: 'NOT_CONNECTED', indices: [row('NIFTY'), row('SENSEX')], ...closed(open) }
+  answers['GET /market/indices'] = { state: 'NOT_CONNECTED', indices: [row('NIFTY'), row('SENSEX')], ...closed(open) }
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { template: '<div />' } }] })
   const w = mount(IndexStrip, { global: { plugins: [router] } })
   await flushPromises()

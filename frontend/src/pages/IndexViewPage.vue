@@ -10,7 +10,7 @@ import { healthSentence } from '@/lib/dataHealthText'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
-const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, isLive, notLive, marketClosed } = useIndexAnswer()
+const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, isLive, notLive, marketClosed, healthOf } = useIndexAnswer()
 onMounted(start)
 
 function timeText(row) {
@@ -39,12 +39,12 @@ function timeText(row) {
         <div class="flex items-center justify-between gap-2">
           <h2 class="font-semibold">{{ INDEX_NAMES[u] }}</h2>
           <span
-            v-if="rowFor(u)?.health && rowFor(u).health !== 'available'"
+            v-if="healthOf(rowFor(u))"
             class="text-sm font-medium"
             data-testid="index-health"
-          >{{ rowFor(u).health }}</span>
+          >{{ healthOf(rowFor(u)) }}</span>
         </div>
-        <p v-if="rowFor(u)?.health && rowFor(u).health !== 'available'" class="mt-1 text-xs text-ink-muted" data-testid="index-health-reason">{{ healthSentence(rowFor(u).health) }}</p>
+        <p v-if="healthOf(rowFor(u))" class="mt-1 text-xs text-ink-muted" data-testid="index-health-reason">{{ healthSentence(rowFor(u).health) }}</p>
         <p class="mt-2 text-2xl font-semibold tabular-nums" data-testid="index-value">{{ shownValue(rowFor(u)) }}</p>
         <p class="mt-1 text-sm text-ink-muted" data-testid="index-at">{{ timeText(rowFor(u)) }}</p>
         <div class="mt-3 flex flex-wrap gap-3 text-sm">

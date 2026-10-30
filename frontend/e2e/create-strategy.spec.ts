@@ -47,9 +47,10 @@ async function seed(page: Page) {
       legs: legs.map((l: Record<string, unknown>) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
         planned_entry: l.planned_entry, captured_at: l.captured_at })) } })).json()
     const s = answer.summary
-    await expect(card.getByTestId('card-max-profit')).toHaveText(s.max_profit_unlimited ? 'Unlimited' : String(s.max_profit))
-    await expect(card.getByTestId('card-max-loss')).toHaveText(s.max_loss_unlimited ? 'Unlimited' : String(s.max_loss))
-    await expect(card.getByTestId('card-breakevens')).toHaveText(s.breakevens.join(', ') || '—')
+    // The card shows the server's own display text (grouped, signed), never the raw number (commit a1b8b53b).
+    await expect(card.getByTestId('card-max-profit')).toHaveText(s.max_profit_unlimited ? 'Unlimited' : s.max_profit_display)
+    await expect(card.getByTestId('card-max-loss')).toHaveText(s.max_loss_unlimited ? 'Unlimited' : s.max_loss_display)
+    await expect(card.getByTestId('card-breakevens')).toHaveText(s.breakevens_display?.length ? s.breakevens_display.join(', ') : '—')
 
     await card.getByTestId('open-in-builder').click()
     await expect(page).toHaveURL(/\/strategy\/builder\?/)

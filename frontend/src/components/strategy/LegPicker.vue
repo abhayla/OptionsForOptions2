@@ -39,7 +39,9 @@ import {
   offeredTypes,
   selectedContract,
   shown,
+  cellShown,
   oiCompact,
+  OI_MISSING,
 } from '@/lib/legPicker'
 
 const props = defineProps({
@@ -229,7 +231,7 @@ const VIEW_COLUMNS = Object.freeze({ ltp: ['delta', 'ltp', 'oi', 'iv'], oi: ['lt
 // D-C27 round 2: the LTP view's widths and the 3 px gap add up to 464 px, inside the 470 px the 1536 x 864 drawer panel allows
 // (round 1 widened columns without adding the total up and the grid scrolled sideways). Delta takes a 7-character
 // "-0.4920", the OI a compact "1.23Cr" (oiCompact), the B / S pair two 12 px buttons.
-const COLUMN_WIDTH = Object.freeze({ delta: '44px', ltp: 'minmax(42px,1fr)', oi: '40px', iv: '36px' })
+const COLUMN_WIDTH = Object.freeze({ delta: '48px', ltp: 'minmax(42px,1fr)', oi: '36px', iv: '36px' })
 const ACT_WIDTH = '26px'
 const STRIKE_WIDTH = '58px'
 const view = ref('ltp')
@@ -688,10 +690,10 @@ defineExpose({ startEdit, showStrikes })
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
-          <div class="mt-2 grid items-end gap-x-[3px] border-b border-line pb-1 text-[10px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
-            <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
+          <div class="sticky top-0 z-10 mt-2 grid items-end gap-x-[3px] border-b border-line bg-surface pb-1 text-[9px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
+            <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="whitespace-nowrap text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
             <span class="text-center">Strike</span>
-            <span v-for="col in sideColumns('pe')" :key="`pe-${col}`">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
+            <span v-for="col in sideColumns('pe')" :key="`pe-${col}`" class="whitespace-nowrap">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
           </div>
           <div
             v-for="(row, ri) in strikesData.rows" :key="row.strike" class="group grid items-center gap-x-[3px] border-b border-line text-[11px] tabular-nums num"
@@ -710,9 +712,9 @@ defineExpose({ startEdit, showStrikes })
                     v-for="col in sideColumns(side)" :key="col" class="flex h-7 items-center"
                     :class="[side === 'ce' ? 'justify-end' : 'justify-start', itm[ri]?.[side] && col !== 'act' ? 'bg-warn-soft' : '']"
                   >
-                    <span v-if="col === 'delta'" data-testid="cell-delta">{{ shown(row[side].delta) }}</span>
-                    <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ shown(row[side].ltp) }}</span>
-                    <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ shown(row[side].iv_percent) }}</span>
+                    <span v-if="col === 'delta'" data-testid="cell-delta">{{ cellShown(row[side].delta) }}</span>
+                    <span v-else-if="col === 'ltp'" class="font-medium text-ink" data-testid="cell-ltp">{{ cellShown(row[side].ltp) }}</span>
+                    <span v-else-if="col === 'iv'" class="text-ink-muted" data-testid="cell-iv">{{ cellShown(row[side].iv_percent) }}</span>
                     <!-- UI-202 / D-C26: the OI count in Indian units (oiCompact) over a bar drawn from the server's OI (drawing
                          only, never a printed figure, ADR-008); no OI = no bar and the dash -->
                     <span v-else-if="col === 'oi'" class="relative flex h-5 w-full items-center" :class="side === 'ce' ? 'justify-end' : 'justify-start'">
@@ -797,7 +799,7 @@ defineExpose({ startEdit, showStrikes })
             :class="row.is_atm ? 'bg-accent-soft font-semibold' : ''" data-testid="type-row" :data-strike="row.strike"
           >
             <label class="flex items-center justify-end gap-1 pr-1">
-              <span data-testid="type-ce-ltp">{{ row.ce ? shown(row.ce.ltp) : '-' }}</span>
+              <span data-testid="type-ce-ltp">{{ row.ce ? cellShown(row.ce.ltp) : OI_MISSING }}</span>
               <input
                 v-if="tab === 'strangles' && row.ce && choicesFor(row.ce).length" type="radio" name="strangle-ce" :checked="strangleLeg('ce') === row.strike"
                 :aria-label="`Call ${strikeLabel(row.strike)}`" data-testid="strangle-ce" @change="pickStrangleSide(row, 'ce')"
@@ -814,7 +816,7 @@ defineExpose({ startEdit, showStrikes })
                 v-if="tab === 'strangles' && row.pe && choicesFor(row.pe).length" type="radio" name="strangle-pe" :checked="strangleLeg('pe') === row.strike"
                 :aria-label="`Put ${strikeLabel(row.strike)}`" data-testid="strangle-pe" @change="pickStrangleSide(row, 'pe')"
               />
-              <span data-testid="type-pe-ltp">{{ row.pe ? shown(row.pe.ltp) : '-' }}</span>
+              <span data-testid="type-pe-ltp">{{ row.pe ? cellShown(row.pe.ltp) : OI_MISSING }}</span>
             </label>
           </div>
         </template>

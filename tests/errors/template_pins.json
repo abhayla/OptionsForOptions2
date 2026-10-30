@@ -1856,7 +1856,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:paper_alert_body": {
-    "sha256": "5dfffc8a655a90644d6b4b5493c6c60891d20d596c1848458999049bdc3f6fa0",
+    "sha256": "ab49c82d06041cf83aebbfe3c93a0bf5109f7a32155a1f9244185d311ff51049",
     "reviewed": "pending owner read"
   },
   "explanation:target_estimate_label": {
@@ -1973,6 +1973,10 @@
   },
   "explanation:paper_reason_exited": {
     "sha256": "c8b506190bc6e8e2d2ff1ec3822ea117c9753e87314ff77140d6c55c77dcb510",
+    "reviewed": "pending owner read"
+  },
+  "explanation:contract_display": {
+    "sha256": "6c54155c5009219d21a0471a70ec975773321e399015937a5bf241d45fa71068",
     "reviewed": "pending owner read"
   }
 }

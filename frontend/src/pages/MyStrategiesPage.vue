@@ -33,7 +33,9 @@ const renaming = ref(null) // { id, text } while a row's name field is open
 const renameError = ref(null) // { id, parts }
 const errorParts = ref(null)
 
-const shown = computed(() => (completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
+// User test 2026-10-30 (U2): newest save first, as Home's "Recent strategies" lists them (ISO times sort as text)
+const newestFirst = (list) => [...list].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
 async function loadList() {
@@ -111,24 +113,28 @@ v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3
              placeholder="Search name" aria-label="Search saved strategies by name" autocomplete="off" />
       <p v-if="!visible.length" class="mt-3 text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
       <ul v-else class="mt-4 divide-y divide-line rounded border border-line bg-surface" data-testid="strategy-list">
-        <li v-for="s in visible" :key="s.id" class="flex flex-wrap items-center gap-3 px-3 py-2 text-sm" data-testid="strategy-row" :data-strategy-id="s.id">
-          <span class="font-medium" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
+        <li v-for="s in visible" :key="s.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]" data-testid="strategy-row" :data-strategy-id="s.id">
+          <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
-          <span v-if="legsLine(s)" class="text-ink-muted" data-testid="row-legs">{{ legsLine(s) }}</span>
+          <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
+          <span v-else class="hidden lg:block" aria-hidden="true"></span>
           <span data-testid="row-status">{{ s.status }}</span>
-          <span class="text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
-          <span v-if="trackedText(s.tracked)" class="text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
+          <span class="whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
+          <span v-if="trackedText(s.tracked)" class="max-w-full truncate text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
+          <span v-else class="hidden lg:block" aria-hidden="true"></span>
+          <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
           <button type="button" class="underline" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="underline" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
           <DraftDelete :row="s" :flow="deleteFlow" />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
-          <form v-if="renaming && renaming.id === s.id" class="flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
+          </span>
+          <form v-if="renaming && renaming.id === s.id" class="col-span-full flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="rounded border border-line px-2 py-1" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
             <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>
             <button type="submit" class="underline" :disabled="busy" data-testid="rename-save">Save</button>
             <button type="button" class="underline" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
           </form>
-          <ErrorMessage v-if="renameError && renameError.id === s.id" class="w-full" :parts="renameError.parts" compact prefix="rename-error" data-testid="rename-error" />
+          <ErrorMessage v-if="renameError && renameError.id === s.id" class="col-span-full w-full" :parts="renameError.parts" compact prefix="rename-error" data-testid="rename-error" />
         </li>
       </ul>
     </template>

@@ -42,7 +42,7 @@ from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
-from ofo.strategy.definition import describe_contract
+from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
 
@@ -84,7 +84,7 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
         raise RuntimeError(f"contract id {found.contract_id} has no stored row ({found.state})")
     c = found.stored.listed.contract
     strike = None if c.instrument_type == FUTURE_TYPE else c.strike
-    return describe_contract((c.name, Instrument(c.instrument_type), strike, c.expiry))  # type: ignore[return-value]
+    return display_contract((c.name, Instrument(c.instrument_type), strike, c.expiry))  # type: ignore[return-value]
 
 
 class PaperMonitor:
@@ -231,7 +231,7 @@ class PaperMonitor:
             name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
             await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",
                                                                                           name=name)),
-                                     str(render_explanation("paper_alert_body", name=name, what=reason,
+                                     str(render_explanation("paper_alert_body", what=reason,
                                                             count=len(targets), prices=joined)))
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}

@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (207)
+## Decisions (208)
 
-- Older decisions: 167 rows, ADR-1..ADR-170 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-171 2026-10-23: Amends ADR-168's "one requirement at a time": when row N's code is committed and its verifier is di… [amends ADR-168]
+- Older decisions: 168 rows, ADR-1..ADR-171 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
 - ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
 - ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-209 2026-10-29: On a paper strategy (REQ-109), the what-if P&L at the target level and date (REQ-084 AC-4) and the… [refines REQ-084 AC-4 (text written there in the s…]
 - ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
 - ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
+- ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
 
 ## Requirements (145)
 
