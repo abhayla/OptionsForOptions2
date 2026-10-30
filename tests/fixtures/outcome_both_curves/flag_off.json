@@ -1,6 +1,10 @@
 {
  "calendar_at_expiry": {
   "charges_breakdown": null,
+  "dividend_yields": {
+   "2026-10-13": "0.0775825852",
+   "2026-10-19": "0.0383562562"
+  },
   "legs": [
    {
     "action": "SELL",
@@ -1922,6 +1926,10 @@
  },
  "calendar_estimated_now": {
   "charges_breakdown": null,
+  "dividend_yields": {
+   "2026-10-13": "0.0775825852",
+   "2026-10-19": "0.0383562562"
+  },
   "legs": [
    {
     "action": "SELL",
@@ -3977,6 +3985,9 @@
  },
  "s54_at_expiry": {
   "charges_breakdown": null,
+  "dividend_yields": {
+   "2026-10-13": "0.0775825852"
+  },
   "legs": [
    {
     "action": "BUY",
@@ -6089,6 +6100,9 @@
  },
  "s54_estimated_now": {
   "charges_breakdown": null,
+  "dividend_yields": {
+   "2026-10-13": "0.0775825852"
+  },
   "legs": [
    {
     "action": "BUY",
