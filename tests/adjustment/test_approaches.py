@@ -10,6 +10,7 @@ from dataclasses import replace
 from decimal import Decimal as D
 from pathlib import Path
 
+import adjust_scenarios_gen as gen
 import pytest
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
@@ -24,8 +25,7 @@ from ofo.adjustment.approaches import tested_side as side_under_test  # a bare t
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
 CFG = load_config()
-IC_IDS = sorted(p.stem for p in FIX.glob("ADJ-*.json")
-                if "approach_legs" in json.loads(p.read_text(encoding="utf-8"))["expected"])
+IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")  # the generator's own list, not a file scan
 
 
 def load(sid: str) -> dict:

@@ -54,7 +54,7 @@ APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31")
 NAMES = {"A-36": "No change", "A-01": "Roll the untested spread toward spot",
          "A-05": "Roll the tested spread out (same width)", "A-29": "Reduce the tested side",
          "A-28": "Close the tested spread", "A-11": "Re-centre as an iron butterfly", "A-31": "Exit the whole strategy"}
-KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close part", "A-11": "convert",
+KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close_part", "A-11": "convert",
          "A-31": "exit"}
 CALL, PUT = "call", "put"
 _SIDE_TYPE = {CALL: "CE", PUT: "PE"}
@@ -192,10 +192,8 @@ def listing_from_chain(underlying: str, lot: int, chain: Sequence[ChainRow], tod
 def _condor(legs: Sequence[PositionLeg]) -> _Condor | None:
     if len(legs) != 4 or len({x.expiry for x in legs}) != 1:  # noqa: PLR2004 - an iron condor has 4 legs
         return None
-    found = _Condor()
-    for i, x in enumerate(legs):
-        side = CALL if x.type == "CE" else PUT
-        found.index[(side, "short" if x.side == "SELL" else "wing")] = i
+    found = _Condor({(CALL if x.type == "CE" else PUT, "short" if x.side == "SELL" else "wing"): i
+                     for i, x in enumerate(legs)})
     if len(found.index) != 4:  # noqa: PLR2004
         return None
     cs, cw = legs[found.index[(CALL, "short")]], legs[found.index[(CALL, "wing")]]
@@ -264,7 +262,7 @@ class _Builder:
         edit = [EditLeg(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * self.p.lot, x.entry),
                         x.lots, x.lots) for x in self.p.legs]
         try:
-            moved = leg_edit._land(self.listing, self.p.underlying, edit, targets)
+            moved = leg_edit.land(self.listing, self.p.underlying, edit, targets)
         except LegEditRefused as refused:
             raise _Refused(refused.message.what_happened) from refused
         return {i: moved.legs[i].leg.strike for i in targets}
