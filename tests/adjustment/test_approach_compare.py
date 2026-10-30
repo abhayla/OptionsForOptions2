@@ -30,7 +30,7 @@ from ofo.adjustment.compare import (
     compare,
     leaders,
 )
-from ofo.engine.adjust_money import stand_in_basket_margin
+from ofo.engine.adjust_money import closed_booked, stand_in_basket_margin
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.strategy import Strategy
@@ -317,6 +317,22 @@ def test_ac2_liquidity_cell_carries_the_low_oi_warning():
 def test_stand_in_basket_margin_formula_is_test_data():
     assert stand_in_basket_margin([("SELL", D("22100"), 75), ("BUY", D("45.55"), 75)]) == D("195483.75")
     assert stand_in_basket_margin([("BUY", D("45.55"), 75)]) == D("0.00")
+
+
+def test_closed_booked_is_the_engines_exit_less_entry_times_signed_quantity():
+    """ADR-008: the booked P&L of the legs an approach closes is the engine's figure (the route only calls it). Hand
+    values: BUY 65 @ 10.05 closed at 15.10 -> +328.25; SELL 130 @ 20.40 closed at 12.15 -> +1072.50."""
+    assert closed_booked([("BUY", D("10.05"), D("15.10"), 65)]) == D("328.25")
+    assert closed_booked([("SELL", D("20.40"), D("12.15"), 130)]) == D("1072.50")
+    assert closed_booked([("BUY", D("10.05"), D("15.10"), 65), ("SELL", D("20.40"), D("12.15"), 130)]) == D("1400.75")
+    assert closed_booked([]) == D(0)
+    with pytest.raises(ValueError, match="BUY or SELL"):
+        closed_booked([("buy", D(1), D(2), 1)])
+    _, cols, _ = build_columns("ADJ-02")  # every closed leg of a real approach: the hand sum, side by side
+    for c in cols:
+        hand = sum(((x.exit - x.entry) * x.quantity * (1 if x.side == "BUY" else -1) for x in c.built.closed), D(0))
+        assert closed_booked((x.side, x.entry, x.exit, x.quantity) for x in c.built.closed) == hand, c.built.id
+    assert any(c.built.closed for c in cols)
 
 
 GREEK_ROWS = ("delta", "gamma", "theta", "vega")

@@ -47,6 +47,7 @@ from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compar
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.engine import adjust_money
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
@@ -222,8 +223,8 @@ def _charges(orders: Sequence[ChargeOrder], rates: ChargeRates) -> Decimal:
 
 
 def _closed_booked(built: ApproachLegs) -> Decimal:
-    """The booked P&L of the legs this approach closes, at the planned exit: (exit - entry) x signed quantity."""
-    return sum(((c.exit - c.entry) * c.quantity * (1 if c.side == "BUY" else -1) for c in built.closed), Decimal(0))
+    """The booked P&L of the legs this approach closes, at the planned exit: the engine's figure (ADR-008)."""
+    return adjust_money.closed_booked((c.side, c.entry, c.exit, c.quantity) for c in built.closed)
 
 
 @dataclasses.dataclass(frozen=True)
