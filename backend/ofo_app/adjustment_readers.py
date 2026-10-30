@@ -18,7 +18,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import datetime
 import json
 import logging
@@ -32,7 +31,7 @@ from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.black_scholes import year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
-from ofo.instruments.models import INDEX_ROWS
+from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.timeutil import IST
@@ -40,9 +39,6 @@ from ofo.tracking.orderbook import net_positions
 
 from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
 from ofo_app.db import get_sessionmaker
-from ofo_app.execute_plan import quote_time
-from ofo_app.kite_reads import KiteReadError, KiteReads
-from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import market_state, read_booked, server_now
@@ -84,7 +80,7 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
         lc = tc.stored.listed
         c = lc.contract
         if c.instrument_type not in _OPTION_TYPES or p.average is None or c.lot_size <= 0 \
-                or abs(p.net_quantity) % c.lot_size:
+                or not is_lot_aligned(abs(p.net_quantity), c.lot_size):
             raise TrackedUnreadable(f"contract {p.instrument_id} is not a whole-lot option leg")
         underlying, lot = c.name, c.lot_size
         legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
@@ -191,41 +187,18 @@ def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Deci
 
 # ---- REST spot ----------------------------------------------------------------------------------------------------
 
-def _reading(reads: KiteReads, name: str) -> SourceReading:
-    try:
-        quote = reads.fetch_index_quote(name)
-    except KiteReadError as exc:
-        log.warning("REST index quote failed: %s", exc.code)
-        return SourceReading(SourceState.FAILED)
-    if quote is None:
-        return SourceReading(SourceState.NOT_FOUND)
-    price = quote.get("last_price")
-    if isinstance(price, bool) or not isinstance(price, (Decimal, int)):
-        return SourceReading(SourceState.EMPTY)
-    return SourceReading(SourceState.STATED, Decimal(price), quote_time(quote))
-
-
 async def read_rest_spot(underlying: str) -> SourceReading:
+    """The REST index quote through ``live_market.index_spot`` (the Kite composition root owns the client); in
+    scenario mode the scenario's REST answer is that client's transport."""
     name = index_name(underlying)
     if name is None:
         return SourceReading(SourceState.NOT_FOUND)
     scn = _scenario()
+    answer = None
     if scn is not None:
         status, reply = scn.rest_index_quote()
-        text = json.dumps(reply)
-
-        def transport(method: str, url: str, headers: dict, body: object) -> tuple[int, str]:
-            return status, text
-        reads = KiteReads(api_key="scenario", access_token="scenario", transport=transport)  # noqa: S106
-    else:
-        owner = await live_market.owner_kite_reads()
-        if owner is None:
-            return SourceReading(SourceState.ABSENT)  # not signed in: the source was not asked
-        reads = owner[1]
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(_reading, reads, name), timeout=CALL_TIMEOUT_SECONDS + 5)
-    except TimeoutError:
-        return SourceReading(SourceState.FAILED)
+        answer = (status, json.dumps(reply))
+    return await live_market.index_spot(name, answer)
 
 
 def ist_today(now: datetime.datetime) -> datetime.date:
