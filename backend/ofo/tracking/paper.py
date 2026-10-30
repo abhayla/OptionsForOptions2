@@ -41,7 +41,7 @@ from ofo.adjustment.detection import Detection, detect_near_levels, short_strike
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import MultiExpiryError, strategy_metrics
 from ofo.engine.strategy import Strategy
-from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
@@ -114,6 +114,22 @@ def leg_price(snapshot: MarketSnapshot, instrument_id: str) -> Price:
     if found.at is None:
         return Price(instrument_id, found.state, None, snapshot.ended_times.get(instrument_id))
     return found
+
+
+def display_price(snapshot: MarketSnapshot, instrument_id: str) -> Price:
+    """ADR-212: the price a paper DISPLAY figure (LTP, unbooked, totals, decay, Greeks) is computed from. Market hours:
+    exactly ``leg_price``. Market closed (``snapshot.market_closed``, ADR-119 calendar): also the last close the feed
+    holds (``planning_price_usable``, ADR-200), returned with its own time; no held close stays unpriced (ADR-200 (4)).
+    NEVER used for a fill: entry, exit, stops, triggers and settlement keep ``leg_price`` / ``is_live``."""
+    found = leg_price(snapshot, instrument_id)
+    if is_live(found) or not snapshot.market_closed:
+        return found
+    market = snapshot.legs.get(instrument_id)
+    quote = None if market is None or market.problem is not None else market.quote
+    if (quote is None or not is_live_price(quote.ltp) or quote.ltp != quote.ltp.quantize(PAISE)
+            or not planning_price_usable(quote, market_closed=True)):
+        return found
+    return Price(instrument_id, LIVE, quote.ltp, quote.timestamp)
 
 
 def index_price(snapshot: MarketSnapshot) -> Price:

@@ -343,7 +343,7 @@ def _prices(open_ids: Sequence[int], found: dict[int, tracked_contracts.TrackedC
         elif snapshot is None:
             out[cid] = paper.Price(key, "missing", None, None)
         else:
-            out[cid] = paper.leg_price(snapshot, key)
+            out[cid] = paper.display_price(snapshot, key)  # ADR-212: display only; fills use paper.leg_price
     return out
 
 
