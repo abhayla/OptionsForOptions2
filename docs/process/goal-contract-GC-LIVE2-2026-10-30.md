@@ -1,0 +1,167 @@
+# Goal contract GC-LIVE2: re-prove the GC-LIVE fixes on main, fix #612, fire a leg stop, watch the 15:30 close (Fri 30 Oct 2026)
+
+Written 2026-10-30 12:05 IST. The owner approved all four steps in the GC-LIVE session, about 12:00: "create a goal contract to work on all these recommended steps".
+It follows GC-LIVE (`goal-contract-GC-LIVE-2026-10-30.md` on this branch); read its L7 handover first.
+The owner starts this contract with /goal in a FRESH session.
+
+Role for the run: live-market QA lead and options-trading expert.
+- Drive the owner's visible Chrome, run the checker, judge every result against the spec and Sensibull.
+- Fixes go to builders: Sonnet by default; Opus only with a `Why Opus:` line.
+- The session never edits task code itself, except merges, cherry-pick conflict resolution and test-expectation updates for a new field.
+
+## State at writing (12:05 IST)
+
+- origin/main = db8cdf91. #611 (`ui/sensibull-layout-2026-10-30`) head = f9619949, not merged.
+- GC-LIVE's fixes are on LOCAL branch `live/2026-10-30` (head ad289338, upstream unset), in run tree `D:\Abhay\Ventures\OptionsForOptions2-live1030`.
+  - That tree is main + #611 merged together (merge 8c23020d), so the fixes were proven on main + #611, never on main alone.
+- Nothing is pushed. No server listens on 8765 / 5174; GC-LIVE stopped them at 11:55.
+- Kite session is valid; the token was cached this morning. /api/broker/status said connected at 11:18.
+- Issues filed by GC-LIVE:
+  - #612 deferred (F-5): `GET /api/market/indices` answers NOT_CONNECTED with null values on a cold read while Zerodha is connected.
+  - #613 parked: checker target breakeven tolerance. NOT in this contract.
+
+## Where the run works
+
+- Run tree: create it with
+  `~/.claude/tools/wt-new.ps1 -Repo D:\Abhay\Ventures\OptionsForOptions2 -Name live2 -Branch live2/2026-10-30 -Base origin/main -Purpose "GC-LIVE2 run tree: GC-LIVE fixes on main" -TtlHours 48`
+  - IMMEDIATELY after: `git -C D:\Abhay\Ventures\OptionsForOptions2-live2 branch --unset-upstream live2/2026-10-30`.
+  - Then confirm `git rev-parse --abbrev-ref "@{u}"` fails with "no upstream". GC-LIVE lesson: wt-new makes the branch track the `-Base` remote branch, so a bare push would go to main's branch.
+  - Then `npm ci` in `frontend`, logged to `D:\Abhay\scratch\gclive2\npm-ci.log`. `wt-link-modules.ps1` fails here because the main checkout has no node_modules.
+- Lock: `.run-active.lock` with this session's id at the run-tree root. It is git-excluded. Remove it on any stop.
+- Database: ofo_dev only.
+- Scratch: `D:\Abhay\scratch\gclive2\` for logs, checker output and comment bodies.
+
+## Rules for the run (same as GC-LIVE, plus its lessons)
+
+**Pushes and git**
+- No push, PR, draft PR, GitHub Actions, `ci_local.py`, `prepush.py`, `land.py` or `merge.py` at ANY time in this contract. Landing is a separate after-hours session.
+- Local commits (`GC-LIVE2: ...`) at least every 30 minutes; nothing uncommitted at the end of a turn.
+- Every new branch gets `--unset-upstream` right after creation.
+- Commit as its own Bash call, never chained after `;` / a pipe / a newline (the gate_before_commit hook refuses that).
+
+**Orders and the browser**
+- Paper only. Never press Execute, never click inside a Zerodha / Kite order panel, never sell holdings, no click after a scroll in the same batch.
+- The app's own "Add to Paper" / "Review paper orders" / "Exit paper positions" lists say "This is not a real trade". Clicking Confirm there IS allowed.
+- Browser: the owner's VISIBLE Chrome via Claude-in-Chrome, 1536 px wide, own tabs, closed when done. If the extension is not connected, stop and tell the owner.
+
+**Fixes**
+- Technical calls are the session's own. Business forks (words a user sees, money shown, scope) are asked one per question, with `Business call:`, `Spec basis:` and `Sensibull:` lines. Owner away: write them to `docs/process/owner-questions-2026-10-30.md` and continue.
+- Every time written into a file is read from the clock (`date`) in the same step.
+- Evidence table at every done claim. A builder's report is a claim: re-run its test (vitest ALWAYS in the run tree; sub-worktrees have no node_modules and the link guard blocks junctions) and re-read the screen.
+- Defect-fix contract: RCA, Class (data filter, before/after), failing test first, class-level fix, ONE live proof, a detection change or `No detection change: <reason>`.
+  - Fixes are built in a sub-worktree branched from `live2/2026-10-30` (`--unset-upstream` too), merged back locally, and re-proven live.
+  - At most 2 rounds, then PARKED (an issue labelled `parked` via `python scripts/orchestrator/gh_issue.py app parked "<title>" <body-file> --stage S6.4`).
+  - Each brief carries `Budget:` (builder-b: at most 60 tool calls; Explore: at most 32), `Core:`/`Proof:`, `Report: evidence-table` and the `.claude/kit/builder-brief.md` standing items.
+- **A hold / feed / snapshot fix is proven COLD:** restart the API with NO app tab open, then read the route. GC-LIVE's F-1 fix passed with the chain tab open and broke F-3 cold.
+- A defect outside this contract's items becomes a `deferred` issue (`gh_issue.py app deferred ... --stage S6.4`), not a fix.
+
+**Processes**
+- Stop only PIDs this run started, by the PID read from `Get-NetTCPConnection -State Listen -LocalPort <port>`, with `Stop-Process -Id <digits>` (the kill_by_name_guard hook refuses anything else).
+- 15:45 IST hard stop: anything not proven is PARKED with what is left, then L5 runs.
+
+## Running the app (from the run tree)
+
+The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run tree as its cwd argument.
+- Check first: `Get-NetTCPConnection -State Listen -LocalPort 8765,5174`; refuse busy ports.
+- API (background; log `D:\Abhay\scratch\gclive2\api<N>.log`; record the PID):
+  `APP_ENV=development LIVE_MARKET=1 python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/dev_run.py "D:/Abhay/Ventures/OptionsForOptions2-live2" python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765`
+- Vite (background, from `frontend`): `OFO_API_TARGET=http://127.0.0.1:8765 npx vite --port 5174 --strictPort`.
+- DB tests, ONE file at a time (the DB host serves prod): `python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/<file>.py -q`, run from the tree.
+- Instrument list: if the chain shows no strikes, run `python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/dev_run.py "D:/Abhay/Ventures/OptionsForOptions2-live2" python -m ofo_app.catalogue_load`.
+- Kite: if /api/broker/status says no session, ask the owner to log in once in a PRIVATE window at http://127.0.0.1:8765/broker/zerodha/login.
+
+## Items (in this order)
+
+| Step | What | Proof | Status |
+|---|---|---|---|
+| M0 | Preflight: run tree from origin/main (record sha), upstream unset (proof line), ports free, lock written, npm ci exit 0 | status lines with times, sha, "no upstream" line | Not started |
+| M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | Not started |
+| M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | Not started |
+| M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | Not started |
+| M4 | **Watch the 15:30 close live** (15:25-15:40), then post the #611 comment (details below) | one line per screen before and after 15:30; comment URL | Not started |
+| M5 | Handover: DONE / PENDING / BLOCKED / PARKED / OWED / NEXT appended here; memory note; servers stopped (recorded PIDs); lock removed; Chrome tabs closed; worktrees kept for the land | commit on this docs branch and on `live2/2026-10-30` | Not started |
+
+### M1 detail: rebuild on main
+
+- Cherry-pick these `live/2026-10-30` commits, in this order, onto `live2/2026-10-30` (plain `git cherry-pick <sha>`, NONE are merges):
+  `e8697681 a83ce26e fd3050f8 274235f7 4ef2df45 a8c76b81 730d289d b4cb55b6 c700719a acf123b3 68262ca5 c3a396ef ad289338`.
+- Do NOT take 8c23020d (the main + #611 merge) or any merge commit.
+- Conflict rule: keep main's markup and layout, and carry the fix's logic and tests.
+  - Likely spots: `frontend/src/lib/paperList.js`, `frontend/src/pages/StrategyBuilderPage.vue`, `knowledge/findings/INDEX.md` (generated: resolve by taking either side, then `python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/regen.py . --only build_findings_index.py`), `docs/process/coverage-stages.yaml` (keep both lines).
+  - Record each conflict and how it was resolved.
+- Tests, in the run tree. Each must pass; a red one is a defect under the defect-fix contract:
+  - vitest: `npx vitest run` full, once.
+  - domain: `python -m pytest tests -q -p no:cacheprovider`, once. On main this must be fully green; GC-LIVE's one failure came from #611's pages.
+  - DB files one at a time: `test_paper_iv_forward`, `test_paper_list_figures`, `test_paper_totals`, `test_paper_reason_texts`, `test_live_push_target`, `test_strategy_live_push`, `test_outcome_target`, `test_outcome_route`, `test_openapi_drift`.
+- Start API + Vite, with NO app tab open, then the five live proofs:
+  1. **Cold paper read:** `curl -s http://127.0.0.1:8765/paper/strategies`. Every open book is `state` LIVE and `greeks_reason` None, and totals `decay` is non-null.
+  2. **Pause "as of":**
+     - Before opening any tab, read `GET /paper/strategies` and accept any book whose `state` is PAUSED with `as_of` set.
+     - If none is paused, open Positions -> Paper and read every pause sentence; every one must end ", as of <date>, <time> IST".
+     - If no book pauses in market hours, write that as the result (it is not a failure) and point to the route test as proof.
+  3. **Target in pushes (R-26):** builder `?strategy=56`, type target 23100 + Enter, read P&L at target each second for 6 s. The figure moves and there is NO "Stale: this target figure" text. Then type 23200: shown within 2 s.
+  4. **Live Strategies:** every spot line reads "<level> at <date>" with a space.
+  5. **Checker:**
+     - `python scripts/checks/ui_data_check.py --paper-orders <id> --out D:\Abhay\scratch\gclive2\m1` for 69, 70, 59, 63, 65: 0 mismatches each.
+     - Then target mode `--strategy-legs D:\Abhay\scratch\gclive\l5\tgt63\legs.json --target-level 23000 --booked 962.00 --paper-strategy-id 63` (copy the legs file to a new dir and refresh `captured_at` to now): main and target blocks 0 mismatches.
+- Commit `GC-LIVE2: M1 ...`. Main-code fixes then sit on `live2/2026-10-30`, ready for one PR after hours.
+
+### M2 detail: #612
+
+- Read issue #612 (`gh issue view 612`). Brief a Sonnet builder (builder-b, sub-worktree `live2-612` from `live2/2026-10-30`).
+- Core: `GET /api/market/indices` (and `?fallback=true`, the socket-drop path in `frontend/src/composables/useIndexLive.js`) must hold NIFTY 50 and SENSEX itself until first quote, or a short wait, then release. That is the same pattern GC-LIVE's F-3 fix used in `_hold_until_ready` in `backend/ofo_app/routes/paper.py`. Reuse that shape; do not copy-paste a second variant if one shared helper fits.
+- Class: every REST read of an index / contract that no screen holds (indices route first; the builder lists others it finds with the same shape, as a deferred list, not fixed here).
+- Proof is COLD:
+  - Restart the API with no tab open, `curl -s http://127.0.0.1:8765/api/market/indices`.
+  - Expected: `state` LIVE and both values non-null. Before the fix: NOT_CONNECTED with nulls (seen 30 Oct 11:18 IST).
+- Then comment the result on #612. Close #612 only via a `Fixes #612` line in the later land PR, never by hand now.
+
+### M3 detail: leg stop
+
+- On a 1-lot open paper strategy, set ONE leg stop through the paper card's "Stops" panel (Positions -> Paper -> card -> Stops -> "Stop on a leg"). Use strategy 70 (SENSEX short strangle) if open, else 69.
+- Choose a short leg. Direction "Above". Stop price = that leg's LTP read the same minute + 1.00, rounded to 0.05.
+- Read the trigger rows with `curl -s http://127.0.0.1:8765/paper/strategies/<id>/triggers`. Poll every 5 s, at most 5 min.
+- If it has not fired in 5 min:
+  - Cancel the stop (from the same panel).
+  - Set a new one at LTP + 0.50. At most 2 attempts.
+  - Still no fire: record "price did not cross" as the result, with the LTP path. Not a defect.
+- On fire, the proof is:
+  - exactly ONE new order of kind `stop` for that leg's whole open quantity, at a price from that tick (`GET /paper/strategies/<id>` orders);
+  - the leg is closed and the other leg stays open;
+  - ONE new alert (`GET /paper/alerts`), and the bell count goes up by 1.
+- Restart the API (record PIDs). After 60 s: same trigger state (fired, same `fired_at`), same order count, same alert count.
+
+### M4 detail: 15:30 close
+
+- 15:25-15:29: one look each at Home, Positions -> Paper, Option Chain, Builder (strategy 69), Live Strategies. Record a figure, the label, and that there is no "Market closed" text.
+- 15:31-15:40: the same screens again. Each must show the ONE market-closed banner (ADR-177), numbers from the last close (ADR-212 / ADR-197), and no "stale since" or per-cell stale sentences (finding `closed-market-rule-per-surface`).
+- Paper P&L must not show "paused" after 15:30: ADR-212 says the close prices are used.
+- A screen that fails is a defect: file it `deferred` with the screen line. Do NOT fix it in this contract (after hours, no live proof is possible).
+- After 15:30: `gh pr comment 611 --body-file D:\Abhay\scratch\gclive\comments\c611.md`. The text is ready and must not be edited, except to append one line with any M4 failures on #611 screens. Record the comment URL.
+
+## Not in this contract (and why)
+
+- Landing #611 and the GC-LIVE fix PR (push, CI, merge): a separate after-hours session.
+- #613 (checker breakeven tolerance): it can be worked offline from saved replies.
+- R-24: needs arming before 09:15, so Monday 2 Nov.
+- NIFTY 3 Nov settlement proof: Monday 3 Nov after 15:45.
+
+## Definition of Done
+
+- [ ] M0 recorded, including the "no upstream" proof line.
+- [ ] M1: all 13 commits cherry-picked onto main (conflicts listed); the listed test runs pass; all five live proofs recorded with times; checker 0 mismatches on all 5 `--paper-orders` strategies and on 63 target mode.
+- [ ] M2: #612 fixed with a red-then-green test and a COLD live proof, or PARKED after 2 rounds with evidence; #612 commented.
+- [ ] M3: the leg stop fired exactly once and did not fire again after an API restart (counts recorded), or "price did not cross" recorded after 2 attempts.
+- [ ] M4: every listed screen has a line before and after 15:30; failures filed `deferred`; #611 comment posted (URL recorded).
+- [ ] Nothing pushed at any time: `git rev-parse --abbrev-ref "@{u}"` reports no upstream on `live2/2026-10-30`, and `git ls-remote origin ui/sensibull-layout-2026-10-30` still shows f9619949.
+- [ ] M5 handover committed here and on `live2/2026-10-30`.
+
+## Found during the run
+
+| F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
+|---|---|---|---|---|---|
+
+## Parked
+
+| Row / item | Why (evidence) | What is left |
+|---|---|---|
