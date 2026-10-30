@@ -301,7 +301,7 @@ class _Rows:
     def greeks(self) -> Mapping[str, Cell] | Cell:
         if not self.b.after:  # ADR-215: nothing stays open (exit) -> no Greeks after, never a 0 that could lead
             return _dash(render_explanation("adjust_cmp_no_position_left"))
-        total ={"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0), "vega": Decimal(0)}
+        total = {"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0), "vega": Decimal(0)}
         for x in self.b.after:
             g = self.ctx.leg_greeks.get(x.tradingsymbol)
             if g is None:

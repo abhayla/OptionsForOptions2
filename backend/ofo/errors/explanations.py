@@ -282,7 +282,7 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
-    "margin_change": "Lowest margin after the change",  # the lowest value = frees the most margin, not "smallest"
+    "margin_change": "Lowest margin change",  # the lowest value = frees the most margin, not "smallest"
     "max_loss": "Smallest max loss",
     "move_m2": "Highest P&L at -2%",
     "move_m1": "Highest P&L at -1%",
@@ -1235,6 +1235,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_empty", "values_seen",  # an EMPTY answer: outcome page and adjustment route
                         "Zerodha returned no margin figure for this basket."),
+    ExplanationTemplate("outcome_margin_empty_funds", "values_seen",  # the available-funds read stated no figure
+                        "Zerodha returned no available-funds figure for this account."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
     ExplanationTemplate("outcome_margin_no_basket", "values_seen",
                         "Margin from Zerodha is shown when every leg is a listed Zerodha contract."),

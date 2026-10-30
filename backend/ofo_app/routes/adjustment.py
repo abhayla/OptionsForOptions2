@@ -193,7 +193,7 @@ def margin_block(margin: Margin | None) -> dict:
                                                      else margin.broker_needed),
                 "at": margin.checked_at, "reason": None}
     if margin.empty:  # Zerodha answered in full and stated no figure: the outcome page's own words, never 0
-        return empty
+        return {**empty, "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
     return {"state": margin.state.lower(), "value": None, "at": None,
             "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
 
