@@ -712,6 +712,7 @@ class TargetGreeksOut(ApiModel):
     total: GreeksOut | None
     unavailable: Literal["no_time_left"] | None
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
+    dividend_yields: dict[Identifier, Money] = {}  # expiry date -> the q the engine priced it with (checker input, not shown)
 
 
 class TargetBadgeOut(ApiModel):

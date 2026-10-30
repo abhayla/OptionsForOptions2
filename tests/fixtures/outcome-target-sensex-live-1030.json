@@ -1,0 +1,105 @@
+{
+ "underlying": "SENSEX",
+ "valuation": "2026-10-30T11:24:37+05:30",
+ "spot_level": "74462.42",
+ "spot_at": "2026-10-30T11:24:36+05:30",
+ "legs": [
+  {
+   "instrument_id": "BSE_FO:1134468",
+   "symbol": "SENSEX26N0574000CE",
+   "action": "SELL",
+   "instrument": "CE",
+   "strike": "74000.00",
+   "expiry": "2026-11-05",
+   "days_to_expiry": 6,
+   "lots": 1,
+   "lot_size": 20,
+   "quantity": 20,
+   "planned_entry": "570.00",
+   "planned_entry_display": "570.00",
+   "captured_at": "2026-10-30T11:24:13+05:30",
+   "ltp": "826",
+   "ltp_display": "826.00",
+   "iv": "0.157808",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "BSE_FO:1134406",
+   "symbol": "SENSEX26N0573600PE",
+   "action": "SELL",
+   "instrument": "PE",
+   "strike": "73600.00",
+   "expiry": "2026-11-05",
+   "days_to_expiry": 6,
+   "lots": 1,
+   "lot_size": 20,
+   "quantity": 20,
+   "planned_entry": "495.50",
+   "planned_entry_display": "495.50",
+   "captured_at": "2026-10-30T11:24:13+05:30",
+   "ltp": "302.8",
+   "ltp_display": "302.80",
+   "iv": "0.162132",
+   "health": "available",
+   "label": null
+  }
+ ],
+ "leg_quotes": [
+  {
+   "instrument_id": "BSE_FO:1134468",
+   "symbol": "SENSEX26N0574000CE",
+   "bid": "825",
+   "ask": "826.65",
+   "bid_display": "825.00",
+   "ask_display": "826.65",
+   "health": "available"
+  },
+  {
+   "instrument_id": "BSE_FO:1134406",
+   "symbol": "SENSEX26N0573600PE",
+   "bid": "302.6",
+   "ask": "303",
+   "bid_display": "302.60",
+   "ask_display": "303.00",
+   "health": "available"
+  }
+ ],
+ "target": {
+  "level": "74300",
+  "at": "2026-10-30T11:24:37+05:30",
+  "pnl": {
+   "value": "-396.60",
+   "display": "\u2212\u20b9396.60"
+  },
+  "breakevens": [
+   "73499.64",
+   "74202.39"
+  ],
+  "breakevens_reason": null,
+  "greeks": {
+   "legs": [
+    {
+     "delta": "-11.2882",
+     "gamma": "-0.0052",
+     "theta": "849.3955",
+     "vega": "-758.8800"
+    },
+    {
+     "delta": "6.7443",
+     "gamma": "-0.0047",
+     "theta": "995.5130",
+     "vega": "-704.8509"
+    }
+   ],
+   "total": {
+    "delta": "-4.5438",
+    "gamma": "-0.0098",
+    "theta": "1844.9086",
+    "vega": "-1463.7309"
+   },
+   "unavailable": null,
+   "unavailable_text": null
+  }
+ }
+}

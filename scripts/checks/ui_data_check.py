@@ -1498,23 +1498,41 @@ def _implied_q(price, s, k, t, r, sigma, kind) -> float | None:
     return 0.5 * (lo + hi)
 
 
+IV_ROUNDING = 5e-7  # the reply's IV is printed to 6 dp, so the true IV is within this of it
+# Measured 30 Oct 2026 (SENSEX, 6 days to expiry, two replies a minute apart): the q this file solves differed from the
+# q that reproduces the server's theta by 2e-6 and 6e-6, and theta moves ~800 per unit of q (0.005 at 6e-6). A solved q
+# is therefore uncertain by at least this much whatever the legs' own spread is; an echoed q needs none of it.
+Q_SOLVE_FLOOR = 3e-5
+
+
 def target_q_by_expiry(reply: dict, r: float) -> dict:
-    """Per expiry (q, spread). q is solved from the reply's own legs (their IV and the two-sided mid, else the LTP the
-    IV was solved from) at the reply's valuation; spread = max - min over the legs and widens the tolerance. An
-    expiry with no solvable leg is absent."""
+    """Per expiry (q, spread). q is the one the server priced with when the reply echoes it
+    (`target.greeks.dividend_yields`, spread 0: the same input, nothing to re-solve). Otherwise q is solved from the
+    reply's own legs (their IV and the two-sided mid, else the LTP the IV was solved from) at the reply's valuation,
+    and the spread (max - min over the legs, each solved at the IV and at the IV +- its 6 dp rounding) widens the
+    tolerance: theta moves ~800 per unit of q, so a q off by 6e-6 (the rounding alone) is 0.005 of theta. An expiry
+    with neither is absent."""
+    echoed = (((reply.get("target") or {}).get("greeks") or {}).get("dividend_yields")) or {}
     s = float(reply["spot_level"])
     valuation = dt.datetime.fromisoformat(reply["valuation"])
     quotes = {x["instrument_id"]: x for x in reply.get("leg_quotes") or []}
     found: dict = {}
+    centre: dict = {}
     for lg in reply.get("legs") or []:
-        if lg.get("iv") is None:
+        if lg.get("iv") is None or lg["expiry"] in echoed:
             continue
         px, _src = iv_price(lg, quotes.get(lg["instrument_id"]) or {})
         t = years_to_expiry(valuation, lg["expiry"])
-        q = _implied_q(px, s, float(lg["strike"]), t, r, float(lg["iv"]), lg["instrument"])
-        if q is not None:
-            found.setdefault(lg["expiry"], []).append(q)
-    return {e: (statistics.median(v), max(v) - min(v)) for e, v in found.items()}
+        for d_iv in (0.0, -IV_ROUNDING, IV_ROUNDING):
+            q = _implied_q(px, s, float(lg["strike"]), t, r, float(lg["iv"]) + d_iv, lg["instrument"])
+            if q is not None:
+                found.setdefault(lg["expiry"], []).append(q)
+                if d_iv == 0.0:
+                    centre.setdefault(lg["expiry"], []).append(q)
+    # the spread never falls below Q_SOLVE_FLOOR: the solve is 1 of several instants (spot vs leg prices), see the const
+    out = {e: (statistics.median(centre.get(e) or v), max(max(v) - min(v), Q_SOLVE_FLOOR)) for e, v in found.items()}
+    out.update({e: (float(q), 0.0) for e, q in echoed.items()})
+    return out
 
 
 def _target_model(legs, qmap, level, at, r, dq=0.0):
