@@ -154,7 +154,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <template v-if="showFigures">
         <p v-if="data.output_label" class="mt-2 text-sm" data-testid="live-output-label">{{ data.output_label }}</p>
         <p class="mt-2 text-sm">{{ data.underlying }} <span class="font-semibold" data-testid="live-spot">{{ data.spot_level ?? '-' }}</span>
-          <template v-if="!closed">at <span data-testid="live-spot-at">{{ spotAt }}</span></template></p>
+          <template v-if="!closed">{{ ' ' }}at <span data-testid="live-spot-at">{{ spotAt }}</span></template></p>
         <p class="mt-1 text-xs text-ink-muted">
           <template v-if="breakevens"><span data-testid="live-breakevens">Breakeven: {{ breakevens }}</span> · </template>Max Profit: <span class="text-profit" data-testid="live-max-profit">{{ maxProfit }}</span> · Max Loss: <span class="text-loss" data-testid="live-max-loss">{{ maxLoss }}</span>
         </p>
