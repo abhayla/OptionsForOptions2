@@ -12,6 +12,7 @@
   range sent to the server; ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
   never a number, never the selection (lib/chainDisplay.js). -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
@@ -153,51 +154,52 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
 
 <template>
   <section data-testid="option-chain-page">
-    <p class="text-xs text-ink-muted">Market</p>
-    <h1 class="text-xl font-semibold" data-testid="page-title">Option Chain</h1>
+    <PageHeader parent="Market" title="Option Chain" />
 
-    <div class="mt-3 flex flex-wrap items-end gap-3" data-testid="chain-header">
-      <label class="text-sm">
+    <!-- Owner 2026-10-30 (Sensibull 060): one bar for underlying, expiry, spot and feed state, then one row of filters,
+         then the chain in a card with the strike column centred and shaded and numbers right-aligned. -->
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-line bg-surface px-4 py-2" data-testid="chain-header">
+      <label class="field-label">
         Underlying
-        <select v-model="underlying" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="underlying-select">
+        <select v-model="underlying" class="field ml-1" data-testid="underlying-select">
           <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
         </select>
       </label>
-      <label class="text-sm">
+      <label class="field-label">
         Expiry
-        <select v-model="expiry" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="expiry-select">
+        <select v-model="expiry" class="field ml-1" data-testid="expiry-select">
           <option v-for="e in expiries" :key="e" :value="e">{{ e }}</option>
         </select>
       </label>
       <span v-if="days !== null" class="text-sm text-ink-muted" data-testid="days-left">{{ days }} days left</span>
-      <p class="text-sm" data-testid="spot-line">
+      <p class="num text-sm" data-testid="spot-line">
         <span class="text-ink-muted">{{ underlying }}</span>
         <span class="ml-1 font-semibold" data-testid="spot">{{ view ? text(view.spot) : VALUE_UNAVAILABLE }}</span>
         <span v-if="spotTime" class="ml-1 text-ink-muted" data-testid="spot-time">as of {{ spotTime }}</span>
         <span v-if="view && shownHealth(view.spot_health, view.market_closed)" class="ml-1 text-ink-muted" data-testid="spot-health">{{ healthSentence(view.spot_health) }}</span>
       </p>
-      <span class="text-xs text-ink-muted" data-testid="socket-status">{{ socketStatus }}</span>
+      <span class="ml-auto text-xs text-ink-muted" data-testid="socket-status">{{ socketStatus }}</span>
     </div>
 
-    <div class="mt-3 flex flex-wrap items-end gap-3 text-sm" data-testid="chain-filters">
+    <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted" data-testid="chain-filters">
       <label>
         Strikes each side
-        <select v-model.number="strikesEachSide" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="filter-strike-range">
+        <select v-model.number="strikesEachSide" class="field ml-1" data-testid="filter-strike-range">
           <option v-for="n in STRIKE_RANGES" :key="n" :value="n">{{ n }}</option>
         </select>
       </label>
       <label>
         Moneyness
-        <select v-model="filters.moneyness" class="ml-1 rounded border border-line bg-surface px-2 py-1" data-testid="filter-moneyness">
+        <select v-model="filters.moneyness" class="field ml-1" data-testid="filter-moneyness">
           <option v-for="[code, label] in MONEYNESS" :key="code" :value="code">{{ label }}</option>
         </select>
       </label>
-      <label>Min OI <input v-model.lazy="filters.minOi" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-oi" /></label>
-      <label>Min volume <input v-model.lazy="filters.minVolume" type="number" min="0" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-volume" /></label>
-      <label>Min premium <input v-model.lazy="filters.minLtp" type="number" min="0" step="0.05" class="ml-1 w-24 rounded border border-line bg-surface px-1" data-testid="filter-min-ltp" /></label>
+      <label>Min OI <input v-model.lazy="filters.minOi" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-oi" /></label>
+      <label>Min volume <input v-model.lazy="filters.minVolume" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-volume" /></label>
+      <label>Min premium <input v-model.lazy="filters.minLtp" type="number" min="0" step="0.05" class="field ml-1 w-24" data-testid="filter-min-ltp" /></label>
       <label><input v-model="filters.bidAndAsk" type="checkbox" data-testid="filter-bid-ask" /> Has bid and ask</label>
       <label><input v-model="details" type="checkbox" data-testid="details-toggle" /> Details</label>
-      <button type="button" class="rounded border border-line px-2 text-xs" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
+      <button type="button" class="btn btn-sm" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
     </div>
 
     <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
@@ -212,27 +214,27 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       Some contracts are currently unavailable on Zerodha and cannot be added.
     </p>
     <p v-if="view && view.rows.length" class="mt-3 text-sm">
-      <button type="button" class="rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
+      <button type="button" class="btn btn-sm" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
     <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
     <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
     <p v-if="staleLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-stale-line">IV and Greeks: {{ staleLine }}.</p>
-    <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">
-      <table class="min-w-full text-sm" data-testid="chain-table">
+    <div v-if="view && view.rows.length" class="mt-3 max-h-[calc(100vh-240px)] overflow-auto rounded-lg border border-line bg-surface" data-testid="chain-card">
+      <table class="ui-table" data-testid="chain-table">
         <thead>
           <tr>
             <th class="px-1 py-1" data-testid="ce-select-head"></th>
-            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center" data-testid="calls-head">Calls</th>
-            <th class="px-2 py-1 text-center" data-testid="strike-head">Strike</th>
-            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center" data-testid="puts-head">Puts</th>
+            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center font-semibold uppercase" data-testid="calls-head">Calls</th>
+            <th class="bg-line px-2 py-1 text-center" data-testid="strike-head">Strike</th>
+            <th :colspan="SIDE_FIELDS.length" class="px-2 py-1 text-center font-semibold uppercase" data-testid="puts-head">Puts</th>
             <th class="px-1 py-1" data-testid="pe-select-head"></th>
           </tr>
-          <tr class="text-xs text-ink-muted" data-testid="chain-columns">
+          <tr data-testid="chain-columns">
             <th class="px-1 py-1"></th>
-            <th v-for="[key, label] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right">{{ label }}</th>
-            <th class="px-2 py-1 text-center">Strike</th>
-            <th v-for="[key, label] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right">{{ label }}</th>
+            <th v-for="[key, label] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1">{{ label }}</th>
+            <th class="bg-line px-2 py-1 text-center">Strike</th>
+            <th v-for="[key, label] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1">{{ label }}</th>
             <th class="px-1 py-1"></th>
           </tr>
         </thead>
@@ -254,11 +256,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
                 </p>
               </template>
             </td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
+            <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span>
             </td>
-            <td class="px-2 py-1 text-center" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
-            <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
+            <td class="num px-3 py-1 text-center font-medium" :class="isAtm(row) ? 'bg-accent-soft text-accent' : 'bg-surface-muted'" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
+            <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
@@ -276,8 +278,8 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       </table>
     </div>
 
-    <div v-if="picked.length" ref="summary" class="sticky bottom-0 mt-3 rounded border border-line bg-surface p-3" data-testid="selected-legs">
-      <h2 class="text-sm font-medium">Selected Legs</h2>
+    <div v-if="picked.length" ref="summary" class="sticky bottom-0 mt-3 rounded-lg border border-line bg-surface p-4" data-testid="selected-legs">
+      <h2 class="text-sm font-semibold">Selected Legs</h2>
       <ul class="mt-1 text-sm">
         <li v-for="e in picked" :key="e.id" class="flex flex-wrap items-center gap-2" data-testid="selected-leg" :data-action="e.action ?? ''">
           <span data-testid="selected-leg-name">{{ contractName(e) }}</span>
@@ -299,7 +301,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
         <button type="button" class="mr-2 rounded border border-line px-2" data-testid="multi-expiry-continue" @click="openBuilder">Continue</button>
         <button type="button" class="rounded border border-line px-2" data-testid="multi-expiry-review" @click="reviewSelection">Review Selection</button>
       </div>
-      <button type="button" class="mt-2 rounded border border-line px-3 py-1 text-sm font-medium" :disabled="!canAdd" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
+      <button type="button" class="btn btn-primary mt-3" :disabled="!canAdd" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
     </div>
   </section>
 </template>
