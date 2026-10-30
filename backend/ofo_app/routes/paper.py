@@ -22,6 +22,8 @@ The user comes from the session (``current_user_ref``), never from the request.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
@@ -41,6 +43,7 @@ from ofo.money import PAISE
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
+from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
@@ -53,7 +56,7 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.live_push import LiveFeed
+from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -64,7 +67,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
+from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
 
@@ -143,6 +146,7 @@ PAPER_CHARGES = "paper_charges"
 class PaperFigures(ApiModel):
     state: BookState
     pause_reason: paper.PauseReason | None
+    as_of: datetime.datetime | None = None  # REQ-109 AC-5: PAUSED only: oldest known quote time of a contract not live
     booked: Money
     unbooked: Money | None
     total: Money | None
@@ -243,6 +247,7 @@ class PaperTotalsOut(ApiModel):
     total: Money | None
     total_text: CatalogueText | None
     totals_reason: paper.PauseReason | None
+    totals_as_of: datetime.datetime | None = None  # the oldest as_of among the paused books (None: no known quote time)
     decay: Money | None  # REQ-145 AC-2: rupees to the next market open over every open contract, rounded once
     decay_text: CatalogueText | None
     decay_reason: TotalsReason | None
@@ -264,13 +269,66 @@ def _connected(ctx: MarketContext | None) -> bool:
     return ctx is not None and ctx.provider.status().connected
 
 
+#: GC-LIVE 30 Oct 2026: the longest the paper read waits for the index and the forward strikes' first live quotes.
+FORWARD_WAIT_S = 3.0
+
+
+def _iv_inputs_missing(snapshot) -> bool:
+    """True when an IV cannot be solved yet for an option leg of a market that is open: no index reading, or an option
+    expiry whose forward is missing or fell back to spot (ADR-061: parity needs the ATM call/put pairs, D-C33). A
+    closed market waits for nothing (ADR-212: the figures are the last close)."""
+    if snapshot.market_closed:
+        return False
+    expiries = {lm.contract.contract.expiry for lm in snapshot.legs.values()
+                if lm.contract is not None and lm.contract.contract.instrument_type in ("CE", "PE")}
+    if not expiries:
+        return False
+    return snapshot.spot is None or any(
+        (f := snapshot.forwards.get(e)) is None or f.source != "parity" for e in expiries)
+
+
+def _read_ready(snapshot, ids: list[str]) -> bool:
+    """Every open contract has its display price and the IV inputs are there."""
+    return (all(paper.display_price(snapshot, i).state == paper.LIVE for i in ids)
+            and not _iv_inputs_missing(snapshot))
+
+
+async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str], snapshot):
+    """ONE hold for the whole read, released once at the end (GC-LIVE). Holds the open contracts nobody else holds, the
+    index and ``forward_strike_ids`` (the outcome push's own D-C33 choice) until every contract is priced and an IV can
+    be solved, or ``FORWARD_WAIT_S`` passes. RCA 1 (F-1, 'every paper book is no_iv'): the read held only the book's
+    contracts, so with no other screen open the index had no quote and the chain no call/put pair. RCA 2 (F-3): the
+    contracts' own hold was released before the IV inputs were read, and a released contract's quote is parked, so an
+    unheld contract came back 'missing'. A provider that knows none of the ids leaves the read as it is."""
+    provider = ctx.provider
+    spot = provider.underlying_quote(underlying)
+    live_spot = spot.ltp if spot is not None and spot.ltp is not None and spot.ltp > 0 else None
+    index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
+    wanted = [*ids, *([index_id] if index_id else []),
+              *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
+    try:
+        handle = feed.fanout.subscribe(no_listener, list(dict.fromkeys(wanted)), max_queue=1)
+    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the answer stands
+        return snapshot
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + FORWARD_WAIT_S
+        while True:
+            await asyncio.sleep(POLL_SECONDS)
+            snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+            if _read_ready(snapshot, ids) or not provider.status().connected or loop.time() >= deadline:
+                return snapshot
+    finally:
+        with contextlib.suppress(Exception):
+            feed.fanout.unsubscribe(handle)
+
+
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
-    """One market read (the tracking routes' rule): with a live feed, contracts nobody holds are held until their first
-    live quote or the planned-entry wait passes."""
+    """One market read (the tracking routes' rule): with a live feed, a read that is not ready (a contract unpriced, or
+    no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
     snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
-    unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
-    if unpriced and feed is not None:
-        _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
+    if feed is not None and ids and not _read_ready(snapshot, ids):
+        snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot
 
 
@@ -355,15 +413,17 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE), None)
     paused = view.unbooked is None
+    as_of = None
     if not prices:
         state, pause = "EXITED", None
     elif not connected:
         state, pause = "NOT_CONNECTED", reason
     elif paused:
         state, pause = "PAUSED", reason or paper.PRICES_NOT_LIVE
+        as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause),
+    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}
@@ -602,7 +662,9 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
     booked, unbooked, total, decay = got.booked, got.unbooked, got.total, got.decay
     totals_reason = None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE)
     decay_reason = None if missing is None else missing.reason
-    return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
+    times = [s["as_of"] for s in strategies if s["unbooked"] is None and s.get("as_of") is not None]
+    return {"totals_as_of": min(times) if times else None,
+            "booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
             "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,

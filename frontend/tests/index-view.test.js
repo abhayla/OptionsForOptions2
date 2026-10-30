@@ -222,13 +222,14 @@ describe('the Underlying/index view page', () => {
     expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('82010.25')
   })
 
-  it('AC-2: a NOT_CONNECTED answer never shows a number, even one carrying a value', async () => {
+  it('ADR-213: a NOT_CONNECTED answer shows the value it carries (the server read it) under the not-live message', async () => {
     const answer = notConnected(T1)
     answer.indices[0].value = '25145.50'
     apiAnswer = answer
     const w = await mountPage()
-    expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('Not available')
-    expect(w.text()).not.toContain('25145.50')
+    expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25145.50')
+    expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('Not available')
+    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
   })
 })
 

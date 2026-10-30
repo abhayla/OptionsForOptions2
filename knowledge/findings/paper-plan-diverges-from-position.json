@@ -8,11 +8,14 @@
     "where": "build/gcbm-must-have 5052f82a, ofo_dev strategy 63; backend/ofo_app/routes/tracking.py:61-65,319",
     "evidence": "Live: short CE stepped 22900 -> 22950 and saved; builder legs read 22950 while the Paper P&L panel still listed '65 units 3 Nov 22900 CE'; summary max profit +4,274 used planned entries 73.90/103.60/118.65/78.80 against paper fills 72.60/102.00/122.25/80.95 (spec/findings.md F-65, F-66)."
   },
-  "fix": "none yet; ADR-207 (2) decides the class fix: the paper position becomes an order book and the builder opens it in Drafts Mode, where an edit can only become paper orders (goal contract GC-TP).",
+  "fix": "ADR-207 (2): the paper position is an order book and the builder opens it in Drafts Mode, where an edit becomes paper orders only through a review list (GC-TP). Re-tested live 2026-10-30 (GC-LIVE L6): strategy 69 roll 23050 -> 23100 CE went through '2 pending changes' and a review list; plan and paper position both read 23100.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "GC-TP's core step adds the check: the independent data checker recomputes an open paper position's figures from its recorded orders, never from the saved plan."
+    "status": "guarded",
+    "checks": [
+      "scripts/checks/ui_data_check.py --paper-orders <id> (check_paper_orders: recomputes an open paper position from its recorded orders, never from the saved plan; 2026-10-30 live on strategies 69, 70, 59, 63, 65: 176 match / 0 mismatch)",
+      "frontend/tests/paper-drafts-diff.test.js (the Drafts Mode diff between the open position and the edited plan; 11 passed 2026-10-30)"
+    ],
+    "note": "Guarded by the checker's order-book recompute and the Drafts Mode diff test."
   },
   "spec_ref": [
     "spec/requirements/REQ-109.md",
