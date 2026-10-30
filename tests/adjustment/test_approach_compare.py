@@ -30,7 +30,7 @@ from ofo.adjustment.compare import (
     compare,
     leaders,
 )
-from ofo.engine.adjust_money import stand_in_basket_margin
+from ofo.engine.adjust_money import closed_booked, stand_in_basket_margin
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.strategy import Strategy
@@ -88,8 +88,8 @@ def build_columns(sid: str, margins: dict[str, D] | None = None, pop_on: bool = 
                                   adjustment_charges=ADJ if built.trades else D(0),
                                   open_exit_charges=EXIT if built.after else D(0))
         value = (margins or {}).get(a)
-        cols.append(Column(built, whole, None, True, MarginRead(value, None if value is not None else
-                                                                 render_explanation("adjust_margin_empty"))))
+        empty = render_explanation("adjust_margin_not_available", reason=render_explanation("outcome_margin_empty"))
+        cols.append(Column(built, whole, None, True, MarginRead(value, None if value is not None else empty)))
     ctx = Context(position, spot, chain, None, pop_on, MarginRead(D("100000")), greeks_of(sc),
                   sc["position"]["adjustments_used"])
     return sc, cols, ctx
@@ -156,7 +156,8 @@ def test_core_every_criterion_has_a_value_or_reason_and_money_equals_the_hand_va
     for a in ids:
         want = sum((gen.sign(x["side"]) * x["quantity"] * D(rows[x["tradingsymbol"]]["delta"])
                     for x in legs[a]["after"]), D(0))
-        assert delta.values[a].value == want.quantize(D("0.0001")), a
+        # ADR-215: an approach that leaves nothing open has no delta after (no value), not a 0
+        assert delta.values[a].value == (want.quantize(D("0.0001")) if legs[a]["after"] else None), a
 
 
 def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
@@ -184,8 +185,10 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")
     assert mc.values["A-31"].value == D("-100000") and mc.leaders == ("A-31",)
+    # the leader is the LOWEST value (frees the most margin), so it is never called "smallest"; the row says the sign
+    assert (mc.label, mc.leader_label) == ("Margin change (negative = margin freed)", "Lowest margin after the change")
     a29 = mc.values["A-29"]
-    assert a29.text == "-" and "Zerodha answered without a margin figure" in a29.unavailable_reason
+    assert a29.text == "-" and "Zerodha returned no margin figure for this basket" in a29.unavailable_reason
     adj = row(cmp, "adjustments")
     assert adj.values["A-36"].text == "0 used; no plan maximum set" and adj.values["A-05"].value == 1
     assert adj.leaders == ("A-36",)
@@ -316,3 +319,42 @@ def test_ac2_liquidity_cell_carries_the_low_oi_warning():
 def test_stand_in_basket_margin_formula_is_test_data():
     assert stand_in_basket_margin([("SELL", D("22100"), 75), ("BUY", D("45.55"), 75)]) == D("195483.75")
     assert stand_in_basket_margin([("BUY", D("45.55"), 75)]) == D("0.00")
+
+
+def test_closed_booked_is_the_engines_exit_less_entry_times_signed_quantity():
+    """ADR-008: the booked P&L of the legs an approach closes is the engine's figure (the route only calls it). Hand
+    values: BUY 65 @ 10.05 closed at 15.10 -> +328.25; SELL 130 @ 20.40 closed at 12.15 -> +1072.50."""
+    assert closed_booked([("BUY", D("10.05"), D("15.10"), 65)]) == D("328.25")
+    assert closed_booked([("SELL", D("20.40"), D("12.15"), 130)]) == D("1072.50")
+    assert closed_booked([("BUY", D("10.05"), D("15.10"), 65), ("SELL", D("20.40"), D("12.15"), 130)]) == D("1400.75")
+    assert closed_booked([]) == D(0)
+    with pytest.raises(ValueError, match="BUY or SELL"):
+        closed_booked([("buy", D(1), D(2), 1)])
+    _, cols, _ = build_columns("ADJ-02")  # every closed leg of a real approach: the hand sum, side by side
+    for c in cols:
+        hand = sum(((x.exit - x.entry) * x.quantity * (1 if x.side == "BUY" else -1) for x in c.built.closed), D(0))
+        assert closed_booked((x.side, x.entry, x.exit, x.quantity) for x in c.built.closed) == hand, c.built.id
+    assert any(c.built.closed for c in cols)
+
+
+GREEK_ROWS = ("delta", "gamma", "theta", "vega")
+
+
+def test_adr215_nothing_open_shows_no_position_left_and_cannot_lead_the_greeks_rows():
+    """ADR-215 (REQ-156 AC-3): an approach that leaves no open leg (A-31 exit) shows "No position left after exit" in
+    the four Greeks-after rows, never 0, and cannot lead them; it still leads the rows where it really differs."""
+    _, cols, ctx = build_columns("ADJ-02", margins={"A-36": D("100000"), "A-01": D("98000.50"),
+                                                    "A-05": D("103000"), "A-31": D(0)})
+    cmp = compare(cols, ctx)
+    assert not next(c for c in cols if c.built.id == "A-31").built.after
+    for rid in GREEK_ROWS:
+        crit = row(cmp, rid)
+        cell = crit.values["A-31"]
+        assert (cell.text, cell.value, cell.rank) == ("-", None, None), rid
+        assert cell.unavailable_reason == "No position left after exit", rid
+        assert "A-31" not in crit.leaders and crit.leaders, rid  # the approaches that keep a position still lead
+        kept = crit.values["A-36"]
+        assert kept.unavailable_reason is None and kept.rank is not None, rid
+    led = [c.id for c in cmp.criteria if "A-31" in c.leaders]
+    assert led == ["margin_change", "max_loss"]
+    assert cmp.leads["A-31"][0] == 2

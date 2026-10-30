@@ -20,7 +20,7 @@ from ofo.adjustment.compare import ROWS
 from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
-from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_unreadable
+from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
 from ofo_app import paper_store
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
@@ -176,6 +176,30 @@ def test_ac6_margin_empty_is_never_zero():
     for a in body["approaches"]:
         if a["refusal"] is None and a["after_legs"]:
             assert a["margin"]["state"] == "empty" and a["margin"]["value"] is None
+
+
+EMPTY_WORDS = "Margin not available: Zerodha returned no margin figure for this basket."
+AMBIGUOUS_WORDS = ("Margin not available: Margin from Zerodha could not be read just now, so no margin figure is "
+                   "shown.")
+
+
+@pytest.mark.parametrize(("answer", "state", "words"), [(margin_empty, "empty", EMPTY_WORDS),
+                                                        (margin_unreadable, "unreadable", AMBIGUOUS_WORDS)],
+                         ids=["empty", "ambiguous"])
+def test_adj20b_empty_margin_is_worded_as_empty_and_ambiguous_as_could_not_be_read(answer, state, words):
+    """ADJ-20b: Zerodha's EMPTY answer (stated no figure) reads "returned no margin figure", an AMBIGUOUS one keeps
+    "could not be read just now"; both carry no figure, never 0, and the compare's margin row shows "-" with them."""
+    async def read(legs):
+        return answer()
+    body = post(client_for(load("ADJ-20b"), margin=read)).json()
+    kept = [a for a in body["approaches"] if a["refusal"] is None and a["after_legs"]]
+    assert kept
+    for a in kept:
+        assert a["margin"] == {**a["margin"], "state": state, "value": None, "reason": words}, a["id"]
+    mc = next(c for c in body["criteria"] if c["id"] == "margin_change")
+    for a in kept:
+        cell = mc["values"][a["id"]]
+        assert cell["text"] == "-" and cell["value"] is None and cell["unavailable_reason"] == words, a["id"]
 
 
 def test_attack4_one_approach_margin_raises_others_keep_theirs():
