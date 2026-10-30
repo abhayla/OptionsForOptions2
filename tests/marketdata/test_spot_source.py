@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from ofo.marketdata.feed_health import FEED_STALE
 from ofo.marketdata.spot_source import (
+    REASON_NO_PRICE,
+    REASON_STALE,
     SOURCE_FEED,
     SOURCE_LAST_CLOSE,
     SOURCE_ORDER,
@@ -45,14 +47,14 @@ def close(value: str = "23050") -> SourceReading:
 def test_fresh_feed_wins_and_is_labelled() -> None:
     a = resolve_spot(fresh_feed(), rest(), close(), now=NOW)
     assert (a.value, a.source, a.available) == (Decimal("23100"), SOURCE_FEED, True)
-    assert a.label == "feed, 30 Oct 2026 10:59:59" and a.reasons == ()
+    assert a.at == NOW - datetime.timedelta(seconds=1) and a.reasons == ()
 
 
 def test_feed_at_exactly_the_limit_is_fresh_and_one_second_past_uses_rest() -> None:
     assert resolve_spot(fresh_feed(age=FEED_STALE), rest(), close(), now=NOW).source == SOURCE_FEED
     a = resolve_spot(fresh_feed(age=FEED_STALE + datetime.timedelta(seconds=1)), rest(), close(), now=NOW)
     assert (a.source, a.value) == (SOURCE_REST, Decimal("23090"))
-    assert "feed: stale (4 s old, limit 3 s)" in a.label  # the label says why the feed was not used
+    assert a.reasons == ((SOURCE_FEED, REASON_STALE),)  # the answer says why the feed was not used
 
 
 @pytest.mark.parametrize("feed", [
@@ -64,7 +66,7 @@ def test_feed_at_exactly_the_limit_is_fresh_and_one_second_past_uses_rest() -> N
 def test_every_unusable_feed_state_falls_to_rest(feed: SourceReading | None) -> None:
     a = resolve_spot(feed, rest(), close(), now=NOW)
     assert (a.source, a.value) == (SOURCE_REST, Decimal("23090"))
-    assert "(feed:" in a.label
+    assert a.reasons[0][0] == SOURCE_FEED
 
 
 @pytest.mark.parametrize("answer", [
@@ -75,19 +77,19 @@ def test_every_unusable_feed_state_falls_to_rest(feed: SourceReading | None) -> 
 def test_every_unusable_rest_state_falls_to_last_close_labelled_with_its_date(answer: SourceReading | None) -> None:
     a = resolve_spot(None, answer, close(), now=NOW)
     assert (a.source, a.value, a.at) == (SOURCE_LAST_CLOSE, Decimal("23050"), CLOSE_AT)
-    assert a.label.startswith("last close, 29 Oct 2026 15:30") and "(REST quote:" in a.label
+    assert [n for n, _ in a.reasons] == [SOURCE_FEED, SOURCE_REST]  # both better sources are named as skipped
 
 
 def test_rest_200_without_last_price_is_never_zero() -> None:
     a = resolve_spot(None, rest(None), None, now=NOW)
-    assert a.value is None and dict(a.reasons)[SOURCE_REST] == "empty (no price)"
+    assert a.value is None and dict(a.reasons)[SOURCE_REST] == REASON_NO_PRICE
 
 
 @pytest.mark.parametrize("last", [None, SourceReading(S.ABSENT), SourceReading(S.NOT_FOUND), SourceReading(S.FAILED),
                                   SourceReading(S.EMPTY), SourceReading(S.STATED, Decimal("0"), CLOSE_AT)])
 def test_nothing_usable_gives_no_value_and_three_reasons(last: SourceReading | None) -> None:
     a = resolve_spot(None, SourceReading(S.FAILED), last, now=NOW)
-    assert (a.value, a.source, a.at, a.available, a.label) == (None, None, None, False, SPOT_NOT_AVAILABLE)
+    assert (a.value, a.source, a.at, a.available) == (None, None, None, False)
     assert [n for n, _ in a.reasons] == [SOURCE_FEED, SOURCE_REST, SOURCE_LAST_CLOSE]
     assert dict(a.reasons)[SOURCE_REST] == "failed"
 
@@ -117,7 +119,7 @@ def test_adj_24a_feed_missing_rest_used() -> None:
 def test_adj_24b_every_source_failed_spot_not_available() -> None:
     d, feed, rest_r, last, now = _scenario("ADJ-24b")
     a = resolve_spot(feed, rest_r, last, now=now)
-    assert d["data_state"]["spot_source"] == "none" and a.value is None and a.label == SPOT_NOT_AVAILABLE
+    assert d["data_state"]["spot_source"] == "none" and a.value is None and SPOT_NOT_AVAILABLE == "spot_not_available"
     assert len(a.reasons) == len(SOURCE_ORDER)
     assert d["expected"]["suggest"] is False
     assert d["expected"]["approaches"]["withheld"].lower() == "no suggestion: spot not available"

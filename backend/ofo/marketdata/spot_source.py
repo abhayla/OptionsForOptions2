@@ -4,7 +4,7 @@
 answer state (stated / absent / not found / failed / empty), its value and the time it was read; the caller does
 the fetching.
 The first usable source wins, in that order, and the answer is always labelled with its source and time. When no source
-is usable there is NO value, and ``reasons`` holds one line per source (the screen says "Spot not available" with them);
+is usable there is NO value, and ``reasons`` holds one code per source (the screen says "Spot not available" with them);
 a default spot is never made up.
 
 Rules:
@@ -28,18 +28,25 @@ from ofo.marketdata.feed_health import FEED_STALE
 from ofo.marketdata.quote import is_live_price
 
 SOURCE_FEED: Final = "feed"
-SOURCE_REST: Final = "REST quote"
-SOURCE_LAST_CLOSE: Final = "last close"
+SOURCE_REST: Final = "rest_quote"
+SOURCE_LAST_CLOSE: Final = "last_close"
 #: the order of preference, and the label each source carries
 SOURCE_ORDER: Final = (SOURCE_FEED, SOURCE_REST, SOURCE_LAST_CLOSE)
-SPOT_NOT_AVAILABLE: Final = "Spot not available"
+SPOT_NOT_AVAILABLE: Final = "spot_not_available"
+#: the reason codes (the screen words them through the catalogue; this domain module holds codes, not sentences). A
+#: source that answered but not usably carries its answer state's name: "not_found", "failed" or "empty".
+REASON_ABSENT: Final = "absent"
+REASON_NO_PRICE: Final = "no_price"
+REASON_NO_TIME: Final = "no_time"
+REASON_FUTURE: Final = "tick_in_future"
+REASON_STALE: Final = "stale"
 
 
 class SourceState(enum.Enum):
     """How a source answered (every answer state is named; none is folded into another)."""
     STATED = "stated"
     ABSENT = "absent"        # nothing was held / the source was not asked (feed not connected, no close stored)
-    NOT_FOUND = "not found"  # asked, and the source does not know the instrument
+    NOT_FOUND = "not_found"  # asked, and the source does not know the instrument
     FAILED = "failed"        # the call or read raised / was refused
     EMPTY = "empty"          # answered, but without a usable price
 
@@ -58,7 +65,6 @@ class SpotAnswer:
     value: Decimal | None
     source: str | None
     at: datetime.datetime | None
-    label: str
     reasons: tuple[tuple[str, str], ...] = ()
 
     @property
@@ -69,28 +75,22 @@ class SpotAnswer:
 def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime) -> str | None:
     """None when ``reading`` is usable, else the reason in plain words."""
     if reading is None or reading.state is SourceState.ABSENT:
-        return "no tick held" if name == SOURCE_FEED else "nothing held"
+        return REASON_ABSENT
     if reading.state is not SourceState.STATED:
-        return reading.state.value
+        return reading.state.name.lower()
     if not isinstance(reading.value, Decimal) or not is_live_price(reading.value):
-        return "empty (no price)"
+        return REASON_NO_PRICE
     if reading.at is None or reading.at.tzinfo is None:
-        return "no time"
+        return REASON_NO_TIME
     return _feed_age_problem(now - reading.at) if name == SOURCE_FEED else None
 
 
 def _feed_age_problem(age: datetime.timedelta) -> str | None:
     if age < datetime.timedelta(0):
-        return "tick time is in the future"
+        return REASON_FUTURE
     if age > FEED_STALE:
-        return f"stale ({int(age.total_seconds())} s old, limit {int(FEED_STALE.total_seconds())} s)"
+        return REASON_STALE
     return None
-
-
-def _label(source: str, at: datetime.datetime, skipped: list[tuple[str, str]]) -> str:
-    """Source and time, plus why each better source was not used (a fallback never hides that it is one)."""
-    when = at.strftime("%d %b %Y %H:%M:%S") if source != SOURCE_LAST_CLOSE else at.strftime("%d %b %Y %H:%M")
-    return f"{source}, {when}" + "".join(f" ({n}: {w})" for n, w in skipped)
 
 
 def resolve_spot(feed: SourceReading | None, rest: SourceReading | None, last_close: SourceReading | None, *,
@@ -103,6 +103,6 @@ def resolve_spot(feed: SourceReading | None, rest: SourceReading | None, last_cl
         why = _why_not(name, reading, now)
         if why is None:
             assert reading is not None and reading.at is not None  # noqa: S101 - narrowed by _why_not
-            return SpotAnswer(reading.value, name, reading.at, _label(name, reading.at, reasons), tuple(reasons))
+            return SpotAnswer(reading.value, name, reading.at, tuple(reasons))
         reasons.append((name, why))
-    return SpotAnswer(None, None, None, SPOT_NOT_AVAILABLE, tuple(reasons))
+    return SpotAnswer(None, None, None, tuple(reasons))

@@ -26,7 +26,7 @@ from ofo.broker import rate_limit as _rate_limit
 from ofo.broker.kite_endpoints import ALLOWED_CALLS as _ALLOWED_CALLS
 from ofo.broker.kite_endpoints import ENDPOINT_GROUPS as _ENDPOINT_GROUPS
 from ofo.broker.kite_endpoints import KITE_API_HOST, KITE_WS_HOST
-from ofo.instruments.models import BSE_INDEX, INDEX_ROWS, NSE_INDEX
+from ofo.instruments import models as _models
 
 # W-080 round 9: the library frames a door's send runs through (urllib, http.client, ssl), trusted by the egress gate
 _egress._trust_modules(_urllib_request, _urllib_request.http.client, _urllib_request.ssl, _egress)
@@ -40,8 +40,8 @@ QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
 #: The index names Kite's quote takes with a space (F-76, REQ-155 AC-5): an EXPLICIT allow-list, never a wider regex.
 #: Spelled from the index rows (one home, ``ofo.instruments.models``): ``NSE:NIFTY 50`` and ``BSE:SENSEX``.
 QUOTE_INDEX_NAMES: _Final = frozenset(
-    f"{segment.split('_')[0]}:{INDEX_ROWS[(segment, token)][0]}"
-    for segment, token in ((NSE_INDEX, 1001), (BSE_INDEX, 1)))
+    f"{segment.split('_')[0]}:{_models.INDEX_ROWS[(segment, token)][0]}"
+    for segment, token in ((_models.NSE_INDEX, 1001), (_models.BSE_INDEX, 1)))
 #: The one raw encoding of a space the door accepts for those names: ``%20`` (not ``+``, not a literal space, not a
 #: second space, not lower case). Known limit, not chased: only these exact strings match, so any other name with a
 #: space or a ``%`` is refused; a caller must send ``%20`` itself (the door judges the RAW text, it never decodes).
@@ -243,6 +243,7 @@ __all__ = [
     "KITE_API_HOST",
     "KITE_WS_HOST",
     "METHODS",
+    "QUOTE_INDEX_NAMES",
     "QUOTE_INSTRUMENT",
     "KiteBodyUnreadable",
     "KiteCallRefused",
