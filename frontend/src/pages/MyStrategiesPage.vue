@@ -33,7 +33,9 @@ const renaming = ref(null) // { id, text } while a row's name field is open
 const renameError = ref(null) // { id, parts }
 const errorParts = ref(null)
 
-const shown = computed(() => (completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
+// User test 2026-10-30 (U2): newest save first, as Home's "Recent strategies" lists them (ISO times sort as text)
+const newestFirst = (list) => [...list].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
 async function loadList() {
