@@ -111,8 +111,8 @@ log = logging.getLogger(__name__)
 
 #: READ-ONLY twin lookup: a scenario tradingsymbol that is also a live catalogue contract (same Zerodha symbol).
 _TWIN_SQL = (
-    "SELECT b.broker_symbol, b.broker_token, c.exchange_token FROM public.contracts AS c "
-    "JOIN public.broker_instruments AS b ON b.contract_id = c.id "
+    "SELECT b.broker_symbol, b.broker_token, c.exchange_token FROM {contracts} AS c "
+    "JOIN {broker_rows} AS b ON b.contract_id = c.id "
     "WHERE NOT c.retired AND NOT c.delisted AND b.broker = 'zerodha' "
     "AND b.broker_symbol = ANY(CAST(:symbols AS TEXT[]))")
 
@@ -266,12 +266,14 @@ async def _read_twins(symbols: list[str]) -> dict[str, tuple[int, int]]:
     from sqlalchemy.ext.asyncio import create_async_engine  # noqa: PLC0415
     from sqlalchemy.pool import NullPool  # noqa: PLC0415
 
+    from ofo_app.catalogue_store import BROKER_ROWS, CONTRACTS  # noqa: PLC0415
     from ofo_app.config import get_settings  # noqa: PLC0415
 
     engine = create_async_engine(get_settings().DATABASE_URL, poolclass=NullPool)  # own loop, own engine, no pool
     try:
         async with engine.connect() as conn:
-            rows = (await conn.execute(text(_TWIN_SQL), {"symbols": symbols})).all()
+            sql = text(_TWIN_SQL.format(contracts=CONTRACTS, broker_rows=BROKER_ROWS))
+            rows = (await conn.execute(sql, {"symbols": symbols})).all()
     finally:
         await engine.dispose()
     return {r.broker_symbol: (int(r.broker_token), int(r.exchange_token)) for r in rows}
