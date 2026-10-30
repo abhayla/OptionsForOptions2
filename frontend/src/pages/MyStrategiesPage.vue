@@ -21,7 +21,8 @@ import { useDeleteFlow } from '@/lib/strategyActivity'
 
 const COMPLETED_STATUSES = []
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
-const COLS = 'grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_11rem_5.5rem_17rem]'
+// User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
+const COLS = 'grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]'
 const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', 'Tracking', '']
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
