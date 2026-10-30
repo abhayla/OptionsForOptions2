@@ -62,7 +62,9 @@ def test_ac6_missing_iv_makes_estimated_now_unavailable_never_zero(settings):
 
 
 def test_ac6_estimate_at_exact_breakeven_uses_quoted_level():
-    """AC-6: a breakeven with 3 decimals (23,100.625) is estimated at 23,100.62 (half-even to 0.01) and recorded."""
+    """AC-6: a breakeven whose exact value has 3 decimals (23,100.625) is estimated at 23,100.62 (half-even to 0.01).
+    Since REQ-155 AC-4 (F-75) the engine rounds every derived level at its one producer, so the level set already
+    carries 23,100.62 (was the exact 23,100.625) and Estimated Now is taken at that same quoted level."""
     legs = [
         nifty_leg(Action.BUY, Instrument.CE, "23000", "100.00", iv="0.12"),
         nifty_leg(Action.BUY, Instrument.CE, "23100", "1.00", iv="0.12"),
@@ -71,12 +73,11 @@ def test_ac6_estimate_at_exact_breakeven_uses_quoted_level():
     inputs = nifty_input(legs)
     config = ScenarioConfig("NIFTY", D("100"), D("100"), D("1000"), 2, 200)
     ls = build_level_set(inputs, config)
-    assert ls.breakevens == (D("23100.625"),)
+    assert ls.breakevens == (D("23100.62"),)
     values = scenario_values(ls, inputs, View.ESTIMATED_NOW)
-    at = values.levels.index(D("23100.625"))
+    at = values.levels.index(D("23100.62"))
     assert values.estimated_levels[at] == D("23100.62")
     assert values.totals[at] == estimate_now(inputs.inputs, D("23100.62")).total
-    assert scenario_values(ls, inputs, View.AT_EXPIRY).totals[at] == D("0")
 
 
 def test_views_fail_closed(golden, settings):
