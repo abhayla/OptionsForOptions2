@@ -51,9 +51,9 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import os
 import pathlib
-import logging
 import re
 import struct
 from collections.abc import Mapping
@@ -111,9 +111,10 @@ log = logging.getLogger(__name__)
 
 #: READ-ONLY twin lookup: a scenario tradingsymbol that is also a live catalogue contract (same Zerodha symbol).
 _TWIN_SQL = (
-    "SELECT b.broker_symbol, b.broker_token, c.exchange_token FROM public.contracts AS c "  # noqa: S608 constants only
+    "SELECT b.broker_symbol, b.broker_token, c.exchange_token FROM public.contracts AS c "
     "JOIN public.broker_instruments AS b ON b.contract_id = c.id "
-    "WHERE NOT c.retired AND NOT c.delisted AND b.broker = 'zerodha' AND b.broker_symbol = ANY(CAST(:symbols AS TEXT[]))")
+    "WHERE NOT c.retired AND NOT c.delisted AND b.broker = 'zerodha' "
+    "AND b.broker_symbol = ANY(CAST(:symbols AS TEXT[]))")
 
 
 class ScenarioRefused(RuntimeError):
@@ -278,7 +279,7 @@ async def _read_twins(symbols: list[str]) -> dict[str, tuple[int, int]]:
 
 def catalogue_twins(symbols: list[str]) -> dict[str, tuple[int, int]]:
     """``{tradingsymbol: (instrument_token, exchange_token)}`` of the scenario symbols that are live catalogue
-    contracts (one read-only SELECT, ofo_dev). An unreadable catalogue -> {} (every contract keeps a synthetic token)."""
+    contracts (one read-only SELECT, ofo_dev). An unreadable catalogue -> {} (all synthetic)."""
     import asyncio  # noqa: PLC0415
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
 
@@ -315,7 +316,7 @@ def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = No
             n += 1
             if not row.get("listed", True):
                 continue  # not in the instrument list (ADJ-20d)
-            token, ex_token = twins.get(row["tradingsymbol"], (n * 256 + code, n)) if twins else (n * 256 + code, n)
+            token, ex_token = (twins or {}).get(row["tradingsymbol"], (n * 256 + code, n))
             rows.append({"instrument_token": str(token), "exchange_token": str(ex_token),
                          "tradingsymbol": row["tradingsymbol"], "name": underlying, "last_price": "0",
                          "expiry": chain["expiry"], "strike": str(row["strike"]), "tick_size": str(scn["tick"]),

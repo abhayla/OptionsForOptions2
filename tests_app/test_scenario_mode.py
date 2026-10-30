@@ -259,8 +259,8 @@ def test_the_scan_follows_a_call_into_the_paper_store():
     assert reaches_order(tracking.exit_tracking, set())
 
 
-# ---- a scenario contract with a catalogue twin is served under the catalogue's own token -------------------------------
-def test_catalogue_twin_is_served_under_the_real_token_and_others_stay_synthetic(monkeypatch):
+# ---- a scenario contract with a catalogue twin is served under the catalogue's own token ---------------------
+def test_catalogue_twin_served_under_real_token_others_synthetic(monkeypatch):
     rows = scenario_mode.load("ADJ-02").data["market"]["chains"][0]["rows"]
     twin, other = rows[0]["tradingsymbol"], rows[1]["tradingsymbol"]
     real_token, real_ex = 1_234_567 * 256 + 2, 1_234_567
@@ -269,7 +269,7 @@ def test_catalogue_twin_is_served_under_the_real_token_and_others_stay_synthetic
     by_symbol = {lc.broker_refs[0].broker_symbol: lc for lc in scn.provider.instrument_master()}
     assert int(by_symbol[twin].broker_refs[0].broker_token) == real_token
     assert by_symbol[twin].contract.exchange_token == real_ex
-    assert by_symbol[other].contract.exchange_token > 900_000  # no twin: keeps the synthetic token
+    assert by_symbol[other].contract.exchange_token >= scenario_mode._FIRST_TOKEN  # no twin: keeps the synthetic token
     assert scenario_mode.instrument_id(by_symbol[twin]) in scn.rows_by_id  # priced under the real id
 
 
