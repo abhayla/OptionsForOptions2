@@ -60,6 +60,7 @@ sheet, the inbox and the history are the next contract (GC-ADJ2, outline at the 
 Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (#issue)`.
 
 - step 0 DONE (2026-10-30 19:5x) overlap: loose grep for `adjustment.approach|adjustment_approaches|approach_builder|?adjust=`
+- step 1 CORE PROVEN (2026-10-30 ~21:45, build/gcadj1 e6707f94): dev server, scenario mode ADJ-02 (strategy 72) and ADJ-13 (strategy 73): 7/7 approaches equal the generator's engine-free values (ADJ-02 A-01 9600.50 / 16399.50 / 23176.15, 23573.85; ADJ-13 A-01 7007 / 18993 / 22996.1, 23503.9, booked 962 included); engine 0.0085 s for 7 approaches (AC-7 <= 1 s). Step 1 DONE waits on the Tier A route check (row 17)
   over backend, frontend/src, tests, tests_app, scripts = 0 hits. Existing adjustment code is detection only:
   `backend/ofo/adjustment/{detection,registry}.py` (201 lines) and the "Why detected" hint in `TrackingPanel.vue:38`.
   Nothing to reuse or retire; step 1 builds new.
@@ -166,6 +167,9 @@ into `feature/adjustments` after a passing prepush --full (no PR to main); run t
 | 12 | Scenario mode served synthetic tokens (from 900000) while the seed script links real catalogue contracts: seeded strategies would get no scenario price | `scenario_mode.py:104`, `scripts/seed_scenario.py:78` | Technical call: scenario mode reuses the real catalogue token for a tradingsymbol that exists (read-only lookup), synthetic only when absent; a Sonnet builder does it |
 | 13 | REQ-156 AC-2 criteria the spec leaves open: "would you open this fresh", strike liquidity, margin change, adjustments vs plan maximum | catalogue P-02, P-12, F-12; REQ-156 | Technical calls: fresh = the After's open legs as a fresh trade at current prices (fresh round-trip charges, no booked P&L), leader = smallest fresh max loss; liquidity = widest (ask-bid)/mid % among the approach's NEW legs, lowest leads, nothing hidden (no threshold in the catalogue); margin change = After minus Before basket margin, both Zerodha-stated; adjustments = used count with "no plan maximum set" until playbooks (GC-ADJ2). Values, leaders and curves computed server-side (ADR-008); filter min/max in the browser (comparison only) |
 | 14 | Route builder ran out of budget twice (brief too large: route + 3 carried fixes in one part) | W-196 wave 2 | Split into parts 3 and 4; root cause: a part sized L with carried items added on top. Step-2 work split into 2a (server) and 2b (screen) up front |
+| 15 | Scenario mode answered every Kite margin call with the basket shape: `/user/margins` (funds) needed `equity.net`, so every approach said "Margin not available" | `scenario_mode.margin_transport` | Fixed (df5830a8): funds reply served on GET (generator `FUNDS_AVAILABLE`, scenario JSON regenerated); basket echoes the orders. OPEN: the fake basket answers one fixed figure (100000.00) for every approach, so "margin change" ties for all - to make it depend on the basket (technical call); ADJ-20a A-01 margin came back null instead of "failed" - asked of the Tier A route check |
+| 16 | Scenario last close has no date in the scenario JSON | `adjustment_readers.read_last_close` | Test-data assumption: previous weekday 15:30 IST (no holiday calendar); live path uses the held index quote while the market is closed |
+| 17 | One Tier A check for the route (W-196) and the compare values (W-197 2a) together, after 2a lands | review plan | A running checker blocks builder commits (verifier_inflight_gate); 2a edits the same route; one review covers both |
 
 ## Parked
 
