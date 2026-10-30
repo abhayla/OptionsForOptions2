@@ -96,16 +96,16 @@ any other L2 defect is fixed in parallel by a builder while the walk runs.
 
 ## Definition of Done
 
-- [ ] L0 recorded with both shas.
-- [ ] L1 recorded (equal, or the correcting path built and proven).
-- [ ] L2: every listed screen has a live line; each difference is a fix, a filed issue, or a look choice for the owner.
-- [ ] L3a and L3b each have a result (fixed, finding, or PARKED).
-- [ ] L4: the walk done; the conditional exit fired once and did not fire again after an API restart; R-26, R-18,
+- [x] L0 recorded with both shas.
+- [x] L1 recorded (equal, or the correcting path built and proven).
+- [x] L2: every listed screen has a live line; each difference is a fix, a filed issue, or a look choice for the owner.
+- [x] L3a and L3b each have a result (fixed, finding, or PARKED).
+- [x] L4: the walk done; the conditional exit fired once and did not fire again after an API restart; R-26, R-18,
       R-19a, R-19b and Add Booked P&L each have a live line.
-- [ ] L5: the checker matches every figure for 5 real strategies, 0 mismatches; target mode on 2.
-- [ ] L6: F-65..F-70 each marked fixed with a proof, or PARKED; the class file is `guarded` and the index regenerated.
-- [ ] No push before 15:30 (`git rev-parse @{u}` on `live/2026-10-30` reports no upstream).
-- [ ] L7 handover committed.
+- [ ] (PARTIAL: 176/0 paper-orders x5 and 256/0 main outcome x3; target 13/1, 14/0, 14/0; remainder PARKED #613) L5: the checker matches every figure for 5 real strategies, 0 mismatches; target mode on 2.
+- [x] L6: F-65..F-70 each marked fixed with a proof, or PARKED; the class file is `guarded` and the index regenerated.
+- [x] (11:55: no upstream; remote #611 head f9619949 unchanged) No push before 15:30 (`git rev-parse @{u}` on `live/2026-10-30` reports no upstream).
+- [x] L7 handover committed.
 
 ## L2 sweep lines (30 Oct, two looks 6 s apart, script on the page text; no "Market closed" / last-close text on any screen)
 
@@ -160,3 +160,58 @@ any other L2 defect is fixed in parallel by a builder while the walk runs.
 | Row / item | Why (evidence) | What is left |
 |---|---|---|
 | L5 / F-6 remainder (#613, label parked, staged S6.4) | 2 fix rounds used; 11:51:39 run: 'target breakevens ours 73549.85 / 74092.57 vs independent 73549.78 / 74092.46, diff 0.11, tol 0.07' (1 of 3 runs; D:\Abhay\scratch\gclive\l5\final65r1) | replay final65r1, decide grid-step tolerance vs echoed crossing inputs, 3 live runs 0 mismatches. No shown number is wrong (breakevens shown to whole points) |
+
+## L7 handover (written 2026-10-30 11:55 IST, before the 15:30 cutoff: every item has a result)
+
+**DONE (proof in the rows above)**
+- L0, L1 (74,151.04 equal), L2 (17 screens live; F-1 and F-2 fixed), L3a (pause "as of" fixed and seen live), L3b (R-35 works live; data-limit finding).
+- L4 walk on 69 / 70 / 71: typed prices, roll, add lot, partial exit, hedge. Conditional exit fired once, with no re-fire after an API restart. R-18, R-19a, R-19b and R-26 (fixed, F-4) seen live. Add Booked P&L exact (checker -77.35 incl. 962.00).
+- L6: F-65..F-70 fixed with proof lines; class file guarded; findings index regenerated.
+- Fixes live-proven: F-1 / F-3 (paper IV + cold hold; 11:11 19/19 LIVE with Greeks, cold); F-2; L3a; F-4 (R-26); F-6 rounds 1+2 (checker q echo).
+- Issue comments posted 11:55: #606 (not closed: L5 PARTIAL), #607 (R-35), #608 (REQ-109 AC-5 + U19).
+
+**PARTIAL / PARKED**
+- L5: 176/0 on `--paper-orders` x5; main outcome 256/0 x3; target 13/1, 14/0, 14/0. The remainder (target breakeven 0.11 pt vs tol 0.07, 1 of 3 runs) is PARKED as #613 after 2 rounds.
+
+**DEFERRED**
+- #612 F-5: index REST fallback answers NOT_CONNECTED cold.
+
+**OWED**
+- #611 comment after 15:30. Text ready at `D:\Abhay\scratch\gclive\comments\c611.md`. Post it with `gh pr comment 611 --body-file D:\Abhay\scratch\gclive\comments\c611.md`.
+- #611 land blocker: the broker-name allow-list has 31 stale entries from the restyle (`tests/test_no_broker_name_in_feature_code.py` AC-3).
+- #611 merge conflict with main: `MyStrategiesPage.vue`, resolved in run-tree commit 8c23020d.
+
+**Waiting to land (nothing pushed)**
+- Local branch `live/2026-10-30` (head ad289338, no upstream) holds:
+  - the merge of main into #611;
+  - F-2 (a83ce26e);
+  - F-1 (e8697681);
+  - L3a (274235f7, a8c76b81);
+  - F-3 (fix/live-paper-cold-hold);
+  - totals test update (b4cb55b6);
+  - R-26 (730d289d);
+  - F-6 (acf123b3, c3a396ef);
+  - L3b finding (fd3050f8);
+  - L6 (c700719a);
+  - #612 / #613 staging (68262ca5, ad289338).
+- All are main-code fixes. Land order: #611 first (fix the allow-list, resolve the MyStrategies conflict as in 8c23020d), then ONE GC-LIVE fix PR rebuilt from main. Cherry-pick the fix commits above, skip the #611 merge 8c23020d, run prepush --full once, push once.
+- Run-tree combined pass: vitest 114 files / 1647 passed; domain `pytest tests -x` 1 failed / 7169 passed, the failure being the #611 allow-list above.
+- Worktrees kept until that land (`wt-rm.ps1 -Discard` needs a sha on origin/main):
+  - `OptionsForOptions2-live1030` (run tree)
+  - `-live1030-chkq`, `-noiv`, `-pauseasof`, `-r26`, `-spotat`
+  - the harness tree `.claude/worktrees/agent-a520c9b3b129c9e29` (db8cdf91, locked, unused)
+
+**Stopped at 11:55**
+- API PID 8736 and Vite PID 10744 stopped; ports 8765 and 5174 free.
+- Lock removed. Chrome tabs closed.
+
+**Lessons**
+- My F-1 fix caused F-3. It released the legs' hold before a second read, so the quotes were parked. Caught live at 10:47, fixed in the class-level "one hold" round. Lesson: a fix that adds a second read after a hold release must be proven cold (no other screen open), not with the chain tab holding contracts.
+- `wt-new.ps1 -Base origin/<branch>` sets that remote branch as the new branch's upstream. `live/2026-10-30` tracked #611's branch until 11:55, when it was unset; nothing was pushed (remote #611 head still f9619949). Tool class for the hub: wt-new should create local branches with `--no-track`.
+- Builders could not run vitest in sub-worktrees (no node_modules; links blocked by the link guard). The session ran every vitest red/green in the run tree instead.
+
+**NEXT**
+- After 15:30: post the #611 comment.
+- Then land #611, then the GC-LIVE fix PR (one push, after hours).
+- Then #613 (checker breakeven tolerance) and #612.
+- Not in this contract: R-24 on Mon 2 Nov, arm by 09:10. NIFTY 3 Nov settlement proof after 15:45 on Mon 3 Nov.
