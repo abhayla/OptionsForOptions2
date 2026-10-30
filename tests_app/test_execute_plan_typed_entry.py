@@ -17,7 +17,7 @@ import pytest
 from ofo.engine import Action
 from ofo.execution.basket import make_tag
 from ofo.instruments import Catalogue
-from ofo.marketdata.kite_quote_time import quote_time
+from ofo.marketdata.quote_stamp import quote_time
 from ofo_app import execute_plan as ep
 from ofo_app.execute_replay import CORE_ID, listed_contract, live_quote
 from ofo_app.routes import execute as route
@@ -148,5 +148,5 @@ def test_ac8_circuit_band_still_checks_the_limit_not_the_typed_price():
 
 
 def test_the_order_path_reads_the_one_kite_quote_time():
-    """GC-ADJ1 order closure: quote_time moved to ofo.marketdata.kite_quote_time; execute_plan uses that one."""
+    """GC-ADJ1 order closure: quote_time moved to ofo.marketdata.quote_stamp; execute_plan uses that one."""
     assert ep.quote_time is quote_time

@@ -1,4 +1,4 @@
-"""``ofo.marketdata.kite_quote_time.quote_time``: Kite's REST quote timestamp, every answer state named.
+"""``ofo.marketdata.quote_stamp.quote_time``: Kite's REST quote timestamp, every answer state named.
 
 Moved out of ``ofo_app.execute_plan`` so the REST index spot read reaches no order module (GC-ADJ1 order closure);
 these pin that the move kept the reading and refuses every other shape (fail closed).
@@ -8,7 +8,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from ofo.marketdata.kite_quote_time import quote_time
+from ofo.marketdata.quote_stamp import quote_time
 from ofo.timeutil import IST
 
 

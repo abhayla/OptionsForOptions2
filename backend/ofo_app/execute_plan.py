@@ -33,7 +33,7 @@ from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.price_check import circuit_block
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
-from ofo.marketdata.kite_quote_time import quote_time
+from ofo.marketdata.quote_stamp import quote_time
 
 #: Zerodha's order statuses after which an order can no longer fill (an allow-list; anything else is open).
 TERMINAL_ORDER_STATUSES = frozenset({"COMPLETE", "CANCELLED", "REJECTED"})

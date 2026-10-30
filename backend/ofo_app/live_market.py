@@ -31,7 +31,7 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
-from ofo.marketdata.kite_quote_time import quote_time
+from ofo.marketdata.quote_stamp import quote_time
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
