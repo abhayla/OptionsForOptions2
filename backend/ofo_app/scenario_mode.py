@@ -63,7 +63,6 @@ from typing import Any
 from ofo.instruments.models import BSE_INDEX, INDEX_ROWS, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
 from ofo.marketdata.kite_provider import KiteProvider
-from ofo.money import PAISE
 
 ENV_NAME = "OFO_SCENARIO"
 OPEN_ENVIRONMENTS = frozenset({"development", "test"})
@@ -145,8 +144,13 @@ def _at(text: object) -> datetime.datetime:
     return at
 
 
+def instrument_id(lc: Any) -> str:
+    """The platform's instrument id of a contract: ``<exchange_segment>:<exchange_token>``."""
+    return f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
+
+
 def _paise(value: object) -> int:
-    return int((Decimal(str(value)) / PAISE).to_integral_value())
+    return int(Decimal(str(value)).scaleb(2).to_integral_value())  # rupees -> integer paise, as Kite sends them
 
 
 def _full_packet(token: int, row: Mapping[str, Any], ts: int) -> bytes:
@@ -157,8 +161,9 @@ def _full_packet(token: int, row: Mapping[str, Any], ts: int) -> bytes:
     tail = struct.pack(">iiiii", ts, int(row.get("oi") or 0), 0, 0, ts)
     levels = b""
     for side in ("bid", "ask"):
-        price = _paise(row[side]) if row.get(side) is not None else 0
-        levels += struct.pack(">iihh", 650 if price else 0, price, 5 if price else 0, 0)
+        quoted = row.get(side) is not None
+        levels += struct.pack(">iihh", 650 if quoted else 0, _paise(row[side]) if quoted else 0,
+                              5 if quoted else 0, 0)
         levels += struct.pack(">iihh", 0, 0, 0, 0) * 4
     return head + tail + levels
 
@@ -288,7 +293,7 @@ def load(scenario_id: str) -> Scenario:
     rows, priced, index_token = _instrument_rows(scn)
     listed = list(parse_instruments_rows(rows))  # the real instrument-list parser
     provider = KiteProvider(listed, clock=lambda: clock_at)
-    provider.subscribe([KiteProvider._contract_id(lc) for lc in listed])  # noqa: SLF001 - the provider's own id rule
+    provider.subscribe([instrument_id(lc) for lc in listed])
     received = clock_at - datetime.timedelta(seconds=int(state.get("age_seconds") or 0))
     ts = int(received.timestamp())
     provider.on_connected(received)
@@ -298,26 +303,25 @@ def load(scenario_id: str) -> Scenario:
     if packets:
         provider.on_frame(_frame(packets), received)  # the real frame parser
     by_token = {int(lc.broker_refs[0].broker_token): lc for lc in listed}
-    rows_by_id = {KiteProvider._contract_id(by_token[t]): r for t, r in priced}  # noqa: SLF001
+    rows_by_id = {instrument_id(by_token[t]): r for t, r in priced}
     return Scenario(scenario_id, scn, clock_at, provider, rows_by_id)
 
 
-_current: Scenario | None = None
+_loaded: dict[str, Scenario] = {}  # the one loaded scenario, by id
 
 
 def current() -> Scenario | None:
     """The running app's scenario, or None when the mode is off. Refuses outside APP_ENV development/test."""
-    global _current
     if not scenario_requested():
-        _current = None
         return None
-    from ofo_app.config import app_env  # late: keep this module import-light
+    from ofo_app.config import app_env  # noqa: PLC0415 - late: keep this module import-light
 
     require_dev_or_test(app_env())
     sid = _raw()
-    if _current is None or _current.scenario_id != sid:
-        _current = load(sid)
-    return _current
+    if sid not in _loaded:
+        _loaded.clear()
+        _loaded[sid] = load(sid)
+    return _loaded[sid]
 
 
 def scenario_flag() -> str | None:
@@ -339,8 +343,9 @@ def refuse_orders() -> None:
         raise StrategyRefused(TEMPLATE, Failure.CONFLICT)
 
 
-def install(app: Any, scn: Scenario) -> None:
-    """Wires the scenario at the seams the replay mode and the tests use: the market context (outcome, chain, indices,
+def overrides(scn: Scenario) -> dict[Any, Any]:
+    """The dependency overrides (main.create_app installs them) wiring the scenario at the seams the replay
+    mode and the tests use: the market context (outcome, chain, indices,
     leg picker, planned entry, tracking all depend on ``outcome.get_market_context``), the answer clock, the stored
     catalogue readers of the chain and leg picker, the margin source, and the shared live feed (sockets)."""
     from ofo.marketdata.fanout import FanOut  # noqa: PLC0415 - only in scenario mode
@@ -360,7 +365,7 @@ def install(app: Any, scn: Scenario) -> None:
         c = lc.contract
         if c.expiry is None:
             continue  # the index row
-        iid = KiteProvider._contract_id(lc)  # noqa: SLF001
+        iid = instrument_id(lc)
         contracts.append(PickableContract(contract_id=c.exchange_token, instrument_id=iid,
                                           exchange_segment=c.exchange_segment, exchange_token=c.exchange_token,
                                           instrument_type=c.instrument_type, expiry=c.expiry, strike=c.strike,
@@ -381,10 +386,12 @@ def install(app: Any, scn: Scenario) -> None:
         return leg_picker.FuturesCatalogue(option_expiries=expiries if own else (), futures=())
 
     async def open_client() -> KiteMargin:
-        return KiteMargin(api_key="scenario", access_token="scenario", transport=scn.margin_transport)
+        return KiteMargin(api_key="scenario", access_token="scenario",  # noqa: S106 - no real token: the
+                          transport=scn.margin_transport)  # scenario transport never reaches Kite
 
     margin = OutcomeMargin(lambda: ("scenario", scn.scenario_id), open_client, clock=scn.clock)
-    app.dependency_overrides.update({
+    live.set_replay_feed(lambda: feed)
+    return {
         outcome.get_market_context: lambda: ctx,
         outcome.get_answer_clock: lambda: scn.clock,
         outcome.get_streaming: lambda: None,
@@ -394,8 +401,7 @@ def install(app: Any, scn: Scenario) -> None:
         leg_picker.get_futures_reader: lambda: futures_reader,
         leg_picker.get_feed: lambda: feed,
         planned_entry.get_live_feed: lambda: feed,
-    })
-    live.set_replay_feed(lambda: feed)
+    }
 
 
 def unclassified_mutating_routes(routes: list[Any]) -> list[tuple[str, str]]:

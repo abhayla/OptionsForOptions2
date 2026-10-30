@@ -169,5 +169,5 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         unclassified = scenario_mode.unclassified_mutating_routes(app.routes)
         if unclassified:  # fail closed: a new mutating route must be classified before scenario mode serves it
             raise scenario_mode.ScenarioRefused(f"unclassified mutating routes in scenario mode: {unclassified}")
-        scenario_mode.install(app, scenario)
+        app.dependency_overrides.update(scenario_mode.overrides(scenario))  # every seam a scenario serves
     return app

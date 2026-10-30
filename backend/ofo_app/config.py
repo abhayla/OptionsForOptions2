@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     #: #237: TEST-ONLY. Pins the catalogue routes' "today" (ofo_app.pinned_clock) so a recorded fixture stays live in CI.
     #: Refused unless APP_ENV is exactly "test".
     TEST_CATALOGUE_DATE: str | None = None
-    #: GC-ADJ1 step 1b: DEV/TEST-ONLY. Declared only to refuse it outside APP_ENV development/test; the one reader of
-    #: the value is ofo_app.scenario_mode. Blank = not set.
+    #: GC-ADJ1 step 1b: DEV/TEST-ONLY. Declared only to refuse it outside APP_ENV development/test; the one
+    #: reader of the value is ofo_app.scenario_mode. Blank = not set.
     OFO_SCENARIO: str | None = None
     #: #370, GC-6: the API's database pool. The ofo_app role has CONNECTION LIMIT 5 (ADR-048) and a developer runs two
     #: API processes beside a 13-card page, so one process may open 2 + 0 = 2 connections (2 processes x 2 = 4 <= 5).

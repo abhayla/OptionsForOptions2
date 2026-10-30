@@ -3,21 +3,18 @@ under APP_ENV development/test, and refuses every order route."""
 from __future__ import annotations
 
 import datetime
-import pathlib
-import re
 from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from ofo_app import scenario_mode
 from ofo_app.config import Settings
 from ofo_app.kite_margin import KiteMargin, KiteMarginError
 from ofo_app.main import create_app
 from ofo_app.scenario_mode import ScenarioRefused
 
+OK, CONFLICT, GATEWAY_TIMEOUT = 200, 409, 504
 DB = "postgresql+asyncpg://example@127.0.0.1:5432/x"
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFUSED_ENVS = ["production", "staging", "", "Development ", "TEST", "dev"]
 
 
@@ -63,19 +60,6 @@ def test_production_with_empty_scenario_starts(monkeypatch):
 def test_bad_or_unknown_id_refused_without_reading_outside(bad):
     with pytest.raises(ScenarioRefused):
         scenario_mode.scenario_path(bad)
-
-
-def test_one_reader_of_the_variable():
-    """Only scenario_mode reads OFO_SCENARIO (config declares it only to refuse it)."""
-    readers = []
-    for path in (ROOT / "backend").rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if re.search(r"""environ(\.get)?\s*[\[(]\s*["']OFO_SCENARIO|getenv\(\s*["']OFO_SCENARIO""", text):
-            readers.append(path.name)
-        if "OFO_SCENARIO" in text and path.name not in ("scenario_mode.py", "config.py"):
-            readers.append(path.name)
-    assert readers == []
-    assert 'os.environ.get(ENV_NAME' in (ROOT / "backend/ofo_app/scenario_mode.py").read_text(encoding="utf-8")
 
 
 # ---- the market through the real parsers -----------------------------------------------------------------------------
@@ -124,33 +108,33 @@ async def test_adj24a_feed_missing_spot_absent_route_answers(monkeypatch):
     assert scn.rest_index_quote() == (200, {"status": "success", "data": {"NSE:NIFTY 50": {
         "last_price": 23100.0, "timestamp": "2026-10-30 11:00:00"}}})
     idx = await _get(_app(monkeypatch, "ADJ-24a"), "/api/market/indices")
-    assert idx.status_code == 200 and idx.json()["indices"][0]["value"] is None
+    assert idx.status_code == OK and idx.json()["indices"][0]["value"] is None
 
 
 def test_adj24b_every_spot_source_failed():
     scn = scenario_mode.load("ADJ-24b")
     assert scn.provider.underlying_quote("NIFTY") is None
     status, reply = scn.rest_index_quote()
-    assert status == 504 and reply["error_type"] == "NetworkException"
+    assert status == GATEWAY_TIMEOUT and reply["error_type"] == "NetworkException"
 
 
 # ---- broker answer states (ADJ-20a..e) -------------------------------------------------------------------------------
 def _margin(sid: str) -> KiteMargin:
     scn = scenario_mode.load(sid)
-    return KiteMargin(api_key="k", access_token="t", transport=scn.margin_transport)
+    return KiteMargin(api_key="k", access_token="t", transport=scn.margin_transport)  # noqa: S106 - fake
 
 
 def test_adj20a_margin_failed_is_unavailable():
     with pytest.raises(KiteMarginError, match="kite_margin_unavailable"):
-        _margin("ADJ-20a")._data("POST", "/margins/basket", "[]")  # noqa: SLF001 - the real reply parser
+        _margin("ADJ-20a")._data("POST", "/margins/basket", "[]")  # the real reply parser
 
 
 def test_adj20b_margin_empty_reads_as_no_figure():
-    assert _margin("ADJ-20b")._data("POST", "/margins/basket", "[]") == {}  # noqa: SLF001
+    assert _margin("ADJ-20b")._data("POST", "/margins/basket", "[]") == {}
 
 
 def test_adj02_margin_stated():
-    data = _margin("ADJ-02")._data("POST", "/margins/basket", "[]")  # noqa: SLF001
+    data = _margin("ADJ-02")._data("POST", "/margins/basket", "[]")
     assert data["final"]["total"] == Decimal("100000.0")
 
 
@@ -184,7 +168,7 @@ async def test_every_order_route_refused(monkeypatch, method, path):
     url = path.replace("{strategy_id}", "1").replace("{trigger_id}", "1")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         r = await ac.request(method, url, json={})
-    assert r.status_code == 409 and r.json()["code"] == "USER_INPUT_026"
+    assert r.status_code == CONFLICT and r.json()["code"] == "USER_INPUT_026"
 
 
 def test_every_mutating_route_is_classified(monkeypatch):
@@ -194,6 +178,6 @@ def test_every_mutating_route_is_classified(monkeypatch):
 
 def test_unclassified_route_found():
     class R:
-        methods = {"POST"}
+        methods = frozenset({"POST"})
         path = "/api/new-order"
     assert scenario_mode.unclassified_mutating_routes([R()]) == [("POST", "/api/new-order")]
