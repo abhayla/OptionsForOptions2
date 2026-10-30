@@ -1085,5 +1085,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   44 attack inputs refused), `KiteReads.fetch_index_quote` emits that form, and `ofo/marketdata/spot_source.py`
   resolves feed -> REST quote -> last close, each labelled with source and time, else "Spot not available" with each
   source's reason. Proof: scenarios ADJ-24a/24b (`tests/marketdata/test_spot_source.py`, `tests/test_kite_http_guard.py`,
-  mutation gate 4/4 killed). Not yet proven against Kite itself: a live read of `NSE:NIFTY%2050` is owed (optional in
-  the GC-ADJ1 contract).
+  mutation gate 4/4 killed). **Live proof 2026-10-31 02:40 IST** (market closed, owner's stored Kite session): dev API
+  with `LIVE_MARKET=1`, no scenario, `POST /api/strategies/72/adjustment-approaches` answered spot `23053.1`, source
+  `rest_quote`, at `2026-10-30T17:35:05+05:30`, feed reason `absent` - Kite accepted and answered `i=NSE:NIFTY%2050`.
+  Dependency found: the REST step reads the owner session only through the registered live market
+  (`ofo_app/live_market.py` `owner_kite_reads`, l.432-434), so with `LIVE_MARKET` unset the REST step always reports
+  `absent` and spot falls to the last close; every environment that should use REST spot must set `LIVE_MARKET`.
