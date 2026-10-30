@@ -111,13 +111,13 @@ v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3
              placeholder="Search name" aria-label="Search saved strategies by name" autocomplete="off" />
       <p v-if="!visible.length" class="mt-3 text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
       <ul v-else class="mt-4 divide-y divide-line rounded border border-line bg-surface" data-testid="strategy-list">
-        <li v-for="s in visible" :key="s.id" class="grid items-center gap-x-3 gap-y-1 px-3 py-2 text-sm grid-cols-[minmax(0,1.4fr)_5rem_minmax(0,2fr)_6rem_minmax(0,11rem)_minmax(0,6rem)_auto]" data-testid="strategy-row" :data-strategy-id="s.id">
+        <li v-for="s in visible" :key="s.id" class="grid items-center gap-x-3 gap-y-1 px-3 py-2 text-sm grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]" data-testid="strategy-row" :data-strategy-id="s.id">
           <span class="min-w-0 truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else aria-hidden="true"></span>
           <span data-testid="row-status">{{ s.status }}</span>
-          <span class="truncate text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
+          <span class="whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
           <span v-if="trackedText(s.tracked)" class="truncate text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
           <span v-else aria-hidden="true"></span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
