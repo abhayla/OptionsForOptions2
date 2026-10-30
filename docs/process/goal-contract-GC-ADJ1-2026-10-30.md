@@ -59,6 +59,13 @@ sheet, the inbox and the history are the next contract (GC-ADJ2, outline at the 
 
 Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (#issue)`.
 
+- step 0 DONE (2026-10-30 19:5x) overlap: loose grep for `adjustment.approach|adjustment_approaches|approach_builder|?adjust=`
+  over backend, frontend/src, tests, tests_app, scripts = 0 hits. Existing adjustment code is detection only:
+  `backend/ofo/adjustment/{detection,registry}.py` (201 lines) and the "Why detected" hint in `TrackingPanel.vue:38`.
+  Nothing to reuse or retire; step 1 builds new.
+- Setup note: `wt-link-modules.ps1` has no `frontend` entry and `link_guard` refuses a junction into main, so the run
+  tree ran `npm ci` in `frontend` (exit 0).
+
 ## Rules for the run
 
 - Prove the core first: step 1's proof must pass before steps 2-4 start. A failing core STOPS the run (report, park).
@@ -128,7 +135,7 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
 
 | Step | What | REQ / finding | Proof (scenario data) | Status |
 |---|---|---|---|---|
-| 0 | Overlap check: grep main for any adjustment-approach code or route already built; list in "Overlap" | — | the grep output | TODO |
+| 0 | Overlap check: grep main for any adjustment-approach code or route already built; list in "Overlap" | — | the grep output | DONE |
 | 1 | **CORE**: approach builder + whole-trade After + adjustment charges + POP fix + spot allow-list + API | REQ-155, F-74, F-75, F-76 | A test per scenario ADJ-01..ADJ-29 (iron condor ones): the API answers the 7 approaches; max profit / max loss / breakevens equal the scenario's hand values to the paisa INCLUDING booked P&L (ADJ-13); POP present (ADJ-23 is the F-75 regression); spot sources per ADJ-24a/b; refusals and warnings per ADJ-20a..e while other approaches still show; engine time for 7 approaches <= 1 s (REQ-155 AC-7) | TODO |
 | 1b | Scenario mode (dev/test only) | owner test-data instruction | `OFO_SCENARIO=ADJ-02` on dev shows that chain and clock with the banner; the same variable under `APP_ENV=production` refuses start-up (test); no order route answers in this mode (test) | TODO |
 | 2 | Compare screen in builder adjust mode + filters | REQ-156, REQ-157 | Component tests on ADJ-02, ADJ-13, ADJ-20c, ADJ-23; then owner's Chrome in scenario mode ADJ-02 and ADJ-13: every criterion shows a leader; "Leads on" counts add up; filters' ranges equal the API's min/max; hiding an approach updates chart, table and picker; wording check passes | TODO |
