@@ -961,7 +961,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             **({"charges_round_trip": spec["charges"]} if "charges" in spec else {}),
         },
         "broker": {
-            "margin": {"state": margin["state"], "value": margin.get("value"), "reply": margin_reply(margin)},
+            "margin": {"state": margin["state"], "value": margin.get("value"), "reply": margin_reply(margin),
+                       "funds_reply": funds_reply(margin)},
             "quote": quote_reply(u, legs, row_of, unpriced, clock, lot),
             "low_oi": [{"tradingsymbol": leg["tradingsymbol"], **row_of(leg).get("low_oi", {"state": "stated", "blocked": False})}
                        for leg in legs if leg["type"] != "FUT"],
@@ -996,6 +997,16 @@ def dec_text_round(value: Fraction) -> str:
         ctx.prec = 60
         d = D(value.numerator) / D(value.denominator)
     return format(d.quantize(D("0.0001"), rounding=ROUND_HALF_EVEN), "f")
+
+
+FUNDS_AVAILABLE = 10_000_000.0  # synthetic funds, far above any scenario basket: the scenario's margin state decides
+
+
+def funds_reply(margin: dict) -> dict:
+    """Kite ``GET /user/margins`` reply shape (tests/fixtures/kite_margins/funds-*); the figure is synthetic."""
+    if margin["state"] == "stated":
+        return {"status": "success", "data": {"equity": {"net": FUNDS_AVAILABLE}}}
+    return margin_reply({"state": margin["state"]})
 
 
 def margin_reply(margin: dict) -> dict:

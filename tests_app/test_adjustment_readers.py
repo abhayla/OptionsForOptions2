@@ -55,3 +55,39 @@ def test_rest_spot_reader_answers_through_the_door_in_scenario_mode(monkeypatch,
 def test_rest_spot_reader_unknown_underlying_is_not_found(monkeypatch):
     monkeypatch.setattr(readers, "_scenario", lambda: None)
     assert asyncio.run(readers.read_rest_spot("BANKNIFTY")).state is SourceState.NOT_FOUND
+
+
+# ---- last close (ADR-212) ---------------------------------------------------------------------------------------
+def test_last_close_scenario_stated_is_dated_to_the_session_before(monkeypatch):
+    sid = "ADJ-04"  # states a previous close (gap scenarios)
+    sc = load(sid)
+    scn, ctx = _scn(monkeypatch, sid)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert m.last_close.state is SourceState.STATED and m.last_close.value == D(str(sc["market"]["prev_close"]))
+    assert m.last_close.at < scn.clock() and m.last_close.at.weekday() < 5  # noqa: PLR2004
+
+
+def test_last_close_scenario_null_is_absent(monkeypatch):
+    sc = load("ADJ-02")
+    assert sc["market"]["prev_close"] is None
+    _, ctx = _scn(monkeypatch, "ADJ-02")
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert m.last_close.state is SourceState.ABSENT
+
+
+def test_last_close_live_absent_when_nothing_held_or_market_open():
+    import datetime  # noqa: PLC0415
+    now = datetime.datetime(2026, 10, 30, 10, 0, tzinfo=datetime.UTC)
+    assert readers.read_last_close(None, True, None, now).state is SourceState.ABSENT
+    assert readers.read_last_close(object(), False, None, now).state is SourceState.ABSENT
+
+
+def test_last_close_live_held_quote_is_stated_with_its_time(monkeypatch):
+    import datetime  # noqa: PLC0415
+    now = datetime.datetime(2026, 10, 30, 20, 0, tzinfo=datetime.UTC)
+    q = type("Q", (), {"ltp": D("23420.5"), "timestamp": now})()
+    monkeypatch.setattr(readers, "planning_price_usable", lambda quote, *, market_closed: True)
+    r = readers.read_last_close(q, True, None, now)
+    assert r.state is SourceState.STATED and r.value == D("23420.5") and r.at == now
+    monkeypatch.setattr(readers, "planning_price_usable", lambda quote, *, market_closed: False)
+    assert readers.read_last_close(q, True, None, now).state is SourceState.ABSENT

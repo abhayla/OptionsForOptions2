@@ -11,7 +11,10 @@
   (none -> unpriced, never 0), the engine's delta (``chain_model``), listed / tradable / low-OI state (scenario: the
   scenario row; live: tradable as listed, low-OI ``unknown`` because Zerodha publishes no threshold, AC-8 warning);
   POP inputs: ``parity_forward``, ``year_fraction`` and the ATM call's implied volatility (each None when refused);
-  the feed spot reading from the provider's index quote. The last close (ADR-212) has no reader here yet: ABSENT.
+  the feed spot reading from the provider's index quote. The last close (ADR-212): the index quote the feed holds
+  from the closed session (``planning_price_usable``) with its own time;
+  scenario mode: the scenario's ``market.prev_close`` dated to the session before the scenario clock
+  (null -> ABSENT). Market open or nothing held: ABSENT.
 - ``read_rest_spot``: ``KiteReads.fetch_index_quote`` (the door's ``%20`` path) with the owner's session; in scenario
   mode the same client over the scenario's REST answer as its transport. Every answer state is named: no session ->
   ABSENT, a Kite error -> FAILED, the name missing from the reply -> NOT_FOUND, no ``last_price`` -> EMPTY.
@@ -33,6 +36,7 @@ from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
+from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.timeutil import IST
 from ofo.tracking.orderbook import net_positions
@@ -45,6 +49,8 @@ from ofo_app.routes.outcome import market_state, read_booked, server_now
 
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
+_SATURDAY = 5
+_CLOSE = datetime.time(15, 30)
 
 
 class TrackedUnreadable(Exception):
@@ -155,8 +161,25 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     vol = _atm_vol(rows, ids, model.greeks, forward)
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
-    return MarketInputs(tuple(rows), ids, forward, years, vol, feed, SourceReading(SourceState.ABSENT), now,
+    return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
                         expiry_kind)
+
+
+def read_last_close(spot_q: Any, market_closed: bool, scn: Any, now: datetime.datetime) -> SourceReading:
+    """ADR-212 last close of the index, with its date. Scenario: ``market.prev_close`` (null / missing -> ABSENT) on the
+    last weekday before the scenario clock, at the 15:30 close. Live: the quote the feed holds from the closed session
+    (never in market hours); none held or not sound -> ABSENT."""
+    if scn is not None:
+        stated = scn.data["market"].get("prev_close")
+        if stated is None:
+            return SourceReading(SourceState.ABSENT)
+        day = ist_today(now) - datetime.timedelta(days=1)
+        while day.weekday() >= _SATURDAY:
+            day -= datetime.timedelta(days=1)
+        return SourceReading(SourceState.STATED, Decimal(str(stated)), datetime.datetime.combine(day, _CLOSE, IST))
+    if spot_q is None or not market_closed or not planning_price_usable(spot_q, market_closed=True):
+        return SourceReading(SourceState.ABSENT)
+    return SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp)
 
 
 def _expiry_kind(provider: Any, underlying: str, expiry: datetime.date, listed: list, scn: Any) -> str:

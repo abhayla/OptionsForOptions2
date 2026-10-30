@@ -1628,6 +1628,12 @@
     "error_type": "NetworkException",
     "message": "Gateway timed out",
     "data": null
+   },
+   "funds_reply": {
+    "status": "error",
+    "error_type": "NetworkException",
+    "message": "Gateway timed out",
+    "data": null
    }
   },
   "quote": {

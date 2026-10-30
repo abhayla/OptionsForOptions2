@@ -143,6 +143,44 @@ def test_adj02_margin_stated():
     assert data["final"]["total"] == Decimal("100000.0")
 
 
+def _basket(*sides: str):
+    from ofo_app.kite_margin import BasketOrder  # noqa: PLC0415
+    syms = ("NIFTY26N0322400CE", "NIFTY26N0322600PE")
+    return [BasketOrder("NFO", syms[i], s, "NRML", "LIMIT", 75, Decimal("45.55"))
+            for i, s in enumerate(sides)]
+
+
+def test_stated_margin_reads_through_fetch_basket_margin():
+    got = _margin("ADJ-02").fetch_basket_margin(_basket("BUY", "SELL"))
+    assert got.top_up == 0 and got.required_total == Decimal("100000")
+    assert [o.tradingsymbol for o in got.orders] == ["NIFTY26N0322400CE", "NIFTY26N0322600PE"]
+
+
+def test_failed_margin_still_unavailable_through_fetch_basket_margin():
+    with pytest.raises(KiteMarginError, match="kite_margin_unavailable"):
+        _margin("ADJ-20a").fetch_basket_margin(_basket("BUY"))
+
+
+def test_empty_margin_still_no_figure_through_fetch_basket_margin():
+    with pytest.raises(KiteMarginError, match="kite_margin_no_figure"):
+        _margin("ADJ-20b").fetch_basket_margin(_basket("SELL"))
+
+
+def test_funds_call_is_served_per_state():
+    assert _margin("ADJ-02").fetch_available_funds() == Decimal("10000000")
+    with pytest.raises(KiteMarginError, match="kite_margin_no_figure"):
+        _margin("ADJ-20b").fetch_available_funds()
+    with pytest.raises(KiteMarginError, match="kite_margin_unavailable"):
+        _margin("ADJ-20a").fetch_available_funds()
+
+
+def test_exchange_token_start_is_above_every_twin():
+    assert scenario_mode._first_free_exchange_token(None) == scenario_mode._FIRST_TOKEN
+    above = scenario_mode._FIRST_TOKEN + 10
+    assert scenario_mode._first_free_exchange_token({"A": (1, above)}) == above
+    assert scenario_mode._first_free_exchange_token({"A": (1, 7)}) == scenario_mode._FIRST_TOKEN
+
+
 def test_adj20c_unpriced_leg_absent_from_quote_reply():
     reply = scenario_mode.load("ADJ-20c").quote_reply()
     assert "NFO:NIFTY26N0322400PE" not in reply["data"] and "NFO:NIFTY26N0322600PE" in reply["data"]
