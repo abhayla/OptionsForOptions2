@@ -2047,10 +2047,6 @@
     "sha256": "c2c8b2be7db12a63bd443a259ff202683a7dad7c406e99fb3ec2c0a848421ca7",
     "reviewed": "pending owner read"
   },
-  "explanation:adjust_margin_empty": {
-    "sha256": "83ab883304a3ba8fb99cecb2a0cea64d3b3b40a2c9794dcea1901651b76e6238",
-    "reviewed": "pending owner read"
-  },
   "explanation:adjust_spot_from_feed": {
     "sha256": "b697042661ba49617e1aeb1bccd8c04b02938e4f833c9d7bf20373a70d1a4991",
     "reviewed": "pending owner read"
@@ -2188,7 +2184,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_row_margin_change": {
-    "sha256": "75295b382bdb40eb1e3549d0cddc1e52f3894755f93ca8eda713b559533812fe",
+    "sha256": "be08db8b5c6b778d959eb1ce06d76002eac416578f27fa928fc831d2d9b7618f",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_row_max_loss": {
@@ -2264,7 +2260,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_lead_margin_change": {
-    "sha256": "4274d78fbc7d3a18104d5f8b22509773e18060c65217768ec2587f0b0b87abca",
+    "sha256": "6e4b950779110430b3ec30776939fcad8ea76f8009347e740057e64a6ea3deb0",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_lead_max_loss": {
@@ -2332,11 +2328,11 @@
     "reviewed": "pending owner read"
   },
   "labels:adjustment_criterion": {
-    "sha256": "7205ef202e57205672dbc4228cedfc02833584c2d265acc593f60a7704fa7ffe",
+    "sha256": "d71d166493b2c78762085b1d1c8debf39b6cabeec23c43a76f4a4eeeefc11576",
     "reviewed": "pending owner read"
   },
   "labels:adjustment_leader": {
-    "sha256": "60bdbdd54b2e77d613f01e835013d69bdbcb679a5cb35f15263d9fc4fffd5ccb",
+    "sha256": "3027f545c8dac0926f3f82d65a120693895c23b13366244ee618ed20373c2108",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_low_oi": {
@@ -2441,6 +2437,10 @@
   },
   "explanation:adjust_cmp_no_position_left": {
     "sha256": "44c5f06c010d3208cdf6184f9ca1dcbbcdb535b64d3dfcf9d0f75e9609867c8e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_empty": {
+    "sha256": "49edba32d72299608e9472bf3fd57803b2592e2f1427ca0181ea878f28e09dcd",
     "reviewed": "pending owner read"
   }
 }

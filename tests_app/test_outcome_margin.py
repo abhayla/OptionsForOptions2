@@ -542,6 +542,52 @@ async def test_ambiguous_basket_reply_shows_could_not_be_read_and_not_zerodhas_t
 async def test_empty_reads_are_unreadable_with_no_figure(funds, basket) -> None:
     m = await margin_answer(source(replies(funds, basket)), CTX, plan())
     assert m.state == "UNREADABLE" and m.needed is None and m.available is None
+    # a reply that still carries some figure is AMBIGUOUS, never "empty": the could-not-be-read words stay
+    assert str(m.reason) == UNREADABLE_TEXT and m.empty is False
+
+
+UNREADABLE_TEXT = "Margin from Zerodha could not be read just now, so no margin figure is shown."
+EMPTY_TEXT = "Zerodha returned no margin figure for this basket."
+
+
+def _no_figure(d):
+    """Every figure removed, the rows (symbol, exchange) kept: Zerodha answered the basket and stated nothing."""
+    d["final"], d["initial"] = {}, {}
+    d["orders"] = [{k: v for k, v in r.items() if k in ("tradingsymbol", "exchange")} for r in d["orders"]]
+
+
+def _no_figure_reordered(d):
+    _no_figure(d)
+    _reordered(d)
+
+
+EMPTY_FUNDS = json.dumps({"status": "success", "data": {}})  # ADJ-20b's funds reply shape
+
+
+@pytest.mark.parametrize(("funds", "basket"), [(None, _basket(_no_figure)), (EMPTY_FUNDS, None)],
+                         ids=["basket-rows-no-figure", "funds-no-figure"])
+async def test_empty_reply_is_worded_as_empty_and_shows_no_figure(funds, basket) -> None:
+    m = await margin_answer(source(replies(funds, basket)), CTX, plan())
+    assert m.state == "UNREADABLE" and m.empty is True
+    assert m.needed is None and m.available is None and m.broker_needed is None and m.shortfall_reason is None
+    assert str(m.reason) == EMPTY_TEXT
+
+
+async def test_empty_figures_with_rows_that_do_not_match_the_basket_stay_ambiguous() -> None:
+    m = await margin_answer(source(replies(basket_text=_basket(_no_figure_reordered))), CTX, plan())
+    assert m.state == "UNREADABLE" and m.empty is False and str(m.reason) == UNREADABLE_TEXT
+
+
+def test_kite_client_marks_only_the_no_figure_reply_empty() -> None:
+    client = KiteMargin(api_key="key", access_token=FAKE_ACCESS, transport=replies(basket_text=_basket(_no_figure)))
+    orders = [BasketOrder(**{**o, "price": Decimal(str(o["price"]))}) for o in STRANGLE["request"]]  # the recorded
+    with pytest.raises(KiteMarginError) as empty:
+        client.fetch_basket_margin(orders)
+    assert empty.value.code == "kite_margin_no_figure" and empty.value.empty is True
+    ambiguous = KiteMargin(api_key="key", access_token=FAKE_ACCESS, transport=replies(basket_text=_basket(_shorter)))
+    with pytest.raises(KiteMarginError) as amb:
+        ambiguous.fetch_basket_margin(orders)
+    assert amb.value.code == "kite_margin_no_figure" and amb.value.empty is False
 
 
 # the route body, per Zerodha failure: needed, available and shortfall_reason are all null, never a made-up figure

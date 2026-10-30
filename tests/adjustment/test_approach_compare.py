@@ -88,8 +88,8 @@ def build_columns(sid: str, margins: dict[str, D] | None = None, pop_on: bool = 
                                   adjustment_charges=ADJ if built.trades else D(0),
                                   open_exit_charges=EXIT if built.after else D(0))
         value = (margins or {}).get(a)
-        cols.append(Column(built, whole, None, True, MarginRead(value, None if value is not None else
-                                                                 render_explanation("adjust_margin_empty"))))
+        empty = render_explanation("adjust_margin_not_available", reason=render_explanation("outcome_margin_empty"))
+        cols.append(Column(built, whole, None, True, MarginRead(value, None if value is not None else empty)))
     ctx = Context(position, spot, chain, None, pop_on, MarginRead(D("100000")), greeks_of(sc),
                   sc["position"]["adjustments_used"])
     return sc, cols, ctx
@@ -185,8 +185,10 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")
     assert mc.values["A-31"].value == D("-100000") and mc.leaders == ("A-31",)
+    # the leader is the LOWEST value (frees the most margin), so it is never called "smallest"; the row says the sign
+    assert (mc.label, mc.leader_label) == ("Margin change (negative = margin freed)", "Lowest margin after the change")
     a29 = mc.values["A-29"]
-    assert a29.text == "-" and "Zerodha answered without a margin figure" in a29.unavailable_reason
+    assert a29.text == "-" and "Zerodha returned no margin figure for this basket" in a29.unavailable_reason
     adj = row(cmp, "adjustments")
     assert adj.values["A-36"].text == "0 used; no plan maximum set" and adj.values["A-05"].value == 1
     assert adj.leaders == ("A-36",)
