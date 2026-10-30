@@ -245,6 +245,50 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-11": "Re-centre both shorts at the money",
     "A-31": "Exit the whole strategy",
 })
+#: REQ-156 AC-2 (ADR-214 (2a)): each compare criterion row's shown name, in the AC-2 group order
+ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "credit": "Credit (+) or debit (-)",
+    "cost": "Charges plus bid-ask cost",
+    "margin_change": "Margin change",
+    "max_loss": "Max loss",
+    "move_m2": "P&L if spot falls 2%",
+    "move_m1": "P&L if spot falls 1%",
+    "move_p1": "P&L if spot rises 1%",
+    "move_p2": "P&L if spot rises 2%",
+    "breakevens": "Breakevens",
+    "max_profit": "Max profit",
+    "premium_left": "Premium still left to earn",
+    "pop": "POP",
+    "delta": "Net delta",
+    "gamma": "Gamma",
+    "theta": "Theta",
+    "vega": "Vega",
+    "adjustments": "Adjustments used",
+    "liquidity": "Strike liquidity (widest bid-ask spread)",
+    "fresh": "Would you open this fresh",
+})
+#: REQ-156 AC-3: each row's leader in plain words (decision-support words only, ADR-003: no ranking word)
+ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "credit": "Most credit",
+    "cost": "Lowest cost",
+    "margin_change": "Smallest margin change",
+    "max_loss": "Smallest max loss",
+    "move_m2": "Highest P&L at -2%",
+    "move_m1": "Highest P&L at -1%",
+    "move_p1": "Highest P&L at +1%",
+    "move_p2": "Highest P&L at +2%",
+    "breakevens": "Widest profit range",
+    "max_profit": "Highest max profit",
+    "premium_left": "Most premium left",
+    "pop": "Highest POP",
+    "delta": "Closest to delta-neutral",
+    "gamma": "Lowest gamma",
+    "theta": "Most theta",
+    "vega": "Lowest vega",
+    "adjustments": "Fewest adjustments",
+    "liquidity": "Tightest spreads",
+    "fresh": "Smallest fresh max loss",
+})
 SCENARIO_VIEW_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "AT_EXPIRY": "At Expiry",
     "ESTIMATED_NOW": "Estimated Now (estimate)",
@@ -1407,6 +1451,35 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
                         "Profit left and Loss left are not worked out: prices are not live."),
+    # REQ-156 (ADR-214 (2a)): the approach compare's cell texts and the reason beside every "-"
+    ExplanationTemplate("adjust_cmp_rupees", "values_seen", "{amount}", {"amount": Rupees}),
+    ExplanationTemplate("adjust_cmp_value", "values_seen", "{value}", {"value": Recorded}),
+    ExplanationTemplate("adjust_cmp_percent", "values_seen", "{value}%", {"value": Recorded}),
+    ExplanationTemplate("adjust_cmp_unlimited", "values_seen", "Unlimited"),
+    ExplanationTemplate("adjust_cmp_dash", "values_seen", "-"),
+    ExplanationTemplate("adjust_cmp_breakevens", "values_seen", "{levels} (profit range {width} points)",
+                        {"levels": Recorded, "width": Points}),
+    ExplanationTemplate("adjust_cmp_no_breakeven_loss", "values_seen", "No breakeven: a loss at every level"),
+    ExplanationTemplate("adjust_cmp_no_breakeven_profit", "values_seen", "No breakeven: a profit at every level"),
+    ExplanationTemplate("adjust_cmp_adjustments", "values_seen", "{used} used; no plan maximum set",
+                        {"used": Recorded}),
+    ExplanationTemplate("adjust_cmp_fresh", "values_seen", "Max profit {profit}, max loss {loss}",
+                        {"profit": Explained, "loss": Explained}),
+    ExplanationTemplate("adjust_cmp_no_price", "values_seen", "Not available: {leg} has no current price.",
+                        {"leg": Recorded}),
+    ExplanationTemplate("adjust_cmp_no_bid_ask", "values_seen", "Not available: {leg} has no bid or no ask.",
+                        {"leg": Recorded}),
+    ExplanationTemplate("adjust_cmp_no_greeks", "values_seen", "Not available: no Greeks for {leg}.",
+                        {"leg": Recorded}),
+    ExplanationTemplate("adjust_cmp_no_new_leg", "values_seen", "Not available: this approach opens no new leg."),
+    ExplanationTemplate("adjust_cmp_nothing_open", "values_seen", "Not available: no leg stays open."),
+    ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
+                        "{value}% (Zerodha may refuse fresh orders in {legs}: low open interest state not known)",
+                        {"value": Recorded, "legs": Recorded}),
+    ExplanationTemplate("adjust_cmp_adjustments_unknown", "values_seen",
+                        "Not available: the paper book does not record adjustments yet."),
+    ExplanationTemplate("adjust_cmp_margin_before_unknown", "values_seen",
+                        "Not available: the margin of the current legs is not available."),
     # GC-TP fix1 (ADR-211 (5)): the breakeven dash of a card on legs with different expiries; "Exited" moved unchanged
     # from the browser (EXITED_TEXT), the reason beside every figure of a fully exited strategy
     ExplanationTemplate("paper_breakeven_multi_expiry", "values_seen",
@@ -1418,6 +1491,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
+    *(ExplanationTemplate(f"adjust_cmp_row_{key}", "values_seen", text)  # REQ-156: each criterion row's name
+      for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
+    *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
+      for key, text in ADJUSTMENT_LEADER_LABEL_TEXT.items()),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})
@@ -1429,6 +1506,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "builder": BUILDER_LABEL_TEXT, "scenario_view": SCENARIO_VIEW_LABEL_TEXT, "health": HEALTH_LABEL_TEXT,
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT,
+    "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
 })
 
 

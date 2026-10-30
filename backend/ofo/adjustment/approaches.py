@@ -57,6 +57,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
 CONFIG_FILE = Path(__file__).with_name("approach_config.json")
 APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31")
+NO_CHANGE = APPROACH_IDS[0]  # A-36 "No change": always compared, always the first column (REQ-156 AC-1, AC-4)
 NAMES = ADJUSTMENT_APPROACH_LABEL_TEXT
 KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close_part", "A-11": "convert",
          "A-31": "exit"}
@@ -175,6 +176,11 @@ def _refusal(template: str, **slots: object) -> _Refused:
 @dataclass(frozen=True)
 class _Condor:
     index: Mapping[tuple[str, str], int]  # (side, "short"/"wing") -> leg index
+
+
+def is_no_change(built: ApproachLegs) -> bool:
+    """The "No change" approach (A-36), whose After is the current legs."""
+    return built.id == NO_CHANGE
 
 
 def planned_price(row: ChainRow | None) -> Decimal | None:

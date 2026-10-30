@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import sys
 from decimal import Decimal as D
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
+from ofo.adjustment.compare import ROWS
+from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_unreadable
-
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
@@ -237,3 +240,66 @@ def test_ac7_seven_approaches_engine_time_at_most_one_second_and_no_order_path(m
     body = post(client_for(load("ADJ-02"))).json()
     assert body["timing"]["approaches"] == len(APPROACH_IDS)
     assert D(body["timing"]["engine_seconds"]) <= 1
+
+
+# ---- REQ-156: the compare criteria, leads and curves in the same reply ---------------------------------------------
+
+RATES = ChargeRates(
+    brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+    transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+    stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
+    source_url="https://zerodha.com/charges")
+RANKING = re.compile(r"\b(best|winner|rank\w*|score\w*|better)\b", re.IGNORECASE)
+
+
+def test_req156_ac2_adj02_reply_carries_every_criterion_for_every_approach_and_the_hand_money():
+    """REQ-156 AC-2/AC-3: 19 rows in AC-2's groups, each built approach a value or "-" with a reason; max loss and the
+    -2 % move equal the hand intrinsic value less the reply's own three charge lines; curves for before + each."""
+    sc = load("ADJ-02")
+    body = post(client_for(sc, rates=RATES)).json()
+    built = [a["id"] for a in body["approaches"] if a["refusal"] is None]
+    assert [c["id"] for c in body["criteria"]] == [r for r, _, _ in ROWS]  # the catalogue order (domain test pins it)
+    assert {c["group"] for c in body["criteria"]} == {"money_now", "risk_after", "reward_after", "greeks_after",
+                                                     "practical"}
+    for c in body["criteria"]:
+        assert list(c["values"]) == built, c["id"]
+        for cell in c["values"].values():
+            assert cell["text"] and (cell["text"] != "-" or cell["unavailable_reason"]), (c["id"], cell)
+    rows = {c["id"]: c for c in body["criteria"]}
+    legs, after = sc["expected"]["approach_legs"], sc["expected"]["approach_after"]
+    for a in built:
+        ch = next(x for x in body["approaches"] if x["id"] == a)["charges"]
+        lines = D(ch["this_adjustment"]) + D(ch["paid_so_far"]) + D(ch["open_exit"])
+        assert D(rows["max_loss"]["values"][a]["value"]) == D(after[a]["max_loss"]) + lines, a
+        level = Fraction(sc["market"]["spot"]) * Fraction(98, 100)
+        h = gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), level)
+        assert D(rows["move_m2"]["values"][a]["value"]) == D(h.numerator) / D(h.denominator) - lines, a
+    assert set(body["curves"]) == {"before", *built}
+    assert all(len(p) == 2 for pts in body["curves"].values() for p in pts)  # noqa: PLR2004 - [level, P&L]
+    m = sum(1 for c in body["criteria"] if c["leaders"])
+    assert list(body["leads"]) == built and all(v["m"] == m for v in body["leads"].values())
+    assert RANKING.search(json.dumps(body)) is None
+
+
+def test_req156_ac1_refused_approach_absent_from_criteria_and_curves():
+    """REQ-156 AC-1 / attack 3: ADJ-20d's A-05 is listed with its reason and takes no part in criteria or curves."""
+    body = post(client_for(load("ADJ-20d"), rates=RATES)).json()
+    a05 = next(a for a in body["approaches"] if a["id"] == "A-05")
+    assert a05["refusal"]
+    assert all("A-05" not in c["values"] for c in body["criteria"]) and "A-05" not in body["curves"]
+    assert "A-05" not in body["leads"]
+
+
+def test_req156_ac3_pop_held_row_has_no_leader():
+    """REQ-156 AC-3 / attack 2: the held POP switch -> every POP cell "-" with the held reason, no leader."""
+    body = post(client_for(load("ADJ-02"), rates=RATES, environ={"APP_ENV": "production"})).json()
+    pop = next(c for c in body["criteria"] if c["id"] == "pop")
+    assert pop["leaders"] == []
+    assert all(v["text"] == "-" and v["unavailable_reason"].startswith("POP not available")
+               for v in pop["values"].values())
+
+
+def test_req156_no_spot_no_criteria():
+    """No spot -> no After, so no criteria, no leads and no curves (nothing made up)."""
+    body = post(client_for(load("ADJ-24b"), rates=RATES)).json()
+    assert body["approaches"] == [] and body["criteria"] == [] and body["leads"] == {} and body["curves"] == {}

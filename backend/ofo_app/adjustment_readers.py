@@ -31,14 +31,14 @@ from ofo.adjustment.approaches import ChainRow, Position, PositionLeg
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
-from ofo.engine.black_scholes import year_fraction
+from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState
-from ofo.timeutil import IST
+from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
@@ -50,7 +50,7 @@ from ofo_app.routes.outcome import market_state, read_booked, server_now
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
 _SATURDAY = 5
-_CLOSE = datetime.time(15, 30)
+_CLOSE = SESSION_CLOSE  # one home: ofo.timeutil
 
 
 class TrackedUnreadable(Exception):
@@ -102,7 +102,10 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
             paid = None
     booked = await read_booked(strategy_id)  # None: could not be read (never 0)
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
-    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid)
+    # adjustments_used: the paper book records no adjustment history yet, so the count is not recorded (None ->
+    # the compare's "-" with that reason); counting closed-and-reopened legs would be a guess
+    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
+                   adjustments_used=None)
 
 
 # ---- market -----------------------------------------------------------------------------------------------------
@@ -131,6 +134,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, market_closed=closed)
     rows: list[ChainRow] = []
     ids: dict[str, str] = {}
+    leg_greeks: dict[str, Greeks] = {}
     for lc in listed:
         c = lc.contract
         if c.expiry != expiry:
@@ -149,6 +153,9 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
                              None if q is None else q.bid, None if q is None else q.ask,
                              None if g is None else g.delta, True, tradable, low_oi, blocked))
         ids[symbol] = iid
+        if g is not None:  # the chain's engine Greeks per unit (chain_model, as the chain and outcome show them)
+            leg_greeks[symbol] = Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
+                                        g.vega)
     forward = None
     try:
         forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate).forward
@@ -162,7 +169,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
-                        expiry_kind)
+                        expiry_kind, leg_greeks)
 
 
 def read_last_close(spot_q: Any, market_closed: bool, scn: Any, now: datetime.datetime) -> SourceReading:

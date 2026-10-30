@@ -53,7 +53,7 @@ from ofo.engine.pop import Unavailable, Why, probability_of_profit
 from ofo.engine.strategy import Strategy
 from ofo.money import PAISE
 
-__all__ = ["MultiExpiryError", "WholeTradeAfter", "WholeTradeFigures", "whole_trade_after"]
+__all__ = ["MultiExpiryError", "WholeTradeAfter", "WholeTradeFigures", "whole_pnl_at", "whole_trade_after"]
 
 
 @dataclass(frozen=True)
@@ -146,3 +146,13 @@ def whole_trade_after(strategy: Strategy | None, *, booked_pnl: Decimal, paid_ch
     return WholeTradeAfter(gross=_figures(strategy, booked), after_charges=_figures(strategy, booked - total),
                            booked_pnl=booked, paid_charges=paid, adjustment_charges=adjustment,
                            open_exit_charges=exits, total_charges=total, pop=pop, pop_unavailable=why)
+
+
+def whole_pnl_at(strategy: Strategy | None, after: WholeTradeAfter, level: Decimal) -> Decimal:
+    """REQ-156: the whole-trade at-expiry P&L after every charge line at ``level``: the open legs' expiry P&L
+    (``Strategy.expiry_pnl_at``; None = nothing open) plus the booked P&L less the total charges, the same flat shift
+    :func:`whole_trade_after` applies to its figures (no second formula). ``level`` is a price: at most 2 decimals
+    (finding interpolated-level-finer-than-paise-refused: the caller rounds a derived level once)."""
+    require_price(level, "level")
+    open_pnl = strategy.expiry_pnl_at(level) if strategy is not None else Decimal(0)
+    return open_pnl + after.booked_pnl - after.total_charges
