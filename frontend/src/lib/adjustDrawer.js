@@ -3,6 +3,7 @@
 // The generic approaches carry NO figure (REQ-045 AC-5): the numbers appear only in the compare, after a pick. Their names,
 // one-line texts and whether each applies come from the server (`available`); no approach text is kept in the browser.
 import { NO_CHANGE_ID } from '@/lib/adjustCompare'
+import { rupeesText } from '@/lib/displayFormat'
 
 export const REVIEW_BUTTON_TEXT = 'Review adjustment'
 export const PICK_NOTE = 'Pick any to compare. No change is always included.'
@@ -45,7 +46,7 @@ export function replyRows(reply) {
   const margin = reply?.approaches?.find((a) => a.id === NO_CHANGE_ID)?.margin
   return [
     ...REPLY_ROWS.map(([id, label]) => ({ id, label, value: cell(id) })),
-    { id: 'margin', label: 'Margin needed', value: margin?.state === 'stated' ? text(margin.value) : NONE },
+    { id: 'margin', label: 'Margin needed', value: margin?.state === 'stated' ? rupeesText(text(margin.value)) : NONE },
     { id: 'days_left', label: 'Days to expiry', value: Number.isInteger(reply?.days_to_expiry) ? String(reply.days_to_expiry) : NONE },
   ]
 }

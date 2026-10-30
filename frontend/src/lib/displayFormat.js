@@ -172,3 +172,33 @@ export function groupMoney(text) {
     return `${rest},${whole.slice(-3)}`
   })
 }
+
+// GC-ADJ1 follow-up: the adjustment screens print the reply's raw decimal texts in the app's own forms. Text and BigInt only:
+// nothing is parsed to a float and no money is computed (ADR-008); the server's own forms are "₹1,865.50", "−₹916.50" and "65.18%".
+const RUPEE = '₹'
+const MINUS = '−' // U+2212, the sign the server prints before the rupee sign
+const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
+
+/** A plain decimal text as rupees with Indian grouping: '720252.00' -> '₹7,20,252.00', '-2453.75' -> '−₹2,453.75'. Digits after the
+ *  point are kept as sent (a whole number gets '.00'). Anything that is not a plain decimal comes back unchanged. */
+export function rupeesText(text) {
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(text ?? '').replace(/,/g, '').trim())
+  if (!m) return text
+  const whole = groupedIndian(String(BigInt(m[2])))
+  const paise = m[3] ?? '00'
+  const zero = /^0+$/.test(m[2]) && /^0+$/.test(paise)
+  return `${m[1] && !zero ? MINUS : ''}${RUPEE}${whole}.${paise}`
+}
+
+/** A probability fraction text as a percent with two decimals, half-up on the digits: '0.686109001' -> '68.61%'; an exact zero
+ *  reads '0%'. Anything that is not a fraction text comes back unchanged. */
+export function percentFromFraction(text) {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(String(text ?? '').trim())
+  if (!m) return text
+  const digits = m[2] ?? ''
+  let hundredths = BigInt(m[1] + digits.padEnd(4, '0').slice(0, 4)) // fraction x 100 (percent), in hundredths of a percent
+  if (digits.length > 4 && digits[4] >= '5') hundredths += 1n
+  if (hundredths === 0n) return '0%'
+  const s = String(hundredths).padStart(3, '0')
+  return `${s.slice(0, -2)}.${s.slice(-2)}%`
+}
