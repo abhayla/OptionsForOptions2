@@ -6,6 +6,7 @@
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT } from '@/lib/tracking'
+import { istTime } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
@@ -22,6 +23,9 @@ export const GREEK_COLUMNS = [
   { key: 'delta', label: 'Delta' }, { key: 'gamma', label: 'Gamma' }, { key: 'theta', label: 'Theta' }, { key: 'vega', label: 'Vega' },
 ]
 const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+// REQ-109 AC-5: "<sentence>, as of <time>" when the server sent the time (as_of / totals_as_of); no time (null, not a
+// string the clock can read): the sentence as sent, never a made-up time. Only a PAUSED book carries one.
+export const withAsOf = (sentence, asOf) => (sentence !== null && typeof asOf === 'string' && istTime(asOf).endsWith('IST') ? `${sentence}, as of ${istTime(asOf)}` : sentence)
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
 // U16 (REQ-151): the same 'NIFTY 3 Nov 22950 CE' text every other screen shows; the server's contract_text (ISO date) is the fallback.
@@ -89,7 +93,7 @@ export function readPaperStrategy(s, index = 0) {
   const positions = s.positions.map((p) => readPosition(p, s.underlying))
   if (positions.some((p) => p === null)) return bad(id)
   let stateText = ''
-  if (s.state === 'PAUSED') stateText = PAPER_PAUSED
+  if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
   return {
@@ -106,7 +110,7 @@ export function readPaperStrategy(s, index = 0) {
     unbooked: text(s.unbooked_text),
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: text(s.charges_reason_text),
-    pauseReason: text(s.pause_reason_text),
+    pauseReason: s.state === 'PAUSED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text),
     ...readSummary(s),
     positions,
   }
@@ -117,7 +121,7 @@ function readTotals(t) {
   return {
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
     charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
-    totalReason: text(t.totals_reason_text), decayReason: text(t.decay_reason_text),
+    totalReason: withAsOf(text(t.totals_reason_text), t.totals_as_of), decayReason: text(t.decay_reason_text),
   }
 }
 

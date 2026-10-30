@@ -32,7 +32,7 @@ Standard library only; no clock is read here.
 from __future__ import annotations
 
 import datetime
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -130,6 +130,13 @@ def display_price(snapshot: MarketSnapshot, instrument_id: str) -> Price:
             or not planning_price_usable(quote, market_closed=True)):
         return found
     return Price(instrument_id, LIVE, quote.ltp, quote.timestamp)
+
+
+def paused_as_of(open_prices: Iterable[Price]) -> datetime.datetime | None:
+    """REQ-109 AC-5: the oldest known quote time of an open input that is not live; None when none has a known time.
+    The one rule behind every paused "as of" (tracking and the paper books), never computed a second way."""
+    known = [p.at for p in open_prices if not is_live(p) and p.at is not None]
+    return min(known) if known else None
 
 
 def index_price(snapshot: MarketSnapshot) -> Price:
@@ -261,7 +268,6 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
                             leg_pnls(legs, {}, exits))
     contract_reason = next((reasons[i] for i in open_legs if reasons[i] is not None), None)
     paused = split.unbooked is None
-    known = [prices[i].at for i in open_legs if not is_live(prices[i]) and prices[i].at is not None]
     index = index_price(snapshot)
     still_open = [legs[i] for i in open_legs]
     breakevens = entry_breakevens(still_open) if still_open else None
@@ -270,7 +276,7 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
         detections = detect_near_levels(short_strike_levels=short_strikes(still_open), breakevens=breakevens or (),
                                         index_level=index.price, threshold_percent=threshold_percent)
     reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
-    as_of = min(known) if paused and known else None
+    as_of = paused_as_of(prices[i] for i in open_legs) if paused else None
     # D-B48: a paused view (REQ-109 AC-5) shows no open leg's figure, so no half-known set; exited legs stay booked.
     live_open = {} if paused else {i: prices[i].price for i in open_legs}
     return TrackingView(paused, reason, split.total, as_of, prices, index, breakevens, detections, split.booked,
