@@ -7,13 +7,12 @@
   (APP_ENV=test, OUTCOME_REPLAY) gives each connection its own replay feed, through the strategy socket's builder
   (``routes.live.current_feed``), so both sockets read the same feed in every mode.
 - ``GET /api/market/indices``: the page's first paint, and with ``fallback=true`` the refresh of a page whose own socket
-  is down: then the answer is NOT_CONNECTED with each index's last value time, whoever else holds the indices (finding
-  liveness-from-shared-subscribers). No live feed: NOT_CONNECTED, every value null.
-  The PLAIN read (``fallback`` false) on
-  a cold feed (the market open, no socket holds the index ids) holds the ids itself on the shared fan-out until both are
-  priced, the provider reports disconnected, or ``INDEX_WAIT_S`` passes, reads its answer INSIDE that hold (a released
-  id's quote is parked, GC-LIVE F-3) and then releases (issue #612). The route's own hold is a holder, so the answer
-  is live; ``fallback`` true never holds and stays NOT_CONNECTED.
+  is down. Both, on a cold feed (the market open; for the plain read also no socket holds the index ids), hold the ids
+  themselves on the shared fan-out until both are priced, the provider reports disconnected, or ``INDEX_WAIT_S`` passes,
+  read their answer INSIDE that hold (a released id's quote is parked, GC-LIVE F-3) and then release (issue #612). The
+  plain read's own hold is a holder, so its answer is live. The ``fallback`` answer is NOT_CONNECTED whoever else holds
+  the indices (finding liveness-from-shared-subscribers) but carries the values (ADR-213, SPEC CHANGE to ADR-077 for the
+  index strip). Provider disconnected, no live feed: NOT_CONNECTED, every value null. Market closed: unchanged.
 
 V1 has one fixed owner and no login (``routes/broker.py`` ``current_user_ref``); like ``/api/strategies/live`` these
 reads carry no user value.
@@ -78,12 +77,15 @@ async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one 
                               streaming: Callable[[str], bool] | None,
                               feed: LiveFeed | None, *, fallback: bool, now: AnswerClock,
                               wait: float = INDEX_WAIT_S) -> IndicesOut:
-    """The plain read's answer (issue #612). Not live as ``indices_read`` says it (fallback, no feed, a closed market,
-    or a socket already holds the ids): that answer, nothing held. Otherwise hold the known index ids on the shared
-    fan-out until each is priced, the provider is disconnected or ``wait`` passes; the answer is read INSIDE the hold,
-    which is released in ``finally``. A KeyError from the fan-out (no token for an id): the unheld answer stands."""
-    unheld = ctx is not None and not held_by_a_socket(ctx, streaming) and not market_state(ctx, ctx.clock()).closed
-    if feed is None or ctx is None or fallback or not unheld:
+    """The REST read's answer (issues #612, ADR-213). No feed, no context or a closed market: ``indices_read``,
+    nothing held. The plain read when a socket already holds the ids: ``indices_read`` too. Otherwise hold the known
+    index ids on the shared fan-out until each is priced, the provider is disconnected or ``wait`` passes; the answer
+    is read INSIDE the hold, which is released in ``finally``. The plain read's answer is LIVE (the hold is a holder);
+    the fallback read's answer (this page's own socket is down, whoever else streams) is NOT_CONNECTED with the values
+    filled. A KeyError from the fan-out (no token for an id): the unheld answer stands."""
+    closed = ctx is None or market_state(ctx, ctx.clock()).closed
+    unheld = ctx is not None and not held_by_a_socket(ctx, streaming)
+    if feed is None or ctx is None or closed or not (fallback or unheld):
         return indices_read(ctx, streaming, fallback=fallback, now=now)
     ids = [i for i in index_ids(ctx).values() if i is not None]
     if not ids:
@@ -99,6 +101,8 @@ async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one 
             await asyncio.sleep(POLL_SECONDS)
         if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
             return indices_answer(ctx, live=False, now=now)
+        if fallback:  # ADR-213: never LIVE for a page whose own socket is down, but the values the hold read
+            return indices_answer(ctx, live=False, now=now, fill=True)
         return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
     finally:
         with contextlib.suppress(Exception):

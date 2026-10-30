@@ -464,12 +464,11 @@ async def test_cold_fallback_read_in_a_closed_market_is_unchanged_and_holds_noth
 async def test_fallback_read_while_another_socket_streams_is_never_live_and_has_values():
     """Finding liveness-from-shared-subscribers: another socket holds the ids; this page's fallback answer is still
     NOT_CONNECTED (never LIVE), now with the values filled."""
-    provider, feed, channel, _mono, push = make_rig()
-    both(provider, "25145.50", "82010.25", T0)
-    task = asyncio.create_task(push.run())
-    await settle()
-    answer = await first_paint(feed, Wall(), fallback=True)
-    await close(channel, task)
+    _provider, feed, wall = cold_rig()
+    other = feed.fanout.subscribe(lambda _q: None, [NIFTY_ID, SENSEX_ID])  # another socket streams both ids
+    answer = await first_paint(feed, wall, fallback=True)
+    assert feed.fanout.subscriber_count(NIFTY_ID) == ONE  # only the other holder remains
+    feed.fanout.unsubscribe(other)
     assert answer.state == "NOT_CONNECTED"
     assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
 
