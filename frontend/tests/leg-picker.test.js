@@ -684,7 +684,7 @@ describe('REQ-080 strikes tab (W-147)', () => {
       .toEqual(['151.30', '32.2L', '11.34', '0.5730'])
     // unpriced cell: '-' in every figure, and the reason sits above the list
     const none = sideOf(w, '22450.00', 'ce')
-    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['-', '—', '-', '-'])
+    expect(['cell-ltp', 'cell-oi', 'cell-iv', 'cell-delta'].map((id) => none.find(`[data-testid="${id}"]`).text())).toEqual(['—', '—', '—', '—'])
     expect(t(w, 'strikes-reason').text()).toBe('Some strikes have no live price right now; they show a dash.')
     expect(t(w, 'strikes-reason').element.compareDocumentPosition(rowOf(w, '22450.00').element) & 4).toBeTruthy() // the list follows the reason
     // select two contracts (22500 CE sell, 22550 PE buy), Done adds both
@@ -847,7 +847,7 @@ describe('REQ-080 strikes tab (W-147)', () => {
     await openStrikes(w)
     expect(t(w, 'strikes-centre').text()).toBe('ATM unknown - no live price. The list is centred on the middle listed strike.')
     expect(w.findAll('[data-testid="strike-row"][data-atm="true"]')).toHaveLength(0)
-    expect(w.findAll('[data-testid="cell-ltp"]').every((e) => e.text() === '-')).toBe(true)
+    expect(w.findAll('[data-testid="cell-ltp"]').every((e) => e.text() === '—')).toBe(true)
   })
 
   it('AC-5/ADR-015: a failed read leaves no old list, an unknown reason code reads as "not given"', async () => {

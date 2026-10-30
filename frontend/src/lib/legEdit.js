@@ -196,6 +196,6 @@ export function controlsForSelection(controls, legs) {
  *  edit, remove). Their sum plus the card's side padding stays within the 480 px narrowest left column, so a row never wraps. */
 // GC-UI 3a (D-A09, D-A16): tick, B/S, expiry, strike stepper, type, lots, price box, depth, bin (the pencil column is gone:
 // the strike opens the leg in the drawer)
-export const LEG_ROW_COLUMNS = Object.freeze([20, 24, 84, 100, 34, 48, 96, 22, 22])
+export const LEG_ROW_COLUMNS = Object.freeze([20, 24, 100, 88, 34, 48, 96, 22, 22]) // expiry 100: "3 Nov (4 days)" fits whole (84 clipped the ")")
 export const LEG_CARD_PADDING_PX = 12
 export const LEFT_COLUMN_MIN_PX = 480

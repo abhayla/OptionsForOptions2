@@ -231,3 +231,10 @@ describe('the Underlying/index view page', () => {
     expect(w.text()).not.toContain('25145.50')
   })
 })
+
+describe('U10: the REST fallback path is relative to the api client baseURL', () => {
+  it('does not repeat /api (the client already adds it)', () => {
+    expect(INDEX_REST_PATH).toBe('/market/indices')
+    expect(INDEX_REST_PATH.startsWith('/api')).toBe(false)
+  })
+})
