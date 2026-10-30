@@ -21,12 +21,13 @@ from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_unreadable
+from ofo_app import paper_store
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-import adjust_scenarios_gen as gen  # noqa: E402
+import adjust_scenarios_gen as gen
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
 IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")
@@ -76,7 +77,8 @@ class Calls:
         self.margin = 0
 
 
-def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None, calls: Calls | None = None):
+def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None,  # noqa: PLR0913 - one keyword per route seam
+               calls: Calls | None = None):
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -139,7 +141,8 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
     sc = load("ADJ-23")
-    on = post(client_for(sc, rates=RATES, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
+    # held_switches: ON in development and test
+    on = post(client_for(sc, rates=RATES, environ={"APP_ENV": "test"})).json()
     assert on["pop_switch_on"] is True
     pops = {a["id"]: a["pop"] for a in on["approaches"] if a["refusal"] is None}
     assert all(p["value"] is not None for p in pops.values()), pops
@@ -229,7 +232,8 @@ def test_attack5_rates_unreadable_gross_shown_after_charges_withheld():
 
 
 def test_adj20a_charges_unknown_withholds_pop_and_no_pop_leader():
-    """A-31 / ADJ-20a: unreadable charge rates -> POP "-" with the charges-unknown reason, in the route and the compare."""
+    """A-31 / ADJ-20a: unreadable charge rates -> POP "-" with the charges-unknown reason, in the route and the
+    compare."""
     body = post(client_for(load("ADJ-20a"), rates=None, environ={"APP_ENV": "test"})).json()
     shown = [a for a in body["approaches"] if a["refusal"] is None and a["after"] is not None]
     assert shown
@@ -244,7 +248,6 @@ def test_adj20a_charges_unknown_withholds_pop_and_no_pop_leader():
 
 
 def test_ac7_seven_approaches_engine_time_at_most_one_second_and_no_order_path(monkeypatch):
-    from ofo_app import paper_store
     def no_order(*_a, **_k):
         raise AssertionError("an order path was called")
     monkeypatch.setattr(paper_store, "place", no_order)

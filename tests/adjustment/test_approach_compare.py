@@ -30,6 +30,7 @@ from ofo.adjustment.compare import (
     compare,
     leaders,
 )
+from ofo.engine.adjust_money import stand_in_basket_margin
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.strategy import Strategy
@@ -313,8 +314,5 @@ def test_ac2_liquidity_cell_carries_the_low_oi_warning():
 
 
 def test_stand_in_basket_margin_formula_is_test_data():
-    from decimal import Decimal as D
-
-    from ofo.engine.adjust_money import stand_in_basket_margin
     assert stand_in_basket_margin([("SELL", D("22100"), 75), ("BUY", D("45.55"), 75)]) == D("195483.75")
     assert stand_in_basket_margin([("BUY", D("45.55"), 75)]) == D("0.00")

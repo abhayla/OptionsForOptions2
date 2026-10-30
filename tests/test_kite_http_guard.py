@@ -74,7 +74,7 @@ def test_quote_door_allows_index_names(query: str) -> None:
     "NSE:NIFTY%20%2050", "NSE:NIFTY%20%20", "NSE:NIFTY%20", "NSE:NIFTY%2050%20", "NSE:NIFTY+50", "NSE:NIFTY 50",
     "nse:nifty%2050", "NSE:nifty%2050", "NSE:NIFTY%2050&i=NSE:FOO%20BAR", "NSE:FOO%20BAR&i=NSE:NIFTY%2050",
     "NSE:NIFTY%2050&i=", "BSE:NIFTY%2050", "NSE:SENSEX%2050", "NSE:NIFTY%2050&j=1", "NSE:NIFTY%2050#x",
-    "NSE:NIFTY%2050\\u00a0".encode().decode("unicode_escape"),
+    "NSE:NIFTY%2050" + chr(0xA0),  # a trailing no-break space
 ])
 def test_quote_door_refuses_other_spaced_names(query: str) -> None:
     with pytest.raises(kite_http.KiteCallRefused):

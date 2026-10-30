@@ -10,10 +10,11 @@ import logging
 import re
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from ofo.broker.kite_endpoints import ALLOWED_CALLS
-from ofo.broker.kite_http import KiteCallRefused
+from ofo.broker.kite_http import KiteCallRefused, check_call
 from ofo.engine import Instrument
 from ofo.execution.basket import TagParts, parse_tag
 from ofo_app import broker_sync, kite_reads
@@ -454,7 +455,6 @@ def test_a_bad_reply_keeps_the_earlier_sync(clean_sync) -> None:
 @pytest.mark.parametrize(("name", "raw"), [("NSE:NIFTY 50", "/quote?i=NSE:NIFTY%2050"),
                                            ("BSE:SENSEX", "/quote?i=BSE:SENSEX")])
 def test_index_quote_url_is_written_with_percent_20_and_passes_the_door(name, raw) -> None:
-    from ofo.broker.kite_http import check_call
     assert kite_reads.index_quote_path(name) == raw
     check_call("GET", BASE + raw)  # the door itself; raises KiteCallRefused if refused
     body = json.dumps({"status": "success", "data": {name: {"last_price": 23101.5,
@@ -479,8 +479,5 @@ def test_index_quote_of_any_other_name_is_refused_before_the_transport(name) -> 
 
 
 def test_urlencode_form_of_an_index_is_refused_by_the_door() -> None:
-    from urllib.parse import urlencode
-
-    from ofo.broker.kite_http import check_call
     with pytest.raises(KiteCallRefused):
         check_call("GET", BASE + "/quote?" + urlencode({"i": "NSE:NIFTY 50"}))
