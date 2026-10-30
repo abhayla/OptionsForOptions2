@@ -38,7 +38,7 @@
         <FigureHint id="adjustment_detection" label="Why detected" :lines="d.details" />
       </div>
       <!-- GC-ADJ1 step 3 (REQ-046 AC-1..AC-3): the drawer with layers 1-3; shown only while a detection is shown -->
-      <button ref="reviewBtn" type="button" v-if="view.detections.length" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
+      <button v-if="view.detections.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :rows="stateRows(raw)" :legs="raw?.legs ?? []"
@@ -48,8 +48,8 @@
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { inject, nextTick, ref, watch } from 'vue'
+import { routerKey } from 'vue-router'
 import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
 import { REVIEW_BUTTON_TEXT, stateRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
@@ -67,7 +67,7 @@ const status = ref('loading')
 const view = ref(null)
 const error = ref('')
 const raw = ref(null) // the last tracking reply, for the drawer's layer 2 (display only)
-const router = useRouter()
+const router = inject(routerKey, null) // absent in a panel mounted without a router: Compare then goes nowhere
 const reviewBtn = ref(null)
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
@@ -82,7 +82,7 @@ async function closeDrawer() {
 }
 function goCompare({ url }) {
   drawerOpen.value = false
-  router.push(url)
+  router?.push(url)
 }
 
 function failed(e) {
