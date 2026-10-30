@@ -51,6 +51,7 @@ from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
 from ofo.errors.explanations import approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SourceState, SpotAnswer, resolve_spot
+from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -240,7 +241,7 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
             known = False
     try:
         open_legs = _strategy(legs, position.lot) if legs else None  # None: every leg exited (A-31)
-        after = whole_trade_after(open_legs, booked_pnl=booked.quantize(Decimal("0.01")),
+        after = whole_trade_after(open_legs, booked_pnl=booked.quantize(PAISE),
                                   paid_charges=paid if known else Decimal(0),  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else Decimal(0),
                                   open_exit_charges=exits if known else Decimal(0),
