@@ -253,3 +253,36 @@ pm-ci.log). wt-link-modules failed as the contract expects.
 - Then #613, #614, #615.
 - Mon 2 Nov: R-24 (arm by 09:10).
 - Mon 3 Nov: NIFTY settlement proof after 15:45.
+
+## LAND (30 Oct 2026, 19:44 IST, owner said "Land")
+
+**DONE**
+- #611 merged as 1e27df74 (all 7 checks). Before the push:
+  - main merged in, reusing the 8c23020d conflict resolution.
+  - Broker-name allow-list refreshed: 15 stale lines out, 15 in (00ec226e).
+  - Tier B Sonnet review: REVISE on one MAJOR. A pending Positions row clipped the "Zerodha units" and "Status" columns at 390 px. Fixed in 72b04c36, red test first (1 failed -> 15 passed).
+  - prepush --full TOTAL PASS 552.8 s.
+- #619 (fixes from `live2/2026-10-30`) merged as dd5f55ac (all 7 checks). #612 closed by `Fixes #612`. Before the push:
+  - Main + #611 merged in.
+  - ADR-213 coverage stage added; spec digest and findings index regenerated (b15416e1).
+  - Pushed with PREPUSH_GATE_ALLOW (owner OK). The full gate's domain and app steps passed on 12c29cf5 before low memory killed the run. On b15416e1: ci_local 15/0, vitest 1658/1658, build and lint OK.
+  - Tier B Sonnet review: PASS. The first CI run failed only the PR body's spec block ("Class: SPEC CHANGE" is not a valid value). Fixed to `Class: none` with ADR-213 named, then the PR was closed and reopened for a fresh event.
+
+**OWED (not filed yet, on purpose)**: the #619 review's minor findings. Filing an issue now would add a coverage-stage line that main lacks, and that breaks the other session's next PR. File both in the next batched docs PR, with their stage lines in the same change:
+- Builder header (`StrategyBuilderPage.vue:656/734`): after a socket drop plus a fallback read, the header shows a frozen server value with no not-live cue. ADR-213's scope leaked past the strip.
+- Paper hold (`routes/paper.py:485`): one id without a token drops the whole hold, so the book reads unavailable where it used to hold its own legs.
+
+**Worktrees**
+- Removed with `wt-rm`, main proof before == after: OptionsForOptions2-live2, OptionsForOptions2-live2-612, agent-a900a9e51e3cbf140 (#611).
+- Kept, because `wt-rm` refused: their commits reached main by cherry-pick under new ids, so it cannot prove the discard.
+  - OptionsForOptions2-live1030, -chkq, -noiv, -pauseasof, -r26, -spotat
+  - OptionsForOptions2-OptionsForOptions2-611fix
+- These are the owner's call: discard after a look, or leave until their TTL.
+- The local `main` was fast-forwarded to dd5f55ac (clean checkout).
+- The adjustment branches and worktrees were not touched.
+
+**NEXT**
+- The other session merges main (now dd5f55ac) into feature/adjustments before its next push.
+- #613, #614, #615, #616 and the two review findings above.
+- Mon 2 Nov: R-24 (arm by 09:10).
+- Mon 3 Nov: NIFTY settlement proof after 15:45.
