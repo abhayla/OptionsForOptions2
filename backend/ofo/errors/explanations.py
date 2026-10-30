@@ -1506,6 +1506,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"leg": Recorded}),
     ExplanationTemplate("adjust_cmp_no_new_leg", "values_seen", "Not available: this approach opens no new leg."),
     ExplanationTemplate("adjust_cmp_nothing_open", "values_seen", "Not available: no leg stays open."),
+    # ADR-215: the Greeks-after rows of an approach that leaves no open leg (exit); shown, and it cannot lead them
+    ExplanationTemplate("adjust_cmp_no_position_left", "values_seen", "No position left after exit"),
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
                         "{value}% (Zerodha may refuse fresh orders in {legs}: low open interest state not known)",
                         {"value": Recorded, "legs": Recorded}),

@@ -156,7 +156,8 @@ def test_core_every_criterion_has_a_value_or_reason_and_money_equals_the_hand_va
     for a in ids:
         want = sum((gen.sign(x["side"]) * x["quantity"] * D(rows[x["tradingsymbol"]]["delta"])
                     for x in legs[a]["after"]), D(0))
-        assert delta.values[a].value == want.quantize(D("0.0001")), a
+        # ADR-215: an approach that leaves nothing open has no delta after (no value), not a 0
+        assert delta.values[a].value == (want.quantize(D("0.0001")) if legs[a]["after"] else None), a
 
 
 def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
@@ -316,3 +317,26 @@ def test_ac2_liquidity_cell_carries_the_low_oi_warning():
 def test_stand_in_basket_margin_formula_is_test_data():
     assert stand_in_basket_margin([("SELL", D("22100"), 75), ("BUY", D("45.55"), 75)]) == D("195483.75")
     assert stand_in_basket_margin([("BUY", D("45.55"), 75)]) == D("0.00")
+
+
+GREEK_ROWS = ("delta", "gamma", "theta", "vega")
+
+
+def test_adr215_nothing_open_shows_no_position_left_and_cannot_lead_the_greeks_rows():
+    """ADR-215 (REQ-156 AC-3): an approach that leaves no open leg (A-31 exit) shows "No position left after exit" in
+    the four Greeks-after rows, never 0, and cannot lead them; it still leads the rows where it really differs."""
+    _, cols, ctx = build_columns("ADJ-02", margins={"A-36": D("100000"), "A-01": D("98000.50"),
+                                                    "A-05": D("103000"), "A-31": D(0)})
+    cmp = compare(cols, ctx)
+    assert not next(c for c in cols if c.built.id == "A-31").built.after
+    for rid in GREEK_ROWS:
+        crit = row(cmp, rid)
+        cell = crit.values["A-31"]
+        assert (cell.text, cell.value, cell.rank) == ("-", None, None), rid
+        assert cell.unavailable_reason == "No position left after exit", rid
+        assert "A-31" not in crit.leaders and crit.leaders, rid  # the approaches that keep a position still lead
+        kept = crit.values["A-36"]
+        assert kept.unavailable_reason is None and kept.rank is not None, rid
+    led = [c.id for c in cmp.criteria if "A-31" in c.leaders]
+    assert led == ["margin_change", "max_loss"]
+    assert cmp.leads["A-31"][0] == 2

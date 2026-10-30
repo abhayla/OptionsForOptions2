@@ -2438,5 +2438,9 @@
   "explanation:adjust_spot_why_empty": {
     "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_position_left": {
+    "sha256": "44c5f06c010d3208cdf6184f9ca1dcbbcdb535b64d3dfcf9d0f75e9609867c8e",
+    "reviewed": "pending owner read"
   }
 }
