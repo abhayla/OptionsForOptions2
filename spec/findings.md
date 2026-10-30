@@ -1057,15 +1057,33 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Charges in the outcome are a round trip of the After legs as a fresh trade, so closing the old legs costs nothing in
   the figure. Effect: the whole-trade max profit, max loss and breakevens an adjustment compare needs (catalogue F-06,
   P-02) are not representable today. Bears on REQ-046 AC-4, REQ-112. Status: **measured once, live; read from the code**.
+- **Fixed (GC-ADJ1, 2026-10-30, branch feature/adjustments):** `ofo/engine/whole_trade.py` `whole_trade_after` prices
+  the whole trade: booked P&L (earlier closes + legs the adjustment closes, `ofo/engine/adjust_money.py`) enters once as
+  a flat shift into max profit, max loss, breakevens and POP; "this adjustment", "paid so far" and "open exit" charges
+  are separate lines, each subtracted once. Proof: dev server, scenario ADJ-13 (strategy 73, booked 962): every
+  approach's gross figures equal the scenario generator's engine-free values (A-01 7007.00 / 18993.00 / 22996.10,
+  23503.90); tests `tests/adjustment/test_whole_trade.py`, `tests_app/test_adjustment_approaches_route.py`.
+  Remaining (deferred, MINOR): the closed-legs booked P&L sum still sits in `ofo_app/routes/adjustment.py`.
 
 ## F-75 - POP fails on a real adjusted iron condor because the after-charges breakeven is finer than paise
 - Same run, approach A: `ValueError level must have at most 2 decimal places ... got 22771.372`
   (`ofo/engine/metrics.py:210-220` -> `ofo/engine/pop.py`); Before, B and C gave 87%, 92%, 94%. Hidden from users
   today: POP is behind the held switch `probability_of_profit` (`ofo_app/held_switches.py:24`). Defect class:
   `knowledge/findings/interpolated-level-finer-than-paise-refused.json`. Status: **measured once, live**.
+- **Fixed (GC-ADJ1, 2026-10-30):** every derived level is rounded half-even to 0.01 at its one producer
+  (`ofo/engine/metrics.py` `_to_decimal`, per `spec/business-rules/scenario-calculations.md` section 3); POP never
+  raises: a non-finite input or unknown charges give a named reason. Proof: ADJ-23 gives a POP (22547.488 -> 22547.49);
+  a property test over non-round prices and charges gives a POP or a named reason, never a ValueError
+  (`tests/engine/test_pop_paise_levels.py`, mutation gate 5/5 killed).
 
 ## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-list refuses index symbols with a space
 - Same run: `NSE:NIFTY 50` was refused before sending because `QUOTE_INSTRUMENT` (`ofo/broker/kite_http.py:37`,
   `[A-Z0-9_-]+:[A-Z0-9_-]+`) has no space; the spike took spot from put-call parity (23020.45). Today spot comes only
   from the live feed. An adjustment compare on a closed market or without the feed needs a spot source. Status:
   **measured once, live; read from the code**.
+- **Fixed (GC-ADJ1, 2026-10-30):** the quote door accepts exactly `NSE:NIFTY 50` and `BSE:SENSEX` (raw `%20` only;
+  44 attack inputs refused), `KiteReads.fetch_index_quote` emits that form, and `ofo/marketdata/spot_source.py`
+  resolves feed -> REST quote -> last close, each labelled with source and time, else "Spot not available" with each
+  source's reason. Proof: scenarios ADJ-24a/24b (`tests/marketdata/test_spot_source.py`, `tests/test_kite_http_guard.py`,
+  mutation gate 4/4 killed). Not yet proven against Kite itself: a live read of `NSE:NIFTY%2050` is owed (optional in
+  the GC-ADJ1 contract).

@@ -1379,6 +1379,10 @@
     "sha256": "61bf619f8b899f83e39155b2691aecef8e07a60964c5f82cccd8e0ba092bd2d9",
     "reviewed": "pending owner read"
   },
+  "scenario_no_orders": {
+    "sha256": "d348b6cddbdace21fb0b539b519d9769a57e1a4ea7e0debc5e21842904581284",
+    "reviewed": "pending owner read"
+  },
   "explanation:flag_expiry_day_entry": {
     "sha256": "f5b9f82fe3efbe78476ea0e59b5b5d4ed9e10e9c98a6959e63901a64a54686de",
     "reviewed": "pending owner read"
@@ -1977,6 +1981,462 @@
   },
   "explanation:contract_display": {
     "sha256": "6c54155c5009219d21a0471a70ec975773321e399015937a5bf241d45fa71068",
+    "reviewed": "pending owner read"
+  },
+  "adjust_no_price": {
+    "sha256": "3161fd1f9d403e3250119cf5efe6fec872e839912f79237441b5f3f6ad225348",
+    "reviewed": "pending owner read"
+  },
+  "adjust_low_oi_blocked": {
+    "sha256": "2be90ddb6de34860f49d83d284698858e29a206eaaf8c1a302977f678a36556e",
+    "reviewed": "pending owner read"
+  },
+  "adjust_low_oi_unknown": {
+    "sha256": "d3d0824117761c5a55ed062a6c26ff1d3c520c48c02f71036bff0d7ea6149956",
+    "reviewed": "pending owner read"
+  },
+  "adjust_no_strike_at_delta": {
+    "sha256": "1e2dc91080befdff9da9b50a0d132a7fbfa2193be84aa3f5df0920715b74f9b5",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_would_cross": {
+    "sha256": "152bd1f636cc20b4fc1ccae871eff43e347837dc354c67bd84cf480898bff8b8",
+    "reviewed": "pending owner read"
+  },
+  "adjust_reduce_needs_two_lots": {
+    "sha256": "2f9c767db2a56ccb3c5af4a5d0c9fff75d030851704e433ba50777e85384ede7",
+    "reviewed": "pending owner read"
+  },
+  "adjust_recentre_days_left": {
+    "sha256": "36037bf5f92f9332bcaeaa5c4e0a2234a21a8557478e70edf9a5d697bd46c518",
+    "reviewed": "pending owner read"
+  },
+  "adjust_needs_two_spreads": {
+    "sha256": "83d7afb8073da3c82fba6a643deee6d94be11d32a1e161947bcb2b0f9320fa0c",
+    "reviewed": "pending owner read"
+  },
+  "adjust_no_strike_both_types": {
+    "sha256": "f78312644996de3491e6eae33d3c1aab436d1391f455b183c4efc9bd1ff57c28",
+    "reviewed": "pending owner read"
+  },
+  "labels:adjustment_approach": {
+    "sha256": "0a6c009de0f8e74f255d9bec8a3f82d259d5c43fef5b487dfdf2822139102caa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_pop_held": {
+    "sha256": "25e50642d2881b9947263f2ab1ba32adbe5d2bbcc5c8c14da70d38b03cb545f7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_pop_no_volatility": {
+    "sha256": "4f4f5d91ea50beed7a1a369f9504cb978b12e7c6b8d3268c60e8f1e456569d6f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_pop_no_forward": {
+    "sha256": "efb62d9f9d05584e743e608c844c8bfa5c7e8a3ded47463536f2c63aa62145d1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_pop_different_expiries": {
+    "sha256": "942b1fd950d5ce66ce3368f5ae26aacd42ced1f40c8f3984e46b351207216fe7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_pop_spot_stale_or_missing": {
+    "sha256": "34c9119e54139a6280fa7ff762bbebd3181c41c3e3d44b546ce5e4be36807632",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_margin_not_available": {
+    "sha256": "c2c8b2be7db12a63bd443a259ff202683a7dad7c406e99fb3ec2c0a848421ca7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_margin_empty": {
+    "sha256": "83ab883304a3ba8fb99cecb2a0cea64d3b3b40a2c9794dcea1901651b76e6238",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_from_feed": {
+    "sha256": "b697042661ba49617e1aeb1bccd8c04b02938e4f833c9d7bf20373a70d1a4991",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_from_rest_quote": {
+    "sha256": "aa0f26226e8fe7909bc7ea84d857ae594ba582a5c837179294a63e80e3035b2b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_from_last_close": {
+    "sha256": "53f11d51a98ce2afbe90ff090f952bce4bde2c7326a07032c190333ca843b776",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_not_available": {
+    "sha256": "a3db9b8feee12a80f9fc1af0d266b69f510eab077d6aae9df513eabeb2248f2a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_booked_unknown": {
+    "sha256": "daa9098c510b17478f4af063701b85a5ab210fb64a137fd93849104628be3aa4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_charges_unknown": {
+    "sha256": "3ef36d4af0780f25a8a7894f72083f75e302a8382b2db706f151afbd77858cab",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_unknown_approach": {
+    "sha256": "412a80baa95aa8c9251984818cbec7afe1079f36a9b3f36eda05fcaf785a917c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_needs_one_expiry": {
+    "sha256": "2cecbf2851cdb4d1e5f25b189788ba0aff59525ccd641eb0dcc4e5955b478fab",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_36": {
+    "sha256": "5e7cfedac778864ae19948c1e6cdfd4deec54703a4eb80faf1dbf77baa3da0af",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_01": {
+    "sha256": "1357a5d71be58578fe59f26d94db0ee0b487c9225e6e1e49a8f7a1d6bbc72918",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_05": {
+    "sha256": "b40ff46d4b77171df4e4e9971f26792526a0f4ddd9a1e69100adca9243e20e7d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_29": {
+    "sha256": "3e65960cf99e263735b7c75c19c35d998d24a52e1d2c10ebfd16310b94e3a2df",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_28": {
+    "sha256": "33d586c24fa95e1ff20ae5d0bf09c1648ca48d8b48f1ebab4dcac00dd8913695",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_11": {
+    "sha256": "31c13b802be65f4ce3f860fdc35a005a743bb0cb128da89c2fa533f62d611ccb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_31": {
+    "sha256": "58793e4311540977fa93aa22d0e45b15a9a514419efa66483dc0ddf7b42867ed",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_rupees": {
+    "sha256": "7f4758a9c2fe343713d538c0cf4b1d42ff10f91d833e42fd68d280b9ab2db966",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_value": {
+    "sha256": "8461935265421850080cd604591d7c73fcae4aca56478d139ffb97314a917403",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_percent": {
+    "sha256": "d701d98c5d329a4c74529eed73686a7a5d15d19b68ae37e86d4f0851d9f647c8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_unlimited": {
+    "sha256": "7c357ce7284bcbd0a1323baf1818fa5b94d61e7a02028ba2441cf4fc248efc71",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_dash": {
+    "sha256": "3393f90417dd9e064aa0e0151a0964e3a49d585d20c0231b2ec0c06d2194bc1f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_breakevens": {
+    "sha256": "9f8d2f2da2541c2059c4884dbe28e1e587f464f18c53210301f732c3a0991a90",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_breakeven_loss": {
+    "sha256": "5cb78f57bb632d49e7d9962890c7cf586b6e5d89389c37955e7156423f1ed634",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_breakeven_profit": {
+    "sha256": "a19d3acbd5edf939e36e69bff1c214675c8097fb504a93e07a2b5ea10cc1135b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_adjustments": {
+    "sha256": "ad831196794998f193a4413821d5f7b2af5e4a4f737735836a2908d5e1d501b1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_fresh": {
+    "sha256": "be32d09d887e832a0a255ae96b1c7c7be7570f42fcb7e703ee2f24325c266ef4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_price": {
+    "sha256": "b47173a5d7ebd1c1ea29680ebcdca1658e2af8bdd77d1191c897ea737b1821a3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_bid_ask": {
+    "sha256": "5b9d3d6b183c1ba29ab5a35d87551f0e7ef9cf4daf84626a5782c9bba6939dac",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_greeks": {
+    "sha256": "47b6907f69261bd4ee92a8057ce9f7c526eda19ade83f12679791407bde0ab05",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_new_leg": {
+    "sha256": "0a0c3dd5deedaab57efbaf0f60ece5825c8e5260b20df638a4a61c569670b85f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_nothing_open": {
+    "sha256": "1a30e6df2baf1d2386efb2c0771e2aecb06764f3b23c7dc526e95de12597181a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_adjustments_unknown": {
+    "sha256": "a1bb7f8f5961fc897dea66cad7933202c486026584671caa88d183d82659e82f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_margin_before_unknown": {
+    "sha256": "c873a1f045914edc0fb702eede2f15e15d645f2319fc10f5029ca7e72519128d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_credit": {
+    "sha256": "da04fb1939d2fbfcc69d820013301023e33b9c4f9ea01c8329ce0c8a52df30e3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_cost": {
+    "sha256": "fda02b0b67dfc7e4d0203e560e203020374adff959f1fd008f866e6f67cd1cd9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_margin_change": {
+    "sha256": "75295b382bdb40eb1e3549d0cddc1e52f3894755f93ca8eda713b559533812fe",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_max_loss": {
+    "sha256": "88ca7c016a8f4267f2b2093b57fe2c1c53fbf65476b0f7a0c9d4a63120bb86ed",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_move_m2": {
+    "sha256": "f8c7d0eff8301cf88d83eb5c9148274566b9547bb7e3f92e1a1cc47024c1d693",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_move_m1": {
+    "sha256": "65d0e968fac186b4eab9ae339dcb78460db2d09ab1ba8f0bc49e92c50cb99626",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_move_p1": {
+    "sha256": "201281403c71c72075c1e94e86981f5087a8773fee71eec2af43f375f244fbfc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_move_p2": {
+    "sha256": "5e147c7ceb9d370b4eaef534d88c2b7590473ea00650dfbbcbf57d053d362b9c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_breakevens": {
+    "sha256": "404c7c0fcbe54dbdcc4508256f00efec9ec0af22282634de7c918086e2d099e0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_max_profit": {
+    "sha256": "dd0dfc54a55dfd2ddbfb2a72ea5b9e2b2a56cbbd08b15aac549cc1c4fbf2947d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_premium_left": {
+    "sha256": "57c826b5605adf28716a5d82faa2dd6ef0fb678b1760c4995292b917d8b9f528",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_pop": {
+    "sha256": "b4ade437aec8c3bf418138816994321dc0d65731635e0ff149c5e6c2052d1553",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_delta": {
+    "sha256": "c20b3af1b7bbb5a8ceae925e2c2824086f413d8cdef42dee851db77b9bd2df9e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_gamma": {
+    "sha256": "bd120192acaf14c9b8d09f8121cd4d1595efe8fd9d1cc4c267ccf7490cb8d9df",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_theta": {
+    "sha256": "9a3986eebfdafbe5af53ed8634cb2a88dc13fca33948c044ed9631101815aee1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_vega": {
+    "sha256": "26ddced1249307fc8db36df1109fcc126d73aa6beeea9c005d74e6761e582b1d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_adjustments": {
+    "sha256": "0de1c92ab10378319ec50a52a5f0617cb521dcfe83572802d96443a200691dc0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_liquidity": {
+    "sha256": "35dc6924f85725e6fb890cd3d06103a45be37c571410788ce23c1766214f8331",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_fresh": {
+    "sha256": "69614429dcd018eae203fef2f3ea36e7cd7233e76a1b4d762b11bc0f76b3edae",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_credit": {
+    "sha256": "cd3727b90ab1c6ed2b06dff94c743ac05b7f1ed110276dabd3120a58ee460ed8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_cost": {
+    "sha256": "8809c47470b27a784e0b9e7fb6e429d83ace51bc9ae9a522e39eac7580c7cbde",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_margin_change": {
+    "sha256": "4274d78fbc7d3a18104d5f8b22509773e18060c65217768ec2587f0b0b87abca",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_max_loss": {
+    "sha256": "cf004e7ac91c32388cebd631885971c3991a933ed86e16b2613836e8ad756b7e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_move_m2": {
+    "sha256": "a278fb6f91addc48ded0ae0891006bb5e89e8933431f1f4684c0fcd59a4991ba",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_move_m1": {
+    "sha256": "7dd7240a07d783a2f291b9f1849d09bd0876d1f8bde66f415e55dcf06e565c4f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_move_p1": {
+    "sha256": "480239acd3bb28853cef4466e4383b1fda8ecfc847d55127edae42e22777eff6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_move_p2": {
+    "sha256": "7b5dfd6f9b34c42745a2ccc250ad33683a1b3760967f82537d8c1b7eaaeaf074",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_breakevens": {
+    "sha256": "ccf030179ddbce50bb94578683a1930fb5deae8afb1c75d77b843ff4cc53c83d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_max_profit": {
+    "sha256": "3d39ce2e9cb8c3f98b7298a42089da5423258d515350d84d05c87930d84d4707",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_premium_left": {
+    "sha256": "79e1d6189b204b579d7ad25a3e01aee87ff4e517ff17bc80bac3ca502f129b7f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_pop": {
+    "sha256": "5abbcf3adca9f1a3bc87c7e927105022bb3a3c4894de97f3a0f624ee7da760cd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_delta": {
+    "sha256": "a4223ffb739a087e19871581e08ee915968ce0db42af8d23c65bd8eeb49bce61",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_gamma": {
+    "sha256": "4898c386f110a35eee4ac576185f7694012a76bdcf3c4719ffec6111449281f7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_theta": {
+    "sha256": "5d1d2a20e447ede2089e95e639c26b64abf14d2c799e28c84bb39c43ec0d192c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_vega": {
+    "sha256": "c9a87cd32f906ff941d935634d0a22159c8fc57b4ca36812fdfc6f1b447a5a3e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_adjustments": {
+    "sha256": "c44a6c9529358f35d0c19ca6122312842a2493273edb2f79e9b9072a70249f4d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_liquidity": {
+    "sha256": "319d882938e509d6bdf48a84d4d1fbca2b84e5526b74dedfb041c45ed21bd24f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_fresh": {
+    "sha256": "eb0af38a247c8f231f0e9ce4db7c664b2e04da17b8b879fc70c6012b08df06ea",
+    "reviewed": "pending owner read"
+  },
+  "labels:adjustment_criterion": {
+    "sha256": "7205ef202e57205672dbc4228cedfc02833584c2d265acc593f60a7704fa7ffe",
+    "reviewed": "pending owner read"
+  },
+  "labels:adjustment_leader": {
+    "sha256": "60bdbdd54b2e77d613f01e835013d69bdbcb679a5cb35f15263d9fc4fffd5ccb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_low_oi": {
+    "sha256": "82f04f38da1e6ef73c272b68f20b43abe1b57d92ab6723cadac73b4f56d3e45b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_available_spot_missing": {
+    "sha256": "09a34504396ae68aa6fecb195d032bad4c7067c62484777b948c7c890c50219b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_36": {
+    "sha256": "87534e144cca911be760ce595af184145f48c48ae07eca0347eadc30cb88a298",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_01": {
+    "sha256": "da4433a864c530cecfab018af81019a9dde8e2b237dc7f3a75918724f13cd818",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_05": {
+    "sha256": "5e61f91699178b6fe98d9de56c130ee9b419d439556b53214c8141c2aa6449cf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_29": {
+    "sha256": "7227c2b7cef433a459a8d286b191f42eace249bafd566f256a57202441e478eb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_28": {
+    "sha256": "56ac9295bbf8ecc1cd89a932d2f4023828ab075f0744e7d073a056d35f56145b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_11": {
+    "sha256": "69ce7952e91c48bbf36da9c46eb846f2408cc7f882cf08df003964691608e2f2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_31": {
+    "sha256": "ae8b6e63961b4f6f5be2f8882c48bb134c4599affad7186035c506363b7b7d56",
+    "reviewed": "pending owner read"
+  },
+  "labels:adjustment_approach_about": {
+    "sha256": "be4ef2ab5361e935eadf5c4c576a962bae0b59f6ab8e4cd287f4153b32e8cdda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_absent": {
+    "sha256": "da10d6800a3d3b1c2b5b9b017bdd8225b49bc9ddf6f5f97a4be76d1448bfb475",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_feed_absent": {
+    "sha256": "cebe21f59ee07d1f4ac365762653c3f8f5c062bb66f7f9c05a8fc2b83b70c367",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_absent": {
+    "sha256": "13fa5ff025bf0bc28a0563a7554bf425f422e25cb268d02da55732c5382fe6a6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_last_close_absent": {
+    "sha256": "db1410985350ca6be25dc410eb396c4dcb29ec6dd91f3004c0dd2780e4077180",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_failed": {
+    "sha256": "dd54e4fd1a9ecf2725916dbe5835fde6717b32eb174c10df9c0cf28570776c3b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_empty": {
+    "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_feed_not_finite": {
+    "sha256": "92d626378f068245888b1a67c01ba651e8ebc951ddda1c5b93cf8c46c199a1e4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_no_price": {
+    "sha256": "519bcac62d80fc06ace71f422d44b63d3fb57822d4ea327a550f7ee354658f2f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_no_time": {
+    "sha256": "0fbc391e6e8adbbffbed0cc741c98aaa58ada91500892d456392d64ba0696911",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_tick_in_future": {
+    "sha256": "bf20f207bd246c56db08186d12d704a4fbca465b52314d0bdd68cf3cae3840b8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_stale": {
+    "sha256": "56029c476a35d071ff2e65c08c6cda07ff53422ab19ad8a49638618c2dd620ff",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_not_finite": {
+    "sha256": "d51c601d40a7f0703bc60fe07ceca7265bc5d5440147074cbcc23bf69d699f56",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_not_found": {
+    "sha256": "6504dc907e01aa368c27e6bcf3a07ac2e4197d1e9fcf6c32ea1ba3b10e6703b1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_failed": {
+    "sha256": "a1c02d3cc2a7c35f34d3d9739948df399c2ed5955c4b27082ec30154c40f2dc0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_empty": {
+    "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
     "reviewed": "pending owner read"
   }
 }

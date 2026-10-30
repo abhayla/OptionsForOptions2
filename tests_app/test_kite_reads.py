@@ -10,10 +10,11 @@ import logging
 import re
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from ofo.broker.kite_endpoints import ALLOWED_CALLS
-from ofo.broker.kite_http import KiteCallRefused
+from ofo.broker.kite_http import KiteCallRefused, check_call
 from ofo.engine import Instrument
 from ofo.execution.basket import TagParts, parse_tag
 from ofo_app import broker_sync, kite_reads
@@ -448,3 +449,35 @@ def test_a_bad_reply_keeps_the_earlier_sync(clean_sync) -> None:
     with pytest.raises(KiteReadError):
         client(_failure("bad_shape")).fetch_orders()
     assert clean_sync.last_read() is not None
+
+
+# REQ-155 AC-5 / F-76: the REST index quote for the spot resolver; the URL it builds passes the door's own check
+@pytest.mark.parametrize(("name", "raw"), [("NSE:NIFTY 50", "/quote?i=NSE:NIFTY%2050"),
+                                           ("BSE:SENSEX", "/quote?i=BSE:SENSEX")])
+def test_index_quote_url_is_written_with_percent_20_and_passes_the_door(name, raw) -> None:
+    assert kite_reads.index_quote_path(name) == raw
+    check_call("GET", BASE + raw)  # the door itself; raises KiteCallRefused if refused
+    body = json.dumps({"status": "success", "data": {name: {"last_price": 23101.5,
+                                                             "timestamp": "2026-10-30 11:00:00"}}})
+    replay = Replay({raw: body})
+    quote = client(replay).fetch_index_quote(name)
+    assert quote is not None and quote["last_price"] == Decimal("23101.5")
+    assert [c[1] for c in replay.calls] == [BASE + raw]
+
+
+def test_index_quote_reply_without_the_name_is_not_found_none() -> None:
+    replay = Replay({"/quote?i=BSE:SENSEX": '{"status": "success", "data": {}}'})
+    assert client(replay).fetch_index_quote("BSE:SENSEX") is None
+
+
+@pytest.mark.parametrize("name", ["NSE:NIFTY BANK", "NSE:NIFTY+50", "NSE:NIFTY%2050", "NFO:X", ""])
+def test_index_quote_of_any_other_name_is_refused_before_the_transport(name) -> None:
+    replay = Replay()
+    with pytest.raises(KiteReadError) as caught:
+        client(replay).fetch_index_quote(name)
+    assert caught.value.code == "kite_read_refused" and replay.calls == []
+
+
+def test_urlencode_form_of_an_index_is_refused_by_the_door() -> None:
+    with pytest.raises(KiteCallRefused):
+        check_call("GET", BASE + "/quote?" + urlencode({"i": "NSE:NIFTY 50"}))

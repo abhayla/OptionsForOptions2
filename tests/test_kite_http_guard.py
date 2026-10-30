@@ -58,6 +58,33 @@ def test_check_call_allows(method: str, url: str) -> None:
     kite_http.check_call(method, url)
 
 
+QUOTE = ROOT + "/quote?i="  # F-76 / REQ-155 AC-5: only the allow-listed index names may carry a space
+
+
+@pytest.mark.parametrize("query", [
+    "NSE:NIFTY%2050", "BSE:SENSEX", "NSE:NIFTY%2050&i=BSE:SENSEX", "NSE:NIFTY%2050&i=NFO:NIFTY26N0323450CE",
+    "NFO:NIFTY26N0323450CE&i=NSE:NIFTY%2050",
+])
+def test_quote_door_allows_index_names(query: str) -> None:
+    kite_http.check_call("GET", QUOTE + query)
+
+
+@pytest.mark.parametrize("query", [
+    "NSE:NIFTY%2050X", "NSE:FOO%20BAR", "NSE:NIFTY%252050;rm", "NSE:NIFTY%2050;rm",
+    "NSE:NIFTY%20%2050", "NSE:NIFTY%20%20", "NSE:NIFTY%20", "NSE:NIFTY%2050%20", "NSE:NIFTY+50", "NSE:NIFTY 50",
+    "nse:nifty%2050", "NSE:nifty%2050", "NSE:NIFTY%2050&i=NSE:FOO%20BAR", "NSE:FOO%20BAR&i=NSE:NIFTY%2050",
+    "NSE:NIFTY%2050&i=", "BSE:NIFTY%2050", "NSE:SENSEX%2050", "NSE:NIFTY%2050&j=1", "NSE:NIFTY%2050#x",
+    "NSE:NIFTY%2050" + chr(0xA0),  # a trailing no-break space
+])
+def test_quote_door_refuses_other_spaced_names(query: str) -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("GET", QUOTE + query)
+
+
+def test_quote_allow_list_is_exactly_the_two_indices() -> None:
+    assert {"NSE:NIFTY 50", "BSE:SENSEX"} == kite_http.QUOTE_INDEX_NAMES
+
+
 def test_every_allow_list_entry_passes_its_own_template() -> None:
     for calls in ALLOWED_CALLS.values():
         for method, template in calls:

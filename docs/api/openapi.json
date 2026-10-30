@@ -1,6 +1,1031 @@
 {
   "components": {
     "schemas": {
+      "AdjustAfterOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after_charges": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustFiguresOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked_pnl": {
+            "title": "Booked Pnl",
+            "type": "string"
+          },
+          "gross": {
+            "$ref": "#/components/schemas/AdjustFiguresOut"
+          }
+        },
+        "required": [
+          "gross",
+          "after_charges",
+          "booked_pnl"
+        ],
+        "title": "AdjustAfterOut",
+        "type": "object"
+      },
+      "AdjustApproachOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustAfterOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_legs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdjustLegOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Legs"
+          },
+          "after_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Reason"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustChargesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "closed_legs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdjustClosedLegOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Legs"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "margin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustMarginOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustPopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refusal": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "step_basis": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Basis"
+          },
+          "step_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Value"
+          },
+          "trades": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdjustTradeOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trades"
+          },
+          "warnings": {
+            "default": [],
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AdjustApproachOut",
+        "type": "object"
+      },
+      "AdjustApproachesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "approaches": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustApproachOut"
+            },
+            "title": "Approaches",
+            "type": "array"
+          },
+          "available": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AdjustAvailableOut"
+            },
+            "title": "Available",
+            "type": "array"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustWholeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AdjustCriterionOut"
+            },
+            "title": "Criteria",
+            "type": "array"
+          },
+          "curves": {
+            "default": {},
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "items": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              }
+            },
+            "title": "Curves",
+            "type": "object"
+          },
+          "days_to_expiry": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Expiry"
+          },
+          "leads": {
+            "default": {},
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "$ref": "#/components/schemas/AdjustLeadsOut"
+              }
+            },
+            "title": "Leads",
+            "type": "object"
+          },
+          "pop_switch_on": {
+            "title": "Pop Switch On",
+            "type": "boolean"
+          },
+          "spot": {
+            "$ref": "#/components/schemas/AdjustSpotOut"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "timing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustTimingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "view": {
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "view",
+          "spot",
+          "pop_switch_on",
+          "before",
+          "approaches"
+        ],
+        "title": "AdjustApproachesOut",
+        "type": "object"
+      },
+      "AdjustAvailableOut": {
+        "additionalProperties": false,
+        "description": "GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one generic approach for the Review adjustment drawer. No figure:\nthe id, the shown name, one plain line, and whether it can be built for this position now (else the reason).",
+        "properties": {
+          "applicable": {
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "explanation": {
+            "title": "Explanation"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "explanation",
+          "applicable"
+        ],
+        "title": "AdjustAvailableOut",
+        "type": "object"
+      },
+      "AdjustCellOut": {
+        "additionalProperties": false,
+        "description": "One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact\nnumber when there is one; ``unavailable_reason`` beside a \"-\".",
+        "properties": {
+          "text": {
+            "title": "Text"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "AdjustCellOut",
+        "type": "object"
+      },
+      "AdjustChargesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "not_available": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Available"
+          },
+          "open_exit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Exit"
+          },
+          "paid_so_far": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid So Far"
+          },
+          "this_adjustment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "This Adjustment"
+          }
+        },
+        "required": [
+          "this_adjustment",
+          "paid_so_far",
+          "open_exit",
+          "not_available"
+        ],
+        "title": "AdjustChargesOut",
+        "type": "object"
+      },
+      "AdjustClosedLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "exit": {
+            "title": "Exit",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CE",
+              "PE"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "type",
+          "strike",
+          "expiry",
+          "lots",
+          "quantity",
+          "entry",
+          "exit",
+          "tradingsymbol"
+        ],
+        "title": "AdjustClosedLegOut",
+        "type": "object"
+      },
+      "AdjustCriterionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "enum": [
+              "money_now",
+              "risk_after",
+              "reward_after",
+              "greeks_after",
+              "practical"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "hint": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "leader_label": {
+            "title": "Leader Label"
+          },
+          "leaders": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Leaders",
+            "type": "array"
+          },
+          "values": {
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "$ref": "#/components/schemas/AdjustCellOut"
+              }
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "group",
+          "label",
+          "leader_label",
+          "leaders",
+          "values"
+        ],
+        "title": "AdjustCriterionOut",
+        "type": "object"
+      },
+      "AdjustFiguresOut": {
+        "additionalProperties": false,
+        "properties": {
+          "breakevens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breakevens",
+            "type": "array"
+          },
+          "loss_regions": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Loss Regions",
+            "type": "array"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "UNLIMITED",
+                "type": "string"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "UNLIMITED",
+                "type": "string"
+              }
+            ],
+            "title": "Max Profit"
+          }
+        },
+        "required": [
+          "max_profit",
+          "max_loss",
+          "breakevens",
+          "loss_regions"
+        ],
+        "title": "AdjustFiguresOut",
+        "type": "object"
+      },
+      "AdjustLeadsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "m": {
+            "title": "M",
+            "type": "integer"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "m"
+        ],
+        "title": "AdjustLeadsOut",
+        "type": "object"
+      },
+      "AdjustLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CE",
+              "PE"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "type",
+          "strike",
+          "expiry",
+          "lots",
+          "entry",
+          "tradingsymbol"
+        ],
+        "title": "AdjustLegOut",
+        "type": "object"
+      },
+      "AdjustMarginOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state",
+          "value",
+          "at",
+          "reason"
+        ],
+        "title": "AdjustMarginOut",
+        "type": "object"
+      },
+      "AdjustPopOut": {
+        "additionalProperties": false,
+        "properties": {
+          "not_available": {
+            "title": "Not Available",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "not_available",
+          "reason"
+        ],
+        "title": "AdjustPopOut",
+        "type": "object"
+      },
+      "AdjustSpotOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustSpotReasonOut"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "source_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_text",
+          "at",
+          "reasons",
+          "text"
+        ],
+        "title": "AdjustSpotOut",
+        "type": "object"
+      },
+      "AdjustSpotReasonOut": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Reason",
+            "type": "string"
+          },
+          "source": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "reason"
+        ],
+        "title": "AdjustSpotReasonOut",
+        "type": "object"
+      },
+      "AdjustTimingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "approaches": {
+            "title": "Approaches",
+            "type": "integer"
+          },
+          "engine_seconds": {
+            "title": "Engine Seconds",
+            "type": "string"
+          },
+          "total_seconds": {
+            "title": "Total Seconds",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine_seconds",
+          "total_seconds",
+          "approaches"
+        ],
+        "title": "AdjustTimingOut",
+        "type": "object"
+      },
+      "AdjustTradeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CE",
+              "PE"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "type",
+          "strike",
+          "expiry",
+          "lots",
+          "quantity",
+          "price",
+          "tradingsymbol"
+        ],
+        "title": "AdjustTradeOut",
+        "type": "object"
+      },
+      "AdjustWholeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustAfterOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Reason"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustChargesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustPopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "after",
+          "charges",
+          "pop",
+          "after_reason"
+        ],
+        "title": "AdjustWholeOut",
+        "type": "object"
+      },
       "AlertOut": {
         "additionalProperties": false,
         "properties": {
@@ -68,6 +1093,34 @@
           "unread"
         ],
         "title": "AlertsOut",
+        "type": "object"
+      },
+      "ApproachesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "approaches": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approaches"
+          },
+          "view": {
+            "default": "at_expiry",
+            "pattern": "^(at_expiry|estimated_now)$",
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "title": "ApproachesIn",
         "type": "object"
       },
       "BasketOrderOut": {
@@ -2236,6 +3289,18 @@
             ],
             "title": "Order Path",
             "type": "string"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
           }
         },
         "required": [
@@ -10883,6 +11948,55 @@
           }
         },
         "summary": "Quick Pick"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-approaches": {
+      "post": {
+        "operationId": "adjustment_approaches_api_strategies__strategy_id__adjustment_approaches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproachesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustApproachesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adjustment Approaches"
       }
     },
     "/api/strategy-templates": {

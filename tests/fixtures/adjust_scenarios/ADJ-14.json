@@ -1637,6 +1637,14 @@
       "total": 0
      }
     }
+   },
+   "funds_reply": {
+    "status": "success",
+    "data": {
+     "equity": {
+      "net": 10000000.0
+     }
+    }
    }
   },
   "quote": {
@@ -1895,6 +1903,613 @@
     "23490.15"
    ]
   },
-  "notes": []
+  "notes": [],
+  "approach_legs": {
+   "A-36": {
+    "side": "none",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "closed": [],
+    "warnings": []
+   },
+   "A-01": {
+    "side": "call",
+    "step_basis": "delta",
+    "step_value": "0.30",
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "23350",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "1.60",
+      "tradingsymbol": "NIFTY26N0323350CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "23150",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "20.15",
+      "tradingsymbol": "NIFTY26N0323150CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23150",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.15",
+      "tradingsymbol": "NIFTY26N0323150CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23350",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "1.60",
+      "tradingsymbol": "NIFTY26N0323350CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "exit": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-05": {
+    "side": "put",
+    "step_basis": "delta",
+    "step_value": "0.30",
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22350",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322350PE"
+     },
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "22550",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.30",
+      "tradingsymbol": "NIFTY26N0322550PE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22350",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "0.05",
+      "tradingsymbol": "NIFTY26N0322350PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22550",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "0.30",
+      "tradingsymbol": "NIFTY26N0322550PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "exit": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-29": {
+    "side": "put",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "20.10",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "38.85",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "20.10",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "38.85",
+      "exit": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-28": {
+    "side": "put",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     }
+    ],
+    "after": [
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "exit": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-11": {
+    "side": "both",
+    "refused": "This approach needs at least 3 days left; days left now: 1.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-31": {
+    "side": "both",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "after": [],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "exit": "0.65",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "exit": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "warnings": []
+   }
+  },
+  "approach_after": {
+   "A-36": {
+    "exact": true,
+    "max_profit": "5219.5",
+    "max_loss": "20780.5",
+    "breakevens": [
+     "22559.85",
+     "23490.15"
+    ],
+    "booked_pnl": "0"
+   },
+   "A-01": {
+    "exact": true,
+    "max_profit": "7598.5",
+    "max_loss": "18401.5",
+    "breakevens": [
+     "22541.55",
+     "23208.45"
+    ],
+    "booked_pnl": "2749.5"
+   },
+   "A-05": {
+    "exact": true,
+    "max_profit": "5174",
+    "max_loss": "20826",
+    "breakevens": [
+     "22510.2",
+     "23489.8"
+    ],
+    "booked_pnl": "2359.5"
+   },
+   "A-29": {
+    "exact": true,
+    "max_profit": "5180.5",
+    "max_loss": "20819.5",
+    "breakevens": [
+     "22520.3",
+     "23489.85"
+    ],
+    "booked_pnl": "1179.75"
+   },
+   "A-28": {
+    "exact": true,
+    "max_profit": "5141.5",
+    "max_loss": "20858.5",
+    "breakevens": [
+     "23489.55"
+    ],
+    "booked_pnl": "2359.5"
+   },
+   "A-31": {
+    "exact": true,
+    "max_profit": "5109",
+    "max_loss": "0",
+    "breakevens": [],
+    "booked_pnl": "5109"
+   }
+  }
  }
 }

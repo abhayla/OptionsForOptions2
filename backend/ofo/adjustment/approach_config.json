@@ -1,0 +1,7 @@
+{
+ "_about": "Admin config of the adjustment approach builder (REQ-155, goal contract GC-ADJ1 'Design decisions'). Values are DATA, not code constants. target_short_delta = the playbook's Early-stage T-03 value (weekly 0.30, monthly 0.25, _playbooks.json); roll_points_without_delta = the roll distance when the chain carries no delta; iron_fly_min_days_left = A-11 only with 3+ days left; reduce_divisor = A-29 closes lots // 2 of the tested spread.",
+ "target_short_delta": {"weekly": "0.30", "monthly": "0.25"},
+ "roll_points_without_delta": {"NIFTY": "200", "SENSEX": "500"},
+ "iron_fly_min_days_left": 3,
+ "reduce_divisor": 2
+}

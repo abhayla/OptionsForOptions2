@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './AppHeader.vue'
+import ScenarioBanner from './ScenarioBanner.vue'
 
 const route = useRoute()
 const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
@@ -13,6 +14,7 @@ const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
 
 <template>
   <div class="min-h-screen bg-bg text-ink" data-testid="app-layout">
+    <ScenarioBanner />
     <AppHeader />
     <main
       class="px-4 py-6"

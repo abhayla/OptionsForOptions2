@@ -362,3 +362,172 @@ def emit_message(message: UserFacingError) -> Emitted:
     except DoorRefused as exc:
         log.error("response door refused: %s", exc)
         raise
+
+
+# ---- REQ-155 (W-196): POST /api/strategies/{id}/adjustment-approaches ------------------------------------------------
+#: a whole-trade figure: exact rupees, or UNLIMITED when the payoff is unbounded on that side
+Figure = Money | Literal["UNLIMITED"]
+_Side = Literal["BUY", "SELL"]
+_Type = Literal["CE", "PE"]
+
+
+class AdjustFiguresOut(ApiModel):
+    max_profit: Figure
+    max_loss: Figure
+    breakevens: list[Money]
+    loss_regions: list[list[Money | None]]
+
+
+class AdjustAfterOut(ApiModel):
+    gross: AdjustFiguresOut
+    after_charges: AdjustFiguresOut | None  # None: the charges are not available (the gross figures still shown)
+    booked_pnl: Money
+
+
+class AdjustChargesOut(ApiModel):
+    this_adjustment: Money | None
+    paid_so_far: Money | None
+    open_exit: Money | None
+    not_available: CatalogueText | None
+
+
+class AdjustPopOut(ApiModel):
+    value: Money | None  # a probability in [0, 1], exact
+    not_available: bool
+    reason: CatalogueText | None
+
+
+class AdjustMarginOut(ApiModel):
+    state: Identifier
+    value: Money | None
+    at: datetime.datetime | None
+    reason: CatalogueText | None
+
+
+class AdjustSpotReasonOut(ApiModel):
+    source: Identifier
+    reason: Identifier
+
+
+class AdjustSpotOut(ApiModel):
+    value: Money | None
+    source: Identifier | None
+    source_text: CatalogueText | None
+    at: datetime.datetime | None
+    reasons: list[AdjustSpotReasonOut]
+    text: CatalogueText | None
+
+
+class AdjustTradeOut(ApiModel):
+    action: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    price: Money
+    tradingsymbol: Identifier
+
+
+class AdjustLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    entry: Money
+    tradingsymbol: Identifier
+
+
+class AdjustClosedLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    entry: Money
+    exit: Money
+    tradingsymbol: Identifier
+
+
+class AdjustWholeOut(ApiModel):
+    after: AdjustAfterOut | None
+    charges: AdjustChargesOut | None
+    pop: AdjustPopOut | None
+    after_reason: CatalogueText | None
+
+
+class AdjustApproachOut(ApiModel):
+    id: Identifier
+    name: CatalogueText | None = None
+    kind: Identifier | None = None
+    side: Identifier | None = None
+    step_basis: Identifier | None = None
+    step_value: Money | None = None
+    refusal: CatalogueText | None = None
+    warnings: list[CatalogueText] = []
+    trades: list[AdjustTradeOut] | None = None
+    after_legs: list[AdjustLegOut] | None = None
+    closed_legs: list[AdjustClosedLegOut] | None = None
+    after: AdjustAfterOut | None = None
+    charges: AdjustChargesOut | None = None
+    pop: AdjustPopOut | None = None
+    after_reason: CatalogueText | None = None
+    margin: AdjustMarginOut | None = None
+
+
+class AdjustTimingOut(ApiModel):
+    engine_seconds: Money  # seconds, exact decimal text
+    total_seconds: Money
+    approaches: int
+
+
+class AdjustCellOut(ApiModel):
+    """One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact
+    number when there is one; ``unavailable_reason`` beside a "-"."""
+
+    text: CatalogueText
+    value: Money | None = None
+    unavailable_reason: CatalogueText | None = None
+
+
+class AdjustCriterionOut(ApiModel):
+    id: Identifier
+    group: Literal["money_now", "risk_after", "reward_after", "greeks_after", "practical"]
+    label: CatalogueText
+    hint: CatalogueText | None = None
+    leader_label: CatalogueText
+    leaders: list[Identifier]  # every tied leader; empty = no approach can lead this row
+    values: dict[Identifier, AdjustCellOut]  # approach id -> cell, "No change" first then catalogue order
+
+
+class AdjustLeadsOut(ApiModel):
+    n: int  # rows this approach leads
+    m: int  # rows with a leader
+
+
+class AdjustAvailableOut(ApiModel):
+    """GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one generic approach for the Review adjustment drawer. No figure:
+    the id, the shown name, one plain line, and whether it can be built for this position now (else the reason)."""
+
+    id: Identifier
+    name: CatalogueText
+    explanation: CatalogueText
+    applicable: bool
+    reason: CatalogueText | None = None
+
+
+class AdjustApproachesOut(ApiModel):
+    strategy_id: int
+    view: Literal["at_expiry", "estimated_now"]
+    spot: AdjustSpotOut
+    pop_switch_on: bool
+    before: AdjustWholeOut | None
+    approaches: list[AdjustApproachOut]
+    criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
+    leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
+    curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
+    timing: AdjustTimingOut | None = None
+    available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
+    days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry

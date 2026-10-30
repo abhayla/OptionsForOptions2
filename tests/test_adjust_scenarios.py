@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from decimal import ROUND_HALF_EVEN
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import adjust_scenarios_gen as gen
 import pytest
 from ofo.engine import Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift
+from ofo.money import HUNDREDTH
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "adjust_scenarios"
 IDS = sorted(p.stem for p in FIX.glob("ADJ-*.json"))
@@ -127,9 +129,11 @@ def test_engine_agrees_with_hand_expiry_numbers(sid):
     assert list(breakevens_with_shift(strategy, booked)) == [D(b) for b in hand["breakevens"]]
     if "at_expiry_after_charges" in sc["expected"]:  # F-75 shape: an after-charges breakeven finer than paise
         after = sc["expected"]["at_expiry_after_charges"]
+        hand_exact = [D(b) for b in after["breakevens"]]
+        assert any(b.as_tuple().exponent < -2 for b in hand_exact)  # the scenario still carries the F-75 shape
         shifted = breakevens_with_shift(strategy, booked - D(sc["position"]["charges_round_trip"]))
-        assert list(shifted) == [D(b) for b in after["breakevens"]]
-        assert any(b.as_tuple().exponent < -2 for b in shifted)
+        # REQ-155 AC-4: the engine rounds it half-even to 0.01 at its one producer (22547.488 -> 22547.49)
+        assert list(shifted) == [b.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN) for b in hand_exact]
 
 
 def test_engine_crosscheck_covers_every_before_position(capsys):

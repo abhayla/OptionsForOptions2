@@ -34,6 +34,8 @@ import {
 } from '@/lib/paperDrafts'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
+import { picksFromQuery } from '@/lib/adjustDrawer'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import { fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
@@ -105,6 +107,14 @@ function legsFromQuery() {
   }))
 }
 const legs = ref(legsFromQuery())
+// GC-ADJ1 step 3 (REQ-156): `?adjust=<strategy id>` opens the approach compare instead of the builder's two columns.
+const adjustId = computed(() => (/^\d+$/.test(String(route.query.adjust ?? '')) ? String(route.query.adjust) : null))
+const pickedIds = computed(() => picksFromQuery(route.query.pick)) // the approaches ticked in the Review adjustment drawer
+function prepareApproach({ legs: next }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, ...rest } = route.query
+  router.replace({ query: rest })
+  setLegs(next)
+}
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
 const choice = ref({ ...DEFAULT_CHOICE })
 if (linkRefused.value) {
@@ -716,7 +726,8 @@ const pricesStamp = computed(() => {
     <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
-    <div class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">
+    <AdjustCompare v-if="adjustId" :key="adjustId" :strategy-id="adjustId" :picked="pickedIds" @prepare="prepareApproach" />
+    <div v-else class="mt-3 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(480px,572px)_minmax(0,1fr)]" data-testid="builder-columns">
       <div
         class="flex min-w-0 flex-col gap-4 max-[1099px]:contents min-[1100px]:sticky min-[1100px]:top-[72px] min-[1100px]:max-h-[calc(100vh-88px)] min-[1100px]:self-start min-[1100px]:overflow-y-auto"
         data-testid="builder-left"
